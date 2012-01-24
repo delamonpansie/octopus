@@ -56,7 +56,6 @@ recover_row:(struct tbuf *)row
 			tbuf_printf(msg, "snap_tag ");
 		else
 			tbuf_printf(msg, "unknown_tag:%u", tag);
-		// tbuf_printf(msg, "%s", tbuf_to_hex(row));
 		say_crit("%.*s", msg->len, (char *)msg->data);
 		return 0;
 	}
@@ -75,7 +74,7 @@ check_config(struct tarantool_cfg *conf __attribute__((unused)))
 
 void
 reload_config(struct tarantool_cfg *old_conf __attribute__((unused)),
-		  struct tarantool_cfg *new_conf __attribute__((unused)))
+	      struct tarantool_cfg *new_conf __attribute__((unused)))
 {
 	return;
 }
