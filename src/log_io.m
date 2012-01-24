@@ -605,7 +605,13 @@ read_row
 		return NULL;
 	}
 
+	if (tbuf_len(m) < sizeof(struct row_v11) + sizeof(u16)) {
+		say_error("row is too short");
+		return NULL;
+	}
+
 	say_debug("read row v11 success lsn:%" PRIi64, row_v11(m)->lsn);
+
 	return m;
 }
 
@@ -653,7 +659,6 @@ restart:
 
 	if (rows++ % 100000 == 0)
 		say_info("%.1fM rows processed", rows / 1000000.);
-
 	return row;
 eof:
 	if (ftello(fd) == good_offset + sizeof(eof_marker)) {

@@ -70,33 +70,9 @@ iter_open(XLog *l, struct log_io_iter *i, void (*iterator) (struct log_io_iter *
 
 @implementation Recovery
 - (void)
-confirm_lsn:(i64)new_lsn
-{
-	assert(confirmed_lsn <= lsn);
-
-	if (confirmed_lsn < new_lsn) {
-		if (confirmed_lsn + 1 != new_lsn)
-			say_warn("non consecutive lsn, last confirmed:%" PRIi64
-				 " new:%" PRIi64 " diff: %" PRIi64,
-				 confirmed_lsn, new_lsn, new_lsn - confirmed_lsn);
-		confirmed_lsn = new_lsn;
-	} else {
-		say_warn("lsn double confirmed:%" PRIi64, confirmed_lsn);
-	}
-}
-
-- (i64)
-next_lsn
-{
-        lsn++;
-	return lsn;
-}
-
-- (void)
-init_lsn:(i64)new_lsn
+initial_lsn:(i64)new_lsn
 {
         lsn = new_lsn;
-        [self confirm_lsn:new_lsn];
 }
 
 
@@ -112,21 +88,6 @@ read_log(const char *filename, row_handler *xlog_handler, row_handler *snap_hand
 	if (strstr(filename, ".xlog")) {
                 XLogDir *dir = [[WALDir alloc] init_dirname:NULL];
 		l = [dir open_for_read_filename:filename];
-recover_row:(struct tbuf *)row
-{
-	if (tbuf_len(row) < sizeof(struct row_v11) + sizeof(u16))
-		raise("row is too short");
-
-	u16 tag = *(u16 *)row_v11(row)->data;
-	if (tag == wal_tag && row_v11(row)->lsn != lsn + 1)
-		raise("lsn sequence has gap after %"PRIi64 " -> %"PRIi64,
-		      lsn, row_v11(row)->lsn);
-
-	if (tag == snap_final_tag || tag == wal_tag)
-		lsn = row_v11(row)->lsn;
-}
-
-- (i64)
 		h = xlog_handler;
 	} else if (strstr(filename, ".snap")) {
                 XLogDir *dir = [[SnapDir alloc] init_dirname:NULL];
@@ -150,7 +111,17 @@ recover_row:(struct tbuf *)row
 	return 0;
 }
 
+
 - (void)
+validate_row:(struct tbuf *)row
+{
+	u16 tag = *(u16 *)row_v11(row)->data;
+	if (tag == wal_tag && row_v11(row)->lsn != lsn + 1)
+		raise("lsn sequence has gap after %"PRIi64 " -> %"PRIi64,
+		      lsn, row_v11(row)->lsn);
+}
+
+- (i64)
 recover_snap
 {
 	XLog *snap = nil;
@@ -161,11 +132,8 @@ recover_snap
 	@try {
 		max_snap_lsn = [snap_dir greatest_lsn];
 
-		if (max_snap_lsn < 1) {
-			say_crit("don't you forget to initialize "
-				 "storage with --init-storage switch?");
-			_exit(1);
-		}
+		if (max_snap_lsn < 1)
+			return 0;
 
 		snap = [snap_dir open_for_read:max_snap_lsn];
 		if (snap == nil)
@@ -175,6 +143,7 @@ recover_snap
 
 		fiber->pool = snap->pool;
 		while ((row = [snap next_row])) {
+			[self validate_row:row];
 			[self recover_row:row];
 			prelease_after(snap->pool, 128 * 1024);
 		}
@@ -182,14 +151,14 @@ recover_snap
 		if (!snap->eof)
 			raise("unable to fully read snapshot");
 
-		lsn = confirmed_lsn = max_snap_lsn;
-		say_info("snapshot recovered, confirmed lsn:%" PRIi64, confirmed_lsn);
+		say_info("snapshot recovered, lsn:%" PRIi64, lsn);
 	}
 	@finally {
 		fiber->pool = saved_pool;
 		[snap close];
 		snap = nil;
 	}
+	return lsn;
 }
 
 - (void)
@@ -202,21 +171,22 @@ recover_wal:(XLog *)l
 	@try {
 
 		while ((row = [l next_row])) {
-			i64 row_lsn = row_v11(row)->lsn;
-			if (row_lsn <= confirmed_lsn) {
+			if (row_v11(row)->lsn <= lsn) {
 				say_debug("skipping too young row");
 				continue;
 			}
 
 			/*  after -[recover_row] has returned, row may be modified, do not use it */
+			[self validate_row:row];
 			[self recover_row:row];
-			[self init_lsn:row_lsn];
+
 			prelease_after(l->pool, 128 * 1024);
 		}
 	}
 	@finally {
 		fiber->pool = saved_pool;
 	}
+	say_debug("after recover wal:%s lsn:%"PRIi64, l->filename, lsn);
 }
 
 /*
@@ -228,22 +198,23 @@ recover_remaining_wals
 	XLog *next_wal;
 	i64 current_lsn, wal_greatest_lsn;
 
-	current_lsn = confirmed_lsn + 1;
+	current_lsn = lsn + 1;
 	wal_greatest_lsn = [wal_dir greatest_lsn];
 
 	/* if the caller already opened WAL for us, recover from it first */
 	if (current_wal != nil)
 		goto recover_current_wal;
 
-	while (confirmed_lsn < wal_greatest_lsn) {
+	while (lsn < wal_greatest_lsn) {
 		if (current_wal != nil) {
                         say_warn("wal `%s' wasn't correctly closed", current_wal->filename);
                         [current_wal close];
                         current_wal = nil;
 		}
 
-		current_lsn = confirmed_lsn + 1;	/* TODO: find better way looking for next xlog */
 
+		/* FIXME: lsn + 1 */
+		current_lsn = lsn + 1;
                 next_wal = [wal_dir open_for_read:current_lsn];
 
 		if (next_wal == nil)
@@ -260,8 +231,8 @@ recover_remaining_wals
 	recover_current_wal:
 		[self recover_wal:current_wal];
 		if (current_wal->eof) {
-			say_info("done `%s' confirmed_lsn:%" PRIi64,
-				 current_wal->filename, confirmed_lsn);
+			say_info("done `%s' lsn:%" PRIi64,
+				 current_wal->filename, lsn);
 			[current_wal close];
 			current_wal = nil;
 		}
@@ -271,12 +242,13 @@ recover_remaining_wals
 	 * It's not a fatal error when last WAL is empty, but if
 	 * we lost some logs it is a fatal error.
 	 */
-	if (wal_greatest_lsn > confirmed_lsn + 1)
-		raise("not all WALs have been successfully read");
+	if (wal_greatest_lsn > lsn + 1)
+		raise("not all WALs have been successfully read greatest_lsn:%"PRIi64
+		      "lsn:%"PRIi64, wal_greatest_lsn, lsn);
 
 }
 
-- (void)
+- (i64)
 recover:(i64)start_lsn
 {
 	/*
@@ -287,11 +259,13 @@ recover:(i64)start_lsn
 	say_info("recovery start");
 	if (start_lsn == 0) {
 		[self recover_snap];
+		if (lsn == 0)
+			return 0;
 	} else {
 		/*
 		 * note, that recovery start with lsn _NEXT_ to confirmed one
 		 */
-		lsn = confirmed_lsn = start_lsn - 1;
+		lsn = start_lsn - 1;
 	}
 
 	/*
@@ -299,7 +273,7 @@ recover:(i64)start_lsn
 	 * so find wal which contains record with next lsn
 	 */
 	if (current_wal == nil) {
-		i64 next_lsn = confirmed_lsn + 1;
+		i64 next_lsn = lsn + 1;
 		i64 wal_start_lsn = [wal_dir find_file_containg_lsn:next_lsn];
 		if (next_lsn != wal_start_lsn && wal_start_lsn > 0) {
 			current_wal = [wal_dir open_for_read:wal_start_lsn];
@@ -310,7 +284,8 @@ recover:(i64)start_lsn
 	}
 
 	[self recover_remaining_wals];
-	say_info("wals recovered, confirmed lsn: %" PRIi64, confirmed_lsn);
+	say_info("wals recovered, lsn: %" PRIi64, lsn);
+	return lsn;
 }
 
 static void recover_follow_file(ev_stat *w, int events __attribute__((unused)));
@@ -336,7 +311,7 @@ recover_follow_file(ev_stat *w, int events __attribute__((unused)))
 	Recovery *r = w->data;
 	[r recover_wal:r->current_wal];
 	if (r->current_wal->eof) {
-		say_info("done `%s' confirmed_lsn:%" PRIi64, r->current_wal->filename, r->confirmed_lsn);
+		say_info("done `%s' lsn:%" PRIi64, r->current_wal->filename, r->lsn);
 		[r->current_wal close];
 		r->current_wal = nil;
 		recover_follow_dir((ev_timer *)w, 0);
@@ -390,20 +365,24 @@ recover_finalize
         current_wal = nil;
 }
 
-static struct wal_write_request *
-wal_write_request(const struct tbuf *t)
+- (void)
+configure_wal_writer
 {
-	return t->data;
+	if (wal_writer != NULL) {
+		struct tbuf *m = tbuf_alloc(wal_writer->out->pool);
+		tbuf_append(m, &lsn, sizeof(lsn));
+		write_inbox(wal_writer->out, m);
+	}
 }
 
-- (bool)
-wal_request_write:(struct tbuf *)row tag:(u16)tag cookie:(u64)row_cookie lsn:(i64)row_lsn
+- (i64)
+wal_request_write:(struct tbuf *)row tag:(u16)tag cookie:(u64)row_cookie
 {
 	struct tbuf *m = tbuf_alloc(wal_writer->out->pool);
 	struct msg *a;
 	u32 len = tbuf_len(row) + sizeof(tag) + sizeof(row_cookie) + sizeof(struct wal_write_request);
 
-	say_debug("wal_write lsn=%" PRIi64, row_lsn);
+	say_debug("wal_write");
 	tbuf_ensure(m, sizeof(u32) * 2 +
 		    sizeof(struct wal_write_request) +
 		    sizeof(tag) + sizeof(row_cookie) + tbuf_len(row));
@@ -414,7 +393,6 @@ wal_request_write:(struct tbuf *)row tag:(u16)tag cookie:(u64)row_cookie lsn:(i6
 
 	/* wal request header */
 	len -= sizeof(struct wal_write_request);
-	tbuf_append(m, &row_lsn, sizeof(i64));
 	tbuf_append(m, &len, sizeof(u32));
 
 	/* wal row */
@@ -428,25 +406,25 @@ wal_request_write:(struct tbuf *)row tag:(u16)tag cookie:(u64)row_cookie lsn:(i6
 	}
 	a = read_inbox();
 
-	u32 reply = read_u32(a->msg);
-	say_debug("wal_write reply=%" PRIu32, reply);
-	if (reply != 0)
+	i64 row_lsn = read_u64(a->msg);
+	say_debug("wal_write lsn=%" PRIi64, row_lsn);
+	if (row_lsn == 0)
 		say_warn("wal writer returned error status");
-	return reply == 0;
+	else
+		lsn = row_lsn; /* update local lsn */
+	return row_lsn;
 }
 
-- (struct tbuf *)
-wal_write_row:(struct tbuf *)t
+- (i64)
+wal_write_row:(const struct wal_write_request *)req
 {
 	static XLog *wal_to_close = nil;
-	struct tbuf *reply, *header;
-	u32 result = 0;
+	struct tbuf *header;
 
-	reply = tbuf_alloc(t->pool);
-
+	lsn++;
 	if (current_wal == nil)
 		/* Open WAL with '.inprogress' suffix. */
-		current_wal = [wal_dir open_for_write:wal_write_request(t)->lsn
+		current_wal = [wal_dir open_for_write:lsn
 					  saved_errno:NULL];
         if (current_wal == nil) {
                 say_error("can't open wal");
@@ -466,20 +444,22 @@ wal_write_row:(struct tbuf *)t
 		wal_to_close = nil;
 	}
 
+	/* FIXME: fwrite !!! */
+
 	if (fwrite(&marker, sizeof(marker), 1, current_wal->fd) != 1) {
 		say_syserror("can't write marker to wal");
 		goto fail;
 	}
 
-	header = tbuf_alloc(t->pool);
+	header = tbuf_alloc(fiber->pool);
 	tbuf_ensure(header, sizeof(struct row_v11));
 	header->len = sizeof(struct row_v11);
 
-	row_v11(header)->lsn = wal_write_request(t)->lsn;
+	row_v11(header)->lsn = lsn; /* FIXME: proof of correctnes */
 	row_v11(header)->tm = ev_now();
-	row_v11(header)->len = wal_write_request(t)->len;
+	row_v11(header)->len = req->len;
 	row_v11(header)->data_crc32c =
-		crc32c(0, wal_write_request(t)->data, wal_write_request(t)->len);
+		crc32c(0, req->data, req->len);
 	row_v11(header)->header_crc32c =
 		crc32c(0, header->data + field_sizeof(struct row_v11, header_crc32c),
 		       sizeof(struct row_v11) - field_sizeof(struct row_v11, header_crc32c));
@@ -489,39 +469,44 @@ wal_write_row:(struct tbuf *)t
 		goto fail;
 	}
 
-	if (fwrite(wal_write_request(t)->data, wal_write_request(t)->len, 1, current_wal->fd) != 1) {
+	if (fwrite(req->data, req->len, 1, current_wal->fd) != 1) {
 		say_syserror("can't write row data to wal");
 		goto fail;
 	}
 
 	current_wal->rows++;
 	if (current_wal->dir->rows_per_file <= current_wal->rows ||
-	    (wal_write_request(t)->lsn + 1) % current_wal->dir->rows_per_file == 0)
+	    (lsn + 1) % current_wal->dir->rows_per_file == 0)
 	{
 		wal_to_close = current_wal;
 		current_wal = nil;
 	}
 
-	tbuf_append(reply, &result, sizeof(result));
-	return reply;
+	return lsn;
 
       fail:
-	result = 1;
-	tbuf_append(reply, &result, sizeof(result));
-	return reply;
+	return 0;
 }
+
 
 static int
 wal_disk_writer(int fd, void *state)
 {
 	Recovery *rcvr = state;
-	struct tbuf *request, *reply, *wbuf, *rbuf;
+	struct tbuf *wbuf, *rbuf;
 	int result = EXIT_FAILURE;
 	ev_tstamp last_flush = 0;
+	i64 lsn;
 
 	rbuf = tbuf_alloca(fiber->pool);
 	palloc_register_gc_root(fiber->pool, (void *)rbuf, tbuf_gc);
 
+	if (recv(fd, &lsn, sizeof(lsn), 0) != sizeof(lsn)) {
+		say_syserror("recv: failed");
+		panic("unable to start WAL writer");
+	}
+
+	[rcvr initial_lsn:lsn];
 	for (;;) {
 	reread:
 		tbuf_ensure(rbuf, 16 * 1024);
@@ -546,8 +531,11 @@ wal_disk_writer(int fd, void *state)
 		ev_now_update();
 
 		while (tbuf_len(rbuf) > sizeof(u32) * 2) {
+			/* packet is : <data_len: u32><fid: u32><data: u8[data_len]> */
 			size_t packet_size = sizeof(u32) * 2 + *(u32 *)rbuf->data;
 			if (tbuf_len(rbuf) < packet_size) {
+				/* either rbuf was too small or data wasn't ready
+				   since we have nothing to send, procceed to reading packet again */
 				if (tbuf_len(wbuf) == 0) {
 					tbuf_ensure(rbuf, packet_size);
 					goto reread;
@@ -558,35 +546,29 @@ wal_disk_writer(int fd, void *state)
 
 			u32 data_len = read_u32(rbuf);
 			u32 fid = read_u32(rbuf);
-			void *data = read_bytes(rbuf, data_len);
+			struct wal_write_request *req = read_bytes(rbuf, data_len);
 
-			request = tbuf_alloc_fixed(fiber->pool, data, data_len);
-			request->pool = fiber->pool;
+			i64 row_lsn = [rcvr wal_write_row:req];
 
-			reply = [rcvr wal_write_row: request];
-			u32 len = tbuf_len(reply);
+			u32 len = sizeof(row_lsn);
 			tbuf_append(wbuf, &len, sizeof(u32));
 			tbuf_append(wbuf, &fid, sizeof(fid));
-			tbuf_append(wbuf, reply->data, len);
+			tbuf_append(wbuf, &row_lsn, sizeof(row_lsn));
+			say_debug("sending lsn:%"PRIi64" to parent", row_lsn);
 		}
 
 		if (rcvr->current_wal != nil) {
 			/* flush stdio buffer to keep feeder in sync */
-			if (fflush(rcvr->current_wal->fd) < 0) {
+			if (fflush(rcvr->current_wal->fd) < 0)
 				say_syserror("can't flush wal");
-				result = EX_OSERR;
-				break;
-			}
 
 			float fsync_delay = rcvr->current_wal->dir->fsync_delay;
 			if (fsync_delay == 0 || ev_now() - last_flush >= fsync_delay)
 			{
-				if ([rcvr->current_wal flush] < 0) {
+				if ([rcvr->current_wal flush] < 0)
 					say_syserror("can't flush wal");
-					result = EX_OSERR;
-					break;
-				}
-				last_flush = ev_now();
+				else
+					last_flush = ev_now();
 			}
 		}
 
@@ -595,11 +577,11 @@ wal_disk_writer(int fd, void *state)
 			if (r < 0) {
 				if (errno == EINTR)
 					continue;
+				/* parent is dead, exit quetly */
 				result = EX_OK;
 				break;
 			}
-			wbuf->data += r;
-			wbuf->len -= r;
+			tbuf_ltrim(wbuf, r);
 		}
 
 		fiber_gc();
@@ -639,6 +621,7 @@ wal_disk_writer(int fd, void *state)
 
 	return self;
 }
+
 
 
 static void
@@ -721,7 +704,7 @@ snapshot_save:(void (*)(struct log_io_iter *))callback
 
 	memset(&i, 0, sizeof(i));
 
-        snap = [snap_dir open_for_write:confirmed_lsn saved_errno:&saved_errno];
+        snap = [snap_dir open_for_write:lsn saved_errno:&saved_errno];
 	if (snap == nil)
 		panic_status(saved_errno, "can't open snap for writing");
 
@@ -761,73 +744,70 @@ snapshot_save:(void (*)(struct log_io_iter *))callback
 	say_info("done");
 }
 
+
+static bool
+contains_full_row(const struct tbuf *b)
+{
+	return tbuf_len(b) >= sizeof(struct row_v11) &&
+		tbuf_len(b) >= sizeof(struct row_v11) + row_v11(b)->len;
+}
+
 static struct tbuf *
 remote_row_reader_v11(struct conn *c)
 {
 	struct tbuf *m;
 	for (;;) {
-		if (tbuf_len(c->rbuf) >= sizeof(struct row_v11) &&
-		    tbuf_len(c->rbuf) >= sizeof(struct row_v11) + row_v11(c->rbuf)->len)
-		{
+		if (contains_full_row(c->rbuf)) {
 			m = tbuf_split(c->rbuf, sizeof(struct row_v11) + row_v11(c->rbuf)->len);
 			m->pool = c->rbuf->pool; /* FIXME: this is cludge */
-			say_debug("read %" PRIu32 " bytes: %s", tbuf_len(m), tbuf_to_hex(m));
 			return m;
 		}
 
-		if (conn_readahead(c, sizeof(struct row_v11)) <= 0) {
-			say_error("unexpected eof reading row header");
-			return NULL;
-		}
+		if (conn_readahead(c, sizeof(struct row_v11)) <= 0)
+			raise("unexpected eof reading row header");
 	}
 }
 
-static struct tbuf *
-remote_read_row(struct conn *c, struct sockaddr_in *addr, i64 initial_lsn)
+- (void)
+remote_handshake:(struct sockaddr_in *)addr conn:(struct conn *)c
 {
-	struct tbuf *row;
 	bool warning_said = false;
 	const int reconnect_delay = 1;
 	const char *err = NULL;
 	u32 version;
 
-	for (;;) {
-		if (c->fd < 0) {
-			if ((c->fd = tcp_connect(addr, NULL, 0)) < 0) {
-				err = "can't connect to feeder";
-				goto err;
-			}
+	i64 initial_lsn = 0;
 
-			if (conn_write(c, &initial_lsn, sizeof(initial_lsn)) != sizeof(initial_lsn)) {
-				err = "can't write initial lsn";
-				goto err;
-			}
+	if (lsn > 0)
+		initial_lsn = lsn + 1;
 
-			if (conn_read(c, &version, sizeof(version)) != sizeof(version)) {
-				err = "can't read version";
-				goto err;
-			}
-
-			if (version != default_version) {
-				err = "remote version mismatch";
-				goto err;
-			}
-
-			say_crit("succefully connected to feeder");
-			say_crit("starting remote recovery from lsn:%" PRIi64, initial_lsn);
-			warning_said = false;
-			err = NULL;
-		}
-
-		row = remote_row_reader_v11(c);
-		if (row == NULL) {
-			err = "can't read row";
+	while (c->fd < 0) {
+		if ((c->fd = tcp_connect(addr, NULL, 0)) < 0) {
+			err = "can't connect to feeder";
 			goto err;
 		}
 
-		return row;
+		if (conn_write(c, &initial_lsn, sizeof(initial_lsn)) != sizeof(initial_lsn)) {
+			err = "can't write initial lsn";
+			goto err;
+		}
 
-	      err:
+		if (conn_read(c, &version, sizeof(version)) != sizeof(version)) {
+			err = "can't read version";
+			goto err;
+		}
+
+		if (version != default_version) {
+			err = "remote version mismatch";
+			goto err;
+		}
+
+		say_crit("succefully connected to feeder");
+		say_crit("starting remote recovery from lsn:%" PRIi64, initial_lsn);
+		err = NULL;
+		return;
+
+	err:
 		if (err != NULL && !warning_said) {
 			say_info("%s", err);
 			say_info("will retry every %i second", reconnect_delay);
@@ -842,22 +822,25 @@ remote_read_row(struct conn *c, struct sockaddr_in *addr, i64 initial_lsn)
 handle_remote_row:(struct tbuf *)row
 {
 	struct tbuf *row_data;
-	i64 row_lsn = row_v11(row)->lsn;
-	u16 tag;
 
 	/* save row data since wal_row_handler may clobber it */
-	row_data = tbuf_alloc(row->pool);
+	row_data = tbuf_alloc(fiber->pool);
 	tbuf_append(row_data, row_v11(row)->data, row_v11(row)->len);
 
 	[self recover_row:row];
 
-	tag = read_u16(row_data);
+	u16 tag = read_u16(row_data); /* drop the tag */
 	(void)read_u64(row_data); /* drop the cookie */
 
-	if ([self wal_request_write:row_data tag:tag cookie:cookie lsn:row_lsn] == false)
-		raise("replication failure: can't write row to WAL");
-
-	[self init_lsn:row_lsn];
+	if (tag == snap_final_tag) {
+		say_debug("saving snapshot");
+		if (save_snapshot(NULL, 0) != 0)
+			raise("replication failure: failed save snapshot");
+		[self configure_wal_writer];
+	} else if (tag == wal_tag) {
+		if ([self wal_request_write:row_data tag:tag cookie:cookie] == 0)
+			raise("replication failure: can't write row to WAL");
+	}
 }
 
 static void
@@ -866,11 +849,18 @@ pull_from_remote(va_list ap)
 	Recovery *r = va_arg(ap, Recovery *);
 	struct sockaddr_in *addr = va_arg(ap, struct sockaddr_in *);
 	struct tbuf *row;
-	struct conn *c = conn_create(fiber->pool, -1);
+	struct conn c;
+
+	conn_init(&c, fiber->pool, -1);
+	c.ref = REF_STATIC;
 
 	for (;;) {
 		@try {
-			row = remote_read_row(c, addr, r->confirmed_lsn + 1);
+			[r remote_handshake:addr conn:&c];
+
+			row = remote_row_reader_v11(&c);
+			if (row == NULL)
+				continue;
 			r->recovery_lag = ev_now() - row_v11(row)->tm;
 			r->recovery_last_update_tstamp = ev_now();
 
@@ -878,7 +868,7 @@ pull_from_remote(va_list ap)
 		}
 		@catch (Error *e) {
 			say_error("replication failure: %s", e->reason);
-			conn_close(c);
+			conn_close(&c);
 			fiber_sleep(1);
 		}
 		fiber_gc();
@@ -890,20 +880,18 @@ recover_follow_remote:(char *)ip_addr port:(int)port
 {
 	char *name;
 	struct fiber *f;
-	struct in_addr server;
 	struct sockaddr_in *addr;
 	Recovery *h;
 
 	say_crit("initializing remote hot standby, WAL feeder %s:%i", ip_addr, port);
 
-	if (inet_aton(ip_addr, &server) < 0) {
-		say_syserror("inet_aton: %s", ip_addr);
-		return NULL;
-	}
 
 	addr = calloc(1, sizeof(*addr));
 	addr->sin_family = AF_INET;
-	memcpy(&addr->sin_addr.s_addr, &server, sizeof(server));
+	if (inet_aton(ip_addr, &addr->sin_addr) < 0) {
+		say_syserror("inet_aton: %s", ip_addr);
+		return NULL;
+	}
 	addr->sin_port = htons(port);
 
 	h = malloc(sizeof(Recovery *));

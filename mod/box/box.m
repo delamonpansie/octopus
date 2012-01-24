@@ -610,13 +610,10 @@ txn_commit(struct box_txn *txn)
 	ev_tstamp start = ev_now(), stop;
 
 	if (!txn->skip_wal) {
-		i64 lsn = [recovery_state next_lsn];
-		if (![recovery_state wal_request_write:txn->wal_record
-						   tag:wal_tag
-						cookie:0
-						   lsn:lsn])
+		if ([recovery_state wal_request_write:txn->wal_record
+						  tag:wal_tag
+					       cookie:0] == 0)
 			box_raise(ERR_CODE_UNKNOWN_ERROR, "wal write error");
-		[recovery_state confirm_lsn:lsn];
 	}
 
 	if (txn->op == DELETE)
@@ -992,9 +989,11 @@ box_bound_to_primary(void *data __attribute__((unused)))
 
 		title("hot_standby/%s:%i", cfg.wal_feeder_ipaddr, cfg.wal_feeder_port);
 	} else {
+		[recovery_state configure_wal_writer];
+		box_updates_allowed = true;
+
 		say_info("I am primary");
 		status = "primary";
-		box_updates_allowed = true;
 		title("primary");
 	}
 }
@@ -1041,13 +1040,12 @@ wal_apply(struct box_txn *txn, struct tbuf *t)
 - (void)
 recover_row:(struct tbuf *)row
 {
+	i64 row_lsn = row_v11(row)->lsn;
 	struct box_txn txn;
 	memset(&txn, 0, sizeof(txn));
 	txn.skip_wal = true;
 
 	@try {
-		[super recover_row:row];
-
 		/* drop wal header */
 		tbuf_peek(row, sizeof(struct row_v11));
 
@@ -1061,6 +1059,10 @@ recover_row:(struct tbuf *)row
 			say_debug("FINAL TAG: lsn:%"PRIi64, lsn);
 		else
 			raise("unknown row tag :%u", tag);
+
+		if (tag == snap_final_tag || tag == wal_tag)
+			lsn = row_lsn;
+
 	}
 	@catch (Error *e) {
 		panic("BoxRecovery failed: %s", e->reason);
@@ -1147,7 +1149,13 @@ init(void)
 
 	luaT_openbox(root_L);
 
-	[recovery_state recover:0];
+	if ([recovery_state recover:0] == 0) {
+		if (!cfg.remote_hot_standby) {
+			say_crit("don't you forget to initialize "
+				 "storage with --init-storage switch?");
+			_exit(1);
+		}
+	}
 
 	title("building_indexes");
 	@try {
@@ -1236,7 +1244,7 @@ snapshot(void)
 static void
 initial_snapshot(void)
 {
-	[recovery_state init_lsn:1];
+	[recovery_state initial_lsn:1];
 	[recovery_state snapshot_save:snapshot_iter];
 }
 
@@ -1249,7 +1257,7 @@ info(struct tbuf *out)
 	tbuf_printf(out, "  pid: %i" CRLF, getpid());
 	tbuf_printf(out, "  wal_writer_pid: %" PRIi64 CRLF,
 		    (i64) recovery_state->wal_writer->pid);
-	tbuf_printf(out, "  lsn: %" PRIi64 CRLF, recovery_state->confirmed_lsn);
+	tbuf_printf(out, "  lsn: %" PRIi64 CRLF, recovery_state->lsn);
 	tbuf_printf(out, "  recovery_lag: %.3f" CRLF, recovery_state->recovery_lag);
 	tbuf_printf(out, "  recovery_last_update: %.3f" CRLF,
 		    recovery_state->recovery_last_update_tstamp);

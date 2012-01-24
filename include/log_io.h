@@ -113,7 +113,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 
 @interface Recovery: Object {
 @public
-	i64 lsn, confirmed_lsn;
+	i64 lsn;
 
 	XLog *current_wal;	/* the WAL we'r currently reading/writing from/to */
 	struct child *wal_writer;
@@ -126,16 +126,15 @@ typedef void (follow_cb)(ev_stat *w, int events);
 	int snap_io_rate_limit;
 	u64 cookie;
 }
-- (i64) next_lsn;
-- (void) init_lsn:(i64)new_lsn;
-- (void) confirm_lsn:(i64)lsn;
-- (bool) wal_request_write:(struct tbuf *)row tag:(u16)tag cookie:(u64)cookie lsn:(i64)lsn;
-- (struct tbuf *) wal_write_row:(struct tbuf *)t;
+- (void) initial_lsn:(i64)new_lsn;
+- (i64) wal_request_write:(struct tbuf *)row tag:(u16)tag cookie:(u64)cookie;
+- (i64) wal_write_row:(struct wal_write_request *)req;
 - (void) recover_finalize;
 - (struct fiber *) recover_follow_remote:(char *)ipaddr port:(int)port;
-- (void) recover:(i64)lsn;
+- (i64) recover:(i64)lsn;
 - (void) recover_follow:(ev_tstamp)delay;
 - (void) recover_finalize;
+- (void) configure_wal_writer;
 - (void) snapshot_save:(void (*)(struct log_io_iter *))f;
 - (id) init_snap_dir:(const char *)snap_dir
              wal_dir:(const char *)wal_dir
@@ -153,7 +152,6 @@ typedef void (follow_cb)(ev_stat *w, int events);
 @end
 
 struct wal_write_request {
-	i64 lsn;
 	u32 len;
 	u8 data[];
 } __attribute__((packed));
