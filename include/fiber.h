@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011 Mail.RU
- * Copyright (C) 2010, 2011 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012 Mail.RU
+ * Copyright (C) 2010, 2011, 2012 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -41,6 +41,7 @@
 #include <sys/uio.h>
 
 struct msg {
+	STAILQ_ENTRY(msg) link;
 	uint32_t sender_fid;
 	struct tbuf *msg;
 };
@@ -63,7 +64,7 @@ struct fiber {
 	STAILQ_ENTRY(fiber) wake_link;
 	void *wake;
 
-	struct ring *inbox;
+	STAILQ_HEAD (,msg) inbox;
 	lua_State *L;
 
 	const char *name;
@@ -82,7 +83,7 @@ struct child {
 };
 
 void fiber_init(void);
-struct fiber *fiber_create(const char *name, int inbox_size, void (*f)(va_list va), ...);
+struct fiber *fiber_create(const char *name, void (*f)(va_list va), ...);
 void fiber_destroy_all();
 int wait_for_child(pid_t pid);
 

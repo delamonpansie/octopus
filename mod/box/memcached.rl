@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011 Mail.RU
- * Copyright (C) 2010, 2011 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012 Mail.RU
+ * Copyright (C) 2010, 2011, 2012 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -497,7 +497,7 @@ memcached_dispatch(struct conn *c)
 		}
 
 		action flush_all {
-			fiber_create("flush_all", -1, flush_all, flush_delay);
+			fiber_create("flush_all", flush_all, flush_delay);
 			ADD_IOV_LITERAL(&m, "OK\r\n");
 		}
 
@@ -669,7 +669,7 @@ memcached_bound_to_primary(void *data __attribute__((unused)))
 {
 	box_bound_to_primary(NULL);
 
-	if (fiber_create("memecached_expire", -1, memcached_expire) == NULL)
+	if (fiber_create("memecached_expire", memcached_expire) == NULL)
 		panic("can't start the expire fiber");
 }
 
@@ -729,7 +729,7 @@ exit:
 static void
 memcached_accept(int fd, void *data __attribute__((unused)))
 {
-	if (fiber_create("memcached/handler", -1, memcached_handler, fd) == NULL) {
+	if (fiber_create("memcached/handler", memcached_handler, fd) == NULL) {
 		say_error("unable create fiber");
 		close(fd);
 	}
@@ -739,9 +739,8 @@ void
 memcached_init()
 {
 	stat_base = stat_register(memcached_stat_strs, memcached_stat_MAX);
-	fiber_create("memcached/acceptor", -1, tcp_server,
-		     cfg.primary_port,
-		     memcached_accept, memcached_bound_to_primary, NULL);
+	fiber_create("memcached/acceptor", tcp_server,
+		     cfg.primary_port, memcached_accept, memcached_bound_to_primary, NULL);
 
 	say_info("memcached initialized");
 }

@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011 Mail.RU
- * Copyright (C) 2010, 2011 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012 Mail.RU
+ * Copyright (C) 2010, 2011, 2012 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -164,36 +164,34 @@ unregister_fid(struct fiber *fiber)
 	mh_i32_del(fibers_registry, k);
 }
 
+
 static void
 clear_inbox(struct fiber *fiber)
 {
-	for (size_t i = 0; i < fiber->inbox->size; i++)
-		fiber->inbox->ring[i] = NULL;
-	fiber->inbox->head = fiber->inbox->tail = 0;
+	STAILQ_INIT(&fiber->inbox);
 }
 
 static void
 fiber_do_gc(struct palloc_pool *pool, void *ptr)
 {
 	struct fiber *fiber = ptr;
-	for (int i = 0; i < fiber->inbox->size; i++) {
-		struct msg *ri = fiber->inbox->ring[i];
-		if (ri != NULL) {
-			fiber->inbox->ring[i] = palloc(pool, sizeof(*ri));
-			fiber->inbox->ring[i]->sender_fid = ri->sender_fid;
-			fiber->inbox->ring[i]->msg = tbuf_clone(fiber->pool, ri->msg);
-		}
+	struct msg *orig, *tmp;
+
+	STAILQ_FOREACH_SAFE(orig, &fiber->inbox, link, tmp) {
+		struct msg *copy = palloc(pool, sizeof(*copy));
+		copy->sender_fid = orig->sender_fid;
+		copy->msg = tbuf_clone(pool, orig->msg);
+		STAILQ_INSERT_HEAD(&fiber->inbox, copy, link);
+		STAILQ_REMOVE(&fiber->inbox, orig, msg, link);
 	}
 }
 
 static void
-fiber_alloc(struct fiber *fiber, size_t inbox_size)
+fiber_alloc(struct fiber *fiber)
 {
 	if (fiber->pool == NULL) {
 		fiber->pool = palloc_create_pool(fiber->name);
 		palloc_register_gc_root(fiber->pool, fiber, fiber_do_gc);
-		fiber->inbox = malloc((sizeof(*fiber->inbox) + inbox_size * sizeof(struct tbuf *)));
-		fiber->inbox->size = inbox_size;
 	}
 
 	prelease(fiber->pool);
@@ -216,7 +214,7 @@ fiber_zombificate(struct fiber *f)
 	f->f = NULL;
 	unregister_fid(f);
 	f->fid = 0;
-	fiber_alloc(f, f->inbox->size);
+	fiber_alloc(f);
 
 	SLIST_INSERT_HEAD(&zombie_fibers, f, zombie_link);
 }
@@ -241,13 +239,10 @@ fiber_loop(void *data __attribute__((unused)))
 
 /* fiber never dies, just become zombie */
 struct fiber *
-fiber_create(const char *name, int inbox_size, void (*f)(va_list va), ...)
+fiber_create(const char *name, void (*f)(va_list va), ...)
 {
 	struct fiber *new = NULL;
 	static int reg_cnt = 0;
-
-	if (inbox_size <= 0)
-		inbox_size = 64;
 
 	if (!SLIST_EMPTY(&zombie_fibers)) {
 		new = SLIST_FIRST(&zombie_fibers);
@@ -265,7 +260,7 @@ fiber_create(const char *name, int inbox_size, void (*f)(va_list va), ...)
 		new->L = lua_newthread(root_L);
 		lua_setfield(root_L, LUA_REGISTRYINDEX, lua_reg_name);
 
-		fiber_alloc(new, inbox_size);
+		fiber_alloc(new);
 
 		SLIST_INSERT_HEAD(&fibers, new, link);
 	}
@@ -308,31 +303,15 @@ fiber_destroy_all()
 }
 
 
-static int
-ring_size(struct ring *inbox)
-{
-	return (inbox->size + inbox->head - inbox->tail) % inbox->size;
-}
-
-int
-inbox_size(struct fiber *recipient)
-{
-	return ring_size(recipient->inbox);
-}
-
 bool
 write_inbox(struct fiber *recipient, struct tbuf *msg)
 {
-	struct ring *inbox = recipient->inbox;
-	if (ring_size(inbox) == inbox->size - 1)
-		return false;
-
-	inbox->ring[inbox->head] = palloc(recipient->pool, sizeof(struct msg));
-	inbox->ring[inbox->head]->sender_fid = fiber->fid;
+	struct msg *m = palloc(recipient->pool, sizeof(struct msg));
+	m->sender_fid = fiber->fid;
 	if (msg->pool != recipient->pool)
 		msg = tbuf_clone(recipient->pool, msg);
-	inbox->ring[inbox->head]->msg = msg;
-	inbox->head = (inbox->head + 1) % inbox->size;
+	m->msg = msg;
+	STAILQ_INSERT_TAIL(&recipient->inbox, m, link);
 
 	if (recipient->reading_inbox)
 		fiber_wake(recipient, NULL);
@@ -342,17 +321,14 @@ write_inbox(struct fiber *recipient, struct tbuf *msg)
 struct msg *
 read_inbox(void)
 {
-	struct ring *inbox = fiber->inbox;
-	while (ring_size(inbox) == 0) {
+	while (STAILQ_EMPTY(&fiber->inbox)) {
 		fiber->reading_inbox = true;
 		yield();
 		fiber->reading_inbox = false;
 	}
 
-	struct msg *msg = inbox->ring[inbox->tail];
-	inbox->ring[inbox->tail] = NULL;
-	inbox->tail = (inbox->tail + 1) % inbox->size;
-
+	struct msg *msg = STAILQ_FIRST(&fiber->inbox);
+	STAILQ_REMOVE_HEAD(&fiber->inbox, link);
 	return msg;
 }
 
@@ -377,7 +353,7 @@ inbox2sock(va_list ap)
 		do {
 			struct msg *m = read_inbox();
 			net_add_iov(&n, m->msg->data, tbuf_len(m->msg));
-		} while (ring_size(fiber->inbox) > 0);
+		} while (!STAILQ_EMPTY(&fiber->inbox));
 
 		if (conn_flush(c) < 0)
 			panic("child is dead");
@@ -455,10 +431,10 @@ spawn_child(const char *name, int inbox_size, int (*handler)(int fd, void *state
 		if (inbox_size > 0) {
 			proxy_name = malloc(64);
 			snprintf(proxy_name, 64, "%s/sock2inbox", name);
-			c->in = fiber_create(proxy_name, inbox_size, sock2inbox, socks[1]);
+			c->in = fiber_create(proxy_name, sock2inbox, socks[1]);
 			proxy_name = malloc(64);
 			snprintf(proxy_name, 64, "%s/inbox2sock", name);
-			c->out = fiber_create(proxy_name, inbox_size, inbox2sock, socks[1]);
+			c->out = fiber_create(proxy_name, inbox2sock, socks[1]);
 			c->out->reading_inbox = true;
 		}
 		return c;
@@ -485,7 +461,6 @@ fiber_info(struct tbuf *out)
 
 		tbuf_printf(out, "  - fid: %4i" CRLF, fiber->fid);
 		tbuf_printf(out, "    name: %s" CRLF, fiber->name);
-		tbuf_printf(out, "    inbox: %i" CRLF, ring_size(fiber->inbox));
 		tbuf_printf(out, "    stack: %p" CRLF, stack_top);
 #ifdef BACKTRACE
 		tbuf_printf(out, "    backtrace: %s" CRLF,
@@ -520,7 +495,7 @@ fiber_init(void)
 	memset(&sched, 0, sizeof(sched));
 	sched.fid = 1;
 	sched.name = "sched";
-	fiber_alloc(&sched, 1);
+	fiber_alloc(&sched);
 
 	fiber = &sched;
 	last_used_fid = 100;
@@ -551,7 +526,7 @@ luaT_fiber_create(struct lua_State *L)
 		lua_error(L);
 	}
 
-	fiber_create("lua", -1, luaT_fiber_trampoline, L);
+	fiber_create("lua", luaT_fiber_trampoline, L);
 	return 0;
 }
 

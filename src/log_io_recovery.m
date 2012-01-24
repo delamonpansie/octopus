@@ -863,7 +863,7 @@ recover_follow_remote:(char *)ip_addr port:(int)port
 
 	name = malloc(64);
 	snprintf(name, 64, "remote_hot_standby/%s:%i", ip_addr, port);
-	f = fiber_create(name, -1, pull_from_remote, h, addr);
+	f = fiber_create(name, pull_from_remote, h, addr);
 	if (f == NULL) {
 		free(name);
 		free(addr);

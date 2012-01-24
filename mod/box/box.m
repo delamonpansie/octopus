@@ -1258,7 +1258,7 @@ init(void)
 	} else {
 		box_service = iproto_service(cfg.primary_port, box_bound_to_primary);
 		for (int i = 0; i < cfg.wal_writer_inbox_size - 2; i++)
-			fiber_create("box_worker", -1, iproto_interact, box_service, box_process);
+			fiber_create("box_worker", iproto_interact, box_service, box_process);
 
 		say_info("(silver)box initialized (%i workers)", cfg.wal_writer_inbox_size);
 	}

@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011 Mail.RU
- * Copyright (C) 2010, 2011 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012 Mail.RU
+ * Copyright (C) 2010, 2011, 2012 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -245,16 +245,15 @@ iproto_service(u16 port, void (*on_bind)(void *))
 	service->pool = palloc_create_pool("service");
 
 	service->output_flusher =
-		fiber_create("iproto_service/output_flusher", -1, output_flusher);
+		fiber_create("iproto_service/output_flusher", output_flusher);
 
 	service->input_reader =
-		fiber_create("iproto_service/input_reader", -1, input_reader, service);
+		fiber_create("iproto_service/input_reader", input_reader, service);
 
 	ev_prepare_init(&service->wakeup, (void *)wakeup_workers);
 	ev_prepare_start(&service->wakeup);
 
-	service->acceptor = fiber_create("", -1, tcp_server,
-					 port, accept_client, on_bind, service);
+	service->acceptor = fiber_create("", tcp_server, port, accept_client, on_bind, service);
 
 	palloc_register_gc_root(service->pool, service, service_gc);
 	return service;

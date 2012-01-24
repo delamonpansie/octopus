@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011 Mail.RU
- * Copyright (C) 2010, 2011 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012 Mail.RU
+ * Copyright (C) 2010, 2011, 2012 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -285,7 +285,7 @@ admin_handler(va_list ap)
 static void
 admin_accept(int fd, void *data __attribute__((unused)))
 {
-	if (fiber_create("admin/handler", -1, admin_handler, fd) == NULL) {
+	if (fiber_create("admin/handler", admin_handler, fd) == NULL) {
 		say_error("unable create fiber");
 		close(fd);
 	}
@@ -294,7 +294,7 @@ admin_accept(int fd, void *data __attribute__((unused)))
 int
 admin_init(void)
 {
-	if (fiber_create("admin/acceptor", -1, tcp_server,
+	if (fiber_create("admin/acceptor", tcp_server,
 			 cfg.admin_port, admin_accept, NULL, NULL) == NULL)
 	{
 		say_syserror("can't bind to %d", cfg.admin_port);
