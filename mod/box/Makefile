@@ -15,7 +15,7 @@ src-lua += mod/box/src-lua/box/user_proc_unsafe.lua
 
 
 
-ifeq (1, $(HAVE_RAGEL))
+ifeq (1,$(HAVE_RAGEL))
 	dist-clean += mod/box/memcached.m
 endif
 
