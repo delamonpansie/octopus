@@ -129,12 +129,14 @@ field_print(struct tbuf *buf, void *f)
 	if (size == 4)
 		tbuf_printf(buf, "%i:", *(u32 *)f);
 
+	tbuf_printf(buf, "\"");
 	while (size-- > 0) {
 		if (0x20 <= *(u8 *)f && *(u8 *)f < 0x7f)
 			tbuf_printf(buf, "%c", *(u8 *)f++);
 		else
 			tbuf_printf(buf, "\\x%02X", *(u8 *)f++);
 	}
+	tbuf_printf(buf, "\"");
 
 }
 
@@ -144,9 +146,7 @@ tuple_print(struct tbuf *buf, uint8_t cardinality, void *f)
 	tbuf_printf(buf, "<");
 
 	for (size_t i = 0; i < cardinality; i++, f = next_field(f)) {
-		tbuf_printf(buf, "\"");
 		field_print(buf, f);
-		tbuf_printf(buf, "\"");
 
 		if (likely(i + 1 < cardinality))
 			tbuf_printf(buf, ", ");
@@ -790,8 +790,6 @@ box_xlog_sprint(struct tbuf *buf, const struct tbuf *t)
 	u32 op_cnt;
 
 	tbuf_printf(buf, "lsn:%" PRIi64 " ", row->lsn);
-
-	say_debug("b->len:%" PRIu32, tbuf_len(b));
 
 	tag = read_u16(b);
 	cookie = read_u64(b);
