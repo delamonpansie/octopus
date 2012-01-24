@@ -625,7 +625,7 @@ txn_commit(struct box_txn *txn)
 		commit_replace(txn);
 
 	stop = ev_now();
-	if (0 && stop - start > cfg.too_long_threshold)
+	if (stop - start > cfg.too_long_threshold)
 		say_warn("too long %s: %.3f sec", messages_strs[txn->op], stop - start);
 
 	say_debug("txn_commit(op:%s)", messages_strs[txn->op]);
