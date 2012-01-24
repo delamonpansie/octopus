@@ -234,8 +234,8 @@ sig_int(int signal)
 	if (master_pid == getpid()) {
 		if (signal == SIGINT)
 			signal = SIGTERM;
-		if (opt != NULL && gopt(opt, 'D')) /* we'r the leader */
-			kill(0, signal);
+
+		kill(0, signal);
 		exit(EXIT_SUCCESS);
 	} else
 		_exit(EXIT_SUCCESS);

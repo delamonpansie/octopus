@@ -110,6 +110,8 @@ tnt_fork()
 		sigprocmask(SIG_UNBLOCK, &set, NULL);
 		signal(SIGPIPE, SIG_DFL);
 		signal(SIGCHLD, SIG_DFL);
+		/* Ignore SIGINT coming from a TTY
+		   our parent will send SIGTERM to us when he catches SIGINT */
 		signal(SIGINT, SIG_IGN);
 	}
 	return pid;
