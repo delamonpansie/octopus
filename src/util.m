@@ -113,6 +113,7 @@ tnt_fork()
 		/* Ignore SIGINT coming from a TTY
 		   our parent will send SIGTERM to us when he catches SIGINT */
 		signal(SIGINT, SIG_IGN);
+		ev_loop_fork();
 	}
 	return pid;
 }
