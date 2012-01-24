@@ -878,7 +878,9 @@ snap_print(Recovery *r __attribute__((unused)), struct tbuf *t)
 	row = box_snap_row(b);
 
 	tuple_print(out, row->tuple_size, row->data);
-	printf("n:%i %*s\n", row->object_space, tbuf_len(out), (char *)out->data);
+	printf("lsn:%" PRIi64 " tm:%.3f n:%i %*s\n",
+	       raw_row->lsn, raw_row->tm,
+	       row->object_space, tbuf_len(out), (char *)out->data);
 	return 0;
 }
 
