@@ -9,14 +9,14 @@ ifeq (1, $(HAVE_CONFETTI))
 
     defered += $$(obj): cfg/tarantool_cfg.h cfg/tarantool_cfg.cfg
 
-    cfg/tarantool_cfg.cfg_tmpl: cfg/core_cfg.cfg_tmpl $(cfg_tmpl)
+    cfg/tarantool_cfg.cfg_tmpl: cfg/core_cfg.cfg_tmpl $(cfg_tmpl) Makefile
 	@mkdir -p $(dir $@)
 	@echo '%{ ' > $@
 	@echo "#include <third_party/confetti/prscfg.h>" >> $@
 	@echo "#include <cfg/tarantool_cfg.h>" >> $@
 	@echo "void out_warning(ConfettyError r, char *format, ...);" >> $@
 	@echo '%}' >> $@
-	$(CAT) $^ >> $@
+	$(CAT) $(filter-out Makefile,$^) >> $@
 endif
 
 obj += cfg/tarantool_cfg.o
