@@ -495,12 +495,12 @@ close
 	if (mode == LOG_WRITE) {
 		if (fwrite(&eof_marker, sizeof(eof_marker), 1, fd) != 1)
 			say_error("can't write eof_marker");
+		[self flush];
 	}
 
 	if (ev_is_active(&stat))
 		ev_stat_stop(&stat);
 
-        [self flush];
 
 	int r = fclose(fd);
 	if (r < 0)
