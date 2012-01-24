@@ -74,8 +74,8 @@ send_tbuf(int fd, struct tbuf *b)
 - (void)
 recover_row:(struct tbuf *)row
 {
-	i64 row_lsn = row_v11(row)->lsn;
-	u16 tag = *(u16 *)row_v11(row)->data;
+	i64 row_lsn = row_v12(row)->lsn;
+	u16 tag = row_v12(row)->tag;
 	send_tbuf(fd, row);
 	if (tag == snap_final_tag || tag == wal_tag)
 		lsn = row_lsn;

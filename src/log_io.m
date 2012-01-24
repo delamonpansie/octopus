@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011 Mail.RU
- * Copyright (C) 2010, 2011 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012 Mail.RU
+ * Copyright (C) 2010, 2011, 2012 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -58,6 +58,7 @@ const u16 snap_final_tag = -3;
 const u64 default_cookie = 0;
 const u32 default_version = 11;
 const char *v11 = "0.11\n";
+const char *v12 = "0.12\n";
 const char *snap_mark = "SNAP\n";
 const char *xlog_mark = "XLOG\n";
 const char *inprogress_suffix = ".inprogress";
@@ -236,6 +237,7 @@ open_for_read_filename:(const char *)filename
 	XLog *l = nil;
 	char *r;
 
+	say_debug("open_for_read_filename %s", filename);
 	FILE *fd = fopen(filename, "r");
 	if (fd == NULL) {
 		error = strerror(errno);
@@ -254,14 +256,24 @@ open_for_read_filename:(const char *)filename
 		goto error;
 	}
 
+	if (strcmp(version_, v11) == 0) {
+		say_debug("XLog11 alloc");
+		l = [XLog11 alloc];
+	} else if (strcmp(version_, v12) == 0) {
+		l = [XLog12 alloc];
+	} else {
+		error = "unknown version";
+		goto error;
+	}
+
         if (strncmp(filetype, filetype_, sizeof(filetype_)) != 0) {
                 error = "unknown file type";
                 goto error;
         }
 
-	l = [[XLog alloc] init_filename:filename
-				     fd:fd
-				    dir:self];
+	l = [l init_filename:filename
+			  fd:fd
+			 dir:self];
 
         if (l == nil) {
                 error = "unknown file type";
@@ -280,6 +292,7 @@ open_for_read_filename:(const char *)filename
 
 error:
         if (fd != NULL) {
+		[l free];
                 l = [[XLog alloc] init_filename:filename
 					     fd:fd
 					    dir:self];
@@ -540,7 +553,7 @@ write_header
 	if (fwrite(dir->filetype, strlen(dir->filetype), 1, fd) != 1)
 		return -1;
 
-	if (fwrite(v11, strlen(v11), 1, fd) != 1)
+	if (fwrite(v12, strlen(v12), 1, fd) != 1)
 		return -1;
 
         if (fwrite("\n", 1, 1, fd) != 1)
@@ -568,51 +581,7 @@ read_header
 - (struct tbuf *)
 read_row
 {
-	struct tbuf *m = tbuf_alloc(pool);
-
-	u32 header_crc, data_crc;
-
-	tbuf_ensure(m, sizeof(struct row_v11));
-	if (fread(m->data, sizeof(struct row_v11), 1, fd) != 1) {
-		if (ferror(fd))
-			say_error("fread error");
-		return NULL;
-	}
-
-	m->len = offsetof(struct row_v11, data);
-
-	/* header crc32c calculated on <lsn, tm, len, data_crc32c> */
-	header_crc = crc32c(0, m->data + offsetof(struct row_v11, lsn),
-			    sizeof(struct row_v11) - offsetof(struct row_v11, lsn));
-
-	if (row_v11(m)->header_crc32c != header_crc) {
-		say_error("header crc32c mismatch");
-		return NULL;
-	}
-
-	tbuf_ensure(m, tbuf_len(m) + row_v11(m)->len);
-	if (fread(row_v11(m)->data, row_v11(m)->len, 1, fd) != 1) {
-		if (ferror(fd))
-			say_error("fread error");
-		return NULL;
-	}
-
-	m->len += row_v11(m)->len;
-
-	data_crc = crc32c(0, row_v11(m)->data, row_v11(m)->len);
-	if (row_v11(m)->data_crc32c != data_crc) {
-		say_error("data crc32c mismatch");
-		return NULL;
-	}
-
-	if (tbuf_len(m) < sizeof(struct row_v11) + sizeof(u16)) {
-		say_error("row is too short");
-		return NULL;
-	}
-
-	say_debug("read row v11 success lsn:%" PRIi64, row_v11(m)->lsn);
-
-	return m;
+	return NULL;
 }
 
 
@@ -688,3 +657,124 @@ follow:(follow_cb *)cb
 
 @end
 
+
+@implementation XLog11
+
+- (struct tbuf *)
+read_row
+{
+	struct tbuf *m = tbuf_alloc(pool);
+
+	u32 header_crc, data_crc;
+
+	tbuf_ensure(m, sizeof(struct _row_v11));
+	if (fread(m->data, sizeof(struct _row_v11), 1, fd) != 1) {
+		if (ferror(fd))
+			say_error("fread error");
+		return NULL;
+	}
+
+	m->len = offsetof(struct _row_v11, data);
+
+	/* header crc32c calculated on <lsn, tm, len, data_crc32c> */
+	header_crc = crc32c(0, m->data + offsetof(struct _row_v11, lsn),
+			    sizeof(struct _row_v11) - offsetof(struct _row_v11, lsn));
+
+	if (_row_v11(m)->header_crc32c != header_crc) {
+		say_error("header crc32c mismatch");
+		return NULL;
+	}
+
+	tbuf_ensure(m, tbuf_len(m) + _row_v11(m)->len);
+	if (fread(_row_v11(m)->data, _row_v11(m)->len, 1, fd) != 1) {
+		if (ferror(fd))
+			say_error("fread error");
+		return NULL;
+	}
+
+	m->len += _row_v11(m)->len;
+
+	data_crc = crc32c(0, _row_v11(m)->data, _row_v11(m)->len);
+	if (_row_v11(m)->data_crc32c != data_crc) {
+		say_error("data crc32c mismatch");
+		return NULL;
+	}
+
+	if (tbuf_len(m) < sizeof(struct _row_v11) + sizeof(u16)) {
+		say_error("row is too short");
+		return NULL;
+	}
+
+	say_debug("read row v11 success lsn:%" PRIi64, _row_v11(m)->lsn);
+
+	struct tbuf *n = tbuf_alloc(pool);
+	tbuf_ensure(n, sizeof(struct row_v12));
+	n->len = sizeof(struct row_v12);
+	row_v12(n)->lsn = _row_v11(m)->lsn;
+	row_v12(n)->tm = _row_v11(m)->tm;
+	row_v12(n)->len = _row_v11(m)->len - sizeof(u16) - sizeof(u64); /* tag & cookie */
+
+	tbuf_peek(m, sizeof(struct _row_v11));
+	row_v12(n)->tag = read_u16(m);
+	row_v12(n)->cookie = read_u64(m);
+
+	tbuf_append(n, m->data, row_v12(n)->len);
+	return n;
+}
+
+@end
+
+
+@implementation XLog12
+
+- (struct tbuf *)
+read_row
+{
+	struct tbuf *m = tbuf_alloc(pool);
+
+	u32 header_crc, data_crc;
+
+	tbuf_ensure(m, sizeof(struct row_v12));
+	if (fread(m->data, sizeof(struct row_v12), 1, fd) != 1) {
+		if (ferror(fd))
+			say_error("fread error");
+		return NULL;
+	}
+
+	m->len = offsetof(struct row_v12, data);
+
+	/* header crc32c calculated on all fields before data_crc32c> */
+	header_crc = crc32c(0, m->data + offsetof(struct row_v12, lsn),
+			    sizeof(struct row_v12) - offsetof(struct row_v12, lsn));
+
+	if (row_v12(m)->header_crc32c != header_crc) {
+		say_error("header crc32c mismatch");
+		return NULL;
+	}
+
+	tbuf_ensure(m, tbuf_len(m) + row_v12(m)->len);
+	if (fread(row_v12(m)->data, row_v12(m)->len, 1, fd) != 1) {
+		if (ferror(fd))
+			say_error("fread error");
+		return NULL;
+	}
+
+	m->len += row_v12(m)->len;
+
+	data_crc = crc32c(0, row_v12(m)->data, row_v12(m)->len);
+	if (row_v12(m)->data_crc32c != data_crc) {
+		say_error("data crc32c mismatch");
+		return NULL;
+	}
+
+	if (tbuf_len(m) < sizeof(struct row_v12) + sizeof(u16)) {
+		say_error("row is too short");
+		return NULL;
+	}
+
+	say_debug("read row v12 success lsn:%" PRIi64, row_v12(m)->lsn);
+
+	return m;
+}
+
+@end

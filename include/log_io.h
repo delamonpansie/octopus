@@ -111,9 +111,15 @@ typedef void (follow_cb)(ev_stat *w, int events);
 - (int) close;
 @end
 
+@interface XLog11: XLog
+@end
+
+@interface XLog12: XLog
+@end
+
 @interface Recovery: Object {
 @public
-	i64 lsn;
+	i64 lsn, scn;
 
 	XLog *current_wal;	/* the WAL we'r currently reading/writing from/to */
 	struct child *wal_writer;
@@ -156,7 +162,7 @@ struct wal_write_request {
 	u8 data[];
 } __attribute__((packed));
 
-struct row_v11 {
+struct _row_v11 {
 	u32 header_crc32c;
 	i64 lsn;
 	double tm;
@@ -165,9 +171,26 @@ struct row_v11 {
 	u8 data[];
 } __attribute__((packed));
 
-static inline struct row_v11 *row_v11(const struct tbuf *t)
+struct row_v12 {
+	u32 header_crc32c;
+	i64 lsn;
+	i64 scn;
+	u16 tag;
+	u64 cookie;
+	double tm;
+	u32 len;
+	u32 data_crc32c;
+	u8 data[];
+} __attribute__((packed));
+
+static inline struct _row_v11 *_row_v11(const struct tbuf *t)
 {
-	return (struct row_v11 *)t->data;
+	return (struct _row_v11 *)t->data;
+}
+
+static inline struct row_v12 *row_v12(const struct tbuf *t)
+{
+	return (struct row_v12 *)t->data;
 }
 
 

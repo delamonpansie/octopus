@@ -115,10 +115,10 @@ read_log(const char *filename, row_handler *xlog_handler, row_handler *snap_hand
 - (void)
 validate_row:(struct tbuf *)row
 {
-	u16 tag = *(u16 *)row_v11(row)->data;
-	if (tag == wal_tag && row_v11(row)->lsn != lsn + 1)
+	u16 tag = row_v12(row)->tag;
+	if (tag == wal_tag && row_v12(row)->lsn != lsn + 1)
 		raise("lsn sequence has gap after %"PRIi64 " -> %"PRIi64,
-		      lsn, row_v11(row)->lsn);
+		      lsn, row_v12(row)->lsn);
 }
 
 - (i64)
@@ -171,7 +171,7 @@ recover_wal:(XLog *)l
 	@try {
 
 		while ((row = [l next_row])) {
-			if (row_v11(row)->lsn <= lsn) {
+			if (row_v12(row)->lsn <= lsn) {
 				say_debug("skipping too young row");
 				continue;
 			}
@@ -452,17 +452,17 @@ wal_write_row:(const struct wal_write_request *)req
 	}
 
 	header = tbuf_alloc(fiber->pool);
-	tbuf_ensure(header, sizeof(struct row_v11));
-	header->len = sizeof(struct row_v11);
+	tbuf_ensure(header, sizeof(struct row_v12));
+	header->len = sizeof(struct row_v12);
 
-	row_v11(header)->lsn = lsn; /* FIXME: proof of correctnes */
-	row_v11(header)->tm = ev_now();
-	row_v11(header)->len = req->len;
-	row_v11(header)->data_crc32c =
+	row_v12(header)->lsn = lsn; /* FIXME: proof of correctnes */
+	row_v12(header)->tm = ev_now();
+	row_v12(header)->len = req->len;
+	row_v12(header)->data_crc32c =
 		crc32c(0, req->data, req->len);
-	row_v11(header)->header_crc32c =
-		crc32c(0, header->data + field_sizeof(struct row_v11, header_crc32c),
-		       sizeof(struct row_v11) - field_sizeof(struct row_v11, header_crc32c));
+	row_v12(header)->header_crc32c =
+		crc32c(0, header->data + field_sizeof(struct row_v12, header_crc32c),
+		       sizeof(struct row_v12) - field_sizeof(struct row_v12, header_crc32c));
 
 	if (fwrite(header->data, tbuf_len(header), 1, current_wal->fd) != 1) {
 		say_syserror("can't write row header to wal");
@@ -629,7 +629,7 @@ write_rows(struct log_io_iter *i)
 {
 	XLog *l = i->log;
 	struct tbuf *data;
-	struct row_v11 row;
+	struct row_v12 row;
 
 	row.lsn = *(i64 *)i->data;
 
@@ -674,7 +674,7 @@ snapshot_write_row(struct log_io_iter *i, u16 tag, u64 cookie, struct tbuf *row)
 			last = ev_now();
 		}
 
-		bytes += tbuf_len(row) + sizeof(struct row_v11);
+		bytes += tbuf_len(row) + sizeof(struct row_v12);
 
 		while (bytes >= i->io_rate_limit) {
 			[i->log flush];
@@ -748,8 +748,8 @@ snapshot_save:(void (*)(struct log_io_iter *))callback
 static bool
 contains_full_row(const struct tbuf *b)
 {
-	return tbuf_len(b) >= sizeof(struct row_v11) &&
-		tbuf_len(b) >= sizeof(struct row_v11) + row_v11(b)->len;
+	return tbuf_len(b) >= sizeof(struct row_v12) &&
+		tbuf_len(b) >= sizeof(struct row_v12) + row_v12(b)->len;
 }
 
 static struct tbuf *
@@ -758,12 +758,12 @@ remote_row_reader_v11(struct conn *c)
 	struct tbuf *m;
 	for (;;) {
 		if (contains_full_row(c->rbuf)) {
-			m = tbuf_split(c->rbuf, sizeof(struct row_v11) + row_v11(c->rbuf)->len);
+			m = tbuf_split(c->rbuf, sizeof(struct row_v12) + row_v12(c->rbuf)->len);
 			m->pool = c->rbuf->pool; /* FIXME: this is cludge */
 			return m;
 		}
 
-		if (conn_readahead(c, sizeof(struct row_v11)) <= 0)
+		if (conn_readahead(c, sizeof(struct row_v12)) <= 0)
 			raise("unexpected eof reading row header");
 	}
 }
@@ -823,14 +823,12 @@ handle_remote_row:(struct tbuf *)row
 {
 	struct tbuf *row_data;
 
+	u16 tag = row_v12(row)->tag;
 	/* save row data since wal_row_handler may clobber it */
 	row_data = tbuf_alloc(fiber->pool);
-	tbuf_append(row_data, row_v11(row)->data, row_v11(row)->len);
+	tbuf_append(row_data, row_v12(row)->data, row_v12(row)->len);
 
 	[self recover_row:row];
-
-	u16 tag = read_u16(row_data); /* drop the tag */
-	(void)read_u64(row_data); /* drop the cookie */
 
 	if (tag == snap_final_tag) {
 		say_debug("saving snapshot");
@@ -860,7 +858,7 @@ pull_from_remote(va_list ap)
 			row = remote_row_reader_v11(&c);
 			if (row == NULL)
 				continue;
-			r->recovery_lag = ev_now() - row_v11(row)->tm;
+			r->recovery_lag = ev_now() - row_v12(row)->tm;
 			r->recovery_last_update_tstamp = ev_now();
 
 			[r handle_remote_row:row];

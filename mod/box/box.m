@@ -771,7 +771,7 @@ box_process(struct conn *c, struct tbuf *request)
 static int
 box_xlog_sprint(struct tbuf *buf, const struct tbuf *t)
 {
-	struct row_v11 *row = row_v11(t);
+	struct row_v12 *row = row_v12(t);
 
 	struct tbuf *b = palloc(fiber->pool, sizeof(*b));
 	b->data = row->data;
@@ -788,8 +788,8 @@ box_xlog_sprint(struct tbuf *buf, const struct tbuf *t)
 
 	tbuf_printf(buf, "lsn:%" PRIi64 " ", row->lsn);
 
-	tag = read_u16(b);
-	cookie = read_u64(b);
+	tag = row->tag;
+	cookie = row->cookie;
 	op = read_u16(b);
 	n = read_u32(b);
 
@@ -863,14 +863,13 @@ snap_print(Recovery *r __attribute__((unused)), struct tbuf *t)
 {
 	struct tbuf *out = tbuf_alloc(t->pool);
 	struct box_snap_row *row;
-	struct row_v11 *raw_row = row_v11(t);
+	struct row_v12 *raw_row = row_v12(t);
 
 	struct tbuf *b = palloc(fiber->pool, sizeof(*b));
 	b->data = raw_row->data;
 	b->len = raw_row->len;
 
-	u16 tag = read_u16(b);
-	(void)read_u64(b); /* drop cookie */
+	u16 tag = raw_row->tag;
 
 	row = box_snap_row(b);
 
@@ -1007,8 +1006,6 @@ snap_apply(struct box_txn *txn, struct tbuf *t)
 {
 	struct box_snap_row *row;
 
-	read_u64(t); /* drop cookie */
-
 	row = box_snap_row(t);
 	txn->object_space = &object_space_registry[row->object_space];
 
@@ -1031,8 +1028,6 @@ snap_apply(struct box_txn *txn, struct tbuf *t)
 static void
 wal_apply(struct box_txn *txn, struct tbuf *t)
 {
-	read_u64(t); /* drop cookie */
-
 	txn->op = read_u16(t);
 	box_dispach_update(txn, t);
 }
@@ -1040,17 +1035,18 @@ wal_apply(struct box_txn *txn, struct tbuf *t)
 - (void)
 recover_row:(struct tbuf *)row
 {
-	i64 row_lsn = row_v11(row)->lsn;
+	i64 row_lsn = row_v12(row)->lsn;
+	u16 tag = row_v12(row)->tag;
+
 	struct box_txn txn;
 	memset(&txn, 0, sizeof(txn));
 	txn.skip_wal = true;
 
 	@try {
-		/* drop wal header */
-		tbuf_peek(row, sizeof(struct row_v11));
+		/* drop header */
+		tbuf_peek(row, sizeof(struct row_v12));
 
 		assert(txn.m == NULL);
-		u16 tag = read_u16(row);
 		if (tag == wal_tag)
 			wal_apply(&txn, row);
 		else if (tag == snap_tag)
