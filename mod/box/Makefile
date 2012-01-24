@@ -3,10 +3,7 @@ src/tarantool.o: CFLAGS += -DSTORAGE
 obj += src/admin.o
 obj += mod/box/box.o
 obj += mod/box/moonbox.o
-obj += mod/box/index.o
-obj += mod/box/index_hash.o
-obj += mod/box/index_tree.o
-obj += mod/box/index_tuple.o
+obj += mod/box/tuple_index.o
 obj += mod/box/memcached.o
 obj += third_party/qsort_arg.o
 

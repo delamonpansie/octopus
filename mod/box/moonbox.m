@@ -39,9 +39,9 @@
 #import <pickle.h>
 #import <assoc.h>
 #import <net_io.h>
+#import <index.h>
 
 #import <mod/box/box.h>
-#import <mod/box/index.h>
 #import <mod/box/moonbox.h>
 
 const char *objectlib_name = "Tarantool.box.object";

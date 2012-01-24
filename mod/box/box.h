@@ -27,7 +27,7 @@
 #ifndef TARANTOOL_SILVERBOX_H
 #define TARANTOOL_SILVERBOX_H
 
-#include <mod/box/index.h>
+#include <index.h>
 #import <iproto.h>
 #import <net_io.h>
 
@@ -84,16 +84,6 @@ struct box_txn {
 	struct tbuf *wal_record;
 };
 
-enum tuple_flags {
-	WAL_WAIT = 0x1,
-	GHOST = 0x2
-};
-
-static inline bool ghost(struct tnt_object *obj)
-{
-	return obj->flags & GHOST;
-}
-
 #define BOX_RETURN_TUPLE 1
 #define BOX_ADD 2
 #define BOX_REPLACE 4
@@ -148,5 +138,7 @@ void tuple_add_iov(struct netmsg **m, struct tnt_object *obj);
 
 void box_bound_to_primary(void *data __attribute__((unused)));
 void memcached_init(void);
+
+void validate_indexes(struct box_txn *txn);
 extern StringHash *memcached_index;
 #endif

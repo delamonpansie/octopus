@@ -60,6 +60,7 @@ index_env.with_server do |box|
   box.object_space = 1
 
   LogPpProxy.try { box.insert [0] }
+  LogPpProxy.try { box.select [0] }
   box.insert ["00000000", "00000000", "1"]
   box.insert ["00000001", "00000000", "2"]
   box.select "00000000", :index => 1

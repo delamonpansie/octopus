@@ -38,15 +38,17 @@
 #import <util.h>
 #import <object.h>
 #import <assoc.h>
+#import <index.h>
 
 #import <mod/box/box.h>
-#import <mod/box/index.h>
 #import <mod/box/moonbox.h>
 
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <errno.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 struct service *box_service;
 bool box_updates_allowed = false;
@@ -755,10 +757,13 @@ box_process(struct conn *c, struct tbuf *request)
 		}
 	}
 	@catch (Error *e) {
+		say_debug("aboring txn, [%s reason:%s]", [[e class] name], e->reason);
 		txn_abort(&txn);
 		u32 rc = ERR_CODE_UNKNOWN_ERROR;
 		if ([e respondsTo:@selector(code)])
 			rc = [(id)e code];
+		else if ([e isMemberOf:[IndexError class]])
+			rc = ERR_CODE_ILLEGAL_PARAMS;
 		iproto_error(&txn.m, &txn.header_mark, rc, e->reason);
 		if (&c->out_messages != txn.m->tailq)
 			netmsg_concat(netmsg_tail(&c->out_messages, c->pool), txn.m->tailq);
@@ -1069,6 +1074,71 @@ recover_row:(struct tbuf *)row
 }
 @end
 
+void
+validate_indexes(struct box_txn *txn)
+{
+	foreach_index(index, txn->object_space) {
+                [index valid_object:txn->obj];
+
+		if (index->unique) {
+                        struct tnt_object *obj = [index find_by_obj:txn->obj];
+
+                        if (obj != NULL && obj != txn->old_obj)
+                                box_raise(ERR_CODE_INDEX_VIOLATION, "unique index violation");
+                }
+	}
+}
+
+void
+build_object_space_trees(struct object_space *object_space)
+{
+	say_info("Building tree indexes of object space %i", object_space->n);
+
+	Index<BasicIndex> *pk = object_space->index[0];
+	size_t n_tuples = [pk size];
+        size_t estimated_tuples = n_tuples * 1.2;
+
+	Tree *ts[MAX_IDX] = { nil, };
+	void *nodes[MAX_IDX] = { NULL, };
+	int i = 0, tree_count = 0;
+
+	for (int j = 0; object_space->index[j]; j++)
+		if ([object_space->index[j] isKindOf:[DummyIndex class]]) {
+			DummyIndex *dummy = (id)object_space->index[j];
+			if ([dummy is_wrapper_of:[Tree class]]) {
+				object_space->index[j] = [dummy unwrap];
+				ts[i++] = (id)object_space->index[j];
+			}
+		}
+	tree_count = i;
+
+        if (n_tuples > 0) {
+		for (int i = 0; i < tree_count; i++) {
+                        nodes[i] = malloc(estimated_tuples * ts[i]->node_size);
+			if (nodes[i] == NULL)
+                                panic("can't allocate node array");
+                }
+
+		struct tnt_object *obj;
+		u32 t = 0;
+		[pk iterator_init];
+		while ((obj = [pk iterator_next])) {
+			for (int i = 0; i < tree_count; i++) {
+                                struct index_node *node = nodes[i] + t * ts[i]->node_size;
+                                ts[i]->dtor(obj, node, ts[i]->dtor_arg);
+                        }
+                        t++;
+		}
+	}
+
+	for (int i = 0; i < tree_count; i++) {
+		say_info("  %i:%s", ts[i]->n, [ts[i] class]->name);
+		[ts[i] set_nodes:nodes[i]
+			   count:n_tuples
+		       allocated:estimated_tuples];
+	}
+}
+
 static void
 init(void)
 {
@@ -1157,7 +1227,7 @@ init(void)
 	@try {
 		for (u32 n = 0; n < object_space_count; n++) {
 			if (object_space_registry[n].enabled)
-				[Tree build_object_space_trees:&object_space_registry[n]];
+				build_object_space_trees(&object_space_registry[n]);
 		}
 	}
 	@catch (Error *e) {

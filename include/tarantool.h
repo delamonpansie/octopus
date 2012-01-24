@@ -88,3 +88,12 @@ void set_proc_title(const char *format, ...);
 
 struct tnt_object *object_alloc(u8 type, size_t size);
 void object_ref(struct tnt_object *obj, int count);
+
+enum tnt_object_flags {
+	WAL_WAIT = 0x1,
+	GHOST = 0x2
+};
+static inline bool ghost(struct tnt_object *obj)
+{
+	return obj->flags & GHOST;
+}
