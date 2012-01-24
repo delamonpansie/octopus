@@ -128,7 +128,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
         XLogDir *wal_dir, *snap_dir;
 
 	ev_timer wal_timer;
-	ev_tstamp recovery_lag, recovery_last_update_tstamp;
+	ev_tstamp lag, last_update_tstamp;
 
 	int snap_io_rate_limit;
 	u64 cookie;

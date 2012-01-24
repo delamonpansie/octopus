@@ -824,8 +824,8 @@ pull_from_remote(va_list ap)
 			row = remote_row_reader_v11(&c);
 			if (row == NULL)
 				continue;
-			r->recovery_lag = ev_now() - row_v12(row)->tm;
-			r->recovery_last_update_tstamp = ev_now();
+			r->lag = ev_now() - row_v12(row)->tm;
+			r->last_update_tstamp = ev_now();
 
 			[r handle_remote_row:row];
 		}

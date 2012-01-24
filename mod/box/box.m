@@ -62,7 +62,7 @@ struct object_space *object_space_registry;
 const int object_space_count = 256;
 
 @class BoxRecovery;
-static BoxRecovery *recovery_state;
+static BoxRecovery *recovery;
 
 struct box_snap_row {
 	u32 object_space;
@@ -610,9 +610,9 @@ txn_commit(struct box_txn *txn)
 	ev_tstamp start = ev_now(), stop;
 
 	if (!txn->skip_wal) {
-		if ([recovery_state wal_request_write:txn->wal_record
-						  tag:wal_tag
-					       cookie:0] == 0)
+		if ([recovery wal_request_write:txn->wal_record
+					    tag:wal_tag
+					 cookie:0] == 0)
 			box_raise(ERR_CODE_UNKNOWN_ERROR, "wal write error");
 	}
 
@@ -971,7 +971,7 @@ void
 box_bound_to_primary(void *data __attribute__((unused)))
 {
 	@try {
-		[recovery_state recover_finalize];
+		[recovery recover_finalize];
 	}
 	@catch (Error *e) {
 		panic("Recovery failure: %s", e->reason);
@@ -983,12 +983,12 @@ box_bound_to_primary(void *data __attribute__((unused)))
 		snprintf(status, 64, "hot_standby/%s:%i%s", cfg.wal_feeder_ipaddr,
 			 cfg.wal_feeder_port, custom_proc_title);
 
-		[recovery_state recover_follow_remote:cfg.wal_feeder_ipaddr
-                                                 port:cfg.wal_feeder_port];
+		[recovery recover_follow_remote:cfg.wal_feeder_ipaddr
+					   port:cfg.wal_feeder_port];
 
 		title("hot_standby/%s:%i", cfg.wal_feeder_ipaddr, cfg.wal_feeder_port);
 	} else {
-		[recovery_state configure_wal_writer];
+		[recovery configure_wal_writer];
 		box_updates_allowed = true;
 
 		say_info("I am primary");
@@ -1100,13 +1100,13 @@ init(void)
 			panic("wal_feeder_ipaddr & wal_feeder_port must be provided in remote_hot_standby mode");
 	}
 
-	recovery_state = [[BoxRecovery alloc] init_snap_dir:cfg.snap_dir
-						    wal_dir:cfg.wal_dir
-					       rows_per_wal:cfg.rows_per_wal
-						fsync_delay:cfg.wal_fsync_delay
-						 inbox_size:cfg.wal_writer_inbox_size
-						      flags:init_storage ? RECOVER_READONLY : 0
-					 snap_io_rate_limit:cfg.snap_io_rate_limit * 1024 * 1024];
+	recovery = [[BoxRecovery alloc] init_snap_dir:cfg.snap_dir
+					      wal_dir:cfg.wal_dir
+					 rows_per_wal:cfg.rows_per_wal
+					  fsync_delay:cfg.wal_fsync_delay
+					   inbox_size:cfg.wal_writer_inbox_size
+						flags:init_storage ? RECOVER_READONLY : 0
+				   snap_io_rate_limit:cfg.snap_io_rate_limit * 1024 * 1024];
 
 	/* initialize hashes _after_ starting wal writer */
 
@@ -1145,7 +1145,7 @@ init(void)
 
 	luaT_openbox(root_L);
 
-	if ([recovery_state recover:0] == 0) {
+	if ([recovery recover:0] == 0) {
 		if (!cfg.remote_hot_standby) {
 			say_crit("don't you forget to initialize "
 				 "storage with --init-storage switch?");
@@ -1178,7 +1178,7 @@ init(void)
 	title("orphan");
 	if (cfg.local_hot_standby) {
 		say_info("starting local hot standby");
-		[recovery_state recover_follow:cfg.wal_dir_rescan_delay];
+		[recovery recover_follow:cfg.wal_dir_rescan_delay];
 		status = "hot_standby/local";
 		title("hot_standby/local");
 	}
@@ -1235,14 +1235,14 @@ snapshot_rows(XLog *l)
 static void
 snapshot(void)
 {
-	[recovery_state snapshot_save:snapshot_rows];
+	[recovery snapshot_save:snapshot_rows];
 }
 
 static void
 initial_snapshot(void)
 {
-	[recovery_state initial_lsn:1];
-	[recovery_state snapshot_save:snapshot_rows];
+	[recovery initial_lsn:1];
+	[recovery snapshot_save:snapshot_rows];
 }
 
 static void
@@ -1253,11 +1253,11 @@ info(struct tbuf *out)
 	tbuf_printf(out, "  uptime: %i" CRLF, tnt_uptime());
 	tbuf_printf(out, "  pid: %i" CRLF, getpid());
 	tbuf_printf(out, "  wal_writer_pid: %" PRIi64 CRLF,
-		    (i64) recovery_state->wal_writer->pid);
-	tbuf_printf(out, "  lsn: %" PRIi64 CRLF, recovery_state->lsn);
-	tbuf_printf(out, "  recovery_lag: %.3f" CRLF, recovery_state->recovery_lag);
+		    (i64) recovery->wal_writer->pid);
+	tbuf_printf(out, "  lsn: %" PRIi64 CRLF, recovery->lsn);
+	tbuf_printf(out, "  recovery_lag: %.3f" CRLF, recovery->lag);
 	tbuf_printf(out, "  recovery_last_update: %.3f" CRLF,
-		    recovery_state->recovery_last_update_tstamp);
+		    recovery->last_update_tstamp);
 	tbuf_printf(out, "  status: %s" CRLF, status);
 }
 
