@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011 Mail.RU
- * Copyright (C) 2010, 2011 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012 Mail.RU
+ * Copyright (C) 2010, 2011, 2012 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -193,7 +193,7 @@ void
 tbuf_vprintf(struct tbuf *b, const char *format, va_list ap)
 {
 	int printed_len;
-	size_t free_len = b->size - tbuf_len(b) - 1;
+	size_t free_len = b->size - tbuf_len(b);
 	va_list ap_copy;
 
 	va_copy(ap_copy, ap);
@@ -205,9 +205,9 @@ tbuf_vprintf(struct tbuf *b, const char *format, va_list ap)
 	 * if buffer too short, resize buffer and
 	 * print it again
 	 */
-	if (free_len <= printed_len) {
+	if (free_len < printed_len + 1) {
 		tbuf_ensure(b, printed_len + 1);
-		free_len = b->size - tbuf_len(b) - 1;
+		free_len = b->size - tbuf_len(b);
 		printed_len = vsnprintf(((char *)b->data) + tbuf_len(b), free_len, format, ap_copy);
 	}
 
