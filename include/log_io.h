@@ -45,10 +45,11 @@ extern const u32 default_version;
 extern const u32 marker, eof_marker;
 extern const char *inprogress_suffix;
 
-typedef int (row_handler) (Recovery *, struct tbuf *);
-typedef void (follow_cb)(ev_stat *w, int events);
+const char *xlog_tag_to_a(u16 tag);
 
 @class Recovery;
+typedef int (row_handler) (Recovery *, struct tbuf *);
+typedef void (follow_cb)(ev_stat *w, int events);
 
 @interface XLogDir: Object {
 @public

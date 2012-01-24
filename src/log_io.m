@@ -62,6 +62,18 @@ const char *inprogress_suffix = ".inprogress";
 const u32 marker = 0xba0babed;
 const u32 eof_marker = 0x10adab1e;
 
+const char *
+xlog_tag_to_a(u16 tag)
+{
+	static char buf[6];
+	if (tag == wal_tag)
+		return "wal";
+	if (tag == snap_tag)
+		return "snap";
+	snprintf(buf, sizeof(buf), "%"PRIu16, tag);
+	return buf;
+}
+
 @implementation XLogDir
 - (id) init_dirname:(const char *)dirname_
 {
