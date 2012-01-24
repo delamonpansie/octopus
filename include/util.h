@@ -103,11 +103,8 @@ typedef int64_t i64;
 # define FORMAT_PRINTF printf
 #endif
 
-extern int forked;
-pid_t tfork();
 void close_all_xcpt(int fdc, ...);
 void coredump(int dump_interval);
-void *xrealloc(void *ptr, size_t size);
 
 void __gcov_flush();
 
