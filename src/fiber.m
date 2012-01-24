@@ -463,7 +463,7 @@ fiber_info(struct tbuf *out)
 		tbuf_printf(out, "    name: %s" CRLF, fiber->name);
 		tbuf_printf(out, "    stack: %p" CRLF, stack_top);
 #ifdef BACKTRACE
-		tbuf_printf(out, "    backtrace: %s" CRLF,
+		tbuf_printf(out, "    backtrace:"CRLF "%s" CRLF,
 			    backtrace(fiber->last_stack_frame,
 				      fiber->coro.stack, fiber->coro.stack_size));
 #endif
