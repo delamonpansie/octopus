@@ -1188,7 +1188,7 @@ init(void)
 		for (int i = 0; i < cfg.wal_writer_inbox_size - 2; i++)
 			fiber_create("box_worker", -1, iproto_interact, box_service, box_process);
 
-		say_info("initialized (%i workers)", cfg.wal_writer_inbox_size);
+		say_info("(silver)box initialized (%i workers)", cfg.wal_writer_inbox_size);
 	}
 
 }
