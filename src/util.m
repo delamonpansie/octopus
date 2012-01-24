@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011 Mail.RU
- * Copyright (C) 2010, 2011 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012 Mail.RU
+ * Copyright (C) 2010, 2011, 2012 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -242,6 +242,7 @@ _panic(int status, const char *filename, unsigned line,
 	if (backtrace)
 		_say(S_FATAL, NULL, 0, NULL, "backtrace:\n%s", backtrace);
 
+	signal(SIGTERM, SIG_IGN);
 	kill(0, SIGTERM);
 	exit(status);
 }

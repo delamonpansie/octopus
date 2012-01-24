@@ -233,7 +233,7 @@ save_snapshot(void *ev, int events __attribute__((unused)))
 #endif
 
 static void
-sig_int(int signal)
+sig_int(int sig)
 {
 	say_info("SIGINT or SIGTERM recieved, terminating");
 
@@ -241,10 +241,11 @@ sig_int(int signal)
 	__gcov_flush();
 #endif
 	if (master_pid == getpid()) {
-		if (signal == SIGINT)
-			signal = SIGTERM;
+		if (sig == SIGINT)
+			sig = SIGTERM;
 
-		kill(0, signal);
+		signal(sig, SIG_IGN);
+		kill(0, sig);
 		exit(EXIT_SUCCESS);
 	} else
 		_exit(EXIT_SUCCESS);
@@ -588,6 +589,15 @@ main(int argc, char **argv)
 #endif
 	}
 
+	if (gopt(opt, 'D'))
+		if (daemonize(1, 0) < 0)
+			panic("unable to daemonize");
+
+	if (cfg.pid_file != NULL) {
+		create_pid();
+		atexit(remove_pid);
+	}
+
 	say_logger_init(cfg.logger_nonblock);
 	booting = false;
 
@@ -602,15 +612,6 @@ main(int argc, char **argv)
 		exit(EXIT_SUCCESS);
 	}
 #endif
-
-	if (gopt(opt, 'D'))
-		if (daemonize(1, 0) < 0)
-			panic("unable to daemonize");
-
-	if (cfg.pid_file != NULL) {
-		create_pid();
-		atexit(remove_pid);
-	}
 
 #if defined(UTILITY)
 	initialize_minimal();
