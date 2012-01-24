@@ -604,24 +604,24 @@ wal_disk_writer(int fd, void *state)
                flags:(int)flags
   snap_io_rate_limit:(int)snap_io_rate_limit_
 {
-	if (wal_rows_per_file <= 4)
-		panic("inacceptable value of 'rows_per_file'");
-
         snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
         wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
-
-	wal_dir->rows_per_file = wal_rows_per_file;
-	wal_dir->fsync_delay = wal_fsync_delay;
 
         snap_dir->recovery_state = self;
         wal_dir->recovery_state = self;
 
 	wal_timer.data = self;
 
-	if ((flags & RECOVER_READONLY) == 0)
-		wal_writer = spawn_child("wal_writer", inbox_size, wal_disk_writer, self);
+	if ((flags & RECOVER_READONLY) == 0) {
+		if (wal_rows_per_file <= 4)
+			panic("inacceptable value of 'rows_per_file'");
 
-        snap_io_rate_limit = snap_io_rate_limit_ * 1024 * 1024;
+		wal_dir->rows_per_file = wal_rows_per_file;
+		wal_dir->fsync_delay = wal_fsync_delay;
+		snap_io_rate_limit = snap_io_rate_limit_ * 1024 * 1024;
+
+		wal_writer = spawn_child("wal_writer", inbox_size, wal_disk_writer, self);
+	}
 
 	return self;
 }
