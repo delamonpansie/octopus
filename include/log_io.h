@@ -135,7 +135,6 @@ typedef void (follow_cb)(ev_stat *w, int events);
 }
 - (void) initial_lsn:(i64)new_lsn;
 - (i64) wal_request_write:(struct tbuf *)row tag:(u16)tag cookie:(u64)cookie;
-- (i64) wal_write_row:(struct wal_write_request *)req;
 - (void) recover_finalize;
 - (struct fiber *) recover_follow_remote:(char *)ipaddr port:(int)port;
 - (i64) recover:(i64)lsn;
@@ -157,11 +156,6 @@ typedef void (follow_cb)(ev_stat *w, int events);
    XLog reader is responsible of converting data from old format */
 - (void) recover_row:(struct tbuf *)row;
 @end
-
-struct wal_write_request {
-	u32 len;
-	u8 data[];
-} __attribute__((packed));
 
 struct _row_v11 {
 	u32 header_crc32c;

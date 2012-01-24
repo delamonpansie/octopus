@@ -362,29 +362,25 @@ configure_wal_writer
 }
 
 - (i64)
-wal_request_write:(struct tbuf *)row tag:(u16)tag cookie:(u64)row_cookie
+wal_request_write:(struct tbuf *)row_data tag:(u16)tag cookie:(u64)row_cookie
 {
 	struct tbuf *m = tbuf_alloc(wal_writer->out->pool);
 	struct msg *a;
-	u32 len = tbuf_len(row) + sizeof(tag) + sizeof(row_cookie) + sizeof(struct wal_write_request);
+	struct row_v12 row;
 
-	say_debug("wal_write");
-	tbuf_ensure(m, sizeof(u32) * 2 +
-		    sizeof(struct wal_write_request) +
-		    sizeof(tag) + sizeof(row_cookie) + tbuf_len(row));
+	memset(&row, 0, sizeof(row));
+	row.scn = scn;
+	row.tag = tag;
+	row.cookie = row_cookie;
+	row.len = tbuf_len(row_data);
 
-	/* sock2inbox header */
+	/* packet is : <data_len: u32><fid: u32><data: u8[data_len]> */
+
+	u32 len = sizeof(row) + tbuf_len(row_data);
 	tbuf_append(m, &len, sizeof(u32));
 	tbuf_append(m, &fiber->fid, sizeof(u32));
-
-	/* wal request header */
-	len -= sizeof(struct wal_write_request);
-	tbuf_append(m, &len, sizeof(u32));
-
-	/* wal row */
-	tbuf_append(m, &tag, sizeof(tag));
-	tbuf_append(m, &row_cookie, sizeof(row_cookie));
-	tbuf_append(m, row->data, tbuf_len(row));
+	tbuf_append(m, &row, sizeof(row));
+	tbuf_append(m, row_data->data, tbuf_len(row_data));
 
 	if (write_inbox(wal_writer->out, m) == false) {
 		say_warn("wal writer inbox is full");
@@ -402,10 +398,9 @@ wal_request_write:(struct tbuf *)row tag:(u16)tag cookie:(u64)row_cookie
 }
 
 - (i64)
-wal_write_row:(const struct wal_write_request *)req
+wal_write_row:(struct row_v12 *)row
 {
 	static XLog *wal_to_close = nil;
-	struct tbuf *header;
 
 	lsn++;
 	if (current_wal == nil)
@@ -430,32 +425,18 @@ wal_write_row:(const struct wal_write_request *)req
 		wal_to_close = nil;
 	}
 
-	/* FIXME: fwrite !!! */
+	row->lsn = lsn;
+	row->tm = ev_now();
+	row->data_crc32c = crc32c(0, row->data, row->len);
+	row->header_crc32c = crc32c(0, (u8 *)row + field_sizeof(struct row_v12, header_crc32c),
+				    sizeof(*row) - field_sizeof(struct row_v12, header_crc32c));
 
 	if (fwrite(&marker, sizeof(marker), 1, current_wal->fd) != 1) {
 		say_syserror("can't write marker to wal");
 		goto fail;
 	}
 
-	header = tbuf_alloc(fiber->pool);
-	tbuf_ensure(header, sizeof(struct row_v12));
-	header->len = sizeof(struct row_v12);
-
-	row_v12(header)->lsn = lsn; /* FIXME: proof of correctnes */
-	row_v12(header)->tm = ev_now();
-	row_v12(header)->len = req->len;
-	row_v12(header)->data_crc32c =
-		crc32c(0, req->data, req->len);
-	row_v12(header)->header_crc32c =
-		crc32c(0, header->data + field_sizeof(struct row_v12, header_crc32c),
-		       sizeof(struct row_v12) - field_sizeof(struct row_v12, header_crc32c));
-
-	if (fwrite(header->data, tbuf_len(header), 1, current_wal->fd) != 1) {
-		say_syserror("can't write row header to wal");
-		goto fail;
-	}
-
-	if (fwrite(req->data, req->len, 1, current_wal->fd) != 1) {
+	if (fwrite(row, sizeof(*row) + row->len, 1, current_wal->fd) != 1) {
 		say_syserror("can't write row data to wal");
 		goto fail;
 	}
@@ -532,9 +513,9 @@ wal_disk_writer(int fd, void *state)
 
 			u32 data_len = read_u32(rbuf);
 			u32 fid = read_u32(rbuf);
-			struct wal_write_request *req = read_bytes(rbuf, data_len);
+			struct row_v12 *row = read_bytes(rbuf, data_len);
 
-			i64 row_lsn = [rcvr wal_write_row:req];
+			i64 row_lsn = [rcvr wal_write_row:row];
 
 			u32 len = sizeof(row_lsn);
 			tbuf_append(wbuf, &len, sizeof(u32));
