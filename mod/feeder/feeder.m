@@ -24,51 +24,72 @@
  * SUCH DAMAGE.
  */
 
+#import <config.h>
+#import <fiber.h>
+#import <util.h>
+#import <log_io.h>
+
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 
-#include <fiber.h>
-#include <util.h>
 
 static char *custom_proc_title;
 
-static int
-send_row(struct recovery_state *r __unused, struct tbuf *t)
+
+@interface Feeder: Recovery {
+	int fd;
+}
+@end
+
+@implementation Feeder
+- (id) init_snap_dir:(const char *)snap_dirname
+             wal_dir:(const char *)wal_dirname
+		  fd:(int)fd_
 {
-	u8 *data = t->data;
-	ssize_t bytes, len = t->len;
-	while (len > 0) {
-		bytes = write(fiber->fd, data, len);
-		if (bytes < 0) {
-			say_syserror("write");
-			exit(EXIT_SUCCESS);
-		}
-		len -= bytes;
-		data += bytes;
-	}
-
-	say_debug("send row: %" PRIu32 " bytes %s", t->len, tbuf_to_hex(t));
-
-	return 0;
+	[super init_snap_dir:snap_dirname
+		     wal_dir:wal_dirname
+		rows_per_wal:0
+		 fsync_delay:0
+		  inbox_size:0
+		       flags:RECOVER_READONLY
+	  snap_io_rate_limit:0];
+	fd = fd_;
+	return self;
 }
 
 static void
-recover_feed_slave(int sock)
+send_tbuf(int fd, struct tbuf *b)
 {
-	struct recovery_state *log_io;
+	do {
+		ssize_t r = write(fd, b->data, b->len);
+		if (r < 0) {
+			say_syserror("write");
+			exit(EXIT_SUCCESS);
+		}
+		tbuf_peek(b, r);
+	} while (tbuf_len(b) > 0);
+}
+
+- (void)
+recover_row:(struct tbuf *)row
+{
+	i64 row_lsn = row_v11(row)->lsn;
+	u16 tag = *(u16 *)row_v11(row)->data;
+	send_tbuf(fd, row);
+	if (tag == snap_final_tag || tag == wal_tag)
+		lsn = row_lsn;
+}
+@end
+
+static i64
+handshake(int sock)
+{
 	struct tbuf *ver;
-	i64 lsn;
 	ssize_t r;
+	i64 lsn;
 
-	fiber->has_peer = true;
-	fiber->fd = sock;
-	fiber->name = "feeder";
-	set_proc_title("feeder:client_handler%s %s", custom_proc_title, fiber_peer_name(fiber));
-
-	ev_default_loop(0);
-
-	r = read(fiber->fd, &lsn, sizeof(lsn));
+	r = read(sock, &lsn, sizeof(lsn));
 	if (r != sizeof(lsn)) {
 		if (r < 0)
 			say_syserror("read");
@@ -77,46 +98,69 @@ recover_feed_slave(int sock)
 
 	ver = tbuf_alloc(fiber->pool);
 	tbuf_append(ver, &default_version, sizeof(default_version));
-	send_row(NULL, ver);
-
-	log_io = recover_init(NULL, cfg.wal_feeder_dir,
-			      NULL, send_row, 0, 0, 64, RECOVER_READONLY, false);
-
-	recover(log_io, lsn);
-	recover_follow(log_io, 0.1);
-	ev_loop(0);
+	send_tbuf(sock, ver);
+	return lsn;
 }
 
-i32
-mod_check_config(struct tarantool_cfg *conf __unused)
+static void
+eof_monitor(void)
 {
-	return 0;
+	say_info("client gone, exiting");
+	exit(0);
 }
 
-void
-mod_reload_config(struct tarantool_cfg *old_conf __unused,
-		  struct tarantool_cfg *new_conf __unused)
+static void
+recover_feed_slave(int sock)
 {
-	return;
+	Feeder *feeder;
+	struct sockaddr_in addr;
+	socklen_t addrlen = sizeof(addr);
+	const char *peer_name = "<unknown>";
+	ev_io io = { .coro = 0 };
+
+	if (getpeername(sock, (struct sockaddr *)&addr, &addrlen) != -1)
+		peer_name = inet_ntoa(addr.sin_addr);
+
+	set_proc_title("feeder:client_handler%s %s", custom_proc_title, peer_name);
+
+
+	feeder = [[Feeder alloc] init_snap_dir:cfg.snap_dir
+				       wal_dir:cfg.wal_dir
+					    fd:sock];
+	[feeder recover:handshake(sock)];
+	[feeder recover_follow:0.1];
+
+	ev_io_init(&io, (void *)eof_monitor, sock, EV_READ);
+	ev_io_start(&io);
+
+	ev_run(0);
 }
 
-void
-mod_init(void)
+static void
+init(void)
 {
 	int server, client;
 	struct sockaddr_in server_addr;
 	int one = 1;
 
-	if (cfg.wal_feeder_bind_port == 0)
-		panic("can't start feeder without wal_feeder_bind_port");
+	if (cfg.wal_feeder_bind_port <= 0) {
+		say_info("WAL feeder is disabled");
+		return;
+	}
 
-	if (cfg.wal_feeder_dir == NULL)
-		panic("can't start feeder without wal_feeder_dir");
+	if (tnt_fork() != 0)
+		return;
+
+	fiber->name = "feeder";
+	fiber->pool = palloc_create_pool("feeder");
+
+	if (cfg.wal_dir == NULL || cfg.snap_dir == NULL)
+		panic("can't start feeder without snap_dir or wal_dir");
 
 	if (cfg.custom_proc_title == NULL)
 		custom_proc_title = "";
 	else {
-		custom_proc_title = palloc(eter_pool, strlen(cfg.custom_proc_title) + 2);
+		custom_proc_title = malloc(strlen(cfg.custom_proc_title) + 2);
 		strcat(custom_proc_title, "@");
 		strcat(custom_proc_title, cfg.custom_proc_title);
 	}
@@ -155,6 +199,8 @@ mod_init(void)
 	}
 
 	listen(server, 5);
+
+	say_info("WAL feeder initilized");
 
 	for (;;) {
 		pid_t child;
