@@ -86,7 +86,7 @@ class RunEnv
   ConfigFile = "tarantool.cfg"
   PidFile = "tarantool.pid"
   LogFile = "tarantool.log"
-  Binary = FileUtils.getwd + "/tarantool_box"
+  Binary = FileUtils.getwd + "/tarantool"
   Suppressions = FileUtils.getwd + "/scripts/valgrind.supp"
 
   attr_reader :pid
