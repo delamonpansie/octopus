@@ -290,18 +290,18 @@ conn_create(struct palloc_pool *pool, int fd)
 	else
 		c = calloc(1, sizeof(*c));
 
-	conn_init(c, pool, fd);
+	conn_init(c, pool, fd, 0);
 	return c;
 }
 
 void
-conn_init(struct conn *c, struct palloc_pool *pool, int fd)
+conn_init(struct conn *c, struct palloc_pool *pool, int fd, int ref)
 {
 	c->out.coro = c->in.coro = 1;
 	c->out.data = c->in.data = c;
 
 	TAILQ_INIT(&c->out_messages);
-	c->ref = 0;
+	c->ref = ref;
 	c->fd = fd;
 	c->pool = pool;
 	c->state = -1;

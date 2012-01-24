@@ -851,8 +851,7 @@ pull_from_remote(va_list ap)
 	struct tbuf *row;
 	struct conn c;
 
-	conn_init(&c, fiber->pool, -1);
-	c.ref = REF_STATIC;
+	conn_init(&c, fiber->pool, -1, REF_STATIC);
 
 	for (;;) {
 		@try {

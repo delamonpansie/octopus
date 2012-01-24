@@ -101,7 +101,7 @@ void net_add_ref_iov(struct netmsg **m, struct tnt_object *obj, const void *buf,
 void net_add_lua_iov(struct netmsg **m, lua_State *L, int str);
 
 struct conn *conn_create(struct palloc_pool *pool, int fd);
-void conn_init(struct conn *c, struct palloc_pool *pool, int fd);
+void conn_init(struct conn *c, struct palloc_pool *pool, int fd, int ref);
 void conn_close(struct conn *c);
 void conn_gc(struct palloc_pool *pool, void *ptr);
 int conn_readahead(struct conn *c, size_t min);
