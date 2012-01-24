@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011 Mail.RU
- * Copyright (C) 2010, 2011 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012 Mail.RU
+ * Copyright (C) 2010, 2011, 2012 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -46,6 +46,7 @@ extern const u32 marker, eof_marker;
 extern const char *inprogress_suffix;
 
 const char *xlog_tag_to_a(u16 tag);
+
 
 @class Recovery;
 typedef int (row_handler) (Recovery *, struct tbuf *);
@@ -96,7 +97,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 
 	bool valid, eof, inprogress;
 
-	size_t bytes_written, offset;
+	size_t bytes_written, offset, io_rate_limit;
 }
 - init_filename:(const char *)filename fd:(FILE *)fd dir:(XLogDir *)dir;
 - (const char *)final_filename;
@@ -141,7 +142,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 - (void) recover_follow:(ev_tstamp)delay;
 - (void) recover_finalize;
 - (void) configure_wal_writer;
-- (void) snapshot_save:(void (*)(struct log_io_iter *))f;
+- (void) snapshot_save:(void (*)(XLog *))callback;
 - (id) init_snap_dir:(const char *)snap_dir
              wal_dir:(const char *)wal_dir
         rows_per_wal:(int)rows_per_wal
@@ -197,5 +198,4 @@ static inline struct row_v12 *row_v12(const struct tbuf *t)
 int read_log(const char *filename,
 	     row_handler xlog_handler, row_handler snap_handler, void *state);
 
-struct log_io_iter;
-void snapshot_write_row(struct log_io_iter *i, u16 tag, u64 cookie, struct tbuf *row);
+void snapshot_write_row(XLog *l, u16 tag, struct tbuf *row);

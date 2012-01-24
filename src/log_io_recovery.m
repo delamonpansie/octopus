@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011 Mail.RU
- * Copyright (C) 2010, 2011 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012 Mail.RU
+ * Copyright (C) 2010, 2011, 2012 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -51,22 +51,6 @@
 #include <unistd.h>
 #include <poll.h>
 #include <sysexits.h>
-
-struct log_io_iter {
-	struct tarantool_coro coro;
-	XLog *log;
-	void *data;
-	int io_rate_limit;
-};
-
-static void
-iter_open(XLog *l, struct log_io_iter *i, void (*iterator) (struct log_io_iter * i))
-{
-	memset(i, 0, sizeof(*i));
-	i->log = l;
-	tarantool_coro_create(&i->coro, (void *)iterator, i);
-}
-
 
 @implementation Recovery
 - (void)
@@ -623,61 +607,53 @@ wal_disk_writer(int fd, void *state)
 }
 
 
-
 static void
-write_rows(struct log_io_iter *i)
+write_row(XLog *l, i64 scn, i64 lsn, u16 tag, u64 cookie, struct tbuf *data)
 {
-	XLog *l = i->log;
-	struct tbuf *data;
 	struct row_v12 row;
+	row.scn = scn;
+	row.lsn = lsn;
+	row.tm = ev_now();
+	row.tag = tag;
+	row.cookie = cookie;
+	row.len = tbuf_len(data);
+	row.data_crc32c = crc32c(0, data->data, tbuf_len(data));
+	row.header_crc32c = crc32c(0, (unsigned char *)&row + sizeof(row.header_crc32c),
+				   sizeof(row) - sizeof(row.header_crc32c));
 
-	row.lsn = *(i64 *)i->data;
-
-	for (;;) {
-		coro_transfer(&i->coro.ctx, &fiber->coro.ctx);
-		data = i->data;
-
-		row.tm = ev_now();
-		row.len = tbuf_len(data);
-		row.data_crc32c = crc32c(0, data->data, tbuf_len(data));
-		row.header_crc32c = crc32c(0, (unsigned char *)&row + sizeof(row.header_crc32c),
-					   sizeof(row) - sizeof(row.header_crc32c));
-
-		if (fwrite(&marker, sizeof(marker), 1, l->fd) != 1)
-			panic("fwrite");
-		if (fwrite(&row, sizeof(row), 1, l->fd) != 1)
-			panic("fwrite");
-		if (fwrite(data->data, tbuf_len(data), 1, l->fd) != 1)
-			panic("fwrite");
-
-		prelease_after(fiber->pool, 128 * 1024);
-	}
+	if (fwrite(&marker, sizeof(marker), 1, l->fd) != 1)
+		panic("fwrite");
+	if (fwrite(&row, sizeof(row), 1, l->fd) != 1)
+		panic("fwrite");
+	if (fwrite(data->data, tbuf_len(data), 1, l->fd) != 1)
+		panic("fwrite");
 }
 
 void
-snapshot_write_row(struct log_io_iter *i, u16 tag, u64 cookie, struct tbuf *row)
+snapshot_write_row(XLog *l, u16 tag, struct tbuf *data)
 {
 	static int rows;
 	static int bytes;
 	ev_tstamp elapsed;
 	static ev_tstamp last = 0;
-	struct tbuf *wal_row = tbuf_alloc(fiber->pool);
 
-	tbuf_append(wal_row, &tag, sizeof(tag));
-	tbuf_append(wal_row, &cookie, sizeof(cookie));
-	tbuf_append(wal_row, row->data, tbuf_len(row));
+	write_row(l, 0, 0, tag, default_cookie, data);
 
-	i->data = wal_row;
-	if (i->io_rate_limit > 0) {
+	if (++rows % 100000 == 0)
+		say_crit("%.1fM rows written", rows / 1000000.);
+
+	prelease_after(fiber->pool, 128 * 1024);
+
+	if (l->io_rate_limit > 0) {
 		if (last == 0) {
 			ev_now_update();
 			last = ev_now();
 		}
 
-		bytes += tbuf_len(row) + sizeof(struct row_v12);
+		bytes += tbuf_len(data) + sizeof(struct row_v12);
 
-		while (bytes >= i->io_rate_limit) {
-			[i->log flush];
+		while (bytes >= l->io_rate_limit) {
+			[l flush];
 
 			ev_now_update();
 			elapsed = ev_now() - last;
@@ -686,35 +662,24 @@ snapshot_write_row(struct log_io_iter *i, u16 tag, u64 cookie, struct tbuf *row)
 
 			ev_now_update();
 			last = ev_now();
-			bytes -= i->io_rate_limit;
+			bytes -= l->io_rate_limit;
 		}
 	}
-	coro_transfer(&fiber->coro.ctx, &i->coro.ctx);
-	if (++rows % 100000 == 0)
-		say_crit("%.1fM rows written", rows / 1000000.);
 }
 
 - (void)
-snapshot_save:(void (*)(struct log_io_iter *))callback
+snapshot_save:(void (*)(XLog *))callback
 {
-	struct log_io_iter i;
         XLog *snap;
 	const char *final_filename;
 	int saved_errno;
-
-	memset(&i, 0, sizeof(i));
 
         snap = [snap_dir open_for_write:lsn saved_errno:&saved_errno];
 	if (snap == nil)
 		panic_status(saved_errno, "can't open snap for writing");
 
-	iter_open(snap, &i, write_rows);
-
-	i.data = &lsn;
-	coro_transfer(&fiber->coro.ctx, &i.coro.ctx);
-
 	if (snap_io_rate_limit > 0)
-		i.io_rate_limit = snap_io_rate_limit;
+		snap->io_rate_limit = snap_io_rate_limit;
 
 	/*
 	 * While saving a snapshot, snapshot name is set to
@@ -725,10 +690,11 @@ snapshot_save:(void (*)(struct log_io_iter *))callback
 	final_filename = [snap final_filename];
 
 	say_info("saving snapshot `%s'", final_filename);
-	callback(&i);
+	callback(snap);
 
-	struct tbuf *empty = tbuf_alloc(fiber->pool);
-	snapshot_write_row(&i, snap_final_tag, 0, empty);
+	struct tbuf *dummy = tbuf_alloc(fiber->pool);
+	tbuf_printf(dummy, "%s", "dummy");
+	write_row(snap, scn, lsn, snap_final_tag, default_cookie, dummy);
 
 	if (fsync(fileno(snap->fd)) < 0)
 		panic("fsync");

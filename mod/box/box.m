@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011 Mail.RU
- * Copyright (C) 2010, 2011 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012 Mail.RU
+ * Copyright (C) 2010, 2011, 2012 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -1202,46 +1202,47 @@ cat(const char *filename)
 }
 
 static void
-snapshot_write_tuple(struct log_io_iter *i, unsigned n, const struct box_tuple *tuple)
+snapshot_rows(XLog *l)
 {
 	struct box_snap_row header;
-	header.object_space = n;
-	header.tuple_size = tuple->cardinality;
-	header.data_size = tuple->bsize;
+	struct tnt_object *obj;
+	struct box_tuple *tuple;
+	struct tbuf *row;
 
-	struct tbuf *row = tbuf_alloc(fiber->pool);
-	tbuf_append(row, &header, sizeof(header));
-	tbuf_append(row, tuple->data, tuple->bsize);
-
-	snapshot_write_row(i, snap_tag, default_cookie, row);
-}
-
-static void
-snapshot_iter(struct log_io_iter *i)
-{
 	for (uint32_t n = 0; n < object_space_count; ++n) {
 		if (!object_space_registry[n].enabled)
 			continue;
 
-		struct tnt_object *obj;
 		id pk = object_space_registry[n].index[0];
 		[pk iterator_init];
-		while ((obj = [pk iterator_next]))
-			snapshot_write_tuple(i, n, box_tuple(obj));
+		while ((obj = [pk iterator_next])) {
+			tuple = box_tuple(obj);
+
+			header.object_space = n;
+			header.tuple_size = tuple->cardinality;
+			header.data_size = tuple->bsize;
+
+			/* snapshot_write_row will release fiber->pool time to time */
+			row = tbuf_alloc(fiber->pool);
+			tbuf_append(row, &header, sizeof(header));
+			tbuf_append(row, tuple->data, tuple->bsize);
+
+			snapshot_write_row(l, snap_tag, row);
+		}
 	}
 }
 
 static void
 snapshot(void)
 {
-	[recovery_state snapshot_save:snapshot_iter];
+	[recovery_state snapshot_save:snapshot_rows];
 }
 
 static void
 initial_snapshot(void)
 {
 	[recovery_state initial_lsn:1];
-	[recovery_state snapshot_save:snapshot_iter];
+	[recovery_state snapshot_save:snapshot_rows];
 }
 
 static void
