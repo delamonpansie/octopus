@@ -400,7 +400,7 @@ sock2inbox(va_list ap)
 
 	for (;;) {
 		if (tbuf_len(c->rbuf) < sizeof(u32) * 2) {
-			if (conn_readahead(c, sizeof(u32) * 2) < 0)
+			if (conn_readahead(c, sizeof(u32) * 2) <= 0)
 				panic("child is dead");
 		}
 
