@@ -110,7 +110,6 @@ fiber_wake(struct fiber *f, void *arg)
 		return;
 	if (arg == NULL)
 		arg = (void *)1;
-	say_debug("register wakup %i", f->fid);
 	f->wake = arg;
 	STAILQ_INSERT_TAIL(&wake_list, f, wake_link);
 }
