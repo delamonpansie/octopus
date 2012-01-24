@@ -97,7 +97,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 
 	bool valid, eof, inprogress;
 
-	size_t bytes_written, offset, io_rate_limit;
+	size_t bytes_written, offset;
 }
 - init_filename:(const char *)filename fd:(FILE *)fd dir:(XLogDir *)dir;
 - (const char *)final_filename;

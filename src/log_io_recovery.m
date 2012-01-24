@@ -636,6 +636,7 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *data)
 	static int bytes;
 	ev_tstamp elapsed;
 	static ev_tstamp last = 0;
+	const int io_rate_limit = l->dir->recovery_state->snap_io_rate_limit;
 
 	write_row(l, 0, 0, tag, default_cookie, data);
 
@@ -644,7 +645,7 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *data)
 
 	prelease_after(fiber->pool, 128 * 1024);
 
-	if (l->io_rate_limit > 0) {
+	if (io_rate_limit > 0) {
 		if (last == 0) {
 			ev_now_update();
 			last = ev_now();
@@ -652,7 +653,7 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *data)
 
 		bytes += tbuf_len(data) + sizeof(struct row_v12);
 
-		while (bytes >= l->io_rate_limit) {
+		while (bytes >= io_rate_limit) {
 			[l flush];
 
 			ev_now_update();
@@ -662,7 +663,7 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *data)
 
 			ev_now_update();
 			last = ev_now();
-			bytes -= l->io_rate_limit;
+			bytes -= io_rate_limit;
 		}
 	}
 }
@@ -677,9 +678,6 @@ snapshot_save:(void (*)(XLog *))callback
         snap = [snap_dir open_for_write:lsn saved_errno:&saved_errno];
 	if (snap == nil)
 		panic_status(saved_errno, "can't open snap for writing");
-
-	if (snap_io_rate_limit > 0)
-		snap->io_rate_limit = snap_io_rate_limit;
 
 	/*
 	 * While saving a snapshot, snapshot name is set to
