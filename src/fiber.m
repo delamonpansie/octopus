@@ -450,14 +450,17 @@ spawn_child(const char *name, int inbox_size, int (*handler)(int fd, void *state
 
 		struct child *c = malloc(sizeof(*c));
 		c->pid = pid;
+		c->sock = socks[1];
 
-		proxy_name = malloc(64);
-		snprintf(proxy_name, 64, "%s/sock2inbox", name);
-		c->in = fiber_create(proxy_name, inbox_size, sock2inbox, socks[1]);
-		proxy_name = malloc(64);
-		snprintf(proxy_name, 64, "%s/inbox2sock", name);
-		c->out = fiber_create(proxy_name, inbox_size, inbox2sock, socks[1]);
-		c->out->reading_inbox = true;
+		if (inbox_size > 0) {
+			proxy_name = malloc(64);
+			snprintf(proxy_name, 64, "%s/sock2inbox", name);
+			c->in = fiber_create(proxy_name, inbox_size, sock2inbox, socks[1]);
+			proxy_name = malloc(64);
+			snprintf(proxy_name, 64, "%s/inbox2sock", name);
+			c->out = fiber_create(proxy_name, inbox_size, inbox2sock, socks[1]);
+			c->out->reading_inbox = true;
+		}
 		return c;
 	} else {
 		salloc_destroy();

@@ -80,6 +80,7 @@ SLIST_HEAD(, fiber) fibers, zombie_fibers;
 
 struct child {
 	pid_t pid;
+	int sock;
 	struct fiber *in, *out;
 };
 
