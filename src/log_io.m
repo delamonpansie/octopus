@@ -511,6 +511,9 @@ close
 		if (fwrite(&eof_marker, sizeof(eof_marker), 1, fd) != 1)
 			say_error("can't write eof_marker");
 		[self flush];
+	} else {
+		if (rows == 0)
+			panic("no valid rows were read");
 	}
 
 	if (ev_is_active(&stat))
