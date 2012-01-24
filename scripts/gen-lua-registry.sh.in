@@ -1,0 +1,31 @@
+#!/bin/sh
+
+set -e
+
+cat <<EOF
+#import <tarantool.h>
+#include <stdlib.h>
+
+EOF
+
+cat $1 | @SED@ '/size$/d; s/\(.*\)/extern char *\1;/'
+cat $1 | @SED@ '/start$/d; s/\(.*\)/extern size_t \1;/'
+src_count=`cat $1 | sed '/size$/d' | wc -l`
+cat <<EOF
+
+struct lua_src *lua_src;
+
+static void __attribute__((constructor))
+lua_src_init(void)
+{
+	lua_src = calloc($src_count + 1, sizeof(*lua_src));
+	if (lua_src == NULL)
+		panic("malloc failed");
+	int i = 0;
+EOF
+cat $1 |
+@SED@ 'N; s/\n/, /; s/\(\(.\+\)_lua_start\), /"\2", (char *)\&\1, (size_t)\&/;' |
+@SED@ 's/^/	lua_src[i++] = (struct lua_src){/; s/$/};/;'
+cat <<EOF
+}
+EOF

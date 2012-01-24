@@ -1,0 +1,207 @@
+
+# This makefile based on ideas from http://make.paulandlesley.org/
+# Thanks to Paul D. Smith <psmith@gnu.org>
+
+export LC_ALL=C
+
+.SUFFIXES:
+.SECONDARY:
+
+CORO_IMPL ?= ASM
+
+@SET_MAKE@
+CC := @CC@
+CFLAGS := @CFLAGS@
+CFLAGS_WARNS := @CFLAGS_WARNS@
+CPPFLAGS := @CPPFLAGS@
+LDFLAGS := @LDFLAGS@
+RAGEL := @RAGEL@
+RAGELFLAGS := @RAGELFLAGS@
+CONFETTI := @CONFETTI@
+GIT := @GIT@
+HAVE_GIT := @HAVE_GIT@
+DARCS := @DARCS@
+HAVE_DARCS := @HAVE_DARCS@
+ECHO := @ECHO@
+CAT := cat
+SED := @SED@
+NM := @NM@
+OBJCOPY := @OBJCOPY@
+HAVE_RAGEL := @HAVE_RAGEL@
+HAVE_CONFETTI := @HAVE_CONFETTI@
+HAVE_LCOV := @HAVE_LCOV@
+COVERAGE := @COVERAGE@
+LIBS := @LIBS@
+HAVE_CC_FLAG_W_NO_COMMENT := @HAVE_CC_FLAG_W_NO_COMMENT@
+HAVE_CC_FLAG_W_NO_UNUSED_VALUE := @HAVE_CC_FLAG_W_NO_UNUSED_VALUE@
+module := @module@
+srcdir := @srcdir@
+VPATH := @srcdir@
+
+MAKEFLAGS += --no-print-directory
+
+CFLAGS += -I. -Iinclude
+ifneq (.,$(srcdir))
+    CFLAGS += -I$(srcdir) -I$(srcdir)/include
+endif
+
+CFLAGS += -Wno-strict-aliasing
+
+all: tarantool_$(module)
+
+subdirs += third_party mod/$(module) cfg src src-lua
+include $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
+
+tarantool_$(module): $(obj)
+	$(CC) $(LDFLAGS) $^ $(LIBS) -o $@
+
+LDFLAGS += -Lthird_party/luajit/src
+LIBS += -lluajit
+tarantool_$(module): third_party/luajit/src/libluajit.a
+third_party/luajit/src/libluajit.a:
+	@$(MAKE) -C third_party/luajit/src libluajit.a
+
+$(obj): $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
+$(obj): Makefile
+
+dep = $(patsubst %.o,%.d,$(obj))
+-include $(dep)
+
+$(filter-out $(disable-warns-obj),$(obj)): CFLAGS += $(CFLAGS_WARNS)
+
+%.o: %.m
+	@mkdir -p $(dir $@)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -Wno-protocol -fobjc-exceptions -fgnu-runtime -c $< -o $@
+
+%.o: %.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+ifeq (1,$(HAVE_RAGEL))
+%.m: %.rl
+	@mkdir -p $(dir $@)
+	$(RAGEL) -G2 $< -o $@
+
+%.dot: %.rl
+	@mkdir -p $(dir $@)
+	$(RAGEL) -p -V $< -o $(basename $@).dot
+
+%.png: %.dot
+	@mkdir -p $(dir $@)
+	$(DOT) -Tpng $< -o $(basename $@).png
+endif
+
+ifeq (1,$(HAVE_CONFETTI))
+%.cfg: %.cfg_tmpl
+	@mkdir -p $(dir $@)
+	$(CONFETTI) -i $< -n tarantool_cfg -f $@
+
+%.h: %.cfg_tmpl
+	@mkdir -p $(dir $@)
+	$(CONFETTI) -i $< -n tarantool_cfg -h $@
+
+%.c: %.cfg_tmpl
+	@mkdir -p $(dir $@)
+	$(CONFETTI) -i $< -n tarantool_cfg -c $@
+endif
+
+
+ifeq (1,$(HAVE_DARCS))
+tarantool_version.h: FORCE
+	@echo -n 'const char tarantool_version_string[] = "' > $@_
+	@DARCS=$(DARCS) sh $(srcdir)/scripts/darcs-describe >> $@_
+	@echo '";' >> $@_
+	@diff -q $@ $@_ 2>/dev/null >/dev/null || ($(ECHO) "GEN	" $(notdir $@); cp $@_ $@)
+	@rm $@_
+FORCE:
+else
+ifeq (1,$(HAVE_GIT))
+tarantool_version.h: FORCE
+	@echo -n 'const char tarantool_version_string[] = "' > $@_
+	@$(GIT) describe HEAD | tr -d \\n >> $@_
+	@echo '";' >> $@_
+	@diff -q $@ $@_ 2>/dev/null >/dev/null || ($(ECHO) "GEN	" $(notdir $@); cp $@_ $@)
+	@rm $@_
+FORCE:
+endif
+endif
+
+.PHONY: distclean clean
+clean:
+	@echo "CLEAN $(module)"
+	@rm -rf $(obj) $(patsubst %.o,%.gcno,$(obj))
+	@rm -rf $(dep) tarantool_$(module) lcov
+
+luaclean:
+	@$(MAKE) -C third_party/luajit/src clean
+
+distclean: clean luaclean
+	@rm -rf $(dist-clean)
+	@rm -rf autom4te.cache config.log config.status configure install.sh
+	@rm -rf include/config.h Makefile scripts/gen-lua-registry.sh TAGS test/var test/*.rej
+
+.PHONY: TAGS
+TAGS:
+	find $(srcdir) -name \*.[mch] | etags -
+
+.PHONY: test
+test:	tarantool_$(module)
+	ruby test/runtest.rb
+
+ifeq (1,$(COVERAGE))
+clean: clean-coverage
+ifeq (1,$(HAVE_LCOV))
+$(module).cov: $(patsubst %.o,%.gcda,$(obj)) $(patsubst %.o,%.gcno,$(obj))
+	lcov --output-file $@ --base-directory . --capture --directory .
+	lcov --output-file $@ --remove $@ y.tab.c prscfg.l prscfg.y prscfg_scan.c /usr/\*
+$(module).coverage/index.html: $(module).cov
+	genhtml --output-directory $(dir $@) $<
+else
+$(module).cov: $(patsubst %.o,%.gcda,$(obj)) $(patsubst %.o,%.gcno,$(obj))
+	python scripts/zcov/zcov-scan $@
+$(module).coverage/index.html: $(module).cov
+	python scripts/zcov/zcov-genhtml $< $(dir $@)
+endif
+
+$(patsubst %.o,%.gcda,$(obj)): test
+
+.PHONY: coverage clean-coverage
+coverage: $(module).coverage/index.html
+	sensible-browser $<
+
+clean-coverage:
+	@rm -rf $(patsubst %.o,%.gcda,$(obj)) \
+		$(module).coverage $(module).cov
+endif
+
+
+Makefile: $(srcdir)/config.status $(srcdir)/include/config.h.in $(srcdir)/Makefile.in
+	./config.status
+
+config.status: $(srcdir)/configure
+	./config.status --recheck
+
+configure: $(srcdir)/configure.ac $(srcdir)/third_party/libev/libev.m4
+	cd $(srcdir) && autoconf
+
+
+ifeq ("$(origin V)", "command line")
+    VERBOSE = $(V)
+endif
+ifeq (,$(VERBOSE))
+    $(eval override CC = @$(ECHO)    "CC	" $$@; $(CC))
+    $(eval override RAGEL = @$(ECHO) "RGL	" $$@; $(RAGEL))
+    $(eval override DOT = @$(ECHO) "DOT	" $$@; $(DOT))
+    $(eval override CONFETTI = @$(ECHO) "CNF	" $$@; $(CONFETTI))
+    $(eval override CAT = @$(ECHO) "CAT	" $$@; $(CAT))
+    $(eval override NM = @$(ECHO) "NM	" $$@; $(NM))
+    $(eval override OBJCOPY = @$(ECHO) "OBJCOPY	" $$@; $(OBJCOPY))
+    $(eval override LD = @$(ECHO) "LD	" $$@; $(LD))
+endif
+
+$(eval $(defered))
+
+ifeq (1,$(I))
+    $(info * build with $(filter -D%,$(CFLAGS)))
+endif
+
