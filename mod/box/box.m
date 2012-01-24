@@ -1331,12 +1331,6 @@ info(struct tbuf *out)
 	tbuf_printf(out, "  status: %s" CRLF, status);
 }
 
-static void
-exec(char *str __attribute__((unused)), int len __attribute__((unused)), struct tbuf *out)
-{
-	tbuf_printf(out, "unimplemented" CRLF);
-}
-
 
 struct tnt_module box = {
         .name = "(silver)box",
@@ -1347,7 +1341,7 @@ struct tnt_module box = {
         .snapshot = snapshot,
 	.initial_snapshot = initial_snapshot,
         .info = info,
-        .exec = exec
+        .exec = NULL
 };
 
 register_module(box);

@@ -179,7 +179,10 @@ admin_dispatch(struct conn *c)
 
 		action mod_exec {
 			start(out);
-			module(NULL)->exec(strstart, strend - strstart, out);
+			if (module(NULL)->exec != NULL)
+				module(NULL)->exec(strstart, strend - strstart, out);
+			else
+				tbuf_printf(out, "unimplemented" CRLF);
 			end(out);
 		}
 
