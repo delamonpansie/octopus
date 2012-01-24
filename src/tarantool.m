@@ -623,6 +623,9 @@ main(int argc, char **argv)
 	ev_default_loop(ev_recommended_backends() | EVFLAG_SIGNALFD);
 	say_debug("ev_loop initialized");
 
+	if (module("WAL feeder"))
+		module("WAL feeder")->init();
+
 	ev_signal ev_sig = { .coro = 0 };
 	ev_signal_init(&ev_sig, (void *)save_snapshot, SIGUSR1);
 	ev_signal_start(&ev_sig);
@@ -631,8 +634,10 @@ main(int argc, char **argv)
 
 	luaT_init();
 	stat_init();
-	foreach_module(m)
-		m->init();
+
+	if (module("(silver)box"))
+		module("(silver)box")->init();
+
 	admin_init();
 	prelease(fiber->pool);
 	say_crit("log level %i", cfg.log_level);
