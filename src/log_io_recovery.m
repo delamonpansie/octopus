@@ -516,7 +516,7 @@ wal_disk_writer(int fd, void *state)
 		if (r < 0 && (errno == EINTR))
 			goto reread;
 		else if (r < 0) {
-			say_syserror("recvmsg");
+			say_syserror("recv");
 			result = EX_OSERR;
 			break;
 		} else if (r == 0) {
