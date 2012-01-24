@@ -105,6 +105,7 @@ class RunEnv
     if pid
       return pid
     else
+      Process.setpgid($$, 0)
       argv = ['./tarantool', '-c', ConfigFile, *args]
       if $options[:valgrind]
         argv.unshift 'valgrind', '-q', "--suppressions=#{Suppressions}"
