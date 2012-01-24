@@ -544,7 +544,7 @@ memcached_dispatch(struct conn *c)
 			while (tbuf_len(c->rbuf) - parsed < bytes + 2) {
 				if ((r = conn_readahead(c, bytes + 2 - (pe - p))) <= 0) {
 					say_debug("read returned %i, closing connection", r);
-					return 0;
+					return -1;
 				}
 			}
 
