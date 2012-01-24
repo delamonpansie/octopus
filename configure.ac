@@ -204,17 +204,19 @@ AS_IF([test "x$valgrind" != xyes],
       [CFLAGS="-DNVALGRIND $CFLAGS"])
 
 AC_ARG_ENABLE([module],
-              [AS_HELP_STRING([--enable-module[[=box]]],
-                              [select module to build, SilverBox(box) by default])],
-              [tarantool_module=$enableval],
-              [tarantool_module=box])
+              [AS_HELP_STRING([--enable-modules[[="box feeder"]]],
+                              [select module to build, silver(box) and feeder by default])],
+              [tarantool_modules=$enableval],
+              [tarantool_modules="box feeder"])
 
-AC_SUBST(module, [$tarantool_module])
+AC_SUBST(modules, [$tarantool_modules])
 
 AC_OUTPUT
 
 AC_MSG_RESULT([
 Configuration:
+
+Modules enabled........$tarantool_modules
 
 Objective C compiler...$CC
 CPPFLAGS...............$CPPFLAGS

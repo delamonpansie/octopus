@@ -34,7 +34,7 @@ COVERAGE := @COVERAGE@
 LIBS := @LIBS@
 HAVE_CC_FLAG_W_NO_COMMENT := @HAVE_CC_FLAG_W_NO_COMMENT@
 HAVE_CC_FLAG_W_NO_UNUSED_VALUE := @HAVE_CC_FLAG_W_NO_UNUSED_VALUE@
-module := @module@
+modules := @modules@
 srcdir := @srcdir@
 VPATH := @srcdir@
 
@@ -47,17 +47,17 @@ endif
 
 CFLAGS += -Wno-strict-aliasing
 
-all: tarantool_$(module)
+all: tarantool
 
-subdirs += third_party mod/$(module) cfg src src-lua
+subdirs += third_party $(foreach module,$(modules),mod/$(module)) cfg src src-lua
 include $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
 
-tarantool_$(module): $(obj)
+tarantool: $(obj)
 	$(CC) $(LDFLAGS) $^ $(LIBS) -o $@
 
 LDFLAGS += -Lthird_party/luajit/src
 LIBS += -lluajit
-tarantool_$(module): third_party/luajit/src/libluajit.a
+tarantool: third_party/luajit/src/libluajit.a
 third_party/luajit/src/libluajit.a:
 	@$(MAKE) -C third_party/luajit/src libluajit.a
 
@@ -128,9 +128,9 @@ endif
 
 .PHONY: distclean clean
 clean:
-	@echo "CLEAN $(module)"
+	@echo "CLEAN tarantool"
 	@rm -rf $(obj) $(patsubst %.o,%.gcno,$(obj))
-	@rm -rf $(dep) tarantool_$(module) lcov
+	@rm -rf $(dep) tarantool lcov
 
 luaclean:
 	@$(MAKE) -C third_party/luajit/src clean
@@ -145,33 +145,33 @@ TAGS:
 	find $(srcdir) -name \*.[mch] | etags -
 
 .PHONY: test
-test:	tarantool_$(module)
+test:	tarantool
 	ruby test/runtest.rb
 
 ifeq (1,$(COVERAGE))
 clean: clean-coverage
 ifeq (1,$(HAVE_LCOV))
-$(module).cov: $(patsubst %.o,%.gcda,$(obj)) $(patsubst %.o,%.gcno,$(obj))
+tarantool.cov: $(patsubst %.o,%.gcda,$(obj)) $(patsubst %.o,%.gcno,$(obj))
 	lcov --output-file $@ --base-directory . --capture --directory .
 	lcov --output-file $@ --remove $@ y.tab.c prscfg.l prscfg.y prscfg_scan.c /usr/\*
-$(module).coverage/index.html: $(module).cov
+tarantool.coverage/index.html: tarantool.cov
 	genhtml --output-directory $(dir $@) $<
 else
-$(module).cov: $(patsubst %.o,%.gcda,$(obj)) $(patsubst %.o,%.gcno,$(obj))
+tarantool.cov: $(patsubst %.o,%.gcda,$(obj)) $(patsubst %.o,%.gcno,$(obj))
 	python scripts/zcov/zcov-scan $@
-$(module).coverage/index.html: $(module).cov
+tarantool.coverage/index.html: tarantool.cov
 	python scripts/zcov/zcov-genhtml $< $(dir $@)
 endif
 
 $(patsubst %.o,%.gcda,$(obj)): test
 
 .PHONY: coverage clean-coverage
-coverage: $(module).coverage/index.html
+coverage: tarantool.coverage/index.html
 	sensible-browser $<
 
 clean-coverage:
 	@rm -rf $(patsubst %.o,%.gcda,$(obj)) \
-		$(module).coverage $(module).cov
+		tarantool.coverage tarantool.cov
 endif
 
 

@@ -114,7 +114,10 @@ load_cfg(struct tarantool_cfg *conf, i32 check_rdonly)
 	if (n_accepted == 0 || n_skipped != 0)
 		return -1;
 
-	return module(NULL)->check_config(conf);
+	if (module(NULL)->check_config)
+		return module(NULL)->check_config(conf);
+	else
+		return 0;
 }
 
 i32
@@ -152,12 +155,14 @@ reload_cfg()
 		return -1;
 	}
 	destroy_tarantool_cfg(&new_cfg1);
-	module(NULL)->reload_config(&cfg, &new_cfg2);
+	if (module(NULL)->reload_config)
+		module(NULL)->reload_config(&cfg, &new_cfg2);
 	destroy_tarantool_cfg(&cfg);
 	cfg = new_cfg2;
 	return 0;
 }
 
+#define foreach_module(m) for (struct tnt_module *m = modules_head; m != NULL; m = m->next)
 
 struct tnt_module *
 module(const char *name)
@@ -208,7 +213,11 @@ save_snapshot(void *ev, int events __attribute__((unused)))
 		fiber_destroy_all();
 		palloc_unmap_unused();
 		close_all_xcpt(1, sayfd);
-		[recovery_state snapshot_save:module(NULL)->snapshot];
+
+		foreach_module(m)
+			if (m->snapshot != NULL)
+				m->snapshot();
+
 #ifdef COVERAGE
 		__gcov_flush();
 #endif
@@ -589,8 +598,7 @@ main(int argc, char **argv)
 		initialize_minimal();
 		luaT_init();
 		module(NULL)->init();
-		[recovery_state init_lsn:1];
-		[recovery_state snapshot_save:module(NULL)->snapshot];
+		module(NULL)->initial_snapshot();
 		exit(EXIT_SUCCESS);
 	}
 #endif
@@ -623,7 +631,8 @@ main(int argc, char **argv)
 
 	luaT_init();
 	stat_init();
-	module(NULL)->init();
+	foreach_module(m)
+		m->init();
 	admin_init();
 	prelease(fiber->pool);
 	say_crit("log level %i", cfg.log_level);

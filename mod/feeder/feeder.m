@@ -177,8 +177,15 @@ mod_init(void)
 	exit(EXIT_FAILURE);
 }
 
-void
-mod_exec(char *str __unused, int len __unused, struct tbuf *out)
-{
-	tbuf_printf(out, "Unimplemented");
-}
+struct tnt_module feeder = {
+        .name = "WAL feeder",
+        .init = init,
+        .check_config = NULL,
+        .reload_config = NULL,
+        .cat = NULL,
+        .snapshot = NULL,
+        .info = NULL,
+        .exec = NULL
+};
+
+register_module(feeder);

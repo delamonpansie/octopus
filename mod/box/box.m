@@ -61,6 +61,9 @@ static char *custom_proc_title;
 struct object_space *object_space_registry;
 const int object_space_count = 256;
 
+@class BoxRecovery;
+static BoxRecovery *recovery_state;
+
 struct box_snap_row {
 	u32 object_space;
 	u32 tuple_size;
@@ -768,7 +771,6 @@ box_process(struct conn *c, struct tbuf *request)
 	}
 }
 
-
 static int
 box_xlog_sprint(struct tbuf *buf, const struct tbuf *t)
 {
@@ -994,20 +996,10 @@ box_bound_to_primary(void *data __attribute__((unused)))
 	}
 }
 
-static i32
-check_config(struct tarantool_cfg *conf __attribute__((unused)))
-{
-	return 0;
-}
+@interface BoxRecovery: Recovery
+@end
 
-static void
-reload_config(struct tarantool_cfg *old_conf __attribute__((unused)),
-	      struct tarantool_cfg *new_conf __attribute__((unused)))
-{
-	return;
-}
-
-@implementation Recovery (row)
+@implementation BoxRecovery
 static void
 snap_apply(struct box_txn *txn, struct tbuf *t)
 {
@@ -1065,7 +1057,7 @@ recover_row:(struct tbuf *)row
 			raise("unknown row tag :%u", tag);
 	}
 	@catch (Error *e) {
-		panic("Recovery failed: %s", e->reason);
+		panic("BoxRecovery failed: %s", e->reason);
 	}
 	@finally {
 		txn_cleanup(&txn);
@@ -1104,13 +1096,13 @@ init(void)
 			panic("wal_feeder_ipaddr & wal_feeder_port must be provided in remote_hot_standby mode");
 	}
 
-	recovery_state = [[Recovery alloc] init_snap_dir:cfg.snap_dir
-                                                 wal_dir:cfg.wal_dir
-                                            rows_per_wal:cfg.rows_per_wal
-                                             fsync_delay:cfg.wal_fsync_delay
-                                              inbox_size:cfg.wal_writer_inbox_size
-                                                   flags:init_storage ? RECOVER_READONLY : 0
-                                      snap_io_rate_limit:cfg.snap_io_rate_limit * 1024 * 1024];
+	recovery_state = [[BoxRecovery alloc] init_snap_dir:cfg.snap_dir
+						    wal_dir:cfg.wal_dir
+					       rows_per_wal:cfg.rows_per_wal
+						fsync_delay:cfg.wal_fsync_delay
+						 inbox_size:cfg.wal_writer_inbox_size
+						      flags:init_storage ? RECOVER_READONLY : 0
+					 snap_io_rate_limit:cfg.snap_io_rate_limit * 1024 * 1024];
 
 	/* initialize hashes _after_ starting wal writer */
 
@@ -1215,7 +1207,7 @@ snapshot_write_tuple(struct log_io_iter *i, unsigned n, const struct box_tuple *
 }
 
 static void
-snapshot(struct log_io_iter *i)
+snapshot_iter(struct log_io_iter *i)
 {
 	for (uint32_t n = 0; n < object_space_count; ++n) {
 		if (!object_space_registry[n].enabled)
@@ -1227,6 +1219,19 @@ snapshot(struct log_io_iter *i)
 		while ((obj = [pk iterator_next]))
 			snapshot_write_tuple(i, n, box_tuple(obj));
 	}
+}
+
+static void
+snapshot(void)
+{
+	[recovery_state snapshot_save:snapshot_iter];
+}
+
+static void
+initial_snapshot(void)
+{
+	[recovery_state init_lsn:1];
+	[recovery_state snapshot_save:snapshot_iter];
 }
 
 static void
@@ -1255,10 +1260,11 @@ exec(char *str __attribute__((unused)), int len __attribute__((unused)), struct 
 struct tnt_module box = {
         .name = "(silver)box",
         .init = init,
-        .check_config = check_config,
-        .reload_config = reload_config,
+        .check_config = NULL,
+        .reload_config = NULL,
         .cat = cat,
         .snapshot = snapshot,
+	.initial_snapshot = initial_snapshot,
         .info = info,
         .exec = exec
 };

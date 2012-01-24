@@ -27,7 +27,7 @@
 #import <config.h>
 #import <tbuf.h>
 #import <util.h>
-#import TARANTOOL_CONFIG
+#import <cfg/tarantool_cfg.h>
 
 #include <stdbool.h>
 
@@ -48,7 +48,8 @@ struct tnt_module {
 	i32  (*check_config)(struct tarantool_cfg *conf);
 	void (*reload_config)(struct tarantool_cfg *old_conf, struct tarantool_cfg *new_conf);
 	int  (*cat)(const char *filename);
-	void (*snapshot)(struct log_io_iter *);
+	void (*snapshot)(void);
+	void (*initial_snapshot)(void);
 	void (*info)(struct tbuf *out);
 	void (*exec)(char *str, int len, struct tbuf *out);
 };
@@ -69,8 +70,6 @@ struct lua_src {
 };
 extern struct lua_src *lua_src;
 
-@class Recovery;
-extern Recovery *recovery_state;
 extern struct tarantool_cfg cfg;
 extern struct tbuf *cfg_out;
 extern const char *cfg_filename;

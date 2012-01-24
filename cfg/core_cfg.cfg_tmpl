@@ -42,3 +42,6 @@ backlog=1024, ro
 
 # path for search scripts
 lua_path = "src-lua/?.lua", ro
+
+# custom proc title is appended after normal
+custom_proc_title=NULL, ro

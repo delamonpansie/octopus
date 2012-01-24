@@ -31,7 +31,7 @@
 
 #import <mod/box/box.h>
 #import <mod/box/index.h>
-#import <cfg/tarantool_box_cfg.h>
+#import <cfg/tarantool_cfg.h>
 
 
 @implementation Tree
