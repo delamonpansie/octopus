@@ -39,9 +39,6 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <sys/uio.h>
-#include <setjmp.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 
 struct msg {
 	uint32_t sender_fid;
@@ -83,14 +80,6 @@ struct child {
 	int sock;
 	struct fiber *in, *out;
 };
-
-static inline struct iovec *iovec(const struct tbuf *t)
-{
-	return (struct iovec *)t->data;
-}
-
-extern int events;
-extern struct fiber *fiber;
 
 void fiber_init(void);
 struct fiber *fiber_create(const char *name, int inbox_size, void (*f)(va_list va), ...);

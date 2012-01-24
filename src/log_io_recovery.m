@@ -51,6 +51,8 @@
 #include <unistd.h>
 #include <poll.h>
 #include <sysexits.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 @implementation Recovery
 - (void)
