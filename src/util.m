@@ -241,6 +241,8 @@ _panic(int status, const char *filename, unsigned line,
 	va_end(ap);
 	if (backtrace)
 		_say(S_FATAL, NULL, 0, NULL, "backtrace:\n%s", backtrace);
+
+	kill(0, SIGTERM);
 	exit(status);
 }
 
