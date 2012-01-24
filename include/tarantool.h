@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011 Mail.RU
- * Copyright (C) 2010, 2011 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012 Mail.RU
+ * Copyright (C) 2010, 2011, 2012 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -48,8 +48,7 @@ struct tnt_module {
 	i32  (*check_config)(struct tarantool_cfg *conf);
 	void (*reload_config)(struct tarantool_cfg *old_conf, struct tarantool_cfg *new_conf);
 	int  (*cat)(const char *filename);
-	void (*snapshot)(void);
-	void (*initial_snapshot)(void);
+	void (*snapshot)(bool);
 	void (*info)(struct tbuf *out);
 	void (*exec)(char *str, int len, struct tbuf *out);
 };

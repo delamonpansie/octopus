@@ -216,7 +216,7 @@ save_snapshot(void *ev, int events __attribute__((unused)))
 
 		foreach_module(m)
 			if (m->snapshot != NULL)
-				m->snapshot();
+				m->snapshot(false);
 
 #ifdef COVERAGE
 		__gcov_flush();
@@ -598,7 +598,7 @@ main(int argc, char **argv)
 		initialize_minimal();
 		luaT_init();
 		module(NULL)->init();
-		module(NULL)->initial_snapshot();
+		module(NULL)->snapshot(true);
 		exit(EXIT_SUCCESS);
 	}
 #endif

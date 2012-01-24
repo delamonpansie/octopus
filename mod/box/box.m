@@ -1303,15 +1303,10 @@ snapshot_rows(XLog *l)
 }
 
 static void
-snapshot(void)
+snapshot(bool initial)
 {
-	[recovery snapshot_save:snapshot_rows];
-}
-
-static void
-initial_snapshot(void)
-{
-	[recovery initial_lsn:1];
+	if (initial)
+		[recovery initial_lsn:1];
 	[recovery snapshot_save:snapshot_rows];
 }
 
@@ -1339,7 +1334,6 @@ struct tnt_module box = {
         .reload_config = NULL,
         .cat = cat,
         .snapshot = snapshot,
-	.initial_snapshot = initial_snapshot,
         .info = info,
         .exec = NULL
 };
