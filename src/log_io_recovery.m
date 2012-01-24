@@ -751,7 +751,8 @@ remote_row_reader_v11(struct conn *c)
 		    tbuf_len(c->rbuf) >= sizeof(struct row_v11) + row_v11(c->rbuf)->len)
 		{
 			m = tbuf_split(c->rbuf, sizeof(struct row_v11) + row_v11(c->rbuf)->len);
-			say_debug("read row bytes:%" PRIu32 " %s", tbuf_len(m), tbuf_to_hex(m));
+			m->pool = c->rbuf->pool; /* FIXME: this is cludge */
+			say_debug("read %" PRIu32 " bytes: %s", tbuf_len(m), tbuf_to_hex(m));
 			return m;
 		}
 
@@ -779,7 +780,7 @@ remote_read_row(struct conn *c, struct sockaddr_in *addr, i64 initial_lsn)
 			}
 
 			if (conn_write(c, &initial_lsn, sizeof(initial_lsn)) != sizeof(initial_lsn)) {
-				err = "can't write version";
+				err = "can't write initial lsn";
 				goto err;
 			}
 
@@ -846,7 +847,7 @@ pull_from_remote(va_list ap)
 	Recovery *r = va_arg(ap, Recovery *);
 	struct sockaddr_in *addr = va_arg(ap, struct sockaddr_in *);
 	struct tbuf *row;
-	struct conn *c = NULL;
+	struct conn *c = conn_create(fiber->pool, -1);
 
 	for (;;) {
 		@try {
