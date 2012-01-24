@@ -872,15 +872,18 @@ snap_print(Recovery *r __attribute__((unused)), struct tbuf *t)
 	b->data = raw_row->data;
 	b->len = raw_row->len;
 
-	(void)read_u16(b); /* drop tag */
+	u16 tag = read_u16(b);
 	(void)read_u64(b); /* drop cookie */
 
 	row = box_snap_row(b);
 
-	tuple_print(out, row->tuple_size, row->data);
-	printf("lsn:%" PRIi64 " tm:%.3f n:%i %*s\n",
-	       raw_row->lsn, raw_row->tm,
-	       row->object_space, tbuf_len(out), (char *)out->data);
+	if (tag == snap_tag) {
+		tuple_print(out, row->tuple_size, row->data);
+		printf("lsn:%" PRIi64 " tm:%.3f n:%i %*s\n",
+		       raw_row->lsn, raw_row->tm,
+		       row->object_space, tbuf_len(out), (char *)out->data);
+	} else if (tag == snap_final_tag)
+		printf("lsn:%" PRIi64 " END\n", raw_row->lsn);
 	return 0;
 }
 
@@ -1043,9 +1046,10 @@ recover_row:(struct tbuf *)row
 	txn.skip_wal = true;
 
 	@try {
+		[super recover_row:row];
+
 		/* drop wal header */
-		if (tbuf_peek(row, sizeof(struct row_v11)) == NULL)
-			raise("unable read row header, row is too short");
+		tbuf_peek(row, sizeof(struct row_v11));
 
 		assert(txn.m == NULL);
 		u16 tag = read_u16(row);
@@ -1053,6 +1057,8 @@ recover_row:(struct tbuf *)row
 			wal_apply(&txn, row);
 		else if (tag == snap_tag)
 			snap_apply(&txn, row);
+		else if (tag == snap_final_tag)
+			say_debug("FINAL TAG: lsn:%"PRIi64, lsn);
 		else
 			raise("unknown row tag :%u", tag);
 	}

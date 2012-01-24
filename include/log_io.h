@@ -39,7 +39,7 @@
 #define RECOVER_READONLY 1
 #define ROW_EOF (void *)1
 
-extern const u16 wal_tag, snap_tag;
+extern const u16 wal_tag, snap_tag, snap_final_tag;
 extern const u64 default_cookie;
 extern const u32 default_version;
 extern const u32 marker, eof_marker;

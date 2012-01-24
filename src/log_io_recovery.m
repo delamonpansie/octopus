@@ -69,7 +69,6 @@ iter_open(XLog *l, struct log_io_iter *i, void (*iterator) (struct log_io_iter *
 
 
 @implementation Recovery
-
 - (void)
 confirm_lsn:(i64)new_lsn
 {
@@ -113,6 +112,21 @@ read_log(const char *filename, row_handler *xlog_handler, row_handler *snap_hand
 	if (strstr(filename, ".xlog")) {
                 XLogDir *dir = [[WALDir alloc] init_dirname:NULL];
 		l = [dir open_for_read_filename:filename];
+recover_row:(struct tbuf *)row
+{
+	if (tbuf_len(row) < sizeof(struct row_v11) + sizeof(u16))
+		raise("row is too short");
+
+	u16 tag = *(u16 *)row_v11(row)->data;
+	if (tag == wal_tag && row_v11(row)->lsn != lsn + 1)
+		raise("lsn sequence has gap after %"PRIi64 " -> %"PRIi64,
+		      lsn, row_v11(row)->lsn);
+
+	if (tag == snap_final_tag || tag == wal_tag)
+		lsn = row_v11(row)->lsn;
+}
+
+- (i64)
 		h = xlog_handler;
 	} else if (strstr(filename, ".snap")) {
                 XLogDir *dir = [[SnapDir alloc] init_dirname:NULL];
@@ -634,13 +648,12 @@ write_rows(struct log_io_iter *i)
 	struct tbuf *data;
 	struct row_v11 row;
 
-	goto start;
+	row.lsn = *(i64 *)i->data;
+
 	for (;;) {
 		coro_transfer(&i->coro.ctx, &fiber->coro.ctx);
-	      start:
 		data = i->data;
 
-		row.lsn = 0;	/* unused */
 		row.tm = ev_now();
 		row.len = tbuf_len(data);
 		row.data_crc32c = crc32c(0, data->data, tbuf_len(data));
@@ -699,7 +712,7 @@ snapshot_write_row(struct log_io_iter *i, u16 tag, u64 cookie, struct tbuf *row)
 }
 
 - (void)
-snapshot_save:(void (*)(struct log_io_iter *))f
+snapshot_save:(void (*)(struct log_io_iter *))callback
 {
 	struct log_io_iter i;
         XLog *snap;
@@ -714,6 +727,9 @@ snapshot_save:(void (*)(struct log_io_iter *))f
 
 	iter_open(snap, &i, write_rows);
 
+	i.data = &lsn;
+	coro_transfer(&fiber->coro.ctx, &i.coro.ctx);
+
 	if (snap_io_rate_limit > 0)
 		i.io_rate_limit = snap_io_rate_limit;
 
@@ -726,7 +742,10 @@ snapshot_save:(void (*)(struct log_io_iter *))f
 	final_filename = [snap final_filename];
 
 	say_info("saving snapshot `%s'", final_filename);
-	f(&i);
+	callback(&i);
+
+	struct tbuf *empty = tbuf_alloc(fiber->pool);
+	snapshot_write_row(&i, snap_final_tag, 0, empty);
 
 	if (fsync(fileno(snap->fd)) < 0)
 		panic("fsync");
