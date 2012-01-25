@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011 Mail.RU
- * Copyright (C) 2010, 2011 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012 Mail.RU
+ * Copyright (C) 2010, 2011, 2012 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -307,7 +307,7 @@ release_chunks(struct chunk_list_head *chunks)
 	for (chunk = SLIST_FIRST(chunks); chunk != NULL; chunk = next_chunk) {
 		next_chunk = SLIST_NEXT(chunk, busy_link);
 
-		VALGRIND_MAKE_MEM_UNDEFINED((void *)chunk + sizeof(struct chunk),  chunk->data_size);
+		(void)VALGRIND_MAKE_MEM_UNDEFINED((void *)chunk + sizeof(struct chunk),  chunk->data_size);
 		if (chunk->data_size <= palloc_greatest_size()) {
 			chunk->free = chunk->data_size;
 			chunk->brk = (void *)chunk + sizeof(struct chunk);
