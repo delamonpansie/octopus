@@ -665,11 +665,11 @@ memcached_expire(va_list va __attribute__((unused)))
 }
 
 static void
-memcached_bound_to_primary(void *data __attribute__((unused)))
+memcached_bound_to_primary(int fd)
 {
-	box_bound_to_primary(NULL);
+	box_bound_to_primary(fd);
 
-	if (fiber_create("memecached_expire", memcached_expire) == NULL)
+	if (fd > 0 && fiber_create("memecached_expire", memcached_expire) == NULL)
 		panic("can't start the expire fiber");
 }
 

@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2011 Mail.RU
- * Copyright (C) 2011 Yuriy Vostrikov
+ * Copyright (C) 2011, 2012 Mail.RU
+ * Copyright (C) 2011, 2012 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -72,7 +72,7 @@ void iproto_error(struct netmsg **m, struct netmsg_mark *header_mark, u32 ret_co
 
 
 void iproto_interact(va_list ap);
-struct service *iproto_service(u16 port, void (*on_bind)(void *));
+struct service *iproto_service(u16 port, void (*on_bind)(int fd));
 
 
 @interface IProtoError : Error {

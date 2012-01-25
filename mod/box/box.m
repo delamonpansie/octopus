@@ -973,8 +973,14 @@ title(const char *fmt, ...)
 }
 
 void
-box_bound_to_primary(void *data __attribute__((unused)))
+box_bound_to_primary(int fd)
 {
+	if (fd < 0) {
+		if (cfg.local_hot_standby == 0)
+			panic("unable bind server socket");
+		return;
+	}
+
 	@try {
 		[recovery recover_finalize];
 	}
@@ -1245,13 +1251,9 @@ init(void)
 		say_info("Object space %i indexes:%.*s", n, tbuf_len(i), (char *)i->data);
 	}
 
-	title("orphan");
-	if (cfg.local_hot_standby) {
-		say_info("starting local hot standby");
-		[recovery recover_follow:cfg.wal_dir_rescan_delay];
-		status = "hot_standby/local";
-		title("hot_standby/local");
-	}
+	[recovery recover_follow:cfg.wal_dir_rescan_delay];
+	status = "hot_standby/local";
+	title("hot_standby/local");
 
 	if (cfg.memcached != 0) {
 		memcached_init();

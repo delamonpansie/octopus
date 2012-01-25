@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011 Mail.RU
- * Copyright (C) 2010, 2011 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012 Mail.RU
+ * Copyright (C) 2010, 2011, 2012 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -136,7 +136,7 @@ void append_field(struct tbuf *b, void *f);
 void *tuple_field(struct box_tuple *tuple, size_t i);
 void tuple_add_iov(struct netmsg **m, struct tnt_object *obj);
 
-void box_bound_to_primary(void *data __attribute__((unused)));
+void box_bound_to_primary(int fd);
 void memcached_init(void);
 
 void validate_indexes(struct box_txn *txn);

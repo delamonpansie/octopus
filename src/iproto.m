@@ -238,7 +238,7 @@ accept_client(int fd, void *data)
 }
 
 struct service *
-iproto_service(u16 port, void (*on_bind)(void *))
+iproto_service(u16 port, void (*on_bind)(int fd))
 {
 	struct service *service = calloc(1, sizeof(*service));
 	TAILQ_INIT(&service->processing);

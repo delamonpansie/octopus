@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2011 Mail.RU
- * Copyright (C) 2011 Yuriy Vostrikov
+ * Copyright (C) 2011, 2012 Mail.RU
+ * Copyright (C) 2011, 2012 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -548,8 +548,8 @@ tcp_connect(struct sockaddr_in *dst, struct sockaddr_in *src, ev_tstamp timeout)
 	return -1;
 }
 
-int
-server_socket(int type, struct in_addr *src, int port)
+static int
+server_socket(int type, struct in_addr *src, int port, void (*on_bind)(int fd))
 {
 	int fd;
 	bool warning_said = false;
@@ -593,16 +593,20 @@ server_socket(int type, struct in_addr *src, int port)
 
 	for (;;) {
 		if (bind(fd, (struct sockaddr *)&sin, sizeof(sin)) == -1) {
+			if (on_bind != NULL)
+				on_bind(-1);
+
 			if (errno == EADDRINUSE)
 				goto sleep_and_retry;
 			say_syserror("bind");
 			return -1;
 		}
 
+		if (on_bind != NULL)
+			on_bind(fd);
+
 		if (type == SOCK_STREAM)
 			if (listen(fd, cfg.backlog) == -1) {
-				if (errno == EADDRINUSE)
-					goto sleep_and_retry;
 				say_syserror("listen");
 				return -1;
 			}
@@ -627,16 +631,13 @@ tcp_server(va_list ap)
 {
 	int port = va_arg(ap, int);
 	void (*handler)(int fd, void *data) = va_arg(ap, void (*)(int, void *));
-	void (*on_bind)(void *data) = va_arg(ap, void (*)(void *data));
+	void (*on_bind)(int fd) = va_arg(ap, void (*)(int fd));
 	void *data = va_arg(ap, void *);
 
 	int cfd, fd, one = 1, flags;
 
-	if ((fd = server_socket(SOCK_STREAM, NULL, port)) < 0)
-		exit(EX_OSERR);
-
-	if (on_bind != NULL)
-		on_bind(data);
+	if ((fd = server_socket(SOCK_STREAM, NULL, port, on_bind)) < 0)
+		exit(EX_OSERR); /* TODO: better error handling */
 
 	ev_io io = { .coro = 1 };
 	ev_io_init(&io, (void *)fiber, fd, EV_READ);
@@ -682,15 +683,12 @@ udp_server(va_list ap)
 	int port = va_arg(ap, int);
 	void (*handler)(const char *buf, ssize_t len, void *data) =
 		va_arg(ap, void (*)(const char *, ssize_t, void *));
-	void (*on_bind)(void *data) = va_arg(ap, void (*)(void *data));
+	void (*on_bind)(int fd) = va_arg(ap, void (*)(int fd));
 	void *data = va_arg(ap, void *);
 	int fd;
 
-	if ((fd = server_socket(SOCK_DGRAM, NULL, port)) < 0)
-		exit(EX_OSERR);
-
-	if (on_bind != NULL)
-		on_bind(data);
+	if ((fd = server_socket(SOCK_DGRAM, NULL, port, on_bind)) < 0)
+		exit(EX_OSERR); /* TODO: better error handling */
 
 	const unsigned MAXUDPPACKETLEN = 128;
 	char buf[MAXUDPPACKETLEN];
