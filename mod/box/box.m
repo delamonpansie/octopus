@@ -181,6 +181,20 @@ valid_tuple(struct tbuf *buf, u32 cardinality)
 	return tbuf_len(buf) - tbuf_len(&tmp);
 }
 
+static void
+validate_indexes(struct box_txn *txn)
+{
+	foreach_index(index, txn->object_space) {
+                [index valid_object:txn->obj];
+
+		if (index->unique) {
+                        struct tnt_object *obj = [index find_by_obj:txn->obj];
+
+                        if (obj != NULL && obj != txn->old_obj)
+                                box_raise(ERR_CODE_INDEX_VIOLATION, "unique index violation");
+                }
+	}
+}
 
 
 static void __attribute((noinline))
@@ -1080,70 +1094,6 @@ recover_row:(struct tbuf *)row
 }
 @end
 
-void
-validate_indexes(struct box_txn *txn)
-{
-	foreach_index(index, txn->object_space) {
-                [index valid_object:txn->obj];
-
-		if (index->unique) {
-                        struct tnt_object *obj = [index find_by_obj:txn->obj];
-
-                        if (obj != NULL && obj != txn->old_obj)
-                                box_raise(ERR_CODE_INDEX_VIOLATION, "unique index violation");
-                }
-	}
-}
-
-void
-build_object_space_trees(struct object_space *object_space)
-{
-	say_info("Building tree indexes of object space %i", object_space->n);
-
-	Index<BasicIndex> *pk = object_space->index[0];
-	size_t n_tuples = [pk size];
-        size_t estimated_tuples = n_tuples * 1.2;
-
-	Tree *ts[MAX_IDX] = { nil, };
-	void *nodes[MAX_IDX] = { NULL, };
-	int i = 0, tree_count = 0;
-
-	for (int j = 0; object_space->index[j]; j++)
-		if ([object_space->index[j] isKindOf:[DummyIndex class]]) {
-			DummyIndex *dummy = (id)object_space->index[j];
-			if ([dummy is_wrapper_of:[Tree class]]) {
-				object_space->index[j] = [dummy unwrap];
-				ts[i++] = (id)object_space->index[j];
-			}
-		}
-	tree_count = i;
-
-        if (n_tuples > 0) {
-		for (int i = 0; i < tree_count; i++) {
-                        nodes[i] = malloc(estimated_tuples * ts[i]->node_size);
-			if (nodes[i] == NULL)
-                                panic("can't allocate node array");
-                }
-
-		struct tnt_object *obj;
-		u32 t = 0;
-		[pk iterator_init];
-		while ((obj = [pk iterator_next])) {
-			for (int i = 0; i < tree_count; i++) {
-                                struct index_node *node = nodes[i] + t * ts[i]->node_size;
-                                ts[i]->dtor(obj, node, ts[i]->dtor_arg);
-                        }
-                        t++;
-		}
-	}
-
-	for (int i = 0; i < tree_count; i++) {
-		say_info("  %i:%s", ts[i]->n, [ts[i] class]->name);
-		[ts[i] set_nodes:nodes[i]
-			   count:n_tuples
-		       allocated:estimated_tuples];
-	}
-}
 
 static void
 init(void)

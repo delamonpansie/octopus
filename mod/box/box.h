@@ -139,6 +139,5 @@ void tuple_add_iov(struct netmsg **m, struct tnt_object *obj);
 void box_bound_to_primary(int fd);
 void memcached_init(void);
 
-void validate_indexes(struct box_txn *txn);
 extern StringHash *memcached_index;
 #endif
