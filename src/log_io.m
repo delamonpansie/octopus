@@ -56,7 +56,7 @@ const u16 wal_tag = -2;
 const u16 snap_final_tag = -3;
 
 const u64 default_cookie = 0;
-const u32 default_version = 11;
+const u32 default_version = 12;
 const char *v11 = "0.11\n";
 const char *v12 = "0.12\n";
 const char *snap_mark = "SNAP\n";
