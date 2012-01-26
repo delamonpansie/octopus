@@ -134,14 +134,10 @@ typedef void (follow_cb)(ev_stat *w, int events);
 	u64 cookie;
 }
 - (void) initial_lsn:(i64)new_lsn;
-- (i64) wal_request_write:(struct tbuf *)row tag:(u16)tag cookie:(u64)cookie;
 - (void) recover_finalize;
 - (struct fiber *) recover_follow_remote:(char *)ipaddr port:(int)port;
 - (i64) recover:(i64)lsn;
 - (void) recover_follow:(ev_tstamp)delay;
-- (void) recover_finalize;
-- (void) configure_wal_writer;
-- (void) snapshot_save:(void (*)(XLog *))callback;
 - (id) init_snap_dir:(const char *)snap_dir
              wal_dir:(const char *)wal_dir
         rows_per_wal:(int)rows_per_wal
@@ -155,6 +151,18 @@ typedef void (follow_cb)(ev_stat *w, int events);
 /* recover_row will be presented by most recent format of data
    XLog reader is responsible of converting data from old format */
 - (void) recover_row:(struct tbuf *)row;
+@end
+
+
+
+int wal_disk_writer(int fd, void *state);
+void snapshot_write_row(XLog *l, u16 tag, struct tbuf *row);
+
+@interface Recovery (writers)
+- (void) submit_change:(struct tbuf *)change;
+- (void) configure_wal_writer;
+- (i64) wal_request_write:(struct tbuf *)row tag:(u16)tag cookie:(u64)cookie;
+- (void) snapshot_save:(void (*)(XLog *))callback;
 @end
 
 struct _row_v11 {
@@ -191,5 +199,3 @@ static inline struct row_v12 *row_v12(const struct tbuf *t)
 
 int read_log(const char *filename,
 	     row_handler xlog_handler, row_handler snap_handler, void *state);
-
-void snapshot_write_row(XLog *l, u16 tag, struct tbuf *row);
