@@ -119,7 +119,8 @@ store(void *key, u32 exptime, u32 flags, u32 bytes, u8 *data)
 	@try {
 		struct iproto_header r = { .msg_code = INSERT };
 		txn_init(&r, &txn, NULL);
-		box_dispach_update(&txn, req);
+		box_prepare_update(&txn, req);
+		txn_commit(&txn);
 		return 1;
 	}
 	@catch (id e) {
@@ -145,7 +146,9 @@ delete(void *key)
 	@try {
 		struct iproto_header r = { .msg_code = DELETE };
 		txn_init(&r, &txn, NULL);
-		box_dispach_update(&txn, req);
+		box_prepare_update(&txn, req);
+		txn_submit_to_storage(&txn);
+		txn_commit(&txn);
 		return 1;
 	}
 	@catch (id e) {

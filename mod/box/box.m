@@ -50,9 +50,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-struct service *box_service;
-bool box_updates_allowed = false;
-static char *status = "unknown";
+static struct service *box_service;
 
 static int stat_base;
 STRS(messages, MESSAGES);
@@ -226,6 +224,7 @@ prepare_replace(struct box_txn *txn, size_t cardinality, struct tbuf *data)
 
 	if (txn->old_obj != NULL) {
 		lock_object(txn, txn->old_obj);
+		txn->obj_affected = 2;
 	} else {
 		/*
 		 * if tuple doesn't exist insert GHOST tuple in indeces
@@ -238,14 +237,13 @@ prepare_replace(struct box_txn *txn, size_t cardinality, struct tbuf *data)
 
 		lock_object(txn, txn->obj);
 		txn->obj->flags |= GHOST;
+		txn->obj_affected = 1;
 	}
 }
 
 static void
 commit_replace(struct box_txn *txn)
 {
-	int tuples_affected = 1;
-
 	if (txn->old_obj != NULL) {
 		foreach_index(index, txn->object_space)
 			[index remove: txn->old_obj];
@@ -260,7 +258,7 @@ commit_replace(struct box_txn *txn)
 	object_ref(txn->obj, +1);
 
 	if (txn->m) {
-		net_add_iov_dup(&txn->m, &tuples_affected, sizeof(uint32_t));
+		net_add_iov_dup(&txn->m, &txn->obj_affected, sizeof(u32));
 
 		if (txn->flags & BOX_RETURN_TUPLE)
 			tuple_add_iov(&txn->m, txn->obj);
@@ -398,16 +396,11 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 	if (op_cnt == 0)
 		box_raise(ERR_CODE_ILLEGAL_PARAMS, "no ops");
 
-	if (txn->old_obj == NULL) {
-		txn->skip_wal = true;
-		if (txn->m) {
-			int tuples_affected = 0;
-			net_add_iov_dup(&txn->m, &tuples_affected, sizeof(uint32_t));
-		}
+	if (txn->old_obj == NULL)
 		return;
-	}
 
 	lock_object(txn, txn->old_obj);
+	txn->obj_affected = 1;
 
 	struct box_tuple *old_tuple = box_tuple(txn->old_obj);
 	fields = palloc(fiber->pool, (old_tuple->cardinality + 1) * sizeof(struct tbuf *));
@@ -554,30 +547,24 @@ prepare_delete(struct box_txn *txn, struct tbuf *key_data)
 	u32 c = read_u32(key_data);
 	txn->old_obj = [txn->index find_key:key_data with_cardinalty:c];
 
-	if (txn->old_obj == NULL) {
-		txn->skip_wal = true;
-		if (txn->m) {
-			u32 tuples_affected = 0;
-			net_add_iov_dup(&txn->m, &tuples_affected, sizeof(tuples_affected));
-		}
+	if (txn->old_obj == NULL)
 		return;
-	}
 
 	object_ref(txn->old_obj, +1);
 	lock_object(txn, txn->old_obj);
+	txn->obj_affected = 1;
 }
 
 static void
 commit_delete(struct box_txn *txn)
 {
-	if (txn->m) {
-		int tuples_affected = 1;
-		net_add_iov_dup(&txn->m, &tuples_affected, sizeof(tuples_affected));
+	if (txn->old_obj) {
+		foreach_index(index, txn->object_space)
+			[index remove: txn->old_obj];
+		object_ref(txn->old_obj, -1);
 	}
-
-	foreach_index(index, txn->object_space)
-		[index remove: txn->old_obj];
-	object_ref(txn->old_obj, -1);
+	if (txn->m)
+		net_add_iov_dup(&txn->m, &txn->obj_affected, sizeof(u32));
 }
 
 void
@@ -620,26 +607,14 @@ txn_cleanup(struct box_txn *txn)
 	memset(txn, 0, sizeof(*txn));
 }
 
-static void
+
+void
 txn_commit(struct box_txn *txn)
 {
-	ev_tstamp start = ev_now(), stop;
-
-	if (!txn->skip_wal) {
-		if ([recovery wal_request_write:txn->wal_record
-					    tag:wal_tag
-					 cookie:0] == 0)
-			box_raise(ERR_CODE_UNKNOWN_ERROR, "wal write error");
-	}
-
 	if (txn->op == DELETE)
 		commit_delete(txn);
 	else
 		commit_replace(txn);
-
-	stop = ev_now();
-	if (stop - start > cfg.too_long_threshold)
-		say_warn("too long %s: %.3f sec", messages_strs[txn->op], stop - start);
 
 	say_debug("txn_commit(op:%s)", messages_strs[txn->op]);
 	stat_collect(stat_base, txn->op, 1);
@@ -655,6 +630,12 @@ txn_abort(struct box_txn *txn)
 
 	if (txn->op == INSERT)
 		rollback_replace(txn);
+}
+
+void
+txn_submit_to_storage(struct box_txn *txn)
+{
+	[recovery submit_change:txn->wal_record];
 }
 
 static void
@@ -698,7 +679,7 @@ box_dispach_select(struct box_txn *txn, struct tbuf *data)
 
 
 void
-box_dispach_update(struct box_txn *txn, struct tbuf *data)
+box_prepare_update(struct box_txn *txn, struct tbuf *data)
 {
 	txn->wal_record = tbuf_alloc(fiber->pool);
 	tbuf_append(txn->wal_record, &txn->op, sizeof(txn->op));
@@ -737,8 +718,6 @@ box_dispach_update(struct box_txn *txn, struct tbuf *data)
 
 	if (tbuf_len(data) != 0)
 		box_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
-
-	txn_commit(txn);
 }
 
 static void
@@ -755,19 +734,24 @@ box_process(struct conn *c, struct tbuf *request)
 			box_dispach_select(&txn, &request_data);
 			iproto_commit(&txn.header_mark);
 		} else {
+			ev_tstamp start = ev_now(), stop;
 			struct netmsg_tailq q = TAILQ_HEAD_INITIALIZER(q);
 			txn_init(iproto(request), &txn, netmsg_tail(&q, fiber->pool));
 
 			if (msg_code == EXEC_LUA) {
 				box_dispach_lua(txn.m, &request_data);
 			} else {
-				if (!box_updates_allowed)
-					box_raise(ERR_CODE_NONMASTER, "no updates");
-
-				box_dispach_update(&txn, &request_data);
+				box_prepare_update(&txn, &request_data);
+				/* we'r potentially block here */
+				txn_submit_to_storage(&txn);
+				txn_commit(&txn);
 			}
 			iproto_commit(&txn.header_mark);
 			netmsg_concat(netmsg_tail(&c->out_messages, c->pool), &q);
+
+			stop = ev_now();
+			if (stop - start > cfg.too_long_threshold)
+				say_warn("too long %s: %.3f sec", messages_strs[txn.op], stop - start);
 		}
 	}
 	@catch (Error *e) {
@@ -897,8 +881,8 @@ snap_print(Recovery *r __attribute__((unused)), struct tbuf *t)
 		printf("lsn:%" PRIi64 " tm:%.3f n:%i %*s\n",
 		       raw_row->lsn, raw_row->tm,
 		       row->object_space, tbuf_len(out), (char *)out->data);
-	} else if (tag == snap_final_tag)
-		printf("lsn:%" PRIi64 " END\n", raw_row->lsn);
+	} else if (tag == snap_initial_tag)
+		printf("lsn:%" PRIi64 " initial row\n", raw_row->lsn);
 	return 0;
 }
 
@@ -986,39 +970,114 @@ title(const char *fmt, ...)
 			       cfg.primary_port, cfg.secondary_port, cfg.admin_port);
 }
 
+static void
+build_object_space_trees(struct object_space *object_space)
+{
+	say_info("Building tree indexes of object space %i", object_space->n);
+
+	Index<BasicIndex> *pk = object_space->index[0];
+	size_t n_tuples = [pk size];
+        size_t estimated_tuples = n_tuples * 1.2;
+
+	Tree *ts[MAX_IDX] = { nil, };
+	void *nodes[MAX_IDX] = { NULL, };
+	int i = 0, tree_count = 0;
+
+	for (int j = 0; object_space->index[j]; j++)
+		if ([object_space->index[j] isKindOf:[DummyIndex class]]) {
+			DummyIndex *dummy = (id)object_space->index[j];
+			if ([dummy is_wrapper_of:[Tree class]]) {
+				object_space->index[j] = [dummy unwrap];
+				ts[i++] = (id)object_space->index[j];
+			}
+		}
+	tree_count = i;
+
+        if (n_tuples > 0) {
+		for (int i = 0; i < tree_count; i++) {
+                        nodes[i] = malloc(estimated_tuples * ts[i]->node_size);
+			if (nodes[i] == NULL)
+                                panic("can't allocate node array");
+                }
+
+		struct tnt_object *obj;
+		u32 t = 0;
+		[pk iterator_init];
+		while ((obj = [pk iterator_next])) {
+			for (int i = 0; i < tree_count; i++) {
+                                struct index_node *node = nodes[i] + t * ts[i]->node_size;
+                                ts[i]->dtor(obj, node, ts[i]->dtor_arg);
+                        }
+                        t++;
+		}
+	}
+
+	for (int i = 0; i < tree_count; i++) {
+		say_info("  %i:%s", ts[i]->n, [ts[i] class]->name);
+		[ts[i] set_nodes:nodes[i]
+			   count:n_tuples
+		       allocated:estimated_tuples];
+	}
+}
+
+static void
+build_secondary_indexes()
+{
+	title("building_indexes");
+	@try {
+		for (u32 n = 0; n < object_space_count; n++) {
+			if (object_space_registry[n].enabled)
+				build_object_space_trees(&object_space_registry[n]);
+		}
+	}
+	@catch (Error *e) {
+		raise("unable to built tree indexes: %s", e->reason);
+	}
+
+	for (u32 n = 0; n < object_space_count; n++) {
+		if (!object_space_registry[n].enabled)
+			continue;
+
+		struct tbuf *i = tbuf_alloc(fiber->pool);
+		foreach_index(index, &object_space_registry[n])
+			tbuf_printf(i, " %i:%s", index->n, [index class]->name);
+
+		say_info("Object space %i indexes:%.*s", n, tbuf_len(i), (char *)i->data);
+	}
+}
+
 void
 box_bound_to_primary(int fd)
 {
 	if (fd < 0) {
-		if (cfg.local_hot_standby == 0)
+		if (!cfg.local_hot_standby)
 			panic("unable bind server socket");
 		return;
 	}
 
-	@try {
-		[recovery recover_finalize];
+	if (cfg.local_hot_standby) {
+		@try {
+			[recovery enable_local_writes];
+			title("%s", [recovery status]);
+		}
+		@catch (Error *e) {
+			panic("Recovery failure: %s", e->reason);
+		}
 	}
-	@catch (Error *e) {
-		panic("Recovery failure: %s", e->reason);
-	}
+}
 
-	if (cfg.remote_hot_standby) {
-		say_info("starting remote hot standby");
-		status = malloc(64);
-		snprintf(status, 64, "hot_standby/%s:%i%s", cfg.wal_feeder_ipaddr,
-			 cfg.wal_feeder_port, custom_proc_title);
-
-		[recovery recover_follow_remote:cfg.wal_feeder_ipaddr
-					   port:cfg.wal_feeder_port];
-
-		title("hot_standby/%s:%i", cfg.wal_feeder_ipaddr, cfg.wal_feeder_port);
+static void
+initialize_service()
+{
+	if (cfg.memcached != 0) {
+		memcached_init();
 	} else {
-		[recovery configure_wal_writer];
-		box_updates_allowed = true;
+		assert(box_service == NULL);
+		box_service = iproto_service(cfg.primary_port, box_bound_to_primary);
+		for (int i = 0; i < cfg.wal_writer_inbox_size - 2; i++)
+			fiber_create("box_worker", iproto_interact, box_service, box_process);
 
-		say_info("I am primary");
-		status = "primary";
-		title("primary");
+		say_info("(silver)box initialized (%i workers)", cfg.wal_writer_inbox_size);
 	}
 }
 
@@ -1047,14 +1106,13 @@ snap_apply(struct box_txn *txn, struct tbuf *t)
 
 	prepare_replace(txn, row->tuple_size, &b);
 	txn->op = INSERT;
-	txn_commit(txn);
 }
 
 static void
 wal_apply(struct box_txn *txn, struct tbuf *t)
 {
 	txn->op = read_u16(t);
-	box_dispach_update(txn, t);
+	box_prepare_update(txn, t);
 }
 
 - (void)
@@ -1065,25 +1123,34 @@ recover_row:(struct tbuf *)row
 
 	struct box_txn txn;
 	memset(&txn, 0, sizeof(txn));
-	txn.skip_wal = true;
 
 	@try {
 		/* drop header */
 		tbuf_peek(row, sizeof(struct row_v12));
 
-		assert(txn.m == NULL);
-		if (tag == wal_tag)
+		switch (tag) {
+		case wal_tag:
 			wal_apply(&txn, row);
-		else if (tag == snap_tag)
-			snap_apply(&txn, row);
-		else if (tag == snap_final_tag)
-			say_debug("FINAL TAG: lsn:%"PRIi64, lsn);
-		else
-			raise("unknown row tag :%u", tag);
-
-		if (tag == snap_final_tag || tag == wal_tag)
+			txn_commit(&txn);
 			lsn = row_lsn;
-
+			break;
+		case snap_tag:
+			snap_apply(&txn, row);
+			txn_commit(&txn);
+			break;
+		case snap_initial_tag:
+			lsn = scn = row_lsn;
+			break;
+		case snap_final_tag:
+			lsn = row_lsn;
+			break;
+		case wal_final_tag:
+			build_secondary_indexes();
+			initialize_service();
+			break;
+		default:
+			raise("unknown row tag :%u", tag);
+		}
 	}
 	@catch (Error *e) {
 		panic("BoxRecovery failed: %s", e->reason);
@@ -1119,16 +1186,17 @@ init(void)
 			panic("remote replication is not supported in memcached mode.");
 	}
 
-	title("loading");
-
 	if (cfg.remote_hot_standby) {
 		if (cfg.wal_feeder_ipaddr == NULL || cfg.wal_feeder_port == 0)
 			panic("wal_feeder_ipaddr & wal_feeder_port must be provided in remote_hot_standby mode");
 	}
 
+	title("loading");
 	recovery = [[BoxRecovery alloc] init_snap_dir:cfg.snap_dir
 					      wal_dir:cfg.wal_dir
 					 rows_per_wal:cfg.rows_per_wal
+					feeder_ipaddr:cfg.remote_hot_standby ? cfg.wal_feeder_ipaddr : NULL
+					  feeder_port:cfg.remote_hot_standby ? cfg.wal_feeder_port : 0
 					  fsync_delay:cfg.wal_fsync_delay
 					   inbox_size:cfg.wal_writer_inbox_size
 						flags:init_storage ? RECOVER_READONLY : 0
@@ -1171,7 +1239,9 @@ init(void)
 
 	luaT_openbox(root_L);
 
-	if ([recovery recover:0] == 0) {
+	int local_lsn = [recovery recover_local:0];
+
+	if (local_lsn == 0) {
 		if (!cfg.remote_hot_standby) {
 			say_crit("don't you forget to initialize "
 				 "storage with --init-storage switch?");
@@ -1179,42 +1249,10 @@ init(void)
 		}
 	}
 
-	title("building_indexes");
-	@try {
-		for (u32 n = 0; n < object_space_count; n++) {
-			if (object_space_registry[n].enabled)
-				build_object_space_trees(&object_space_registry[n]);
-		}
-	}
-	@catch (Error *e) {
-		raise("unable to built tree indexes: %s", e->reason);
-	}
+	if (!cfg.local_hot_standby)
+		[recovery enable_local_writes];
 
-	for (u32 n = 0; n < object_space_count; n++) {
-		if (!object_space_registry[n].enabled)
-			continue;
-
-		struct tbuf *i = tbuf_alloc(fiber->pool);
-		foreach_index(index, &object_space_registry[n])
-			tbuf_printf(i, " %i:%s", index->n, [index class]->name);
-
-		say_info("Object space %i indexes:%.*s", n, tbuf_len(i), (char *)i->data);
-	}
-
-	[recovery recover_follow:cfg.wal_dir_rescan_delay];
-	status = "hot_standby/local";
-	title("hot_standby/local");
-
-	if (cfg.memcached != 0) {
-		memcached_init();
-	} else {
-		box_service = iproto_service(cfg.primary_port, box_bound_to_primary);
-		for (int i = 0; i < cfg.wal_writer_inbox_size - 2; i++)
-			fiber_create("box_worker", iproto_interact, box_service, box_process);
-
-		say_info("(silver)box initialized (%i workers)", cfg.wal_writer_inbox_size);
-	}
-
+	title("%s", [recovery status]);
 }
 
 static int
@@ -1257,8 +1295,10 @@ snapshot_rows(XLog *l)
 static void
 snapshot(bool initial)
 {
-	if (initial)
+	if (initial) {
 		[recovery initial_lsn:1];
+		[recovery enable_local_writes];
+	}
 	[recovery snapshot_save:snapshot_rows];
 }
 
@@ -1270,12 +1310,12 @@ info(struct tbuf *out)
 	tbuf_printf(out, "  uptime: %i" CRLF, tnt_uptime());
 	tbuf_printf(out, "  pid: %i" CRLF, getpid());
 	tbuf_printf(out, "  wal_writer_pid: %" PRIi64 CRLF,
-		    (i64) recovery->wal_writer->pid);
-	tbuf_printf(out, "  lsn: %" PRIi64 CRLF, recovery->lsn);
-	tbuf_printf(out, "  recovery_lag: %.3f" CRLF, recovery->lag);
+		    (i64) [recovery wal_writer]->pid);
+	tbuf_printf(out, "  lsn: %" PRIi64 CRLF, [recovery lsn]);
+	tbuf_printf(out, "  recovery_lag: %.3f" CRLF, [recovery lag]);
 	tbuf_printf(out, "  recovery_last_update: %.3f" CRLF,
-		    recovery->last_update_tstamp);
-	tbuf_printf(out, "  status: %s" CRLF, status);
+		    [recovery last_update_tstamp]);
+	tbuf_printf(out, "  status: %s%s" CRLF, [recovery status], custom_proc_title);
 }
 
 

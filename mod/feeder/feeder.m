@@ -50,12 +50,7 @@ static char *custom_proc_title;
 		  fd:(int)fd_
 {
 	[super init_snap_dir:snap_dirname
-		     wal_dir:wal_dirname
-		rows_per_wal:0
-		 fsync_delay:0
-		  inbox_size:0
-		       flags:RECOVER_READONLY
-	  snap_io_rate_limit:0];
+		     wal_dir:wal_dirname];
 	fd = fd_;
 	return self;
 }
@@ -79,7 +74,7 @@ recover_row:(struct tbuf *)row
 	i64 row_lsn = row_v12(row)->lsn;
 	u16 tag = row_v12(row)->tag;
 	send_tbuf(fd, row);
-	if (tag == snap_final_tag || tag == wal_tag)
+	if (tag == snap_initial_tag || tag == snap_final_tag || tag == wal_tag)
 		lsn = row_lsn;
 }
 @end
@@ -129,8 +124,7 @@ recover_feed_slave(int sock)
 	feeder = [[Feeder alloc] init_snap_dir:cfg.snap_dir
 				       wal_dir:cfg.wal_dir
 					    fd:sock];
-	[feeder recover:handshake(sock)];
-	[feeder recover_follow:0.1];
+	[feeder recover_local:handshake(sock)];
 
 	ev_io_init(&io, (void *)eof_monitor, sock, EV_READ);
 	ev_io_start(&io);

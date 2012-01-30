@@ -79,8 +79,8 @@ struct box_txn {
 
 	struct tnt_object *old_obj, *obj;
 	struct tnt_object *lock_obj;
+	u32 obj_affected;
 
-	bool skip_wal;
 	struct tbuf *wal_record;
 };
 
@@ -124,12 +124,14 @@ ENUM(messages, MESSAGES);
 	})
 
 void txn_init(struct iproto_header *req, struct box_txn *txn, struct netmsg *m);
+void txn_commit(struct box_txn *txn);
 void txn_abort(struct box_txn *txn);
-void box_dispach_update(struct box_txn *txn, struct tbuf *data);
-void txn_ref(struct box_txn *txn, struct tnt_object *obj);
-void object_ref(struct tnt_object *obj, int count);
 void txn_cleanup(struct box_txn *txn);
+void txn_submit_to_storage(struct box_txn *txn);
+void box_prepare_update(struct box_txn *txn, struct tbuf *data);
 
+void object_ref(struct tnt_object *obj, int count);
+void txn_ref(struct box_txn *txn, struct tnt_object *obj);
 
 void *next_field(void *f);
 void append_field(struct tbuf *b, void *f);

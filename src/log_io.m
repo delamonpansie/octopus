@@ -50,11 +50,6 @@
 
 #include <objc/objc-api.h>
 
-
-const u16 snap_tag = -1;
-const u16 wal_tag = -2;
-const u16 snap_final_tag = -3;
-
 const u64 default_cookie = 0;
 const u32 default_version = 12;
 const char *v11 = "0.11\n";
@@ -68,13 +63,14 @@ const u32 eof_marker = 0x10adab1e;
 const char *
 xlog_tag_to_a(u16 tag)
 {
-	static char buf[6];
-	if (tag == wal_tag)
-		return "wal";
-	if (tag == snap_tag)
-		return "snap";
-	snprintf(buf, sizeof(buf), "%"PRIu16, tag);
-	return buf;
+	switch (tag) {
+	case snap_initial_tag: return "snap_initial_tag";
+	case snap_tag: return "snap_tag";
+	case wal_tag: return "wal_tag";
+	case snap_final_tag: return "snap_final_tag";
+	case wal_final_tag: return "wal_final_tag";
+	}
+	return "<unknow tag>";
 }
 
 @implementation XLogDir
@@ -718,7 +714,17 @@ read_row
 	row_v12(n)->len = _row_v11(m)->len - sizeof(u16) - sizeof(u64); /* tag & cookie */
 
 	tbuf_peek(m, sizeof(struct _row_v11));
-	row_v12(n)->tag = read_u16(m);
+
+	u16 tag = read_u16(m);
+	if (tag == (u16)-1) {
+		row_v12(n)->tag = snap_tag;
+	} else if (tag == (u16)-2) {
+		row_v12(n)->tag = wal_tag;
+	} else {
+		say_error("unknown tag %i", (int)tag);
+		return NULL;
+	}
+
 	row_v12(n)->cookie = read_u64(m);
 
 	tbuf_append(n, m->data, row_v12(n)->len);

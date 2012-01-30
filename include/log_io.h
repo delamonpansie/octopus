@@ -39,7 +39,12 @@
 #define RECOVER_READONLY 1
 #define ROW_EOF (void *)1
 
-extern const u16 wal_tag, snap_tag, snap_final_tag;
+enum { snap_initial_tag = 1,
+       snap_tag,
+       wal_tag,
+       snap_final_tag,
+       wal_final_tag };
+
 extern const u64 default_cookie;
 extern const u32 default_version;
 extern const u32 marker, eof_marker;
@@ -119,28 +124,47 @@ typedef void (follow_cb)(ev_stat *w, int events);
 @end
 
 @interface Recovery: Object {
-@public
-	i64 lsn, scn;
-
-	XLog *current_wal;	/* the WAL we'r currently reading/writing from/to */
 	struct child *wal_writer;
+	i64 lsn, scn;
+	ev_tstamp lag, last_update_tstamp;
+	char status[64];
+	XLog *current_wal;	/* the WAL we'r currently reading/writing from/to */
+
+	struct sockaddr_in *feeder_addr;
 
         XLogDir *wal_dir, *snap_dir;
 
 	ev_timer wal_timer;
-	ev_tstamp lag, last_update_tstamp;
 
 	int snap_io_rate_limit;
 	u64 cookie;
+
+	bool local_writes;
+	struct fiber *remote_puller;
+	const char *feeder_ipaddr;
+	u16 feeder_port;
 }
+
+- (i64)lsn;
+- (i64)scn;
+- (const char *)status;
+- (ev_tstamp)lag;
+- (ev_tstamp)last_update_tstamp;
+- (struct child *)wal_writer;
+
 - (void) initial_lsn:(i64)new_lsn;
 - (void) recover_finalize;
-- (struct fiber *) recover_follow_remote:(char *)ipaddr port:(int)port;
-- (i64) recover:(i64)lsn;
+- (i64) recover_local:(i64)lsn;
 - (void) recover_follow:(ev_tstamp)delay;
+- (void) enable_local_writes;
+- (id) init_snap_dir:(const char *)snap_dir
+             wal_dir:(const char *)wal_dir;
+
 - (id) init_snap_dir:(const char *)snap_dir
              wal_dir:(const char *)wal_dir
         rows_per_wal:(int)rows_per_wal
+       feeder_ipaddr:(const char *)feeder_ipaddr
+	 feeder_port:(u16)feeder_port
          fsync_delay:(double)wal_fsync_delay
           inbox_size:(int)inbox_size
                flags:(int)flags

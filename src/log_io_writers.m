@@ -56,6 +56,9 @@ configure_wal_writer
 - (void)
 submit_change:(struct tbuf *)change
 {
+	if (feeder_addr != NULL)
+		raise("replica is readonly");
+
 	if ([self wal_request_write:change
 				tag:wal_tag
 			     cookie:0] == 0)
@@ -65,10 +68,16 @@ submit_change:(struct tbuf *)change
 - (i64)
 wal_request_write:(struct tbuf *)row_data tag:(u16)tag cookie:(u64)row_cookie
 {
-	struct tbuf *m = tbuf_alloc(wal_writer->out->pool);
+	struct tbuf *m;
 	struct msg *a;
 	struct row_v12 row;
 
+	if (!local_writes) {
+		say_warn("local writes disabled");
+		return 0;
+	}
+
+	m = tbuf_alloc(wal_writer->out->pool);
 	memset(&row, 0, sizeof(row));
 	row.scn = scn;
 	row.tag = tag;
@@ -328,6 +337,11 @@ snapshot_save:(void (*)(XLog *))callback
 	const char *final_filename;
 	int saved_errno;
 
+	if (!local_writes) {
+		say_warn("local writes disabled");
+		return;
+	}
+
         snap = [snap_dir open_for_write:lsn saved_errno:&saved_errno];
 	if (snap == nil)
 		panic_status(saved_errno, "can't open snap for writing");
@@ -341,11 +355,12 @@ snapshot_save:(void (*)(XLog *))callback
 	final_filename = [snap final_filename];
 
 	say_info("saving snapshot `%s'", final_filename);
-	callback(snap);
 
-	struct tbuf *dummy = tbuf_alloc(fiber->pool);
-	tbuf_printf(dummy, "%s", "dummy");
-	write_row(snap, scn, lsn, snap_final_tag, default_cookie, dummy);
+	struct tbuf *init = tbuf_alloc(fiber->pool);
+	tbuf_printf(init, "%s", "make world");
+	write_row(snap, scn, lsn, snap_initial_tag, default_cookie, init);
+
+	callback(snap);
 
 	if (fsync(fileno(snap->fd)) < 0)
 		panic("fsync");

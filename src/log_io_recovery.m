@@ -55,6 +55,15 @@
 #include <arpa/inet.h>
 
 @implementation Recovery
+
+- (i64)lsn { return lsn; }
+- (i64)scn { return scn; }
+- (const char *)status { return status; };
+- (ev_tstamp)lag { return lag; };
+- (ev_tstamp)last_update_tstamp { return last_update_tstamp; };
+- (struct child *)wal_writer { return wal_writer; };
+
+
 - (void)
 initial_lsn:(i64)new_lsn
 {
@@ -107,6 +116,24 @@ validate_row:(struct tbuf *)row
 		      lsn, row_v12(row)->lsn);
 }
 
+- (struct tbuf *)
+dummy_row_with_tag:(u16)tag
+{
+	struct tbuf *b = tbuf_alloc(fiber->pool);
+	tbuf_ensure(b, sizeof(struct row_v12));
+	b->len = sizeof(struct row_v12);
+
+	row_v12(b)->scn = scn;
+	row_v12(b)->lsn = lsn;
+	row_v12(b)->tm = ev_now();
+	row_v12(b)->tag = tag;
+	row_v12(b)->cookie = default_cookie;
+	row_v12(b)->len = 0;
+
+	return b;
+}
+
+
 - (i64)
 recover_snap
 {
@@ -136,6 +163,8 @@ recover_snap
 
 		if (!snap->eof)
 			raise("unable to fully read snapshot");
+
+		[self recover_row:[self dummy_row_with_tag:snap_final_tag]];
 
 		say_info("snapshot recovered, lsn:%" PRIi64, lsn);
 	}
@@ -232,17 +261,18 @@ recover_remaining_wals
 		raise("not all WALs have been successfully read greatest_lsn:%"PRIi64
 		      "lsn:%"PRIi64, wal_greatest_lsn, lsn);
 
+
 }
 
 - (i64)
-recover:(i64)start_lsn
+recover_local:(i64)start_lsn
 {
 	/*
 	 * if caller set confirmed_lsn to non zero value, snapshot recovery
 	 * will be skipped, but WAL reading still happens
 	 */
 
-	say_info("recovery start");
+	say_info("local recovery start");
 	if (start_lsn == 0) {
 		[self recover_snap];
 		if (lsn == 0)
@@ -270,7 +300,13 @@ recover:(i64)start_lsn
 	}
 
 	[self recover_remaining_wals];
+	[self recover_follow:cfg.wal_dir_rescan_delay]; /* FIXME: make this conf */
+	/* feeder will send his own 'wal_final_tag' */
+	if (feeder_addr == NULL)
+		[self recover_row:[self dummy_row_with_tag:wal_final_tag]];
 	say_info("wals recovered, lsn: %" PRIi64, lsn);
+	strcpy(status, "hot_standby/local");
+
 	return lsn;
 }
 
@@ -341,9 +377,6 @@ recover_finalize
 		}
 	}
 
-	if (current_wal != nil && current_wal->rows < 1)
-		raise("unable to read any valid row from %s", current_wal->filename);
-
 	if (current_wal != nil)
                 say_warn("wal `%s' wasn't correctly closed", current_wal->filename);
 
@@ -358,21 +391,6 @@ contains_full_row(const struct tbuf *b)
 		tbuf_len(b) >= sizeof(struct row_v12) + row_v12(b)->len;
 }
 
-static struct tbuf *
-remote_row_reader_v11(struct conn *c)
-{
-	struct tbuf *m;
-	for (;;) {
-		if (contains_full_row(c->rbuf)) {
-			m = tbuf_split(c->rbuf, sizeof(struct row_v12) + row_v12(c->rbuf)->len);
-			m->pool = c->rbuf->pool; /* FIXME: this is cludge */
-			return m;
-		}
-
-		if (conn_readahead(c, sizeof(struct row_v12)) <= 0)
-			raise("unexpected eof reading row header");
-	}
-}
 
 - (void)
 remote_handshake:(struct sockaddr_in *)addr conn:(struct conn *)c
@@ -430,6 +448,7 @@ handle_remote_row:(struct tbuf *)row
 	struct tbuf *row_data;
 
 	u16 tag = row_v12(row)->tag;
+	u64 row_cookie = row_v12(row)->cookie;
 	/* save row data since wal_row_handler may clobber it */
 	row_data = tbuf_alloc(fiber->pool);
 	tbuf_append(row_data, row_v12(row)->data, row_v12(row)->len);
@@ -442,7 +461,7 @@ handle_remote_row:(struct tbuf *)row
 			raise("replication failure: failed save snapshot");
 		[self configure_wal_writer];
 	} else if (tag == wal_tag) {
-		if ([self wal_request_write:row_data tag:tag cookie:cookie] == 0)
+		if ([self wal_request_write:row_data tag:tag cookie:row_cookie] == 0)
 			raise("replication failure: can't write row to WAL");
 	}
 }
@@ -456,14 +475,21 @@ pull_from_remote(va_list ap)
 	struct conn c;
 
 	conn_init(&c, fiber->pool, -1, REF_STATIC);
+	palloc_register_gc_root(fiber->pool, &c, conn_gc);
 
 	for (;;) {
 		@try {
 			[r remote_handshake:addr conn:&c];
 
-			row = remote_row_reader_v11(&c);
-			if (row == NULL)
-				continue;
+			while (!contains_full_row(c.rbuf)) {
+				say_debug("reading remote row");
+				if (conn_readahead(&c, sizeof(struct row_v12)) <= 0)
+					raise("unexpected eof");
+			}
+
+			row = tbuf_split(c.rbuf, sizeof(struct row_v12) + row_v12(c.rbuf)->len);
+			row->pool = c.rbuf->pool; /* FIXME: this is cludge */
+
 			r->lag = ev_now() - row_v12(row)->tm;
 			r->last_update_tstamp = ev_now();
 
@@ -479,40 +505,102 @@ pull_from_remote(va_list ap)
 }
 
 - (struct fiber *)
-recover_follow_remote:(char *)ip_addr port:(int)port
+recover_follow_remote
 {
 	char *name;
-	struct fiber *f;
-	struct sockaddr_in *addr;
-	Recovery *h;
-
-	say_crit("initializing remote hot standby, WAL feeder %s:%i", ip_addr, port);
-
-
-	addr = calloc(1, sizeof(*addr));
-	addr->sin_family = AF_INET;
-	if (inet_aton(ip_addr, &addr->sin_addr) < 0) {
-		say_syserror("inet_aton: %s", ip_addr);
-		return NULL;
-	}
-	addr->sin_port = htons(port);
-
-	h = malloc(sizeof(Recovery *));
-	h = self;
-	memcpy(&self->cookie, &addr, MIN(sizeof(self->cookie), sizeof(addr)));
-
 	name = malloc(64);
-	snprintf(name, 64, "remote_hot_standby/%s:%i", ip_addr, port);
-	f = fiber_create(name, pull_from_remote, h, addr);
-	if (f == NULL) {
+	snprintf(name, 64, "remote_hot_standby/%s:%i", feeder_ipaddr, feeder_port);
+
+	remote_puller = fiber_create(name, pull_from_remote, self, feeder_addr);
+	if (remote_puller == NULL) {
 		free(name);
-		free(addr);
-		free(h);
 		return NULL;
 	}
 
-	fiber_wake(f, NULL);
-	return f;
+	return remote_puller;
+}
+
+- (void)
+enable_local_writes
+{
+	[self recover_finalize];
+	local_writes = true;
+
+	if (lsn > 0)
+		[self configure_wal_writer];
+
+	if (feeder_addr != NULL) {
+		say_info("starting remote hot standby");
+		snprintf(status, sizeof(status), "hot_standby/%s:%i",
+			 feeder_ipaddr, feeder_port);
+
+		[self recover_follow_remote];
+	} else {
+		say_info("I am primary");
+		strcpy(status, "primary");
+	}
+}
+
+
+
+- (id) init_snap_dir:(const char *)snap_dirname
+             wal_dir:(const char *)wal_dirname
+{
+        snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
+        wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
+
+        snap_dir->recovery_state = self;
+        wal_dir->recovery_state = self;
+
+	wal_timer.data = self;
+
+	return self;
+}
+
+- (id) init_snap_dir:(const char *)snap_dirname
+             wal_dir:(const char *)wal_dirname
+        rows_per_wal:(int)wal_rows_per_file
+       feeder_ipaddr:(const char *)feeder_ipaddr_
+	 feeder_port:(u16)feeder_port_
+         fsync_delay:(double)wal_fsync_delay
+          inbox_size:(int)inbox_size
+               flags:(int)flags
+  snap_io_rate_limit:(int)snap_io_rate_limit_
+{
+        snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
+        wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
+
+        snap_dir->recovery_state = self;
+        wal_dir->recovery_state = self;
+
+	wal_timer.data = self;
+
+	if ((flags & RECOVER_READONLY) == 0) {
+		if (wal_rows_per_file <= 4)
+			panic("inacceptable value of 'rows_per_file'");
+
+		wal_dir->rows_per_file = wal_rows_per_file;
+		wal_dir->fsync_delay = wal_fsync_delay;
+		snap_io_rate_limit = snap_io_rate_limit_ * 1024 * 1024;
+
+		wal_writer = spawn_child("wal_writer", inbox_size, wal_disk_writer, self);
+	}
+
+	if (feeder_ipaddr_ != NULL) {
+		feeder_ipaddr = feeder_ipaddr_;
+		feeder_port = feeder_port_;
+
+		say_crit("configuring remote hot standby, WAL feeder %s:%i", feeder_ipaddr, feeder_port);
+
+		feeder_addr = calloc(1, sizeof(*feeder_addr));
+		feeder_addr->sin_family = AF_INET;
+		if (inet_aton(feeder_ipaddr, &feeder_addr->sin_addr) < 0)
+			panic("inet_aton: %s", feeder_ipaddr);
+
+		feeder_addr->sin_port = htons(feeder_port);
+	}
+
+	return self;
 }
 
 @end
