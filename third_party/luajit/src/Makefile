@@ -511,6 +511,7 @@ depend:
 # Rules for generated files.
 ##############################################################################
 
+ifeq (1,$(LUAJIT_DYNASM))
 buildvm_x86.h: buildvm_x86.dasc
 	$(E) "DYNASM    $@"
 	$(Q)$(DASM) $(DASM_FLAGS) $(DASM_FLAGS_X86) -o $@ buildvm_x86.dasc
@@ -534,6 +535,7 @@ buildvm_ppc.h: buildvm_ppc.dasc
 buildvm_ppcspe.h: buildvm_ppcspe.dasc
 	$(E) "DYNASM    $@"
 	$(Q)$(DASM) $(DASM_FLAGS) $(DASM_FLAGS_PPCSPE) -o $@ buildvm_ppcspe.dasc
+endif
 
 buildvm.o: $(ALL_DYNGEN) $(DASM_DIR)/dasm_*.h
 
