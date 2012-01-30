@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011 Mail.RU
- * Copyright (C) 2010, 2011 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012 Mail.RU
+ * Copyright (C) 2010, 2011, 2012 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -112,6 +112,8 @@ void __gcov_flush();
 #define MAP_ANONYMOUS MAP_ANON
 #endif
 
+
+extern pid_t master_pid;
 pid_t tnt_fork();
 
 extern volatile int gdb_wait_lock;

@@ -46,7 +46,6 @@
 # include <gelf.h>
 #endif
 
-
 #ifndef HAVE_STACK_END_ADDRESS
 void *STACK_END_ADDRESS;
 #endif
@@ -99,6 +98,8 @@ coredump(int dump_interval)
 		abort();
 	}
 }
+
+pid_t master_pid;
 
 pid_t
 tnt_fork()
@@ -243,7 +244,8 @@ _panic(int status, const char *filename, unsigned line,
 		_say(S_FATAL, NULL, 0, NULL, "backtrace:\n%s", backtrace);
 
 	signal(SIGTERM, SIG_IGN);
-	kill(0, SIGTERM);
+	if (getpid() == master_pid)
+		kill(0, SIGTERM);
 	exit(status);
 }
 

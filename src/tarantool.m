@@ -60,7 +60,6 @@
 # include <sys/prctl.h>
 #endif
 
-static pid_t master_pid;
 #define DEFAULT_CFG_FILENAME "tarantool.cfg"
 const char *cfg_filename = DEFAULT_CFG_FILENAME;
 char *cfg_filename_fullpath = NULL;
