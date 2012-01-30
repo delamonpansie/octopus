@@ -94,7 +94,7 @@ next:
 		struct netmsg *m = netmsg_tail(&c->out_messages, c->pool);
 		iproto(request)->len = 0;
 		net_add_iov_dup(&m, request->data, sizeof(struct iproto_header));
-	}  else {
+	} else {
 		c->ref++;
 		callback(c, request);
 		c->ref--;
