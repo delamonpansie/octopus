@@ -39,7 +39,7 @@ struct palloc_pool;
 extern struct palloc_pool *eter_pool;
 int palloc_init(void);
 void *palloc(struct palloc_pool *pool, size_t size)
-	__attribute__((regparm(2),malloc,optimize("-fomit-frame-pointer")));
+	__attribute__((regparm(2),malloc));
 void *p0alloc(struct palloc_pool *pool, size_t size);
 void *palloca(struct palloc_pool *pool, size_t size, size_t align);
 void prelease(struct palloc_pool *pool);

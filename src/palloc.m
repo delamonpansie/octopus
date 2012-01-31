@@ -247,7 +247,7 @@ palloc_slow_path(struct palloc_pool *pool, size_t size)
 	return ptr;
 }
 
-void * __attribute__((regparm(2),malloc,optimize("-fomit-frame-pointer")))
+void * __attribute__((regparm(2),malloc))
 palloc(struct palloc_pool *pool, size_t size)
 {
 	const size_t rz_size = size + PALLOC_REDZONE * 2;
