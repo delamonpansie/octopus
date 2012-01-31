@@ -52,6 +52,7 @@
 
 const u64 default_cookie = 0;
 const u32 default_version = 12;
+const u32 version_11 = 11;
 const char *v11 = "0.11\n";
 const char *v12 = "0.12\n";
 const char *snap_mark = "SNAP\n";
@@ -657,6 +658,34 @@ follow:(follow_cb *)cb
 @end
 
 
+struct tbuf *
+convert_row_v11_to_v12(struct tbuf *m)
+{
+	struct tbuf *n = tbuf_alloc(m->pool);
+	tbuf_ensure(n, sizeof(struct row_v12));
+	n->len = sizeof(struct row_v12);
+	row_v12(n)->lsn = _row_v11(m)->lsn;
+	row_v12(n)->tm = _row_v11(m)->tm;
+	row_v12(n)->len = _row_v11(m)->len - sizeof(u16) - sizeof(u64); /* tag & cookie */
+
+	tbuf_peek(m, sizeof(struct _row_v11));
+
+	u16 tag = read_u16(m);
+	if (tag == (u16)-1) {
+		row_v12(n)->tag = snap_tag;
+	} else if (tag == (u16)-2) {
+		row_v12(n)->tag = wal_tag;
+	} else {
+		say_error("unknown tag %i", (int)tag);
+		return NULL;
+	}
+
+	row_v12(n)->cookie = read_u64(m);
+
+	tbuf_append(n, m->data, row_v12(n)->len);
+	return n;
+}
+
 @implementation XLog11
 
 - (struct tbuf *)
@@ -706,29 +735,7 @@ read_row
 
 	say_debug("read row v11 success lsn:%" PRIi64, _row_v11(m)->lsn);
 
-	struct tbuf *n = tbuf_alloc(pool);
-	tbuf_ensure(n, sizeof(struct row_v12));
-	n->len = sizeof(struct row_v12);
-	row_v12(n)->lsn = _row_v11(m)->lsn;
-	row_v12(n)->tm = _row_v11(m)->tm;
-	row_v12(n)->len = _row_v11(m)->len - sizeof(u16) - sizeof(u64); /* tag & cookie */
-
-	tbuf_peek(m, sizeof(struct _row_v11));
-
-	u16 tag = read_u16(m);
-	if (tag == (u16)-1) {
-		row_v12(n)->tag = snap_tag;
-	} else if (tag == (u16)-2) {
-		row_v12(n)->tag = wal_tag;
-	} else {
-		say_error("unknown tag %i", (int)tag);
-		return NULL;
-	}
-
-	row_v12(n)->cookie = read_u64(m);
-
-	tbuf_append(n, m->data, row_v12(n)->len);
-	return n;
+	return convert_row_v11_to_v12(m);
 }
 
 @end

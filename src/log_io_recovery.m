@@ -384,15 +384,7 @@ recover_finalize
         current_wal = nil;
 }
 
-static bool
-contains_full_row(const struct tbuf *b)
-{
-	return tbuf_len(b) >= sizeof(struct row_v12) &&
-		tbuf_len(b) >= sizeof(struct row_v12) + row_v12(b)->len;
-}
-
-
-- (void)
+- (u32)
 remote_handshake:(struct sockaddr_in *)addr conn:(struct conn *)c
 {
 	bool warning_said = false;
@@ -405,7 +397,7 @@ remote_handshake:(struct sockaddr_in *)addr conn:(struct conn *)c
 	if (lsn > 0)
 		initial_lsn = lsn + 1;
 
-	while (c->fd < 0) {
+	do {
 		if ((c->fd = tcp_connect(addr, NULL, 0)) < 0) {
 			err = "can't connect to feeder";
 			goto err;
@@ -421,15 +413,14 @@ remote_handshake:(struct sockaddr_in *)addr conn:(struct conn *)c
 			goto err;
 		}
 
-		if (version != default_version) {
-			err = "remote version mismatch";
+		if (version != default_version && version != version_11) {
+			err = "unknown remote version";
 			goto err;
 		}
 
 		say_crit("succefully connected to feeder");
 		say_crit("starting remote recovery from lsn:%" PRIi64, initial_lsn);
-		err = NULL;
-		return;
+		break;
 
 	err:
 		if (err != NULL && !warning_said) {
@@ -439,7 +430,9 @@ remote_handshake:(struct sockaddr_in *)addr conn:(struct conn *)c
 		}
 		conn_close(c);
 		fiber_sleep(reconnect_delay);
-	}
+	} while (c->fd < 0);
+
+	return version;
 }
 
 - (void)
@@ -466,6 +459,47 @@ handle_remote_row:(struct tbuf *)row
 	}
 }
 
+
+static bool
+contains_full_row_v12(const struct tbuf *b)
+{
+	return tbuf_len(b) >= sizeof(struct row_v12) &&
+		tbuf_len(b) >= sizeof(struct row_v12) + row_v12(b)->len;
+}
+
+static bool
+contains_full_row_v11(const struct tbuf *b)
+{
+	return tbuf_len(b) >= sizeof(struct _row_v11) &&
+		tbuf_len(b) >= sizeof(struct _row_v11) + _row_v11(b)->len;
+}
+
+static struct tbuf *
+pull_row(struct conn *c, u32 version)
+{
+	struct tbuf *row;
+
+	switch (version) {
+	case 12:
+		while (!contains_full_row_v12(c->rbuf))
+			if (conn_readahead(c, sizeof(struct row_v12)) <= 0)
+				raise("unexpected eof");
+
+		row = tbuf_split(c->rbuf, sizeof(struct row_v12) + row_v12(c->rbuf)->len);
+		row->pool = c->rbuf->pool; /* FIXME: this is cludge */
+		return row;
+	case 11:
+		while (!contains_full_row_v11(c->rbuf))
+			if (conn_readahead(c, sizeof(struct _row_v11)) <= 0)
+				raise("unexpected eof");
+		row = tbuf_split(c->rbuf, sizeof(struct _row_v11) + _row_v11(c->rbuf)->len);
+		row->pool = c->rbuf->pool;
+		return convert_row_v11_to_v12(row);
+	default:
+		raise("version mismatch");
+	}
+}
+
 static void
 pull_from_remote(va_list ap)
 {
@@ -473,22 +507,17 @@ pull_from_remote(va_list ap)
 	struct sockaddr_in *addr = va_arg(ap, struct sockaddr_in *);
 	struct tbuf *row;
 	struct conn c;
+	u32 version = 0;
 
 	conn_init(&c, fiber->pool, -1, REF_STATIC);
 	palloc_register_gc_root(fiber->pool, &c, conn_gc);
 
 	for (;;) {
 		@try {
-			[r remote_handshake:addr conn:&c];
+			if (c.fd < 0)
+				version = [r remote_handshake:addr conn:&c];
 
-			while (!contains_full_row(c.rbuf)) {
-				say_debug("reading remote row");
-				if (conn_readahead(&c, sizeof(struct row_v12)) <= 0)
-					raise("unexpected eof");
-			}
-
-			row = tbuf_split(c.rbuf, sizeof(struct row_v12) + row_v12(c.rbuf)->len);
-			row->pool = c.rbuf->pool; /* FIXME: this is cludge */
+			row = pull_row(&c, version);
 
 			r->lag = ev_now() - row_v12(row)->tm;
 			r->last_update_tstamp = ev_now();

@@ -46,7 +46,7 @@ enum { snap_initial_tag = 1,
        wal_final_tag };
 
 extern const u64 default_cookie;
-extern const u32 default_version;
+extern const u32 default_version, version_11;
 extern const u32 marker, eof_marker;
 extern const char *inprogress_suffix;
 
@@ -117,6 +117,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 - (int) close;
 @end
 
+struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 @interface XLog11: XLog
 @end
 
