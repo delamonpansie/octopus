@@ -399,6 +399,7 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 	if (txn->old_obj == NULL)
 		return;
 
+	object_ref(txn->old_obj, +1);
 	lock_object(txn, txn->old_obj);
 	txn->obj_affected = 1;
 
