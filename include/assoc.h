@@ -73,8 +73,8 @@ static inline int lstrcmp(void *a, void *b)
 	if (((ac & 0x80) == 0 || (bc & 0x80) == 0) && ac != bc) {
 		r = ac - bc;
 	} else {
-		al = load_varint32(&a);
-		bl = load_varint32(&b);
+		al = LOAD_VARINT32(a);
+		bl = LOAD_VARINT32(b);
 
 		if (al != bl)
 			r = al - bl;
@@ -88,7 +88,7 @@ static inline int lstrcmp(void *a, void *b)
 #define mh_name _lstr
 #define mh_key_t lstr
 #define mh_val_t ptr_t
-#define mh_hash(key) ({ void *_k = (key); unsigned l = load_varint32(&_k); MurmurHash2(_k, l, 13); })
+#define mh_hash(key) ({ void *_k = (key); unsigned l = LOAD_VARINT32(_k); MurmurHash2(_k, l, 13); })
 #define mh_eq(a, b) ({ lstrcmp(*(mh_key_t *)((a) + sizeof(mh_val_t)), (b)) == 0; })
 #include <mhash.h>
 

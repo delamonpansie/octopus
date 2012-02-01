@@ -45,7 +45,7 @@ box_tuple_u32_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
 	if (tuple->cardinality <= n)
 		@throw [[IndexError palloc] init:"cardinality too small"];
 	void *f = tuple_field(tuple, n);
-	u32 size = load_varint32(&f);
+	u32 size = LOAD_VARINT32(f);
 	if (size != sizeof(u32))
 		@throw [[IndexError palloc] init:"expected u32"];
 
@@ -60,7 +60,7 @@ box_tuple_u64_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
 	if (tuple->cardinality <= n)
 		@throw [[IndexError palloc] init:"cardinality too small"];
 	void *f = tuple_field(tuple, n);
-	u32 size = load_varint32(&f);
+	u32 size = LOAD_VARINT32(f);
 	if (size != sizeof(u64))
 		@throw [[IndexError palloc] init:"expected u64"];
 
@@ -91,7 +91,7 @@ box_tuple_gen_dtor(struct tnt_object *obj, struct index_node *node_, void *arg)
 
 	for (int i = 0, j = 0, n = 0; i < desc->cardinality; j++) {
 		assert(tuple_data < (void *)tuple->data + tuple->bsize);
-		u32 len = load_varint32(&tuple_data);
+		u32 len = LOAD_VARINT32(tuple_data);
 		while (desc->index_field[i] == j) {
 			if (desc->type[i] == NUM && len != sizeof(u32))
 				@throw [[IndexError palloc] init:"key size mismatch, expected u32"];

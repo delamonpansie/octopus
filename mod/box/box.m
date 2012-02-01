@@ -86,7 +86,7 @@ box_snap_row(const struct tbuf *t)
 void *
 next_field(void *f)
 {
-	u32 size = load_varint32(&f);
+	u32 size = LOAD_VARINT32(f);
 	return (u8 *)f + size;
 }
 
@@ -120,7 +120,7 @@ field_print(struct tbuf *buf, void *f)
 {
 	uint32_t size;
 
-	size = load_varint32(&f);
+	size = LOAD_VARINT32(f);
 
 	if (size == 2)
 		tbuf_printf(buf, "%i:", *(u16 *)f);
@@ -326,7 +326,7 @@ do_field_splice(struct tbuf *field, void *args_data, u32 args_data_size)
 	if (tbuf_len(&args)!= 0)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "do_field_splice: bad args");
 
-	offset_size = load_varint32(&offset_field);
+	offset_size = LOAD_VARINT32(offset_field);
 	if (offset_size == 0)
 		noffset = 0;
 	else if (offset_size == sizeof(offset)) {
@@ -343,7 +343,7 @@ do_field_splice(struct tbuf *field, void *args_data, u32 args_data_size)
 	if (noffset > tbuf_len(field))
 		noffset = tbuf_len(field);
 
-	length_size = load_varint32(&length_field);
+	length_size = LOAD_VARINT32(length_field);
 	if (length_size == 0)
 		nlength = tbuf_len(field) - noffset;
 	else if (length_size == sizeof(length)) {
@@ -364,7 +364,7 @@ do_field_splice(struct tbuf *field, void *args_data, u32 args_data_size)
 	if (nlength > (tbuf_len(field) - noffset))
 		nlength = tbuf_len(field) - noffset;
 
-	list_size = load_varint32(&list_field);
+	list_size = LOAD_VARINT32(list_field);
 	if (list_size > 0 && length_size == 0)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS,
 			  "do_field_splice: length field is empty but list is not");
@@ -416,7 +416,7 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 	for (i = 0, field = (uint8_t *)old_tuple->data; i < old_tuple->cardinality; i++) {
 		fields[i] = tbuf_alloc(fiber->pool);
 
-		u32 field_size = load_varint32(&field);
+		u32 field_size = LOAD_VARINT32(field);
 		tbuf_append(fields[i], field, field_size);
 		field += field_size;
 	}
@@ -438,7 +438,7 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 		if (op > 5)
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "op is not 0, 1, 2, 3, 4 or 5");
 		arg = read_field(data);
-		arg_size = load_varint32(&arg);
+		arg_size = LOAD_VARINT32(arg);
 
 		if (op == 0) {
 			tbuf_ensure(sptr_field, arg_size);

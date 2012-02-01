@@ -109,7 +109,7 @@ tuple_index_(struct lua_State *L)
 	}
 
 	void *field = tuple_field(tuple, i);
-	u32 len = load_varint32(&field);
+	u32 len = LOAD_VARINT32(field);
 	lua_pushlstring(L, field, len);
 	return 1;
 }

@@ -47,25 +47,28 @@ u32 pick_u32(void *data, void **rest);
 
 size_t varint32_sizeof(u32);
 
-/* should only called on valid data ! */
-inline static u32 load_varint32(void **data)
-{
-	unsigned char b;
-	u32 r = 0;
-
-#define ROUND					\
-	b = **(unsigned char **)data;		\
-	(*data)++;				\
-	r = (r << 7) | (b & 0x7f);		\
-	if ((b & 0x80) == 0)			\
-		return r;
-
-	ROUND;
-	ROUND;
-	ROUND;
-	ROUND;
-
-#undef ROUND
-	assert(0);
-	return 0;
-}
+#define LOAD_VARINT32(data) ({					\
+	unsigned char _load_b;					\
+	u32 _load_r = 0;						\
+	_load_b = *(unsigned char *)data;				\
+	(data)++;							\
+	_load_r = (_load_r << 7) | (_load_b & 0x7f);			\
+	if ((_load_b & 0x80) != 0) {					\
+		_load_b = *(unsigned char *)(data);			\
+		(data)++;						\
+		_load_r = (_load_r << 7) | (_load_b & 0x7f);		\
+		if ((_load_b & 0x80) != 0) {				\
+			_load_b = *(unsigned char *)(data);		\
+			(data)++;					\
+			_load_r = (_load_r << 7) | (_load_b & 0x7f);	\
+			if ((_load_b & 0x80) != 0) {			\
+				_load_b = *(unsigned char *)(data);	\
+				(data)++;				\
+				_load_r = (_load_r << 7) | (_load_b & 0x7f); \
+				if ((_load_b & 0x80) != 0)		\
+					assert(0);			\
+			}						\
+		}							\
+	}								\
+	_load_r;							\
+})

@@ -111,7 +111,7 @@ store(void *key, u32 exptime, u32 flags, u32 bytes, u8 *data)
 	write_varint32(req, bytes);
 	tbuf_append(req, data, bytes);
 
-	int key_len = load_varint32(&key);
+	int key_len = LOAD_VARINT32(key);
 	say_debug("memcached/store key:(%i)'%.*s' exptime:%"PRIu32" flags:%"PRIu32" cas:%"PRIu64,
 		  key_len, key_len, (u8 *)key, exptime, flags, cas);
 
@@ -336,7 +336,7 @@ memcached_dispatch(struct conn *c)
 			} else {
 				struct box_tuple *tuple = box_tuple(obj);
 				value = tuple_field(tuple, 3);
-				value_len = load_varint32(&value);
+				value_len = LOAD_VARINT32(value);
 				b = tbuf_alloc(fiber->pool);
 				if (append) {
 					tbuf_append(b, value, value_len);
@@ -367,7 +367,7 @@ memcached_dispatch(struct conn *c)
 				struct box_tuple *tuple = box_tuple(obj);
 				meta = obj_meta(obj);
 				field = tuple_field(tuple, 3);
-				value_len = load_varint32(&field);
+				value_len = LOAD_VARINT32(field);
 
 				if (is_numeric(field, value_len)) {
 					value = natoq(field, field + value_len);
@@ -441,7 +441,7 @@ memcached_dispatch(struct conn *c)
 
 				key = read_field(keys);
 				obj = find(key);
-				key_len = load_varint32(&key);
+				key_len = LOAD_VARINT32(key);
 
 				if (obj == NULL) {
 					stat_collect(stat_base, MEMC_GET_MISS, 1);
@@ -454,21 +454,21 @@ memcached_dispatch(struct conn *c)
 				field = tuple->data;
 
 				/* skip key */
-				_l = load_varint32(&field);
+				_l = LOAD_VARINT32(field);
 				field += _l;
 
 				/* metainfo */
-				_l = load_varint32(&field);
+				_l = LOAD_VARINT32(field);
 				m = field;
 				field += _l;
 
 				/* suffix */
-				suffix_len = load_varint32(&field);
+				suffix_len = LOAD_VARINT32(field);
 				suffix = field;
 				field += suffix_len;
 
 				/* value */
-				value_len = load_varint32(&field);
+				value_len = LOAD_VARINT32(field);
 				value = field;
 
 				if (meta->exptime > 0 && meta->exptime < ev_now()) {
