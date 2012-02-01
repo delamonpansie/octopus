@@ -414,9 +414,11 @@ void
 mh_clear(struct mhash_t *h)
 {
 	free(h->p);
+	free(h->b);
 	h->n_buckets = 3;
-	h->p = calloc(h->n_buckets, h->node_size);
 	h->upper_bound = h->n_buckets * 0.7;
+	h->p = malloc((size_t)h->n_buckets * h->node_size);
+	h->b = calloc(h->n_buckets / 16 + 1, sizeof(uint32_t));
 }
 void
 _mh(destroy)(struct mhash_t *h)
