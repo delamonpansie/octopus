@@ -33,7 +33,7 @@
 struct tnt_object;
 struct index_node {
 	struct tnt_object *obj;
-	char key[];
+	char key[0];
 };
 
 struct field {
@@ -146,7 +146,7 @@ SPTREE_DEF(str_t, realloc);
 
 	struct sptree_str_t_iterator *iterator;
 	struct index_node search_pattern;
-	char __padding[64]; /* FIXME: overflow */
+	char __tree_padding[64]; /* FIXME: overflow */
 }
 - (id)init_with_unique:(bool)_unque;
 - (void) set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated;
