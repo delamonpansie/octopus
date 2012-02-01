@@ -91,7 +91,7 @@ typedef void (index_dtor)(struct tnt_object *obj, struct index_node *node, void 
 	void *dtor_arg;
 
 	struct index_node node;
-	char __padding[64]; /* FIXME: check for overflow */
+	char __padding[256]; /* FIXME: check for overflow */
 }
 
 - (void) valid_object:(struct tnt_object*)obj;
@@ -146,7 +146,7 @@ SPTREE_DEF(str_t, realloc);
 
 	struct sptree_str_t_iterator *iterator;
 	struct index_node search_pattern;
-	char __tree_padding[64]; /* FIXME: overflow */
+	char __tree_padding[256]; /* FIXME: overflow */
 }
 - (id)init_with_unique:(bool)_unque;
 - (void) set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated;
