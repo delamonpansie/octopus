@@ -288,6 +288,7 @@ open_for_read_filename:(const char *)filename
 	return l;
 
 error:
+	say_warn("open_for_read_filename: %s", error);
         if (fd != NULL) {
 		[l free];
                 l = [[XLog alloc] init_filename:filename
