@@ -117,14 +117,14 @@ validate_row:(struct tbuf *)row
 }
 
 - (struct tbuf *)
-dummy_row_with_tag:(u16)tag
+dummy_row_lsn:(i64)lsn_ tag:(u16)tag
 {
 	struct tbuf *b = tbuf_alloc(fiber->pool);
 	tbuf_ensure(b, sizeof(struct row_v12));
 	b->len = sizeof(struct row_v12);
 
 	row_v12(b)->scn = scn;
-	row_v12(b)->lsn = lsn;
+	row_v12(b)->lsn = lsn_;
 	row_v12(b)->tm = ev_now();
 	row_v12(b)->tag = tag;
 	row_v12(b)->cookie = default_cookie;
@@ -155,6 +155,11 @@ recover_snap
 		say_info("recover from `%s'", snap->filename);
 
 		fiber->pool = snap->pool;
+
+		if ([snap isKindOf:[XLog11 class]])
+			[self recover_row:[self dummy_row_lsn:max_snap_lsn
+							  tag:snap_initial_tag]];
+
 		while ((row = [snap next_row])) {
 			[self validate_row:row];
 			[self recover_row:row];
@@ -164,7 +169,7 @@ recover_snap
 		if (!snap->eof)
 			raise("unable to fully read snapshot");
 
-		[self recover_row:[self dummy_row_with_tag:snap_final_tag]];
+		[self recover_row:[self dummy_row_lsn:lsn tag:snap_final_tag]];
 
 		say_info("snapshot recovered, lsn:%" PRIi64, lsn);
 	}
@@ -303,7 +308,7 @@ recover_local:(i64)start_lsn
 	[self recover_follow:cfg.wal_dir_rescan_delay]; /* FIXME: make this conf */
 	/* feeder will send his own 'wal_final_tag' */
 	if (feeder_addr == NULL)
-		[self recover_row:[self dummy_row_with_tag:wal_final_tag]];
+		[self recover_row:[self dummy_row_lsn:lsn tag:wal_final_tag]];
 	say_info("wals recovered, lsn: %" PRIi64, lsn);
 	strcpy(status, "hot_standby/local");
 
