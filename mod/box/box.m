@@ -398,8 +398,11 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 	if (op_cnt == 0)
 		box_raise(ERR_CODE_ILLEGAL_PARAMS, "no ops");
 
-	if (txn->old_obj == NULL)
+	if (txn->old_obj == NULL) {
+		/* pretend we parsed all data */
+		tbuf_ltrim(data, tbuf_len(data));
 		return;
+	}
 
 	object_ref(txn->old_obj, +1);
 	lock_object(txn, txn->old_obj);
