@@ -147,7 +147,7 @@ vsay(int level, const char *filename, unsigned line,
 	*(buf + p) = '\n';
 
 	int r = write(sayfd, buf, p + 1);
-
+	(void)r;
 	if (sayfd != STDERR_FILENO && (dup_to_stderr || level == S_FATAL)) {
 		r = write(stderrfd, buf, p + 1);
 	}
