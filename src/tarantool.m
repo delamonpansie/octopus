@@ -493,7 +493,13 @@ main(int argc, char **argv)
 			say_syserror("access(\"%s\")", cat_filename);
 			exit(EX_OSFILE);
 		}
-		return module(NULL)->cat(cat_filename);
+
+		/* TODO: sane module selection */
+		foreach_module (m)
+			if (m->cat != NULL)
+				return m->cat(cat_filename);
+
+		panic("no --cat action defined");
 	}
 #endif
 
