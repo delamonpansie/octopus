@@ -106,7 +106,7 @@ struct mhash_t {
 #define mh_setdirty(h, i)	({ h->b[i >> 4] |= (1 << (i % 16 + 16)); })
 
 
-#define mh_slot(h, i)		({ ((h)->p + (h)->node_size * (i)); })
+#define mh_slot(h, i)		({ ((h)->p + (size_t)(h)->node_size * (i)); })
 #define mh_size(h)		({ (h)->size; 		})
 #define mh_end(h)		({ (h)->n_buckets;	})
 
@@ -347,7 +347,7 @@ _mh(init)()
 	h->shadow = calloc(1, sizeof(*h));
 	h->n_buckets = 3;
 	h->p = calloc(h->n_buckets, h->node_size);
-	h->b = calloc(h->n_buckets / 16 + 1, sizeof(unsigned));
+	h->b = calloc(h->n_buckets / 16 + 1, sizeof(uint32_t));
 	h->upper_bound = h->n_buckets * 0.7;
 	return h;
 }
@@ -403,8 +403,8 @@ _mh(start_resize)(struct mhash_t *h, uint32_t buckets, uint32_t batch)
 	s->n_buckets = __ac_prime_list[h->prime];
 	s->upper_bound = s->n_buckets * 0.7;
 	s->n_occupied = 0;
-	s->p = malloc(s->n_buckets * h->node_size);
-	s->b = calloc(s->n_buckets / 16 + 1, sizeof(unsigned));
+	s->p = malloc((size_t)s->n_buckets * h->node_size);
+	s->b = calloc(s->n_buckets / 16 + 1, sizeof(uint32_t));
 	_mh(resize)(h);
 }
 
