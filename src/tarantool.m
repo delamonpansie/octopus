@@ -211,7 +211,7 @@ save_snapshot(void *ev, int events __attribute__((unused)))
 		set_proc_title("dumper (%" PRIu32 ")", getppid());
 		fiber_destroy_all();
 		palloc_unmap_unused();
-		close_all_xcpt(1, sayfd);
+		close_all_xcpt(2, stderrfd, sayfd);
 
 		foreach_module(m)
 			if (m->snapshot != NULL)
