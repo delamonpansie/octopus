@@ -144,6 +144,8 @@ recover_snap
 	struct palloc_pool *saved_pool = fiber->pool;
 	@try {
 		max_snap_lsn = [snap_dir greatest_lsn];
+		if (max_snap_lsn == -1)
+			raise("snap_dir reading failed");
 
 		if (max_snap_lsn < 1)
 			return 0;
@@ -220,6 +222,9 @@ recover_remaining_wals
 
 	current_lsn = lsn + 1;
 	wal_greatest_lsn = [wal_dir greatest_lsn];
+
+	if (wal_greatest_lsn == -1)
+		raise("wal_dir reading failed");
 
 	/* if the caller already opened WAL for us, recover from it first */
 	if (current_wal != nil)
