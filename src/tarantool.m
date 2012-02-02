@@ -388,7 +388,6 @@ luaT_init()
 	luaL_openlibs(L);
 	lua_register(L, "print", luaT_print);
 
-	luaT_opentbuf(L);
 	luaT_openfiber(L);
 
 	lua_getglobal(L, "package");

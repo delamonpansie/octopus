@@ -101,7 +101,3 @@ void tbuf_printf(struct tbuf *b, const char *format, ...)
 	__attribute__ ((format(FORMAT_PRINTF, 2, 3)));
 
 char *tbuf_to_hex(const struct tbuf *x);
-
-int luaT_opentbuf(struct lua_State *L);
-struct tbuf *luaT_checktbuf(struct lua_State *L, int idx);
-int luaT_pushtbuf(struct lua_State *L, struct tbuf *orig);

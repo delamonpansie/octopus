@@ -79,11 +79,12 @@ stat_print(lua_State *L, struct tbuf *buf)
 {
 	lua_getglobal(L, "stat");
 	lua_getfield(L, -1, "print");
-	luaT_pushtbuf(L, buf);
-	if (lua_pcall(L, 1, 0, 0) != 0) {
+	if (lua_pcall(L, 0, 1, 0) != 0)
 		say_error("lua_pcall(stat.print): %s", lua_tostring(L, -1));
-		lua_pop(L, 1);
-	}
+
+	size_t len;
+	const char *str = lua_tolstring(L, -1, &len);
+	tbuf_append(buf, str, len);
 }
 
 static void

@@ -309,8 +309,8 @@ luaT_index_index(struct lua_State *L)
 		}
 		obj = [index find_key:key with_cardinalty:cardinality];
 	} else {
-		key = luaT_checktbuf(L, 2);
-		obj = [index find_key:key with_cardinalty:1];
+		lua_pushliteral(L, "unknown key type");
+		lua_error(L);
 	}
 
 	if (obj != NULL) {

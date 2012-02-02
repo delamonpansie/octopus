@@ -2,7 +2,8 @@ stat = stat or {}
 stat.records = {}
 stat.total = {}
 
-function stat.print(out)
+function stat.print()
+        local out = {}
         local sum = {}
         for i = 0, 4 do
                 if type(stat.records[i]) == "table" then
@@ -13,7 +14,7 @@ function stat.print(out)
                 end
         end
 
-        tbuf.append(out, "s", "statistics:\r\n")
+        table.insert(out, "statistics:\r\n")
 
         local ordered_keys = {}
         for k in pairs(sum) do
@@ -26,8 +27,9 @@ function stat.print(out)
                 local total = stat.total[key]
                 local line = string.format("  %-14s { rps:  %-5i, total:  %-11i }\r\n",
                                            key .. ':', rps, total)
-                tbuf.append(out, "s", line)
+                table.insert(out, line)
         end
+        return table.concat(out)
 end
 
 function stat.clear()
