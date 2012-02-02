@@ -119,6 +119,8 @@ pid_t tnt_fork();
 extern volatile int gdb_wait_lock;
 void wait_gdb(void);
 
+double drand(double top);
+
 #ifndef STACK_END_ADDRESS
 #define STACK_END_ADDRESS stack_end_address
 #endif

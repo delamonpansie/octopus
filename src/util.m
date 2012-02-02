@@ -135,6 +135,12 @@ wait_gdb(void)
 	while(gdb_wait_lock);
 }
 
+double
+drand(double top)
+{
+	return (top * (double)rand()) / RAND_MAX;
+}
+
 #ifdef BACKTRACE
 
 /*
