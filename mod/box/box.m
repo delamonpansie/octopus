@@ -1180,21 +1180,15 @@ init(void)
 	if (cfg.memcached != 0) {
 		if (cfg.secondary_port != 0)
 			panic("in memcached mode secondary_port must be 0");
-		if (cfg.remote_hot_standby)
+		if (cfg.wal_feeder_addr)
 			panic("remote replication is not supported in memcached mode.");
-	}
-
-	if (cfg.remote_hot_standby) {
-		if (cfg.wal_feeder_ipaddr == NULL || cfg.wal_feeder_port == 0)
-			panic("wal_feeder_ipaddr & wal_feeder_port must be provided in remote_hot_standby mode");
 	}
 
 	title("loading");
 	recovery = [[BoxRecovery alloc] init_snap_dir:cfg.snap_dir
 					      wal_dir:cfg.wal_dir
 					 rows_per_wal:cfg.rows_per_wal
-					feeder_ipaddr:cfg.remote_hot_standby ? cfg.wal_feeder_ipaddr : NULL
-					  feeder_port:cfg.remote_hot_standby ? cfg.wal_feeder_port : 0
+					  feeder_addr:cfg.wal_feeder_addr
 					  fsync_delay:cfg.wal_fsync_delay
 					   inbox_size:cfg.wal_writer_inbox_size
 						flags:init_storage ? RECOVER_READONLY : 0
@@ -1240,7 +1234,7 @@ init(void)
 	int local_lsn = [recovery recover_local:0];
 
 	if (local_lsn == 0) {
-		if (!cfg.remote_hot_standby) {
+		if (!cfg.wal_feeder_addr) {
 			say_crit("don't you forget to initialize "
 				 "storage with --init-storage switch?");
 			_exit(1);

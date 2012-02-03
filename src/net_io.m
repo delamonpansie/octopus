@@ -38,6 +38,7 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <arpa/inet.h>
 #include <unistd.h>
 #include <fcntl.h>
 
@@ -706,4 +707,38 @@ udp_server(va_list ap)
 		if (!(errno == EAGAIN || errno == EWOULDBLOCK))
 			say_syserror("recvfrom");
 	}
+}
+
+int
+atosockaddr_in(const char *orig, struct sockaddr_in *addr)
+{
+	int port;
+	char *str = strdupa(orig);
+	char *colon = strchr(str, ':');
+
+	if (colon == NULL)
+		return -1;
+
+	*colon = 0;
+
+	memset(addr, 0, sizeof(*addr));
+	addr->sin_family = AF_INET;
+
+	if (strcmp(str, "ANY") != 0) {
+		if (inet_aton(str, &addr->sin_addr) == 0) {
+			say_syserror("inet_aton");
+			return -1;
+		}
+	} else {
+		addr->sin_addr.s_addr = INADDR_ANY;
+	}
+
+	port = atoi(colon + 1); /* port is next after ':' */
+	if (port <= 0 || port >= 0xffff) {
+		say_error("bad port: %s", colon + 1);
+		return -1;
+	}
+	addr->sin_port = htons(port);
+
+	return 0;
 }

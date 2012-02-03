@@ -28,6 +28,7 @@
 #import <fiber.h>
 #import <util.h>
 #import <log_io.h>
+#import <net_io.h>
 
 #include <string.h>
 #include <sys/types.h>
@@ -136,7 +137,7 @@ init(void)
 	struct sockaddr_in server_addr;
 	int one = 1;
 
-	if (cfg.wal_feeder_bind_port <= 0) {
+	if (cfg.wal_feeder_bind_addr == NULL) {
 		say_info("WAL feeder is disabled");
 		return;
 	}
@@ -150,10 +151,8 @@ init(void)
 	if (cfg.wal_dir == NULL || cfg.snap_dir == NULL)
 		panic("can't start feeder without snap_dir or wal_dir");
 
-	set_proc_title("feeder:acceptor%s %s:%i",
-		       custom_proc_title,
-		       cfg.wal_feeder_bind_ipaddr == NULL ? "ANY" : cfg.wal_feeder_bind_ipaddr,
-		       cfg.wal_feeder_bind_port);
+	set_proc_title("feeder:acceptor%s %s",
+		       custom_proc_title, cfg.wal_feeder_bind_addr);
 
 	server = socket(AF_INET, SOCK_STREAM, 0);
 	if (server < 0) {
@@ -161,17 +160,8 @@ init(void)
 		goto exit;
 	}
 
-	memset(&server_addr, 0, sizeof(server_addr));
-
-	server_addr.sin_family = AF_INET;
-	if (cfg.wal_feeder_bind_ipaddr == NULL) {
-		server_addr.sin_addr.s_addr = INADDR_ANY;
-	} else {
-		server_addr.sin_addr.s_addr = inet_addr(cfg.wal_feeder_bind_ipaddr);
-		if (server_addr.sin_addr.s_addr == INADDR_NONE)
-			panic("inet_addr: %s'", cfg.wal_feeder_bind_ipaddr);
-	}
-	server_addr.sin_port = htons(cfg.wal_feeder_bind_port);
+	if (atosockaddr_in(cfg.wal_feeder_bind_addr, &server_addr) == -1)
+		panic("bad wal_feeder_bind_addr: '%s'", cfg.wal_feeder_bind_addr);
 
 	if (setsockopt(server, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one)) < 0) {
 		say_syserror("setsockopt");

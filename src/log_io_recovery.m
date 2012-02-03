@@ -548,9 +548,9 @@ recover_follow_remote
 {
 	char *name;
 	name = malloc(64);
-	snprintf(name, 64, "remote_hot_standby/%s:%i", feeder_ipaddr, feeder_port);
+	snprintf(name, 64, "remote_hot_standby/%s", feeder_addr);
 
-	remote_puller = fiber_create(name, pull_from_remote, self, feeder_addr);
+	remote_puller = fiber_create(name, pull_from_remote, self, feeder);
 	if (remote_puller == NULL) {
 		free(name);
 		return NULL;
@@ -570,8 +570,7 @@ enable_local_writes
 
 	if (feeder_addr != NULL) {
 		say_info("starting remote hot standby");
-		snprintf(status, sizeof(status), "hot_standby/%s:%i",
-			 feeder_ipaddr, feeder_port);
+		snprintf(status, sizeof(status), "hot_standby/%s", feeder_addr);
 
 		[self recover_follow_remote];
 	} else {
@@ -599,13 +598,14 @@ enable_local_writes
 - (id) init_snap_dir:(const char *)snap_dirname
              wal_dir:(const char *)wal_dirname
         rows_per_wal:(int)wal_rows_per_file
-       feeder_ipaddr:(const char *)feeder_ipaddr_
-	 feeder_port:(u16)feeder_port_
+       feeder_addr:(const char *)feeder_addr_
          fsync_delay:(double)wal_fsync_delay
           inbox_size:(int)inbox_size
                flags:(int)flags
   snap_io_rate_limit:(int)snap_io_rate_limit_
 {
+	/* Recovery object is never released */
+
         snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
         wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
 
@@ -625,18 +625,15 @@ enable_local_writes
 		wal_writer = spawn_child("wal_writer", inbox_size, wal_disk_writer, self);
 	}
 
-	if (feeder_ipaddr_ != NULL) {
-		feeder_ipaddr = feeder_ipaddr_;
-		feeder_port = feeder_port_;
+	if (feeder_addr_ != NULL) {
+		feeder_addr = feeder_addr_;
 
-		say_crit("configuring remote hot standby, WAL feeder %s:%i", feeder_ipaddr, feeder_port);
+		say_crit("configuring remote hot standby, WAL feeder %s", feeder_addr);
 
-		feeder_addr = calloc(1, sizeof(*feeder_addr));
-		feeder_addr->sin_family = AF_INET;
-		if (inet_aton(feeder_ipaddr, &feeder_addr->sin_addr) < 0)
-			panic("inet_aton: %s", feeder_ipaddr);
+		feeder = malloc(sizeof(struct sockaddr_in));
+		if (atosockaddr_in(feeder_addr, feeder) == -1 || feeder->sin_addr.s_addr == INADDR_ANY)
+			panic("bad feeder_addr: `%s'", feeder_addr);
 
-		feeder_addr->sin_port = htons(feeder_port);
 	}
 
 	return self;

@@ -131,7 +131,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 	char status[64];
 	XLog *current_wal;	/* the WAL we'r currently reading/writing from/to */
 
-	struct sockaddr_in *feeder_addr;
+	struct sockaddr_in *feeder;
 
         XLogDir *wal_dir, *snap_dir;
 
@@ -142,8 +142,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 
 	bool local_writes;
 	struct fiber *remote_puller;
-	const char *feeder_ipaddr;
-	u16 feeder_port;
+	const char *feeder_addr;
 }
 
 - (i64)lsn;
@@ -164,8 +163,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (id) init_snap_dir:(const char *)snap_dir
              wal_dir:(const char *)wal_dir
         rows_per_wal:(int)rows_per_wal
-       feeder_ipaddr:(const char *)feeder_ipaddr
-	 feeder_port:(u16)feeder_port
+       feeder_addr:(const char *)feeder_addr
          fsync_delay:(double)wal_fsync_delay
           inbox_size:(int)inbox_size
                flags:(int)flags
