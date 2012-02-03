@@ -113,6 +113,16 @@ typedef int16_t i16;
 typedef int32_t i32;
 typedef int64_t i64;
 
+#ifndef HAVE_STRDUPA
+# define strdupa(s)							\
+({									\
+	    const char *__orig = (s);					\
+	    size_t __len = strlen(__orig) + 1;				\
+	    char *__new = (char *)alloca(__len);			\
+	    (char *)memcpy(__new, __orig, __len);			\
+})
+#endif
+
 #define CRLF "\r\n"
 
 #ifdef GCC

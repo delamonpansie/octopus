@@ -127,6 +127,7 @@ AS_IF([test $ac_cv_sizeof_off_t -ne 8 -a $ac_cv_sizeof_off_t -ne 4],
 # Checks for required library functions.
 AC_FUNC_ALLOCA
 AC_CHECK_FUNCS([setproctitle sigaltstack prctl fdatasync])
+AC_CHECK_DECL(strdupa, [AC_DEFINE(HAVE_STRDUPA, 1, [Define to 1 if strdupa provided])], [])
 
 # checks for compiler characteristics
 
