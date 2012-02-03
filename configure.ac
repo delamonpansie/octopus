@@ -125,6 +125,7 @@ AS_IF([test $ac_cv_sizeof_off_t -ne 8 -a $ac_cv_sizeof_off_t -ne 4],
       [AC_MSG_ERROR([Unsupported sizeof(off_t) == $ac_cv_sizeof_off_t.])])
 
 # Checks for required library functions.
+AC_FUNC_ALLOCA
 AC_CHECK_FUNCS([setproctitle sigaltstack prctl fdatasync])
 
 # checks for compiler characteristics
