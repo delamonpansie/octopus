@@ -544,6 +544,7 @@ process_select(struct box_txn *txn, u32 limit, u32 offset, struct tbuf *data)
 	if (tbuf_len(data) != 0)
 		box_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
 
+	stat_collect(stat_base, SELECT_KEYS, count);
 	stat_collect(stat_base, txn->op, 1);
 }
 
