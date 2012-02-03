@@ -36,9 +36,6 @@
 #include <arpa/inet.h>
 
 
-static char *custom_proc_title;
-
-
 @interface Feeder: Recovery {
 	int fd;
 }
@@ -152,14 +149,6 @@ init(void)
 
 	if (cfg.wal_dir == NULL || cfg.snap_dir == NULL)
 		panic("can't start feeder without snap_dir or wal_dir");
-
-	if (cfg.custom_proc_title == NULL)
-		custom_proc_title = "";
-	else {
-		custom_proc_title = malloc(strlen(cfg.custom_proc_title) + 2);
-		strcat(custom_proc_title, "@");
-		strcat(custom_proc_title, cfg.custom_proc_title);
-	}
 
 	set_proc_title("feeder:acceptor%s %s:%i",
 		       custom_proc_title,

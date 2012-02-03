@@ -72,6 +72,7 @@ lua_State *root_L;
 char cfg_err_buf[1024], *cfg_err;
 int cfg_err_len;
 struct tarantool_cfg cfg;
+char *custom_proc_title;
 
 Recovery *recovery_state;
 
@@ -592,6 +593,14 @@ main(int argc, char **argv)
 			exit(EX_OSERR);
 		}
 #endif
+	}
+
+	if (cfg.custom_proc_title == NULL)
+		custom_proc_title = "";
+	else {
+		custom_proc_title = calloc(strlen(cfg.custom_proc_title) + 2, 1);
+		strcat(custom_proc_title, "@");
+		strcat(custom_proc_title, cfg.custom_proc_title);
 	}
 
 	if (gopt(opt, 'D'))

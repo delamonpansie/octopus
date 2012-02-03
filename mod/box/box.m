@@ -56,7 +56,6 @@ static int stat_base;
 STRS(messages, MESSAGES);
 
 const int MEMCACHED_OBJECT_SPACE = 23;
-static char *custom_proc_title;
 
 struct object_space *object_space_registry;
 const int object_space_count = 256;
@@ -1177,14 +1176,6 @@ init(void)
 	object_space_registry = calloc(object_space_count, sizeof(struct object_space));
 	for (int i = 0; i < object_space_count; i++)
 		object_space_registry[i].n = i;
-
-	if (cfg.custom_proc_title == NULL)
-		custom_proc_title = "";
-	else {
-		custom_proc_title = malloc(strlen(cfg.custom_proc_title) + 2);
-		strcat(custom_proc_title, "@");
-		strcat(custom_proc_title, cfg.custom_proc_title);
-	}
 
 	if (cfg.memcached != 0) {
 		if (cfg.secondary_port != 0)
