@@ -32,7 +32,10 @@
 extern coro_context *sched_ctx;
 extern struct fiber *fiber;
 
-#define EV_COMMON void *data; char coro;
+#define EV_STRINGIFY2(x) #x
+#define EV_STRINGIFY(x) EV_STRINGIFY2(x)
+#define EV_COMMON void *data; char coro; const char *cb_src;
+#define ev_set_cb(ev,cb_) ev_cb (ev) = (cb_); (ev)->cb_src = __FILE__ ":" EV_STRINGIFY(__LINE__);
 #define EV_CB_DECLARE(type) void (*cb)(struct type *w, int revents);
 #define EV_CB_INVOKE(watcher, revents) ({			\
 if ((watcher)->coro) {						\
