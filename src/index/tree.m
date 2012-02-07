@@ -192,7 +192,7 @@ init_with_unique:(bool)_unique
 	[super init_with_unique:_unique];
 	node_size = sizeof(struct index_node) + sizeof(i32);
 	init_pattern = i32_init_pattern;
-	compare = unique ? (void *)i32_compare : i32_compare_with_addr;
+	compare = unique ? (index_cmp)i32_compare : (index_cmp)i32_compare_with_addr;
 	return self;
 }
 @end
@@ -254,7 +254,7 @@ init_with_unique:(bool)_unique
 	[super init_with_unique:_unique];
 	node_size = sizeof(struct index_node) + sizeof(i64);
 	init_pattern = i64_init_pattern;
-	compare = unique ? (void *)i64_compare : i64_compare_with_addr;
+	compare = unique ? (index_cmp)i64_compare : (index_cmp)i64_compare_with_addr;
 	return self;
 }
 @end
@@ -306,7 +306,7 @@ init_with_unique:(bool)_unique
 	[super init_with_unique:_unique];
 	node_size = sizeof(struct index_node) + sizeof(void *);
 	init_pattern = lstr_init_pattern;
-	compare = unique ? (void *)lstr_compare : lstr_compare_with_addr;
+	compare = unique ? (index_cmp)lstr_compare : (index_cmp)lstr_compare_with_addr;
 	return self;
 }
 @end
@@ -427,7 +427,7 @@ init_with_unique:(bool)_unique
 	struct gen_dtor *desc = dtor_arg;
 	node_size = sizeof(struct index_node) + desc->cardinality * sizeof(struct field);
 	init_pattern = gen_init_pattern;
-	compare = unique ? (void *)tree_node_compare : tree_node_compare_with_addr;
+	compare = unique ? (index_cmp)tree_node_compare : (index_cmp)tree_node_compare_with_addr;
 	return self;
 }
 @end

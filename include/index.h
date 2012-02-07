@@ -65,6 +65,7 @@ union {
 } index_nodes;
 
 typedef void (index_dtor)(struct tnt_object *obj, struct index_node *node, void *arg);
+typedef int (*index_cmp)(const void *, const void *, void *);
 
 @protocol BasicIndex
 - (struct tnt_object *)find_by_obj:(struct tnt_object *)obj;
