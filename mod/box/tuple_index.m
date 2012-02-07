@@ -160,7 +160,7 @@ cfg_box_tuple_gen_dtor(struct tarantool_cfg_object_space_index *c)
 	return d;
 }
 
-+ (Index<BasicIndex> *)
++ (Index *)
 new_with_n:(int)n cfg:(struct tarantool_cfg_object_space_index *)cfg
 {
 	Index *i;

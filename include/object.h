@@ -29,8 +29,8 @@
 #import <util.h>
 
 @interface Object (Palloc)
-+ palloc;
-+ palloc_from:(struct palloc_pool *)pool;
++ (id)palloc;
++ (id)palloc_from:(struct palloc_pool *)pool;
 @end
 
 @interface Error : Object {
@@ -40,11 +40,11 @@
 	const char *file;
 	char *backtrace;
 }
-- init:(const char *)reason;
-- init_line:(unsigned)line
-       file:(const char *)file
-  backtrace:(const char *)backtrace
-     format:(const char *)format, ...;
+- (Error *)init:(char *)reason;
+- (Error *)init_line:(unsigned)line
+		file:(const char *)file
+	   backtrace:(const char *)backtrace
+	      format:(const char *)format, ...;
 @end
 
 

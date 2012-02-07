@@ -79,7 +79,7 @@ struct service *iproto_service(u16 port, void (*on_bind)(int fd));
 @public
 	u32 code;
 }
-- init:(const char *)reason code:(u32)code_;
+- (IProtoError *)init:(char *)reason code:(u32)code_;
 - (u32)code;
 @end
 

@@ -31,7 +31,7 @@
 #import <util.h>
 
 @implementation Object (Palloc)
-+
++ (id)
 palloc
 {
 	Class class = (Class)self;
@@ -40,7 +40,7 @@ palloc
 	return obj;
 }
 
-+
++ (id)
 palloc_from:(struct palloc_pool *)pool
 {
 	Class class = (Class)self;
@@ -51,17 +51,18 @@ palloc_from:(struct palloc_pool *)pool
 @end
 
 @implementation Error
--
+- (Error *)
 init:(char *)reason_
 {
 	reason = reason_;
 	return self;
 }
 
--init_line:(unsigned)line_
-      file:(const char *)file_
- backtrace:(const char *)backtrace_
-    format:(const char *)format, ...
+- (Error *)
+init_line:(unsigned)line_
+     file:(const char *)file_
+backtrace:(const char *)backtrace_
+   format:(const char *)format, ...
 {
 	const size_t message_size = 1024;
 	va_list ap;

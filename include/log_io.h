@@ -104,7 +104,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 
 	size_t bytes_written, offset;
 }
-- init_filename:(const char *)filename fd:(FILE *)fd dir:(XLogDir *)dir;
+- (XLog *)init_filename:(const char *)filename fd:(FILE *)fd dir:(XLogDir *)dir;
 - (const char *)final_filename;
 - (void) follow:(follow_cb *)cb;
 - (void) reset_inprogress;

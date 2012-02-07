@@ -415,7 +415,7 @@ init_dirname:(const char *)dirname_
 
 
 @implementation XLog
--
+- (XLog *)
 init_filename:(const char *)filename_
            fd:(FILE *)fd_
           dir:(XLogDir *)dir_

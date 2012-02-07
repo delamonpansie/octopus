@@ -108,8 +108,8 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 @end
 
 @interface Index (Tuple)
-+ (Index<BasicIndex> *)new_with_n:(int)n_
-			      cfg:(struct tarantool_cfg_object_space_index *)cfg;
++ (Index *)new_with_n:(int)n_
+		  cfg:(struct tarantool_cfg_object_space_index *)cfg;
 @end
 
 @protocol HashIndex <BasicIndex>
@@ -149,8 +149,8 @@ SPTREE_DEF(str_t, realloc);
 	struct index_node search_pattern;
 	char __tree_padding[256]; /* FIXME: overflow */
 }
-- (id)init_with_unique:(bool)_unque;
-- (void) set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated;
+- (Tree *)init_with_unique:(bool)_unque;
+- (void)set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated;
 
 - (void)iterator_init:(struct tbuf *)key_data with_cardinalty:(u32)cardinality;
 - (void)iterator_init_with_object:(struct tnt_object *)obj;

@@ -35,7 +35,7 @@
 #import <pickle.h>
 
 @implementation Hash
-- init
+- (Hash *)init
 {
 	[super init];
 	type = HASH;

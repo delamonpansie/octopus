@@ -48,8 +48,8 @@ set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated
 			  compare, self->dtor_arg);
 }
 
-- (id)
-init_with_unique:(bool)_unique;
+- (Tree *)
+init_with_unique:(bool)_unique
 {
 	[super init];
 	type = TREE;

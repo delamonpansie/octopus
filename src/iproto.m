@@ -261,7 +261,7 @@ iproto_service(u16 port, void (*on_bind)(int fd))
 
 
 @implementation IProtoError
-- (id)
+- (IProtoError *)
 init:(char *)reason_ code:(u32)code_
 {
 	reason = reason_;

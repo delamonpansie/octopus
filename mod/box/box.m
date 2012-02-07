@@ -933,7 +933,7 @@ configure(void)
 
                         typeof(cfg.object_space[i]->index[j]) index_cfg = cfg.object_space[i]->index[j];
 			Index *index = [Index new_with_n:j cfg:index_cfg];
-			object_space_registry[i].index[j] = index;
+			object_space_registry[i].index[j] = (Index<BasicIndex> *)index;
 
 			if (index == nil)
 				panic("object_space = %" PRIu32 " index = %" PRIu32 ") "
