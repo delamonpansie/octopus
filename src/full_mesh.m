@@ -68,8 +68,7 @@ peer_connect(struct mesh_peer *p, int fd)
 	ev_io_set(&p->c.in, fd, EV_READ);
 	ev_io_start(&p->c.in);
 
-	say_info("connect with %s %s:%i",
-		 p->name, inet_ntoa(p->addr.sin_addr), ntohs(p->addr.sin_port));
+	say_info("connect with %s %s", p->name, sintoa(&p->addr));
 }
 
 static void
@@ -334,7 +333,7 @@ make_mesh_peer(int id, const char *name, const char *addr, struct mesh_peer *nex
 	struct mesh_peer *p;
 
 	p = calloc(1, sizeof(*p));
-	if (atosockaddr_in(addr, &p->addr) == -1) {
+	if (atosin(addr, &p->addr) == -1) {
 		free(p);
 		return NULL;
 	}

@@ -631,7 +631,7 @@ enable_local_writes
 		say_crit("configuring remote hot standby, WAL feeder %s", feeder_addr);
 
 		feeder = malloc(sizeof(struct sockaddr_in));
-		if (atosockaddr_in(feeder_addr, feeder) == -1 || feeder->sin_addr.s_addr == INADDR_ANY)
+		if (atosin(feeder_addr, feeder) == -1 || feeder->sin_addr.s_addr == INADDR_ANY)
 			panic("bad feeder_addr: `%s'", feeder_addr);
 
 	}

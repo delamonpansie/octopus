@@ -114,4 +114,5 @@ int tcp_connect(struct sockaddr_in *dst, struct sockaddr_in *src, ev_tstamp time
 void tcp_server(va_list ap);
 void udp_server(va_list ap);
 
-int atosockaddr_in(const char *orig, struct sockaddr_in *addr);
+int atosin(const char *orig, struct sockaddr_in *addr);
+const char *sintoa(const struct sockaddr_in *addr);

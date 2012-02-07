@@ -160,7 +160,7 @@ init(void)
 		goto exit;
 	}
 
-	if (atosockaddr_in(cfg.wal_feeder_bind_addr, &server_addr) == -1)
+	if (atosin(cfg.wal_feeder_bind_addr, &server_addr) == -1)
 		panic("bad wal_feeder_bind_addr: '%s'", cfg.wal_feeder_bind_addr);
 
 	if (setsockopt(server, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one)) < 0) {

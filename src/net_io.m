@@ -510,7 +510,7 @@ tcp_connect(struct sockaddr_in *dst, struct sockaddr_in *src, ev_tstamp timeout)
 
 	if (src) {
 		if (bind(fd, src, sizeof(*src)) < 0) {
-			say_syserror("bind(%s:%i)", inet_ntoa(src->sin_addr), ntohs(src->sin_port));
+			say_syserror("bind(%s)", sintoa(src));
 			goto error;
 		}
 	}
@@ -601,7 +601,7 @@ server_socket(int type, struct in_addr *src, int port, void (*on_bind)(int fd))
 
 			if (errno == EADDRINUSE)
 				goto sleep_and_retry;
-			say_syserror("bind(%s:%i)", inet_ntoa(sin.sin_addr), ntohs(sin.sin_port));
+			say_syserror("bind(%s)", sintoa(&sin));
 			return -1;
 		}
 
@@ -712,7 +712,7 @@ udp_server(va_list ap)
 }
 
 int
-atosockaddr_in(const char *orig, struct sockaddr_in *addr)
+atosin(const char *orig, struct sockaddr_in *addr)
 {
 	int port;
 	char *str = strdupa(orig);
@@ -743,4 +743,13 @@ atosockaddr_in(const char *orig, struct sockaddr_in *addr)
 	addr->sin_port = htons(port);
 
 	return 0;
+}
+
+const char *
+sintoa(const struct sockaddr_in *addr)
+{
+	static char buf[22]; /* strlen(xxx.xxx.xxx.xxx:yyyyy) + 1 */
+	snprintf(buf, sizeof(buf), "%s:%i",
+		 inet_ntoa(addr->sin_addr), ntohs(addr->sin_port));
+	return buf;
 }
