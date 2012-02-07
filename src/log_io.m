@@ -389,10 +389,12 @@ init_dirname:(const char *)dirname_
 open_for_read:(i64)lsn
 {
 	const char *filename = [self format_filename:lsn in_progress:true];
-	XLog *l = [self open_for_read_filename:filename];
-	if (l != nil) {
-		l->inprogress = true;
-		return l;
+	if (access(filename, R_OK) == 0) {
+		XLog *l = [self open_for_read_filename:filename];
+		if (l != nil) {
+			l->inprogress = true;
+			return l;
+		}
 	}
 
 	filename = [self format_filename:lsn in_progress:false];
