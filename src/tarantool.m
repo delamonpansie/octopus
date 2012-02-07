@@ -434,6 +434,7 @@ main(int argc, char **argv)
 #endif
 	cfg.log_level = S_INFO;
 	master_pid = getpid();
+	srand(master_pid);
 	palloc_init();
 #ifdef HAVE_LIBELF
 	load_symbols(argv[0]);
