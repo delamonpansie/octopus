@@ -318,16 +318,17 @@ open_for_write:(i64)lsn saved_errno:(int *)saved_errno
 
         // FIXME: filename leak
 	const char *filename = strdup([self format_filename:lsn in_progress:true]);
-	say_debug("find_log for writing `%s'", filename);
+	say_debug("[open_for_write `%s']", filename);
 
-	/*
-	 * Check whether a file without .inprogress already exists.
-	 * We don't overwrite existing files. There is a race here.
-	 */
-
+	if (access(filename, F_OK) == 0) {
+		say_error("failed to open `%s': file already exists", filename);
+		if (saved_errno != NULL)
+			*saved_errno = EEXIST;
+		return NULL;
+	}
 	const char *final_filename = [self format_filename:lsn in_progress:false];
 	if (access(final_filename, F_OK) == 0) {
-		say_error("find_log: failed to open `%s': '%s' is in the way",
+		say_error("failed to open `%s': '%s' is in the way",
 			  filename, final_filename);
 		if (saved_errno != NULL)
 			*saved_errno = EEXIST;
@@ -365,7 +366,7 @@ open_for_write:(i64)lsn saved_errno:(int *)saved_errno
       error:
 	if (saved_errno != NULL)
 		*saved_errno = errno;
-	say_error("find_log: failed to open `%s': %s", filename, strerror(errno));
+	say_error("failed to open `%s': %s", filename, strerror(errno));
         if (file != NULL)
                 fclose(file);
         [l free];
