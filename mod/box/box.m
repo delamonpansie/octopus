@@ -981,8 +981,6 @@ title(const char *fmt, ...)
 static void
 build_object_space_trees(struct object_space *object_space)
 {
-	say_info("Building tree indexes of object space %i", object_space->n);
-
 	Index<BasicIndex> *pk = object_space->index[0];
 	size_t n_tuples = [pk size];
         size_t estimated_tuples = n_tuples * 1.2;
@@ -1000,6 +998,10 @@ build_object_space_trees(struct object_space *object_space)
 			}
 		}
 	tree_count = i;
+	if (tree_count == 0)
+		return;
+
+	say_info("Building tree indexes of object space %i", object_space->n);
 
         if (n_tuples > 0) {
 		for (int i = 0; i < tree_count; i++) {
