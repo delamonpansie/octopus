@@ -79,11 +79,31 @@ struct service *iproto_service(u16 port, void (*on_bind)(int fd));
 @public
 	u32 code;
 }
-- (IProtoError *)init:(char *)reason code:(u32)code_;
+- (IProtoError *)init_code:(u32)code_
+		      line:(unsigned)line_
+		      file:(const char *)file_
+		 backtrace:(const char *)backtrace_
+		    reason:(const char *)reason_;
+- (IProtoError *)init_code:(u32)code_
+		      line:(unsigned)line_
+		      file:(const char *)file_
+		 backtrace:(const char *)backtrace_
+		    format:(const char *)fmt, ...;
 - (u32)code;
 @end
 
-#define iproto_raise(reason_, code_)  @throw [[IProtoError palloc] init:reason_ code:code_]
+#define iproto_raise(err, msg)						\
+	@throw [[IProtoError palloc] init_code:(err)			\
+					  line:__LINE__			\
+					  file:__FILE__			\
+				     backtrace:NULL			\
+					reason:(msg)]
+#define iproto_raise_fmt(err, fmt, ...)					\
+	@throw [[IProtoError palloc] init_code:(err)			\
+					  line:__LINE__			\
+					  file:__FILE__			\
+				     backtrace:NULL			\
+					format:(fmt), __VA_ARGS__]
 
 #define ERROR_CODES(_)					    \
 	_(ERR_CODE_OK,                    0x00000000, "ok") \

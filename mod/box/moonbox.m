@@ -583,7 +583,7 @@ box_dispach_lua(struct netmsg *dst, struct tbuf *data)
 
 	if (lua_isnil(L, 1)) {
 		lua_settop(L, 0);
-		box_raise(ERR_CODE_ILLEGAL_PARAMS, "no such proc");
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "no such proc");
 	}
 
 	lua_pushvalue(L, 1);
@@ -599,7 +599,7 @@ box_dispach_lua(struct netmsg *dst, struct tbuf *data)
 	/* FIXME: switch to native exceptions */
 	if (lua_pcall(L, 2 + nargs, 1, 0)) {
 		say_error("lua_pcall() failed: %s", lua_tostring(L, -1));
-		box_raise(ERR_CODE_ILLEGAL_PARAMS, "lua_pcall() failed");
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "lua_pcall() failed");
 	}
 
 	u32 ret = luaL_checkinteger(L, -1);

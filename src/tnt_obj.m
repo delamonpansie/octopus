@@ -41,7 +41,7 @@ object_alloc(u8 type, size_t size)
 	struct tnt_object *obj = salloc(sizeof(struct tnt_object) + size);
 
 	if (obj == NULL)
-		iproto_raise("can't allocate object", ERR_CODE_MEMORY_ISSUE);
+		iproto_raise(ERR_CODE_MEMORY_ISSUE, "can't allocate object");
 
 	obj->type = type;
 	obj->flags = obj->refs = 0;

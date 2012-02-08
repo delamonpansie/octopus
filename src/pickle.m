@@ -35,7 +35,7 @@
 
 #include <stdlib.h>
 
-#define BUFFER_TOO_SHORT() iproto_raise("tbuf too short", ERR_CODE_UNKNOWN_ERROR)
+#define BUFFER_TOO_SHORT() iproto_raise(ERR_CODE_UNKNOWN_ERROR, "tbuf too short")
 
 /* caller must ensure that there is space in target */
 u8 *
@@ -123,7 +123,7 @@ read_varint32(struct tbuf *buf)
 	ROUND(4);
 
 err:
-	iproto_raise("bad varint32", ERR_CODE_UNKNOWN_ERROR);
+	iproto_raise(ERR_CODE_UNKNOWN_ERROR, "bad varint32");
 
 exit:
 	buf->size -= l;

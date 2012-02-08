@@ -118,12 +118,6 @@ struct box_txn {
 
 ENUM(messages, MESSAGES);
 
-#define box_raise(code, reason)			\
-	({								\
-		say_crit("raise at %s:%i %s", __FILE__, __LINE__, reason); \
-		iproto_raise(reason, code);				\
-	})
-
 void txn_init(struct iproto_header *req, struct box_txn *txn, struct netmsg *m);
 void txn_commit(struct box_txn *txn);
 void txn_abort(struct box_txn *txn);

@@ -36,11 +36,16 @@
 @interface Error : Object {
 @public
 	char *reason;
+	char buf[128];
 	unsigned line;
 	const char *file;
 	char *backtrace;
 }
 - (Error *)init:(char *)reason;
+- (Error *)init_line:(unsigned)line_
+		file:(const char *)file_
+	   backtrace:(const char *)backtrace_
+	      reason:(const char *)reason_;
 - (Error *)init_line:(unsigned)line
 		file:(const char *)file
 	   backtrace:(const char *)backtrace

@@ -51,6 +51,12 @@ palloc_from:(struct palloc_pool *)pool
 @end
 
 @implementation Error
++ (Error *)
+alloc
+{
+	abort(); /* + palloc should be used */
+}
+
 - (Error *)
 init:(char *)reason_
 {
@@ -62,20 +68,29 @@ init:(char *)reason_
 init_line:(unsigned)line_
      file:(const char *)file_
 backtrace:(const char *)backtrace_
-   format:(const char *)format, ...
+   reason:(const char *)reason_
 {
-	const size_t message_size = 1024;
-	va_list ap;
 	line = line_;
 	file = file_;
-	reason = palloc(fiber->pool, message_size);
-	va_start(ap, format);
-	vsnprintf(reason, message_size, format, ap);
-	va_end(ap);
+	reason = (char *)reason_;
 	if (backtrace_) {
 		backtrace = palloc(fiber->pool, strlen(backtrace_) + 1);
 		strcpy(backtrace, backtrace_);
 	}
 	return self;
+}
+
+- (Error *)
+init_line:(unsigned)line_
+     file:(const char *)file_
+backtrace:(const char *)backtrace_
+   format:(const char *)format, ...
+{
+	va_list ap;
+	va_start(ap, format);
+	vsnprintf(buf, sizeof(buf), format, ap);
+	va_end(ap);
+
+	return [self init_line:line_ file:file_ backtrace:backtrace_ reason:buf];
 }
 @end

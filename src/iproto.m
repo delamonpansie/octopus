@@ -262,12 +262,31 @@ iproto_service(u16 port, void (*on_bind)(int fd))
 
 @implementation IProtoError
 - (IProtoError *)
-init:(char *)reason_ code:(u32)code_
+init_code:(u32)code_
+     line:(unsigned)line_
+     file:(const char *)file_
+backtrace:(const char *)backtrace_
+   reason:(const char *)reason_
 {
-	reason = reason_;
+	[self init_line:line_ file:file_ backtrace:backtrace_ reason:reason_];
 	code = code_;
-	backtrace = (char *)tnt_backtrace();
 	return self;
+}
+
+- (IProtoError *)
+init_code:(u32)code_
+     line:(unsigned)line_
+     file:(const char *)file_
+backtrace:(const char *)backtrace_
+   format:(const char *)format, ...
+{
+	va_list ap;
+	va_start(ap, format);
+	vsnprintf(buf, sizeof(buf), format, ap);
+	va_end(ap);
+
+	return [self init_code:code_ line:line_ file:file_
+		     backtrace:backtrace_ reason:buf];
 }
 
 - (u32)

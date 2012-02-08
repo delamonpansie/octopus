@@ -108,7 +108,7 @@ static void
 lock_object(struct box_txn *txn, struct tnt_object *obj)
 {
 	if (obj->flags & WAL_WAIT)
-		box_raise(ERR_CODE_NODE_IS_RO, "object is locked");
+		iproto_raise(ERR_CODE_NODE_IS_RO, "object is locked");
 
 	say_debug("lock_object(%p)", obj);
 	txn->lock_obj = obj;
@@ -188,7 +188,9 @@ validate_indexes(struct box_txn *txn)
                         struct tnt_object *obj = [index find_by_obj:txn->obj];
 
                         if (obj != NULL && obj != txn->old_obj)
-                                box_raise(ERR_CODE_INDEX_VIOLATION, "unique index violation");
+				iproto_raise_fmt(ERR_CODE_INDEX_VIOLATION,
+						 "duplicate key value violates unique index %i:%s",
+						 index->n, [index class]->name);
                 }
 	}
 }
@@ -198,9 +200,9 @@ static void __attribute((noinline))
 prepare_replace(struct box_txn *txn, size_t cardinality, struct tbuf *data)
 {
 	if (cardinality == 0)
-		box_raise(ERR_CODE_ILLEGAL_PARAMS, "cardinality can't be equal to 0");
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "cardinality can't be equal to 0");
 	if (tbuf_len(data) == 0 || tbuf_len(data) != valid_tuple(data, cardinality))
-		box_raise(ERR_CODE_ILLEGAL_PARAMS, "tuple encoding error");
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "tuple encoding error");
 
 	txn->obj = tuple_alloc(tbuf_len(data));
 	struct box_tuple *tuple = box_tuple(txn->obj);
@@ -214,10 +216,10 @@ prepare_replace(struct box_txn *txn, size_t cardinality, struct tbuf *data)
 		object_ref(txn->old_obj, +1);
 
 	if (txn->flags & BOX_ADD && txn->old_obj != NULL)
-		box_raise(ERR_CODE_NODE_FOUND, "tuple found");
+		iproto_raise(ERR_CODE_NODE_FOUND, "tuple found");
 
 	if (txn->flags & BOX_REPLACE && txn->old_obj == NULL)
-		box_raise(ERR_CODE_NODE_NOT_FOUND, "tuple not found");
+		iproto_raise(ERR_CODE_NODE_NOT_FOUND, "tuple not found");
 
 	validate_indexes(txn);
 
@@ -281,9 +283,9 @@ static void
 do_field_arith(u8 op, struct tbuf *field, void *arg, u32 arg_size)
 {
 	if (tbuf_len(field) != 4)
-		box_raise(ERR_CODE_ILLEGAL_PARAMS, "num op on field with length != 4");
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "num op on field with length != 4");
 	if (arg_size != 4)
-		box_raise(ERR_CODE_ILLEGAL_PARAMS, "num op with arg not u32");
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "num op with arg not u32");
 
 	switch (op) {
 	case 1:
@@ -322,7 +324,7 @@ do_field_splice(struct tbuf *field, void *args_data, u32 args_data_size)
 	length_field = read_field(&args);
 	list_field = read_field(&args);
 	if (tbuf_len(&args)!= 0)
-		box_raise(ERR_CODE_ILLEGAL_PARAMS, "do_field_splice: bad args");
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "do_field_splice: bad args");
 
 	offset_size = load_varint32(&offset_field);
 	if (offset_size == 0)
@@ -331,13 +333,13 @@ do_field_splice(struct tbuf *field, void *args_data, u32 args_data_size)
 		offset = pick_u32(offset_field, &offset_field);
 		if (offset < 0) {
 			if (tbuf_len(field) < -offset)
-				box_raise(ERR_CODE_ILLEGAL_PARAMS,
+				iproto_raise(ERR_CODE_ILLEGAL_PARAMS,
 					  "do_field_splice: noffset is negative");
 			noffset = offset + tbuf_len(field);
 		} else
 			noffset = offset;
 	} else
-		box_raise(ERR_CODE_ILLEGAL_PARAMS, "do_field_splice: bad size of offset field");
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "do_field_splice: bad size of offset field");
 	if (noffset > tbuf_len(field))
 		noffset = tbuf_len(field);
 
@@ -346,7 +348,7 @@ do_field_splice(struct tbuf *field, void *args_data, u32 args_data_size)
 		nlength = tbuf_len(field) - noffset;
 	else if (length_size == sizeof(length)) {
 		if (offset_size == 0)
-			box_raise(ERR_CODE_ILLEGAL_PARAMS,
+			iproto_raise(ERR_CODE_ILLEGAL_PARAMS,
 				  "do_field_splice: offset field is empty but length is not");
 
 		length = pick_u32(length_field, &length_field);
@@ -358,16 +360,16 @@ do_field_splice(struct tbuf *field, void *args_data, u32 args_data_size)
 		} else
 			nlength = length;
 	} else
-		box_raise(ERR_CODE_ILLEGAL_PARAMS, "do_field_splice: bad size of length field");
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "do_field_splice: bad size of length field");
 	if (nlength > (tbuf_len(field) - noffset))
 		nlength = tbuf_len(field) - noffset;
 
 	list_size = load_varint32(&list_field);
 	if (list_size > 0 && length_size == 0)
-		box_raise(ERR_CODE_ILLEGAL_PARAMS,
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS,
 			  "do_field_splice: length field is empty but list is not");
 	if (list_size > (UINT32_MAX - (tbuf_len(field) - nlength)))
-		box_raise(ERR_CODE_ILLEGAL_PARAMS, "do_field_splice: list_size is too long");
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "do_field_splice: list_size is too long");
 
 	say_debug("do_field_splice: noffset = %i, nlength = %i, list_size = %u",
 		  noffset, nlength, list_size);
@@ -393,9 +395,9 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 	op_cnt = read_u32(data);
 
 	if (op_cnt > 128)
-		box_raise(ERR_CODE_ILLEGAL_PARAMS, "too many ops");
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "too many ops");
 	if (op_cnt == 0)
-		box_raise(ERR_CODE_ILLEGAL_PARAMS, "no ops");
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "no ops");
 
 	if (txn->old_obj == NULL) {
 		/* pretend we parsed all data */
@@ -427,14 +429,14 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 		field_no = read_u32(data);
 
 		if (field_no >= old_tuple->cardinality)
-			box_raise(ERR_CODE_ILLEGAL_PARAMS,
+			iproto_raise(ERR_CODE_ILLEGAL_PARAMS,
 				  "update of field beyond tuple cardinality");
 
 		struct tbuf *sptr_field = fields[field_no];
 
 		op = read_u8(data);
 		if (op > 5)
-			box_raise(ERR_CODE_ILLEGAL_PARAMS, "op is not 0, 1, 2, 3, 4 or 5");
+			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "op is not 0, 1, 2, 3, 4 or 5");
 		arg = read_field(data);
 		arg_size = load_varint32(&arg);
 
@@ -458,7 +460,7 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 	}
 
 	if (tbuf_len(data) != 0)
-		box_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
 
 	size_t bsize = 0;
 	for (int i = 0; i < old_tuple->cardinality; i++)
@@ -541,7 +543,7 @@ process_select(struct box_txn *txn, u32 limit, u32 offset, struct tbuf *data)
 	}
 
 	if (tbuf_len(data) != 0)
-		box_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
 
 	stat_collect(stat_base, SELECT_KEYS, count);
 	stat_collect(stat_base, txn->op, 1);
@@ -649,11 +651,11 @@ txn_common_parser(struct box_txn *txn, struct tbuf *data)
 {
 	i32 n = read_u32(data);
 	if (n < 0 || n > object_space_count - 1)
-		box_raise(ERR_CODE_ILLEGAL_PARAMS, "bad namespace number");
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "bad namespace number");
 
 	if (!object_space_registry[n].enabled) {
 		say_warn("object_space %i is not enabled", n);
-		box_raise(ERR_CODE_ILLEGAL_PARAMS, "object_space is not enabled");
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "object_space is not enabled");
 	}
 
 	txn->object_space = &object_space_registry[n];
@@ -675,10 +677,10 @@ box_dispach_select(struct box_txn *txn, struct tbuf *data)
 	u32 limit = read_u32(data);
 
 	if (i > MAX_IDX)
-		box_raise(ERR_CODE_ILLEGAL_PARAMS, "index too big");
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index too big");
 
 	if ((txn->index = txn->object_space->index[i]) == NULL)
-		box_raise(ERR_CODE_ILLEGAL_PARAMS, "index is invalid");
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index is invalid");
 
 	process_select(txn, limit, offset, data);
 }
@@ -702,7 +704,7 @@ box_prepare_update(struct box_txn *txn, struct tbuf *data)
 		if (txn->object_space->cardinality > 0
 		    && txn->object_space->cardinality != cardinality)
 		{
-			box_raise(ERR_CODE_ILLEGAL_PARAMS,
+			iproto_raise(ERR_CODE_ILLEGAL_PARAMS,
 				  "tuple cardinality must match object_space cardinality");
 		}
 		prepare_replace(txn, cardinality, data);
@@ -719,11 +721,11 @@ box_prepare_update(struct box_txn *txn, struct tbuf *data)
 
 	default:
 		say_error("box_dispach: unsupported command = %" PRIi32 "", txn->op);
-		box_raise(ERR_CODE_ILLEGAL_PARAMS, "unknown op code");
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "unknown op code");
 	}
 
 	if (tbuf_len(data) != 0)
-		box_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
 }
 
 static void
@@ -1159,7 +1161,7 @@ recover_row:(struct tbuf *)row
 		}
 	}
 	@catch (Error *e) {
-		panic("BoxRecovery failed: %s", e->reason);
+		panic("BoxRecovery failed: %s at %s:%i", e->reason, e->file, e->line);
 	}
 	@finally {
 		txn_cleanup(&txn);
