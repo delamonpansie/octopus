@@ -55,7 +55,7 @@ struct mesh_response {
 	int count, quorum;
 	ev_timer timeout;
 	struct fiber *waiter;
-	ev_tstamp sent, stale;
+	ev_tstamp sent, closed;
 	struct mesh_msg *reply[MAX_MESH_PEERS];
 };
 

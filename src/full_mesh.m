@@ -183,7 +183,6 @@ release_response(struct mesh_response *r)
 	ev_timer_stop(&r->timeout);
 	ev_timer_init(&r->timeout, delete_response, 15., 0.);
 	ev_timer_start(&r->timeout);
-	r->stale = ev_now();
 }
 
 void
@@ -253,15 +252,16 @@ collect_response(struct mesh_msg *msg)
 	}
 
 	struct mesh_response *r = mh_i64_value(response_registry, k);
-	if (r->stale > 1) {
+	if (r->closed > 0 && ev_now() - r->closed > 1) {
 		say_warn("stale reply: q:%i/c:%i %.4f",
 			 r->quorum, r->count,
-			 ev_now() - r->stale);
+			 ev_now() - r->closed);
 		return;
 	}
 
 	r->reply[r->count++] = msg;
 	if (r->count == r->quorum) {
+		r->closed = ev_now();
 		ev_timer_stop(&r->timeout);
 		fiber_wake(r->waiter, r);
 	}
