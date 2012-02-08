@@ -920,7 +920,6 @@ configure(void)
 		if (!object_space_registry[i].enabled)
 			continue;
 
-		say_crit("configuring object space %i", i);
 		object_space_registry[i].cardinality = cfg.object_space[i]->cardinality;
 
 		if (cfg.object_space[i]->index == NULL)
@@ -954,6 +953,7 @@ configure(void)
 		object_space_registry[i].enabled = true;
 
 		say_info("object space %i successfully configured", i);
+		say_info("  PK %i:%s", pk->n, [pk class]->name);
 	}
 }
 
