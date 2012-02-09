@@ -375,6 +375,17 @@ luaT_static_module(lua_State *L)
     return 1;
 }
 
+static int
+luaT_os_ctime(lua_State *L)
+{
+	const char *filename = luaL_checkstring(L, 1);
+	struct stat buf;
+
+	if (stat(filename, &buf) < 0)
+		luaL_error(L, "stat(`%s'): %s", filename, strerror(errno));
+	lua_pushinteger(L, buf.st_ctime);
+	return 1;
+}
 
 static void
 luaT_init()
@@ -401,6 +412,10 @@ luaT_init()
         lua_pushstring(L, cfg.lua_path);
         lua_setfield(L, -2, "path");
         lua_pop(L, 1);
+
+	lua_getglobal(L, "os");
+	lua_pushcfunction(L, luaT_os_ctime);
+	lua_setfield(L, -2, "ctime");
 
         lua_getglobal(L, "require");
         lua_pushliteral(L, "prelude");
