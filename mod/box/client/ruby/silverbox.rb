@@ -197,17 +197,17 @@ class SilverBox < IProtoRetCode
 
   def lua(func_name, *args)
     param = args[-1].is_a?(Hash) ? args.pop : {}
-    object_space = param[:object_space] || @object_space
 
-    reply = msg :code => 22, :raw => pack([object_space, func_name, args], 'L field L/ field*')
+    reply = msg :code => 22, :raw => pack([func_name, args], 'field L/ field*')
     unpack_reply!(reply, :return_tuple => true)
   end
 
   def pks(*args)
     param = args[-1].is_a?(Hash) ? args.pop : {}
     object_space = param[:object_space] || @object_space
-    func_name = 'get_all_pkeys'
-    reply = msg :code => 22, :raw => pack([object_space, func_name, args], 'L field L/ field*')
+    func_name = 'user_proc.get_all_pkeys'
+    args.unshift object_space.to_s
+    reply = msg :code => 22, :raw => pack([func_name, args], 'field L/ field*')
 
     pks = []
     count = reply.slice!(0 .. 3).unpack('L')[0]

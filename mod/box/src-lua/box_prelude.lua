@@ -1,6 +1,4 @@
-
 require("box")
 require("box.index")
-require("box.user_proc")
-require("box.user_proc_unsafe")
+require("box.example_proc")
 print("MoonBox initialized.")

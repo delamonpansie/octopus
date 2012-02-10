@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011 Mail.RU
- * Copyright (C) 2010, 2011 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012 Mail.RU
+ * Copyright (C) 2010, 2011, 2012 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -46,28 +46,6 @@
 
 const char *objectlib_name = "Tarantool.box.object";
 
-
-static void
-luaT_dumpstack(const char *prefix, lua_State *L)
-{
-	say_crit("%s", prefix);
-	for (int i = 1; i <= lua_gettop(L); i++)
-		say_crit("  [%i] = %s", i, luaL_typename(L, i));
-}
-
-void
-luaL_checktable(lua_State *L, int i, const char *metatable)
-{
-	luaL_checktype(L, i, LUA_TTABLE);
-	if (!lua_getmetatable(L, i))
-		luaL_error(L, "no metatable #%i", i);
-	luaL_getmetatable(L, metatable);
-	if (!lua_equal(L, -1, -2)) {
-		luaT_dumpstack("checktable", L);
-		luaL_argerror(L, i, metatable);
-	}
-	lua_pop(L, 2);
-}
 
 void
 luaT_pushobject(struct lua_State *L, struct tnt_object *obj)
@@ -167,7 +145,6 @@ luaT_pushnetmsg(struct lua_State *L)
 	lua_setmetatable(L, -2);
 
 	TAILQ_INIT(q);
-	say_debug("create lua netmsg q:%p", q);
 	return 1;
 }
 
@@ -226,7 +203,6 @@ netmsg_add_iov(struct lua_State *L)
 static int
 netmsg_fixup_promise(struct lua_State *L)
 {
-	luaL_checktable(L, 1, netmsgpromise_metaname);
 	lua_rawgeti(L, 1, 1);
 	struct iovec *v = lua_touserdata(L, -1);
 	v->iov_base = (char *) luaL_checklstring(L, 2, &v->iov_len);
@@ -438,11 +414,6 @@ static const struct luaL_reg indexlib [] = {
 static int
 luaT_box_dispatch(struct lua_State *L)
 {
-#if 1
-	lua_pushliteral(L, "not implemented");
-	lua_error(L);
-	return 0;
-#else
 	u32 op = luaL_checkinteger(L, 1);
 	size_t len;
 	const char *req = luaL_checklstring(L, 2, &len);
@@ -451,18 +422,24 @@ luaT_box_dispatch(struct lua_State *L)
 				     .size = len,
 				     .pool = NULL };
 
-	struct palloc_pool *pool = palloc_create_pool("lua");
-	struct netmsg_tailq q = TAILQ_HEAD_INITIALIZER(q);
 	struct box_txn txn;
+	memset(&txn, 0, sizeof(txn));
+	txn.op = op;
+	@try {
+		box_prepare_update(&txn, &request_data);
+		txn_submit_to_storage(&txn);
+		txn_commit(&txn);
+	}
+	@catch (Error *e) {
+		txn_abort(&txn);
+		lua_pushstring(L, e->reason);
+		lua_error(L);
+	}
+	@finally {
+		txn_cleanup(&txn);
+	}
 
-	txn_init(&txn, netmsg_tail(&q, pool), BOX_QUIET);
-	iproto_reply(&txn.m, op, 0);
-	u32 ret = box_dispach(&txn, RW, op, &request_data);
-	palloc_destroy_pool(pool);
-
-	lua_pushinteger(L, ret);
-	return 1;
-#endif
+	return 0;
 }
 
 
@@ -512,26 +489,23 @@ luaT_openbox(struct lua_State *L)
 	luaL_register(L, "netmsg", netmsg_lib);
 	lua_pop(L, 3);
 
-        lua_getglobal(L, "require");
-        lua_pushliteral(L, "box_prelude");
-	if (lua_pcall(L, 1, 0, 0) != 0)
-		panic("moonbox: %s", lua_tostring(L, -1));
-
-	luaL_newmetatable(L, indexlib_name);
-	luaL_register(L, NULL, indexlib_m);
-	luaL_register(L, "box.index", indexlib);
-
-	luaL_newmetatable(L, objectlib_name);
-	luaL_register(L, NULL, tuple_mt);
-
-	luaL_register(L, "box", boxlib);
-
 	lua_getglobal(L, "string");
 	lua_pushcfunction(L, luaT_pushfield);
 	lua_setfield(L, -2, "tofield");
 	lua_pushcfunction(L, luaT_pushu32);
 	lua_setfield(L, -2, "tou32");
 	lua_pop(L, 1);
+
+	luaL_newmetatable(L, indexlib_name);
+	luaL_register(L, NULL, indexlib_m);
+	lua_pop(L, 1);
+
+	luaL_newmetatable(L, objectlib_name);
+	luaL_register(L, NULL, tuple_mt);
+	lua_pop(L, 1);
+
+	luaL_findtable(L, LUA_GLOBALSINDEX, "box", 0);
+	luaL_register(L, NULL, boxlib);
 
 	lua_createtable(L, 0, 0); /* namespace_registry */
 	for (uint32_t n = 0; n < object_space_count; ++n) {
@@ -560,54 +534,72 @@ luaT_openbox(struct lua_State *L)
 
 		lua_rawseti(L, -2, n); /* namespace_registry[n] = namespace */
 	}
-	lua_setglobal(L, "object_space_registry");
+	lua_setfield(L, -2, "object_space");
+	lua_pop(L, 1);
+
+	luaL_findtable(L, LUA_GLOBALSINDEX, "box.index", 0);
+	luaL_register(L, NULL, indexlib);
+	lua_pop(L, 1);
+
+	lua_getglobal(L, "require");
+        lua_pushliteral(L, "box_prelude");
+	if (lua_pcall(L, 1, 0, 0) != 0)
+		panic("moonbox: %s", lua_tostring(L, -1));
+
 }
 
+
+static int
+luaT_find_proc(lua_State *L, char *fname, i32 len)
+{
+	lua_pushvalue(L, LUA_GLOBALSINDEX);
+	do {
+		char *e = memchr(fname, '.', len);
+		if (e == NULL)
+			e = fname + len;
+
+		lua_pushlstring(L, fname, e - fname);
+		lua_gettable(L, -2);
+		lua_remove(L, -2);
+
+		len -= e - fname + 1;
+		fname = e + 1;
+	} while (len > 0);
+	return 1;
+}
 
 u32
 box_dispach_lua(struct box_txn *txn, struct tbuf *data)
 {
 	lua_State *L = fiber->L;
 
-	i32 n = read_u32(data);
+	u32 flen = read_varint32(data);
+	void *fname = read_bytes(data, flen);
+	u32 nargs = read_u32(data);
 
 	luaT_pushnetmsg(L);
 
-	lua_getglobal(L, "box");
-	lua_pushliteral(L, "user_proc");
-	lua_rawget(L, -2); /* user_proc table */
-	lua_remove(L, -2);
-	read_push_field(L, data); /* proc_name */
-	lua_rawget(L, -2); /* stack top is the proc */
-	lua_remove(L, -2);
-
-	if (lua_isnil(L, 1)) {
-		lua_settop(L, 0);
-		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "no such proc");
-	}
-
+	luaT_find_proc(L, fname, flen);
 	lua_pushvalue(L, 1);
-
-	lua_getglobal(L, "object_space_registry");
-	lua_rawgeti(L, -1, n);
-	lua_remove(L, -2); /* remove object_space_registry table */
-
-	u32 nargs = read_u32(data);
 	for (int i = 0; i < nargs; i++)
 		read_push_field(L, data);
 
-	/* FIXME: switch to native exceptions */
-	if (lua_pcall(L, 2 + nargs, 1, 0)) {
-		say_error("lua_pcall() failed: %s", lua_tostring(L, -1));
-		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "lua_pcall() failed");
+	/* FIXME: switch to native exceptions ? */
+	if (lua_pcall(L, 1 + nargs, 1, 0)) {
+		IProtoError *err = [IProtoError palloc];
+		[err init_code:ERR_CODE_ILLEGAL_PARAMS
+			  line:__LINE__
+			  file:__FILE__
+		     backtrace:NULL
+			format:"%s", lua_tostring(L, -1)];
+		lua_settop(L, 0);
+		@throw err;
 	}
-
-	u32 ret = luaL_checkinteger(L, -1);
-	lua_pop(L, 1);
 
 	struct netmsg_tailq *q = luaT_checknetmsg(L, 1);
 	txn->m = netmsg_concat(txn->m->tailq, q, txn->m->pool);
 
-	lua_pop(L, 1);
+	u32 ret = luaL_checkinteger(L, 2);
+	lua_pop(L, 2);
 	return ret;
 }

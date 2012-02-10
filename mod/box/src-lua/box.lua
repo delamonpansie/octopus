@@ -1,20 +1,25 @@
 
-local error, print, type, pairs, ipairs, setfenv, getmetatable, table =
-      error, print, type, pairs, ipairs, setfenv, getmetatable, table
+local error, print, type, pairs, ipairs, table =
+      error, print, type, pairs, ipairs, table
 
-local netmsg, string = netmsg, string
+local string, tostring =
+      string, tostring
+
+local tou32, tofield = string.tou32, string.tofield
+local netmsg = netmsg
 
 module(...)
 
 user_proc = {}
-REPLACE = 13
-UPDATE_FIELDS = 19
-DELETE = 20
 
+-- make useful aliases
+space = object_space
+for k,v in pairs(object_space) do
+        object_space[tostring(k)] = v
+end
 
--- TODO: select from multi column indexes
-function select(namespace, ...)
-        local index = namespace.index[0]
+function select(n, ...)
+        local index = object_space[n].index[0]
         local result = {}
         for k, v in pairs({...}) do
                 result[k] = index[v]
@@ -22,30 +27,31 @@ function select(namespace, ...)
         return result
 end
 
-function replace(namespace, ...)
-        error("unimplemented")
+function replace(n, ...)
         local tuple = {...}
         local flags = 0
-        local txn = txn.alloc()
-        local req = tbuf.alloc()
-        tbuf.append(req, "uuu", namespace.n, flags, #tuple)
+        local req = {}
+
+        table.insert(req, tou32(n))
+        table.insert(req, tou32(flags))
+        table.insert(req, tou32(#tuple))
         for k, v in pairs(tuple) do
-                tbuf.append(req, "f", v)
+                table.insert(req, tofield(v))
         end
-        dispatch(txn, REPLACE, req)
+        dispatch(13, table.concat(req))
 end
 
-function delete(namespace, key)
-        error("unimplemented");
-        local txn = txn.alloc()
-        local req = tbuf.alloc()
+function delete(n, key)
         local key_len = 1
-        tbuf.append(req, "uuf", namespace.n, key_len, key)
-        dispatch(txn, DELETE, req)
+        local req = {}
+
+        table.insert(req, tou32(n))
+        table.insert(req, tou32(key_len))
+        table.insert(req, tofield(key))
+        dispatch(20, table.concat(req))
 end
 
-
-function defproc(name, proc_body, env)
+function wrap(proc_body)
         if type(proc_body) == "string" then
                 proc_body = loadstring(code)
         end
@@ -53,17 +59,17 @@ function defproc(name, proc_body, env)
                 return nil
         end
 
-        local function proc(out, namespace, ...)
-                local retcode, result = proc_body(out, namespace, ...)
+        local function proc(out, object_space, ...)
+                local retcode, result = proc_body(object_space, ...)
 
                 if type(result) == "table" then
-                        netmsg.add_iov(out, string.tou32(#result))
+                        netmsg.add_iov(out, tou32(#result))
 
                         for k, v in pairs(result) do
                                 netmsg.add_iov(out, v)
                         end
                 elseif type(result) == "number" then
-                        netmsg.add_iov(out, string.tou32(result))
+                        netmsg.add_iov(out, tou32(result))
                 else
                         error("unexpected type of result:" .. type(result))
                 end
@@ -71,8 +77,7 @@ function defproc(name, proc_body, env)
                 return retcode
         end
 
-        setfenv(proc, env or {})
-        user_proc[name] = proc
+        return proc
 end
 
 function tuple(...)
@@ -85,13 +90,3 @@ function tuple(...)
         table.insert(f, 1, string.tou32(bsize))
         return table.concat(f)
 end
-
-defproc('xxx', 
-        function (out, n)
-                local x = {}
-                for i = 1, 10000 do
-                        local s = "aaaaaaa"..i
-                        table.insert(x, tuple(s))
-                end
-                return 0, x
-        end)
