@@ -391,7 +391,6 @@ luaT_init()
 
         lua_getglobal(L, "require");
         lua_pushliteral(L, "prelude");
-
 	if (lua_pcall(L, 1, 0, 0))
 		panic("lua_pcall() failed: %s", lua_tostring(L, -1));
 
