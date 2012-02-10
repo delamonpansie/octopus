@@ -124,7 +124,9 @@ netmsg_concat(struct netmsg *tail, struct netmsg_tailq *src)
 			memcpy(tail->iov + tail->count, m->iov, sizeof(m->iov[0]) * m->count);
 			memcpy(tail->ref + tail->count, m->ref, sizeof(m->ref[0]) * m->count);
 			tail->count += m->count;
-			netmsg_release(m);
+
+			TAILQ_REMOVE(m->tailq, m, link);
+			TAILQ_INSERT_HEAD(&netmsg_pool, m, link);
 		} else {
 			m->tailq = tail->tailq;
 			TAILQ_INSERT_TAIL(tail->tailq, m, link);
