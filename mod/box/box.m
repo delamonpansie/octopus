@@ -430,7 +430,7 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 
 		if (field_no >= old_tuple->cardinality)
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS,
-				  "update of field beyond tuple cardinality");
+				     "update of field beyond tuple cardinality");
 
 		struct tbuf *sptr_field = fields[field_no];
 
