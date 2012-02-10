@@ -343,12 +343,12 @@ luaT_panic(struct lua_State *L)
 static int
 luaT_error(struct lua_State *L)
 {
-	const char *err = "unknown error";
-	if (lua_isstring(L, 1))
-		err = lua_tostring(L, 1);
+	const char *err = "unknown lua error";
+	if (lua_isstring(L, -1))
+		err = lua_tostring(L, -1);
 
-	say_error("lua failed with: %s", err);
-	panic("%s", err); // FIXME: tnt_raise(tnt_Exception, reason:err);
+	/* FIXME: use native exceptions ? */
+	iproto_raise_fmt(ERR_CODE_UNKNOWN_ERROR, "%s", err);
 }
 
 
