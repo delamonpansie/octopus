@@ -142,6 +142,7 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 	size_t node_size;
 
 	int (*compare)(const void *a, const void *b, void *);
+	int (*ucompare)(const void *a, const void *b, void *);
 	void (*init_pattern)(struct tbuf *key, int cardinality,
 			     struct index_node *pattern, void *);
 
