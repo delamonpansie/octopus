@@ -32,7 +32,7 @@
 #include <stdbool.h>
 
 struct tnt_object {
-	u16 refs;
+	i32 refs;
 	u8 type;
 	u8 flags;
 	u8 data[0];
