@@ -590,15 +590,7 @@ txn_init(struct iproto_header *req, struct box_txn *txn, struct netmsg *m)
 void
 txn_cleanup(struct box_txn *txn)
 {
-	/*
-	 * txn_cleanup maybe called twice in following scenario:
-	 * several request processed by single iproto loop run
-	 * first one successed, but the last one fails with OOM
-	 * in this case fiber perform fiber_cleanup for every registered callback
-	 * we should not not run cleanup twice.
-	 */
-	if (txn->op == 0)
-		return;
+	assert(txn->op != 0);
 
 	if (txn->lock_obj) {
 		txn->lock_obj->flags &= ~WAL_WAIT;
@@ -731,7 +723,7 @@ box_prepare_update(struct box_txn *txn, struct tbuf *data)
 static void
 box_process(struct conn *c, struct tbuf *request)
 {
-	struct box_txn txn;
+	struct box_txn txn = { .op = 0 };
 	u32 msg_code = iproto(request)->msg_code;
 	struct tbuf request_data = { .pool = fiber->pool,
 				     .len = iproto(request)->len,
@@ -1146,11 +1138,13 @@ recover_row:(struct tbuf *)row
 		case wal_tag:
 			wal_apply(&txn, row);
 			txn_commit(&txn);
+			txn_cleanup(&txn);
 			lsn = row_lsn;
 			break;
 		case snap_tag:
 			snap_apply(&txn, row);
 			txn_commit(&txn);
+			txn_cleanup(&txn);
 			break;
 		case snap_initial_tag:
 			lsn = scn = row_lsn;
@@ -1168,9 +1162,6 @@ recover_row:(struct tbuf *)row
 	}
 	@catch (Error *e) {
 		panic("BoxRecovery failed: %s at %s:%i", e->reason, e->file, e->line);
-	}
-	@finally {
-		txn_cleanup(&txn);
 	}
 }
 @end
