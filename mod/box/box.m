@@ -764,7 +764,10 @@ box_process(struct conn *c, struct tbuf *request)
 		}
 	}
 	@catch (Error *e) {
-		say_debug("aboring txn, [%s reason:%s]", [[e class] name], e->reason);
+		say_debug("aboring txn, [%s reason:\"%s\"] at %s:%d",
+			  [[e class] name], e->reason, e->file, e->line);
+		if (e->backtrace)
+			say_debug("backtrace: %s", e->backtrace);
 		txn_abort(&txn);
 		u32 rc = ERR_CODE_UNKNOWN_ERROR;
 		if ([e respondsTo:@selector(code)])
