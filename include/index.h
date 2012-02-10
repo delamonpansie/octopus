@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011 Mail.RU
- * Copyright (C) 2010, 2011 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012 Mail.RU
+ * Copyright (C) 2010, 2011, 2012 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,7 +28,6 @@
 #include <stdbool.h>
 
 #import <object.h>
-#import <third_party/sptree.h>
 
 struct tnt_object;
 struct index_node {
@@ -132,8 +131,9 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 @end
 
 
-
-SPTREE_DEF(str_t, realloc);
+#define sptree_name _str_t
+#include <third_party/sptree.h>
+#undef sptree_name
 
 @interface Tree: Index <BasicIndex> {
 @public
