@@ -735,6 +735,7 @@ box_process(struct conn *c, struct tbuf *request)
 	u32 msg_code = iproto(request)->msg_code;
 	struct tbuf request_data = { .pool = fiber->pool,
 				     .len = iproto(request)->len,
+				     .size = iproto(request)->len,
 				     .data = iproto(request)->data };
 	@try {
 		if (op_is_select(msg_code)) {
