@@ -76,6 +76,7 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 - (void)iterator_init;
 - (struct tnt_object *)iterator_next;
 - (u32)size;
+- (u32)cardinality;
 @end
 
 
@@ -95,6 +96,7 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 }
 
 - (void) valid_object:(struct tnt_object*)obj;
+- (u32)cardinality;
 @end
 
 @interface DummyIndex: Index <BasicIndex> {

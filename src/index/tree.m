@@ -316,6 +316,13 @@ init_with_unique:(bool)_unique
 
 
 @implementation GenTree
+- (u32)
+cardinality
+{
+	struct gen_dtor *desc = dtor_arg;
+	return desc->cardinality;
+}
+
 static i8
 field_compare(struct field *f1, struct field *f2, enum field_data_type type)
 {

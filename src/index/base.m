@@ -43,4 +43,10 @@ valid_object:(struct tnt_object*)obj
 	/* FIXME: add caching caching */
 	dtor(obj, &node, dtor_arg);
 }
+
+- (u32)
+cardinality
+{
+	return 1;
+}
 @end
