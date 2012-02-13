@@ -48,6 +48,12 @@ static struct mesh_peer *peers;
 
 #define foreach_peer(p) for (struct mesh_peer *p = peers; p ; p = p->next)
 
+struct netmsg *
+peer_netmsg_tail(struct mesh_peer *p)
+{
+	return netmsg_tail(&p->c.out_messages, pool);
+}
+
 static i64
 next_seq(void)
 {
@@ -269,7 +275,7 @@ collect_response(struct mesh_msg *msg)
 
 static void
 reply(struct mesh_msg *msg, struct conn *c,
-		  void (*reply_callback)(struct mesh_peer *, struct netmsg *, struct mesh_msg *))
+		  void (*reply_callback)(struct mesh_peer *, struct mesh_msg *))
 {
 	struct netmsg *m = netmsg_tail(&c->out_messages, pool);
 	struct mesh_peer *p = (void *)c - offsetof(struct mesh_peer, c);
@@ -288,14 +294,14 @@ reply(struct mesh_msg *msg, struct conn *c,
 		return;
 	}
 
-	reply_callback(p, m, msg);
+	reply_callback(p, msg);
 }
 
 static void
 input_reader_aux(va_list ap)
 {
-	void (*reply_callback)(struct mesh_peer *, struct netmsg *, struct mesh_msg *) =
-		va_arg(ap, void (*)(struct mesh_peer *, struct netmsg *, struct mesh_msg *));
+	void (*reply_callback)(struct mesh_peer *, struct mesh_msg *) =
+		va_arg(ap, void (*)(struct mesh_peer *, struct mesh_msg *));
 
 	for (;;) {
 		struct ev_watcher *w = yield();
@@ -357,7 +363,7 @@ mesh_peer(int id)
 void
 mesh_init(struct mesh_peer *self_,
 	  struct mesh_peer *peers_,
-	  void (*reply_callback)(struct mesh_peer *, struct netmsg *, struct mesh_msg *))
+	  void (*reply_callback)(struct mesh_peer *, struct mesh_msg *))
 {
 	short accept_port;
 	struct sockaddr_in *outgoing_addr;

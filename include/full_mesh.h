@@ -63,10 +63,9 @@ int hostid(u64 seq);
 struct mesh_peer *mesh_peer(int id);
 struct mesh_peer *make_mesh_peer(int id, const char *name, const char *addr,
 				 struct mesh_peer *next);
-
+struct netmsg *peer_netmsg_tail(struct mesh_peer *p);
 void mesh_init(struct mesh_peer *self_,
 	       struct mesh_peer *peers_,
-	       void (*reply_callback)(struct mesh_peer *,
-				      struct netmsg *, struct mesh_msg *));
+	       void (*reply_callback)(struct mesh_peer *, struct mesh_msg *));
 void broadcast(int quorum, ev_tstamp timeout, struct mesh_msg *op);
 void release_response(struct mesh_response *r);
