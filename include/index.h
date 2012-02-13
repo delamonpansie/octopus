@@ -155,7 +155,6 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 
 - (void)iterator_init:(struct tbuf *)key_data with_cardinalty:(u32)cardinality;
 - (void)iterator_init_with_object:(struct tnt_object *)obj;
-- (struct tnt_object *)iterator_next;
 - (struct tnt_object *)iterator_next_verify_pattern;
 @end
 
