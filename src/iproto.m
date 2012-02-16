@@ -238,6 +238,30 @@ accept_client(int fd, void *data)
 	ev_io_start(&clnt->in);
 }
 
+static void
+logger(va_list ap)
+{
+	struct service *service = va_arg(ap, struct service *);
+	struct conn *c;
+	struct netmsg *m;
+
+	for (;;) {
+		fiber_sleep(2);
+
+		if (LIST_EMPTY(&service->conn))
+		    continue;
+
+		say_info("%s connections:", service->name);
+		LIST_FOREACH(c, &service->conn, link) {
+			say_info(" conn %p fd:%i state:%i", c, c->fd, c->state);
+			say_info("  in:%i out:%i", ev_is_active(&c->in), ev_is_active(&c->out));
+			say_info("  rbuf:%i", tbuf_len(c->rbuf));
+			TAILQ_FOREACH(m, &c->out_messages, link)
+				say_info("    netmsg offt:%i count:%i", m->offset, m->count);
+		}
+	}
+}
+
 struct service *
 iproto_service(u16 port, void (*on_bind)(int fd))
 {
@@ -255,6 +279,9 @@ iproto_service(u16 port, void (*on_bind)(int fd))
 	ev_prepare_start(&service->wakeup);
 
 	service->acceptor = fiber_create("", tcp_server, port, accept_client, on_bind, service);
+
+	if (getenv("NET_IO_LOGGER"))
+		fiber_create("net_io logger", logger, service);
 
 	palloc_register_gc_root(service->pool, service, service_gc);
 	return service;
