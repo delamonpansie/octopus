@@ -156,6 +156,13 @@ admin_dispatch(struct conn *c)
 			end(out);
 		}
 
+		action show_info {
+			start(out);
+			if (module(NULL)->info != NULL)
+				module(NULL)->info(out);
+			end(out);
+		}
+
 		action help {
 			start(out);
 			tbuf_append(out, help, sizeof(help) - 1);
@@ -228,7 +235,7 @@ admin_dispatch(struct conn *c)
 
 		commands = (help			%help						|
 			    exit			%{return 0;}					|
-			    show " "+ info		%{start(out); module(NULL)->info(out); end(out);}		|
+			    show " "+ info		%show_info					|
 			    show " "+ fiber		%{start(out); fiber_info(out); end(out);}	|
 			    show " "+ configuration 	%show_configuration				|
 			    show " "+ slab		%{start(out); slab_stat(out); end(out);}	|
