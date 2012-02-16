@@ -288,7 +288,8 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *data)
 	static ev_tstamp last = 0;
 	const int io_rate_limit = l->dir->recovery_state->snap_io_rate_limit;
 
-	[l append_row:data tag:tag cookie:default_cookie];
+	if ([l append_row:data tag:tag cookie:default_cookie] < 0)
+		panic("unable write row");
 
 	if (++rows % 100000 == 0)
 		say_crit("%.1fM rows written", rows / 1000000.);
@@ -331,8 +332,10 @@ snapshot_save:(void (*)(XLog *))callback
 	}
 
         snap = [snap_dir open_for_write:lsn saved_errno:&saved_errno];
-	if (snap == nil)
-		panic_status(saved_errno, "can't open snap for writing");
+	if (snap == nil) {
+		say_error("can't open snap for writing");
+		return;
+	}
 
 	/*
 	 * While saving a snapshot, snapshot name is set to
@@ -348,17 +351,26 @@ snapshot_save:(void (*)(XLog *))callback
 	tbuf_printf(init, "%s", "make world");
 
 	next_lsn = lsn;
-	[snap append_row:init tag:snap_initial_tag cookie:default_cookie];
+	if ([snap append_row:init tag:snap_initial_tag cookie:default_cookie] < 0) {
+		say_error("unable write initial row");
+		return;
+	}
 	callback(snap);
 
-	if (fsync(fileno(snap->fd)) < 0)
-		panic("fsync");
+	if (fsync(fileno(snap->fd)) < 0) {
+		say_syserror("fsync");
+		return;
+	}
 
-	if (link(snap->filename, final_filename) == -1)
-		panic_status(errno, "can't create hard link to snapshot");
+	if (link(snap->filename, final_filename) == -1) {
+		say_syserror("can't create hard link to snapshot");
+		return;
+	}
 
-	if (unlink(snap->filename) == -1)
+	if (unlink(snap->filename) == -1) {
 		say_syserror("can't unlink 'inprogress' snapshot");
+		return;
+	}
 
 	[snap close];
 	snap = nil;
