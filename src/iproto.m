@@ -83,6 +83,7 @@ next:
 	request = iproto_parse(c->rbuf);
 	if (request == NULL) {
 		c->state = READING;
+		ev_io_start(&c->in);
 		goto next;
 	} else {
 		TAILQ_INSERT_TAIL(&service->processing, c, processing_link);
