@@ -56,6 +56,8 @@ static const char help[] =
 	" - save snapshot" CRLF
 	" - exec mod <command>" CRLF
 	" - exec lua <code>" CRLF
+	" - incr log_level" CRLF
+	" - decr log_level" CRLF
 	" - reload configuration" CRLF;
 
 
@@ -232,6 +234,9 @@ admin_dispatch(struct conn *c)
 		exec = "ex"("e"("c")?)?;
 		string = [^\r\n]+ >{strstart = p;}  %{strend = p;};
 		reload = "re"("l"("o"("a"("d")?)?)?)?;
+		incr = "inc"("r")?;
+		decr = "dec"("r")?;
+		log_level = "log"("_"("l"("e"("v"("e"("l")?)?)?)?)?)?;
 
 		commands = (help			%help						|
 			    exit			%{return 0;}					|
@@ -243,6 +248,8 @@ admin_dispatch(struct conn *c)
 			    show " "+ stat		%show_stat					|
 			    save " "+ coredump		%{coredump(60); ok(out);}			|
 			    save " "+ snapshot		%save_snapshot					|
+			    incr " "+ log_level         %{cfg.log_level++; ok(out);}			|
+			    decr " "+ log_level         %{cfg.log_level--; ok(out);}			|
 			    exec " "+ mod " " + string	%mod_exec					|
 			    exec " "+ lua " "+ string	%lua_exec					|
 			    check " "+ slab		%{slab_validate(); ok(out);}			|
