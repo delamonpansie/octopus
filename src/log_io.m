@@ -442,8 +442,7 @@ init_filename:(const char *)filename_
 - (void)
 free
 {
-	if (vbuf)
-		free(vbuf);
+	free(vbuf);
 	[super free];
 }
 
