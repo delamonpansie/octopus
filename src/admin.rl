@@ -169,7 +169,7 @@ admin_dispatch(struct conn *c)
 			end(out);
 		}
 
-		action stat {
+		action show_stat {
 			start(out);
 			stat_print(fiber->L, out);
 			end(out);
@@ -240,7 +240,7 @@ admin_dispatch(struct conn *c)
 			    show " "+ configuration 	%show_configuration				|
 			    show " "+ slab		%{start(out); slab_stat(out); end(out);}	|
 			    show " "+ palloc		%{start(out); palloc_stat(out); end(out);}	|
-			    show " "+ stat		%stat						|
+			    show " "+ stat		%show_stat					|
 			    save " "+ coredump		%{coredump(60); ok(out);}			|
 			    save " "+ snapshot		%save_snapshot					|
 			    exec " "+ mod " " + string	%mod_exec					|
