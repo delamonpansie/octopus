@@ -66,30 +66,40 @@ submit_change:(struct tbuf *)change
 }
 
 - (i64)
-wal_request_write:(struct tbuf *)row_data tag:(u16)tag cookie:(u64)row_cookie
+wal_request_write:(struct tbuf *)row_data tag:(u16)tag cookie:(u64)cookie
 {
 	struct tbuf *m;
 	struct msg *a;
-	struct row_v12 row;
 
 	if (!local_writes) {
 		say_warn("local writes disabled");
 		return 0;
 	}
 
+
+	/* packet is : packet_len: u32
+	   	       fid: u32
+		       repeat_count: u32
+		       tag: u16
+		       cookie: u64
+		       data_len: u32
+	               data: u8[data_len]
+	*/
+
 	m = tbuf_alloc(wal_writer->out->pool);
-	memset(&row, 0, sizeof(row));
-	row.scn = scn;
-	row.tag = tag;
-	row.cookie = row_cookie;
-	row.len = tbuf_len(row_data);
 
-	/* packet is : <data_len: u32><fid: u32><data: u8[data_len]> */
+	u32 repeat_count = 1;
+	u32 data_len = tbuf_len(row_data);
+	u32 packet_len = sizeof(fiber->fid) + sizeof(repeat_count) +
+			 sizeof(tag) + sizeof(cookie) +
+			 sizeof(data_len) + data_len;
 
-	u32 len = sizeof(row) + tbuf_len(row_data);
-	tbuf_append(m, &len, sizeof(u32));
-	tbuf_append(m, &fiber->fid, sizeof(u32));
-	tbuf_append(m, &row, sizeof(row));
+	tbuf_append(m, &packet_len, sizeof(packet_len));
+	tbuf_append(m, &fiber->fid, sizeof(fiber->fid));
+	tbuf_append(m, &repeat_count, sizeof(repeat_count));
+	tbuf_append(m, &tag, sizeof(tag));
+	tbuf_append(m, &cookie, sizeof(cookie));
+	tbuf_append(m, &data_len, sizeof(data_len));
 	tbuf_append(m, row_data->data, tbuf_len(row_data));
 
 	if (write_inbox(wal_writer->out, m) == false) {
@@ -107,26 +117,23 @@ wal_request_write:(struct tbuf *)row_data tag:(u16)tag cookie:(u64)row_cookie
 	return row_lsn;
 }
 
-- (i64)
-wal_write_row:(struct row_v12 *)row
+- (int)
+prepare_write
 {
-	static XLog *wal_to_close = nil;
-
-	lsn++;
 	if (current_wal == nil)
 		/* Open WAL with '.inprogress' suffix. */
-		current_wal = [wal_dir open_for_write:lsn
+		current_wal = [wal_dir open_for_write:lsn + 1
 					  saved_errno:NULL];
         if (current_wal == nil) {
                 say_error("can't open wal");
-                goto fail;
+                return -1;
         }
 
         if (current_wal->rows == 1) {
 		/* rename wal after first successfull write to name without inprogress suffix*/
 		if ([current_wal inprogress_rename] != 0) {
 			say_error("can't rename inprogress wal");
-			goto fail;
+			return -1;
 		}
 	}
 
@@ -134,24 +141,32 @@ wal_write_row:(struct row_v12 *)row
 		[wal_to_close close];
 		wal_to_close = nil;
 	}
+	next_lsn = lsn + 1;
+	return 0;
+}
 
-	row->lsn = lsn;
-	row->tm = ev_now();
-	row->data_crc32c = crc32c(0, row->data, row->len);
-	row->header_crc32c = crc32c(0, (u8 *)row + field_sizeof(struct row_v12, header_crc32c),
-				    sizeof(*row) - field_sizeof(struct row_v12, header_crc32c));
+- (i64)
+confirm_write:(int)rows
+{
+	static ev_tstamp last_flush;
 
-	if (fwrite(&marker, sizeof(marker), 1, current_wal->fd) != 1) {
-		say_syserror("can't write marker to wal");
-		goto fail;
+	say_debug("confirm_write: %i rows confirmed", rows);
+	lsn += rows;
+
+	if (current_wal != nil) {
+		/* flush stdio buffer to keep feeder in sync */
+		if (fflush(current_wal->fd) < 0)
+			say_syserror("can't flush wal");
+
+		ev_tstamp fsync_delay = current_wal->dir->fsync_delay;
+		if (fsync_delay == 0 || ev_now() - last_flush >= fsync_delay) {
+			if ([current_wal flush] < 0)
+				say_syserror("can't flush wal");
+			else
+				last_flush = ev_now();
+		}
 	}
 
-	if (fwrite(row, sizeof(*row) + row->len, 1, current_wal->fd) != 1) {
-		say_syserror("can't write row data to wal");
-		goto fail;
-	}
-
-	current_wal->rows++;
 	if (current_wal->dir->rows_per_file <= current_wal->rows ||
 	    (lsn + 1) % current_wal->dir->rows_per_file == 0)
 	{
@@ -160,9 +175,6 @@ wal_write_row:(struct row_v12 *)row
 	}
 
 	return lsn;
-
-      fail:
-	return 0;
 }
 
 
@@ -172,7 +184,6 @@ wal_disk_writer(int fd, void *state)
 	Recovery *rcvr = state;
 	struct tbuf *wbuf, *rbuf;
 	int result = EXIT_FAILURE;
-	ev_tstamp last_flush = 0;
 	i64 lsn;
 
 	rbuf = tbuf_alloca(fiber->pool);
@@ -185,12 +196,11 @@ wal_disk_writer(int fd, void *state)
 
 	[rcvr initial_lsn:lsn];
 	for (;;) {
-	reread:
 		tbuf_ensure(rbuf, 16 * 1024);
 		ssize_t r = recv(fd, rbuf->data + tbuf_len(rbuf),
 				 rbuf->size - tbuf_len(rbuf), 0);
 		if (r < 0 && (errno == EINTR))
-			goto reread;
+			continue;
 		else if (r < 0) {
 			say_syserror("recv");
 			result = EX_OSERR;
@@ -207,46 +217,46 @@ wal_disk_writer(int fd, void *state)
 		/* we're not running inside ev_loop, so update ev_now manually */
 		ev_now_update();
 
-		while (tbuf_len(rbuf) > sizeof(u32) * 2) {
-			/* packet is : <data_len: u32><fid: u32><data: u8[data_len]> */
-			size_t packet_size = sizeof(u32) * 2 + *(u32 *)rbuf->data;
-			if (tbuf_len(rbuf) < packet_size) {
-				/* either rbuf was too small or data wasn't ready
-				   since we have nothing to send, procceed to reading packet again */
-				if (tbuf_len(wbuf) == 0) {
-					tbuf_ensure(rbuf, packet_size);
-					goto reread;
-				} else {
+		while (tbuf_len(rbuf) > sizeof(u32) && tbuf_len(rbuf) > *(u32 *)rbuf->data) {
+			u32 packet_len = read_u32(rbuf);
+			u32 fid = read_u32(rbuf);
+			u32 row_count = 0, repeat_count = read_u32(rbuf);
+			i64 row_lsn = 0;
+			packet_len -= sizeof(fid) + sizeof(repeat_count);
+
+			if ([rcvr prepare_write] == -1)
+				goto reply;
+
+			assert(repeat_count == 1);
+			while (repeat_count-- > 0) {
+				u16 tag = read_u16(rbuf);
+				u64 cookie = read_u64(rbuf);
+				u32 data_len = read_u32(rbuf);
+				void *data = read_bytes(rbuf, data_len);
+				packet_len -= sizeof(tag) + sizeof(cookie) +
+					      sizeof(data_len) + data_len;
+
+				struct tbuf row_data = { .data = data,
+							 .len = data_len,
+							 .size = data_len,
+							 .pool = NULL };
+
+				if ([rcvr->current_wal append_row:&row_data tag:tag cookie:cookie] < 0) {
+					say_error("append_row failed");
 					break;
 				}
+				rcvr->next_lsn++;
+				row_count++;
 			}
-
-			u32 data_len = read_u32(rbuf);
-			u32 fid = read_u32(rbuf);
-			struct row_v12 *row = read_bytes(rbuf, data_len);
-
-			i64 row_lsn = [rcvr wal_write_row:row];
+			row_lsn = [rcvr confirm_write:row_count];
+		reply:
+			tbuf_ltrim(rbuf, packet_len);
 
 			u32 len = sizeof(row_lsn);
 			tbuf_append(wbuf, &len, sizeof(u32));
 			tbuf_append(wbuf, &fid, sizeof(fid));
 			tbuf_append(wbuf, &row_lsn, sizeof(row_lsn));
 			say_debug("sending lsn:%"PRIi64" to parent", row_lsn);
-		}
-
-		if (rcvr->current_wal != nil) {
-			/* flush stdio buffer to keep feeder in sync */
-			if (fflush(rcvr->current_wal->fd) < 0)
-				say_syserror("can't flush wal");
-
-			float fsync_delay = rcvr->current_wal->dir->fsync_delay;
-			if (fsync_delay == 0 || ev_now() - last_flush >= fsync_delay)
-			{
-				if ([rcvr->current_wal flush] < 0)
-					say_syserror("can't flush wal");
-				else
-					last_flush = ev_now();
-			}
 		}
 
 		while (tbuf_len(wbuf) > 0) {
@@ -269,28 +279,6 @@ wal_disk_writer(int fd, void *state)
 	return result;
 }
 
-static void
-write_row(XLog *l, i64 scn, i64 lsn, u16 tag, u64 cookie, struct tbuf *data)
-{
-	struct row_v12 row;
-	row.scn = scn;
-	row.lsn = lsn;
-	row.tm = ev_now();
-	row.tag = tag;
-	row.cookie = cookie;
-	row.len = tbuf_len(data);
-	row.data_crc32c = crc32c(0, data->data, tbuf_len(data));
-	row.header_crc32c = crc32c(0, (unsigned char *)&row + sizeof(row.header_crc32c),
-				   sizeof(row) - sizeof(row.header_crc32c));
-
-	if (fwrite(&marker, sizeof(marker), 1, l->fd) != 1)
-		panic("fwrite");
-	if (fwrite(&row, sizeof(row), 1, l->fd) != 1)
-		panic("fwrite");
-	if (fwrite(data->data, tbuf_len(data), 1, l->fd) != 1)
-		panic("fwrite");
-}
-
 void
 snapshot_write_row(XLog *l, u16 tag, struct tbuf *data)
 {
@@ -300,7 +288,7 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *data)
 	static ev_tstamp last = 0;
 	const int io_rate_limit = l->dir->recovery_state->snap_io_rate_limit;
 
-	write_row(l, 0, 0, tag, default_cookie, data);
+	[l append_row:data tag:tag cookie:default_cookie];
 
 	if (++rows % 100000 == 0)
 		say_crit("%.1fM rows written", rows / 1000000.);
@@ -358,8 +346,9 @@ snapshot_save:(void (*)(XLog *))callback
 
 	struct tbuf *init = tbuf_alloc(fiber->pool);
 	tbuf_printf(init, "%s", "make world");
-	write_row(snap, scn, lsn, snap_initial_tag, default_cookie, init);
 
+	next_lsn = lsn;
+	[snap append_row:init tag:snap_initial_tag cookie:default_cookie];
 	callback(snap);
 
 	if (fsync(fileno(snap->fd)) < 0)

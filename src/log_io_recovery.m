@@ -70,6 +70,11 @@ initial_lsn:(i64)new_lsn
         lsn = new_lsn;
 }
 
+- (i64)
+next_lsn
+{
+	return next_lsn;
+}
 
 /* this little hole shouldn't be used too much */
 int
@@ -299,9 +304,8 @@ recover_local:(i64)start_lsn
 	 * so find wal which contains record with next lsn
 	 */
 	if (current_wal == nil) {
-		i64 next_lsn = lsn + 1;
-		i64 wal_start_lsn = [wal_dir find_file_containg_lsn:next_lsn];
-		if (next_lsn != wal_start_lsn && wal_start_lsn > 0) {
+		i64 wal_start_lsn = [wal_dir find_file_containg_lsn:(lsn + 1)];
+		if (lsn + 1 != wal_start_lsn && wal_start_lsn > 0) {
 			current_wal = [wal_dir open_for_read:wal_start_lsn];
 			if (current_wal == nil)
 				raise("unable to open WAL %s",

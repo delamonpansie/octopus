@@ -115,6 +115,8 @@ typedef void (follow_cb)(ev_stat *w, int events);
 - (struct tbuf *)next_row;
 - (int) flush;
 - (int) close;
+
+- (int) append_row:(struct tbuf *)data tag:(u16)tag cookie:(u64)cookie;
 @end
 
 struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
@@ -126,10 +128,11 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 
 @interface Recovery: Object {
 	struct child *wal_writer;
-	i64 lsn, scn;
+	i64 lsn, next_lsn, scn;
 	ev_tstamp lag, last_update_tstamp;
 	char status[64];
 	XLog *current_wal;	/* the WAL we'r currently reading/writing from/to */
+	XLog *wal_to_close;
 
 	struct sockaddr_in *feeder;
 
@@ -138,7 +141,6 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 	ev_timer wal_timer;
 
 	int snap_io_rate_limit;
-	u64 cookie;
 
 	bool local_writes;
 	struct fiber *remote_puller;
@@ -153,6 +155,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (struct child *)wal_writer;
 
 - (void) initial_lsn:(i64)new_lsn;
+- (i64) next_lsn;
 - (void) recover_finalize;
 - (i64) recover_local:(i64)lsn;
 - (void) recover_follow:(ev_tstamp)delay;

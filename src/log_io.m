@@ -347,9 +347,10 @@ open_for_write:(i64)lsn saved_errno:(int *)saved_errno
 	if (file == NULL)
 		goto error;
 
-        l = [[XLog alloc] init_filename:filename
-				     fd:file
-				    dir:self];
+	l = cfg.io_compat ? [XLog11 alloc] : [XLog12 alloc];
+	l = [l init_filename:filename
+			  fd:file
+			 dir:self];
         if (l == nil)
                 goto error;
 
@@ -513,8 +514,13 @@ close
 			say_error("can't write eof_marker");
 		[self flush];
 	} else {
-		if (rows == 0)
-			panic("no valid rows were read");
+		if (rows == 0) {
+			bool legacy_snap = cfg.io_compat &&
+					   [dir isMemberOf:[SnapDir class]] &&
+					   [dir->recovery_state lsn] == 1; /* TODO: check file lsn */
+			if (!legacy_snap)
+				panic("no valid rows were read");
+		}
 	}
 
 	if (ev_is_active(&stat))
@@ -553,16 +559,7 @@ flush
 - (int)
 write_header
 {
-        say_debug("write_header");
-	if (fwrite(dir->filetype, strlen(dir->filetype), 1, fd) != 1)
-		return -1;
-
-	if (fwrite(v12, strlen(v12), 1, fd) != 1)
-		return -1;
-
-        if (fwrite("\n", 1, 1, fd) != 1)
-                return -1;
-
+	assert(false);
 	return 0;
 }
 
@@ -587,7 +584,6 @@ read_row
 {
 	return NULL;
 }
-
 
 - (struct tbuf *)
 next_row
@@ -659,8 +655,16 @@ follow:(follow_cb *)cb
 	ev_stat_start(&stat);
 }
 
+- (int)
+append_row:(struct tbuf *)data tag:(u16)tag cookie:(u64)cookie
+{
+	(void)data; (void)tag; (void)cookie;
+	assert(false);
+}
 @end
 
+
+@implementation XLog11
 
 struct tbuf *
 convert_row_v11_to_v12(struct tbuf *m)
@@ -690,7 +694,17 @@ convert_row_v11_to_v12(struct tbuf *m)
 	return n;
 }
 
-@implementation XLog11
+- (int)
+write_header
+{
+	if (fwrite(dir->filetype, strlen(dir->filetype), 1, fd) != 1)
+		return -1;
+	if (fwrite(v11, strlen(v11), 1, fd) != 1)
+		return -1;
+	if (fwrite("\n", 1, 1, fd) != 1)
+                return -1;
+	return 0;
+}
 
 - (struct tbuf *)
 read_row
@@ -742,10 +756,76 @@ read_row
 	return convert_row_v11_to_v12(m);
 }
 
+
+- (int)
+append_row:(struct tbuf *)data tag:(u16)tag cookie:(u64)cookie
+{
+	Recovery *r = dir->recovery_state;
+	struct _row_v11 row;
+
+	if (tag == snap_tag) {
+		tag = (u16)-1;
+	} else if (tag == wal_tag) {
+		tag = (u16)-2;
+	} else if (tag == snap_initial_tag ||
+		   tag == snap_final_tag ||
+		   tag == wal_final_tag)
+	{
+		return 0;
+	} else {
+		say_error("unknown tag %i", (int)tag);
+		return -1;
+	}
+
+	row.lsn = [r next_lsn];
+	row.tm = ev_now();
+	row.len = sizeof(tag) + sizeof(cookie) + tbuf_len(data);
+
+	row.data_crc32c = crc32c(0, (void *)&tag, sizeof(tag));
+	row.data_crc32c = crc32c(row.data_crc32c, (void *)&cookie, sizeof(cookie));
+	row.data_crc32c = crc32c(row.data_crc32c, data->data, tbuf_len(data));
+
+	row.header_crc32c = crc32c(0, (unsigned char *)&row + sizeof(row.header_crc32c),
+				   sizeof(row) - sizeof(row.header_crc32c));
+
+	off_t offt = ftello(fd);
+	if (fwrite(&marker, sizeof(marker), 1, fd) != 1 ||
+	    fwrite(&row, sizeof(row), 1, fd) != 1 ||
+	    fwrite(&tag, sizeof(tag), 1, fd) != 1 ||
+	    fwrite(&cookie, sizeof(cookie), 1, fd) != 1 ||
+	    fwrite(data->data, tbuf_len(data), 1, fd) != 1)
+		goto fail;
+
+	rows++;
+	return 0;
+fail:
+	say_syserror("fwrite");
+	fflush(fd);
+	fseeko(fd, offt, SEEK_SET);
+	if (ftruncate(fileno(fd), offt) == -1)
+		say_syserror("ftruncate(%s)", filename);
+	return -1;
+}
+
 @end
 
 
 @implementation XLog12
+
+- (int)
+write_header
+{
+	const char *comment = "Created-by: octopus\n";
+	if (fwrite(dir->filetype, strlen(dir->filetype), 1, fd) != 1)
+		return -1;
+	if (fwrite(v12, strlen(v12), 1, fd) != 1)
+		return -1;
+	if (fwrite(comment, strlen(comment), 1, fd) != 1)
+                return -1;
+	if (fwrite("\n", 1, 1, fd) != 1)
+                return -1;
+	return 0;
+}
 
 - (struct tbuf *)
 read_row
@@ -795,6 +875,40 @@ read_row
 	say_debug("read row v12 success lsn:%" PRIi64, row_v12(m)->lsn);
 
 	return m;
+}
+
+- (int)
+append_row:(struct tbuf *)data tag:(u16)tag cookie:(u64)cookie
+{
+	Recovery *r = dir->recovery_state;
+
+	struct row_v12 row;
+	row.scn = [r scn];
+	row.lsn = [r next_lsn];
+	row.tm = ev_now();
+	row.tag = tag;
+	row.cookie = cookie;
+	row.len = tbuf_len(data);
+	row.data_crc32c = crc32c(0, data->data, tbuf_len(data));
+	row.header_crc32c = crc32c(0, (unsigned char *)&row + sizeof(row.header_crc32c),
+				   sizeof(row) - sizeof(row.header_crc32c));
+
+	off_t offt = ftello(fd);
+	if (fwrite(&marker, sizeof(marker), 1, fd) != 1 ||
+	    fwrite(&row, sizeof(row), 1, fd) != 1 ||
+	    fwrite(data->data, tbuf_len(data), 1, fd) != 1)
+		goto fail;
+
+	rows++;
+	return 0;
+fail:
+	say_syserror("fwrite");
+	fflush(fd);
+	fseeko(fd, offt, SEEK_SET);
+	if (ftruncate(fileno(fd), offt) == -1)
+		say_syserror("ftruncate(%s)", filename);
+	return -1;
+
 }
 
 @end

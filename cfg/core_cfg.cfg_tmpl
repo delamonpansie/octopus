@@ -45,3 +45,6 @@ lua_path = "src-lua/?.lua", ro
 
 # custom proc title is appended after normal
 custom_proc_title=NULL, ro
+
+# backward compatibility mode
+io_compat = 0, ro
