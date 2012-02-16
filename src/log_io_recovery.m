@@ -237,7 +237,8 @@ recover_remaining_wals
 
 	while (lsn < wal_greatest_lsn) {
 		if (current_wal != nil) {
-                        say_warn("wal `%s' wasn't correctly closed", current_wal->filename);
+                        say_warn("wal `%s' wasn't correctly closed, lsn:%"PRIi64,
+				 current_wal->filename, lsn);
                         [current_wal close];
                         current_wal = nil;
 		}
@@ -273,8 +274,9 @@ recover_remaining_wals
 	 * we lost some logs it is a fatal error.
 	 */
 	if (wal_greatest_lsn > lsn + 1)
-		raise("not all WALs have been successfully read greatest_lsn:%"PRIi64
-		      "lsn:%"PRIi64, wal_greatest_lsn, lsn);
+		raise("not all WALs have been successfully read! "
+		      "greatest_lsn:%"PRIi64" lsn:%"PRIi64" diff:%"PRIi64,
+		      wal_greatest_lsn, lsn, wal_greatest_lsn - lsn);
 
 
 }
@@ -310,6 +312,7 @@ recover_local:(i64)start_lsn
 			if (current_wal == nil)
 				raise("unable to open WAL %s",
 				      [wal_dir format_filename:wal_start_lsn in_progress:false]);
+			say_info("recover from `%s'", current_wal->filename);
 		}
 	}
 
