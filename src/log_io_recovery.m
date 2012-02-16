@@ -70,12 +70,6 @@ initial_lsn:(i64)new_lsn
         lsn = new_lsn;
 }
 
-- (i64)
-next_lsn
-{
-	return next_lsn;
-}
-
 /* this little hole shouldn't be used too much */
 int
 read_log(const char *filename, row_handler *xlog_handler, row_handler *snap_handler, void *state)
@@ -83,15 +77,20 @@ read_log(const char *filename, row_handler *xlog_handler, row_handler *snap_hand
 	XLog *l;
 	struct tbuf *row;
 	row_handler *h = NULL;
+	FILE *fd;
 
+	if ((fd = fopen(filename, "r")) == NULL) {
+		say_syserror("fopen(%s)", filename);
+		return -1;
+	}
 
 	if (strstr(filename, ".xlog")) {
                 XLogDir *dir = [[WALDir alloc] init_dirname:NULL];
-		l = [dir open_for_read_filename:filename];
+		l = [dir open_for_read_filename:filename fd:fd lsn:0];
 		h = xlog_handler;
 	} else if (strstr(filename, ".snap")) {
                 XLogDir *dir = [[SnapDir alloc] init_dirname:NULL];
-                l = [dir open_for_read_filename:filename];
+		l = [dir open_for_read_filename:filename fd:fd lsn:0];
 		h = snap_handler;
 	} else {
 		say_error("don't know what how to read `%s'", filename);

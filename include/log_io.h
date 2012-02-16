@@ -70,9 +70,9 @@ typedef void (follow_cb)(ev_stat *w, int events);
 	Recovery *recovery_state;
 };
 - (id) init_dirname:(const char *)dirname_;
-- (id) open_for_read_filename:(const char *)filename;
+- (id) open_for_read_filename:(const char *)filename fd:(FILE *)fd lsn:(i64)lsn;
 - (id) open_for_read:(i64)lsn;
-- (id) open_for_write:(i64)lsn saved_errno:(int *)saved_errno;
+- (id) open_for_write:(i64)lsn;
 - (i64) greatest_lsn;
 - (const char *) format_filename:(i64)lsn in_progress:(bool)in_progress;
 - (i64) find_file_containg_lsn:(i64)target_lsn;
@@ -91,7 +91,8 @@ typedef void (follow_cb)(ev_stat *w, int events);
 	void *vbuf;
 	ev_stat stat;
 
-        XLogDir *dir;
+	XLogDir *dir;
+	i64 next_lsn;
 
 	struct palloc_pool *pool;
 	enum log_mode {
@@ -104,7 +105,11 @@ typedef void (follow_cb)(ev_stat *w, int events);
 
 	size_t bytes_written, offset;
 }
-- (XLog *)init_filename:(const char *)filename fd:(FILE *)fd dir:(XLogDir *)dir;
+- (XLog *) init_filename:(const char *)filename_
+		      fd:(FILE *)fd_
+		    mode:(int)mode
+		     dir:(XLogDir *)dir_
+		     lsn:(i64)lsn_;
 - (const char *)final_filename;
 - (void) follow:(follow_cb *)cb;
 - (void) reset_inprogress;
@@ -128,7 +133,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 
 @interface Recovery: Object {
 	struct child *wal_writer;
-	i64 lsn, next_lsn, scn;
+	i64 lsn, scn;
 	ev_tstamp lag, last_update_tstamp;
 	char status[64];
 	XLog *current_wal;	/* the WAL we'r currently reading/writing from/to */
@@ -155,7 +160,6 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (struct child *)wal_writer;
 
 - (void) initial_lsn:(i64)new_lsn;
-- (i64) next_lsn;
 - (void) recover_finalize;
 - (i64) recover_local:(i64)lsn;
 - (void) recover_follow:(ev_tstamp)delay;

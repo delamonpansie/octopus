@@ -122,8 +122,7 @@ prepare_write
 {
 	if (current_wal == nil)
 		/* Open WAL with '.inprogress' suffix. */
-		current_wal = [wal_dir open_for_write:lsn + 1
-					  saved_errno:NULL];
+		current_wal = [wal_dir open_for_write:lsn + 1];
         if (current_wal == nil) {
                 say_error("can't open wal");
                 return -1;
@@ -141,7 +140,6 @@ prepare_write
 		[wal_to_close close];
 		wal_to_close = nil;
 	}
-	next_lsn = lsn + 1;
 	return 0;
 }
 
@@ -150,10 +148,11 @@ confirm_write:(int)rows
 {
 	static ev_tstamp last_flush;
 
-	say_debug("confirm_write: %i rows confirmed", rows);
-	lsn += rows;
-
 	if (current_wal != nil) {
+		say_debug("confirm_write: %i rows confirmed", rows);
+		lsn += rows;
+		assert(lsn == current_wal->next_lsn - 1);
+
 		/* flush stdio buffer to keep feeder in sync */
 		if (fflush(current_wal->fd) < 0)
 			say_syserror("can't flush wal");
@@ -245,7 +244,6 @@ wal_disk_writer(int fd, void *state)
 					say_error("append_row failed");
 					break;
 				}
-				rcvr->next_lsn++;
 				row_count++;
 			}
 			row_lsn = [rcvr confirm_write:row_count];
@@ -324,14 +322,13 @@ snapshot_save:(void (*)(XLog *))callback
 {
         XLog *snap;
 	const char *final_filename;
-	int saved_errno;
 
 	if (!local_writes) {
 		say_warn("local writes disabled");
 		return;
 	}
 
-        snap = [snap_dir open_for_write:lsn saved_errno:&saved_errno];
+	snap = [snap_dir open_for_write:lsn];
 	if (snap == nil) {
 		say_error("can't open snap for writing");
 		return;
@@ -350,7 +347,6 @@ snapshot_save:(void (*)(XLog *))callback
 	struct tbuf *init = tbuf_alloc(fiber->pool);
 	tbuf_printf(init, "%s", "make world");
 
-	next_lsn = lsn;
 	if ([snap append_row:init tag:snap_initial_tag cookie:default_cookie] < 0) {
 		say_error("unable write initial row");
 		return;

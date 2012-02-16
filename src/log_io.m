@@ -227,34 +227,23 @@ format_filename:(i64)lsn in_progress:(bool)in_progress
 
 
 - (id)
-open_for_read_filename:(const char *)filename
+open_for_read_filename:(const char *)filename fd:(FILE *)fd lsn:(i64)lsn
 {
 	char filetype_[32], version_[32];
 	char *error = "unknown error";
 	XLog *l = nil;
-	char *r;
 
-	say_debug("open_for_read_filename %s", filename);
-	FILE *fd = fopen(filename, "r");
-	if (fd == NULL) {
-		error = strerror(errno);
-		goto error;
-	}
-
-	r = fgets(filetype_, sizeof(filetype_), fd);
-	if (r == NULL) {
+	if (fgets(filetype_, sizeof(filetype_), fd) == NULL) {
 		error = "header reading failed";
 		goto error;
 	}
 
-	r = fgets(version_, sizeof(version_), fd);
-	if (r == NULL) {
+	if (fgets(version_, sizeof(version_), fd) == NULL) {
 		error = "header reading failed";
 		goto error;
 	}
 
 	if (strcmp(version_, v11) == 0) {
-		say_debug("XLog11 alloc");
 		l = [XLog11 alloc];
 	} else if (strcmp(version_, v12) == 0) {
 		l = [XLog12 alloc];
@@ -268,37 +257,29 @@ open_for_read_filename:(const char *)filename
                 goto error;
         }
 
-	l = [l init_filename:filename
-			  fd:fd
-			 dir:self];
-
-        if (l == nil) {
-                error = "unknown file type";
-                goto error;
-        }
+	[l init_filename:filename
+		      fd:fd
+		    mode:LOG_READ
+		     dir:self
+		     lsn:lsn];
 
         if ([l read_header] < 0) {
                 error = "header reading failed";
                 goto error;
         }
 
-        l->mode = LOG_READ;
-	l->stat.data = recovery_state;
-
 	return l;
 
 error:
 	say_warn("[open_for_read_filename `%s']: %s", filename, error);
-        if (fd != NULL) {
-		[l free];
-                l = [[XLog alloc] init_filename:filename
-					     fd:fd
-					    dir:self];
-		l->valid = false;
-		return l;
-	}
-        [l free];
-	return nil;
+	[l free];
+	l = [[XLog alloc] init_filename:filename
+				     fd:fd
+				   mode:LOG_READ
+				    dir:self
+				    lsn:lsn];
+	l->valid = false;
+	return l;
 }
 
 
@@ -306,11 +287,19 @@ error:
 open_for_read:(i64)lsn
 {
         const char *filename = [self format_filename:lsn in_progress:false];
-        return [self open_for_read_filename:filename];
+	FILE *fd = fopen(filename, "r");
+	if (fd == NULL) {
+		say_syserror("[open_for_read %"PRIi64"]: filename:`%s'",
+			     lsn, filename);
+		return nil;
+	}
+	return [self open_for_read_filename:filename
+					 fd:fd
+					lsn:lsn];
 }
 
 - (id)
-open_for_write:(i64)lsn saved_errno:(int *)saved_errno
+open_for_write:(i64)lsn
 {
         XLog *l = nil;
         FILE *file = NULL;
@@ -322,16 +311,12 @@ open_for_write:(i64)lsn saved_errno:(int *)saved_errno
 
 	if (access(filename, F_OK) == 0) {
 		say_error("failed to open `%s': file already exists", filename);
-		if (saved_errno != NULL)
-			*saved_errno = EEXIST;
 		return NULL;
 	}
 	const char *final_filename = [self format_filename:lsn in_progress:false];
 	if (access(final_filename, F_OK) == 0) {
 		say_error("failed to open `%s': '%s' is in the way",
 			  filename, final_filename);
-		if (saved_errno != NULL)
-			*saved_errno = EEXIST;
 		return NULL;
 	}
 
@@ -350,12 +335,9 @@ open_for_write:(i64)lsn saved_errno:(int *)saved_errno
 	l = cfg.io_compat ? [XLog11 alloc] : [XLog12 alloc];
 	l = [l init_filename:filename
 			  fd:file
-			 dir:self];
-        if (l == nil)
-                goto error;
-
-        l->mode = LOG_WRITE;
-	l->stat.data = recovery_state;
+			mode:LOG_WRITE
+			 dir:self
+			 lsn:lsn];
 
 	say_info("creating `%s'", l->filename);
 	if ([l write_header] < 0) {
@@ -365,8 +347,6 @@ open_for_write:(i64)lsn saved_errno:(int *)saved_errno
 
 	return l;
       error:
-	if (saved_errno != NULL)
-		*saved_errno = errno;
 	say_error("failed to open `%s': %s", filename, strerror(errno));
         if (file != NULL)
                 fclose(file);
@@ -390,17 +370,17 @@ init_dirname:(const char *)dirname_
 - (id)
 open_for_read:(i64)lsn
 {
+	FILE *fd;
 	const char *filename = [self format_filename:lsn in_progress:true];
-	if (access(filename, R_OK) == 0) {
-		XLog *l = [self open_for_read_filename:filename];
-		if (l != nil) {
-			l->inprogress = true;
-			return l;
-		}
+	if ((fd = fopen(filename, "r")) != NULL) {
+		XLog *l = [self open_for_read_filename:filename
+						    fd:fd
+						   lsn:lsn];
+		l->inprogress = true;
+		return l;
 	}
 
-	filename = [self format_filename:lsn in_progress:false];
-	return [self open_for_read_filename:filename];
+	return [super open_for_read:lsn];
 }
 @end
 
@@ -422,20 +402,25 @@ init_dirname:(const char *)dirname_
 - (XLog *)
 init_filename:(const char *)filename_
            fd:(FILE *)fd_
+	 mode:(int)mode_
           dir:(XLogDir *)dir_
+	  lsn:(i64)lsn
 {
-	if ((self = [super init])) {
-		valid = true;
+	[super init];
+	valid = true;
 
-		strncpy(filename, filename_, sizeof(filename));
-		pool = palloc_create_pool(filename);
-		fd = fd_;
-		dir = dir_;
-		const int bufsize = 1024 * 1024;
-		vbuf = malloc(bufsize);
-		setvbuf(fd, vbuf, _IOFBF, bufsize);
+	strncpy(filename, filename_, sizeof(filename));
+	pool = palloc_create_pool(filename);
+	fd = fd_;
+	mode = mode_;
+	dir = dir_;
+	next_lsn = lsn;
+	stat.data = dir->recovery_state;
 
-	}
+	const int bufsize = 1024 * 1024;
+	vbuf = malloc(bufsize);
+	setvbuf(fd, vbuf, _IOFBF, bufsize);
+
         return self;
 }
 
@@ -443,6 +428,7 @@ init_filename:(const char *)filename_
 free
 {
 	free(vbuf);
+	palloc_destroy_pool(pool);
 	[super free];
 }
 
@@ -530,7 +516,6 @@ close
 	if (r < 0)
 		say_syserror("can't close");
 
-	palloc_destroy_pool(pool);
 	[self free];
 	return r;
 }
@@ -660,6 +645,14 @@ append_row:(struct tbuf *)data tag:(u16)tag cookie:(u64)cookie
 	(void)data; (void)tag; (void)cookie;
 	assert(false);
 }
+
+- (void)
+append_successful
+{
+	if (![dir isKindOf:[SnapDir class]])
+		next_lsn++;
+	rows++;
+}
 @end
 
 
@@ -759,7 +752,6 @@ read_row
 - (int)
 append_row:(struct tbuf *)data tag:(u16)tag cookie:(u64)cookie
 {
-	Recovery *r = dir->recovery_state;
 	struct _row_v11 row;
 
 	if (tag == snap_tag) {
@@ -776,7 +768,7 @@ append_row:(struct tbuf *)data tag:(u16)tag cookie:(u64)cookie
 		return -1;
 	}
 
-	row.lsn = [r next_lsn];
+	row.lsn = next_lsn;
 	row.tm = ev_now();
 	row.len = sizeof(tag) + sizeof(cookie) + tbuf_len(data);
 
@@ -795,7 +787,7 @@ append_row:(struct tbuf *)data tag:(u16)tag cookie:(u64)cookie
 	    fwrite(data->data, tbuf_len(data), 1, fd) != 1)
 		goto fail;
 
-	rows++;
+	[self append_successful];
 	return 0;
 fail:
 	say_syserror("fwrite");
@@ -883,7 +875,7 @@ append_row:(struct tbuf *)data tag:(u16)tag cookie:(u64)cookie
 
 	struct row_v12 row;
 	row.scn = [r scn];
-	row.lsn = [r next_lsn];
+	row.lsn = next_lsn;
 	row.tm = ev_now();
 	row.tag = tag;
 	row.cookie = cookie;
@@ -898,7 +890,7 @@ append_row:(struct tbuf *)data tag:(u16)tag cookie:(u64)cookie
 	    fwrite(data->data, tbuf_len(data), 1, fd) != 1)
 		goto fail;
 
-	rows++;
+	[self append_successful];
 	return 0;
 fail:
 	say_syserror("fwrite");
