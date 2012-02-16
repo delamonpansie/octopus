@@ -626,7 +626,7 @@ restart:
 		goto restart;
 	}
 
-	if (rows++ % 100000 == 0)
+	if (++rows % 100000 == 0)
 		say_info("%.1fM rows processed", rows / 1000000.);
 	return row;
 eof:
