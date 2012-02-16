@@ -167,6 +167,8 @@ reload_cfg()
 struct tnt_module *
 module(const char *name)
 {
+	if (name == NULL)
+		name = PRIMARY_MOD;
         for (struct tnt_module *m = modules_head; m != NULL; m = m->next)
                 if (name == NULL || strcmp(name, m->name) == 0)
                         return m;
@@ -650,8 +652,7 @@ main(int argc, char **argv)
 	luaT_init();
 	stat_init();
 
-	if (module("(silver)box"))
-		module("(silver)box")->init();
+	module(NULL)->init();
 
 	admin_init();
 	prelease(fiber->pool);

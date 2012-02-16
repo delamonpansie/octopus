@@ -1311,7 +1311,7 @@ info(struct tbuf *out)
 
 
 struct tnt_module box = {
-        .name = "(silver)box",
+        .name = "box",
         .init = init,
         .check_config = NULL,
         .reload_config = NULL,

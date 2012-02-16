@@ -26,6 +26,7 @@ ifeq (1,$(HAVE_RAGEL))
 endif
 
 src/tarantool.o: tarantool_version.h
+src/tarantool.o: CFLAGS += -DPRIMARY_MOD='"$(firstword $(modules))"'
 
 disable-warns-obj += src/tarantool_ev.o
 src/tarantool_ev.o: CFLAGS += -U_FORTIFY_SOURCE
