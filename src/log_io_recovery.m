@@ -115,13 +115,14 @@ read_log(const char *filename, row_handler *xlog_handler, row_handler *snap_hand
 validate_row:(struct tbuf *)row
 {
 	u16 tag = row_v12(row)->tag;
-	if (tag == wal_tag && row_v12(row)->lsn != lsn + 1)
+	if (tag == wal_tag && row_v12(row)->lsn != lsn + 1) {
 		if (!cfg.io_compat)
 			raise("lsn sequence has gap after %"PRIi64 " -> %"PRIi64,
 			      lsn, row_v12(row)->lsn);
 		else
 			say_warn("lsn sequence has gap after %"PRIi64 " -> %"PRIi64,
 				 lsn, row_v12(row)->lsn);
+	}
 }
 
 - (struct tbuf *)

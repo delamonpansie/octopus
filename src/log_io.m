@@ -421,7 +421,8 @@ init_filename:(const char *)filename_
 	vbuf = malloc(bufsize);
 	setvbuf(fd, vbuf, _IOFBF, bufsize);
 
-        return self;
+	offset = ftello(fd);
+	return self;
 }
 
 - (void)
@@ -639,6 +640,14 @@ follow:(follow_cb *)cb
 	ev_stat_start(&stat);
 }
 
+- (i64)
+next_lsn
+{
+	if ([dir isKindOf:[SnapDir class]])
+		return next_lsn;
+	return next_lsn + wet_rows;
+}
+
 - (int)
 append_row:(struct tbuf *)data tag:(u16)tag cookie:(u64)cookie
 {
@@ -647,12 +656,37 @@ append_row:(struct tbuf *)data tag:(u16)tag cookie:(u64)cookie
 }
 
 - (void)
-append_successful
+append_successful:(size_t)bytes
 {
-	if (![dir isKindOf:[SnapDir class]])
-		next_lsn++;
-	rows++;
+	off_t prev_offt = wet_rows == 0 ? offset : row_offset[wet_rows - 1];
+	row_offset[wet_rows] = prev_offt + bytes;
+	wet_rows++;
 }
+
+- (i64)
+confirm_write
+{
+	if (fflush(fd) < 0)
+		say_syserror("can't flush wal");
+
+	off_t tail = ftello(fd);
+	say_debug("initial offset:%zi tail:%zi", offset, tail);
+	for (int i = 0; i < wet_rows; i++) {
+		if (row_offset[i] > tail) {
+			say_error("failed to sync %zi rows", wet_rows - i);
+			break;
+		}
+		say_debug("confirm offset %zi", row_offset[i]);
+		next_lsn++;
+		rows++;
+	}
+	bytes_written += tail - offset;
+	offset = tail;
+	wet_rows = 0;
+
+	return next_lsn - 1;
+}
+
 @end
 
 
@@ -754,6 +788,7 @@ append_row:(struct tbuf *)data tag:(u16)tag cookie:(u64)cookie
 {
 	struct _row_v11 row;
 
+	assert(wet_rows < sizeof(row_offset));
 	if (tag == snap_tag) {
 		tag = (u16)-1;
 	} else if (tag == wal_tag) {
@@ -768,7 +803,7 @@ append_row:(struct tbuf *)data tag:(u16)tag cookie:(u64)cookie
 		return -1;
 	}
 
-	row.lsn = next_lsn;
+	row.lsn = [self next_lsn];
 	row.tm = ev_now();
 	row.len = sizeof(tag) + sizeof(cookie) + tbuf_len(data);
 
@@ -779,23 +814,20 @@ append_row:(struct tbuf *)data tag:(u16)tag cookie:(u64)cookie
 	row.header_crc32c = crc32c(0, (unsigned char *)&row + sizeof(row.header_crc32c),
 				   sizeof(row) - sizeof(row.header_crc32c));
 
-	off_t offt = ftello(fd);
 	if (fwrite(&marker, sizeof(marker), 1, fd) != 1 ||
 	    fwrite(&row, sizeof(row), 1, fd) != 1 ||
 	    fwrite(&tag, sizeof(tag), 1, fd) != 1 ||
 	    fwrite(&cookie, sizeof(cookie), 1, fd) != 1 ||
 	    fwrite(data->data, tbuf_len(data), 1, fd) != 1)
-		goto fail;
+	{
+		say_syserror("fwrite");
+		return -1;
+	}
 
-	[self append_successful];
+	[self append_successful:sizeof(marker) + sizeof(row) +
+				sizeof(tag) + sizeof(cookie) +
+	                        tbuf_len(data)];
 	return 0;
-fail:
-	say_syserror("fwrite");
-	fflush(fd);
-	fseeko(fd, offt, SEEK_SET);
-	if (ftruncate(fileno(fd), offt) == -1)
-		say_syserror("ftruncate(%s)", filename);
-	return -1;
 }
 
 @end
@@ -872,10 +904,11 @@ read_row
 append_row:(struct tbuf *)data tag:(u16)tag cookie:(u64)cookie
 {
 	Recovery *r = dir->recovery_state;
-
 	struct row_v12 row;
+	assert(wet_rows < sizeof(row_offset));
+
 	row.scn = [r scn];
-	row.lsn = next_lsn;
+	row.lsn = [self next_lsn];
 	row.tm = ev_now();
 	row.tag = tag;
 	row.cookie = cookie;
@@ -884,22 +917,16 @@ append_row:(struct tbuf *)data tag:(u16)tag cookie:(u64)cookie
 	row.header_crc32c = crc32c(0, (unsigned char *)&row + sizeof(row.header_crc32c),
 				   sizeof(row) - sizeof(row.header_crc32c));
 
-	off_t offt = ftello(fd);
 	if (fwrite(&marker, sizeof(marker), 1, fd) != 1 ||
 	    fwrite(&row, sizeof(row), 1, fd) != 1 ||
 	    fwrite(data->data, tbuf_len(data), 1, fd) != 1)
-		goto fail;
+	{
+		say_syserror("fwrite");
+		return -1;
+	}
 
-	[self append_successful];
+	[self append_successful:sizeof(marker) + sizeof(row) + tbuf_len(data)];
 	return 0;
-fail:
-	say_syserror("fwrite");
-	fflush(fd);
-	fseeko(fd, offt, SEEK_SET);
-	if (ftruncate(fileno(fd), offt) == -1)
-		say_syserror("ftruncate(%s)", filename);
-	return -1;
-
 }
 
 @end

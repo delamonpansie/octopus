@@ -99,11 +99,12 @@ typedef void (follow_cb)(ev_stat *w, int events);
 		LOG_READ,
 		LOG_WRITE
 	} mode;
-	size_t rows;
+	size_t rows, wet_rows;
 
 	bool valid, eof, inprogress;
 
-	size_t bytes_written, offset;
+	size_t bytes_written;
+	off_t offset, row_offset[1024];
 }
 - (XLog *) init_filename:(const char *)filename_
 		      fd:(FILE *)fd_
@@ -122,6 +123,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 - (int) close;
 
 - (int) append_row:(struct tbuf *)data tag:(u16)tag cookie:(u64)cookie;
+- (i64) confirm_write;
 @end
 
 struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);

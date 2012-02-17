@@ -144,18 +144,12 @@ prepare_write
 }
 
 - (i64)
-confirm_write:(int)rows
+confirm_write
 {
 	static ev_tstamp last_flush;
 
 	if (current_wal != nil) {
-		say_debug("confirm_write: %i rows confirmed", rows);
-		lsn += rows;
-		assert(lsn == current_wal->next_lsn - 1);
-
-		/* flush stdio buffer to keep feeder in sync */
-		if (fflush(current_wal->fd) < 0)
-			say_syserror("can't flush wal");
+		lsn = [current_wal confirm_write];
 
 		ev_tstamp fsync_delay = current_wal->dir->fsync_delay;
 		if (fsync_delay == 0 || ev_now() - last_flush >= fsync_delay) {
@@ -219,7 +213,7 @@ wal_disk_writer(int fd, void *state)
 		while (tbuf_len(rbuf) > sizeof(u32) && tbuf_len(rbuf) > *(u32 *)rbuf->data) {
 			u32 packet_len = read_u32(rbuf);
 			u32 fid = read_u32(rbuf);
-			u32 row_count = 0, repeat_count = read_u32(rbuf);
+			u32 repeat_count = read_u32(rbuf);
 			i64 row_lsn = 0;
 			packet_len -= sizeof(fid) + sizeof(repeat_count);
 
@@ -244,9 +238,8 @@ wal_disk_writer(int fd, void *state)
 					say_error("append_row failed");
 					break;
 				}
-				row_count++;
 			}
-			row_lsn = [rcvr confirm_write:row_count];
+			row_lsn = [rcvr confirm_write];
 		reply:
 			tbuf_ltrim(rbuf, packet_len);
 
