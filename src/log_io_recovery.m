@@ -116,8 +116,12 @@ validate_row:(struct tbuf *)row
 {
 	u16 tag = row_v12(row)->tag;
 	if (tag == wal_tag && row_v12(row)->lsn != lsn + 1)
-		raise("lsn sequence has gap after %"PRIi64 " -> %"PRIi64,
-		      lsn, row_v12(row)->lsn);
+		if (!cfg.io_compat)
+			raise("lsn sequence has gap after %"PRIi64 " -> %"PRIi64,
+			      lsn, row_v12(row)->lsn);
+		else
+			say_warn("lsn sequence has gap after %"PRIi64 " -> %"PRIi64,
+				 lsn, row_v12(row)->lsn);
 }
 
 - (struct tbuf *)
