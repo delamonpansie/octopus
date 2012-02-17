@@ -353,10 +353,8 @@ snapshot_save:(void (*)(XLog *))callback
 	}
 	callback(snap);
 
-	if (fsync(fileno(snap->fd)) < 0) {
-		say_syserror("fsync");
+	if ([snap flush] == -1)
 		return;
-	}
 
 	if (link(snap->filename, final_filename) == -1) {
 		say_syserror("can't create hard link to snapshot");
