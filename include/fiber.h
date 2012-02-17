@@ -100,7 +100,7 @@ void fiber_sleep(ev_tstamp s);
 void fiber_info(struct tbuf *out);
 int set_nonblock(int sock);
 
-struct child *spawn_child(const char *name, int inbox_size,
+struct child *spawn_child(const char *name, bool proxy_fibers,
 			  int (*handler)(int fd, void *state), void *state);
 
 int luaT_openfiber(struct lua_State *L);

@@ -403,7 +403,7 @@ sock2inbox(va_list ap)
 }
 
 struct child *
-spawn_child(const char *name, int inbox_size, int (*handler)(int fd, void *state), void *state)
+spawn_child(const char *name, bool proxy_fibers, int (*handler)(int fd, void *state), void *state)
 {
 	char *proxy_name, *child_name;
 	int socks[2];
@@ -428,7 +428,7 @@ spawn_child(const char *name, int inbox_size, int (*handler)(int fd, void *state
 		c->pid = pid;
 		c->sock = socks[1];
 
-		if (inbox_size > 0) {
+		if (proxy_fibers) {
 			proxy_name = malloc(64);
 			snprintf(proxy_name, 64, "%s/sock2inbox", name);
 			c->in = fiber_create(proxy_name, sock2inbox, socks[1]);

@@ -174,7 +174,6 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
         rows_per_wal:(int)rows_per_wal
        feeder_addr:(const char *)feeder_addr
          fsync_delay:(double)wal_fsync_delay
-          inbox_size:(int)inbox_size
                flags:(int)flags
   snap_io_rate_limit:(int)snap_io_rate_limit;
 @end

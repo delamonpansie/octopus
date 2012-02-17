@@ -1189,7 +1189,6 @@ init(void)
 					 rows_per_wal:cfg.rows_per_wal
 					  feeder_addr:cfg.wal_feeder_addr
 					  fsync_delay:cfg.wal_fsync_delay
-					   inbox_size:cfg.wal_writer_inbox_size
 						flags:init_storage ? RECOVER_READONLY : 0
 				   snap_io_rate_limit:cfg.snap_io_rate_limit * 1024 * 1024];
 

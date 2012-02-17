@@ -611,7 +611,6 @@ enable_local_writes
         rows_per_wal:(int)wal_rows_per_file
        feeder_addr:(const char *)feeder_addr_
          fsync_delay:(double)wal_fsync_delay
-          inbox_size:(int)inbox_size
                flags:(int)flags
   snap_io_rate_limit:(int)snap_io_rate_limit_
 {
@@ -633,7 +632,7 @@ enable_local_writes
 		wal_dir->fsync_delay = wal_fsync_delay;
 		snap_io_rate_limit = snap_io_rate_limit_ * 1024 * 1024;
 
-		wal_writer = spawn_child("wal_writer", inbox_size, wal_disk_writer, self);
+		wal_writer = spawn_child("wal_writer", true, wal_disk_writer, self);
 	}
 
 	if (feeder_addr_ != NULL) {
