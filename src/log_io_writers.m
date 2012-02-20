@@ -279,7 +279,7 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *data)
 	static ev_tstamp last = 0;
 	const int io_rate_limit = l->dir->recovery_state->snap_io_rate_limit;
 
-	if ([l append_row:data tag:tag cookie:default_cookie] < 0)
+	if ([l append_row:data->data len:tbuf_len(data) tag:tag cookie:default_cookie] < 0)
 		panic("unable write row");
 
 	if (++rows % 100000 == 0)
@@ -337,10 +337,8 @@ snapshot_save:(void (*)(XLog *))callback
 
 	say_info("saving snapshot `%s'", final_filename);
 
-	struct tbuf *init = tbuf_alloc(fiber->pool);
-	tbuf_printf(init, "%s", "make world");
-
-	if ([snap append_row:init tag:snap_initial_tag cookie:default_cookie] < 0) {
+	const char init[] = "make world";
+	if ([snap append_row:init len:strlen(init) tag:snap_initial_tag cookie:default_cookie] < 0) {
 		say_error("unable write initial row");
 		return;
 	}

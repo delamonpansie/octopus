@@ -122,7 +122,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 - (int) flush;
 - (int) close;
 
-- (int) append_row:(struct tbuf *)data tag:(u16)tag cookie:(u64)cookie;
+- (int) append_row:(const void *)data len:(u32)data_len tag:(u16)tag cookie:(u64)cookie;
 - (i64) confirm_write;
 @end
 

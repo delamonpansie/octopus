@@ -649,9 +649,9 @@ next_lsn
 }
 
 - (int)
-append_row:(struct tbuf *)data tag:(u16)tag cookie:(u64)cookie
+append_row:(void *)data len:(u32)data_len tag:(u16)tag cookie:(u64)cookie
 {
-	(void)data; (void)tag; (void)cookie;
+	(void)data; (void)data_len; (void)tag; (void)cookie;
 	assert(false);
 }
 
@@ -784,7 +784,7 @@ read_row
 
 
 - (int)
-append_row:(struct tbuf *)data tag:(u16)tag cookie:(u64)cookie
+append_row:(void *)data len:(u32)data_len tag:(u16)tag cookie:(u64)cookie
 {
 	struct _row_v11 row;
 
@@ -805,11 +805,11 @@ append_row:(struct tbuf *)data tag:(u16)tag cookie:(u64)cookie
 
 	row.lsn = [self next_lsn];
 	row.tm = ev_now();
-	row.len = sizeof(tag) + sizeof(cookie) + tbuf_len(data);
+	row.len = sizeof(tag) + sizeof(cookie) + data_len;
 
 	row.data_crc32c = crc32c(0, (void *)&tag, sizeof(tag));
 	row.data_crc32c = crc32c(row.data_crc32c, (void *)&cookie, sizeof(cookie));
-	row.data_crc32c = crc32c(row.data_crc32c, data->data, tbuf_len(data));
+	row.data_crc32c = crc32c(row.data_crc32c, data, data_len);
 
 	row.header_crc32c = crc32c(0, (unsigned char *)&row + sizeof(row.header_crc32c),
 				   sizeof(row) - sizeof(row.header_crc32c));
@@ -818,7 +818,7 @@ append_row:(struct tbuf *)data tag:(u16)tag cookie:(u64)cookie
 	    fwrite(&row, sizeof(row), 1, fd) != 1 ||
 	    fwrite(&tag, sizeof(tag), 1, fd) != 1 ||
 	    fwrite(&cookie, sizeof(cookie), 1, fd) != 1 ||
-	    fwrite(data->data, tbuf_len(data), 1, fd) != 1)
+	    fwrite(data, data_len, 1, fd) != 1)
 	{
 		say_syserror("fwrite");
 		return -1;
@@ -826,7 +826,7 @@ append_row:(struct tbuf *)data tag:(u16)tag cookie:(u64)cookie
 
 	[self append_successful:sizeof(marker) + sizeof(row) +
 				sizeof(tag) + sizeof(cookie) +
-	                        tbuf_len(data)];
+	                        data_len];
 	return 0;
 }
 
@@ -901,7 +901,7 @@ read_row
 }
 
 - (int)
-append_row:(struct tbuf *)data tag:(u16)tag cookie:(u64)cookie
+append_row:(const void *)data len:(u32)data_len tag:(u16)tag cookie:(u64)cookie
 {
 	Recovery *r = dir->recovery_state;
 	struct row_v12 row;
@@ -912,20 +912,20 @@ append_row:(struct tbuf *)data tag:(u16)tag cookie:(u64)cookie
 	row.tm = ev_now();
 	row.tag = tag;
 	row.cookie = cookie;
-	row.len = tbuf_len(data);
-	row.data_crc32c = crc32c(0, data->data, tbuf_len(data));
+	row.len = data_len;
+	row.data_crc32c = crc32c(0, data, data_len);
 	row.header_crc32c = crc32c(0, (unsigned char *)&row + sizeof(row.header_crc32c),
 				   sizeof(row) - sizeof(row.header_crc32c));
 
 	if (fwrite(&marker, sizeof(marker), 1, fd) != 1 ||
 	    fwrite(&row, sizeof(row), 1, fd) != 1 ||
-	    fwrite(data->data, tbuf_len(data), 1, fd) != 1)
+	    fwrite(data, data_len, 1, fd) != 1)
 	{
 		say_syserror("fwrite");
 		return -1;
 	}
 
-	[self append_successful:sizeof(marker) + sizeof(row) + tbuf_len(data)];
+	[self append_successful:sizeof(marker) + sizeof(row) + data_len];
 	return 0;
 }
 
