@@ -729,6 +729,8 @@ write_header
 		return -1;
 	if (fwrite("\n", 1, 1, fd) != 1)
                 return -1;
+	if ((offset = ftello(fd)) < 0)
+		return -1;
 	return 0;
 }
 
@@ -847,6 +849,8 @@ write_header
                 return -1;
 	if (fwrite("\n", 1, 1, fd) != 1)
                 return -1;
+	if ((offset = ftello(fd)) < 0)
+		return -1;
 	return 0;
 }
 
