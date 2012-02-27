@@ -84,7 +84,7 @@ netmsg_unref(struct netmsg *m, int from)
 		if ((uintptr_t)obj[i] & 1)
 			luaL_unref(root_L, LUA_REGISTRYINDEX, (uintptr_t)obj[i] >> 1);
 		else
-			object_ref(obj[i], -1);
+			object_decr_ref(obj[i]);
 		obj[i] = 0;
 	}
 }
@@ -206,7 +206,7 @@ net_add_ref_iov(struct netmsg **m, struct tnt_object *obj, const void *buf, size
 	if (unlikely(++(*m)->count == nelem((*m)->iov)))
 		enlarge(m);
 
-	object_ref(obj, +1);
+	object_incr_ref(obj);
 }
 
 extern const char *netmsglib_name;

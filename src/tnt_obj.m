@@ -60,3 +60,24 @@ object_ref(struct tnt_object *obj, int count)
 	if (obj->refs == 0)
 		sfree(obj);
 }
+
+void
+object_incr_ref(struct tnt_object *obj)
+{
+	assert(obj->refs + 1 >= 0);
+	obj->refs++;
+
+	if (obj->refs == 0)
+		sfree(obj);
+}
+
+void
+object_decr_ref(struct tnt_object *obj)
+{
+	assert(obj->refs - 1 >= 0);
+	obj->refs--;
+
+	if (obj->refs == 0)
+		sfree(obj);
+}
+
