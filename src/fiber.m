@@ -122,6 +122,7 @@ fiber_sleep(ev_tstamp delay)
 	ev_timer_start(&w);
 	s = yield();
 	assert(s == &w);
+	(void)s;
 	ev_timer_stop(&w);
 }
 

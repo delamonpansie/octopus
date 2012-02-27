@@ -169,6 +169,7 @@ make_response(int quorum, ev_tstamp timeout)
 	r->waiter = fiber;
 	u32 k = mh_i64_get(response_registry, r->seq);
 	assert(k == mh_end(response_registry));
+	(void)k;
 	mh_i64_put(response_registry, r->seq, r, NULL);
 
 	return r;
