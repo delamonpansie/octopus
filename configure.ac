@@ -42,7 +42,7 @@ AC_ARG_VAR([CONFETTIFLAGS], [Confetti config generator flags])
 AC_CHECK_PROG([CONFETTI], [confetti], [confetti])
 AS_IF([test -z "$CONFETTI"],
  [AC_MSG_CHECKING([whether we need confetti to regenerate sources])
-  AS_IF([test -f "${srcdir}/cfg/tarantool_box_cfg.c"], [confetti_needed=no], [confetti_needed=yes])
+  AS_IF([test -f "${srcdir}/cfg/tarantool_cfg.c"], [confetti_needed=no], [confetti_needed=yes])
   AC_MSG_RESULT([$confetti_needed])
   AS_IF([test $confetti_needed = yes],
         [AC_MSG_ERROR([You need Confetti to build from DARCS/GIT checkouts.])])
