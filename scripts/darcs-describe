@@ -1,7 +1,11 @@
 #!/bin/sh
 
-tag=$($DARCS show tag | head -n1 | tr -d \\n)
-patches=$(expr $($DARCS changes --from-tag $tag --count) - 1)
+rdarcs () {
+    (cd ${REPODIR:-.}; ${DARCS:-darcs} $@)
+}
+
+tag=$(rdarcs show tag | head -n1 | tr -d \\n)
+patches=$(expr $(rdarcs changes --from-tag "$tag" --count) - 1)
 
 echo -n $tag
 case $patches in

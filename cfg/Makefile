@@ -7,6 +7,10 @@ ifeq (1, $(HAVE_CONFETTI))
     dist-clean += cfg/tarantool_cfg.cfg
     dist-clean += cfg/tarantool_cfg.cfg_tmpl
 
+    dist += cfg/tarantool_cfg.h
+    dist += cfg/tarantool_cfg.c
+    dist += cfg/tarantool_cfg.cfg
+
     defered += $$(obj): cfg/tarantool_cfg.h cfg/tarantool_cfg.cfg
 
     cfg/tarantool_cfg.cfg_tmpl: cfg/core_cfg.cfg_tmpl $(cfg_tmpl) Makefile

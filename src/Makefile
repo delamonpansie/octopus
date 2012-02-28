@@ -23,6 +23,7 @@ obj += src/tarantool.o
 
 ifeq (1,$(HAVE_RAGEL))
 	dist-clean += src/admin.m
+	dist += src/admin.m
 endif
 
 src/tarantool.o: tarantool_version.h

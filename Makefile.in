@@ -135,10 +135,13 @@ clean:
 luaclean:
 	@$(MAKE) -C third_party/luajit/src clean
 
+configure-byproducts += autom4te.cache config.log config.status
+configure-byproducts += include/config.h Makefile scripts/gen-lua-registry.sh
+
 distclean: clean luaclean
 	@rm -rf $(dist-clean)
-	@rm -rf autom4te.cache config.log config.status configure install.sh
-	@rm -rf include/config.h Makefile scripts/gen-lua-registry.sh TAGS test/var test/*.rej
+	@rm -rf $(configure-byproducts) configure install.sh
+	@rm -rf TAGS test/var test/*.rej
 
 .PHONY: TAGS
 TAGS:
@@ -184,6 +187,9 @@ config.status: $(srcdir)/configure
 configure: $(srcdir)/configure.ac $(srcdir)/third_party/libev/libev.m4
 	cd $(srcdir) && autoconf
 
+.PHONY:
+dist: configure $(dist) tarantool_version.h
+	@rm -rf $(configure-byproducts)
 
 ifeq ("$(origin V)", "command line")
     VERBOSE = $(V)
