@@ -1147,14 +1147,16 @@ recover_row:(struct tbuf *)row
 			txn_cleanup(&txn);
 			break;
 		case snap_initial_tag:
-			lsn = scn = row_lsn;
+			lsn = scn = 0;
 			break;
 		case snap_final_tag:
 			lsn = row_lsn;
 			break;
 		case wal_final_tag:
-			build_secondary_indexes();
-			initialize_service();
+			if (box_service == NULL) {
+				build_secondary_indexes();
+				initialize_service();
+			}
 			break;
 		default:
 			raise("unknown row tag :%u", tag);
@@ -1285,10 +1287,8 @@ snapshot_rows(XLog *l)
 static void
 snapshot(bool initial)
 {
-	if (initial) {
+	if (initial)
 		[recovery initial_lsn:1];
-		[recovery enable_local_writes];
-	}
 	[recovery snapshot_save:snapshot_rows];
 }
 

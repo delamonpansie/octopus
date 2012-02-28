@@ -180,7 +180,7 @@ recover_snap
 		if (!snap->eof)
 			raise("unable to fully read snapshot");
 
-		[self recover_row:[self dummy_row_lsn:lsn tag:snap_final_tag]];
+		[self recover_row:[self dummy_row_lsn:max_snap_lsn tag:snap_final_tag]];
 
 		say_info("snapshot recovered, lsn:%" PRIi64, lsn);
 	}
@@ -265,6 +265,9 @@ recover_remaining_wals
 
 	recover_current_wal:
 		[self recover_wal:current_wal];
+		if ([current_wal rows] == 0) /* probably broken wal */
+			break;
+
 		if (current_wal->eof) {
 			say_info("done `%s' lsn:%" PRIi64,
 				 current_wal->filename, lsn);
@@ -342,7 +345,7 @@ recover_follow_dir(ev_timer *w, int events __attribute__((unused)))
 	if (r->current_wal == nil)
 		return;
 
-	if (r->current_wal->inprogress && r->current_wal->rows > 1)
+	if (r->current_wal->inprogress && [r->current_wal rows] > 1)
 		[r->current_wal reset_inprogress];
 
 	[r->current_wal follow:recover_follow_file];
@@ -361,7 +364,7 @@ recover_follow_file(ev_stat *w, int events __attribute__((unused)))
 		return;
 	}
 
-	if (r->current_wal->inprogress && r->current_wal->rows > 0) {
+	if (r->current_wal->inprogress && [r->current_wal rows] > 0) {
 		[r->current_wal reset_inprogress];
 		[r->current_wal follow:recover_follow_file];
 	}
@@ -387,12 +390,12 @@ recover_finalize
 	[self recover_remaining_wals];
 
 	if (current_wal != nil && current_wal->inprogress) {
-		if (current_wal->rows < 1) {
+		if ([current_wal rows] < 1) {
 			[current_wal inprogress_unlink];
 			[current_wal close];
 			current_wal = nil;
 		} else {
-			assert(current_wal->rows == 1);
+			assert([current_wal rows] == 1);
 			if ([current_wal inprogress_rename] != 0)
 				panic("can't rename 'inprogress' wal");
 		}
@@ -456,31 +459,6 @@ remote_handshake:(struct sockaddr_in *)addr conn:(struct conn *)c
 	return version;
 }
 
-- (void)
-handle_remote_row:(struct tbuf *)row
-{
-	struct tbuf *row_data;
-
-	u16 tag = row_v12(row)->tag;
-	u64 row_cookie = row_v12(row)->cookie;
-	/* save row data since wal_row_handler may clobber it */
-	row_data = tbuf_alloc(fiber->pool);
-	tbuf_append(row_data, row_v12(row)->data, row_v12(row)->len);
-
-	[self recover_row:row];
-
-	if (tag == snap_final_tag) {
-		say_debug("saving snapshot");
-		if (save_snapshot(NULL, 0) != 0)
-			raise("replication failure: failed save snapshot");
-		[self configure_wal_writer];
-	} else if (tag == wal_tag) {
-		if ([self wal_request_write:row_data tag:tag cookie:row_cookie] == 0)
-			raise("replication failure: can't write row to WAL");
-	}
-}
-
-
 static bool
 contains_full_row_v12(const struct tbuf *b)
 {
@@ -495,29 +473,124 @@ contains_full_row_v11(const struct tbuf *b)
 		tbuf_len(b) >= sizeof(struct _row_v11) + _row_v11(b)->len;
 }
 
-static struct tbuf *
-pull_row(struct conn *c, u32 version)
+static void
+pull(struct conn *c, u32 version)
 {
-	struct tbuf *row;
-
 	switch (version) {
 	case 12:
 		while (!contains_full_row_v12(c->rbuf))
 			if (conn_readahead(c, sizeof(struct row_v12)) <= 0)
 				raise("unexpected eof");
+		break;
+	case 11:
+		while (!contains_full_row_v11(c->rbuf))
+			if (conn_readahead(c, sizeof(struct _row_v11)) <= 0)
+				raise("unexpected eof");
+		break;
+	default:
+		raise("unexpected version: %i", version);
+	}
+}
+
+static struct tbuf *
+fetch_row(struct conn *c, u32 version)
+{
+	struct tbuf *row;
+
+	switch (version) {
+	case 12:
+		if (!contains_full_row_v12(c->rbuf))
+			return NULL;
 
 		row = tbuf_split(c->rbuf, sizeof(struct row_v12) + row_v12(c->rbuf)->len);
 		row->pool = c->rbuf->pool; /* FIXME: this is cludge */
 		return row;
 	case 11:
-		while (!contains_full_row_v11(c->rbuf))
-			if (conn_readahead(c, sizeof(struct _row_v11)) <= 0)
-				raise("unexpected eof");
+		if (!contains_full_row_v11(c->rbuf))
+			return NULL;
+
 		row = tbuf_split(c->rbuf, sizeof(struct _row_v11) + _row_v11(c->rbuf)->len);
 		row->pool = c->rbuf->pool;
 		return convert_row_v11_to_v12(row);
 	default:
-		raise("version mismatch");
+		raise("unexpected version: %i", version);
+	}
+}
+
+static void
+pull_snapshot(Recovery *r, struct conn *c, u32 version)
+{
+	struct tbuf *row;
+	for (;;) {
+		pull(c, version);
+		while ((row = fetch_row(c, version))) {
+			switch (row_v12(row)->tag) {
+			case snap_initial_tag:
+			case snap_tag:
+				[r recover_row:row];
+				break;
+			case snap_final_tag:
+				[r recover_row:row];
+				[r configure_wal_writer];
+				say_debug("saving snapshot");
+				if (save_snapshot(NULL, 0) != 0)
+					raise("replication failure: failed save snapshot");
+				return;
+			default:
+				raise("unexpected tag %i", row_v12(row)->tag);
+			}
+		}
+		fiber_gc();
+	}
+}
+
+static void
+pull_wal(Recovery *r, struct conn *c, u32 version)
+{
+	struct tbuf *row, *special_row = NULL, *rows[WAL_PACK_MAX], *pack;
+	int pack_rows = 0;
+
+	/* TODO: use designated palloc_pool */
+	for (;;) {
+		pull(c, version);
+
+		pack_rows = 0;
+		pack = [r wal_pack_prepare];
+		while ((row = fetch_row(c, version))) {
+			if (row_v12(row)->tag != wal_tag) {
+				special_row = row;
+				break;
+			}
+
+			rows[pack_rows++] = row;
+			[r wal_pack_append:pack
+				      data:row_v12(row)->data
+				       len:row_v12(row)->len
+				       tag:row_v12(row)->tag
+				    cookie:row_v12(row)->cookie];
+			if (pack_rows == nelem(rows))
+				break;
+		}
+
+		if (pack_rows > 0) {
+			int confirmed = [r wal_pack_submit:pack];
+			for (int j = 0; j < confirmed; j++)
+				[r recover_row:rows[j]];
+
+			r->lag = ev_now() - row_v12(rows[confirmed - 1])->tm;
+			r->last_update_tstamp = ev_now();
+
+			if (confirmed != pack_rows)
+				raise("wal write failed confirmed:%i < sent:%i",
+				      confirmed, pack_rows);
+		}
+
+		if (special_row) {
+			[r recover_row:special_row];
+			special_row = NULL;
+		}
+
+		fiber_gc();
 	}
 }
 
@@ -526,31 +599,31 @@ pull_from_remote(va_list ap)
 {
 	Recovery *r = va_arg(ap, Recovery *);
 	struct sockaddr_in *addr = va_arg(ap, struct sockaddr_in *);
-	struct tbuf *row;
 	struct conn c;
 	u32 version = 0;
 
 	conn_init(&c, fiber->pool, -1, REF_STATIC);
 	palloc_register_gc_root(fiber->pool, &c, conn_gc);
 
+
 	for (;;) {
 		@try {
 			if (c.fd < 0)
 				version = [r remote_handshake:addr conn:&c];
 
-			row = pull_row(&c, version);
+			if ([r lsn] == 0)
+				pull_snapshot(r, &c, version);
+			else
+				pull_wal(r, &c, version);
 
-			r->lag = ev_now() - row_v12(row)->tm;
-			r->last_update_tstamp = ev_now();
 
-			[r handle_remote_row:row];
 		}
 		@catch (Error *e) {
 			say_error("replication failure: %s", e->reason);
 			conn_close(&c);
 			fiber_sleep(1);
+			fiber_gc();
 		}
-		fiber_gc();
 	}
 }
 
@@ -576,15 +649,16 @@ enable_local_writes
 	[self recover_finalize];
 	local_writes = true;
 
-	if (lsn > 0)
-		[self configure_wal_writer];
-
 	if (feeder_addr != NULL) {
-		say_info("starting remote hot standby");
-		snprintf(status, sizeof(status), "hot_standby/%s", feeder_addr);
+		if (lsn > 0) /* we'll fetch remote snapshot first */
+			[self configure_wal_writer];
 
 		[self recover_follow_remote];
+
+		say_info("starting remote hot standby");
+		snprintf(status, sizeof(status), "hot_standby/%s", feeder_addr);
 	} else {
+		[self configure_wal_writer];
 		say_info("I am primary");
 		strcpy(status, "primary");
 	}

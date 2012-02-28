@@ -46,11 +46,10 @@
 - (void)
 configure_wal_writer
 {
-	if (wal_writer != NULL) {
-		struct tbuf *m = tbuf_alloc(wal_writer->out->pool);
-		tbuf_append(m, &lsn, sizeof(lsn));
-		write_inbox(wal_writer->out, m);
-	}
+	say_info("Configuring WAL writer lsn:%"PRIi64, lsn);
+	struct tbuf *m = tbuf_alloc(wal_writer->out->pool);
+	tbuf_append(m, &lsn, sizeof(lsn));
+	write_inbox(wal_writer->out, m);
 }
 
 - (void)
@@ -59,62 +58,92 @@ submit_change:(struct tbuf *)change
 	if (feeder_addr != NULL)
 		raise("replica is readonly");
 
-	if ([self wal_request_write:change
-				tag:wal_tag
-			     cookie:0] == 0)
-		raise("wal write error");
+	struct tbuf *m;
+	/* TODO: hand coded inline ? */
+	m = [self wal_pack_prepare];
+	[self wal_pack_append:m data:change->data len:tbuf_len(change) tag:wal_tag cookie:0];
+	if ([self wal_pack_submit:m] <= 0)
+		raise("unable write wal row");
 }
 
-- (i64)
-wal_request_write:(struct tbuf *)row_data tag:(u16)tag cookie:(u64)cookie
-{
-	struct tbuf *m;
-	struct msg *a;
+/* packet is : packet_len: u32
+	       fid: u32
+	       repeat_count: u32
+	       tag: u16
+	       cookie: u64
+	       data_len: u32
+	       data: u8[data_len]
+*/
 
+- (struct tbuf *)
+wal_pack_prepare
+{
+	struct tbuf *m = tbuf_alloc(wal_writer->out->pool);
+	u32 repeat_count = 0;
+	u32 packet_len = sizeof(fiber->fid) + sizeof(repeat_count);
+
+	tbuf_append(m, &packet_len, sizeof(packet_len));
+	tbuf_append(m, &fiber->fid, sizeof(fiber->fid));
+	tbuf_append(m, &repeat_count, sizeof(repeat_count));
+	return m;
+}
+
+
+- (void)
+wal_pack_append:(struct tbuf *)m data:(void *)data len:(u32)data_len tag:(u16)tag cookie:(u64)cookie
+{
+	u32 *ptr = m->data;
+	ptr[0] += sizeof(tag) + sizeof(cookie) +
+		  sizeof(data_len) + data_len;
+	ptr[2] += 1;
+	assert(ptr[2] < WAL_PACK_MAX);
+
+	tbuf_append(m, &tag, sizeof(tag));
+	tbuf_append(m, &cookie, sizeof(cookie));
+	tbuf_append(m, &data_len, sizeof(data_len));
+	tbuf_append(m, data, data_len);
+}
+
+- (int)
+wal_pack_submit:(struct tbuf *)m
+{
 	if (!local_writes) {
 		say_warn("local writes disabled");
 		return 0;
 	}
 
 
-	/* packet is : packet_len: u32
-	   	       fid: u32
-		       repeat_count: u32
-		       tag: u16
-		       cookie: u64
-		       data_len: u32
-	               data: u8[data_len]
-	*/
-
-	m = tbuf_alloc(wal_writer->out->pool);
-
-	u32 repeat_count = 1;
-	u32 data_len = tbuf_len(row_data);
-	u32 packet_len = sizeof(fiber->fid) + sizeof(repeat_count) +
-			 sizeof(tag) + sizeof(cookie) +
-			 sizeof(data_len) + data_len;
-
-	tbuf_append(m, &packet_len, sizeof(packet_len));
-	tbuf_append(m, &fiber->fid, sizeof(fiber->fid));
-	tbuf_append(m, &repeat_count, sizeof(repeat_count));
-	tbuf_append(m, &tag, sizeof(tag));
-	tbuf_append(m, &cookie, sizeof(cookie));
-	tbuf_append(m, &data_len, sizeof(data_len));
-	tbuf_append(m, row_data->data, tbuf_len(row_data));
-
 	if (write_inbox(wal_writer->out, m) == false) {
 		say_warn("wal writer inbox is full");
-		return false;
+		return 0;
 	}
-	a = read_inbox();
+
+	struct msg *a = read_inbox();
 
 	i64 row_lsn = read_u64(a->msg);
-	say_debug("wal_write read inbox lsn=%" PRIi64, row_lsn);
+	u32 rows = read_u32(a->msg);
+
+	say_debug("wal_write read inbox lsn=%"PRIi64" rows:%i", row_lsn, rows);
 	if (row_lsn == 0)
 		say_warn("wal writer returned error status");
 	else
 		lsn = row_lsn; /* update local lsn */
-	return row_lsn;
+	return rows;
+}
+
+
+- (int)
+append_row:(const void *)data len:(u32)len tag:(u16)tag cookie:(u64)cookie
+{
+        if ([current_wal rows] == 1) {
+		/* rename wal after first successfull write to name without inprogress suffix*/
+		if ([current_wal inprogress_rename] != 0) {
+			say_error("can't rename inprogress wal");
+			return -1;
+		}
+	}
+
+	return [current_wal append_row:data len:len tag:tag cookie:cookie];
 }
 
 - (int)
@@ -127,14 +156,6 @@ prepare_write
                 say_error("can't open wal");
                 return -1;
         }
-
-        if (current_wal->rows == 1) {
-		/* rename wal after first successfull write to name without inprogress suffix*/
-		if ([current_wal inprogress_rename] != 0) {
-			say_error("can't rename inprogress wal");
-			return -1;
-		}
-	}
 
 	if (wal_to_close != nil) {
 		[wal_to_close close];
@@ -160,7 +181,7 @@ confirm_write
 		}
 	}
 
-	if (current_wal->dir->rows_per_file <= current_wal->rows ||
+	if (current_wal->dir->rows_per_file <= [current_wal rows] ||
 	    (lsn + 1) % current_wal->dir->rows_per_file == 0)
 	{
 		wal_to_close = current_wal;
@@ -178,6 +199,11 @@ wal_disk_writer(int fd, void *state)
 	struct tbuf *wbuf, *rbuf;
 	int result = EXIT_FAILURE;
 	i64 lsn;
+	bool io_failure = false, reparse = false;
+	struct {
+		u32 fid;
+		u32 repeat_count;
+	} *reply = malloc(sizeof(*reply) * 1024);
 
 	rbuf = tbuf_alloca(fiber->pool);
 	palloc_register_gc_root(fiber->pool, (void *)rbuf, tbuf_gc);
@@ -189,66 +215,92 @@ wal_disk_writer(int fd, void *state)
 
 	[rcvr initial_lsn:lsn];
 	for (;;) {
-		tbuf_ensure(rbuf, 16 * 1024);
-		ssize_t r = recv(fd, rbuf->data + tbuf_len(rbuf),
-				 rbuf->size - tbuf_len(rbuf), 0);
-		if (r < 0 && (errno == EINTR))
-			continue;
-		else if (r < 0) {
-			say_syserror("recv");
-			result = EX_OSERR;
-			break;
-		} else if (r == 0) {
-			result = EX_OK;
-			break;
+		if (!reparse) {
+			tbuf_ensure(rbuf, 16 * 1024);
+			ssize_t r = recv(fd, rbuf->data + tbuf_len(rbuf),
+					 rbuf->size - tbuf_len(rbuf), 0);
+			if (r < 0 && (errno == EINTR))
+				continue;
+			else if (r < 0) {
+				say_syserror("recv");
+				result = EX_OSERR;
+				goto exit;
+			} else if (r == 0) {
+				result = EX_OK;
+				goto exit;
+			}
+			rbuf->len += r;
 		}
-
-		rbuf->len += r;
-
-		wbuf = tbuf_alloc(fiber->pool);
 
 		/* we're not running inside ev_loop, so update ev_now manually */
 		ev_now_update();
 
+		int p = 0;
+		reparse = false;
 		while (tbuf_len(rbuf) > sizeof(u32) && tbuf_len(rbuf) > *(u32 *)rbuf->data) {
-			u32 packet_len = read_u32(rbuf);
-			u32 fid = read_u32(rbuf);
-			u32 repeat_count = read_u32(rbuf);
-			i64 row_lsn = 0;
-			packet_len -= sizeof(fid) + sizeof(repeat_count);
+			if (p == 0) {
+				if ([rcvr prepare_write] != -1) {
+					io_failure = false;
+					lsn = [rcvr lsn];
+				} else
+					io_failure = true;
+			}
 
-			if ([rcvr prepare_write] == -1)
-				goto reply;
+			u32 repeat_count = ((u32 *)rbuf->data)[2];
+			if (repeat_count > [rcvr->current_wal wet_rows_offset_available]) {
+				assert(p != 0);
+				reparse = true;
+				break;
+			}
 
-			assert(repeat_count == 1);
-			while (repeat_count-- > 0) {
+			tbuf_ltrim(rbuf, sizeof(u32)); /* drop packet_len */
+			reply[p].fid = read_u32(rbuf);
+			reply[p].repeat_count = read_u32(rbuf);
+
+			for (int i = 0; i < reply[p].repeat_count; i++) {
 				u16 tag = read_u16(rbuf);
 				u64 cookie = read_u64(rbuf);
 				u32 data_len = read_u32(rbuf);
 				void *data = read_bytes(rbuf, data_len);
-				packet_len -= sizeof(tag) + sizeof(cookie) +
-					      sizeof(data_len) + data_len;
 
-				struct tbuf row_data = { .data = data,
-							 .len = data_len,
-							 .size = data_len,
-							 .pool = NULL };
+				if (io_failure)
+					continue;
 
-				if ([rcvr->current_wal append_row:&row_data tag:tag cookie:cookie] < 0) {
+				if ([rcvr append_row:data len:data_len tag:tag cookie:cookie] <= 0) {
 					say_error("append_row failed");
-					break;
+					io_failure = true;
 				}
 			}
-			row_lsn = [rcvr confirm_write];
-		reply:
-			tbuf_ltrim(rbuf, packet_len);
-
-			u32 len = sizeof(row_lsn);
-			tbuf_append(wbuf, &len, sizeof(u32));
-			tbuf_append(wbuf, &fid, sizeof(fid));
-			tbuf_append(wbuf, &row_lsn, sizeof(row_lsn));
-			say_debug("sending lsn:%"PRIi64" to parent", row_lsn);
+			p++;
 		}
+		if (p == 0)
+			continue;
+
+		u32 rows = [rcvr confirm_write] - lsn + 1;
+
+		u32 len = sizeof(lsn) + sizeof(rows);
+		wbuf = tbuf_alloc(fiber->pool);
+		for (int i = 0; i < p; i++) {
+			if (rows > 0) {
+				if (rows < reply[i].repeat_count)
+					reply[i].repeat_count = rows;
+
+				rows -= reply[i].repeat_count;
+				lsn += reply[i].repeat_count;
+			} else {
+				lsn = 0;
+				reply[i].repeat_count = 0;
+			}
+
+			tbuf_append(wbuf, &len, sizeof(u32));
+			tbuf_append(wbuf, &reply[i].fid, sizeof(reply[i].fid));
+			tbuf_append(wbuf, &lsn, sizeof(lsn));
+			tbuf_append(wbuf, &reply[i].repeat_count, sizeof(reply[i].repeat_count));
+
+			say_debug("sending lsn:%"PRIi64" rows:%i to parent",
+				  lsn, rows);
+		}
+
 
 		while (tbuf_len(wbuf) > 0) {
 			ssize_t r = write(fd, wbuf->data, tbuf_len(wbuf));
@@ -257,14 +309,14 @@ wal_disk_writer(int fd, void *state)
 					continue;
 				/* parent is dead, exit quetly */
 				result = EX_OK;
-				break;
+				goto exit;
 			}
 			tbuf_ltrim(wbuf, r);
 		}
 
 		fiber_gc();
 	}
-
+exit:
 	[rcvr->current_wal close];
 	rcvr->current_wal = nil;
 	return result;
@@ -315,11 +367,6 @@ snapshot_save:(void (*)(XLog *))callback
 {
         XLog *snap;
 	const char *final_filename;
-
-	if (!local_writes) {
-		say_warn("local writes disabled");
-		return;
-	}
 
 	snap = [snap_dir open_for_write:lsn];
 	if (snap == nil) {

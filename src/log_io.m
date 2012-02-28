@@ -433,6 +433,19 @@ free
 	[super free];
 }
 
+- (size_t)
+rows
+{
+	return rows + wet_rows;
+}
+
+- (size_t)
+wet_rows_offset_available
+{
+	return nelem(wet_rows_offset) - wet_rows;
+}
+
+
 - (int)
 inprogress_unlink
 {
@@ -500,7 +513,8 @@ close
 			say_error("can't write eof_marker");
 		[self flush];
 	} else {
-		if (rows == 0) {
+		/* file may be already unlink()'ed if it was broken */
+		if (rows == 0 && access(filename, F_OK) == 0) {
 			bool legacy_snap = cfg.io_compat &&
 					   [dir isMemberOf:[SnapDir class]] &&
 					   [dir->recovery_state lsn] == 1; /* TODO: check file lsn */
@@ -653,13 +667,14 @@ append_row:(void *)data len:(u32)data_len tag:(u16)tag cookie:(u64)cookie
 {
 	(void)data; (void)data_len; (void)tag; (void)cookie;
 	assert(false);
+	return 0;
 }
 
 - (void)
 append_successful:(size_t)bytes
 {
-	off_t prev_offt = wet_rows == 0 ? offset : row_offset[wet_rows - 1];
-	row_offset[wet_rows] = prev_offt + bytes;
+	off_t prev_offt = wet_rows == 0 ? offset : wet_rows_offset[wet_rows - 1];
+	wet_rows_offset[wet_rows] = prev_offt + bytes;
 	wet_rows++;
 }
 
@@ -672,11 +687,11 @@ confirm_write
 	off_t tail = ftello(fd);
 	say_debug("initial offset:%zi tail:%zi", offset, tail);
 	for (int i = 0; i < wet_rows; i++) {
-		if (row_offset[i] > tail) {
+		if (wet_rows_offset[i] > tail) {
 			say_error("failed to sync %zi rows", wet_rows - i);
 			break;
 		}
-		say_debug("confirm offset %zi", row_offset[i]);
+		say_debug("confirm offset %zi", wet_rows_offset[i]);
 		next_lsn++;
 		rows++;
 	}
@@ -790,7 +805,7 @@ append_row:(void *)data len:(u32)data_len tag:(u16)tag cookie:(u64)cookie
 {
 	struct _row_v11 row;
 
-	assert(wet_rows < sizeof(row_offset));
+	assert(wet_rows < sizeof(wet_rows_offset));
 	if (tag == snap_tag) {
 		tag = (u16)-1;
 	} else if (tag == wal_tag) {
@@ -829,7 +844,7 @@ append_row:(void *)data len:(u32)data_len tag:(u16)tag cookie:(u64)cookie
 	[self append_successful:sizeof(marker) + sizeof(row) +
 				sizeof(tag) + sizeof(cookie) +
 	                        data_len];
-	return 0;
+	return 1;
 }
 
 @end
@@ -909,7 +924,7 @@ append_row:(const void *)data len:(u32)data_len tag:(u16)tag cookie:(u64)cookie
 {
 	Recovery *r = dir->recovery_state;
 	struct row_v12 row;
-	assert(wet_rows < sizeof(row_offset));
+	assert(wet_rows < sizeof(wet_rows_offset));
 
 	row.scn = [r scn];
 	row.lsn = [self next_lsn];
@@ -930,7 +945,7 @@ append_row:(const void *)data len:(u32)data_len tag:(u16)tag cookie:(u64)cookie
 	}
 
 	[self append_successful:sizeof(marker) + sizeof(row) + data_len];
-	return 0;
+	return 1;
 }
 
 @end

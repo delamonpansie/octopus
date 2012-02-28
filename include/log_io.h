@@ -37,7 +37,7 @@
 
 
 #define RECOVER_READONLY 1
-#define ROW_EOF (void *)1
+#define WAL_PACK_MAX 1024
 
 enum { snap_initial_tag = 1,
        snap_tag,
@@ -85,6 +85,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 @end
 
 @interface XLog: Object {
+	size_t rows, wet_rows;
 @public
         char filename[PATH_MAX + 1];
 	FILE *fd;
@@ -99,12 +100,11 @@ typedef void (follow_cb)(ev_stat *w, int events);
 		LOG_READ,
 		LOG_WRITE
 	} mode;
-	size_t rows, wet_rows;
 
 	bool valid, eof, inprogress;
 
 	size_t bytes_written;
-	off_t offset, row_offset[1024];
+	off_t offset, wet_rows_offset[WAL_PACK_MAX * 8];
 }
 - (XLog *) init_filename:(const char *)filename_
 		      fd:(FILE *)fd_
@@ -121,7 +121,8 @@ typedef void (follow_cb)(ev_stat *w, int events);
 - (struct tbuf *)next_row;
 - (int) flush;
 - (int) close;
-
+- (size_t) rows;
+- (size_t)wet_rows_offset_available;
 - (int) append_row:(const void *)data len:(u32)data_len tag:(u16)tag cookie:(u64)cookie;
 - (i64) confirm_write;
 @end
@@ -192,7 +193,13 @@ void snapshot_write_row(XLog *l, u16 tag, struct tbuf *row);
 @interface Recovery (writers)
 - (void) submit_change:(struct tbuf *)change;
 - (void) configure_wal_writer;
-- (i64) wal_request_write:(struct tbuf *)row tag:(u16)tag cookie:(u64)cookie;
+- (struct tbuf *) wal_pack_prepare;
+- (void) wal_pack_append:(struct tbuf *)m
+		    data:(void *)data
+		     len:(u32)data_len
+		     tag:(u16)tag
+		  cookie:(u64)cookie;
+- (int) wal_pack_submit:(struct tbuf *)m;
 - (void) snapshot_save:(void (*)(XLog *))callback;
 @end
 
