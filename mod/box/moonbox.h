@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010 Mail.RU
- * Copyright (C) 2010 Yuriy Vostrikov
+ * Copyright (C) 2010, 2012 Mail.RU
+ * Copyright (C) 2010, 2012 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,4 +25,4 @@
  */
 
 void luaT_openbox(struct lua_State *L);
-u32 box_dispach_lua(struct netmsg *dst, struct tbuf *request);
+u32 box_dispach_lua(struct box_txn *txn, struct tbuf *request);

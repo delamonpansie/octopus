@@ -740,7 +740,7 @@ box_process(struct conn *c, struct tbuf *request)
 			txn_init(iproto(request), &txn, netmsg_tail(&q, fiber->pool));
 
 			if (msg_code == EXEC_LUA) {
-				box_dispach_lua(txn.m, &request_data);
+				box_dispach_lua(&txn, &request_data);
 			} else {
 				box_prepare_update(&txn, &request_data);
 				/* we'r potentially block here */
@@ -748,7 +748,7 @@ box_process(struct conn *c, struct tbuf *request)
 				txn_commit(&txn);
 			}
 			iproto_commit(&txn.header_mark);
-			netmsg_concat(netmsg_tail(&c->out_messages, c->pool), &q);
+			netmsg_concat(&c->out_messages, &q, c->pool);
 
 			stop = ev_now();
 			if (stop - start > cfg.too_long_threshold)
@@ -768,7 +768,7 @@ box_process(struct conn *c, struct tbuf *request)
 			rc = ERR_CODE_ILLEGAL_PARAMS;
 		iproto_error(&txn.m, &txn.header_mark, rc, e->reason);
 		if (&c->out_messages != txn.m->tailq)
-			netmsg_concat(netmsg_tail(&c->out_messages, c->pool), txn.m->tailq);
+			netmsg_concat(&c->out_messages, txn.m->tailq, c->pool);
 	}
 	@finally {
 		txn_cleanup(&txn);

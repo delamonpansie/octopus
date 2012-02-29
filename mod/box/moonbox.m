@@ -565,7 +565,7 @@ luaT_openbox(struct lua_State *L)
 
 
 u32
-box_dispach_lua(struct netmsg *dst, struct tbuf *data)
+box_dispach_lua(struct box_txn *txn, struct tbuf *data)
 {
 	lua_State *L = fiber->L;
 
@@ -606,7 +606,8 @@ box_dispach_lua(struct netmsg *dst, struct tbuf *data)
 	lua_pop(L, 1);
 
 	struct netmsg_tailq *q = luaT_checknetmsg(L, 1);
-	netmsg_concat(dst, q);
+	txn->m = netmsg_concat(txn->m->tailq, q, txn->m->pool);
+
 	lua_pop(L, 1);
 	return ret;
 }

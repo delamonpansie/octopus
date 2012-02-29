@@ -110,29 +110,31 @@ netmsg_gc(struct palloc_pool *pool, struct netmsg *m)
 	}
 }
 
-void
-netmsg_concat(struct netmsg *tail, struct netmsg_tailq *src)
+struct netmsg *
+netmsg_concat(struct netmsg_tailq *dst, struct netmsg_tailq *src, struct palloc_pool *pool)
 {
-	struct netmsg *m, *tmp;
+	struct netmsg *m, *tmp, *tail;
+
+	tail = TAILQ_EMPTY(dst) ? NULL : TAILQ_LAST(dst, netmsg_tailq);
 
 	TAILQ_FOREACH_SAFE(m, src, link, tmp) {
 		TAILQ_REMOVE(src, m, link); /* FIXME: TAILQ_INIT ? */
-		if (m->pool != tail->pool)
-			netmsg_gc(tail->pool, m);
+		if (m->pool != pool)
+			netmsg_gc(pool, m);
 
 		if (tail && nelem(tail->iov) - tail->count > m->count) {
 			memcpy(tail->iov + tail->count, m->iov, sizeof(m->iov[0]) * m->count);
 			memcpy(tail->ref + tail->count, m->ref, sizeof(m->ref[0]) * m->count);
 			tail->count += m->count;
 
-			TAILQ_REMOVE(m->tailq, m, link);
 			TAILQ_INSERT_HEAD(&netmsg_pool, m, link);
 		} else {
-			m->tailq = tail->tailq;
-			TAILQ_INSERT_TAIL(tail->tailq, m, link);
+			m->tailq = dst;
+			TAILQ_INSERT_TAIL(dst, m, link);
 			tail = m;
 		}
 	}
+	return tail;
 }
 
 void

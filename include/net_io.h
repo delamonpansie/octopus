@@ -89,7 +89,7 @@ struct service {
 };
 
 struct netmsg *netmsg_tail(struct netmsg_tailq *q, struct palloc_pool *pool);
-void netmsg_concat(struct netmsg *dst, struct netmsg_tailq *src);
+struct netmsg *netmsg_concat(struct netmsg_tailq *dst, struct netmsg_tailq *src, struct palloc_pool *pool);
 void netmsg_release(struct netmsg *m);
 void netmsg_rewind(struct netmsg **m, struct netmsg_mark *mark);
 void netmsg_getmark(struct netmsg *m, struct netmsg_mark *mark);
