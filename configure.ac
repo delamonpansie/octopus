@@ -3,7 +3,7 @@
 
 
 AC_PREREQ([2.67])
-AC_INIT([tarantool],[1.3.2],[mon@unformed.ru])
+AC_INIT([tarantool],[2.0],[mon@unformed.ru])
 AC_CONFIG_SRCDIR([src/tarantool.m])
 AC_CONFIG_HEADERS([include/config.h])
 AC_CONFIG_FILES([Makefile scripts/gen-lua-registry.sh])
