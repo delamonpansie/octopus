@@ -216,7 +216,7 @@ init_set_proc_title(int argc, char **argv)
 	 */
 	ps_buffer_fixed_size = 0;
 #else
-	snprintf(ps_buffer, ps_buffer_size, "tarantool: ");
+	snprintf(ps_buffer, ps_buffer_size, "%s: ", argv[0]);
 
 	ps_buffer_fixed_size = strlen(ps_buffer);
 

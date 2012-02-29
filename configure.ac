@@ -65,6 +65,7 @@ AS_IF([test -n $DOT], [AC_SUBST(HAVE_DOT, 1)])
 # Checks for libraries.
 AC_SEARCH_LIBS([__objc_exec_class], [objc], [], [AC_MSG_ERROR([Unable to locate Objective C runtime library.])])
 AC_SEARCH_LIBS([dlopen], [dl dld], [], [AC_MSG_ERROR([unable to find the dlopen() function])])
+AC_SEARCH_LIBS(setproctitle, util)
 
 # Checks for header files.
 AC_HEADER_ASSERT
