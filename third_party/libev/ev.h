@@ -1,7 +1,7 @@
 /*
  * libev native API header
  *
- * Copyright (c) 2007,2008,2009,2010,2011 Marc Alexander Lehmann <libev@schmorp.de>
+ * Copyright (c) 2007,2008,2009,2010,2011,2012 Marc Alexander Lehmann <libev@schmorp.de>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without modifica-
@@ -199,7 +199,7 @@ struct ev_loop;
 /*****************************************************************************/
 
 #define EV_VERSION_MAJOR 4
-#define EV_VERSION_MINOR 4
+#define EV_VERSION_MINOR 11
 
 /* eventmask, revents, events... */
 enum {
@@ -544,7 +544,9 @@ EV_API_DECL void ev_set_syserr_cb (void (*cb)(const char *msg));
 /* you can call this as often as you like */
 EV_API_DECL struct ev_loop *ev_default_loop (unsigned int flags EV_CPP (= 0));
 
+#ifdef EV_API_STATIC
 EV_API_DECL struct ev_loop *ev_default_loop_ptr;
+#endif
 
 EV_INLINE struct ev_loop *
 ev_default_loop_uc_ (void)

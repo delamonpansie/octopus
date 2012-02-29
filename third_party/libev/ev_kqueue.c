@@ -1,7 +1,7 @@
 /*
  * libev kqueue backend
  *
- * Copyright (c) 2007,2008,2009,2010,2011 Marc Alexander Lehmann <libev@schmorp.de>
+ * Copyright (c) 2007,2008,2009,2010,2011,2012 Marc Alexander Lehmann <libev@schmorp.de>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without modifica-
@@ -195,4 +195,7 @@ kqueue_fork (EV_P)
   /* re-register interest in fds */
   fd_rearm_all (EV_A);
 }
+
+/* sys/event.h defines EV_ERROR */
+#undef EV_ERROR
 

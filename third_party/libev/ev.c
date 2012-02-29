@@ -185,6 +185,17 @@
 # include "ev.h"
 #endif
 
+#if EV_NO_THREADS
+# undef EV_NO_SMP
+# define EV_NO_SMP 1
+# undef ECB_NO_THREADS
+# define ECB_NO_THREADS 1
+#endif
+#if EV_NO_SMP
+# undef EV_NO_SMP
+# define ECB_NO_SMP 1
+#endif
+
 #ifndef _WIN32
 # include <sys/time.h>
 # include <sys/wait.h>
@@ -536,12 +547,16 @@ struct signalfd_siginfo
 /* ECB_NO_THREADS - ecb is not used by multiple threads, ever */
 /* ECB_NO_SMP     - ecb might be used in multiple threads, but only on a single cpu */
 
+#if ECB_NO_THREADS
+# define ECB_NO_SMP 1
+#endif
+
 #if ECB_NO_THREADS || ECB_NO_SMP
   #define ECB_MEMORY_FENCE do { } while (0)
 #endif
 
 #ifndef ECB_MEMORY_FENCE
-  #if ECB_GCC_VERSION(2,5) || defined(__INTEL_COMPILER) || defined(__clang__) || __SUNPRO_C >= 0x5110 || __SUNPRO_CC >= 0x5110
+  #if ECB_GCC_VERSION(2,5) || defined(__INTEL_COMPILER) || (__llvm__ && __GNUC__) || __SUNPRO_C >= 0x5110 || __SUNPRO_CC >= 0x5110
     #if __i386 || __i386__
       #define ECB_MEMORY_FENCE         __asm__ __volatile__ ("lock; orb $0, -1(%%esp)" : : : "memory")
       #define ECB_MEMORY_FENCE_ACQUIRE ECB_MEMORY_FENCE /* non-lock xchg might be enough */
@@ -560,8 +575,12 @@ struct signalfd_siginfo
       #define ECB_MEMORY_FENCE         __asm__ __volatile__ ("dmb" : : : "memory")
     #elif __sparc || __sparc__
       #define ECB_MEMORY_FENCE         __asm__ __volatile__ ("membar #LoadStore | #LoadLoad | #StoreStore | #StoreLoad | " : : : "memory")
-      #define ECB_MEMORY_FENCE_ACQUIRE __asm__ __volatile__ ("membar #LoadStore | #LoadLoad" : : : "memory")
+      #define ECB_MEMORY_FENCE_ACQUIRE __asm__ __volatile__ ("membar #LoadStore | #LoadLoad"                               : : : "memory")
       #define ECB_MEMORY_FENCE_RELEASE __asm__ __volatile__ ("membar #LoadStore |             #StoreStore")
+    #elif defined(__s390__) || defined(__s390x__)
+      #define ECB_MEMORY_FENCE         __asm__ __volatile__ ("bcr 15,0" : : : "memory")
+    #elif defined(__mips__)
+      #define ECB_MEMORY_FENCE         __asm__ __volatile__ ("sync" : : : "memory")
     #endif
   #endif
 #endif
@@ -856,25 +875,25 @@ ecb_inline uint64_t ecb_rotr64 (uint64_t x, unsigned int count) { return (x << (
   #define ecb_unreachable() __builtin_unreachable ()
 #else
   /* this seems to work fine, but gcc always emits a warning for it :/ */
-  ecb_function_ void ecb_unreachable (void) ecb_noreturn;
-  ecb_function_ void ecb_unreachable (void) { }
+  ecb_inline void ecb_unreachable (void) ecb_noreturn;
+  ecb_inline void ecb_unreachable (void) { }
 #endif
 
 /* try to tell the compiler that some condition is definitely true */
 #define ecb_assume(cond) do { if (!(cond)) ecb_unreachable (); } while (0)
 
-ecb_function_ unsigned char ecb_byteorder_helper (void) ecb_const;
-ecb_function_ unsigned char
+ecb_inline unsigned char ecb_byteorder_helper (void) ecb_const;
+ecb_inline unsigned char
 ecb_byteorder_helper (void)
 {
   const uint32_t u = 0x11223344;
   return *(unsigned char *)&u;
 }
 
-ecb_function_ ecb_bool ecb_big_endian    (void) ecb_const;
-ecb_function_ ecb_bool ecb_big_endian    (void) { return ecb_byteorder_helper () == 0x11; }
-ecb_function_ ecb_bool ecb_little_endian (void) ecb_const;
-ecb_function_ ecb_bool ecb_little_endian (void) { return ecb_byteorder_helper () == 0x44; }
+ecb_inline ecb_bool ecb_big_endian    (void) ecb_const;
+ecb_inline ecb_bool ecb_big_endian    (void) { return ecb_byteorder_helper () == 0x11; }
+ecb_inline ecb_bool ecb_little_endian (void) ecb_const;
+ecb_inline ecb_bool ecb_little_endian (void) { return ecb_byteorder_helper () == 0x44; }
 
 #if ECB_GCC_VERSION(3,0) || ECB_C99
   #define ecb_mod(m,n) ((m) % (n) + ((m) % (n) < 0 ? (n) : 0))
@@ -1856,6 +1875,8 @@ evpipe_write (EV_P_ EV_ATOMIC_T *flag)
           /* so when you think this write should be a send instead, please find out */
           /* where your send() is from - it's definitely not the microsoft send, and */
           /* tell me. thank you. */
+          /* it might be that your problem is that your environment needs EV_USE_WSASOCKET */
+          /* check the ev documentation on how to use this flag */
           write (evpipe [1], &(evpipe [1]), 1);
         }
 
@@ -3300,6 +3321,8 @@ void noinline
 ev_timer_again (EV_P_ ev_timer *w)
 {
   EV_FREQUENT_CHECK;
+
+  clear_pending (EV_A_ (W)w);
 
   if (ev_is_active (w))
     {
