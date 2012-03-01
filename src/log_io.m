@@ -632,17 +632,17 @@ eof:
 	if (ftello(fd) == good_offset + sizeof(eof_marker)) {
 		fseeko(fd, good_offset, SEEK_SET);
 
-		if (fread(&magic, sizeof(eof_marker), 1, fd) != 1) {
-			fseeko(fd, good_offset, SEEK_SET);	/* seek back to last known good offset */
-			return NULL;
-		}
+		if (fread(&magic, sizeof(eof_marker), 1, fd) != 1)
+			goto seek_back;
 
 		if (memcmp(&magic, &eof_marker, sizeof(eof_marker)) != 0)
-			return NULL;
+			goto seek_back;
 
 		eof = 1;
 		return NULL;
 	}
+seek_back:
+	/* seek back to last known good offset */
 	fseeko(fd, good_offset, SEEK_SET);
 	return NULL;
 }
