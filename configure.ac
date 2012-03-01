@@ -70,7 +70,7 @@ AC_SEARCH_LIBS(setproctitle, util)
 # Checks for header files.
 AC_HEADER_ASSERT
 AC_HEADER_STDBOOL
-AC_CHECK_HEADERS([ucontext.h sys/prctl.h])
+AC_CHECK_HEADERS([ucontext.h sys/prctl.h sys/pstat.h])
 
 
 OBJCFLAGS=$CFLAGS
