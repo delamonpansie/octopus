@@ -643,6 +643,7 @@ eof:
 		eof = 1;
 		return NULL;
 	}
+	fseeko(fd, good_offset, SEEK_SET);
 	return NULL;
 }
 
