@@ -281,10 +281,9 @@ admin_handler(va_list ap)
 	int fd = va_arg(ap, int);
 	struct conn *c = NULL;
 
+	c = conn_create(fiber->pool, fd);
+	palloc_register_gc_root(fiber->pool, c, conn_gc);
 	@try {
-		c = conn_create(fiber->pool, fd);
-		palloc_register_gc_root(fiber->pool, c, conn_gc);
-
 		for (;;) {
 			if (admin_dispatch(c) <= 0)
 				break;
@@ -292,6 +291,7 @@ admin_handler(va_list ap)
 		}
 	}
 	@finally {
+		palloc_unregister_gc_root(fiber->pool, c);
 		conn_close(c);
 	}
 }

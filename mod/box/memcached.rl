@@ -689,44 +689,49 @@ memcached_handler(va_list ap)
 	c = conn_create(fiber->pool, fd);
 	palloc_register_gc_root(fiber->pool, c, conn_gc);
 
-	for (;;) {
-		batch_count = 0;
-		if (conn_readahead(c, 1) <= 0)
-			goto exit;
-
-	dispatch:
-		p = memcached_dispatch(c);
-		if (p < 0) {
-			say_debug("negative dispatch, closing connection");
-			goto exit;
-		}
-
-		if (p == 0 && batch_count == 0) /* we havn't successfully parsed any requests */
-			continue;
-
-		if (p == 1) {
-			batch_count++;
-			/* some unparsed commands remain and batch count less than 20 */
-			if (tbuf_len(c->rbuf) > 0 && batch_count < 20)
-				goto dispatch;
-		}
-
-		r = conn_flush(c);
-		if (r < 0) {
-			say_debug("flush_output failed, closing connection");
-			goto exit;
-		}
-
-		stats.bytes_written += r;
-		fiber_gc();
-
-		if (p == 1 && tbuf_len(c->rbuf) > 0) {
+	@try {
+		for (;;) {
 			batch_count = 0;
-			goto dispatch;
+			if (conn_readahead(c, 1) <= 0)
+				return;
+
+		dispatch:
+			p = memcached_dispatch(c);
+			if (p < 0) {
+				say_debug("negative dispatch, closing connection");
+				return;
+			}
+
+			if (p == 0 && batch_count == 0) /* we havn't successfully parsed any requests */
+				continue;
+
+			if (p == 1) {
+				batch_count++;
+				/* some unparsed commands remain and batch count less than 20 */
+				if (tbuf_len(c->rbuf) > 0 && batch_count < 20)
+					goto dispatch;
+			}
+
+			r = conn_flush(c);
+			if (r < 0) {
+				say_debug("flush_output failed, closing connection");
+				return;
+			}
+
+			stats.bytes_written += r;
+			fiber_gc();
+
+			if (p == 1 && tbuf_len(c->rbuf) > 0) {
+				batch_count = 0;
+				goto dispatch;
+			}
 		}
 	}
-exit:
-	stats.curr_connections--; /* FIXME: nonlocal exit via exception will leak this counter */
+	@finally {
+		palloc_unregister_gc_root(fiber->pool, c);
+		conn_close(c);
+		stats.curr_connections--;
+	}
 }
 
 static void
