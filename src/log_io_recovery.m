@@ -200,16 +200,11 @@ recover_wal:(XLog *)l
 	struct palloc_pool *saved_pool = fiber->pool;
 	fiber->pool = l->pool;
 	@try {
-
 		while ((row = [l next_row])) {
-			if (row_v12(row)->lsn <= lsn) {
-				say_debug("skipping too young row");
-				continue;
+			if (row_v12(row)->lsn > lsn) {
+				[self validate_row:row];
+				[self recover_row:row];
 			}
-
-			/*  after -[recover_row] has returned, row may be modified, do not use it */
-			[self validate_row:row];
-			[self recover_row:row];
 
 			prelease_after(l->pool, 128 * 1024);
 		}
