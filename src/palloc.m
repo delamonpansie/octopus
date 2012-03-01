@@ -82,7 +82,8 @@ struct gc_root {
 	void *ptr;
 };
 
-#define NROOT 8
+/* FIXME: dynamicaly allocate this */
+#define NROOT 2048
 struct palloc_pool {
 	struct chunk_list_head chunks;
 	SLIST_ENTRY(palloc_pool) link;
@@ -377,7 +378,6 @@ palloc_register_gc_root(struct palloc_pool *pool,
 			void *ptr, void (*copy)(struct palloc_pool *, void *))
 {
 	assert(pool->last_root < &pool->gc_root[NROOT]);
-
 	pool->last_root++;
 	pool->last_root->ptr = ptr;
 	pool->last_root->copy = copy;
@@ -386,15 +386,17 @@ palloc_register_gc_root(struct palloc_pool *pool,
 void
 palloc_unregister_gc_root(struct palloc_pool *pool, void *ptr)
 {
-	assert(pool->gc_root + NROOT + 1 < pool->last_root);
+	assert(pool->last_root < &pool->gc_root[NROOT]);
 
+	void *last_ptr = pool->last_root->ptr;
 	while (pool->last_root->ptr != ptr)
 		pool->last_root--;
 
-	while (pool->last_root->ptr != NULL) {
+	while (pool->last_root->ptr != last_ptr) {
 		*pool->last_root = *(pool->last_root + 1);
 		pool->last_root++;
 	}
+	pool->last_root--;
 }
 
 void
