@@ -674,6 +674,9 @@ append_row:(void *)data len:(u32)data_len tag:(u16)tag cookie:(u64)cookie
 - (void)
 append_successful:(size_t)bytes
 {
+	if (no_wet)
+		return;
+
 	off_t prev_offt = wet_rows == 0 ? offset : wet_rows_offset[wet_rows - 1];
 	wet_rows_offset[wet_rows] = prev_offt + bytes;
 	wet_rows++;

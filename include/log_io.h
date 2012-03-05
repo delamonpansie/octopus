@@ -101,7 +101,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 		LOG_WRITE
 	} mode;
 
-	bool valid, eof, inprogress;
+	bool valid, eof, inprogress, no_wet;
 
 	size_t bytes_written;
 	off_t offset, wet_rows_offset[WAL_PACK_MAX * 8];

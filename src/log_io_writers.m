@@ -373,6 +373,7 @@ snapshot_save:(void (*)(XLog *))callback
 		say_error("can't open snap for writing");
 		return;
 	}
+	snap->no_wet = true; /* disable wet row tracking */;
 
 	/*
 	 * While saving a snapshot, snapshot name is set to
