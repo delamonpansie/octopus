@@ -200,6 +200,7 @@ wal_disk_writer(int fd, void *state)
 	int result = EXIT_FAILURE;
 	i64 lsn;
 	bool io_failure = false, reparse = false;
+	ssize_t r;
 	struct {
 		u32 fid;
 		u32 repeat_count;
@@ -208,7 +209,11 @@ wal_disk_writer(int fd, void *state)
 	rbuf = tbuf_alloca(fiber->pool);
 	palloc_register_gc_root(fiber->pool, (void *)rbuf, tbuf_gc);
 
-	if (recv(fd, &lsn, sizeof(lsn), 0) != sizeof(lsn)) {
+	if ((r = recv(fd, &lsn, sizeof(lsn), 0)) != sizeof(lsn)) {
+		if (r == 0) {
+			result = EX_OK;
+			goto exit;
+		}
 		say_syserror("recv: failed");
 		panic("unable to start WAL writer");
 	}
@@ -217,8 +222,8 @@ wal_disk_writer(int fd, void *state)
 	for (;;) {
 		if (!reparse) {
 			tbuf_ensure(rbuf, 16 * 1024);
-			ssize_t r = recv(fd, rbuf->data + tbuf_len(rbuf),
-					 rbuf->size - tbuf_len(rbuf), 0);
+			r = recv(fd, rbuf->data + tbuf_len(rbuf),
+				 rbuf->size - tbuf_len(rbuf), 0);
 			if (r < 0 && (errno == EINTR))
 				continue;
 			else if (r < 0) {
