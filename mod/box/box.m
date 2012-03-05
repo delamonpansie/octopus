@@ -49,6 +49,7 @@
 #include <errno.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <sysexits.h>
 
 static struct service *box_service;
 
@@ -1237,7 +1238,7 @@ init(void)
 		if (!cfg.wal_feeder_addr) {
 			say_crit("don't you forget to initialize "
 				 "storage with --init-storage switch?");
-			_exit(1);
+			exit(EX_USAGE);
 		}
 	}
 

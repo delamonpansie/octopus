@@ -235,7 +235,7 @@ save_snapshot(void *ev, int events __attribute__((unused)))
 #endif
 
 static void
-sig_int(int sig)
+sig_int(int sig __attribute__((unused)))
 {
 	say_info("SIGINT or SIGTERM recieved, terminating");
 
@@ -243,11 +243,6 @@ sig_int(int sig)
 	__gcov_flush();
 #endif
 	if (master_pid == getpid()) {
-		if (sig == SIGINT)
-			sig = SIGTERM;
-
-		signal(sig, SIG_IGN);
-		kill(0, sig);
 		exit(EXIT_SUCCESS);
 	} else
 		_exit(EXIT_SUCCESS);
@@ -274,6 +269,15 @@ signal_init(void)
       error:
 	say_syserror("sigaction");
 	exit(EX_OSERR);
+}
+
+static void
+kill_children(void)
+{
+	if (getpid() == master_pid) {
+		signal(SIGTERM, SIG_IGN);
+		kill(0, SIGTERM);
+	}
 }
 
 static void
@@ -613,6 +617,8 @@ main(int argc, char **argv)
 		create_pid();
 		atexit(remove_pid);
 	}
+
+	atexit(kill_children);
 
 	say_logger_init(cfg.logger_nonblock);
 	booting = false;
