@@ -74,7 +74,8 @@ typedef void (follow_cb)(ev_stat *w, int events);
 - (id) open_for_read:(i64)lsn;
 - (id) open_for_write:(i64)lsn;
 - (i64) greatest_lsn;
-- (const char *) format_filename:(i64)lsn in_progress:(bool)in_progress;
+- (const char *) format_filename:(i64)lsn suffix:(const char *)extra_suffix;
+- (const char *) format_filename:(i64)lsn;
 - (i64) find_file_containg_lsn:(i64)target_lsn;
 @end
 
@@ -87,7 +88,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 @interface XLog: Object {
 	size_t rows, wet_rows;
 @public
-        char filename[PATH_MAX + 1];
+	char *filename;
 	FILE *fd;
 	void *vbuf;
 	ev_stat stat;

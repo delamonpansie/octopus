@@ -212,18 +212,27 @@ find_file_containg_lsn:(i64)target_lsn
 }
 
 - (const char *)
-format_filename:(i64)lsn in_progress:(bool)in_progress
+format_filename:(i64)lsn prefix:(const char *)prefix suffix:(const char *)extra_suffix
 {
 	static char filename[PATH_MAX + 1];
-
-	if (in_progress)
-                snprintf(filename, PATH_MAX, "%s/%020" PRIi64 "%s%s",
-                         dirname, lsn, suffix, inprogress_suffix);
-	else
-		snprintf(filename, PATH_MAX, "%s/%020" PRIi64 "%s",
-			 dirname, lsn, suffix);
+	snprintf(filename, sizeof(filename),
+		 "%s%s/%020" PRIi64 "%s%s",
+		 prefix, dirname, lsn, suffix, extra_suffix);
 	return filename;
 }
+
+- (const char *)
+format_filename:(i64)lsn suffix:(const char *)extra_suffix
+{
+	return [self format_filename:lsn prefix:"" suffix:extra_suffix];
+}
+
+- (const char *)
+format_filename:(i64)lsn
+{
+	return [self format_filename:lsn suffix:""];
+}
+
 
 
 - (id)
@@ -286,7 +295,7 @@ error:
 - (id)
 open_for_read:(i64)lsn
 {
-        const char *filename = [self format_filename:lsn in_progress:false];
+	const char *filename = [self format_filename:lsn];
 	FILE *fd = fopen(filename, "r");
 	if (fd == NULL) {
 		say_syserror("[open_for_read %"PRIi64"]: filename:`%s'",
@@ -305,19 +314,18 @@ open_for_write:(i64)lsn
         FILE *file = NULL;
         assert(lsn > 0);
 
-        // FIXME: filename leak
-	const char *filename = strdup([self format_filename:lsn in_progress:true]);
-	say_debug("[open_for_write `%s']", filename);
 
+	const char *final_filename = [self format_filename:lsn];
+	if (access(final_filename, F_OK) == 0) {
+		say_error("failed to create snapshot: '%s' already exists", final_filename);
+		goto error;
+	}
+
+	const char *filename = [self format_filename:lsn suffix:inprogress_suffix];
+	say_debug("[open_for_write `%s']", filename);
 	if (access(filename, F_OK) == 0) {
 		say_error("failed to open `%s': file already exists", filename);
-		return NULL;
-	}
-	const char *final_filename = [self format_filename:lsn in_progress:false];
-	if (access(final_filename, F_OK) == 0) {
-		say_error("failed to open `%s': '%s' is in the way",
-			  filename, final_filename);
-		return NULL;
+		goto error;
 	}
 
 	/*
@@ -325,12 +333,16 @@ open_for_write:(i64)lsn
 	 * exists, open will fail.
 	 */
 	int fd = open(filename, O_WRONLY | O_CREAT | O_EXCL | O_APPEND, 0664);
-	if (fd < 0)
+	if (fd < 0) {
+		say_error("failed to open `%s': %s", filename, strerror(errno));
 		goto error;
+	}
 
 	file = fdopen(fd, "a");
-	if (file == NULL)
+	if (file == NULL) {
+		say_error("fdopen failed: %s", strerror(errno));
 		goto error;
+	}
 
 	l = cfg.io_compat ? [XLog11 alloc] : [XLog12 alloc];
 	l = [l init_filename:filename
@@ -347,7 +359,6 @@ open_for_write:(i64)lsn
 
 	return l;
       error:
-	say_error("failed to open `%s': %s", filename, strerror(errno));
         if (file != NULL)
                 fclose(file);
         [l free];
@@ -371,7 +382,7 @@ init_dirname:(const char *)dirname_
 open_for_read:(i64)lsn
 {
 	FILE *fd;
-	const char *filename = [self format_filename:lsn in_progress:true];
+	const char *filename = [self format_filename:lsn suffix:inprogress_suffix];
 	if ((fd = fopen(filename, "r")) != NULL) {
 		XLog *l = [self open_for_read_filename:filename
 						    fd:fd
@@ -409,7 +420,7 @@ init_filename:(const char *)filename_
 	[super init];
 	valid = true;
 
-	strncpy(filename, filename_, sizeof(filename));
+	filename = strdup(filename_);
 	pool = palloc_create_pool(filename);
 	fd = fd_;
 	mode = mode_;
@@ -428,6 +439,7 @@ init_filename:(const char *)filename_
 - (void)
 free
 {
+	free(filename);
 	free(vbuf);
 	palloc_destroy_pool(pool);
 	[super free];

@@ -313,7 +313,7 @@ recover_local:(i64)start_lsn
 			current_wal = [wal_dir open_for_read:wal_start_lsn];
 			if (current_wal == nil)
 				raise("unable to open WAL %s",
-				      [wal_dir format_filename:wal_start_lsn in_progress:false]);
+				      [wal_dir format_filename:wal_start_lsn]);
 			say_info("recover from `%s'", current_wal->filename);
 		}
 	}
