@@ -806,7 +806,7 @@ append_row:(void *)data len:(u32)data_len tag:(u16)tag cookie:(u64)cookie
 {
 	struct _row_v11 row;
 
-	assert(wet_rows < sizeof(wet_rows_offset));
+	assert(wet_rows < nelem(wet_rows_offset));
 	if (tag == snap_tag) {
 		tag = (u16)-1;
 	} else if (tag == wal_tag) {
@@ -925,7 +925,7 @@ append_row:(const void *)data len:(u32)data_len tag:(u16)tag cookie:(u64)cookie
 {
 	Recovery *r = dir->recovery_state;
 	struct row_v12 row;
-	assert(wet_rows < sizeof(wet_rows_offset));
+	assert(wet_rows < nelem(wet_rows_offset));
 
 	row.scn = [r scn];
 	row.lsn = [self next_lsn];
