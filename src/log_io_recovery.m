@@ -269,6 +269,7 @@ recover_remaining_wals
 			[current_wal close];
 			current_wal = nil;
 		}
+		fiber_gc();
 	}
 
 	/*
