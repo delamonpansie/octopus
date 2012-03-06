@@ -51,7 +51,7 @@
 #include <arpa/inet.h>
 #include <sysexits.h>
 
-static struct service *box_service;
+static struct service *box_primary, *box_secondary;
 
 static int stat_base;
 STRS(messages, MESSAGES);
@@ -740,6 +740,9 @@ box_process(struct conn *c, struct tbuf *request)
 			struct netmsg_tailq q = TAILQ_HEAD_INITIALIZER(q);
 			txn_init(iproto(request), &txn, netmsg_tail(&q, fiber->pool));
 
+			if (unlikely(c->service != box_primary))
+				iproto_raise(ERR_CODE_NONMASTER, "updates forbiden on secondary port");
+
 			if (msg_code == EXEC_LUA) {
 				box_dispach_lua(&txn, &request_data);
 			} else {
@@ -1079,10 +1082,12 @@ initialize_service()
 	if (cfg.memcached != 0) {
 		memcached_init();
 	} else {
-		assert(box_service == NULL);
-		box_service = iproto_service(cfg.primary_port, box_bound_to_primary);
+		box_primary = iproto_service(cfg.primary_port, box_bound_to_primary);
 		for (int i = 0; i < cfg.wal_writer_inbox_size - 2; i++)
-			fiber_create("box_worker", iproto_interact, box_service, box_process);
+			fiber_create("box_worker", iproto_interact, box_primary, box_process);
+
+		box_secondary = iproto_service(cfg.secondary_port, NULL);
+		fiber_create("box_secondary_worker", iproto_interact, box_secondary, box_process);
 
 		say_info("(silver)box initialized (%i workers)", cfg.wal_writer_inbox_size);
 	}
@@ -1154,7 +1159,7 @@ recover_row:(struct tbuf *)row
 			lsn = row_lsn;
 			break;
 		case wal_final_tag:
-			if (box_service == NULL) {
+			if (box_primary == NULL) {
 				build_secondary_indexes();
 				initialize_service();
 			}
