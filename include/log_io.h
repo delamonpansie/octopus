@@ -143,6 +143,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 	XLog *current_wal;	/* the WAL we'r currently reading/writing from/to */
 	XLog *wal_to_close;
 
+	void (*recover_row)(struct tbuf *);
 	struct sockaddr_in *feeder;
 
         XLogDir *wal_dir, *snap_dir;
@@ -164,6 +165,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (struct child *)wal_writer;
 
 - (void) initial_lsn:(i64)new_lsn;
+- (void) recover_row:(struct tbuf *)row;
 - (void) recover_finalize;
 - (i64) recover_local:(i64)lsn;
 - (void) recover_follow:(ev_tstamp)delay;
@@ -173,20 +175,13 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 
 - (id) init_snap_dir:(const char *)snap_dir
              wal_dir:(const char *)wal_dir
+	 recover_row:(void (*)(struct tbuf *))recover_row
         rows_per_wal:(int)rows_per_wal
        feeder_addr:(const char *)feeder_addr
          fsync_delay:(double)wal_fsync_delay
                flags:(int)flags
   snap_io_rate_limit:(int)snap_io_rate_limit;
 @end
-
-@interface Recovery (row)
-/* recover_row will be presented by most recent format of data
-   XLog reader is responsible of converting data from old format */
-- (void) recover_row:(struct tbuf *)row;
-@end
-
-
 
 int wal_disk_writer(int fd, void *state);
 void snapshot_write_row(XLog *l, u16 tag, struct tbuf *row);

@@ -1096,7 +1096,6 @@ initialize_service()
 @interface BoxRecovery: Recovery
 @end
 
-@implementation BoxRecovery
 static void
 snap_apply(struct box_txn *txn, struct tbuf *t)
 {
@@ -1127,52 +1126,42 @@ wal_apply(struct box_txn *txn, struct tbuf *t)
 	box_prepare_update(txn, t);
 }
 
-- (void)
-recover_row:(struct tbuf *)row
+static void
+recover_row(struct tbuf *row)
 {
-	i64 row_lsn = row_v12(row)->lsn;
 	u16 tag = row_v12(row)->tag;
 
 	struct box_txn txn;
 	memset(&txn, 0, sizeof(txn));
 
-	@try {
-		/* drop header */
-		tbuf_peek(row, sizeof(struct row_v12));
+	/* drop header */
+	tbuf_peek(row, sizeof(struct row_v12));
 
-		switch (tag) {
-		case wal_tag:
-			wal_apply(&txn, row);
-			txn_commit(&txn);
-			txn_cleanup(&txn);
-			lsn = row_lsn;
-			break;
-		case snap_tag:
-			snap_apply(&txn, row);
-			txn_commit(&txn);
-			txn_cleanup(&txn);
-			break;
-		case snap_initial_tag:
-			lsn = scn = 0;
-			break;
-		case snap_final_tag:
-			lsn = row_lsn;
-			break;
-		case wal_final_tag:
-			if (box_primary == NULL) {
-				build_secondary_indexes();
-				initialize_service();
-			}
-			break;
-		default:
-			raise("unknown row tag :%u", tag);
+	switch (tag) {
+	case wal_tag:
+		wal_apply(&txn, row);
+		txn_commit(&txn);
+		txn_cleanup(&txn);
+		break;
+	case snap_tag:
+		snap_apply(&txn, row);
+		txn_commit(&txn);
+		txn_cleanup(&txn);
+		break;
+	case snap_initial_tag:
+		break;
+	case snap_final_tag:
+		break;
+	case wal_final_tag:
+		if (box_primary == NULL) {
+			build_secondary_indexes();
+			initialize_service();
 		}
-	}
-	@catch (Error *e) {
-		panic("BoxRecovery failed: %s at %s:%i", e->reason, e->file, e->line);
+		break;
+	default:
+		raise("unknown row tag :%u", tag);
 	}
 }
-@end
 
 
 static void
@@ -1192,13 +1181,14 @@ init(void)
 	}
 
 	title("loading");
-	recovery = [[BoxRecovery alloc] init_snap_dir:cfg.snap_dir
-					      wal_dir:cfg.wal_dir
-					 rows_per_wal:cfg.rows_per_wal
-					  feeder_addr:cfg.wal_feeder_addr
-					  fsync_delay:cfg.wal_fsync_delay
-						flags:init_storage ? RECOVER_READONLY : 0
-				   snap_io_rate_limit:cfg.snap_io_rate_limit * 1024 * 1024];
+	recovery = [[Recovery alloc] init_snap_dir:cfg.snap_dir
+					   wal_dir:cfg.wal_dir
+				       recover_row:recover_row
+				      rows_per_wal:cfg.rows_per_wal
+				       feeder_addr:cfg.wal_feeder_addr
+				       fsync_delay:cfg.wal_fsync_delay
+					     flags:init_storage ? RECOVER_READONLY : 0
+				snap_io_rate_limit:cfg.snap_io_rate_limit * 1024 * 1024];
 
 	/* initialize hashes _after_ starting wal writer */
 

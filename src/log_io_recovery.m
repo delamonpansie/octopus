@@ -142,6 +142,32 @@ dummy_row_lsn:(i64)lsn_ tag:(u16)tag
 	return b;
 }
 
+- (void)
+recover_row:(struct tbuf *)row
+{
+	i64 row_lsn = row_v12(row)->lsn;
+	u16 tag = row_v12(row)->tag;
+
+	@try {
+		recover_row(row);
+		switch (tag) {
+		case wal_tag:
+			lsn = row_lsn;
+			break;
+		case snap_initial_tag:
+			lsn = 0;
+			break;
+		case snap_final_tag:
+			lsn = row_lsn;
+			break;
+		default:
+			break;
+		}
+	}
+	@catch (Error *e) {
+		panic("Recovery failed: %s at %s:%i", e->reason, e->file, e->line);
+	}
+}
 
 - (i64)
 recover_snap
@@ -680,8 +706,9 @@ enable_local_writes
 
 - (id) init_snap_dir:(const char *)snap_dirname
              wal_dir:(const char *)wal_dirname
+	 recover_row:(void (*)(struct tbuf *))recover_row_
         rows_per_wal:(int)wal_rows_per_file
-       feeder_addr:(const char *)feeder_addr_
+	 feeder_addr:(const char *)feeder_addr_
          fsync_delay:(double)wal_fsync_delay
                flags:(int)flags
   snap_io_rate_limit:(int)snap_io_rate_limit_
@@ -706,6 +733,8 @@ enable_local_writes
 
 		wal_writer = spawn_child("wal_writer", true, wal_disk_writer, self);
 	}
+
+	recover_row = recover_row_;
 
 	if (feeder_addr_ != NULL) {
 		feeder_addr = feeder_addr_;
