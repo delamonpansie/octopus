@@ -949,7 +949,7 @@ configure(void)
 		if (pk->unique == false)
 			panic("(object_space = %" PRIu32 ") object_space PK index must be unique", i);
 
-		if (pk->index_cardinality != 1)
+		if ([pk cardinality] != 1)
 			panic("(object_space = %" PRIu32 ") object_space PK index must be 1 cardinality", i);
 
 		object_space_registry[i].enabled = true;

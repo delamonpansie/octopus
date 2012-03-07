@@ -85,7 +85,6 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 	unsigned n;
 	bool unique;
 	enum { HASH, TREE } type;
-	u32 index_cardinality;
 
 	struct tnt_object *find_obj_cache_q, *find_obj_cache;
 	index_dtor *dtor;

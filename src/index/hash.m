@@ -40,7 +40,6 @@
 	[super init];
 	type = HASH;
 	unique = true;
-	index_cardinality = 1;
 	return self;
 }
 
@@ -137,7 +136,7 @@ DEFINE_METHODS(i32)
 - (struct tnt_object *)
 find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
 {
-        if (key_cardinality != index_cardinality)
+        if (key_cardinality != 1)
 		@throw [[IndexError palloc] init:"hashed key has cardinality != 1"];
 	u32 key_size = read_varint32(key_data);
 	if (key_size != sizeof(type))
@@ -162,7 +161,7 @@ DEFINE_METHODS(i64)
 - (struct tnt_object *)
 find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
 {
-        if (key_cardinality != index_cardinality)
+        if (key_cardinality != 1)
                 @throw [[IndexError palloc] init:"hashed key has cardinality != 1"];
 	u32 key_size = read_varint32(key_data);
 	if (key_size != sizeof(i64))
@@ -187,7 +186,7 @@ DEFINE_METHODS(lstr)
 - (struct tnt_object *)
 find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
 {
-        if (key_cardinality != index_cardinality)
+        if (key_cardinality != 1)
                 @throw [[IndexError palloc] init:"hashed key has cardinality != 1"];
 
 	void *f = read_field(key_data);

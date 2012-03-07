@@ -191,7 +191,6 @@ new_with_n:(int)n cfg:(struct tarantool_cfg_object_space_index *)cfg
 			i = [GenTree alloc];
 			i->dtor = box_tuple_gen_dtor;
 			i->dtor_arg = (void *)d;
-			i->index_cardinality = d->cardinality;
 		} else {
 			if (strcmp(cfg->key_field[0]->type, "NUM") == 0) {
 				i = [Int32Tree alloc];
@@ -204,7 +203,6 @@ new_with_n:(int)n cfg:(struct tarantool_cfg_object_space_index *)cfg
 				i->dtor = box_tuple_lstr_dtor;
 			}
 			i->dtor_arg = (void *)(uintptr_t)cfg->key_field[0]->fieldno;
-			i->index_cardinality = 1;
 		}
 		i->n = n;
 		[(Tree *)i init_with_unique:cfg->unique];
