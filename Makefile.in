@@ -106,6 +106,8 @@ ifeq (1,$(HAVE_CONFETTI))
 endif
 
 
+FORCE:
+.PHONY: FORCE
 ifeq (1,$(HAVE_DARCS))
 tarantool_version.h: FORCE
 	@echo -n 'const char tarantool_version_string[] = "' > $@_
@@ -113,7 +115,6 @@ tarantool_version.h: FORCE
 	@echo '";' >> $@_
 	@diff -q $@ $@_ 2>/dev/null >/dev/null || ($(ECHO) "GEN	" $(notdir $@); cp $@_ $@)
 	@rm $@_
-FORCE:
 else
 ifeq (1,$(HAVE_GIT))
 tarantool_version.h: FORCE
@@ -122,7 +123,6 @@ tarantool_version.h: FORCE
 	@echo '";' >> $@_
 	@diff -q $@ $@_ 2>/dev/null >/dev/null || ($(ECHO) "GEN	" $(notdir $@); cp $@_ $@)
 	@rm $@_
-FORCE:
 endif
 endif
 
