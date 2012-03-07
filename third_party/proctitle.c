@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <libgen.h>
 
 #ifdef HAVE_SYS_PSTAT_H
 #include <sys/pstat.h>		/* for HP-UX */
@@ -216,10 +217,12 @@ init_set_proc_title(int argc, char **argv)
 	 */
 	ps_buffer_fixed_size = 0;
 #else
-	snprintf(ps_buffer, ps_buffer_size, "%s: ", argv[0]);
-
-	ps_buffer_fixed_size = strlen(ps_buffer);
-
+	{
+		char *progname = strdup(argv[0]);
+		snprintf(ps_buffer, ps_buffer_size, "%s: ", basename(progname));
+		free(progname);
+		ps_buffer_fixed_size = strlen(ps_buffer);
+	}
 #ifdef PS_USE_CLOBBER_ARGV
 	if (ps_buffer_size > ps_buffer_fixed_size)
 		memset(ps_buffer + ps_buffer_fixed_size, PS_PADDING,
