@@ -573,8 +573,10 @@ pull_wal(Recovery *r, struct conn *c, u32 version)
 			for (int j = 0; j < confirmed; j++)
 				[r recover_row:rows[j]];
 
-			r->lag = ev_now() - row_v12(rows[confirmed - 1])->tm;
-			r->last_update_tstamp = ev_now();
+			if (confirmed > 0) {
+				r->lag = ev_now() - row_v12(rows[confirmed - 1])->tm;
+				r->last_update_tstamp = ev_now();
+			}
 
 			if (confirmed != pack_rows)
 				raise("wal write failed confirmed:%i < sent:%i",
