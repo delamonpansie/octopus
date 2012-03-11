@@ -46,7 +46,7 @@ static int self_id, mesh_peers;
 static struct mesh_peer *peers;
 
 
-#define foreach_peer(p) for (struct mesh_peer *p = peers; p ; p = p->next)
+#define foreach_peer(p) for (struct mesh_peer *p = peers; p; p = p->next)
 
 struct netmsg *
 peer_netmsg_tail(struct mesh_peer *p)
