@@ -147,12 +147,15 @@ recover_row:(struct tbuf *)row
 {
 	i64 row_lsn = row_v12(row)->lsn;
 	u16 tag = row_v12(row)->tag;
+	ev_tstamp tm = row_v12(row)->tm;
 
 	@try {
 		recover_row(row);
 		switch (tag) {
 		case wal_tag:
 			lsn = row_lsn;
+			lag = ev_now() - tm;
+			last_update_tstamp = ev_now();
 			break;
 		case snap_initial_tag:
 			lsn = 0;
@@ -598,11 +601,6 @@ pull_wal(Recovery *r, struct conn *c, u32 version)
 			int confirmed = [r wal_pack_submit:pack];
 			for (int j = 0; j < confirmed; j++)
 				[r recover_row:rows[j]];
-
-			if (confirmed > 0) {
-				r->lag = ev_now() - row_v12(rows[confirmed - 1])->tm;
-				r->last_update_tstamp = ev_now();
-			}
 
 			if (confirmed != pack_rows)
 				raise("wal write failed confirmed:%i < sent:%i",
