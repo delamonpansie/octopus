@@ -501,6 +501,7 @@ main(int argc, char **argv)
 			exit(EX_OSFILE);
 		}
 
+		set_proc_title("cat %s", cat_filename);
 		/* TODO: sane module selection */
 		foreach_module (m)
 			if (m->cat != NULL)
