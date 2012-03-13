@@ -29,6 +29,7 @@
 #import <say.h>
 #import <assoc.h>
 #import <index.h>
+#import <third_party/sptree.h>
 
 @implementation Tree
 - (void)
@@ -44,8 +45,8 @@ set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated
 		nodes = nodes_;
 	}
 
-	sptree_str_t_init(tree, node_size, nodes, count, allocated,
-			  compare, self->dtor_arg);
+	sptree_init(tree, node_size, nodes, count, allocated,
+		    compare, self->dtor_arg);
 }
 
 - (Tree *)
@@ -62,7 +63,7 @@ init_with_unique:(bool)_unique
 find_key:(struct tbuf *)key_data with_cardinalty:(u32)cardinality
 {
         init_pattern(key_data, cardinality, &node, dtor_arg);
- 	struct index_node *r = sptree_str_t_find(tree, &node);
+ 	struct index_node *r = sptree_find(tree, &node);
 	return likely(r && !ghost(r->obj)) ? r->obj : NULL;
 }
 
@@ -70,7 +71,7 @@ find_key:(struct tbuf *)key_data with_cardinalty:(u32)cardinality
 find_by_obj:(struct tnt_object *)obj
 {
 	dtor(obj, &node, dtor_arg);
-	struct index_node *r = sptree_str_t_find(tree, &node);
+	struct index_node *r = sptree_find(tree, &node);
 	return likely(r && !ghost(r->obj)) ? r->obj : NULL;
 }
 
@@ -84,14 +85,14 @@ size
 replace:(struct tnt_object *)obj
 {
 	dtor(obj, &node, dtor_arg);
-	sptree_str_t_insert(tree, &node);
+	sptree_insert(tree, &node);
 }
 
 - (void)
 remove:(struct tnt_object *)obj
 {
         dtor(obj, &node, dtor_arg);
-	sptree_str_t_delete(tree, &node);
+	sptree_delete(tree, &node);
 }
 
 - (void)
@@ -104,27 +105,27 @@ iterator_init
 iterator_init:(struct tbuf *)key_data with_cardinalty:(u32)cardinality
 {
         init_pattern(key_data, cardinality, &search_pattern, dtor_arg);
-        sptree_str_t_iterator_init_set(tree, &iterator, &search_pattern);
+        sptree_iterator_init_set(tree, &iterator, &search_pattern);
 }
 
 - (void)
 iterator_init_with_object:(struct tnt_object *)obj
 {
         dtor(obj, &search_pattern, dtor_arg);
-	sptree_str_t_iterator_init_set(tree, &iterator, &search_pattern);
+	sptree_iterator_init_set(tree, &iterator, &search_pattern);
 }
 
 - (struct tnt_object *)
 iterator_next
 {
-	struct index_node *r = sptree_str_t_iterator_next(iterator);
+	struct index_node *r = sptree_iterator_next(iterator);
 	return likely(r && !ghost(r->obj)) ? r->obj : NULL;
 }
 
 - (struct tnt_object *)
 iterator_next_verify_pattern
 {
-	struct index_node *r = sptree_str_t_iterator_next(iterator);
+	struct index_node *r = sptree_iterator_next(iterator);
 
 	if (r != NULL) {
 		if (ucompare(&search_pattern, r, self->dtor_arg) != 0)

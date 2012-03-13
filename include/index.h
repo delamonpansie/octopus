@@ -132,13 +132,9 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 @end
 
 
-#define sptree_name _str_t
-#include <third_party/sptree.h>
-#undef sptree_name
-
 @interface Tree: Index <BasicIndex> {
 @public
-        sptree_str_t *tree;
+        struct sptree_t *tree;
 	void *nodes;
 	size_t node_size;
 
@@ -147,7 +143,7 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 	void (*init_pattern)(struct tbuf *key, int cardinality,
 			     struct index_node *pattern, void *);
 
-	struct sptree_str_t_iterator *iterator;
+	struct sptree_iterator *iterator;
 	struct index_node search_pattern;
 	char __tree_padding[256]; /* FIXME: overflow */
 }

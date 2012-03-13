@@ -67,26 +67,21 @@ typedef struct sptree_node_pointers {
  * be unique across all definitions.
  *
  * Methods:
- *   void sptree_NAME_init(sptree_NAME *tree, size_t elemsize, void *array, 
- *                         spnode_t array_len, spnode_t array_size, 
- *                         int (*compar)(const void *, const void *, void *), void *arg)
- *   void* sptree_NAME_find(sptree_NAME *tree, void *key)
- *   void sptree_NAME_insert(sptree_NAME *tree, void *value)
- *   void sptree_NAME_delete(sptree_NAME *tree, void *value)
- *   spnode_t sptree_NAME_walk(sptree_NAME *t, void* array, spnode_t limit, spnode_t offset)
- *   sptree_NAME_walk_cb(sptree_NAME *t, int (*cb)(void* cb_arg, void* elem), void *cb_arg )
- *   sptree_NAME_iterator* sptree_NAME_iterator_init(sptree_NAME *t) 
- *   void sptree_NAME_iterator_init_set(sptree_NAME *t, sptree_NAME_iterator **iterator, void *start)
- *   void* sptree_NAME_iterator_next(sptree_NAME_iterator *i)
- *   void sptree_NAME_iterator_free(sptree_NAME_iterator *i)
+ *   void sptree_init(sptree_t *tree, size_t elemsize, void *array,
+ *                    spnode_t array_len, spnode_t array_size,
+ *                    int (*compar)(const void *, const void *, void *), void *arg)
+ *   void* sptree_find(sptree_t *tree, void *key)
+ *   void sptree_insert(sptree_t *tree, void *value)
+ *   void sptree_delete(sptree_t *tree, void *value)
+ *   spnode_t sptree_walk(sptree_t *t, void* array, spnode_t limit, spnode_t offset)
+ *   sptree_walk_cb(sptree_t *t, int (*cb)(void* cb_arg, void* elem), void *cb_arg )
+ *   sptree_iterator* sptree_iterator_init(sptree_NAME *t)
+ *   void sptree_iterator_init_set(sptree_NAME *t, sptree_NAME_iterator **iterator, void *start)
+ *   void* sptree_iterator_next(sptree_iterator *i)
+ *   void sptree_iterator_free(sptree_iterator *i)
  */
 
-
-#define sptree_cat(a, b) sptree##a##b
-#define sptree_ecat(a, b) sptree_cat(a, b)
-#define sptree(x) sptree_ecat(sptree_name, x)
-
-typedef struct sptree() {
+typedef struct sptree_t {
     void                    *members;
     sptree_node_pointers    *lrpointers;
 
@@ -102,22 +97,22 @@ typedef struct sptree() {
     spnode_t                size;
     spnode_t                max_size;
     spnode_t                max_depth;
-} sptree();
+} sptree_t;
 
 static spnode_t
-sptree(_mktree)(sptree() *t, spnode_t depth,
+sptree_mktree(sptree_t *t, spnode_t depth,
                                     spnode_t start, spnode_t end) {
     spnode_t    half = ( (end + start) >> 1 ), tmp;
 
     if (depth > t->max_depth) t->max_depth = depth;
 
     if ( half == start ||
-            ( tmp = sptree(_mktree)(t, depth+1, start, half)) == half )
+            ( tmp = sptree_mktree(t, depth+1, start, half)) == half )
         _SET_SPNODE_LEFT(half, SPNIL);
     else
         _SET_SPNODE_LEFT(half, tmp);
     if ( half+1 >= end ||
-            ( tmp = sptree(_mktree)(t, depth+1, half+1, end)) == half )
+            ( tmp = sptree_mktree(t, depth+1, half+1, end)) == half )
         _SET_SPNODE_RIGHT(half, SPNIL);
     else
         _SET_SPNODE_RIGHT(half, tmp);
@@ -126,7 +121,7 @@ sptree(_mktree)(sptree() *t, spnode_t depth,
 }
 
 static inline void
-sptree(_init)(sptree() *t, size_t elemsize, void *m,
+sptree_init(sptree_t *t, size_t elemsize, void *m,
                     spnode_t nm, spnode_t nt,
                     int (*compare)(const void *, const void *, void *), void *arg) {
     memset(t, 0, sizeof(*t));
@@ -156,12 +151,12 @@ sptree(_init)(sptree() *t, size_t elemsize, void *m,
     } else if (t->nmember > 1)    {
         qsort_arg(t->members, t->nmember, elemsize, t->compare, t->arg);
         /* create tree */
-        t->root = sptree(_mktree)(t, 1, 0, t->nmember);
+        t->root = sptree_mktree(t, 1, 0, t->nmember);
     }
 }
 
 static inline void*
-sptree(_find)(sptree() *t, void *k)    {
+sptree_find(sptree_t *t, void *k)    {
     spnode_t    node = t->root;
     while(node != SPNIL) {
         int r = t->compare(k, ITHELEM(t, node), t->arg);
@@ -177,16 +172,16 @@ sptree(_find)(sptree() *t, void *k)    {
 }
 
 static inline spnode_t
-sptree(_size_of_subtree)(sptree() *t, spnode_t node) {
+sptree_size_of_subtree(sptree_t *t, spnode_t node) {
     if (node == SPNIL)
         return 0;
     return 1 +
-        sptree(_size_of_subtree)(t, _GET_SPNODE_LEFT(node)) +
-        sptree(_size_of_subtree)(t, _GET_SPNODE_RIGHT(node));
+        sptree_size_of_subtree(t, _GET_SPNODE_LEFT(node)) +
+        sptree_size_of_subtree(t, _GET_SPNODE_RIGHT(node));
 }
 
 static inline spnode_t
-sptree(_get_place)(sptree() *t) {
+sptree_get_place(sptree_t *t) {
     spnode_t    node;
     if (t->garbage_head != SPNIL) {
         node = t->garbage_head;
@@ -208,25 +203,25 @@ sptree(_get_place)(sptree() *t) {
 }
 
 static inline spnode_t
-sptree(_flatten_tree)(sptree() *t, spnode_t root, spnode_t head){
+sptree_flatten_tree(sptree_t *t, spnode_t root, spnode_t head){
     spnode_t    node;
     if (root == SPNIL)
         return head;
-    node = sptree(_flatten_tree)(t, _GET_SPNODE_RIGHT(root), head);
+    node = sptree_flatten_tree(t, _GET_SPNODE_RIGHT(root), head);
     _SET_SPNODE_RIGHT(root, node);
-    return sptree(_flatten_tree)(t, _GET_SPNODE_LEFT(root), root);
+    return sptree_flatten_tree(t, _GET_SPNODE_LEFT(root), root);
 }
 
 static inline spnode_t
-sptree(_build_tree)(sptree() *t, spnode_t node, spnode_t size) {
+sptree_build_tree(sptree_t *t, spnode_t node, spnode_t size) {
     spnode_t    tmp;
     if (size == 0) {
         _SET_SPNODE_LEFT(node, SPNIL);
         return node;
     }
-    spnode_t root = sptree(_build_tree)(t,
+    spnode_t root = sptree_build_tree(t,
                 node, ceil(((double)size-1.0)/2.0));
-    spnode_t list = sptree(_build_tree)(t,
+    spnode_t list = sptree_build_tree(t,
                 _GET_SPNODE_RIGHT(root), floor(((double)size-1.0)/2.0));
     tmp = _GET_SPNODE_LEFT(list);
     _SET_SPNODE_RIGHT(root, tmp);
@@ -236,12 +231,12 @@ sptree(_build_tree)(sptree() *t, spnode_t node, spnode_t size) {
 }
 
 static inline spnode_t
-sptree(_balance)(sptree() *t, spnode_t node, spnode_t size) {
-    spnode_t fake = sptree(_get_place)(t);
+sptree_balance(sptree_t *t, spnode_t node, spnode_t size) {
+    spnode_t fake = sptree_get_place(t);
     spnode_t z;
 
-    z = sptree(_flatten_tree)(t, node, fake);
-    sptree(_build_tree)(t, z, size);
+    z = sptree_flatten_tree(t, node, fake);
+    sptree_build_tree(t, z, size);
 
     z = _GET_SPNODE_LEFT(fake);
     _SET_SPNODE_LEFT(fake, t->garbage_head);
@@ -250,7 +245,7 @@ sptree(_balance)(sptree() *t, spnode_t node, spnode_t size) {
 }
 
 static inline void
-sptree(_insert)(sptree() *t, void *v) {
+sptree_insert(sptree_t *t, void *v) {
     spnode_t    node, depth = 0;
     spnode_t    path[ t->max_depth + 2];
 
@@ -276,7 +271,7 @@ sptree(_insert)(sptree() *t, void *v) {
             depth++;
             if (r>0) {
                 if (_GET_SPNODE_RIGHT(parent) == SPNIL) {
-                    node = sptree(_get_place)(t);
+                    node = sptree_get_place(t);
                     memcpy(ITHELEM(t, node), v, t->elemsize);
                     _SET_SPNODE_RIGHT(parent, node);
                     break;
@@ -285,7 +280,7 @@ sptree(_insert)(sptree() *t, void *v) {
                 }
             } else {
                 if (_GET_SPNODE_LEFT(parent) == SPNIL) {
-                    node = sptree(_get_place)(t);
+                    node = sptree_get_place(t);
                     memcpy(ITHELEM(t, node), v, t->elemsize);
                     _SET_SPNODE_LEFT(parent, node);
                     break;
@@ -311,11 +306,11 @@ sptree(_insert)(sptree() *t, void *v) {
         for (i = 1; ; i++) {
             if (i < depth) {
                 parent = path[ depth - i ];
-                size += 1 + sptree(_size_of_subtree)( t,
+                size += 1 + sptree_size_of_subtree( t,
                     _GET_SPNODE_RIGHT(parent) == path[depth - i + 1] ?
                         _GET_SPNODE_LEFT(parent) :  _GET_SPNODE_RIGHT(parent));
                 if ((double)i > COUNTALPHA(size)) {
-                    spnode_t n = sptree(_balance)(t, parent, size);
+                    spnode_t n = sptree_balance(t, parent, size);
                     spnode_t pp = path[  depth - i - 1 ];
                     if (_GET_SPNODE_LEFT(pp) == parent)
                         _SET_SPNODE_LEFT(pp, n);
@@ -324,7 +319,7 @@ sptree(_insert)(sptree() *t, void *v) {
                     break;
                 }
             } else {
-                t->root = sptree(_balance)(t, t->root, t->size);
+                t->root = sptree_balance(t, t->root, t->size);
                 t->max_size = t->size;
                 break;
             }
@@ -333,7 +328,7 @@ sptree(_insert)(sptree() *t, void *v) {
 }
 
 static inline void
-sptree(_delete)(sptree() *t, void *k) {
+sptree_delete(sptree_t *t, void *k) {
     spnode_t    node = t->root;
     spnode_t    parent = SPNIL;
     int            lr = 0;
@@ -396,13 +391,13 @@ sptree(_delete)(sptree() *t, void *k) {
 
     t->size --;
     if ( t->size > 0 && (double)t->size < alpha * t->max_size ) {
-        t->root = sptree(_balance)(t, t->root, t->size);
+        t->root = sptree_balance(t, t->root, t->size);
         t->max_size = t->size;
     }
 }
 
 static inline spnode_t
-sptree(_walk)(sptree() *t, void* array, spnode_t limit, spnode_t offset) {
+sptree_walk(sptree_t *t, void* array, spnode_t limit, spnode_t offset) {
     int         level = 0;
     spnode_t    count= 0,
                 node,
@@ -436,7 +431,7 @@ sptree(_walk)(sptree() *t, void* array, spnode_t limit, spnode_t offset) {
 }
 
 static inline void
-sptree(_walk_cb)(sptree() *t, int (*cb)(void*, void*), void *cb_arg ) {
+sptree_walk_cb(sptree_t *t, int (*cb)(void*, void*), void *cb_arg ) {
     int         level = 0;
     spnode_t    node,
                 stack[ t->max_depth + 1 ];
@@ -463,16 +458,16 @@ sptree(_walk_cb)(sptree() *t, int (*cb)(void*, void*), void *cb_arg ) {
     }
 }
 
-typedef struct sptree(_iterator) {
-    sptree()             *t;
+typedef struct sptree_iterator {
+    sptree_t             *t;
     int                  level;
     int                  max_depth;
     spnode_t             stack[0];
-} sptree(_iterator);
+} sptree_iterator;
 
-static inline sptree(_iterator) *
-sptree(_iterator_init)(sptree() *t)    {
-    sptree(_iterator)    *i;
+static inline sptree_iterator *
+sptree_iterator_init(sptree_t *t)    {
+    sptree_iterator    *i;
     spnode_t node;
 
     if (t->root == SPNIL) return NULL;
@@ -491,7 +486,7 @@ sptree(_iterator_init)(sptree() *t)    {
 }
 
 static inline void
-sptree(_iterator_init_set)(sptree() *t, sptree(_iterator) **i, void *k) {
+sptree_iterator_init_set(sptree_t *t, sptree_iterator **i, void *k) {
     spnode_t node;
     int      lastLevelEq = -1, cmp;
 
@@ -528,14 +523,14 @@ sptree(_iterator_init_set)(sptree() *t, sptree(_iterator) **i, void *k) {
 }
 
 static inline void
-sptree(_iterator_free)(sptree(_iterator) *i)    {
+sptree_iterator_free(sptree_iterator *i)    {
     if (i == NULL)    return;
     free(i);
 }
 
 static inline void*
-sptree(_iterator_next)(sptree(_iterator) *i)    {
-    sptree() *t;
+sptree_iterator_next(sptree_iterator *i)    {
+    sptree_t *t;
     spnode_t node, returnNode = SPNIL;
 
     if (i == NULL)  return NULL;
