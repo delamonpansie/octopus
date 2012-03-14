@@ -138,7 +138,10 @@ dummy_row_lsn:(i64)lsn_ tag:(u16)tag
 	row_v12(b)->tag = tag;
 	row_v12(b)->cookie = default_cookie;
 	row_v12(b)->len = 0;
-
+	row_v12(b)->data_crc32c = crc32c(0, (unsigned char *)"", 0);
+	row_v12(b)->header_crc32c = crc32c(0,
+					   (unsigned char *)row_v12(b) + sizeof(row_v12(b)->header_crc32c),
+					   sizeof(row_v12(b)) - sizeof(row_v12(b)->header_crc32c));
 	return b;
 }
 
@@ -521,6 +524,7 @@ static struct tbuf *
 fetch_row(struct conn *c, u32 version)
 {
 	struct tbuf *row;
+	u32 data_crc;
 
 	switch (version) {
 	case 12:
@@ -529,6 +533,11 @@ fetch_row(struct conn *c, u32 version)
 
 		row = tbuf_split(c->rbuf, sizeof(struct row_v12) + row_v12(c->rbuf)->len);
 		row->pool = c->rbuf->pool; /* FIXME: this is cludge */
+
+		data_crc = crc32c(0, row_v12(row)->data, row_v12(row)->len);
+		if (row_v12(row)->data_crc32c != data_crc)
+			raise("data crc32c mismatch");
+
 		return row;
 	case 11:
 		if (!contains_full_row_v11(c->rbuf))
@@ -536,6 +545,11 @@ fetch_row(struct conn *c, u32 version)
 
 		row = tbuf_split(c->rbuf, sizeof(struct _row_v11) + _row_v11(c->rbuf)->len);
 		row->pool = c->rbuf->pool;
+
+		data_crc = crc32c(0, _row_v11(row)->data, _row_v11(row)->len);
+		if (_row_v11(row)->data_crc32c != data_crc)
+			raise("data crc32c mismatch");
+
 		return convert_row_v11_to_v12(row);
 	default:
 		raise("unexpected version: %i", version);
