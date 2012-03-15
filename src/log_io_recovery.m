@@ -390,7 +390,7 @@ recover_follow_file(ev_stat *w, int events __attribute__((unused)))
 		return;
 	}
 
-	if (r->current_wal->inprogress && [r->current_wal rows] > 0) {
+	if (r->current_wal->inprogress && [r->current_wal rows] > 1) {
 		[r->current_wal reset_inprogress];
 		[r->current_wal follow:recover_follow_file];
 	}
