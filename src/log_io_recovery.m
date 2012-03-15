@@ -312,8 +312,6 @@ recover_remaining_wals
 		raise("not all WALs have been successfully read! "
 		      "greatest_lsn:%"PRIi64" lsn:%"PRIi64" diff:%"PRIi64,
 		      wal_greatest_lsn, lsn, wal_greatest_lsn - lsn);
-
-
 }
 
 - (i64)
