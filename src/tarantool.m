@@ -251,6 +251,7 @@ sig_int(int sig __attribute__((unused)))
 		_exit(EXIT_SUCCESS);
 }
 
+
 static void
 signal_init(void)
 {
@@ -266,6 +267,10 @@ signal_init(void)
 	if (sigaction(SIGINT, &sa, 0) == -1 ||
 	    sigaction(SIGTERM, &sa, 0) == -1 ||
 	    sigaction(SIGHUP, &sa, 0) == -1)
+		goto error;
+
+	sa.sa_handler = maximize_core_rlimit;
+	if (sigaction(SIGUSR2, &sa, 0) == -1)
 		goto error;
 
 	return;
@@ -587,16 +592,7 @@ main(int argc, char **argv)
 	}
 
 	if (cfg.coredump) {
-		struct rlimit c = { 0, 0 };
-		if (getrlimit(RLIMIT_CORE, &c) < 0) {
-			say_syserror("getrlimit");
-			exit(EX_OSERR);
-		}
-		c.rlim_cur = c.rlim_max;
-		if (setrlimit(RLIMIT_CORE, &c) < 0) {
-			say_syserror("setrlimit");
-			exit(EX_OSERR);
-		}
+		maximize_core_rlimit();
 #if HAVE_PRCTL
 		if (prctl(PR_SET_DUMPABLE, 1, 0, 0, 0) < 0) {
 			say_syserror("prctl");

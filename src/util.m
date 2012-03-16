@@ -80,6 +80,19 @@ close_all_xcpt(int fdc, ...)
 }
 
 void
+maximize_core_rlimit()
+{
+	struct rlimit c = { 0, 0 };
+	if (getrlimit(RLIMIT_CORE, &c) < 0) {
+		say_syserror("getrlimit");
+		return;
+	}
+	c.rlim_cur = c.rlim_max;
+	if (setrlimit(RLIMIT_CORE, &c) < 0)
+		say_syserror("setrlimit");
+}
+
+void
 coredump(int dump_interval)
 {
 	static time_t last_coredump = 0;
@@ -95,6 +108,7 @@ coredump(int dump_interval)
 #ifdef COVERAGE
 		__gcov_flush();
 #endif
+		maximize_core_rlimit();
 		abort();
 	}
 }

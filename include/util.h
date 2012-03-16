@@ -132,6 +132,7 @@ typedef int64_t i64;
 #endif
 
 void close_all_xcpt(int fdc, ...);
+void maximize_core_rlimit();
 void coredump(int dump_interval);
 
 void __gcov_flush();
