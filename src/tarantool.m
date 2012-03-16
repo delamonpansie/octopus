@@ -126,6 +126,9 @@ reload_cfg()
 	struct tarantool_cfg new_cfg1, new_cfg2;
 	i32 ret;
 
+	memset(&new_cfg1, 0, sizeof(new_cfg1));
+	memset(&new_cfg2, 0, sizeof(new_cfg2));
+
 	// Load with checking readonly params
 	if (dup_tarantool_cfg(&new_cfg1, &cfg) != 0) {
 		destroy_tarantool_cfg(&new_cfg1);
