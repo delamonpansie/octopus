@@ -4,7 +4,7 @@ username=NULL, ro
 
 # timeout in minutes after which coredumps are enabled
 # setting to 0 disables saving coredumps completly
-coredump=0, ro
+coredump=0.0, ro
 
 # admin port
 # used for admin's connections
