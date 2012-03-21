@@ -252,13 +252,15 @@ logger(va_list ap)
 		if (LIST_EMPTY(&service->conn))
 		    continue;
 
-		say_info("%s connections:", service->name);
+		say_info("%s", service->name);
 		LIST_FOREACH(c, &service->conn, link) {
-			say_info(" conn %p fd:%i state:%i", c, c->fd, c->state);
-			say_info("  in:%i out:%i", ev_is_active(&c->in), ev_is_active(&c->out));
-			say_info("  rbuf:%i", tbuf_len(c->rbuf));
+			say_info("    peer:%s", conn_peer_name(c));
+			say_info("    fd:%i state:%i %s%s", c->fd, c->state,
+				 ev_is_active(&c->in) ? "in" : "",
+				 ev_is_active(&c->out) ? "out" : "");
+			say_info("        rbuf:%i", tbuf_len(c->rbuf));
 			TAILQ_FOREACH(m, &c->out_messages, link)
-				say_info("    netmsg offt:%i count:%i", m->offset, m->count);
+				say_info("        netmsg offt:%i count:%i", m->offset, m->count);
 		}
 	}
 }
@@ -271,24 +273,22 @@ iproto_service(u16 port, void (*on_bind)(int fd))
 	snprintf(name, 13, "iproto:%i", port);
 
 	TAILQ_INIT(&service->processing);
-	service->pool = palloc_create_pool("service");
+	service->pool = palloc_create_pool(name);
 	service->name = name;
 
-	service->output_flusher =
-		fiber_create("iproto_service/output_flusher", output_flusher);
+	palloc_register_gc_root(service->pool, service, service_gc);
 
-	service->input_reader =
-		fiber_create("iproto_service/input_reader", input_reader, service);
+	service->output_flusher = fiber_create("iproto/output_flusher", output_flusher);
+	service->input_reader = fiber_create("iproto/input_reader", input_reader, service);
+	service->acceptor = fiber_create("iproto/acceptor",
+					 tcp_server, port, accept_client, on_bind, service);
 
 	ev_prepare_init(&service->wakeup, (void *)wakeup_workers);
 	ev_prepare_start(&service->wakeup);
 
-	service->acceptor = fiber_create(name, tcp_server, port, accept_client, on_bind, service);
-
 	if (getenv("NET_IO_LOGGER"))
-		fiber_create("net_io logger", logger, service);
+		fiber_create("net_io_logger", logger, service);
 
-	palloc_register_gc_root(service->pool, service, service_gc);
 	return service;
 }
 
