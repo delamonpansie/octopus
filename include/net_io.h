@@ -75,6 +75,7 @@ struct conn {
 	SLIST_ENTRY(conn) pool_link;
 	ev_io in, out;
 	struct service *service;
+	char peer_name[22]; /* aaa.bbb.ccc.ddd:xxxxx */
 };
 
 struct service {
@@ -109,6 +110,7 @@ ssize_t conn_read(struct conn *c, void *buf, size_t count);
 ssize_t conn_write(struct conn *c, const void *buf, size_t count);
 void conn_write_netmsg(struct conn *c);
 ssize_t conn_flush(struct conn *c);
+char *conn_peer_name(struct conn *c);
 
 int tcp_connect(struct sockaddr_in *dst, struct sockaddr_in *src, ev_tstamp timeout);
 void tcp_server(va_list ap);

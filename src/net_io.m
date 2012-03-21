@@ -310,6 +310,7 @@ conn_init(struct conn *c, struct palloc_pool *pool, int fd, int ref)
 	c->fd = fd;
 	c->pool = pool;
 	c->state = -1;
+	c->peer_name[0] = 0;
 	c->rbuf = tbuf_alloc(c->pool);
 }
 
@@ -364,6 +365,7 @@ conn_close(struct conn *c)
 
 		close(c->fd);
 		c->fd = -1;
+		c->peer_name[0] = 0;
 
 		if (!TAILQ_EMPTY(&c->out_messages)) {
 			say_error("client unexpectedly gone, some data unwritten");
@@ -454,35 +456,31 @@ conn_write(struct conn *c, const void *buf, size_t count)
 	return done;
 }
 
-#if 0
 char *
 conn_peer_name(struct conn *c)
 {
 	struct sockaddr_in peer;
 	socklen_t peer_len = sizeof(peer);
 
-	if (!fiber->has_peer || conn->fd < 3)
+	if (c->fd < 3)
 		return NULL;
 
-	if (fiber->peer_name[0] != 0)
-		return fiber->peer_name;
+	if (c->peer_name[0] != 0)
+		return c->peer_name;
 
 	memset(&peer, 0, peer_len);
-	if (getpeername(fiber->conn->fd, (struct sockaddr *)&peer, &peer_len) < 0)
+	if (getpeername(c->fd, (struct sockaddr *)&peer, &peer_len) < 0)
 		return NULL;
 
 	uint32_t zero = 0;
 	if (memcmp(&peer.sin_addr, &zero, sizeof(zero)) == 0)
 		return NULL;
 
-	snprintf(fiber->peer_name, sizeof(fiber->peer_name),
+	snprintf(c->peer_name, sizeof(c->peer_name),
 		 "%s:%d", inet_ntoa(peer.sin_addr), ntohs(peer.sin_port));
 
-	fiber->cookie = 0;
-	memcpy(&fiber->cookie, &peer, MIN(sizeof(peer), sizeof(fiber->cookie)));
-	return fiber->peer_name;
+	return c->peer_name;
 }
-#endif
 
 int
 tcp_connect(struct sockaddr_in *dst, struct sockaddr_in *src, ev_tstamp timeout)
