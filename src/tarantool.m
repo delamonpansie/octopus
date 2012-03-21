@@ -591,8 +591,7 @@ main(int argc, char **argv)
 		}
 	}
 
-	if (cfg.coredump) {
-		maximize_core_rlimit();
+	if (cfg.coredump > 0) {
 #if HAVE_PRCTL
 		if (prctl(PR_SET_DUMPABLE, 1, 0, 0, 0) < 0) {
 			say_syserror("prctl");
@@ -646,6 +645,13 @@ main(int argc, char **argv)
 	ev_default_loop(ev_recommended_backends() | EVFLAG_SIGNALFD);
 	say_debug("ev_loop initialized");
 
+	ev_timer coredump_timer = { .coro = 0 };
+	if (cfg.coredump > 0) {
+		ev_timer_init(&coredump_timer, maximize_core_rlimit,
+			      cfg.coredump * 60, 0);
+		ev_timer_start(&coredump_timer);
+	}
+
 	if (module("WAL feeder"))
 		module("WAL feeder")->init();
 
@@ -666,6 +672,7 @@ main(int argc, char **argv)
 	say_crit("entering event loop");
 	if (cfg.io_collect_interval > 0)
 		ev_set_io_collect_interval(cfg.io_collect_interval);
+
 	ev_run(0);
 	ev_loop_destroy();
 	say_crit("exiting loop");

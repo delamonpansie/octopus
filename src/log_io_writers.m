@@ -205,7 +205,7 @@ wal_disk_writer(int fd, void *state)
 		u32 fid;
 		u32 repeat_count;
 	} *reply = malloc(sizeof(*reply) * 1024);
-
+	ev_tstamp start_time = ev_now();
 	rbuf = tbuf_alloca(fiber->pool);
 	palloc_register_gc_root(fiber->pool, (void *)rbuf, tbuf_gc);
 
@@ -239,6 +239,11 @@ wal_disk_writer(int fd, void *state)
 
 		/* we're not running inside ev_loop, so update ev_now manually */
 		ev_now_update();
+
+		if (cfg.coredump > 0 && ev_now() - start_time > cfg.coredump * 60) {
+			maximize_core_rlimit();
+			read_bytes(rbuf, 100000);
+		}
 
 		int p = 0;
 		reparse = false;

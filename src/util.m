@@ -82,6 +82,8 @@ close_all_xcpt(int fdc, ...)
 void
 maximize_core_rlimit()
 {
+	say_info("Maximizing RLIMIT_CORE");
+
 	struct rlimit c = { 0, 0 };
 	if (getrlimit(RLIMIT_CORE, &c) < 0) {
 		say_syserror("getrlimit");

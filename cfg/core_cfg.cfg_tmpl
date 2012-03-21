@@ -2,7 +2,8 @@
 # username to switch to
 username=NULL, ro
 
-# save core on abort/assert
+# timeout in minutes after which coredumps are enabled
+# setting to 0 disables saving coredumps completly
 coredump=0, ro
 
 # admin port
