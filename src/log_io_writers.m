@@ -240,8 +240,10 @@ wal_disk_writer(int fd, void *state)
 		/* we're not running inside ev_loop, so update ev_now manually */
 		ev_now_update();
 
-		if (cfg.coredump > 0 && ev_now() - start_time > cfg.coredump * 60)
+		if (cfg.coredump > 0 && ev_now() - start_time > cfg.coredump * 60) {
 			maximize_core_rlimit();
+			cfg.coredump = 0;
+		}
 
 		int p = 0;
 		reparse = false;
