@@ -266,8 +266,12 @@ struct service *
 iproto_service(u16 port, void (*on_bind)(int fd))
 {
 	struct service *service = calloc(1, sizeof(*service));
+	char *name = malloc(13);  /* strlen("iproto:xxxxx") */
+	snprintf(name, 13, "iproto:%i", port);
+
 	TAILQ_INIT(&service->processing);
 	service->pool = palloc_create_pool("service");
+	service->name = name;
 
 	service->output_flusher =
 		fiber_create("iproto_service/output_flusher", output_flusher);
@@ -278,7 +282,7 @@ iproto_service(u16 port, void (*on_bind)(int fd))
 	ev_prepare_init(&service->wakeup, (void *)wakeup_workers);
 	ev_prepare_start(&service->wakeup);
 
-	service->acceptor = fiber_create("", tcp_server, port, accept_client, on_bind, service);
+	service->acceptor = fiber_create(name, tcp_server, port, accept_client, on_bind, service);
 
 	if (getenv("NET_IO_LOGGER"))
 		fiber_create("net_io logger", logger, service);
