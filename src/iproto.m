@@ -236,6 +236,7 @@ accept_client(int fd, void *data)
 	ev_io_init(&clnt->out, (void *)service->output_flusher, fd, EV_WRITE);
 	ev_io_init(&clnt->in, (void *)service->input_reader, fd, EV_READ);
 	ev_io_start(&clnt->in);
+	clnt->state = READING;
 }
 
 static void
