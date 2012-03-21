@@ -271,6 +271,7 @@ wal_disk_writer(int fd, void *state)
 				u16 tag = read_u16(rbuf);
 				u64 cookie = read_u64(rbuf);
 				u32 data_len = read_u32(rbuf);
+				assert(tbuf_len(rbuf) >= data_len);
 				void *data = read_bytes(rbuf, data_len);
 
 				if (io_failure)
