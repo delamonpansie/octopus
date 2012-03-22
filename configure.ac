@@ -163,14 +163,14 @@ AC_COMPILE_IFELSE(
 AC_MSG_RESULT($ac_cv__builtin_expect)
 
 AC_CC_FLAG_CHECK([-fno-stack-protector])
-AS_IF([test $ac_cv_no_stack_protector == yes]
+AS_IF([test "x$ac_cv_no_stack_protector" == xyes]
       CFLAGS="$CFLAGS -fno-stack-protector")
 AC_CC_FLAG_CHECK([-pipe])
-AS_IF([test $ac_cv_pipe == yes]
+AS_IF([test "x$ac_cv_pipe" == xyes]
       CFLAGS="$CFLAGS -pipe")
 AS_IF([test "x$backtrace" == xyes],
       [AC_CC_FLAG_CHECK([-fno-omit-frame-pointer])]
-      AS_IF([test $ac_cv_no_omit_frame_pointer == yes]
+      AS_IF([test "x$ac_cv_no_omit_frame_pointer" == xyes]
                   CFLAGS="$CFLAGS -fno-omit-frame-pointer"))
 
 AC_CC_FLAG_CHECK([-Werror], [CFLAGS_WARNS="-Werror $CFLAGS_WARNS"])
