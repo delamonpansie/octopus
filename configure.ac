@@ -102,12 +102,18 @@ int main(void)
 
 AC_LANG_POP
 
-AC_CHECK_HEADER(libelf.h)
-AC_CHECK_HEADER(gelf.h)
-AC_SEARCH_LIBS([elf_begin], [elf])
-AS_IF([test -n "$ac_cv_header_libelf_h" -a -n "$ac_cv_header_gelf_h" -a "$ac_cv_search_elf_begin" != no],
-      [AC_MSG_NOTICE([Will use libelf to resolve symbol names])]
-      [AC_DEFINE(HAVE_LIBELF, 1, [Define to 1 if you have libelf installed])])
+AC_ARG_ENABLE([backtrace],
+              [AS_HELP_STRING([--enable-backtrace],
+                              [compile with backtrace printer])],
+            [backtrace=$enableval])
+
+AS_IF([test "x$backtrace" == xyes],
+      [AC_CHECK_HEADER(libelf.h)
+       AC_CHECK_HEADER(gelf.h)
+       AC_SEARCH_LIBS([elf_begin], [elf])
+       AS_IF([test -n "$ac_cv_header_libelf_h" -a -n "$ac_cv_header_gelf_h" -a "$ac_cv_search_elf_begin" != no],
+             [AC_MSG_NOTICE([Will use libelf to resolve symbol names])]
+             [AC_DEFINE(HAVE_LIBELF, 1, [Define to 1 if you have libelf installed])])])
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_C_INLINE
@@ -162,6 +168,10 @@ AS_IF([test $ac_cv_no_stack_protector == yes]
 AC_CC_FLAG_CHECK([-pipe])
 AS_IF([test $ac_cv_pipe == yes]
       CFLAGS="$CFLAGS -pipe")
+AS_IF([test "x$backtrace" == xyes],
+      [AC_CC_FLAG_CHECK([-fno-omit-frame-pointer])]
+      AS_IF([test $ac_cv_no_omit_frame_pointer == yes]
+                  CFLAGS="$CFLAGS -fno-omit-frame-pointer"))
 
 AC_CC_FLAG_CHECK([-Werror], [CFLAGS_WARNS="-Werror $CFLAGS_WARNS"])
 AC_CC_FLAG_CHECK([-Wno-sign-compare], [CFLAGS_WARNS="-Wno-sign-compare $CFLAGS_WARNS"])
