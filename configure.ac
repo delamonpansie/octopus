@@ -156,8 +156,12 @@ AC_COMPILE_IFELSE(
    AC_DEFINE([HAVE__BUILTIN_EXPECT], [1], [Define to 1 if the C compiler supports __builtin_expect])])
 AC_MSG_RESULT($ac_cv__builtin_expect)
 
-AC_CC_FLAG_CHECK([-pipe], [CFLAGS="$CFLAGS -pipe"])
-AC_CC_FLAG_CHECK([-fno-stack-protector], [CFLAGS="$CFLAGS -fno-stack-protector"])
+AC_CC_FLAG_CHECK([-fno-stack-protector])
+AS_IF([test $ac_cv_no_stack_protector == yes]
+      CFLAGS="$CFLAGS -fno-stack-protector")
+AC_CC_FLAG_CHECK([-pipe])
+AS_IF([test $ac_cv_pipe == yes]
+      CFLAGS="$CFLAGS -pipe")
 
 AC_CC_FLAG_CHECK([-Werror], [CFLAGS_WARNS="-Werror $CFLAGS_WARNS"])
 AC_CC_FLAG_CHECK([-Wno-sign-compare], [CFLAGS_WARNS="-Wno-sign-compare $CFLAGS_WARNS"])
