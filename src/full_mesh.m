@@ -231,12 +231,6 @@ ping(va_list ap __attribute__((unused)))
 
 }
 
-static void
-output_flusher_aux(va_list ap __attribute__((unused)))
-{
-	for (;;)
-		conn_write_netmsg(((struct ev_watcher *)yield())->data);
-}
 
 static bool
 have_mesh_msg(struct conn *c)
@@ -378,7 +372,7 @@ mesh_init(struct mesh_peer *self_,
 	outgoing_addr = &self_->addr;
 	outgoing_addr->sin_port = htons(ntohs(outgoing_addr->sin_port) + 1);
 
-	output_flusher = fiber_create("mesh/output_flusher", output_flusher_aux);
+	output_flusher = fiber_create("mesh/output_flusher", service_output_flusher);
 	input_reader = fiber_create("mesh/input_reader", input_reader_aux, reply_callback);
 
 	foreach_peer (p) {

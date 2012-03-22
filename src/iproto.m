@@ -160,13 +160,6 @@ iproto_error(struct netmsg **m, struct netmsg_mark *header_mark, u32 ret_code, c
 
 
 static void
-output_flusher(va_list ap __attribute__((unused)))
-{
-	for (;;)
-		conn_write_netmsg(((struct ev_watcher *)yield())->data);
-}
-
-static void
 input_reader(va_list ap)
 {
 	struct service *service = va_arg(ap, struct service *);
@@ -278,7 +271,7 @@ iproto_service(u16 port, void (*on_bind)(int fd))
 
 	palloc_register_gc_root(service->pool, service, service_gc);
 
-	service->output_flusher = fiber_create("iproto/output_flusher", output_flusher);
+	service->output_flusher = fiber_create("iproto/output_flusher", service_output_flusher);
 	service->input_reader = fiber_create("iproto/input_reader", input_reader, service);
 	service->acceptor = fiber_create("iproto/acceptor",
 					 tcp_server, port, accept_client, on_bind, service);

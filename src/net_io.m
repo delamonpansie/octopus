@@ -227,16 +227,14 @@ net_add_lua_iov(struct netmsg **m, lua_State *L, int str)
 }
 
 
-void
+struct netmsg *
 conn_write_netmsg(struct conn *c)
 {
 	struct netmsg *m;
 restart:
 	m = TAILQ_FIRST(&c->out_messages);
-	if (m == NULL) {
-		ev_io_stop(&c->out);
-		return;
-	}
+	if (m == NULL)
+		return NULL;
 
 	struct iovec *iov = m->iov + m->offset;
 	int iov_cnt = m->count - m->offset;
@@ -264,6 +262,7 @@ restart:
 
 	if (iov_cnt > 0) {
 		m->offset += m->count - m->offset - iov_cnt;
+		return m;
 	} else {
 		netmsg_release(m);
 		goto restart;
@@ -279,8 +278,7 @@ conn_flush(struct conn *c)
 	ev_io_start(&io);
 	do {
 		yield();
-		conn_write_netmsg(c);
-	} while (!TAILQ_EMPTY(&c->out_messages) && c->fd > 0);
+	} while (conn_write_netmsg(c) && c->fd > 0);
 	ev_io_stop(&io);
 
 	return TAILQ_EMPTY(&c->out_messages)  ? 0 : -1;
@@ -480,6 +478,16 @@ conn_peer_name(struct conn *c)
 		 "%s:%d", inet_ntoa(peer.sin_addr), ntohs(peer.sin_port));
 
 	return c->peer_name;
+}
+
+void
+service_output_flusher(va_list ap __attribute__((unused)))
+{
+	for (;;) {
+		struct conn *c = ((struct ev_watcher *)yield())->data;
+		if (conn_write_netmsg(c) == NULL)
+			ev_io_stop(&c->out);
+	}
 }
 
 int

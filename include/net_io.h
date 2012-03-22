@@ -108,10 +108,11 @@ void conn_gc(struct palloc_pool *pool, void *ptr);
 int conn_readahead(struct conn *c, size_t min);
 ssize_t conn_read(struct conn *c, void *buf, size_t count);
 ssize_t conn_write(struct conn *c, const void *buf, size_t count);
-void conn_write_netmsg(struct conn *c);
+struct netmsg *conn_write_netmsg(struct conn *c);
 ssize_t conn_flush(struct conn *c);
 char *conn_peer_name(struct conn *c);
 
+void service_output_flusher(va_list ap __attribute__((unused)));
 int tcp_connect(struct sockaddr_in *dst, struct sockaddr_in *src, ev_tstamp timeout);
 void tcp_server(va_list ap);
 void udp_server(va_list ap);
