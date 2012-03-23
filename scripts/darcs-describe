@@ -14,4 +14,4 @@ case $patches in
     1) echo -n " + 1 patch"; break;;
     *) echo -n " + $patches patches"; break;;
 esac
-echo " $hash"
+echo -n " $hash"
