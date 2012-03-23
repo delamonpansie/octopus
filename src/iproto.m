@@ -247,7 +247,7 @@ logger(va_list ap)
 
 		say_info("%s", service->name);
 		LIST_FOREACH(c, &service->conn, link) {
-			say_info("    peer:%s", conn_peer_name(c));
+			say_info("    conn:%p peer:%s ", c, conn_peer_name(c));
 			say_info("    fd:%i state:%i %s%s", c->fd, c->state,
 				 ev_is_active(&c->in) ? "in" : "",
 				 ev_is_active(&c->out) ? "out" : "");
