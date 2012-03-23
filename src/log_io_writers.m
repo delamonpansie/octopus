@@ -377,7 +377,7 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *data)
 snapshot_save:(void (*)(XLog *))callback
 {
         XLog *snap;
-	const char *final_filename;
+	const char *final_filename, *filename;
 
 	snap = [snap_dir open_for_write:lsn];
 	if (snap == nil) {
@@ -392,7 +392,8 @@ snapshot_save:(void (*)(XLog *))callback
 	 * renamed to <lsn>.snap.
 	 */
 
-	final_filename = [snap final_filename];
+	final_filename = strdup([snap final_filename]);
+	filename = strdup(snap->filename);
 
 	say_info("saving snapshot `%s'", final_filename);
 
@@ -405,19 +406,20 @@ snapshot_save:(void (*)(XLog *))callback
 
 	if ([snap flush] == -1)
 		return;
+	if ([snap close] == -1)
+		return;
+	snap = nil;
 
-	if (link(snap->filename, final_filename) == -1) {
+	if (link(filename, final_filename) == -1) {
 		say_syserror("can't create hard link to snapshot");
 		return;
 	}
 
-	if (unlink(snap->filename) == -1) {
+	if (unlink(filename) == -1) {
 		say_syserror("can't unlink 'inprogress' snapshot");
 		return;
 	}
 
-	[snap close];
-	snap = nil;
 	say_info("done");
 }
 

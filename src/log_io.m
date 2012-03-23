@@ -520,10 +520,15 @@ inprogress_rename
 - (int)
 close
 {
+	int result = 0;
+
 	if (mode == LOG_WRITE) {
-		if (fwrite(&eof_marker, sizeof(eof_marker), 1, fd) != 1)
+		if (fwrite(&eof_marker, sizeof(eof_marker), 1, fd) != 1) {
+			result = -1;
 			say_error("can't write eof_marker");
-		[self flush];
+		}
+		if ([self flush] == -1)
+			result = -1;
 	} else {
 		/* file may be already unlink()'ed if it was broken */
 		if (rows == 0 && access(filename, F_OK) == 0) {
@@ -535,16 +540,15 @@ close
 		}
 	}
 
-	if (ev_is_active(&stat))
-		ev_stat_stop(&stat);
+	ev_stat_stop(&stat);
 
-
-	int r = fclose(fd);
-	if (r < 0)
+	if (fclose(fd) < 0) {
 		say_syserror("can't close");
+		result = -1;
+	}
 
 	[self free];
-	return r;
+	return result;
 }
 
 - (int)
