@@ -261,7 +261,7 @@ restart:
 	} while (iov_cnt > 0);
 
 	if (iov_cnt > 0) {
-		m->offset += m->count - m->offset - iov_cnt;
+		m->offset = m->count - iov_cnt;
 		return m;
 	} else {
 		netmsg_release(m);
