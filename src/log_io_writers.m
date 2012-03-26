@@ -80,7 +80,7 @@ wal_pack_prepare
 {
 	struct tbuf *m = tbuf_alloc(wal_writer->out->pool);
 	u32 repeat_count = 0;
-	u32 packet_len = sizeof(fiber->fid) + sizeof(repeat_count);
+	u32 packet_len = sizeof(packet_len) + sizeof(fiber->fid) + sizeof(repeat_count);
 
 	tbuf_append(m, &packet_len, sizeof(packet_len));
 	tbuf_append(m, &fiber->fid, sizeof(fiber->fid));
@@ -247,7 +247,7 @@ wal_disk_writer(int fd, void *state)
 
 		int p = 0;
 		reparse = false;
-		while (tbuf_len(rbuf) > sizeof(u32) && tbuf_len(rbuf) > *(u32 *)rbuf->data) {
+		while (tbuf_len(rbuf) > sizeof(u32) && tbuf_len(rbuf) >= *(u32 *)rbuf->data) {
 			if (p == 0) {
 				if ([rcvr prepare_write] != -1) {
 					io_failure = false;
@@ -271,7 +271,6 @@ wal_disk_writer(int fd, void *state)
 				u16 tag = read_u16(rbuf);
 				u64 cookie = read_u64(rbuf);
 				u32 data_len = read_u32(rbuf);
-				assert(tbuf_len(rbuf) >= data_len);
 				void *data = read_bytes(rbuf, data_len);
 
 				if (io_failure)
