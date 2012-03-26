@@ -53,6 +53,9 @@ struct netmsg {
 
 	struct iovec iov[1024];
 	struct tnt_object *ref[1024];
+#ifdef NET_IO_TIMESTAMPS
+	ev_tstamp tstamp[1024];
+#endif
 };
 
 struct netmsg_mark {
