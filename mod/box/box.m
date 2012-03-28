@@ -433,7 +433,7 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS,
 				     "update of field beyond tuple cardinality");
 
-		struct tbuf *sptr_field = fields[field_no];
+		struct tbuf *field = fields[field_no];
 
 		op = read_u8(data);
 		if (op > 5)
@@ -441,22 +441,18 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 		arg = read_field(data);
 		arg_size = LOAD_VARINT32(arg);
 
-		if (op == 0) {
-			tbuf_ensure(sptr_field, arg_size);
-			sptr_field->len = arg_size;
-			memcpy(sptr_field->data, arg, arg_size);
-		} else {
-			switch (op) {
-			case 1:
-			case 2:
-			case 3:
-			case 4:
-				do_field_arith(op, sptr_field, arg, arg_size);
-				break;
-			case 5:
-				do_field_splice(sptr_field, arg, arg_size);
-				break;
-			}
+		switch (op) {
+		case 0:
+			tbuf_ensure(field, arg_size);
+			field->len = arg_size;
+			memcpy(field->data, arg, arg_size);
+			break;
+		case 1 ... 4:
+			do_field_arith(op, field, arg, arg_size);
+			break;
+		case 5:
+			do_field_splice(field, arg, arg_size);
+			break;
 		}
 	}
 
