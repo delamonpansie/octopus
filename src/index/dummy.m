@@ -71,6 +71,12 @@ size
 	return 0;
 }
 
+- (size_t)
+bytes
+{
+	return 0;
+}
+
 - (void)
 iterator_init
 {

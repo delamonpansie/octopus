@@ -116,6 +116,7 @@ struct mhash_t {
 
 struct mhash_t * _mh(init)();
 void mh_clear(struct mhash_t *h);
+size_t mh_bytes(struct mhash_t *h);
 void mh_destroy(struct mhash_t *h);
 void _mh(resize)(struct mhash_t *h);
 void _mh(start_resize)(struct mhash_t *h, uint32_t buckets, uint32_t batch);
@@ -427,6 +428,15 @@ _mh(destroy)(struct mhash_t *h)
 	free(h->b);
 	free(h->p);
 	free(h);
+}
+size_t
+mh_bytes(struct mhash_t *h)
+{
+	return h->resizing ? mh_bytes(h->shadow) : 0 +
+		sizeof(*h) +
+		(size_t)h->n_buckets * h->node_size +
+		((size_t)h->n_buckets / 16 + 1) *  sizeof(uint32_t);
+
 }
 #define mh_stat(buf, h) ({					    \
                 tbuf_printf(buf, "  n_buckets: %"PRIu32 CRLF        \

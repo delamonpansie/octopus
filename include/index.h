@@ -76,6 +76,7 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 - (void)iterator_init;
 - (struct tnt_object *)iterator_next;
 - (u32)size;
+- (size_t) bytes;
 - (u32)cardinality;
 @end
 

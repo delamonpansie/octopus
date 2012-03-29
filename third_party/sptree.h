@@ -155,6 +155,14 @@ sptree_init(sptree_t *t, size_t elemsize, void *m,
     }
 }
 
+static size_t
+sptree_bytes(sptree_t *t)
+{
+	return sizeof(*t) +
+		sizeof(sptree_node_pointers) * t->ntotal +
+		t->elemsize * t->ntotal;
+}
+
 static inline void*
 sptree_find(sptree_t *t, void *k)    {
     spnode_t    node = t->root;

@@ -1302,6 +1302,17 @@ info(struct tbuf *out)
 	tbuf_printf(out, "  recovery_last_update: %.3f" CRLF,
 		    [recovery last_update_tstamp]);
 	tbuf_printf(out, "  status: %s%s" CRLF, [recovery status], custom_proc_title);
+
+	tbuf_printf(out, "  namespaces:" CRLF);
+	for (uint32_t n = 0; n < object_space_count; ++n) {
+		if (!object_space_registry[n].enabled)
+			continue;
+		tbuf_printf(out, "  - n: %i"CRLF, n);
+		tbuf_printf(out, "    objects: %i"CRLF, [object_space_registry[n].index[0] size]);
+		foreach_index(index, &object_space_registry[n])
+			tbuf_printf(out, "    - { index: %i, bytes: %zi }" CRLF,
+				    index->n, [index bytes]);
+	}
 }
 
 

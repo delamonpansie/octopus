@@ -81,6 +81,12 @@ size
 	return tree->size;
 }
 
+- (size_t)
+bytes
+{
+	return sptree_bytes(tree);
+}
+
 - (void)
 replace:(struct tnt_object *)obj
 {

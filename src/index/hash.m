@@ -63,6 +63,12 @@ buckets
 	return mh_end(h);
 }
 
+- (size_t)
+bytes
+{
+	return mh_bytes(h);
+}
+
 - (void)
 iterator_init
 {
