@@ -1,0 +1,53 @@
+# box.ping()
+:pong
+
+# box.insert([1, 2, "abc", "def"])
+1
+
+# box.update_fields(1, [1, :or, 255])
+1
+
+# box.select(1)
+[["\001\000\000\000", "\375\000\000\000", "abc", "def"]]
+
+# box.update_fields(1, [1, :set, 127])
+1
+
+# box.select(1)
+[["\001\000\000\000", "\177\000\000\000", "abc", "def"]]
+
+# box.update_fields(1, [2, :splice, 2, 4, "aaaa"])
+1
+
+# box.select(1)
+[["\001\000\000\000", "\177\000\000\000", "abaaaa", "def"]]
+
+# box.update_fields(1, [2, :splice, 2, 4, ""])
+1
+
+# box.select(1)
+[["\001\000\000\000", "\177\000\000\000", "ab", "def"]]
+
+# box.update_fields(1, [1, :insert, 11])
+1
+
+# box.select(1)
+[["\001\000\000\000", "\v\000\000\000", "\177\000\000\000", "ab", "def"]]
+
+# box.update_fields(1, [1, :delete, ""])
+1
+
+# box.select(1)
+[["\001\000\000\000", "\177\000\000\000", "ab", "def"]]
+
+# box.update_fields(1, [1, :delete, ""], [1, :delete, ""], [1, :delete, ""])
+1
+
+# box.select(1)
+[["\001\000\000\000"]]
+
+# box.update_fields(1, [1, :delete, ""])
+Failed with: {code: 0x202, message: 'update of field beyond tuple cardinality'}
+# box.select(1)
+[["\001\000\000\000"]]
+

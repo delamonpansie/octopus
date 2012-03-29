@@ -411,10 +411,12 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 	txn->obj_affected = 1;
 
 	struct box_tuple *old_tuple = box_tuple(txn->old_obj);
-	fields = palloc(fiber->pool, (old_tuple->cardinality + 1) * sizeof(struct tbuf *));
-	memset(fields, 0, (old_tuple->cardinality + 1) * sizeof(struct tbuf *));
+	int cardinality = old_tuple->cardinality;
 
-	for (i = 0, field = (uint8_t *)old_tuple->data; i < old_tuple->cardinality; i++) {
+	/* since there is no more than 128 op, where will be no more than 128 field inserts */
+	fields = p0alloc(fiber->pool, (cardinality + 128) * sizeof(struct tbuf *));
+
+	for (i = 0, field = old_tuple->data; i < cardinality; i++) {
 		fields[i] = tbuf_alloc(fiber->pool);
 
 		u32 field_size = LOAD_VARINT32(field);
@@ -429,15 +431,12 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 
 		field_no = read_u32(data);
 
-		if (field_no >= old_tuple->cardinality)
-			iproto_raise(ERR_CODE_ILLEGAL_PARAMS,
-				     "update of field beyond tuple cardinality");
+		if (field_no >= cardinality)
+			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "update of field beyond tuple cardinality");
 
 		struct tbuf *field = fields[field_no];
 
 		op = read_u8(data);
-		if (op > 5)
-			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "op is not 0, 1, 2, 3, 4 or 5");
 		arg = read_field(data);
 		arg_size = LOAD_VARINT32(arg);
 
@@ -453,6 +452,26 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 		case 5:
 			do_field_splice(field, arg, arg_size);
 			break;
+		case 6:
+			if (arg_size != 0)
+				iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "delete must have empty arg");
+			if (field_no == 0)
+				iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "unabled to delete PK");
+			for (int i = field_no; i < cardinality; i++)
+				fields[i] = fields[i + 1];
+			cardinality--;
+			break;
+		case 7:
+			if (field_no == 0)
+				iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "unabled to insert PK");
+			for (int i = cardinality - 1; i >= field_no; i--)
+				fields[i + 1] = fields[i];
+			fields[field_no] = tbuf_alloc(fiber->pool);
+			tbuf_append(fields[field_no], arg, arg_size);
+			cardinality++;
+			break;
+		default:
+			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "invalid op");
 		}
 	}
 
@@ -460,14 +479,14 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
 
 	size_t bsize = 0;
-	for (int i = 0; i < old_tuple->cardinality; i++)
+	for (int i = 0; i < cardinality; i++)
 		bsize += tbuf_len(fields[i]) + varint32_sizeof(tbuf_len(fields[i]));
 	txn->obj = tuple_alloc(bsize);
 	object_ref(txn->obj, +1);
-	box_tuple(txn->obj)->cardinality = box_tuple(txn->old_obj)->cardinality;
+	box_tuple(txn->obj)->cardinality = cardinality;
 
 	uint8_t *p = box_tuple(txn->obj)->data;
-	for (int i = 0; i < old_tuple->cardinality; i++) {
+	for (int i = 0; i < cardinality; i++) {
 		p = save_varint32(p, tbuf_len(fields[i]));
 		memcpy(p, fields[i]->data, tbuf_len(fields[i]));
 		p += tbuf_len(fields[i]);
@@ -851,6 +870,15 @@ box_xlog_sprint(struct tbuf *buf, const struct tbuf *t)
 				break;
 			case 4:
 				tbuf_printf(buf, "or ");
+				break;
+			case 5:
+				tbuf_printf(buf, "splice ");
+				break;
+			case 6:
+				tbuf_printf(buf, "delete ");
+				break;
+			case 7:
+				tbuf_printf(buf, "insert ");
 				break;
 			}
 			tuple_print(buf, 1, arg);

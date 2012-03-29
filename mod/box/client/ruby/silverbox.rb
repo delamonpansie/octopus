@@ -180,6 +180,12 @@ class SilverBox < IProtoRetCode
         op = [op[0], 0x03, 4, op[2]].pack("LCwL")
       when :xor
         op = [op[0], 0x04, 4, op[2]].pack("LCwL")
+      when :splice
+        op = [op[0], 0x05, pack_field([4, op[2], 4, op[3], pack_field(op[4])].pack("wLwLa*"))].pack("LCa*")
+      when :delete
+        op = [op[0], 0x06, pack_field("")].pack("LCa*")
+      when :insert
+        op = [op[0], 0x07, pack_field(op[2])].pack("LCa*")
       else
         fail "unsupported op: '#{op[1]}'"
       end
