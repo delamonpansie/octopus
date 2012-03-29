@@ -240,8 +240,8 @@ flush_all(va_list ap)
 	i32 delay = va_arg(ap, u32);;
 	if (delay > ev_now())
 		fiber_sleep(delay - ev_now());
-	u32 buckets = [memcached_index buckets];
-	for (u32 i = 0; i < buckets; i++) {
+	u32 slots = [memcached_index slots];
+	for (u32 i = 0; i < slots; i++) {
 		struct tnt_object *obj = [memcached_index get:i];
 		if (obj != NULL)
 			obj_meta(obj)->exptime = 1;
@@ -632,7 +632,7 @@ memcached_expire(va_list va __attribute__((unused)))
 	u32 i = 0;
 	say_info("memcached expire fiber started");
 	for (;;) {
-		if (i >= [memcached_index buckets])
+		if (i >= [memcached_index slots])
 			i = 0;
 
 		struct tbuf *keys_to_delete = tbuf_alloc(fiber->pool);
@@ -660,7 +660,7 @@ memcached_expire(va_list va __attribute__((unused)))
 
 		double delay = (double)cfg.memcached_expire_per_loop *
 				       cfg.memcached_expire_full_sweep /
-				       ([memcached_index buckets] + 1);
+			       ([memcached_index slots] + 1);
 		if (delay > 1)
 			delay = 1;
 		fiber_sleep(delay);

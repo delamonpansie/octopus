@@ -71,6 +71,12 @@ size
 	return 0;
 }
 
+- (u32)
+slots
+{
+	return 0;
+}
+
 - (size_t)
 bytes
 {

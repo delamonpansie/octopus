@@ -333,7 +333,7 @@ static int
 luaT_index_hashsize(struct lua_State *L)
 {
 	id<HashIndex> index = luaT_checkindex_hash(L, 1);
-	lua_pushinteger(L, [index buckets]);
+	lua_pushinteger(L, [index slots]);
 	return 1;
 }
 
@@ -348,7 +348,7 @@ luaT_index_hashnext(struct lua_State *L)
 	else
 		i = luaL_checkinteger(L, 2) + 1;
 
-	u32 buckets = [index buckets];
+	u32 buckets = [index slots];
 	do {
 		struct tnt_object *obj = [index get:i];
 		if (obj != NULL) {

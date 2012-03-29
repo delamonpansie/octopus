@@ -76,6 +76,7 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 - (void)iterator_init;
 - (struct tnt_object *)iterator_next;
 - (u32)size;
+- (u32)slots;
 - (size_t) bytes;
 - (u32)cardinality;
 @end
@@ -116,7 +117,6 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 @protocol HashIndex <BasicIndex>
 - (void) resize:(u32)buckets;
 - (struct tnt_object *) get:(u32)i;
-- (u32)buckets;
 @end
 
 @interface Hash: Index {

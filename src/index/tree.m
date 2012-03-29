@@ -81,6 +81,12 @@ size
 	return tree->size;
 }
 
+- (u32)
+slots
+{
+	return tree->ntotal;
+}
+
 - (size_t)
 bytes
 {

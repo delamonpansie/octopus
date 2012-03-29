@@ -58,7 +58,7 @@ size
 }
 
 - (u32)
-buckets
+slots
 {
 	return mh_end(h);
 }
