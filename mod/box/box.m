@@ -386,7 +386,7 @@ do_field_splice(struct tbuf *field, void *args_data, u32 args_data_size)
 static void __attribute__((noinline))
 prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 {
-	struct tbuf **fields;
+	struct tbuf *fields;
 	void *field;
 	int i;
 	u32 op_cnt;
@@ -412,16 +412,13 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 
 	struct box_tuple *old_tuple = box_tuple(txn->old_obj);
 	int cardinality = old_tuple->cardinality;
-
-	/* since there is no more than 128 op, where will be no more than 128 field inserts */
-	fields = p0alloc(fiber->pool, (cardinality + 128) * sizeof(struct tbuf *));
+	int field_count = cardinality * 1.2;
+	fields = p0alloc(fiber->pool, field_count * sizeof(struct tbuf));
 
 	for (i = 0, field = old_tuple->data; i < cardinality; i++) {
-		fields[i] = tbuf_alloc(fiber->pool);
-
-		u32 field_size = LOAD_VARINT32(field);
-		tbuf_append(fields[i], field, field_size);
-		field += field_size;
+		fields[i].len = LOAD_VARINT32(field);
+		fields[i].data = field;
+		field += fields[i].len;
 	}
 
 	while (op_cnt-- > 0) {
@@ -434,11 +431,18 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 		if (field_no >= cardinality)
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "update of field beyond tuple cardinality");
 
-		struct tbuf *field = fields[field_no];
-
+		struct tbuf *field = &fields[field_no];
 		op = read_u8(data);
 		arg = read_field(data);
 		arg_size = LOAD_VARINT32(arg);
+
+		if (field->pool == NULL) {
+			void *tmp = field->data;
+			field->data = palloc(fiber->pool, MAX(arg_size, field->len));
+			memcpy(field->data, tmp, field->len);
+			field->pool = fiber->pool;
+			field->size = field->len;
+		}
 
 		switch (op) {
 		case 0:
@@ -464,10 +468,18 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 		case 7:
 			if (field_no == 0)
 				iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "unabled to insert PK");
+			if (unlikely(field_count == cardinality)) {
+				struct tbuf *tmp = fields;
+				fields = p0alloc(fiber->pool,
+						 (old_tuple->cardinality + 128) * sizeof(struct tbuf));
+				memcpy(fields, tmp, field_count * sizeof(struct tbuf));
+			}
 			for (int i = cardinality - 1; i >= field_no; i--)
 				fields[i + 1] = fields[i];
-			fields[field_no] = tbuf_alloc(fiber->pool);
-			tbuf_append(fields[field_no], arg, arg_size);
+			fields[field_no] = (struct tbuf){arg_size, arg_size,
+							 palloc(fiber->pool, arg_size),
+							 fiber->pool};
+			memcpy(fields[field_no].data, arg, arg_size);
 			cardinality++;
 			break;
 		default:
@@ -480,16 +492,17 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 
 	size_t bsize = 0;
 	for (int i = 0; i < cardinality; i++)
-		bsize += tbuf_len(fields[i]) + varint32_sizeof(tbuf_len(fields[i]));
+		bsize += fields[i].len + varint32_sizeof(fields[i].len);
 	txn->obj = tuple_alloc(bsize);
 	object_ref(txn->obj, +1);
 	box_tuple(txn->obj)->cardinality = cardinality;
 
 	uint8_t *p = box_tuple(txn->obj)->data;
 	for (int i = 0; i < cardinality; i++) {
-		p = save_varint32(p, tbuf_len(fields[i]));
-		memcpy(p, fields[i]->data, tbuf_len(fields[i]));
-		p += tbuf_len(fields[i]);
+		int len = fields[i].len;
+		p = save_varint32(p, len);
+		memcpy(p, fields[i].data, len);
+		p += len;
 	}
 
 	validate_indexes(txn);
