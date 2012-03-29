@@ -171,7 +171,8 @@ recover_row:(struct tbuf *)row
 		}
 	}
 	@catch (Error *e) {
-		panic("Recovery failed: %s at %s:%i", e->reason, e->file, e->line);
+		say_error("Recovery: %s at %s:%i", e->reason, e->file, e->line);
+		@throw;
 	}
 }
 

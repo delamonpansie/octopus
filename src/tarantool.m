@@ -664,7 +664,15 @@ main(int argc, char **argv)
 	luaT_init();
 	stat_init();
 
-	module(NULL)->init();
+	@try {
+		module(NULL)->init();
+	}
+	@catch (id e) {
+		if ([e code] == ERR_CODE_MEMORY_ISSUE) {
+			say(S_FATAL, NULL, "Can't allocate memory. Is slab_arena too small?");
+			exit(EX_OSFILE);
+		}
+	}
 
 	admin_init();
 	prelease(fiber->pool);
