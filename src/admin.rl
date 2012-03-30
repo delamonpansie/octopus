@@ -119,7 +119,7 @@ exec_lua(lua_State *L, struct tbuf *code, struct tbuf *out)
 	}
 
 	if (lua_pcall(L, 0, 0, 0)) {
-		tbuf_printf(out, "error: pcall");
+		tbuf_printf(out, "error: pcall: %s", lua_tostring(L, -1));
 		return;
 	}
 }
