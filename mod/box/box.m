@@ -304,7 +304,7 @@ do_field_arith(u8 op, struct tbuf *field, void *arg, u32 arg_size)
 	}
 }
 
-static void
+static size_t
 do_field_splice(struct tbuf *field, void *args_data, u32 args_data_size)
 {
 	struct tbuf args = {
@@ -380,7 +380,11 @@ do_field_splice(struct tbuf *field, void *args_data, u32 args_data_size)
 	tbuf_append(new_field, list_field, list_size);
 	tbuf_append(new_field, field->data + noffset + nlength, tbuf_len(field) - (noffset + nlength));
 
+	size_t diff = (varint32_sizeof(new_field->len) + new_field->len) -
+		      (varint32_sizeof(field->len) + field->len);
+
 	*field = *new_field;
+	return diff;
 }
 
 static void __attribute__((noinline))
@@ -411,6 +415,7 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 	txn->obj_affected = 1;
 
 	struct box_tuple *old_tuple = box_tuple(txn->old_obj);
+	size_t bsize = old_tuple->bsize;
 	int cardinality = old_tuple->cardinality;
 	int field_count = cardinality * 1.2;
 	fields = palloc(fiber->pool, field_count * sizeof(struct tbuf));
@@ -448,6 +453,8 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 		switch (op) {
 		case 0:
 			tbuf_ensure(field, arg_size);
+			bsize -= varint32_sizeof(field->len) + field->len;
+			bsize += varint32_sizeof(arg_size) + arg_size;
 			field->len = arg_size;
 			memcpy(field->data, arg, arg_size);
 			break;
@@ -455,13 +462,14 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 			do_field_arith(op, field, arg, arg_size);
 			break;
 		case 5:
-			do_field_splice(field, arg, arg_size);
+			bsize += do_field_splice(field, arg, arg_size);
 			break;
 		case 6:
 			if (arg_size != 0)
 				iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "delete must have empty arg");
 			if (field_no == 0)
 				iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "unabled to delete PK");
+			bsize -= varint32_sizeof(field->len) + field->len;
 			for (int i = field_no; i < cardinality - 1; i++)
 				fields[i] = fields[i + 1];
 			cardinality--;
@@ -481,6 +489,7 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 							 palloc(fiber->pool, arg_size),
 							 fiber->pool};
 			memcpy(fields[field_no].data, arg, arg_size);
+			bsize += varint32_sizeof(arg_size) + arg_size;
 			cardinality++;
 			break;
 		default:
@@ -491,9 +500,6 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 	if (tbuf_len(data) != 0)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
 
-	size_t bsize = 0;
-	for (int i = 0; i < cardinality; i++)
-		bsize += fields[i].len + varint32_sizeof(fields[i].len);
 	txn->obj = tuple_alloc(bsize);
 	object_ref(txn->obj, +1);
 	box_tuple(txn->obj)->cardinality = cardinality;
