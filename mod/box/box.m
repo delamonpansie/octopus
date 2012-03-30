@@ -462,7 +462,7 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 				iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "delete must have empty arg");
 			if (field_no == 0)
 				iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "unabled to delete PK");
-			for (int i = field_no; i < cardinality; i++)
+			for (int i = field_no; i < cardinality - 1; i++)
 				fields[i] = fields[i + 1];
 			cardinality--;
 			break;
