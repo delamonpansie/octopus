@@ -1,4 +1,15 @@
 require("stat")
+require("index")
+local ffi = require("ffi")
+
+ffi.cdef[[
+struct tnt_object {
+	int32_t refs;
+	uint8_t type;
+	uint8_t flags;
+	uint8_t data[0];
+} __attribute__((packed));
+]]
 
 function reloadfile(filename, module)
         if not filename or not module then

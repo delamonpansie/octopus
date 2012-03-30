@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2011 Mail.RU
- * Copyright (C) 2011 Yuriy Vostrikov
+ * Copyright (C) 2011, 2012 Mail.RU
+ * Copyright (C) 2011, 2012 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,6 +33,9 @@
 
 #include <stdint.h>
 
+#include <third_party/luajit/src/lua.h>
+#include <third_party/luajit/src/lualib.h>
+#include <third_party/luajit/src/lauxlib.h>
 
 
 struct tnt_object *
@@ -79,5 +82,40 @@ object_decr_ref(struct tnt_object *obj)
 
 	if (obj->refs == 0)
 		sfree(obj);
+}
+
+
+const char *objectlib_name = "Tarantool.object";
+
+void
+luaT_pushobject(struct lua_State *L, struct tnt_object *obj)
+{
+	void **ptr = lua_newuserdata(L, sizeof(void *));
+	luaL_getmetatable(L, objectlib_name);
+	lua_setmetatable(L, -2);
+	*ptr = obj;
+	object_ref(obj, 1);
+}
+
+static int
+object_gc_(struct lua_State *L)
+{
+	struct tnt_object *obj = *(void **)luaL_checkudata(L, 1, objectlib_name);
+	object_ref(obj, -1);
+	return 0;
+}
+
+static const struct luaL_reg object_mt [] = {
+	{"__gc", object_gc_},
+	{NULL, NULL}
+};
+
+int
+luaT_objinit(struct lua_State *L)
+{
+	luaL_newmetatable(L, objectlib_name);
+	luaL_register(L, NULL, object_mt);
+	lua_pop(L, 1);
+	return 0;
 }
 

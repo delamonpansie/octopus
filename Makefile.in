@@ -55,7 +55,7 @@ include $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
 tarantool: $(obj)
 	$(CC) $(LDFLAGS) $^ $(LIBS) -o $@
 
-LDFLAGS += -Lthird_party/luajit/src
+LDFLAGS += -Lthird_party/luajit/src -Wl,--export-dynamic
 LIBS += -lluajit
 tarantool: third_party/luajit/src/libluajit.a
 third_party/luajit/src/libluajit.a:

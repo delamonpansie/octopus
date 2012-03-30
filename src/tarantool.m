@@ -36,6 +36,7 @@
 #import <stat.h>
 #import <tarantool.h>
 #import <util.h>
+#import <index.h>
 #import <tarantool_version.h>
 
 #include <third_party/gopt/gopt.h>
@@ -416,6 +417,9 @@ luaT_init()
 	lua_getglobal(L, "os");
 	lua_pushcfunction(L, luaT_os_ctime);
 	lua_setfield(L, -2, "ctime");
+
+	luaT_objinit(L);
+	luaT_indexinit(L);
 
         lua_getglobal(L, "require");
         lua_pushliteral(L, "prelude");

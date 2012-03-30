@@ -1,4 +1,5 @@
 src-lua += src-lua/prelude.lua
+src-lua += src-lua/index.lua
 src-lua += src-lua/stat.lua
 
 obj += src-lua/bundle.o

@@ -9,7 +9,6 @@ obj += third_party/qsort_arg.o
 
 src-lua += mod/box/src-lua/box.lua
 src-lua += mod/box/src-lua/box_prelude.lua
-src-lua += mod/box/src-lua/box/index.lua
 src-lua += mod/box/src-lua/box/example_proc.lua
 
 

@@ -1,6 +1,6 @@
 
-local error, print, type, pairs, ipairs, table =
-      error, print, type, pairs, ipairs, table
+local error, print, type, pairs, ipairs, table, setmetatable =
+      error, print, type, pairs, ipairs, table, setmetatable
 
 local string, tostring =
       string, tostring
@@ -8,14 +8,20 @@ local string, tostring =
 local tou32, tofield = string.tou32, string.tofield
 local netmsg = netmsg
 
+local ffi, bit = require("ffi"), require("bit")
+
 module(...)
 
 user_proc = {}
 
 -- make useful aliases
 space = object_space
-for k,v in pairs(object_space) do
-        object_space[tostring(k)] = v
+for n, v in pairs(object_space) do
+        object_space[tostring(n)] = v
+        v.index = {}
+        v.index.mt = {}
+        v.index.mt.__index = function (table, i) return index(n, i) end
+        setmetatable(v.index, v.index.mt)
 end
 
 function select(n, ...)
@@ -49,6 +55,49 @@ function delete(n, key)
         table.insert(req, tou32(key_len))
         table.insert(req, tofield(key))
         dispatch(20, table.concat(req))
+end
+
+function update(n, key, ...)
+        local ops = {...}
+        local flags, key_cardinality = 0, 1
+        local req = {}
+
+        table.insert(req, tou32(n))
+        table.insert(req, tou32(flags))
+        table.insert(req, tou32(key_cardinality))
+        table.insert(req, tofield(key))
+        table.insert(req, tou32(#ops))
+        for k, op in ipairs(ops) do
+                table.insert(req, tou32(op[1]))
+                if (op[2] == "set") then
+                        table.insert(req, "\000")
+                        table.insert(req, tofield(op[3]))
+                elseif (op[2] == "add") then
+                        table.insert(req, "\001\004")
+                        table.insert(req, tou32(op[3]))
+                elseif (op[2] == "and") then
+                        table.insert(req, "\002\004")
+                        table.insert(req, tou32(op[3]))
+                elseif (op[2] == "or") then
+                        table.insert(req, "\003\004")
+                        table.insert(req, tou32(op[3]))
+                elseif (op[2] == "xor") then
+                        table.insert(req, "\004\004")
+                        table.insert(req, tou32(op[3]))
+                elseif (op[2] == "splice") then
+                        table.insert(req, "\005\004")
+                        table.insert(req, tou32(op[3]))
+                        table.insert(req, "\004")
+                        table.insert(req, tou32(op[4]))
+                        table.insert(req, tofield(op(5)))
+                elseif (op[2] == "delete") then
+                        table.insert(req, "\006\000")
+                elseif (op[2] == "insert") then
+                        table.insert(req, "\007")
+                        table.insert(req, tofield(op[3]))
+                end
+        end
+        dispatch(19, table.concat(req))
 end
 
 function wrap(proc_body)
@@ -89,4 +138,56 @@ function tuple(...)
         table.insert(f, 1, string.tou32(#f))
         table.insert(f, 1, string.tou32(bsize))
         return table.concat(f)
+end
+
+
+ffi.cdef[[
+struct box_tuple {
+	uint32_t bsize;
+	uint32_t cardinality;
+	uint8_t data[0];
+} __attribute__((packed));
+]]
+
+function decode_varint32(ptr, offt)
+        local result = 0
+        local byte
+        
+        byte = ptr[offt]
+        offt = offt + 1
+        result = bit.band(byte, 0x7f)
+        if bit.band(byte, 0x80) ~= 0 then
+                byte = ptr[offt]
+                offt = offt + 1
+                result = bit.bor(bit.lshift(result, 7),
+                                 bit.band(byte, 0x7f))
+                if bit.band(byte, 0x80) ~= 0 then
+                        byte = ptr[offt]
+                        offt = offt + 1
+                        result = bit.bor(bit.lshift(result, 7),
+                                         bit.band(byte, 0x7f))
+                        if bit.band(byte, 0x80) ~= 0 then
+                                byte = ptr[offt]
+                                offt = offt + 1
+                                result = bit.bor(bit.lshift(result, 7),
+                                                 bit.band(byte, 0x7f))
+                                if bit.band(byte, 0x80) ~= 0 then
+                                        byte = ptr[offt]
+                                        offt = offt + 1
+                                        result = bit.bor(bit.lshift(result, 7),
+                                                         bit.band(byte, 0x7f))
+                                end
+                        end
+                end
+        end
+        return result, offt
+end
+
+function ctuple(obj)
+        obj = ffi.cast("struct tnt_object **", obj)
+        if obj[0].type == 1 then
+                return ffi.cast("struct box_tuple *", obj[0].data)
+        else
+                error("not a box tuple")
+        end
 end

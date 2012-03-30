@@ -44,26 +44,6 @@
 #import <mod/box/box.h>
 #import <mod/box/moonbox.h>
 
-const char *objectlib_name = "Tarantool.box.object";
-
-
-void
-luaT_pushobject(struct lua_State *L, struct tnt_object *obj)
-{
-	void **ptr = lua_newuserdata(L, sizeof(void *));
-	luaL_getmetatable(L, objectlib_name);
-	lua_setmetatable(L, -2);
-	*ptr = obj;
-	object_ref(obj, 1);
-}
-
-static int
-object_gc_(struct lua_State *L)
-{
-	struct tnt_object *obj = *(void **)luaL_checkudata(L, 1, objectlib_name);
-	object_ref(obj, -1);
-	return 0;
-}
 
 static int
 tuple_len_(struct lua_State *L)
@@ -91,6 +71,12 @@ tuple_index_(struct lua_State *L)
 	lua_pushlstring(L, field, len);
 	return 1;
 }
+
+static const struct luaL_reg object_mt [] = {
+	{"__len", tuple_len_},
+	{"__index", tuple_index_},
+	{NULL, NULL}
+};
 
 #if 0
 struct box_tuple *
@@ -126,12 +112,6 @@ luaT_toboxtuple(struct lua_State *L, int table)
 }
 #endif
 
-static const struct luaL_reg tuple_mt [] = {
-	{"__len", tuple_len_},
-	{"__index", tuple_index_},
-	{"__gc", object_gc_},
-	{NULL, NULL}
-};
 
 
 const char *netmsg_metaname = "Tarantool.netmsg";
@@ -222,194 +202,6 @@ static const struct luaL_reg netmsg_mt [] = {
 };
 
 
-const char *indexlib_name = "Tarantool.box.index";
-
-static void
-luaT_pushindex(struct lua_State *L, int obj_space, int idx)
-{
-	int *ptr = lua_newuserdata(L, sizeof(int) * 2);
-	luaL_getmetatable(L, indexlib_name);
-	lua_setmetatable(L, -2);
-	ptr[0] = obj_space;
-	ptr[1] = idx;
-}
-
-static Index<BasicIndex> *
-luaT_checkindex(struct lua_State *L, int i)
-{
-	int *d = luaL_checkudata(L, i, indexlib_name);
-	Index<BasicIndex> *index  = object_space_registry[d[0]].index[d[1]];
-	if (index == nil) {
-		lua_pushliteral(L, "nonexistant index");
-		lua_error(L);
-	}
-	return index;
-}
-
-static Index<HashIndex> *
-luaT_checkindex_hash(struct lua_State *L, int i)
-{
-	Index *index = luaT_checkindex(L, i);
-	if (index->type != HASH) {
-		lua_pushliteral(L, "index type must be hash");
-		lua_error(L);
-	}
-
-	return (Index<HashIndex> *)index;
-}
-
-static int
-luaT_index_index(struct lua_State *L)
-{
-	id<BasicIndex> index = luaT_checkindex(L, 1);
-
-	struct tnt_object *obj = NULL;
-	struct tbuf *key = tbuf_alloc(fiber->pool);
-
-	if (lua_isstring(L, 2)) {
-		size_t len;
-		const char *str = lua_tolstring(L, 2, &len);
-		write_varint32(key, len);
-		tbuf_append(key, str, len);
-		obj = [index find_key:key with_cardinalty:1];
-	} else if (lua_istable(L, 2)) {
-		int cardinality = 0;
-		lua_pushnil(L);  /* first key */
-		while (lua_next(L, 2) != 0) {
-			size_t len;
-			const char *str = lua_tolstring(L, -1, &len);
-			write_varint32(key, len);
-			tbuf_append(key, str, len);
-			cardinality++;
-			lua_pop(L, 1);
-		}
-		obj = [index find_key:key with_cardinalty:cardinality];
-	} else {
-		lua_pushliteral(L, "unknown key type");
-		lua_error(L);
-	}
-
-	if (obj != NULL) {
-		luaT_pushobject(L, obj);
-		return 1;
-	}
-	return 0;
-}
-
-static int
-luaT_index_hashget(struct lua_State *L)
-{
-	id<HashIndex> index = luaT_checkindex_hash(L, 1);
-	u32 i = luaL_checkinteger(L, 2);
-	luaT_pushobject(L, [index get:i]);
-	return 1;
-}
-
-static int
-luaT_index_hashsize(struct lua_State *L)
-{
-	id<HashIndex> index = luaT_checkindex_hash(L, 1);
-	lua_pushinteger(L, [index slots]);
-	return 1;
-}
-
-static int
-luaT_index_hashnext(struct lua_State *L)
-{
-	id<HashIndex> index = luaT_checkindex_hash(L, 1);
-	u32 i;
-
-	if (lua_isnil(L, 2))
-		i = 0;
-	else
-		i = luaL_checkinteger(L, 2) + 1;
-
-	u32 buckets = [index slots];
-	do {
-		struct tnt_object *obj = [index get:i];
-		if (obj != NULL) {
-			lua_pushinteger(L, i);
-			luaT_pushobject(L, obj);
-			return 2;
-		}
-	} while (++i < buckets);
-
-	return 0;
-}
-
-static int
-luaT_index_treenext(struct lua_State *L)
-{
-	Tree *index = (Tree *)luaT_checkindex(L, 1);
-	if (index->type != TREE) {
-		lua_pushliteral(L, "index type must be tree");
-		lua_error(L);
-	}
-
-	struct tnt_object *obj = [index iterator_next];
-	if (obj != NULL) {
-		luaT_pushobject(L, obj);
-		return 1;
-	}
-	return 0;
-}
-
-static int
-luaT_index_treeiter(struct lua_State *L)
-{
-	Tree *index = (Tree *)luaT_checkindex(L, 1);
-	if (index->type != TREE) {
-		lua_pushliteral(L, "index type must be tree");
-		lua_error(L);
-	}
-
-	struct tbuf *key = tbuf_alloc(fiber->pool);
-	if (lua_isstring(L, 2)) {
-		size_t len;
-		const char *str = lua_tolstring(L, 2, &len);
-		write_varint32(key, len);
-		tbuf_append(key, str, len);
-		[index iterator_init:key with_cardinalty:1];
-	} else if (lua_istable(L, 2)) {
-		int cardinality = 0;
-		lua_pushnil(L);  /* first key */
-		while (lua_next(L, 2) != 0) {
-			size_t len;
-			const char *str = lua_tolstring(L, -1, &len);
-			write_varint32(key, len);
-			tbuf_append(key, str, len);
-			cardinality++;
-			lua_pop(L, 1);
-		}
-		[index iterator_init:key with_cardinalty:cardinality];
-	} else if (lua_isnil(L, 2)) {
-		[index iterator_init:NULL with_cardinalty:0];
-	} else if (lua_isuserdata(L, 2)) {
-		struct tnt_object *obj = *(void **)luaL_checkudata(L, 2, objectlib_name);
-		[index iterator_init_with_object:obj];
-	} else {
-		lua_pushliteral(L, "wrong key type");
-		lua_error(L);
-	}
-	lua_pushcfunction(L, luaT_index_treenext);
-	lua_pushvalue(L, 1);
-	return 2;
-}
-
-
-static const struct luaL_reg indexlib_m [] = {
-	{"__index", luaT_index_index},
-	{NULL, NULL}
-};
-
-static const struct luaL_reg indexlib [] = {
-	{"hashget", luaT_index_hashget},
-	{"hashsize", luaT_index_hashsize},
-	{"hashnext", luaT_index_hashnext},
-	{"treeiter", luaT_index_treeiter},
-	{NULL, NULL}
-};
-
 
 static int
 luaT_box_dispatch(struct lua_State *L)
@@ -442,8 +234,29 @@ luaT_box_dispatch(struct lua_State *L)
 	return 0;
 }
 
+static int
+luaT_box_index(struct lua_State *L)
+{
+	int n = luaL_checkinteger(L, 1);
+	int i = luaL_checkinteger(L, 2);
+	if (n < 0 || n >= object_space_count) {
+		lua_pushliteral(L, "bad object_space num");
+		lua_error(L);
+	}
+	if (i < 0 || i >= MAX_IDX) {
+		lua_pushliteral(L, "bad index num");
+		lua_error(L);
+	}
+
+	Index *index = object_space_registry[n].index[i];
+	if (!index)
+		return 0;
+	luaT_pushindex(L, index);
+	return 1;
+}
 
 static const struct luaL_reg boxlib [] = {
+	{"index", luaT_box_index},
 	{"dispatch", luaT_box_dispatch},
 	{NULL, NULL}
 };
@@ -496,12 +309,8 @@ luaT_openbox(struct lua_State *L)
 	lua_setfield(L, -2, "tou32");
 	lua_pop(L, 1);
 
-	luaL_newmetatable(L, indexlib_name);
-	luaL_register(L, NULL, indexlib_m);
-	lua_pop(L, 1);
-
 	luaL_newmetatable(L, objectlib_name);
-	luaL_register(L, NULL, tuple_mt);
+	luaL_register(L, NULL, object_mt);
 	lua_pop(L, 1);
 
 	luaL_findtable(L, LUA_GLOBALSINDEX, "box", 0);
@@ -513,16 +322,6 @@ luaT_openbox(struct lua_State *L)
 			continue;
 
 		lua_createtable(L, 0, 0); /* namespace */
-		lua_pushliteral(L, "index");
-		lua_createtable(L, 0, 0); /* index */
-		for (int i = 0; i < MAX_IDX; i++) {
-			Index *index = object_space_registry[n].index[i];
-			if (!index)
-				break;
-			luaT_pushindex(L, n, i);
-			lua_rawseti(L, -2, i); /* index[i] = index_uvalue */
-		}
-		lua_rawset(L, -3); /* namespace.index = index */
 
 		lua_pushliteral(L, "cardinality");
 		lua_pushinteger(L, object_space_registry[n].cardinality);
@@ -535,10 +334,6 @@ luaT_openbox(struct lua_State *L)
 		lua_rawseti(L, -2, n); /* namespace_registry[n] = namespace */
 	}
 	lua_setfield(L, -2, "object_space");
-	lua_pop(L, 1);
-
-	luaL_findtable(L, LUA_GLOBALSINDEX, "box.index", 0);
-	luaL_register(L, NULL, indexlib);
 	lua_pop(L, 1);
 
 	lua_getglobal(L, "require");

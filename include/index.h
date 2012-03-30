@@ -64,6 +64,7 @@ union {
 } index_nodes;
 
 typedef void (index_dtor)(struct tnt_object *obj, struct index_node *node, void *arg);
+typedef struct tbuf *(index_lua_ctor)(struct lua_State *L, int i);
 typedef int (*index_cmp)(const void *, const void *, void *);
 
 @protocol BasicIndex
@@ -91,6 +92,7 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 	struct tnt_object *find_obj_cache_q, *find_obj_cache;
 	index_dtor *dtor;
 	void *dtor_arg;
+	index_lua_ctor *lua_ctor;
 
 	struct index_node node;
 	char __padding[256]; /* FIXME: check for overflow */
@@ -176,6 +178,13 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 
 @interface IndexError: Error
 @end
+
+
+int luaT_indexinit(lua_State *L);
+void luaT_pushindex(struct lua_State *L, Index *index);
+struct tbuf *luaT_i32_ctor(struct lua_State *L, int i);
+struct tbuf *luaT_i64_ctor(struct lua_State *L, int i);
+struct tbuf *luaT_lstr_ctor(struct lua_State *L, int i);
 
 #define index_raise(msg) @throw [[IndexError palloc] init_line: __LINE__ \
 							  file: __FILE__ \

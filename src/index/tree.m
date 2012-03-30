@@ -204,6 +204,7 @@ init_with_unique:(bool)_unique
 {
 	[super init_with_unique:_unique];
 	node_size = sizeof(struct index_node) + sizeof(i32);
+	lua_ctor = luaT_i32_ctor;
 	init_pattern = i32_init_pattern;
 	ucompare = (index_cmp)i32_compare;
 	compare = unique ? (index_cmp)i32_compare : (index_cmp)i32_compare_with_addr;
@@ -267,6 +268,7 @@ init_with_unique:(bool)_unique
 {
 	[super init_with_unique:_unique];
 	node_size = sizeof(struct index_node) + sizeof(i64);
+	lua_ctor = luaT_i64_ctor;
 	init_pattern = i64_init_pattern;
 	ucompare = (index_cmp)i64_compare;
 	compare = unique ? (index_cmp)i64_compare : (index_cmp)i64_compare_with_addr;
@@ -320,6 +322,7 @@ init_with_unique:(bool)_unique
 {
 	[super init_with_unique:_unique];
 	node_size = sizeof(struct index_node) + sizeof(void *);
+	lua_ctor = luaT_lstr_ctor;
 	init_pattern = lstr_init_pattern;
 	ucompare = (index_cmp)lstr_compare;
 	compare = unique ? (index_cmp)lstr_compare : (index_cmp)lstr_compare_with_addr;
