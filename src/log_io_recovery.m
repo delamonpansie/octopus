@@ -646,8 +646,11 @@ pull_from_remote(va_list ap)
 
 			if ([r lsn] == 0)
 				pull_snapshot(r, &c, version);
-			else
+			else {
+				if (version == 11)
+					[r recover_row:[r dummy_row_lsn:[r lsn] tag:wal_final_tag]];
 				pull_wal(r, &c, version);
+			}
 
 
 		}
