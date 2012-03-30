@@ -413,12 +413,13 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 	struct box_tuple *old_tuple = box_tuple(txn->old_obj);
 	int cardinality = old_tuple->cardinality;
 	int field_count = cardinality * 1.2;
-	fields = p0alloc(fiber->pool, field_count * sizeof(struct tbuf));
+	fields = palloc(fiber->pool, field_count * sizeof(struct tbuf));
 
 	for (i = 0, field = old_tuple->data; i < cardinality; i++) {
-		fields[i].len = LOAD_VARINT32(field);
-		fields[i].data = field;
-		field += fields[i].len;
+		void *src = field;
+		int len = LOAD_VARINT32(field);
+		fields[i] = (struct tbuf){len, field - src, src,  NULL};
+		field += len;
 	}
 
 	while (op_cnt-- > 0) {
@@ -437,7 +438,7 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 		arg_size = LOAD_VARINT32(arg);
 
 		if (field->pool == NULL) {
-			void *tmp = field->data;
+			void *tmp = field->data + field->size;
 			field->data = palloc(fiber->pool, MAX(arg_size, field->len));
 			memcpy(field->data, tmp, field->len);
 			field->pool = fiber->pool;
@@ -497,13 +498,24 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 	object_ref(txn->obj, +1);
 	box_tuple(txn->obj)->cardinality = cardinality;
 
-	uint8_t *p = box_tuple(txn->obj)->data;
-	for (int i = 0; i < cardinality; i++) {
-		int len = fields[i].len;
-		p = save_varint32(p, len);
-		memcpy(p, fields[i].data, len);
-		p += len;
-	}
+	u8 *p = box_tuple(txn->obj)->data;
+	i = 0;
+	do {
+		if (fields[i].pool == NULL) {
+			void *src = fields[i].data;
+			int len = fields[i].len + fields[i].size;
+			for (i++; i < cardinality && src + len == fields[i].data; i++)
+				len += fields[i].len + fields[i].size;
+			memcpy(p, src, len);
+			p += len;
+		} else {
+			int len = fields[i].len;
+			p = save_varint32(p, len);
+			memcpy(p, fields[i].data, len);
+			p += len;
+			i++;
+		}
+	} while (i < cardinality);
 
 	validate_indexes(txn);
 }
