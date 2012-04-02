@@ -686,10 +686,11 @@ main(int argc, char **argv)
 		module(NULL)->init();
 	}
 	@catch (id e) {
-		if ([e code] == ERR_CODE_MEMORY_ISSUE) {
+		if ([e respondsTo:@selector(code)] && [e code] == ERR_CODE_MEMORY_ISSUE) {
 			say(S_FATAL, NULL, "Can't allocate memory. Is slab_arena too small?");
 			exit(EX_OSFILE);
 		}
+		@throw e;
 	}
 
 	admin_init();
