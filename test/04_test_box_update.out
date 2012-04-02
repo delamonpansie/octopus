@@ -51,3 +51,12 @@ Failed with: {code: 0x202, message: 'update of field beyond tuple cardinality'}
 # box.select(1)
 [["\001\000\000\000"]]
 
+# box.insert([1])
+2
+
+# box.update_fields(1, [1, :insert, "aa"])
+1
+
+# box.select(1)
+[["\001\000\000\000", "aa"]]
+

@@ -39,4 +39,8 @@ UpdateEnv.new.with_server do |box|
 
   LogPpProxy.try { box.update_fields 1, [1, :delete, ""] }
   box.select 1
+
+  box.insert [1]
+  box.update_fields 1, [1, :insert, "aa"]
+  box.select 1
 end

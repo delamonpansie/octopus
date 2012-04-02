@@ -431,23 +431,26 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 		u8 op;
 		u32 field_no, arg_size;
 		void *arg;
+		struct tbuf *field = NULL;
 
 		field_no = read_u32(data);
-
-		if (field_no >= cardinality)
-			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "update of field beyond tuple cardinality");
-
-		struct tbuf *field = &fields[field_no];
 		op = read_u8(data);
 		arg = read_field(data);
 		arg_size = LOAD_VARINT32(arg);
 
-		if (field->pool == NULL) {
-			void *tmp = field->data + field->size;
-			field->data = palloc(fiber->pool, MAX(arg_size, field->len));
-			memcpy(field->data, tmp, field->len);
-			field->pool = fiber->pool;
-			field->size = field->len;
+		if (op <= 6) {
+			if (field_no >= cardinality)
+				iproto_raise(ERR_CODE_ILLEGAL_PARAMS,
+					     "update of field beyond tuple cardinality");
+			field = &fields[field_no];
+
+			if (field->pool == NULL) {
+				void *tmp = field->data + field->size;
+				field->data = palloc(fiber->pool, MAX(arg_size, field->len));
+				memcpy(field->data, tmp, field->len);
+				field->pool = fiber->pool;
+				field->size = field->len;
+			}
 		}
 
 		switch (op) {
@@ -469,6 +472,7 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 				iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "delete must have empty arg");
 			if (field_no == 0)
 				iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "unabled to delete PK");
+
 			bsize -= varint32_sizeof(field->len) + field->len;
 			for (int i = field_no; i < cardinality - 1; i++)
 				fields[i] = fields[i + 1];
@@ -477,6 +481,9 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 		case 7:
 			if (field_no == 0)
 				iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "unabled to insert PK");
+			if (field_no > cardinality)
+				iproto_raise(ERR_CODE_ILLEGAL_PARAMS,
+					     "update of field beyond tuple cardinality");
 			if (unlikely(field_count == cardinality)) {
 				struct tbuf *tmp = fields;
 				fields = p0alloc(fiber->pool,
