@@ -87,10 +87,18 @@ function update(n, key, ...)
                 elseif (op[2] == "splice") then
                         table.insert(req, "\005")
                         local s = {}
-                        table.insert(s, "\004")
-                        table.insert(s, tou32(op[3]))
-                        table.insert(s, "\004")
-                        table.insert(s, tou32(op[4]))
+                        if (op[3] ~= nil) then
+                                table.insert(s, "\004")
+                                table.insert(s, tou32(op[3]))
+                        else
+                                table.insert(s, "\000")
+                        end
+                        if (op[4] ~= nil) then
+                                table.insert(s, "\004")
+                                table.insert(s, tou32(op[4]))
+                        else
+                                table.insert(s, "\000")
+                        end
                         table.insert(s, tofield(op[5]))
                         table.insert(req, tofield(table.concat(s)))
                 elseif (op[2] == "delete") then
