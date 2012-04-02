@@ -89,7 +89,7 @@ function update(n, key, ...)
                         table.insert(req, tou32(op[3]))
                         table.insert(req, "\004")
                         table.insert(req, tou32(op[4]))
-                        table.insert(req, tofield(op(5)))
+                        table.insert(req, tofield(op[5]))
                 elseif (op[2] == "delete") then
                         table.insert(req, "\006\000")
                 elseif (op[2] == "insert") then
