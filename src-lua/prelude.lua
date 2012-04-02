@@ -11,6 +11,13 @@ struct tnt_object {
 } __attribute__((packed));
 ]]
 
+local print_ = print
+function print (...)
+        for k, v in pairs({...}) do
+                print_(tostring(v))
+        end
+end
+
 function reloadfile(filename, module)
         if not filename or not module then
                 error("reloadfile: bad arguments")
