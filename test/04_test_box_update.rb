@@ -43,4 +43,8 @@ UpdateEnv.new.with_server do |box|
   box.insert [1]
   box.update_fields 1, [1, :insert, "aa"]
   box.select 1
+
+  box.insert [10, "foo"]
+  box.update_fields 10, [1, :splice, 0, 1, "b"]
+  box.select 10
 end
