@@ -51,6 +51,6 @@ u32 load_varint32(void **data);
 #define LOAD_VARINT32(data) ({		\
 	u8* __load_ptr = (data);	\
 	(*__load_ptr & 0x80) == 0 ?	\
-	(data++, *__load_ptr) :		\
+	((data)++, *__load_ptr) :	\
 	load_varint32(&(data));		\
 })
