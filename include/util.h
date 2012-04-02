@@ -179,9 +179,9 @@ void _panic(int status, const char *filename, unsigned line,
 #define panic(...)					\
 	_panic(EXIT_FAILURE, __FILE__, __LINE__,	\
 	       NULL, tnt_backtrace(), __VA_ARGS__)
-#define panic_exc(exc)					\
-	_panic(EXIT_FAILURE, exc->file, exc->line,	\
-	       NULL, e->backtrace, "%s", exc->reason)
+#define panic_exc(exc)							\
+	_panic(EXIT_FAILURE, (exc)->file, (exc)->line,			\
+	       NULL, (exc)->backtrace, "exception: %s", (exc)->reason)
 #define panic_status(status, ...)			\
 	_panic(status, __FILE__, __LINE__,		\
 	       NULL, tnt_backtrace(), __VA_ARGS__)
