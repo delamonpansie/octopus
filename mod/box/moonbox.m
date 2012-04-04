@@ -368,6 +368,7 @@ box_dispach_lua(struct box_txn *txn, struct tbuf *data)
 {
 	lua_State *L = fiber->L;
 
+	u32 flags = read_u32(data); (void)flags; /* compat, ignored */
 	u32 flen = read_varint32(data);
 	void *fname = read_bytes(data, flen);
 	u32 nargs = read_u32(data);
