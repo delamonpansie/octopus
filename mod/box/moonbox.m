@@ -286,6 +286,26 @@ luaT_pushu32(struct lua_State *L)
 	return 1;
 }
 
+static int
+luaT_pushu16(struct lua_State *L)
+{
+	u16 i = luaL_checkinteger(L, 1);
+	u8 *dst = alloca(sizeof(i));
+	memcpy(dst, &i, sizeof(i));
+	lua_pushlstring(L, (char *)dst, sizeof(i));
+	return 1;
+}
+
+static int
+luaT_pushu8(struct lua_State *L)
+{
+	u8 i = luaL_checkinteger(L, 1);
+	u8 *dst = alloca(sizeof(i));
+	memcpy(dst, &i, sizeof(i));
+	lua_pushlstring(L, (char *)dst, sizeof(i));
+	return 1;
+}
+
 void
 luaT_openbox(struct lua_State *L)
 {
@@ -307,6 +327,10 @@ luaT_openbox(struct lua_State *L)
 	lua_setfield(L, -2, "tofield");
 	lua_pushcfunction(L, luaT_pushu32);
 	lua_setfield(L, -2, "tou32");
+	lua_pushcfunction(L, luaT_pushu16);
+	lua_setfield(L, -2, "tou16");
+	lua_pushcfunction(L, luaT_pushu8);
+	lua_setfield(L, -2, "tou8");
 	lua_pop(L, 1);
 
 	luaL_newmetatable(L, objectlib_name);
