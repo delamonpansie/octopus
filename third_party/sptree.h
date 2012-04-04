@@ -155,7 +155,7 @@ sptree_init(sptree_t *t, size_t elemsize, void *m,
     }
 }
 
-static size_t
+static inline size_t
 sptree_bytes(sptree_t *t)
 {
 	return sizeof(*t) +
