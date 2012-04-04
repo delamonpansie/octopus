@@ -89,19 +89,21 @@ wal_pack_prepare
 }
 
 
-- (void)
+- (u32)
 wal_pack_append:(struct tbuf *)m data:(void *)data len:(u32)data_len tag:(u16)tag cookie:(u64)cookie
 {
 	u32 *ptr = m->data;
 	ptr[0] += sizeof(tag) + sizeof(cookie) +
 		  sizeof(data_len) + data_len;
 	ptr[2] += 1;
-	assert(ptr[2] < WAL_PACK_MAX);
+	assert(ptr[2] <= WAL_PACK_MAX);
 
 	tbuf_append(m, &tag, sizeof(tag));
 	tbuf_append(m, &cookie, sizeof(cookie));
 	tbuf_append(m, &data_len, sizeof(data_len));
 	tbuf_append(m, data, data_len);
+
+	return WAL_PACK_MAX - ptr[2];
 }
 
 - (int)

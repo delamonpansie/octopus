@@ -599,13 +599,11 @@ pull_wal(Recovery *r, struct conn *c, u32 version)
 				break;
 			}
 
-			rows[pack_rows++] = row;
-			[r wal_pack_append:pack
-				      data:row_v12(row)->data
-				       len:row_v12(row)->len
-				       tag:row_v12(row)->tag
-				    cookie:row_v12(row)->cookie];
-			if (pack_rows == nelem(rows))
+			if ([r wal_pack_append:pack
+					  data:row_v12(row)->data
+					   len:row_v12(row)->len
+					   tag:row_v12(row)->tag
+					cookie:row_v12(row)->cookie] == 0)
 				break;
 		}
 

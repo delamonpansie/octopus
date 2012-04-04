@@ -190,11 +190,11 @@ void snapshot_write_row(XLog *l, u16 tag, struct tbuf *row);
 - (void) submit_change:(struct tbuf *)change;
 - (void) configure_wal_writer;
 - (struct tbuf *) wal_pack_prepare;
-- (void) wal_pack_append:(struct tbuf *)m
-		    data:(void *)data
-		     len:(u32)data_len
-		     tag:(u16)tag
-		  cookie:(u64)cookie;
+- (u32) wal_pack_append:(struct tbuf *)m
+		   data:(void *)data
+		    len:(u32)data_len
+		    tag:(u16)tag
+		 cookie:(u64)cookie;
 - (int) wal_pack_submit:(struct tbuf *)m;
 - (void) snapshot_save:(void (*)(XLog *))callback;
 @end
