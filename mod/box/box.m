@@ -1376,6 +1376,10 @@ info(struct tbuf *out)
 			tbuf_printf(out, "    - { index: %i, slots: %i, bytes: %zi }" CRLF,
 				    index->n, [index slots], [index bytes]);
 	}
+
+	service_info(out, box_primary);
+	if (box_secondary != NULL)
+		service_info(out, box_secondary);
 }
 
 

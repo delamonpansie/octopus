@@ -232,32 +232,6 @@ accept_client(int fd, void *data)
 	clnt->state = READING;
 }
 
-static void
-logger(va_list ap)
-{
-	struct service *service = va_arg(ap, struct service *);
-	struct conn *c;
-	struct netmsg *m;
-
-	for (;;) {
-		fiber_sleep(2);
-
-		if (LIST_EMPTY(&service->conn))
-		    continue;
-
-		say_info("%s", service->name);
-		LIST_FOREACH(c, &service->conn, link) {
-			say_info("    conn:%p peer:%s ", c, conn_peer_name(c));
-			say_info("    fd:%i state:%i %s%s", c->fd, c->state,
-				 ev_is_active(&c->in) ? "in" : "",
-				 ev_is_active(&c->out) ? "out" : "");
-			say_info("        rbuf:%i", tbuf_len(c->rbuf));
-			TAILQ_FOREACH(m, &c->out_messages, link)
-				say_info("        netmsg offt:%i count:%i", m->offset, m->count);
-		}
-	}
-}
-
 struct service *
 iproto_service(u16 port, void (*on_bind)(int fd))
 {
@@ -278,9 +252,6 @@ iproto_service(u16 port, void (*on_bind)(int fd))
 
 	ev_prepare_init(&service->wakeup, (void *)wakeup_workers);
 	ev_prepare_start(&service->wakeup);
-
-	if (getenv("NET_IO_LOGGER"))
-		fiber_create("net_io_logger", logger, service);
 
 	return service;
 }

@@ -122,3 +122,4 @@ void udp_server(va_list ap);
 
 int atosin(const char *orig, struct sockaddr_in *addr);
 const char *sintoa(const struct sockaddr_in *addr);
+void service_info(struct tbuf *out, struct service *service);

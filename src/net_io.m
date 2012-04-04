@@ -780,3 +780,24 @@ sintoa(const struct sockaddr_in *addr)
 		 inet_ntoa(addr->sin_addr), ntohs(addr->sin_port));
 	return buf;
 }
+
+void
+service_info(struct tbuf *out, struct service *service)
+{
+	struct conn *c;
+	struct netmsg *m;
+
+	tbuf_printf(out, "%s:" CRLF, service->name);
+	LIST_FOREACH(c, &service->conn, link) {
+		tbuf_printf(out, "    - peer: %s" CRLF, conn_peer_name(c));
+		tbuf_printf(out, "      fd: %i" CRLF, c->fd);
+		tbuf_printf(out, "      state: %i,%s%s" CRLF, c->state,
+			    ev_is_active(&c->in) ? "in" : "",
+			    ev_is_active(&c->out) ? "out" : "");
+		tbuf_printf(out, "      rbuf: %i" CRLF, tbuf_len(c->rbuf));
+		if (!TAILQ_EMPTY(&c->out_messages))
+			tbuf_printf(out, "      out_messages:" CRLF);
+		TAILQ_FOREACH(m, &c->out_messages, link)
+			tbuf_printf(out, "      - { offt: %i, count: %i }" CRLF, m->offset, m->count);
+	}
+}
