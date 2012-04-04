@@ -143,10 +143,10 @@ DEFINE_METHODS(i32)
 find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
 {
         if (key_cardinality != 1)
-		@throw [[IndexError palloc] init:"hashed key has cardinality != 1"];
+		index_raise("hashed key has cardinality != 1");
 	u32 key_size = read_varint32(key_data);
 	if (key_size != sizeof(type))
-		@throw [[IndexError palloc] init:"key is not i32"];
+		index_raise("key is not i32");
 
 	i32 num = read_u32(key_data);
 
@@ -168,10 +168,10 @@ DEFINE_METHODS(i64)
 find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
 {
         if (key_cardinality != 1)
-                @throw [[IndexError palloc] init:"hashed key has cardinality != 1"];
+                index_raise("hashed key has cardinality != 1");
 	u32 key_size = read_varint32(key_data);
 	if (key_size != sizeof(i64))
-		@throw [[IndexError palloc] init:"key is not i64"];
+		index_raise("key is not i64");
 
 	i64 num = read_u64(key_data);
 
@@ -193,7 +193,7 @@ DEFINE_METHODS(lstr)
 find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
 {
         if (key_cardinality != 1)
-                @throw [[IndexError palloc] init:"hashed key has cardinality != 1"];
+                index_raise("hashed key has cardinality != 1");
 
 	void *f = read_field(key_data);
         u32 k = mh_lstr_get(h, f);

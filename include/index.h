@@ -176,3 +176,8 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 
 @interface IndexError: Error
 @end
+
+#define index_raise(msg) @throw [[IndexError palloc] init_line: __LINE__ \
+							  file: __FILE__ \
+						     backtrace: NULL	 \
+							reason: (msg)]

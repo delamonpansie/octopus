@@ -43,11 +43,11 @@ box_tuple_u32_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
 	int n = (uintptr_t)arg;
 	struct box_tuple *tuple = box_tuple(obj);
 	if (tuple->cardinality <= n)
-		@throw [[IndexError palloc] init:"cardinality too small"];
+		index_raise("cardinality too small");
 	void *f = tuple_field(tuple, n);
 	u32 size = LOAD_VARINT32(f);
 	if (size != sizeof(u32))
-		@throw [[IndexError palloc] init:"expected u32"];
+		index_raise("expected u32");
 
 	node->obj = obj;
 	memcpy(node->key, f, sizeof(u32));
@@ -58,11 +58,11 @@ box_tuple_u64_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
 	int n = (uintptr_t)arg;
 	struct box_tuple *tuple = box_tuple(obj);
 	if (tuple->cardinality <= n)
-		@throw [[IndexError palloc] init:"cardinality too small"];
+		index_raise("cardinality too small");
 	void *f = tuple_field(tuple, n);
 	u32 size = LOAD_VARINT32(f);
 	if (size != sizeof(u64))
-		@throw [[IndexError palloc] init:"expected u64"];
+		index_raise("expected u64");
 
 	node->obj = obj;
 	memcpy(node->key, f, sizeof(u64));
@@ -73,7 +73,7 @@ box_tuple_lstr_dtor(struct tnt_object *obj, struct index_node *node, void  *arg)
 	int n = (uintptr_t)arg;
 	struct box_tuple *tuple = box_tuple(obj);
 	if (tuple->cardinality <= n)
-		@throw [[IndexError palloc] init:"cardinality too small"];
+		index_raise("cardinality too small");
 	void *f = tuple_field(tuple, n);
 	node->obj = obj;
 	memcpy(node->key, &f, sizeof(void *));
@@ -87,16 +87,16 @@ box_tuple_gen_dtor(struct tnt_object *obj, struct index_node *node_, void *arg)
 	void *tuple_data = tuple->data;
 
 	if (tuple->cardinality < desc->min_tuple_cardinality)
-		@throw [[IndexError palloc] init:"tuple cardinality too small"];
+		index_raise("tuple cardinality too small");
 
 	for (int i = 0, j = 0, n = 0; i < desc->cardinality; j++) {
 		assert(tuple_data < (void *)tuple->data + tuple->bsize);
 		u32 len = LOAD_VARINT32(tuple_data);
 		while (desc->index_field[i] == j) {
 			if (desc->type[i] == NUM && len != sizeof(u32))
-				@throw [[IndexError palloc] init:"key size mismatch, expected u32"];
+				index_raise("key size mismatch, expected u32");
 			else if (desc->type[i] == NUM64 && len != sizeof(u64))
-				@throw [[IndexError palloc] init:"key size mismatch, expected u64"];
+				index_raise("key size mismatch, expected u64");
 
 			struct field *f = &node->key[n++];
 

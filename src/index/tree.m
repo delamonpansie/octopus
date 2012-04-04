@@ -191,11 +191,11 @@ i32_init_pattern(struct tbuf *key, int cardinality,
 		break;
 	case 1: len = read_varint32(key);
 		if (len != sizeof(u32))
-			@throw [[IndexError palloc] init:"key is not u32"];
+			index_raise("key is not u32");
 		*(u32 *)pattern->key = read_u32(key);
 		break;
 	default:
-		@throw [[IndexError palloc] init:"cardinality too big"];
+		index_raise("cardinality too big");
 	}
 }
 
@@ -252,13 +252,13 @@ i64_init_pattern(struct tbuf *key, int cardinality,
 	switch (cardinality) {
 	case 1: len = read_varint32(key);
 		if (len != sizeof(u64))
-			@throw [[IndexError palloc] init:"key is not u64"];
+			index_raise("key is not u64");
 		*(u64 *)pattern->key = read_u64(key);
 		break;
 	case 0: memcpy(pattern->key, &min, sizeof(u64));
 		break;
 	default:
-		@throw [[IndexError palloc] init:"cardinality too big"];
+		index_raise("cardinality too big");
 	}
 }
 
@@ -310,7 +310,7 @@ lstr_init_pattern(struct tbuf *key, int cardinality,
 	else if (cardinality == 0)
 		f = &empty;
 	else
-		@throw [[IndexError palloc] init:"cardinality too big"];
+		index_raise("cardinality too big");
 
 	memcpy(&pattern->key, &f, sizeof(void *));
 }
@@ -418,7 +418,7 @@ gen_init_pattern(struct tbuf *key_data, int cardinality, struct index_node *patt
 	struct gen_dtor *desc = arg;
 
 	if (cardinality > desc->cardinality)
-                @throw [[IndexError palloc] init:"cardinality too big"];
+                index_raise("cardinality too big");
 
         for (int i = 0; i < desc->cardinality; i++)
 		pattern->key[i].data_ptr = NULL;
@@ -428,9 +428,9 @@ gen_init_pattern(struct tbuf *key_data, int cardinality, struct index_node *patt
                 void *key = read_bytes(key_data, len);
 
 		if (desc->type[i] == NUM && len != sizeof(u32))
-			@throw [[IndexError palloc] init:"key size mismatch, expected u32"];
+			index_raise("key size mismatch, expected u32");
 		else if (desc->type[i] == NUM64 && len != sizeof(u64))
-			@throw [[IndexError palloc] init:"key size mismatch, expected u64"];
+			index_raise("key size mismatch, expected u64");
 
                 pattern->key[i].len = len;
 		if (len <= sizeof(pattern->key[i].data))
