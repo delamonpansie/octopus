@@ -1371,6 +1371,7 @@ info(struct tbuf *out)
 			continue;
 		tbuf_printf(out, "  - n: %i"CRLF, n);
 		tbuf_printf(out, "    objects: %i"CRLF, [object_space_registry[n].index[0] size]);
+		tbuf_printf(out, "    indexes:"CRLF);
 		foreach_index(index, &object_space_registry[n])
 			tbuf_printf(out, "    - { index: %i, slots: %i, bytes: %zi }" CRLF,
 				    index->n, [index slots], [index bytes]);
