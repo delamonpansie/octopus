@@ -44,7 +44,7 @@ function replace(n, ...)
         for k, v in pairs(tuple) do
                 table.insert(req, tofield(v))
         end
-        dispatch(13, table.concat(req))
+        return dispatch(13, table.concat(req))
 end
 
 function delete(n, key)
@@ -108,7 +108,7 @@ function update(n, key, ...)
                         table.insert(req, tofield(op[3]))
                 end
         end
-        dispatch(19, table.concat(req))
+        return dispatch(19, table.concat(req))
 end
 
 function wrap(proc_body)

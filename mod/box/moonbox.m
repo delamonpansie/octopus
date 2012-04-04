@@ -221,6 +221,10 @@ luaT_box_dispatch(struct lua_State *L)
 		box_prepare_update(&txn, &request_data);
 		txn_submit_to_storage(&txn);
 		txn_commit(&txn);
+		if (txn.obj != NULL) {
+			luaT_pushobject(L, txn.obj);
+			return 1;
+		}
 	}
 	@catch (Error *e) {
 		txn_abort(&txn);
@@ -230,7 +234,6 @@ luaT_box_dispatch(struct lua_State *L)
 	@finally {
 		txn_cleanup(&txn);
 	}
-
 	return 0;
 }
 
