@@ -705,13 +705,13 @@ confirm_write
 		say_syserror("can't flush wal");
 
 	off_t tail = ftello(fd);
-	say_debug("initial offset:%zi tail:%zi", offset, tail);
+	say_debug("initial offset:%llu tail:%lli", (long long)offset, (long long)tail);
 	for (int i = 0; i < wet_rows; i++) {
 		if (wet_rows_offset[i] > tail) {
-			say_error("failed to sync %zi rows", wet_rows - i);
+			say_error("failed to sync %lli rows", (long long)(wet_rows - i));
 			break;
 		}
-		say_debug("confirm offset %zi", wet_rows_offset[i]);
+		say_debug("confirm offset %lli", (long long)wet_rows_offset[i]);
 		next_lsn++;
 		rows++;
 	}
