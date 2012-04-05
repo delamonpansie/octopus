@@ -101,9 +101,16 @@ fail(struct tbuf *out, struct tbuf *err)
 static const char *
 tbuf_reader(lua_State *L __attribute__((unused)), void *data, size_t *size)
 {
-	struct tbuf *code = data;
-	*size = tbuf_len(code);
-	return tbuf_peek(code, tbuf_len(code));
+	static void *ptr;
+	if (ptr != data) {
+		ptr = data;
+		*size = 7;
+		return "return ";
+	} else {
+		struct tbuf *code = data;
+		*size = tbuf_len(code);
+		return tbuf_peek(code, tbuf_len(code));
+	}
 }
 
 void
@@ -118,10 +125,14 @@ exec_lua(lua_State *L, struct tbuf *code, struct tbuf *out)
 		return;
 	}
 
-	if (lua_pcall(L, 0, 0, 0)) {
+	if (lua_pcall(L, 0, 1, 0) != 0) {
 		tbuf_printf(out, "error: pcall: %s", lua_tostring(L, -1));
 		return;
 	}
+
+	size_t len;
+	const char *str = lua_tolstring(L, -1, &len);
+	tbuf_append(out, str, len);
 }
 
 static int
