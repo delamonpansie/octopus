@@ -162,11 +162,6 @@ delete(void *key)
 	}
 }
 
-static struct tnt_object *
-find(void *key)
-{
-	return [memcached_index find_key:key with_cardinalty:1];
-}
 
 static struct meta *
 obj_meta(struct tnt_object *obj)
@@ -299,7 +294,7 @@ memcached_dispatch(struct conn *c)
 
 		action add {
 			key = read_field(keys);
-			struct tnt_object *obj = find(key);
+			struct tnt_object *obj = [memcached_index find:key];
 			if (obj != NULL && !expired(obj))
 				ADD_IOV_LITERAL(&m, "NOT_STORED\r\n");
 			else
@@ -308,7 +303,7 @@ memcached_dispatch(struct conn *c)
 
 		action replace {
 			key = read_field(keys);
-			struct tnt_object *obj = find(key);
+			struct tnt_object *obj = [memcached_index find:key];
 			if (obj == NULL || expired(obj))
 				ADD_IOV_LITERAL(&m, "NOT_STORED\r\n");
 			else
@@ -317,7 +312,7 @@ memcached_dispatch(struct conn *c)
 
 		action cas {
 			key = read_field(keys);
-			struct tnt_object *obj = find(key);
+			struct tnt_object *obj = [memcached_index find:key];
 			if (obj == NULL || expired(obj))
 				ADD_IOV_LITERAL(&m, "NOT_FOUND\r\n");
 			else if (obj_meta(obj)->cas != cas)
@@ -332,7 +327,7 @@ memcached_dispatch(struct conn *c)
 			u32 value_len;
 
 			key = read_field(keys);
-			struct tnt_object *obj = find(key);
+			struct tnt_object *obj = [memcached_index find:key];
 			if (obj == NULL) {
 				ADD_IOV_LITERAL(&m, "NOT_STORED\r\n");
 			} else {
@@ -362,7 +357,7 @@ memcached_dispatch(struct conn *c)
 			u64 value;
 
 			key = read_field(keys);
-			struct tnt_object *obj = find(key);
+			struct tnt_object *obj = [memcached_index find:key];
 			if (obj == NULL || expired(obj)) {
 				ADD_IOV_LITERAL(&m, "NOT_FOUND\r\n");
 			} else {
@@ -409,7 +404,7 @@ memcached_dispatch(struct conn *c)
 
 		action delete {
 			key = read_field(keys);
-			struct tnt_object *obj = find(key);
+			struct tnt_object *obj = [memcached_index find:key];
 			if (obj == NULL || expired(obj)) {
 				ADD_IOV_LITERAL(&m, "NOT_FOUND\r\n");
 			} else {
@@ -441,7 +436,7 @@ memcached_dispatch(struct conn *c)
 				u32 _l;
 
 				key = read_field(keys);
-				obj = find(key);
+				obj = [memcached_index find:key];
 				key_len = LOAD_VARINT32(key);
 
 				if (obj == NULL) {
