@@ -590,7 +590,6 @@ memcached_dispatch(struct conn *c)
 
 	        main := set | cas | add | replace | append | prepend |
 			get | gets | delete | incr | decr | stats | flush_all | quit;
-	        #main := set;
 		write init;
 		write exec;
 	}%%
