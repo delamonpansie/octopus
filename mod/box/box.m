@@ -212,7 +212,7 @@ prepare_replace(struct box_txn *txn, size_t cardinality, struct tbuf *data)
 	memcpy(tuple->data, data->data, tbuf_len(data));
 	tbuf_ltrim(data, tbuf_len(data));
 
-	txn->old_obj = (void *)[txn->index find_by_obj:txn->obj];
+	txn->old_obj = [txn->index find_by_obj:txn->obj];
 	if (txn->old_obj != NULL)
 		object_ref(txn->old_obj, +1);
 
