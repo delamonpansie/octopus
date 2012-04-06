@@ -125,11 +125,11 @@ store(void *key, u32 exptime, u32 flags, u32 bytes, u8 *data)
 			  key_len, key_len, (u8 *)key, exptime, flags,
 			  cas, bytes);
 
-		return 1;
+		return 0;
 	}
 	@catch (id e) {
 		txn_abort(&txn);
-		return 0;
+		return 1;
 	}
 	@finally {
 		txn_cleanup(&txn);
@@ -153,11 +153,11 @@ delete(void *key)
 		box_prepare_update(&txn, req);
 		txn_submit_to_storage(&txn);
 		txn_commit(&txn);
-		return 1;
+		return 0;
 	}
 	@catch (id e) {
 		txn_abort(&txn);
-		return 0;
+		return 1;
 	}
 	@finally {
 		txn_cleanup(&txn);
@@ -281,7 +281,7 @@ memcached_dispatch(struct conn *c)
 	if (bytes > (1<<20)) {						\
 		ADD_IOV_LITERAL(&m, "SERVER_ERROR object too large for cache\r\n"); \
 	} else {							\
-		if (store(key, exptime, flags, bytes, data)) {	\
+		if (store(key, exptime, flags, bytes, data) == 0) {	\
 			stats.total_items++;				\
 			ADD_IOV_LITERAL(&m, "STORED\r\n");		\
 		} else {						\
@@ -417,8 +417,6 @@ memcached_dispatch(struct conn *c)
 					ADD_IOV_LITERAL(&m, "DELETED\r\n");
 				else {
 					ADD_IOV_LITERAL(&m, "SERVER_ERROR ");
-					net_add_iov(&m, error_codes_desc_strs[ret_code],
-						    strlen(error_codes_desc_strs[ret_code]));
 					net_add_iov(&m, "\r\n", 2);
 				}
 			}
