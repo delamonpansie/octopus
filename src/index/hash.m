@@ -160,6 +160,23 @@ find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
 	return NULL;
 }
 
+- (struct tnt_object *)
+find:(void *)key
+{
+	u32 key_size = ((u8 *)key)[0];
+	if (key_size != sizeof(i32))
+		index_raise("key is not i32");
+
+	i32 num = ((i32 *)(key + 1))[0];
+	u32 k = mh_i32_get(h, num);
+	if (k != mh_end(h)) {
+		struct tnt_object *r = mh_i32_value(h, k);
+		if (likely(!ghost(r)))
+			return r;
+	}
+	return NULL;
+}
+
 @end
 
 @implementation Int64Hash
@@ -185,6 +202,23 @@ find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
 	return NULL;
 }
 
+- (struct tnt_object *)
+find:(void *)key
+{
+	u32 key_size = ((u8 *)key)[0];
+	if (key_size != sizeof(i64))
+		index_raise("key is not i64");
+
+	i64 num = ((i64 *)(key + 1))[0];
+	u32 k = mh_i64_get(h, num);
+	if (k != mh_end(h)) {
+		struct tnt_object *r = mh_i64_value(h, k);
+		if (likely(!ghost(r)))
+			return r;
+	}
+	return NULL;
+}
+
 @end
 
 @implementation StringHash
@@ -202,6 +236,18 @@ find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
 		struct tnt_object *r = mh_lstr_value(h, k);
 		if (likely(!ghost(r)))
 		    return r;
+	}
+	return NULL;
+}
+
+- (struct tnt_object *)
+find:(void *)key
+{
+	u32 k = mh_lstr_get(h, key);
+	if (k != mh_end(h)) {
+		struct tnt_object *r = mh_lstr_value(h, k);
+		if (likely(!ghost(r)))
+			return r;
 	}
 	return NULL;
 }

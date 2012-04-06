@@ -119,6 +119,7 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 @protocol HashIndex <BasicIndex>
 - (void) resize:(u32)buckets;
 - (struct tnt_object *) get:(u32)i;
+- (struct tnt_object *) find:(void *)key;
 @end
 
 @interface Hash: Index {
