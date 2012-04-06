@@ -271,6 +271,8 @@ memcached_dispatch(struct conn *c)
 	say_debug("memcached_dispatch '%.*s'", MIN((int)(pe - p), 40) , p);
 
 	struct netmsg *m = netmsg_tail(&c->out_messages, fiber->pool);
+	struct netmsg_mark mark;
+	netmsg_getmark(m, &mark);
 
 #define STORE() ({							\
 	stats.cmd_set++;						\
@@ -613,8 +615,8 @@ memcached_dispatch(struct conn *c)
 	}
 
 	if (noreply) {
-		assert(false);
-		// reset msg to original state
+		netmsg_rewind(&m, &mark);
+		m->count--; /* FIXME: wtf ? */
 	}
 
 	return 1;
