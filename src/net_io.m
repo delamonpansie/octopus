@@ -250,7 +250,7 @@ restart:
 	struct iovec *iov = m->iov + m->offset;
 	int iov_cnt = m->count - m->offset;
 	ssize_t r = 0;
-	do {
+	while (iov_cnt > 0) {
 		r = writev(c->fd, iov, MIN(iov_cnt, IOV_MAX));
 		if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
 				break;
@@ -269,7 +269,7 @@ restart:
 				iov_cnt--;
 			}
 		}
-	} while (iov_cnt > 0);
+	};
 
 #ifdef NET_IO_TIMESTAMPS
 	for (int i = m->offset; i < m->count - iov_cnt; i++)
