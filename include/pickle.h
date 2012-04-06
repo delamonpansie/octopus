@@ -46,11 +46,11 @@ void *read_bytes(struct tbuf *buf, u32 data_len);
 u32 pick_u32(void *data, void **rest);
 
 size_t varint32_sizeof(u32);
-u32 load_varint32(void **data);
+u32 load_varint32(u8 **data);
 
 #define LOAD_VARINT32(data) ({		\
 	u8* __load_ptr = (data);	\
 	(*__load_ptr & 0x80) == 0 ?	\
 	((data)++, *__load_ptr) :	\
-	load_varint32(&(data));		\
+	load_varint32((u8 **)&(data));	\
 })
