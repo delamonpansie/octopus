@@ -428,7 +428,6 @@ memcached_dispatch(struct conn *c)
 		action get {
 			stat_collect(stat_base, MEMC_GET, 1);
 			stats.cmd_get++;
-			say_debug("ensuring space for %zu keys", keys_count);
 			while (keys_count-- > 0) {
 				struct tnt_object *obj;
 				struct box_tuple *tuple;
