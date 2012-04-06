@@ -111,16 +111,17 @@ store(void *key, u32 exptime, u32 flags, u32 bytes, u8 *data)
 	write_varint32(req, bytes);
 	tbuf_append(req, data, bytes);
 
-	int key_len = LOAD_VARINT32(key);
-	say_debug("memcached/store key:(%i)'%.*s' exptime:%"PRIu32" flags:%"PRIu32" cas:%"PRIu64,
-		  key_len, key_len, (u8 *)key, exptime, flags, cas);
-
 	struct box_txn txn;
 	@try {
 		struct iproto_header r = { .msg_code = INSERT };
 		txn_init(&r, &txn, NULL);
 		box_prepare_update(&txn, req);
 		txn_commit(&txn);
+
+		int key_len = LOAD_VARINT32(key);
+		say_debug("memcached/store key:(%i)'%.*s' exptime:%"PRIu32" flags:%"PRIu32" cas:%"PRIu64,
+			  key_len, key_len, (u8 *)key, exptime, flags, cas);
+
 		return 1;
 	}
 	@catch (id e) {
