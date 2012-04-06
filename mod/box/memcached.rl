@@ -455,7 +455,7 @@ memcached_dispatch(struct conn *c)
 
 				/* metainfo */
 				_l = LOAD_VARINT32(field);
-				m = field;
+				meta = field;
 				field += _l;
 
 				/* suffix */
