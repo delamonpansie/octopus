@@ -600,6 +600,7 @@ pull_wal(Recovery *r, struct conn *c, u32 version)
 				break;
 			}
 
+			rows[pack_rows++] = row;
 			if ([r wal_pack_append:pack
 					  data:row_v12(row)->data
 					   len:row_v12(row)->len
