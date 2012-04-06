@@ -201,21 +201,21 @@ varint32_sizeof(u32 value)
 }
 
 u32
-load_varint32(u8 **data)
+load_varint32(void **data)
 {
 	unsigned char b;
 	u32 r = 0;
 
-	b = *(*data)++;
+	b = *(u8 *)(*data)++;
 	r = b & 0x7f;
 	if ((b & 0x80) != 0) {
-		b = *(*data)++;
+		b = *(u8 *)(*data)++;
 		r = (r << 7) | (b & 0x7f);
 		if ((b & 0x80) != 0) {
-			b = *(*data)++;
+			b = *(u8 *)(*data)++;
 			r = (r << 7) | (b & 0x7f);
 			if ((b & 0x80) != 0) {
-				b = *(*data)++;
+				b = *(u8 *)(*data)++;
 				r = (r << 7) | (b & 0x7f);
 				if ((b & 0x80) != 0)
 					assert(0);
