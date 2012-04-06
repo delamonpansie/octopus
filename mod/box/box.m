@@ -446,10 +446,12 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 
 			if (field->pool == NULL) {
 				void *tmp = field->data + field->size;
-				field->data = palloc(fiber->pool, MAX(arg_size, field->len));
+				field->size = MAX(arg_size, field->len);
+				if (field->size == 0)
+					field->size = 8;
+				field->data = palloc(fiber->pool, field->size);
 				memcpy(field->data, tmp, field->len);
 				field->pool = fiber->pool;
-				field->size = field->len;
 			}
 		}
 

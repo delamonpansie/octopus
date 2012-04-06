@@ -69,3 +69,15 @@ Failed with: {code: 0x202, message: 'update of field beyond tuple cardinality'}
 # box.select(10)
 [["\n\000\000\000", "boo"]]
 
+# box.insert([10, "foo"])
+2
+
+# box.update_fields(10, [1, :set, ""])
+1
+
+# box.update_fields(10, [1, :set, ""])
+1
+
+# box.select(10)
+[["\n\000\000\000", ""]]
+
