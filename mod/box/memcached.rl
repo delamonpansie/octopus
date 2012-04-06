@@ -120,8 +120,10 @@ store(void *key, u32 exptime, u32 flags, u32 bytes, u8 *data)
 		txn_commit(&txn);
 
 		int key_len = LOAD_VARINT32(key);
-		say_debug("memcached/store key:(%i)'%.*s' exptime:%"PRIu32" flags:%"PRIu32" cas:%"PRIu64,
-			  key_len, key_len, (u8 *)key, exptime, flags, cas);
+		say_debug("memcached/store key:(%i)'%.*s' exptime:%"PRIu32" flags:%"PRIu32
+			  " cas:%"PRIu64 " bytes:%i",
+			  key_len, key_len, (u8 *)key, exptime, flags,
+			  cas, bytes);
 
 		return 1;
 	}
