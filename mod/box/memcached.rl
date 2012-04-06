@@ -724,6 +724,9 @@ memcached_handler(va_list ap)
 			}
 		}
 	}
+	@catch (Error *e) {
+		say_debug("got error %s", e->reason);
+	}
 	@finally {
 		palloc_unregister_gc_root(fiber->pool, c);
 		conn_close(c);
@@ -748,6 +751,9 @@ memcached_init()
 		     cfg.primary_port, memcached_accept, memcached_bound_to_primary, NULL);
 
 	say_info("memcached initialized");
+
+	int n = cfg.memcached_object_space > 0 ? cfg.memcached_object_space : 23;
+	memcached_index = (StringHash *)object_space_registry[n].index[0];
 }
 
 /*
