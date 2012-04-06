@@ -116,6 +116,7 @@ store(void *key, u32 exptime, u32 flags, u32 bytes, u8 *data)
 		struct iproto_header r = { .msg_code = INSERT };
 		txn_init(&r, &txn, NULL);
 		box_prepare_update(&txn, req);
+		txn_submit_to_storage(&txn);
 		txn_commit(&txn);
 
 		int key_len = LOAD_VARINT32(key);
