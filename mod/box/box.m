@@ -1379,7 +1379,8 @@ info(struct tbuf *out)
 				    index->n, [index slots], [index bytes]);
 	}
 
-	service_info(out, box_primary);
+	if (box_primary != NULL)
+		service_info(out, box_primary);
 	if (box_secondary != NULL)
 		service_info(out, box_secondary);
 }
