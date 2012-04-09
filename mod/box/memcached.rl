@@ -113,6 +113,7 @@ store(void *key, u32 exptime, u32 flags, u32 bytes, u8 *data)
 
 	struct box_txn txn;
 	@try {
+		ev_tstamp start = ev_now(), stop;
 		struct iproto_header r = { .msg_code = INSERT };
 		txn_init(&r, &txn, NULL);
 		box_prepare_update(&txn, req);
@@ -124,6 +125,10 @@ store(void *key, u32 exptime, u32 flags, u32 bytes, u8 *data)
 			  " cas:%"PRIu64 " bytes:%i",
 			  key_len, key_len, (u8 *)key, exptime, flags,
 			  cas, bytes);
+
+		stop = ev_now();
+		if (stop - start > cfg.too_long_threshold)
+			say_warn("too long store: %.3f sec", stop - start);
 
 		return 0;
 	}
