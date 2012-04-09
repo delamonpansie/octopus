@@ -1,7 +1,7 @@
 #include <stdarg.h>
 
 extern char *cfg_err;
-extern int cfg_err_len;
+extern int cfg_err_len, cfg_err_offt;
 
 #include <tarantool.h>
 #include <util.h>
@@ -15,12 +15,16 @@ out_warning(ConfettyError v __attribute__((unused)), char *format, ...)
 	if (cfg_err_len < 0)
 		return;
 
-	cfg_err_len -= snprintf(cfg_err, cfg_err_len, "\r\n - ");
+	int r = snprintf(cfg_err + cfg_err_offt, cfg_err_len, "\r\n - ");
+	cfg_err_len -= r;
+	cfg_err_offt += r;
 
 	if (cfg_err_len < 0)
 		return;
 
 	va_start(ap, format);
-	cfg_err_len -= vsnprintf(cfg_err, cfg_err_len, format, ap);
+	r = vsnprintf(cfg_err + cfg_err_offt, cfg_err_len, format, ap);
+	cfg_err_len -= r;
+	cfg_err_offt += r;
 	va_end(ap);
 }

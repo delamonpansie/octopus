@@ -71,7 +71,7 @@ static void *opt = NULL;
 lua_State *root_L;
 
 char cfg_err_buf[1024], *cfg_err;
-int cfg_err_len;
+int cfg_err_len, cfg_err_offt;
 struct tarantool_cfg cfg;
 char *custom_proc_title;
 
@@ -85,6 +85,7 @@ reset_cfg_err()
 {
 	cfg_err = cfg_err_buf;
 	*cfg_err = 0;
+	cfg_err_offt = 0;
 	cfg_err_len = sizeof(cfg_err_buf);
 }
 
