@@ -24,7 +24,7 @@
  * SUCH DAMAGE.
  */
 
-#include <config.h>
+#import <util.h>
 #include <stdbool.h>
 
 #import <say.h>

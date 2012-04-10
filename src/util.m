@@ -24,9 +24,8 @@
  * SUCH DAMAGE.
  */
 
-#import <config.h>
-#import <fiber.h>
 #import <util.h>
+#import <fiber.h>
 
 #include <stdarg.h>
 #include <stdbool.h>

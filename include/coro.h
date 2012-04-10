@@ -24,8 +24,6 @@
  * SUCH DAMAGE.
  */
 
-#import <config.h>
-
 #include <stdlib.h>
 #include <third_party/libcoro/coro.h>
 

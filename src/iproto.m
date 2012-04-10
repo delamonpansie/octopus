@@ -24,7 +24,6 @@
  * SUCH DAMAGE.
  */
 
-#import <config.h>
 #import <util.h>
 #import <palloc.h>
 #import <fiber.h>

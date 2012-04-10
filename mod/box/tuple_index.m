@@ -24,14 +24,14 @@
  * SUCH DAMAGE.
  */
 
-#include <config.h>
-#include <stdbool.h>
-
+#import <util.h>
 #import <say.h>
 #import <tbuf.h>
 #import <fiber.h>
 #import <pickle.h>
 #import <index.h>
+
+#include <stdbool.h>
 
 #import <mod/box/box.h>
 #import <cfg/tarantool_cfg.h>

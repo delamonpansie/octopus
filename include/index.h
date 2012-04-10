@@ -24,10 +24,11 @@
  * SUCH DAMAGE.
  */
 
-#include <config.h>
+#import <util.h>
+#import <object.h>
+
 #include <stdbool.h>
 
-#import <object.h>
 
 struct tnt_object;
 struct index_node {

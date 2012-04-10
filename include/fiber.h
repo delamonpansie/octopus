@@ -24,13 +24,12 @@
  * SUCH DAMAGE.
  */
 
-#import <config.h>
+#import <util.h>
 #import <tarantool_ev.h>
 #import <palloc.h>
 #import <tbuf.h>
 #import <say.h>
 #import <coro.h>
-#import <util.h>
 
 #include <third_party/luajit/src/lua.h>
 #include <third_party/luajit/src/lauxlib.h>

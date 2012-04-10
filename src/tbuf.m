@@ -24,11 +24,10 @@
  * SUCH DAMAGE.
  */
 
-#import <config.h>
+#import <util.h>
 #import <palloc.h>
 #import <pickle.h>
 #import <tbuf.h>
-#import <util.h>
 #import <fiber.h> // FIXME: remove dependency
 
 #include <third_party/luajit/src/lua.h>

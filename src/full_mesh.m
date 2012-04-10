@@ -24,7 +24,7 @@
  * SUCH DAMAGE.
  */
 
-#import <config.h>
+#import <util.h>
 #import <assoc.h>
 #import <net_io.h>
 #import <palloc.h>

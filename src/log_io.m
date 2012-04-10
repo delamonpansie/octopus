@@ -24,7 +24,6 @@
  * SUCH DAMAGE.
  */
 
-#import <config.h>
 #import <util.h>
 #import <fiber.h>
 #import <log_io.h>

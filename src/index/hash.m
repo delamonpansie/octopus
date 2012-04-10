@@ -24,9 +24,7 @@
  * SUCH DAMAGE.
  */
 
-#include <config.h>
-#include <alloca.h>
-
+#import <util.h>
 #import <fiber.h>
 #import <iproto.h>
 #import <say.h>

@@ -24,7 +24,7 @@
  * SUCH DAMAGE.
  */
 
-#include <config.h>
+#import <util.h>
 #import <fiber.h>
 #import <say.h>
 #import <assoc.h>

@@ -24,7 +24,7 @@
  * SUCH DAMAGE.
  */
 
-#import <config.h>
+#import <util.h>
 #import <admin.h>
 #import <fiber.h>
 #import <iproto.h>
@@ -35,7 +35,6 @@
 #import <net_io.h>
 #import <stat.h>
 #import <tarantool.h>
-#import <util.h>
 #import <index.h>
 #import <tarantool_version.h>
 

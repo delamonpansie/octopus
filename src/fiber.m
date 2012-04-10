@@ -24,7 +24,6 @@
  * SUCH DAMAGE.
  */
 
-#import <config.h>
 #import <util.h>
 #import <palloc.h>
 #import <salloc.h>
@@ -53,6 +52,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <sysexits.h>
 

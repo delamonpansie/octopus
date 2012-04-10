@@ -24,11 +24,10 @@
  * SUCH DAMAGE.
  */
 
-#import <config.h>
+#import <util.h>
 #import <fiber.h>
 #import <tarantool_ev.h>
 #import <tbuf.h>
-#import <util.h>
 
 #include <objc/Object.h>
 

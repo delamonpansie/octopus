@@ -24,10 +24,9 @@
  * SUCH DAMAGE.
  */
 
-#import <config.h>
+#import <util.h>
 #import <object.h>
 #import <tbuf.h>
-#import <util.h>
 
 #include <stdint.h>
 

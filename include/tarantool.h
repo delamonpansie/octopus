@@ -24,9 +24,8 @@
  * SUCH DAMAGE.
  */
 
-#import <config.h>
-#import <tbuf.h>
 #import <util.h>
+#import <tbuf.h>
 #import <cfg/tarantool_cfg.h>
 
 #include <stdbool.h>

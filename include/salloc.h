@@ -24,7 +24,7 @@
  * SUCH DAMAGE.
  */
 
-#import <config.h>
+#import <util.h>
 #import <tbuf.h>
 
 #include <stddef.h>

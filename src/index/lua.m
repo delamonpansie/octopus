@@ -26,6 +26,7 @@
 
 const char *indexlib_name = "Tarantool.index";
 
+#import <util.h>
 #import <fiber.h>
 #import <index.h>
 #import <pickle.h>

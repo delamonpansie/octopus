@@ -24,7 +24,6 @@
  * SUCH DAMAGE.
  */
 
-#import <config.h>
 #import <util.h>
 
 #include <third_party/luajit/src/lua.h>

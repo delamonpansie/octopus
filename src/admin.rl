@@ -24,7 +24,7 @@
  * SUCH DAMAGE.
  */
 
-#import <config.h>
+#import <util.h>
 #import <fiber.h>
 #import <palloc.h>
 #import <salloc.h>
@@ -32,7 +32,6 @@
 #import <stat.h>
 #import <tarantool.h>
 #import <tbuf.h>
-#import <util.h>
 #import <net_io.h>
 
 #include <third_party/luajit/src/lua.h>

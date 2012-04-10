@@ -25,10 +25,10 @@
  */
 
 
+#import <util.h>
 #import <fiber.h>
 #import <object.h>
 #import <palloc.h>
-#import <util.h>
 
 @implementation Object (Palloc)
 + (id)

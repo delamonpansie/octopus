@@ -24,7 +24,14 @@
  * SUCH DAMAGE.
  */
 
-#include <config.h>
+#import <util.h>
+#import <fiber.h>
+#import <say.h>
+#import <pickle.h>
+#import <assoc.h>
+#import <net_io.h>
+#import <index.h>
+
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -33,13 +40,6 @@
 #include <third_party/luajit/src/lua.h>
 #include <third_party/luajit/src/lualib.h>
 #include <third_party/luajit/src/lauxlib.h>
-
-#import <fiber.h>
-#import <say.h>
-#import <pickle.h>
-#import <assoc.h>
-#import <net_io.h>
-#import <index.h>
 
 #import <mod/box/box.h>
 #import <mod/box/moonbox.h>
