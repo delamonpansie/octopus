@@ -1,6 +1,6 @@
 /*
 ** State and stack handling.
-** Copyright (C) 2005-2011 Mike Pall. See Copyright Notice in luajit.h
+** Copyright (C) 2005-2012 Mike Pall. See Copyright Notice in luajit.h
 **
 ** Portions taken verbatim or adapted from the Lua interpreter.
 ** Copyright (C) 1994-2008 Lua.org, PUC-Rio. See Copyright Notice in lua.h
@@ -225,8 +225,8 @@ static TValue *cpfinalize(lua_State *L, lua_CFunction dummy, void *ud)
 {
   UNUSED(dummy);
   UNUSED(ud);
-  lj_gc_finalize_udata(L);
   lj_gc_finalize_cdata(L);
+  lj_gc_finalize_udata(L);
   /* Frame pop omitted. */
   return NULL;
 }
