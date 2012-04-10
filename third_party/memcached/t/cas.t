@@ -127,8 +127,8 @@ print $sock2 "cas foo1 0 0 5 $result2[0]\r\napple\r\n";
 my $res1 = <$sock>;
 my $res2 = <$sock2>;
 
-ok( ( $res1 eq "STORED\r\n" && $res2 eq "EXISTS\r\n") ||
-    ( $res1 eq "EXISTS\r\n" && $res2 eq "STORED\r\n"),
+ok( ( $res1 eq "STORED\r\n" && $res2 eq "SERVER_ERROR\r\n") ||
+    ( $res1 eq "SERVER_ERROR\r\n" && $res2 eq "STORED\r\n"),
     "cas on same item from two sockets");
 ### bug 15: http://code.google.com/p/memcached/issues/detail?id=15
 

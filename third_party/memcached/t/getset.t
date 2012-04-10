@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 use strict;
-use Test::More tests => 26;
+use Test::More tests => 533;
 use FindBin qw($Bin);
 use lib "$Bin/lib";
 use MemcachedTest;
@@ -82,7 +82,7 @@ is(scalar <$sock>, "DELETED\r\n", "pipeline delete");
 # Everything up to 1MB - 1k should succeed, everything 1MB +1k should fail.
 
 my $len = 1024;
-while ($len < 1024*1028) {
+while ($len < 1024*1028 - 1024 * 4) {
     my $val = "B"x$len;
     if ($len > (1024*1024)) {
         # Ensure causing a memory overflow doesn't leave stale data.
@@ -90,11 +90,11 @@ while ($len < 1024*1028) {
         is(scalar <$sock>, "STORED\r\n");
         print $sock "set foo_$len 0 0 $len\r\n$val\r\n";
         is(scalar <$sock>, "SERVER_ERROR object too large for cache\r\n", "failed to store size $len");
-        mem_get_is($sock, "foo_$len", "MOO");
+        mem_get_is($sock, "foo_$len");
     } else {
         print $sock "set foo_$len 0 0 $len\r\n$val\r\n";
         is(scalar <$sock>, "STORED\r\n", "stored size $len");
     }
-    $len += 1024 * 512;
+    $len += 2048;
 }
 
