@@ -19,7 +19,10 @@ basic_env.with_server do |box|
   box.ping
   box.insert [1,2,3]
   Process.kill('USR1', basic_env.pid)
-  sleep(basic_env.delay) # FIXME: ugly sleep
+  20.times do
+    sleep(basic_env.delay)
+    break if FileTest.readable?("00000000000000000002.snap")
+  end
   raise "no snapshot" unless FileTest.readable?("00000000000000000002.snap")
 end
 
