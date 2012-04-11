@@ -136,6 +136,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 
 @interface Recovery: Object {
 	struct child *wal_writer;
+
 	i64 lsn, scn;
 	ev_tstamp lag, last_update_tstamp;
 	char status[64];
@@ -185,16 +186,23 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 int wal_disk_writer(int fd, void *state);
 void snapshot_write_row(XLog *l, u16 tag, struct tbuf *row);
 
+struct wal_pack {
+	struct netmsg *netmsg;
+	u32 packet_len;
+	u32 fid;
+	u32 repeat_count;
+} __attribute__((packed));
+
 @interface Recovery (writers)
 - (void) submit_change:(struct tbuf *)change;
 - (void) configure_wal_writer;
-- (struct tbuf *) wal_pack_prepare;
-- (u32) wal_pack_append:(struct tbuf *)m
+- (struct wal_pack *) wal_pack_prepare;
+- (u32) wal_pack_append:(struct wal_pack *)pack
 		   data:(void *)data
 		    len:(u32)data_len
 		    tag:(u16)tag
 		 cookie:(u64)cookie;
-- (int) wal_pack_submit:(struct tbuf *)m;
+- (int) wal_pack_submit;
 - (void) snapshot_save:(void (*)(XLog *))callback;
 @end
 

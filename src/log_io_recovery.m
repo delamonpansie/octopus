@@ -584,7 +584,8 @@ pull_snapshot(Recovery *r, struct conn *c, u32 version)
 static void
 pull_wal(Recovery *r, struct conn *c, u32 version)
 {
-	struct tbuf *row, *special_row = NULL, *rows[WAL_PACK_MAX], *pack;
+	struct tbuf *row, *special_row = NULL, *rows[WAL_PACK_MAX];
+	struct wal_pack *pack;
 	int pack_rows = 0;
 
 	/* TODO: use designated palloc_pool */
@@ -592,7 +593,6 @@ pull_wal(Recovery *r, struct conn *c, u32 version)
 		pull(c, version);
 
 		pack_rows = 0;
-		pack = [r wal_pack_prepare];
 		while ((row = fetch_row(c, version))) {
 			if (row_v12(row)->tag != wal_tag) {
 				special_row = row;
@@ -600,16 +600,22 @@ pull_wal(Recovery *r, struct conn *c, u32 version)
 			}
 
 			rows[pack_rows++] = row;
-			if ([r wal_pack_append:pack
-					  data:row_v12(row)->data
-					   len:row_v12(row)->len
-					   tag:row_v12(row)->tag
-					cookie:row_v12(row)->cookie] == 0)
+			if (pack_rows == WAL_PACK_MAX)
 				break;
 		}
 
 		if (pack_rows > 0) {
-			int confirmed = [r wal_pack_submit:pack];
+			pack = [r wal_pack_prepare];
+			for (int i = 0; i < pack_rows; i++) {
+				row = rows[i];
+				[r wal_pack_append:pack
+					      data:row_v12(row)->data
+					       len:row_v12(row)->len
+					       tag:row_v12(row)->tag
+					    cookie:row_v12(row)->cookie];
+			}
+			int confirmed = [r wal_pack_submit];
+
 			for (int j = 0; j < confirmed; j++)
 				[r recover_row:rows[j]];
 

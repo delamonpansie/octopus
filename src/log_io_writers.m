@@ -54,20 +54,6 @@ configure_wal_writer
 	ev_io_start(&wal_writer->c->out);
 }
 
-- (void)
-submit_change:(struct tbuf *)change
-{
-	if (feeder_addr != NULL)
-		raise("replica is readonly");
-
-	struct tbuf *m;
-	/* TODO: hand coded inline ? */
-	m = [self wal_pack_prepare];
-	[self wal_pack_append:m data:change->data len:tbuf_len(change) tag:wal_tag cookie:0];
-	if ([self wal_pack_submit:m] <= 0)
-		raise("unable write wal row");
-}
-
 /* packet is : packet_len: u32
 	       fid: u32
 	       repeat_count: u32
@@ -77,50 +63,90 @@ submit_change:(struct tbuf *)change
 	       data: u8[data_len]
 */
 
-- (struct tbuf *)
+struct wal_row_header {
+	u16 tag;
+	u64 cookie;
+	u32 data_len;
+} __attribute__((packed));
+
+- (void)
+submit_change:(struct tbuf *)change
+{
+	if (feeder_addr != NULL)
+		raise("replica is readonly");
+
+	int len = sizeof(struct wal_pack) + sizeof(struct wal_row_header);
+	void *msg = palloc(fiber->pool, len);
+
+	struct wal_pack *pack = msg;
+	struct wal_row_header *h = msg + sizeof(*pack);
+
+	pack->netmsg = netmsg_tail(&wal_writer->c->out_messages, wal_writer->c->pool);
+	pack->packet_len = sizeof(*pack) - sizeof(pack->netmsg) + sizeof(*h) + tbuf_len(change);
+	pack->fid = fiber->fid;
+	pack->repeat_count = 1;
+
+	h->tag = wal_tag;
+	h->cookie = 0;
+	h->data_len = tbuf_len(change);
+
+	net_add_iov(&pack->netmsg, msg + sizeof(pack->netmsg), len - sizeof(pack->netmsg));
+	net_add_iov(&pack->netmsg, change->data, tbuf_len(change));
+
+	if ([self wal_pack_submit] <= 0)
+		raise("unable write wal row");
+}
+
+- (struct wal_pack *)
 wal_pack_prepare
 {
-	struct tbuf *m = tbuf_alloc(fiber->pool);
-	u32 repeat_count = 0;
-	u32 packet_len = sizeof(packet_len) + sizeof(fiber->fid) + sizeof(repeat_count);
+	struct wal_pack *pack = palloc(fiber->pool, sizeof(*pack));
 
-	tbuf_append(m, &packet_len, sizeof(packet_len));
-	tbuf_append(m, &fiber->fid, sizeof(fiber->fid));
-	tbuf_append(m, &repeat_count, sizeof(repeat_count));
-	return m;
+	pack->netmsg = netmsg_tail(&wal_writer->c->out_messages, wal_writer->c->pool);
+	pack->packet_len = sizeof(*pack) - sizeof(pack->netmsg);
+	pack->fid = fiber->fid;
+	pack->repeat_count = 0;
+
+	net_add_iov(&pack->netmsg, &pack->packet_len, pack->packet_len);
+
+	return pack;
 }
 
 
 - (u32)
-wal_pack_append:(struct tbuf *)m data:(void *)data len:(u32)data_len tag:(u16)tag cookie:(u64)cookie
+wal_pack_append:(struct wal_pack *)pack data:(void *)data len:(u32)data_len tag:(u16)tag cookie:(u64)cookie
 {
-	u32 *ptr = m->data;
-	ptr[0] += sizeof(tag) + sizeof(cookie) +
-		  sizeof(data_len) + data_len;
-	ptr[2] += 1;
-	assert(ptr[2] <= WAL_PACK_MAX);
+	struct wal_row_header *h = palloc(fiber->pool, sizeof(*h));
 
-	tbuf_append(m, &tag, sizeof(tag));
-	tbuf_append(m, &cookie, sizeof(cookie));
-	tbuf_append(m, &data_len, sizeof(data_len));
-	tbuf_append(m, data, data_len);
+	pack->packet_len += sizeof(*h) + data_len;
+	pack->repeat_count++;
+	assert(pack->repeat_count <= WAL_PACK_MAX);
 
-	return WAL_PACK_MAX - ptr[2];
+
+	h->tag = tag;
+	h->cookie = cookie;
+	h->data_len = data_len;
+
+	net_add_iov(&pack->netmsg, h, sizeof(*h));
+	net_add_iov(&pack->netmsg, data, data_len);
+
+	return WAL_PACK_MAX - pack->repeat_count;
 }
 
 - (int)
-wal_pack_submit:(struct tbuf *)m
+wal_pack_submit
 {
 	if (!local_writes) {
 		say_warn("local writes disabled");
 		return 0;
 	}
 
-	struct netmsg *n = netmsg_tail(&wal_writer->c->out_messages, wal_writer->c->pool);
-	net_add_iov(&n, m->data, tbuf_len(m));
 	ev_io_start(&wal_writer->c->out);
 
-	struct { i64 row_lsn; u32 rows; } __attribute__((packed)) *r = yield();
+	struct {
+		i64 row_lsn;
+		u32 rows;
+	} __attribute__((packed)) *r = yield();
 
 	say_debug("wal_write read inbox lsn=%"PRIi64" rows:%i", r->row_lsn, r->rows);
 	if (r->row_lsn == 0)
