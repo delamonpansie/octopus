@@ -287,7 +287,8 @@ wal_disk_writer(int fd, void *state)
 
 		u32 rows = [rcvr confirm_write] - lsn + 1;
 
-		u32 len = sizeof(lsn) + sizeof(rows);
+		u32 data_len = sizeof(lsn) + sizeof(reply[0].repeat_count);
+
 		wbuf = tbuf_alloc(fiber->pool);
 		for (int i = 0; i < p; i++) {
 			if (rows > 0) {
@@ -301,13 +302,12 @@ wal_disk_writer(int fd, void *state)
 				reply[i].repeat_count = 0;
 			}
 
-			tbuf_append(wbuf, &len, sizeof(u32));
+			tbuf_append(wbuf, &data_len, sizeof(data_len));
 			tbuf_append(wbuf, &reply[i].fid, sizeof(reply[i].fid));
 			tbuf_append(wbuf, &lsn, sizeof(lsn));
 			tbuf_append(wbuf, &reply[i].repeat_count, sizeof(reply[i].repeat_count));
 
-			say_debug("sending lsn:%"PRIi64" rows:%i to parent",
-				  lsn, rows);
+			say_debug("sending lsn:%"PRIi64" rows:%i to parent", lsn, rows);
 		}
 
 
