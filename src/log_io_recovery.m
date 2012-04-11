@@ -63,7 +63,6 @@
 - (ev_tstamp)last_update_tstamp { return last_update_tstamp; };
 - (struct child *)wal_writer { return wal_writer; };
 
-
 - (void)
 initial_lsn:(i64)new_lsn
 {
@@ -717,6 +716,33 @@ enable_local_writes
 	return self;
 }
 
+void
+input_dispatch(va_list ap)
+{
+	struct conn *c = va_arg(ap, struct conn *);
+	u32 data_len, fid;
+
+	for (;;) {
+		if (tbuf_len(c->rbuf) < sizeof(u32) * 2) {
+			if (conn_readahead(c, sizeof(u32) * 2) <= 0)
+				panic("child is dead");
+		}
+
+		data_len = read_u32(c->rbuf);
+		fid = read_u32(c->rbuf);
+
+		if (tbuf_len(c->rbuf) < data_len) {
+			if (conn_readahead(c, data_len) < 0)
+				panic("child is dead");
+		}
+
+		resume(fid2fiber(fid), read_bytes(c->rbuf, data_len));
+
+		if (palloc_allocated(fiber->pool) > 4 * 1024 * 1024)
+			palloc_gc(c->pool);
+	}
+}
+
 - (id) init_snap_dir:(const char *)snap_dirname
              wal_dir:(const char *)wal_dirname
 	 recover_row:(void (*)(struct tbuf *))recover_row_
@@ -744,7 +770,12 @@ enable_local_writes
 		wal_dir->fsync_delay = wal_fsync_delay;
 		snap_io_rate_limit = snap_io_rate_limit_ * 1024 * 1024;
 
-		wal_writer = spawn_child("wal_writer", true, wal_disk_writer, self);
+		wal_writer = spawn_child("wal_writer", wal_disk_writer, self);
+
+		ev_io_init(&wal_writer->c->out,
+			   (void *)fiber_create("wal_writer/output_flusher", service_output_flusher),
+			   wal_writer->c->fd, EV_WRITE);
+		fiber_create("wal_writer/input_dispatcher", input_dispatch, wal_writer->c);
 	}
 
 	recover_row = recover_row_;

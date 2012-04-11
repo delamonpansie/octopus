@@ -39,17 +39,6 @@
 #include <unistd.h>
 #include <sys/uio.h>
 
-struct msg {
-	STAILQ_ENTRY(msg) link;
-	uint32_t sender_fid;
-	struct tbuf *msg;
-};
-
-struct ring {
-	size_t size, head, tail;
-	struct msg *ring[];
-};
-
 struct fiber {
 	struct tarantool_coro coro;
 	struct fiber *caller;
@@ -63,7 +52,6 @@ struct fiber {
 	STAILQ_ENTRY(fiber) wake_link;
 	void *wake;
 
-	STAILQ_HEAD (,msg) inbox;
 	lua_State *L;
 
 	const char *name;
@@ -77,8 +65,7 @@ SLIST_HEAD(, fiber) fibers, zombie_fibers;
 
 struct child {
 	pid_t pid;
-	int sock;
-	struct fiber *in, *out;
+	struct conn *c;
 };
 
 void fiber_init(void);
@@ -98,8 +85,8 @@ void fiber_gc(void);
 void fiber_sleep(ev_tstamp s);
 void fiber_info(struct tbuf *out);
 int set_nonblock(int sock);
+struct fiber *fid2fiber(int fid);
 
-struct child *spawn_child(const char *name, bool proxy_fibers,
-			  int (*handler)(int fd, void *state), void *state);
+struct child *spawn_child(const char *name, int (*handler)(int fd, void *state), void *state);
 
 int luaT_openfiber(struct lua_State *L);

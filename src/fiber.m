@@ -140,7 +140,7 @@ wait_for_child(pid_t pid)
 	return WEXITSTATUS(w.rstatus);
 }
 
-static struct fiber *
+struct fiber *
 fid2fiber(int fid)
 {
 	u32 k = mh_i32_get(fibers_registry, fid);
@@ -167,36 +167,12 @@ unregister_fid(struct fiber *fiber)
 
 
 static void
-clear_inbox(struct fiber *fiber)
-{
-	STAILQ_INIT(&fiber->inbox);
-}
-
-static void
-fiber_do_gc(struct palloc_pool *pool, void *ptr)
-{
-	struct fiber *fiber = ptr;
-	struct msg *orig, *tmp;
-
-	STAILQ_FOREACH_SAFE(orig, &fiber->inbox, link, tmp) {
-		struct msg *copy = palloc(pool, sizeof(*copy));
-		copy->sender_fid = orig->sender_fid;
-		copy->msg = tbuf_clone(pool, orig->msg);
-		STAILQ_INSERT_HEAD(&fiber->inbox, copy, link);
-		STAILQ_REMOVE(&fiber->inbox, orig, msg, link);
-	}
-}
-
-static void
 fiber_alloc(struct fiber *fiber)
 {
-	if (fiber->pool == NULL) {
+	if (fiber->pool == NULL)
 		fiber->pool = palloc_create_pool(fiber->name);
-		palloc_register_gc_root(fiber->pool, fiber, fiber_do_gc);
-	}
 
 	prelease(fiber->pool);
-	clear_inbox(fiber);
 }
 
 void
@@ -304,35 +280,6 @@ fiber_destroy_all()
 }
 
 
-bool
-write_inbox(struct fiber *recipient, struct tbuf *msg)
-{
-	struct msg *m = palloc(recipient->pool, sizeof(struct msg));
-	m->sender_fid = fiber->fid;
-	if (msg->pool != recipient->pool)
-		msg = tbuf_clone(recipient->pool, msg);
-	m->msg = msg;
-	STAILQ_INSERT_TAIL(&recipient->inbox, m, link);
-
-	if (recipient->reading_inbox)
-		fiber_wake(recipient, NULL);
-	return true;
-}
-
-struct msg *
-read_inbox(void)
-{
-	while (STAILQ_EMPTY(&fiber->inbox)) {
-		fiber->reading_inbox = true;
-		yield();
-		fiber->reading_inbox = false;
-	}
-
-	struct msg *msg = STAILQ_FIRST(&fiber->inbox);
-	STAILQ_REMOVE_HEAD(&fiber->inbox, link);
-	return msg;
-}
-
 int
 set_nonblock(int sock)
 {
@@ -342,71 +289,11 @@ set_nonblock(int sock)
 	return sock;
 }
 
-static void
-inbox2sock(va_list ap)
-{
-	int fd = va_arg(ap, int);
-	struct conn *c = conn_create(fiber->pool, fd);
-	palloc_register_gc_root(fiber->pool, c, conn_gc);
-
-	for (;;) {
-		struct netmsg *n = netmsg_tail(&c->out_messages, fiber->pool);
-		do {
-			struct msg *m = read_inbox();
-			net_add_iov(&n, m->msg->data, tbuf_len(m->msg));
-		} while (!STAILQ_EMPTY(&fiber->inbox));
-
-		if (conn_flush(c) < 0)
-			panic("child is dead");
-		fiber_gc();
-	}
-}
-
-static void
-sock2inbox(va_list ap)
-{
-	int fd = va_arg(ap, int);
-	struct tbuf *msg;
-	struct fiber *recipient;
-	struct conn *c;
-	u32 data_len, fid;
-	void *data;
-
-	c = conn_create(fiber->pool, fd);
-	palloc_register_gc_root(fiber->pool, c, conn_gc);
-
-	for (;;) {
-		if (tbuf_len(c->rbuf) < sizeof(u32) * 2) {
-			if (conn_readahead(c, sizeof(u32) * 2) <= 0)
-				panic("child is dead");
-		}
-
-		data_len = read_u32(c->rbuf);
-		fid = read_u32(c->rbuf);
-
-		if (tbuf_len(c->rbuf) < data_len) {
-			if (conn_readahead(c, data_len) < 0)
-				panic("child is dead");
-		}
-
-		data = read_bytes(c->rbuf, data_len);
-		recipient = fid2fiber(fid);
-		if (recipient == NULL) {
-			say_error("recipient is lost");
-			continue;
-		}
-
-		msg = tbuf_alloc(recipient->pool);
-		tbuf_append(msg, data, data_len);
-		write_inbox(recipient, msg);
-		fiber_gc();
-	}
-}
 
 struct child *
-spawn_child(const char *name, bool proxy_fibers, int (*handler)(int fd, void *state), void *state)
+spawn_child(const char *name, int (*handler)(int fd, void *state), void *state)
 {
-	char *proxy_name, *child_name;
+	char *child_name;
 	int socks[2];
 	int pid;
 
@@ -425,20 +312,14 @@ spawn_child(const char *name, bool proxy_fibers, int (*handler)(int fd, void *st
 		if (set_nonblock(socks[1]) == -1)
 			return NULL;
 
-		struct child *c = malloc(sizeof(*c));
-		c->pid = pid;
-		c->sock = socks[1];
+		struct child *child = malloc(sizeof(*child));
+		child->pid = pid;
 
-		if (proxy_fibers) {
-			proxy_name = malloc(64);
-			snprintf(proxy_name, 64, "%s/sock2inbox", name);
-			c->in = fiber_create(proxy_name, sock2inbox, socks[1]);
-			proxy_name = malloc(64);
-			snprintf(proxy_name, 64, "%s/inbox2sock", name);
-			c->out = fiber_create(proxy_name, inbox2sock, socks[1]);
-			c->out->reading_inbox = true;
-		}
-		return c;
+		struct palloc_pool *p = palloc_create_pool(name);
+		child->c = conn_create(p, socks[1]);
+		palloc_register_gc_root(p, child->c, conn_gc);
+
+		return child;
 	} else {
 		salloc_destroy();
 		close_all_xcpt(3, socks[0], stderrfd, sayfd);

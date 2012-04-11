@@ -28,6 +28,7 @@
 #import <fiber.h>
 #import <object.h>
 #import <log_io.h>
+#import <net_io.h>
 #import <palloc.h>
 #import <pickle.h>
 #import <tbuf.h>
@@ -47,9 +48,10 @@
 configure_wal_writer
 {
 	say_info("Configuring WAL writer lsn:%"PRIi64, lsn);
-	struct tbuf *m = tbuf_alloc(wal_writer->out->pool);
-	tbuf_append(m, &lsn, sizeof(lsn));
-	write_inbox(wal_writer->out, m);
+
+	struct netmsg *n = netmsg_tail(&wal_writer->c->out_messages, wal_writer->c->pool);
+	net_add_iov(&n, &lsn, sizeof(lsn));
+	ev_io_start(&wal_writer->c->out);
 }
 
 - (void)
@@ -78,7 +80,7 @@ submit_change:(struct tbuf *)change
 - (struct tbuf *)
 wal_pack_prepare
 {
-	struct tbuf *m = tbuf_alloc(wal_writer->out->pool);
+	struct tbuf *m = tbuf_alloc(fiber->pool);
 	u32 repeat_count = 0;
 	u32 packet_len = sizeof(packet_len) + sizeof(fiber->fid) + sizeof(repeat_count);
 
@@ -114,23 +116,18 @@ wal_pack_submit:(struct tbuf *)m
 		return 0;
 	}
 
+	struct netmsg *n = netmsg_tail(&wal_writer->c->out_messages, wal_writer->c->pool);
+	net_add_iov(&n, m->data, tbuf_len(m));
+	ev_io_start(&wal_writer->c->out);
 
-	if (write_inbox(wal_writer->out, m) == false) {
-		say_warn("wal writer inbox is full");
-		return 0;
-	}
+	struct { i64 row_lsn; u32 rows; } __attribute__((packed)) *r = yield();
 
-	struct msg *a = read_inbox();
-
-	i64 row_lsn = read_u64(a->msg);
-	u32 rows = read_u32(a->msg);
-
-	say_debug("wal_write read inbox lsn=%"PRIi64" rows:%i", row_lsn, rows);
-	if (row_lsn == 0)
+	say_debug("wal_write read inbox lsn=%"PRIi64" rows:%i", r->row_lsn, r->rows);
+	if (r->row_lsn == 0)
 		say_warn("wal writer returned error status");
 	else
-		lsn = row_lsn; /* update local lsn */
-	return rows;
+		lsn = r->row_lsn; /* update local lsn */
+	return r->rows;
 }
 
 
