@@ -40,6 +40,21 @@ object_space[1].index[2].key_field[0].type = "NUM64"
 object_space[1].index[2].key_field[1].fieldno = 2
 object_space[1].index[2].key_field[1].type = "STR"
 
+object_space[2].enabled = 1
+object_space[2].index[0].type = "TREE"
+object_space[2].index[0].unique = 1
+object_space[2].index[0].key_field[0].fieldno = 0
+object_space[2].index[0].key_field[0].type = "STR"
+
+object_space[2].index[1].type = "TREE"
+object_space[2].index[1].unique = 1
+object_space[2].index[1].key_field[0].fieldno = 3
+object_space[2].index[1].key_field[0].type = "NUM"
+object_space[2].index[1].key_field[1].fieldno = 1
+object_space[2].index[1].key_field[1].type = "NUM64"
+object_space[2].index[1].key_field[2].fieldno = 0
+object_space[2].index[1].key_field[2].type = "STR"
+
 EOD
     return connect_string, config
   end
@@ -66,6 +81,10 @@ index_env.with_server do |box|
   box.select "00000000", :index => 1
   box.select "00000000", :index => 2
 
+  box.object_space = 2
+  box.insert ["000", "00000000", 0, 0]
+  box.select "000"
+  box.select "000", :index => 1
 end
 
 index_env.with_server do |box|

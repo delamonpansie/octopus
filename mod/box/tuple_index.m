@@ -92,7 +92,7 @@ box_tuple_gen_dtor(struct tnt_object *obj, struct index_node *node_, void *arg)
 	for (int i = 0, j = 0, n = 0; i < desc->cardinality; j++) {
 		assert(tuple_data < (void *)tuple->data + tuple->bsize);
 		u32 len = LOAD_VARINT32(tuple_data);
-		while (desc->index_field[i] == j) {
+		if (desc->index_field[i] == j) {
 			if (desc->type[i] == NUM && len != sizeof(u32))
 				index_raise("key size mismatch, expected u32");
 			else if (desc->type[i] == NUM64 && len != sizeof(u64))
@@ -111,18 +111,6 @@ box_tuple_gen_dtor(struct tnt_object *obj, struct index_node *node_, void *arg)
 	}
 
 	node->obj = obj;
-}
-
-static int
-intcmp(const void *a_, const void *b_)
-{
-	const int *a = a_, *b = b_;
-	if (a > b)
-		return 1;
-	else if (a < b)
-		return -1;
-	else
-		return 0;
 }
 
 static struct gen_dtor *
@@ -156,7 +144,19 @@ cfg_box_tuple_gen_dtor(struct tarantool_cfg_object_space_index *c)
 	if (d->cardinality == 0)
 		panic("index cardinality is 0");
 
-	qsort(d->type, nelem(d->type), sizeof(d->type[0]), intcmp);
+	for (int i = 0; i < d->cardinality; i++)
+		for (int j = 0; j < d->cardinality; j++)
+			if (d->index_field[i] < d->index_field[j]) {
+				int t;
+				t = d->index_field[i];
+				d->index_field[i] = d->index_field[j];
+				d->index_field[j] = t;
+
+				t = d->type[i];
+				d->type[i] = d->type[j];
+				d->type[j] = t;
+			}
+
 	return d;
 }
 
@@ -192,6 +192,7 @@ new_with_n:(int)n cfg:(struct tarantool_cfg_object_space_index *)cfg
 			i->dtor = box_tuple_gen_dtor;
 			i->dtor_arg = (void *)d;
 		} else {
+			free(d);
 			if (strcmp(cfg->key_field[0]->type, "NUM") == 0) {
 				i = [Int32Tree alloc];
 				i->dtor = box_tuple_u32_dtor;
