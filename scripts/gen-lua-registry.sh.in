@@ -24,8 +24,13 @@ lua_src_init(void)
 	int i = 0;
 EOF
 cat $1 |
-@SED@ 'N; s/\n/, /; s/\(\(.\+\)_lua_start\), /"\2", (char *)\&\1, (size_t)\&/;' |
-@SED@ 's/^/	lua_src[i++] = (struct lua_src){/; s/$/};/;'
+@SED@ 'N
+s/\n/, /
+s/\([^,]*\), /"\1", (char *)\&\1, (size_t)\&/
+s/"_binary[^"]*_n/"/
+s/_lua_start"/"/
+s/^/	lua_src[i++] = (struct lua_src){/
+s/$/};/'
 cat <<EOF
 }
 EOF
