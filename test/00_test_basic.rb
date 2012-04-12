@@ -20,8 +20,8 @@ basic_env.with_server do |box|
   box.insert [1,2,3]
   Process.kill('USR1', basic_env.pid)
   20.times do
-    sleep(basic_env.delay)
     break if FileTest.readable?("00000000000000000002.snap")
+    sleep(basic_env.delay)
   end
   raise "no snapshot" unless FileTest.readable?("00000000000000000002.snap")
 end
@@ -36,7 +36,6 @@ basic_env.with_env do |env|
   env.stop_server
 
   env.start_server
-  sleep(basic_env.delay)
   box = env.connect_to_box
   box.select [1, 500, 505, 999, 1001]
 end

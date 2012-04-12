@@ -160,6 +160,16 @@ class RunEnv
       STDERR.puts "server prematurely exit"
     end
 
+    i = 0
+    while true do
+      if readable? "#{LogFile}.#{i}" then
+        i += 1
+        next
+      end
+      mv LogFile, "#{LogFile}.#{i}"
+      break
+    end
+
     @pid = nil
     if $?.signaled? and $?.termsig != Signal.list['INT'] then
       gdb_if_core
