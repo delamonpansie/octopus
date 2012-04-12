@@ -538,7 +538,7 @@ tcp_connect(struct sockaddr_in *dst, struct sockaddr_in *src, ev_tstamp timeout)
 	}
 
 	if (src) {
-		if (bind(fd, src, sizeof(*src)) < 0) {
+		if (bind(fd, (struct sockaddr *)src, sizeof(*src)) < 0) {
 			say_syserror("bind(%s)", sintoa(src));
 			goto error;
 		}

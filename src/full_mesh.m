@@ -126,7 +126,7 @@ rendevouz_accept(int fd, void *data __attribute__((unused)))
 	struct sockaddr_in peer_addr;
 	socklen_t len = sizeof(peer_addr);
 
-	if (getpeername(fd, &peer_addr, &len) < 0) {
+	if (getpeername(fd, (struct sockaddr *)&peer_addr, &len) < 0) {
 		say_syserror("getpeername");
 		close(fd);
 		return;
