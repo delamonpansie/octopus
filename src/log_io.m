@@ -427,10 +427,11 @@ init_filename:(const char *)filename_
 	next_lsn = lsn;
 	stat.data = dir->recovery_state;
 
+#ifdef __GLIBC__
 	const int bufsize = 1024 * 1024;
 	vbuf = malloc(bufsize);
 	setvbuf(fd, vbuf, _IOFBF, bufsize);
-
+#endif
 	offset = ftello(fd);
 	return self;
 }
