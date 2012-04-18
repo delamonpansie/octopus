@@ -76,7 +76,7 @@ next:
 
 	TAILQ_REMOVE(&service->processing, c, processing_link);
 
-	if (tbuf_len(c->rbuf) < 1024)
+	if (tbuf_len(c->rbuf) < 4 * 1024)
 		ev_io_start(&c->in);
 
 	request = iproto_parse(c->rbuf);
@@ -172,13 +172,14 @@ loop:
 	w = yield();
 	c = w->data;
 
-	tbuf_ensure(c->rbuf, 16 * 1024);
+	tbuf_ensure(c->rbuf, 12 * 1024);
 	r = read(c->fd, c->rbuf->data + tbuf_len(c->rbuf), c->rbuf->size - tbuf_len(c->rbuf));
 
 	if (r > 0) {
 		c->rbuf->len += r;
 		if (tbuf_len(c->rbuf) >= sizeof(struct iproto_header)) {
-			ev_io_stop(&c->in);
+			if (tbuf_len(c->rbuf) > 8 * 1024)
+				ev_io_stop(&c->in);
 			if (c->state != PROCESSING) {
 				TAILQ_INSERT_HEAD(&c->service->processing, c, processing_link);
 				c->state = PROCESSING;
