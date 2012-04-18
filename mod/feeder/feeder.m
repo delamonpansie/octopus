@@ -144,6 +144,8 @@ init(void)
 	if (tnt_fork() != 0)
 		return;
 
+	signal(SIGCLD, SIG_IGN);
+
 	fiber->name = "feeder";
 	fiber->pool = palloc_create_pool("feeder");
 
