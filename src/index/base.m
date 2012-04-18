@@ -37,11 +37,20 @@
 @end
 
 @implementation Index
+- (id)
+init
+{
+	[super init];
+	for (int i = 0; i < INDEX_NODE_CACHE; i++)
+		node_cache[i] = malloc(512);
+	return self;
+}
+
 - (void)
 valid_object:(struct tnt_object*)obj
 {
 	/* FIXME: add caching caching */
-	dtor(obj, &node, dtor_arg);
+	GET_NODE(obj);
 }
 
 - (u32)

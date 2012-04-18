@@ -103,13 +103,12 @@ resize:(u32)buckets							\
 - (struct tnt_object *)							\
 find_by_obj:(struct tnt_object *)obj					\
 {									\
-	if (find_obj_cache_q == obj)					\
+	if (find_obj_cache == obj)					\
 		return find_obj_cache;					\
-	dtor(obj, &node, dtor_arg);					\
-									\
+	struct index_node *node_ = GET_NODE(obj);			\
 	find_obj_cache = obj;						\
 									\
-	u32 k = mh_##type##_get_node(h, (void *)&node);			\
+	u32 k = mh_##type##_get_node(h, (void *)node_);			\
 	if (k != mh_end(h)) {						\
 		struct tnt_object *r = mh_##type##_value(h, k);		\
 		if (likely(!ghost(r)))					\
@@ -121,16 +120,17 @@ find_by_obj:(struct tnt_object *)obj					\
 - (void)								\
 replace:(struct tnt_object *)obj					\
 {									\
-	find_obj_cache_q = NULL;					\
-	dtor(obj, &node, dtor_arg);					\
-        mh_##type##_put_node(h, (void *)&node);				\
+	find_obj_cache = NULL;						\
+	struct index_node *node_ = GET_NODE(obj);			\
+        mh_##type##_put_node(h, (void *)node_);				\
 }									\
 - (void)								\
 remove:(struct tnt_object *)obj						\
 {									\
-	find_obj_cache_q = NULL;					\
-	dtor(obj, &node, dtor_arg);					\
-        u32 k = mh_##type##_get_node(h, (void *)&node);			\
+	find_obj_cache = NULL;						\
+	struct index_node *node_ = GET_NODE(obj);			\
+        u32 k = mh_##type##_get_node(h, (void *)node_);			\
+	node_->obj = NULL;						\
         mh_##type##_del(h, k);						\
 }
 

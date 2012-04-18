@@ -64,7 +64,7 @@ union {
 	struct tree_node tree;
 } index_nodes;
 
-typedef void (index_dtor)(struct tnt_object *obj, struct index_node *node, void *arg);
+typedef struct index_node *(index_dtor)(struct tnt_object *obj, struct index_node *node, void *arg);
 typedef struct tbuf *(index_lua_ctor)(struct lua_State *L, int i);
 typedef int (*index_cmp)(const void *, const void *, void *);
 
@@ -83,6 +83,13 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 - (u32)cardinality;
 @end
 
+#define INDEX_NODE_CACHE 11
+#define GET_NODE(obj) ({						\
+	struct index_node *__node = node_cache[(uintptr_t)(obj) % INDEX_NODE_CACHE]; \
+	__node->obj != (obj) ? \
+		/* say_info("cache miss obj:%p", (obj)),  */dtor(obj, __node, dtor_arg) : \
+		/* say_info("cache hit obj:%p", (obj)),  */__node;	      \
+})
 
 @interface Index: Object {
 @public
@@ -90,11 +97,12 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 	bool unique;
 	enum { HASH, TREE } type;
 
-	struct tnt_object *find_obj_cache_q, *find_obj_cache;
+	struct tnt_object *find_obj_cache;
 	index_dtor *dtor;
 	void *dtor_arg;
 	index_lua_ctor *lua_ctor;
 
+	struct index_node *node_cache[INDEX_NODE_CACHE];
 	struct index_node node;
 	char __padding[256]; /* FIXME: check for overflow */
 }

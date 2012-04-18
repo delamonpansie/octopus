@@ -37,7 +37,7 @@
 #import <cfg/tarantool_cfg.h>
 
 @implementation Index (Tuple)
-static void
+static struct index_node *
 box_tuple_u32_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
 {
 	int n = (uintptr_t)arg;
@@ -51,8 +51,9 @@ box_tuple_u32_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
 
 	node->obj = obj;
 	memcpy(node->key, f, sizeof(u32));
+	return node;
 }
-static void
+static struct index_node *
 box_tuple_u64_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
 {
 	int n = (uintptr_t)arg;
@@ -66,8 +67,9 @@ box_tuple_u64_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
 
 	node->obj = obj;
 	memcpy(node->key, f, sizeof(u64));
+	return node;
 }
-static void
+static struct index_node *
 box_tuple_lstr_dtor(struct tnt_object *obj, struct index_node *node, void  *arg)
 {
 	int n = (uintptr_t)arg;
@@ -77,8 +79,9 @@ box_tuple_lstr_dtor(struct tnt_object *obj, struct index_node *node, void  *arg)
 	void *f = tuple_field(tuple, n);
 	node->obj = obj;
 	memcpy(node->key, &f, sizeof(void *));
+	return node;
 }
-static void
+static struct index_node *
 box_tuple_gen_dtor(struct tnt_object *obj, struct index_node *node_, void *arg)
 {
 	struct tree_node *node = (void *)node_;
@@ -111,6 +114,7 @@ box_tuple_gen_dtor(struct tnt_object *obj, struct index_node *node_, void *arg)
 	}
 
 	node->obj = obj;
+	return (struct index_node *)node;
 }
 
 static struct gen_dtor *
