@@ -130,7 +130,7 @@ endif
 clean:
 	@echo "CLEAN tarantool"
 	@rm -rf $(obj) $(patsubst %.o,%.gcno,$(obj))
-	@rm -rf $(dep) tarantool lcov
+	@rm -rf $(dep) tarantool lcov test/var
 
 luaclean:
 	@$(MAKE) -C third_party/luajit/src clean
