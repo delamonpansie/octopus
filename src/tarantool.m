@@ -626,9 +626,11 @@ main(int argc, char **argv)
 		strcat(custom_proc_title, cfg.custom_proc_title);
 	}
 
-	if (gopt(opt, 'D'))
+	if (gopt(opt, 'D')) {
 		if (daemonize(1, 0) < 0)
 			panic("unable to daemonize");
+		master_pid = getpid();
+	}
 
 	if (cfg.pid_file != NULL) {
 		create_pid();
