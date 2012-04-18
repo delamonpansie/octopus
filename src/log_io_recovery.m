@@ -351,11 +351,12 @@ recover_local:(i64)start_lsn
 
 	[self recover_remaining_wals];
 	[self recover_follow:cfg.wal_dir_rescan_delay]; /* FIXME: make this conf */
+	say_info("wals recovered, lsn: %" PRIi64, lsn);
+	strcpy(status, "hot_standby/local");
+
 	/* all curently readable wal rows were read, notify about that */
 	if (feeder_addr == NULL || cfg.local_hot_standby)
 		[self recover_row:[self dummy_row_lsn:lsn tag:wal_final_tag]];
-	say_info("wals recovered, lsn: %" PRIi64, lsn);
-	strcpy(status, "hot_standby/local");
 
 	return lsn;
 }

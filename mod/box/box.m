@@ -1220,6 +1220,7 @@ recover_row(struct tbuf *row)
 		if (box_primary == NULL) {
 			build_secondary_indexes();
 			initialize_service();
+			title("%s", [recovery status]);
 		}
 		break;
 	default:
@@ -1303,8 +1304,6 @@ init(void)
 
 	if (!cfg.local_hot_standby)
 		[recovery enable_local_writes];
-
-	title("%s", [recovery status]);
 }
 
 static int
