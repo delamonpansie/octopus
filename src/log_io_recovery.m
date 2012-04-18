@@ -723,27 +723,36 @@ enable_local_writes
 	return self;
 }
 
-void
-input_dispatch(va_list ap)
+static void
+input_dispatch(va_list ap __attribute__((unused)))
 {
-	struct conn *c = va_arg(ap, struct conn *);
-	u32 data_len, fid;
-
 	for (;;) {
-		if (tbuf_len(c->rbuf) < sizeof(u32) * 2) {
-			if (conn_readahead(c, sizeof(u32) * 2) <= 0)
-				panic("child is dead");
+		struct conn *c = ((struct ev_watcher *)yield())->data;
+		tbuf_ensure(c->rbuf, 128 * 1024);
+
+		int r = read(c->fd, c->rbuf->data + tbuf_len(c->rbuf), c->rbuf->size - tbuf_len(c->rbuf));
+		if (r > 0) {
+			c->rbuf->len += r;
+		} else {
+			if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+				continue;
+			say_syserror("%s", __func__);
+			break;
 		}
 
-		data_len = read_u32(c->rbuf);
-		fid = read_u32(c->rbuf);
+		while (tbuf_len(c->rbuf) > sizeof(u32) * 2 &&
+		       tbuf_len(c->rbuf) >= *(u32 *)c->rbuf->data)
+		{
+			struct {
+				u32 data_len;
+				i64 lsn;
+				u32 fid;
+				u32 repeat_count;
+			} __attribute__((packed)) *r = c->rbuf->data;
 
-		if (tbuf_len(c->rbuf) < data_len) {
-			if (conn_readahead(c, data_len) < 0)
-				panic("child is dead");
+			resume(fid2fiber(r->fid), &r->lsn);
+			tbuf_ltrim(c->rbuf, sizeof(*r));
 		}
-
-		resume(fid2fiber(fid), read_bytes(c->rbuf, data_len));
 
 		if (palloc_allocated(fiber->pool) > 4 * 1024 * 1024)
 			palloc_gc(c->pool);
@@ -782,7 +791,15 @@ input_dispatch(va_list ap)
 		ev_io_init(&wal_writer->c->out,
 			   (void *)fiber_create("wal_writer/output_flusher", service_output_flusher),
 			   wal_writer->c->fd, EV_WRITE);
-		fiber_create("wal_writer/input_dispatcher", input_dispatch, wal_writer->c);
+
+		struct fiber *dispatcher = fiber_create("wal_writer/input_dispatcher", input_dispatch);
+		ev_io_init(&wal_writer->c->in, (void *)dispatcher, wal_writer->c->fd, EV_READ);
+
+		ev_set_priority(&wal_writer->c->in, 1);
+		ev_set_priority(&wal_writer->c->out, 1);
+
+		ev_io_start(&wal_writer->c->in);
+
 	}
 
 	recover_row = recover_row_;
