@@ -508,6 +508,10 @@ service_output_flusher(va_list ap __attribute__((unused)))
 		struct conn *c = ((struct ev_watcher *)yield())->data;
 		if (conn_write_netmsg(c) == NULL)
 			ev_io_stop(&c->out);
+
+		if (tbuf_len(c->rbuf) < 4 * 1024 &&
+		    c->out_messages.bytes < 1023 * 1024)
+			ev_io_start(&c->in);
 	}
 }
 

@@ -76,9 +76,6 @@ next:
 
 	TAILQ_REMOVE(&service->processing, c, processing_link);
 
-	if (tbuf_len(c->rbuf) < 4 * 1024)
-		ev_io_start(&c->in);
-
 	request = iproto_parse(c->rbuf);
 	if (request == NULL) {
 		c->state = READING;
