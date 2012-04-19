@@ -128,7 +128,7 @@ luaT_pushnetmsg(struct lua_State *L)
 	return 1;
 }
 
-static struct netmsg_tailq *
+static struct netmsg_head *
 luaT_checknetmsg(struct lua_State *L, int i)
 {
 	return luaL_checkudata(L, i, netmsg_metaname);
@@ -137,10 +137,10 @@ luaT_checknetmsg(struct lua_State *L, int i)
 static int
 netmsg_gc(struct lua_State *L)
 {
-	struct netmsg_tailq *q = luaT_checknetmsg(L, 1);
+	struct netmsg_head *h = luaT_checknetmsg(L, 1);
 	struct netmsg *m, *tmp;
 
-	TAILQ_FOREACH_SAFE(m, q, link, tmp)
+	TAILQ_FOREACH_SAFE(m, &h->q, link, tmp)
 		netmsg_release(m);
 	return 0;
 }
@@ -148,8 +148,8 @@ netmsg_gc(struct lua_State *L)
 static int
 netmsg_add_iov(struct lua_State *L)
 {
-	struct netmsg_tailq *q = luaT_checknetmsg(L, 1);
-	struct netmsg *m = netmsg_tail(q, NULL);
+	struct netmsg_head *h = luaT_checknetmsg(L, 1);
+	struct netmsg *m = netmsg_tail(h);
 
 	switch (lua_type (L, 2)) {
 	case LUA_TNIL:
@@ -419,8 +419,8 @@ box_dispach_lua(struct box_txn *txn, struct tbuf *data)
 		@throw err;
 	}
 
-	struct netmsg_tailq *q = luaT_checknetmsg(L, 1);
-	txn->m = netmsg_concat(txn->m->tailq, q, txn->m->pool);
+	struct netmsg_head *h = luaT_checknetmsg(L, 1);
+	txn->m = netmsg_concat(txn->m->head, h);
 
 	u32 ret = luaL_checkinteger(L, 2);
 	lua_pop(L, 2);

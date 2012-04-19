@@ -51,7 +51,7 @@ static struct mesh_peer *peers;
 struct netmsg *
 peer_netmsg_tail(struct mesh_peer *p)
 {
-	return netmsg_tail(&p->c.out_messages, pool);
+	return netmsg_tail(&p->c.out_messages);
 }
 
 static i64
@@ -201,7 +201,7 @@ broadcast(int quorum, ev_tstamp timeout, struct mesh_msg *op)
 		if (p->c.fd < 0)
 			continue;
 
-		struct netmsg *m = netmsg_tail(&p->c.out_messages, pool);
+		struct netmsg *m = netmsg_tail(&p->c.out_messages);
 		net_add_iov(&m, op, op->len);
 		ev_io_start(&p->c.out);
 	}
@@ -272,7 +272,7 @@ static void
 reply(struct mesh_msg *msg, struct conn *c,
 		  void (*reply_callback)(struct mesh_peer *, struct mesh_msg *))
 {
-	struct netmsg *m = netmsg_tail(&c->out_messages, pool);
+	struct netmsg *m = netmsg_tail(&c->out_messages);
 	struct mesh_peer *p = (void *)c - offsetof(struct mesh_peer, c);
 
 	if (hostid(msg->seq) != p->id) {

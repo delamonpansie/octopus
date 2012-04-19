@@ -49,7 +49,7 @@ configure_wal_writer
 {
 	say_info("Configuring WAL writer lsn:%"PRIi64, lsn);
 
-	struct netmsg *n = netmsg_tail(&wal_writer->c->out_messages, wal_writer->c->pool);
+	struct netmsg *n = netmsg_tail(&wal_writer->c->out_messages);
 	net_add_iov(&n, &lsn, sizeof(lsn));
 	ev_io_start(&wal_writer->c->out);
 }
@@ -81,7 +81,7 @@ submit_change:(struct tbuf *)change
 	struct wal_pack *pack = msg;
 	struct wal_row_header *h = msg + sizeof(*pack);
 
-	pack->netmsg = netmsg_tail(&wal_writer->c->out_messages, wal_writer->c->pool);
+	pack->netmsg = netmsg_tail(&wal_writer->c->out_messages);
 	pack->packet_len = sizeof(*pack) - sizeof(pack->netmsg) + sizeof(*h) + tbuf_len(change);
 	pack->fid = fiber->fid;
 	pack->repeat_count = 1;
@@ -102,7 +102,7 @@ wal_pack_prepare
 {
 	struct wal_pack *pack = palloc(fiber->pool, sizeof(*pack));
 
-	pack->netmsg = netmsg_tail(&wal_writer->c->out_messages, wal_writer->c->pool);
+	pack->netmsg = netmsg_tail(&wal_writer->c->out_messages);
 	pack->packet_len = sizeof(*pack) - sizeof(pack->netmsg);
 	pack->fid = fiber->fid;
 	pack->repeat_count = 0;

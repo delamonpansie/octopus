@@ -552,7 +552,7 @@ process_select(struct box_txn *txn, u32 limit, u32 offset, struct tbuf *data)
 	uint32_t *found;
 	u32 count = read_u32(data);
 
-	found = palloc(txn->m->pool, sizeof(*found));
+	found = palloc(txn->m->head->pool, sizeof(*found));
 	net_add_iov(&txn->m, found, sizeof(*found));
 	*found = 0;
 
@@ -787,13 +787,13 @@ box_process(struct conn *c, struct tbuf *request)
 				     .data = iproto(request)->data };
 	@try {
 		if (op_is_select(msg_code)) {
-			txn_init(iproto(request), &txn, netmsg_tail(&c->out_messages, c->pool));
+			txn_init(iproto(request), &txn, netmsg_tail(&c->out_messages));
 			box_dispach_select(&txn, &request_data);
 			iproto_commit(&txn.header_mark);
 		} else {
 			ev_tstamp start = ev_now(), stop;
-			struct netmsg_tailq q = TAILQ_HEAD_INITIALIZER(q);
-			txn_init(iproto(request), &txn, netmsg_tail(&q, fiber->pool));
+			struct netmsg_head h = { TAILQ_HEAD_INITIALIZER(h.q), fiber->pool, 0 };
+			txn_init(iproto(request), &txn, netmsg_tail(&h));
 
 			if (unlikely(c->service != box_primary))
 				iproto_raise(ERR_CODE_NONMASTER, "updates forbiden on secondary port");
@@ -807,7 +807,7 @@ box_process(struct conn *c, struct tbuf *request)
 				txn_commit(&txn);
 			}
 			iproto_commit(&txn.header_mark);
-			netmsg_concat(&c->out_messages, &q, c->pool);
+			netmsg_concat(&c->out_messages, &h);
 
 			stop = ev_now();
 			if (stop - start > cfg.too_long_threshold)
@@ -826,8 +826,8 @@ box_process(struct conn *c, struct tbuf *request)
 		else if ([e isMemberOf:[IndexError class]])
 			rc = ERR_CODE_ILLEGAL_PARAMS;
 		iproto_error(&txn.m, &txn.header_mark, rc, e->reason);
-		if (&c->out_messages != txn.m->tailq)
-			netmsg_concat(&c->out_messages, txn.m->tailq, c->pool);
+		if (&c->out_messages != txn.m->head)
+			netmsg_concat(&c->out_messages, txn.m->head);
 	}
 	@finally {
 		txn_cleanup(&txn);

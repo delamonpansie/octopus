@@ -277,7 +277,7 @@ memcached_dispatch(struct conn *c)
 
 	say_debug("memcached_dispatch '%.*s'", MIN((int)(pe - p), 40) , p);
 
-	struct netmsg *m = netmsg_tail(&c->out_messages, fiber->pool);
+	struct netmsg *m = netmsg_tail(&c->out_messages);
 	struct netmsg_mark mark;
 	netmsg_getmark(m, &mark);
 

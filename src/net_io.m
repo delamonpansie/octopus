@@ -46,7 +46,7 @@ SLIST_HEAD(, conn) conn_pool;
 struct netmsg_tailq netmsg_pool;
 
 static struct netmsg *
-netmsg_alloc(struct netmsg_tailq *q, struct palloc_pool *pool)
+netmsg_alloc(struct netmsg_head *h)
 {
 	struct netmsg *n = TAILQ_FIRST(&netmsg_pool);
 	if (!n)
@@ -55,21 +55,20 @@ netmsg_alloc(struct netmsg_tailq *q, struct palloc_pool *pool)
 		TAILQ_REMOVE(&netmsg_pool, n, link);
 
 	n->count = n->offset = 0;
-	n->tailq = q;
-	n->pool = pool;
+	n->head = h;
 
-	TAILQ_INSERT_TAIL(q, n, link);
+	TAILQ_INSERT_TAIL(&h->q, n, link);
 
 	return n;
 }
 
 struct netmsg *
-netmsg_tail(struct netmsg_tailq *q, struct palloc_pool *pool)
+netmsg_tail(struct netmsg_head *h)
 {
-	if (!TAILQ_EMPTY(q))
-		return TAILQ_LAST(q, netmsg_tailq);
+	if (!TAILQ_EMPTY(&h->q))
+		return TAILQ_LAST(&h->q, netmsg_tailq);
 	else
-		return  netmsg_alloc(q, pool);
+		return  netmsg_alloc(h);
 }
 
 
@@ -78,6 +77,8 @@ netmsg_unref(struct netmsg *m, int from)
 {
 	struct tnt_object **obj = m->ref;
 	for (int i = from; i < m->count; i++) {
+		m->head->bytes -= m->iov[i].iov_len;
+
 		if (obj[i] == 0)
 			continue;
 
@@ -93,7 +94,7 @@ void
 netmsg_release(struct netmsg *m)
 {
 	netmsg_unref(m, 0);
-	TAILQ_REMOVE(m->tailq, m, link);
+	TAILQ_REMOVE(&m->head->q, m, link);
 	TAILQ_INSERT_HEAD(&netmsg_pool, m, link);
 }
 
@@ -111,16 +112,17 @@ netmsg_gc(struct palloc_pool *pool, struct netmsg *m)
 }
 
 struct netmsg *
-netmsg_concat(struct netmsg_tailq *dst, struct netmsg_tailq *src, struct palloc_pool *pool)
+netmsg_concat(struct netmsg_head *dst, struct netmsg_head *src)
 {
 	struct netmsg *m, *tmp, *tail;
 
-	tail = TAILQ_EMPTY(dst) ? NULL : TAILQ_LAST(dst, netmsg_tailq);
+	tail = TAILQ_EMPTY(&dst->q) ? NULL : TAILQ_LAST(&dst->q, netmsg_tailq);
 
-	TAILQ_FOREACH_SAFE(m, src, link, tmp) {
-		TAILQ_REMOVE(src, m, link); /* FIXME: TAILQ_INIT ? */
-		if (m->pool != pool)
-			netmsg_gc(pool, m);
+	dst->bytes += src->bytes;
+	TAILQ_FOREACH_SAFE(m, &src->q, link, tmp) {
+		TAILQ_REMOVE(&src->q, m, link); /* FIXME: TAILQ_INIT ? */
+		if (src->pool != dst->pool)
+			netmsg_gc(dst->pool, m);
 
 		if (tail && nelem(tail->iov) - tail->count > m->count) {
 			memcpy(tail->iov + tail->count, m->iov, sizeof(m->iov[0]) * m->count);
@@ -129,8 +131,8 @@ netmsg_concat(struct netmsg_tailq *dst, struct netmsg_tailq *src, struct palloc_
 
 			TAILQ_INSERT_HEAD(&netmsg_pool, m, link);
 		} else {
-			m->tailq = dst;
-			TAILQ_INSERT_TAIL(dst, m, link);
+			m->head = dst;
+			TAILQ_INSERT_TAIL(&dst->q, m, link);
 			tail = m;
 		}
 	}
@@ -141,9 +143,9 @@ void
 netmsg_rewind(struct netmsg **m, struct netmsg_mark *mark)
 {
 	struct netmsg *tail, *tvar;
-	struct netmsg_tailq *q = (*m)->tailq;
+	struct netmsg_head *h = (*m)->head;
 
-	TAILQ_FOREACH_REVERSE_SAFE(tail, q, netmsg_tailq, link, tvar) {
+	TAILQ_FOREACH_REVERSE_SAFE(tail, &h->q, netmsg_tailq, link, tvar) {
 		if (tail == mark->m)
 			break;
 		netmsg_release(tail);
@@ -164,7 +166,7 @@ netmsg_getmark(struct netmsg *m, struct netmsg_mark *mark)
 static void __attribute__((noinline))
 enlarge(struct netmsg **m)
 {
-	*m = netmsg_alloc((*m)->tailq, (*m)->pool);
+	*m = netmsg_alloc((*m)->head);
 }
 
 
@@ -175,6 +177,7 @@ net_add_iov(struct netmsg **m, const void *buf, size_t len)
 	v->iov_base = (char *)buf;
 	v->iov_len = len;
 
+	(*m)->head->bytes += len;
 #ifdef NET_IO_TIMESTAMPS
 	(*m)->tstamp[(*m)->count] = ev_now();
 #endif
@@ -193,7 +196,7 @@ net_reserve_iov(struct netmsg **m)
 void
 net_add_iov_dup(struct netmsg **m, const void *buf, size_t len)
 {
-	void *copy = palloc((*m)->pool, len);
+	void *copy = palloc((*m)->head->pool, len);
 	memcpy(copy, buf, len);
 	return net_add_iov(m, copy, len);
 }
@@ -206,6 +209,7 @@ net_add_ref_iov(struct netmsg **m, struct tnt_object *obj, const void *buf, size
 	v->iov_base = (char *)buf;
 	v->iov_len = len;
 
+	(*m)->head->bytes += len;
 	*ref = obj;
 
 #ifdef NET_IO_TIMESTAMPS
@@ -243,7 +247,7 @@ conn_write_netmsg(struct conn *c)
 {
 	struct netmsg *m;
 restart:
-	m = TAILQ_FIRST(&c->out_messages);
+	m = TAILQ_FIRST(&c->out_messages.q);
 	if (m == NULL)
 		return NULL;
 
@@ -300,7 +304,7 @@ conn_flush(struct conn *c)
 	} while (conn_write_netmsg(c) && c->fd > 0);
 	ev_io_stop(&io);
 
-	return TAILQ_EMPTY(&c->out_messages)  ? 0 : -1;
+	return TAILQ_EMPTY(&(c->out_messages.q))  ? 0 : -1;
 }
 
 struct conn *
@@ -322,7 +326,9 @@ conn_init(struct conn *c, struct palloc_pool *pool, int fd, int ref)
 	c->out.coro = c->in.coro = 1;
 	c->out.data = c->in.data = c;
 
-	TAILQ_INIT(&c->out_messages);
+	TAILQ_INIT(&c->out_messages.q);
+	c->out_messages.pool = pool;
+	c->out_messages.bytes = 0;
 	c->ref = ref;
 	c->fd = fd;
 	c->pool = pool;
@@ -340,7 +346,7 @@ conn_gc(struct palloc_pool *pool, void *ptr)
 
 	c->pool = pool;
 	c->rbuf = tbuf_clone(pool, c->rbuf);
-	TAILQ_FOREACH(m, &c->out_messages, link)
+	TAILQ_FOREACH(m, &c->out_messages.q, link)
 		netmsg_gc(pool, m);
 }
 
@@ -386,10 +392,10 @@ conn_close(struct conn *c)
 		c->fd = -1;
 		c->peer_name[0] = 0;
 
-		if (!TAILQ_EMPTY(&c->out_messages)) {
+		if (!TAILQ_EMPTY(&c->out_messages.q)) {
 			say_error("client unexpectedly gone, some data unwritten");
 			struct netmsg *m, *tmp;
-			TAILQ_FOREACH_SAFE(m, &c->out_messages, link, tmp)
+			TAILQ_FOREACH_SAFE(m, &c->out_messages.q, link, tmp)
 				netmsg_release(m);
 		}
 
@@ -801,9 +807,10 @@ service_info(struct tbuf *out, struct service *service)
 			    ev_is_active(&c->in) ? "in" : "",
 			    ev_is_active(&c->out) ? "out" : "");
 		tbuf_printf(out, "      rbuf: %i" CRLF, tbuf_len(c->rbuf));
-		if (!TAILQ_EMPTY(&c->out_messages))
+		tbuf_printf(out, "      out_bytes: %zi" CRLF, c->out_messages.bytes);
+		if (!TAILQ_EMPTY(&c->out_messages.q))
 			tbuf_printf(out, "      out_messages:" CRLF);
-		TAILQ_FOREACH(m, &c->out_messages, link)
+		TAILQ_FOREACH(m, &c->out_messages.q, link)
 			tbuf_printf(out, "      - { offt: %i, count: %i }" CRLF, m->offset, m->count);
 	}
 }

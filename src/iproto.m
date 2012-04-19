@@ -87,7 +87,7 @@ next:
 
 	u32 msg_code = iproto(request)->msg_code;
 	if (unlikely(msg_code == msg_ping)) {
-		struct netmsg *m = netmsg_tail(&c->out_messages, c->pool);
+		struct netmsg *m = netmsg_tail(&c->out_messages);
 		iproto(request)->len = 0;
 		net_add_iov_dup(&m, request->data, sizeof(struct iproto_header));
 	} else {
@@ -100,7 +100,7 @@ next:
 		}
 	}
 
-	if (!TAILQ_EMPTY(&c->out_messages))
+	if (!TAILQ_EMPTY(&c->out_messages.q))
 		ev_io_start(&c->out);
 
 	if (palloc_allocated(service->pool) > 64 * 1024 * 1024) /* FIXME: do it after change of that size */
@@ -114,7 +114,7 @@ next:
 void
 iproto_reply(struct netmsg **m, u32 msg_code, u32 sync)
 {
-	struct iproto_header_retcode *h = palloc((*m)->pool, sizeof(*h));
+	struct iproto_header_retcode *h = palloc((*m)->head->pool, sizeof(*h));
 	net_add_iov(m, h, sizeof(*h));
 	h->msg_code = msg_code;
 	h->len = sizeof(h->ret_code);

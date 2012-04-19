@@ -43,9 +43,14 @@ struct service;
 struct netmsg;
 TAILQ_HEAD(netmsg_tailq, netmsg);
 
-struct netmsg {
+struct netmsg_head {
+	struct netmsg_tailq q;
 	struct palloc_pool *pool;
-	struct netmsg_tailq *tailq;
+	size_t bytes;
+};
+
+struct netmsg {
+	struct netmsg_head *head;
 
 	int offset, count;
 
@@ -70,7 +75,7 @@ struct conn {
 	struct palloc_pool *pool;
 	struct tbuf *rbuf;
 	int fd, ref;
-	struct netmsg_tailq out_messages;
+	struct netmsg_head out_messages;
 
 	enum { READING, PROCESSING } state;
 	LIST_ENTRY(conn) link;
@@ -92,8 +97,8 @@ struct service {
 	ev_prepare wakeup;
 };
 
-struct netmsg *netmsg_tail(struct netmsg_tailq *q, struct palloc_pool *pool);
-struct netmsg *netmsg_concat(struct netmsg_tailq *dst, struct netmsg_tailq *src, struct palloc_pool *pool);
+struct netmsg *netmsg_tail(struct netmsg_head *h);
+struct netmsg *netmsg_concat(struct netmsg_head *dst, struct netmsg_head *src);
 void netmsg_release(struct netmsg *m);
 void netmsg_rewind(struct netmsg **m, struct netmsg_mark *mark);
 void netmsg_getmark(struct netmsg *m, struct netmsg_mark *mark);
