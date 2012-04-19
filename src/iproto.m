@@ -86,7 +86,6 @@ next:
 		goto next;
 	} else {
 		TAILQ_INSERT_TAIL(&service->processing, c, processing_link);
-
 	}
 
 	u32 msg_code = iproto(request)->msg_code;
