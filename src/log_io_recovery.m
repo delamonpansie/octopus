@@ -736,8 +736,7 @@ input_dispatch(va_list ap __attribute__((unused)))
 		} else {
 			if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
 				continue;
-			say_syserror("%s", __func__);
-			break;
+			panic("unable to read from WAL writer");
 		}
 
 		while (tbuf_len(c->rbuf) > sizeof(u32) * 2 &&
