@@ -76,6 +76,7 @@ static void
 netmsg_unref(struct netmsg *m, int from)
 {
 	struct tnt_object **obj = m->ref;
+
 	for (int i = from; i < m->count; i++) {
 		m->head->bytes -= m->iov[i].iov_len;
 
@@ -515,8 +516,8 @@ service_output_flusher(va_list ap __attribute__((unused)))
 		if (conn_write_netmsg(c) == NULL)
 			ev_io_stop(&c->out);
 
-		if (tbuf_len(c->rbuf) < 4 * 1024 &&
-		    c->out_messages.bytes < 1023 * 1024)
+		if ((tbuf_len(c->rbuf) < 4 * 1024 || c->state == READING) &&
+		    c->out_messages.bytes < 256 * 1024)
 			ev_io_start(&c->in);
 	}
 }
@@ -807,7 +808,7 @@ service_info(struct tbuf *out, struct service *service)
 			    ev_is_active(&c->in) ? "in" : "",
 			    ev_is_active(&c->out) ? "out" : "");
 		tbuf_printf(out, "      rbuf: %i" CRLF, tbuf_len(c->rbuf));
-		tbuf_printf(out, "      out_bytes: %zi" CRLF, c->out_messages.bytes);
+		tbuf_printf(out, "      pending_bytes: %zi" CRLF, c->out_messages.bytes);
 		if (!TAILQ_EMPTY(&c->out_messages.q))
 			tbuf_printf(out, "      out_messages:" CRLF);
 		TAILQ_FOREACH(m, &c->out_messages.q, link)

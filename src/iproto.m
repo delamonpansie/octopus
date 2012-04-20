@@ -79,7 +79,8 @@ next:
 	request = iproto_parse(c->rbuf);
 	if (request == NULL) {
 		c->state = READING;
-		ev_io_start(&c->in);
+		if (c->out_messages.bytes < 256 * 1024)
+			ev_io_start(&c->in);
 		goto next;
 	} else {
 		TAILQ_INSERT_TAIL(&service->processing, c, processing_link);
