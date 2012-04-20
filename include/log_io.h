@@ -193,6 +193,13 @@ struct wal_pack {
 	u32 repeat_count;
 } __attribute__((packed));
 
+struct wal_reply {
+	u32 data_len;
+	i64 lsn;
+	u32 fid;
+	u32 repeat_count;
+} __attribute__((packed));
+
 @interface Recovery (writers)
 - (void) submit_change:(struct tbuf *)change;
 - (void) configure_wal_writer;

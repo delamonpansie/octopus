@@ -142,18 +142,13 @@ wal_pack_submit
 	}
 
 	ev_io_start(&wal_writer->c->out);
-
-	struct {
-		i64 row_lsn;
-		u32 rows;
-	} __attribute__((packed)) *r = yield();
-
-	say_debug("wal_write read inbox lsn=%"PRIi64" rows:%i", r->row_lsn, r->rows);
-	if (r->row_lsn == 0)
+	struct wal_reply *r = yield();
+	say_debug("wal_write read inbox lsn=%"PRIi64" rows:%i", r->lsn, r->repeat_count);
+	if (r->lsn == 0)
 		say_warn("wal writer returned error status");
 	else
-		lsn = r->row_lsn; /* update local lsn */
-	return r->rows;
+		lsn = r->lsn; /* update local lsn */
+	return r->repeat_count;
 }
 
 
@@ -313,8 +308,6 @@ wal_disk_writer(int fd, void *state)
 
 		u32 rows = [rcvr confirm_write] - lsn + 1;
 
-		u32 data_len = sizeof(lsn) + sizeof(reply[0].repeat_count);
-
 		wbuf = tbuf_alloc(fiber->pool);
 		for (int i = 0; i < p; i++) {
 			if (rows > 0) {
@@ -328,6 +321,8 @@ wal_disk_writer(int fd, void *state)
 				reply[i].repeat_count = 0;
 			}
 
+			/* struct wal_reply */
+			u32 data_len = sizeof(struct wal_reply);
 			tbuf_append(wbuf, &data_len, sizeof(data_len));
 			tbuf_append(wbuf, &lsn, sizeof(lsn));
 			tbuf_append(wbuf, &reply[i].fid, sizeof(reply[i].fid));

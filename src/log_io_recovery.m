@@ -742,14 +742,8 @@ input_dispatch(va_list ap __attribute__((unused)))
 		while (tbuf_len(c->rbuf) > sizeof(u32) * 2 &&
 		       tbuf_len(c->rbuf) >= *(u32 *)c->rbuf->data)
 		{
-			struct {
-				u32 data_len;
-				i64 lsn;
-				u32 fid;
-				u32 repeat_count;
-			} __attribute__((packed)) *r = c->rbuf->data;
-
-			resume(fid2fiber(r->fid), &r->lsn);
+			struct wal_reply *r = c->rbuf->data;
+			resume(fid2fiber(r->fid), r);
 			tbuf_ltrim(c->rbuf, sizeof(*r));
 		}
 
