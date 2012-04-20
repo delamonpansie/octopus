@@ -161,6 +161,7 @@ input_reader(va_list ap)
 	struct conn *c;
 	ev_watcher *w;
 	ssize_t r;
+	static const int read_buffer_size = 32 * 1024;
 
 	say_info("input reader for service %p started", service);
 	yield();
@@ -168,13 +169,13 @@ loop:
 	w = yield();
 	c = w->data;
 
-	tbuf_ensure(c->rbuf, 12 * 1024);
+	tbuf_ensure(c->rbuf, read_buffer_size);
 	r = read(c->fd, c->rbuf->data + tbuf_len(c->rbuf), c->rbuf->size - tbuf_len(c->rbuf));
 
 	if (r > 0) {
 		c->rbuf->len += r;
 		if (tbuf_len(c->rbuf) >= sizeof(struct iproto_header)) {
-			if (tbuf_len(c->rbuf) > 8 * 1024)
+			if (tbuf_len(c->rbuf) > read_buffer_size * .8)
 				ev_io_stop(&c->in);
 			if (c->state != PROCESSING) {
 				TAILQ_INSERT_HEAD(&c->service->processing, c, processing_link);
