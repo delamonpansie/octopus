@@ -371,8 +371,9 @@ conn_readahead(struct conn *c, size_t min)
 		} else {
 			if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
 				continue;
+			if (r < 0)
+				say_syserror("%s:", __func__);
 
-			say_syserror("%s", __func__);
 			break;
 		}
 	}
