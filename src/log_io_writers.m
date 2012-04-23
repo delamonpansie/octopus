@@ -199,13 +199,13 @@ confirm_write
 			else
 				last_flush = ev_now();
 		}
-	}
 
-	if (current_wal->dir->rows_per_file <= [current_wal rows] ||
-	    (lsn + 1) % current_wal->dir->rows_per_file == 0)
-	{
-		wal_to_close = current_wal;
-		current_wal = nil;
+		if (current_wal->dir->rows_per_file <= [current_wal rows] ||
+		    (lsn + 1) % current_wal->dir->rows_per_file == 0)
+		{
+			wal_to_close = current_wal;
+			current_wal = nil;
+		}
 	}
 
 	return lsn;
@@ -277,7 +277,7 @@ wal_disk_writer(int fd, void *state)
 			}
 
 			u32 repeat_count = ((u32 *)rbuf->data)[2];
-			if (repeat_count > [rcvr->current_wal wet_rows_offset_available]) {
+			if (!io_failure && repeat_count > [rcvr->current_wal wet_rows_offset_available]) {
 				assert(p != 0);
 				reparse = true;
 				break;
@@ -306,25 +306,27 @@ wal_disk_writer(int fd, void *state)
 		if (p == 0)
 			continue;
 
-		u32 rows = [rcvr confirm_write] - lsn + 1;
+		u32 rows = [rcvr confirm_write] - lsn;
 
 		wbuf = tbuf_alloc(fiber->pool);
 		for (int i = 0; i < p; i++) {
+			i64 pack_lsn;
 			if (rows > 0) {
 				if (rows < reply[i].repeat_count)
 					reply[i].repeat_count = rows;
 
 				rows -= reply[i].repeat_count;
 				lsn += reply[i].repeat_count;
+				pack_lsn = lsn;
 			} else {
-				lsn = 0;
+				pack_lsn = 0;
 				reply[i].repeat_count = 0;
 			}
 
 			/* struct wal_reply */
 			u32 data_len = sizeof(struct wal_reply);
 			tbuf_append(wbuf, &data_len, sizeof(data_len));
-			tbuf_append(wbuf, &lsn, sizeof(lsn));
+			tbuf_append(wbuf, &pack_lsn, sizeof(pack_lsn));
 			tbuf_append(wbuf, &reply[i].fid, sizeof(reply[i].fid));
 			tbuf_append(wbuf, &reply[i].repeat_count, sizeof(reply[i].repeat_count));
 
