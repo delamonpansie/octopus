@@ -150,7 +150,7 @@ iproto_error(struct netmsg **m, struct netmsg_mark *header_mark, u32 ret_code, c
 	header->ret_code = ret_code;
 	if (err && strlen(err) > 0) {
 		header->len += strlen(err);
-		net_add_iov(m, err, strlen(err));
+		net_add_iov_dup(m, err, strlen(err));
 	}
 }
 
