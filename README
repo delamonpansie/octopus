@@ -20,10 +20,10 @@ Cons:
 How to run:
 
 1) compile (note GNU make is required)
-	(g)make _release_box/tarantool_silverbox
+	./configure && make
 2) customize config
-	emacs cfg/tarantool_silverbox_cfg.cfg
+	cp cfg/tarantool_box.cfg custom.cfg && emacs custom.cfg
 3) initialize storage
-        _release_box/tarantool_silverbox --config cfg/tarantool_silverbox_cfg.cfg --init_storage
+        ./tarantool --config custom.cfg --init-storage
 4) run
-	_release_box/tarantool_silverbox --config cfg/tarantool_silverbox_cfg.cfg
+	./tarantool --config custom.cfg
