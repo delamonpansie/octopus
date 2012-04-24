@@ -61,8 +61,7 @@ const int MEMCACHED_OBJECT_SPACE = 23;
 struct object_space *object_space_registry;
 const int object_space_count = 256;
 
-@class BoxRecovery;
-static BoxRecovery *recovery;
+static Recovery *recovery;
 
 struct box_snap_row {
 	u32 object_space;
@@ -1158,9 +1157,6 @@ initialize_service()
 		say_info("(silver)box initialized (%i workers)", cfg.wal_writer_inbox_size);
 	}
 }
-
-@interface BoxRecovery: Recovery
-@end
 
 static void
 snap_apply(struct box_txn *txn, struct tbuf *t)
