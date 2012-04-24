@@ -1,7 +1,6 @@
 class IndexEnv < RunEnv
   def config
-    connect_string, config = super
-    config += <<EOD
+    super + <<EOD
 object_space[0].enabled = 1
 object_space[0].index[0].type = "TREE"
 object_space[0].index[0].unique = 1
@@ -34,7 +33,6 @@ object_space[1].index[1].key_field[1].fieldno = 2
 object_space[1].index[1].key_field[1].type = "STR"
 
 EOD
-    return connect_string, config
   end
 end
 

@@ -1,7 +1,6 @@
 class Test3Env < RunEnv
   def config
-    connect_string, config = super
-    config += <<EOD
+    super + <<EOD
 object_space[0].enabled = 1
 
 object_space[0].index[0].type = "TREE"
@@ -15,7 +14,6 @@ object_space[0].index[1].key_field[0].fieldno = 1
 object_space[0].index[1].key_field[0].type = "STR"
 
 EOD
-    return connect_string, config
   end
 end
 

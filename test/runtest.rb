@@ -96,8 +96,12 @@ class RunEnv
     @config_template = File.read("test/basic.cfg")
   end
 
+  def connect_string
+    "0:33013"
+  end
+
   def config
-    return "0:33013", ERB.new(@config_template).result(binding)
+    ERB.new(@config_template).result(binding)
   end
 
   def tarantool(args, param = {})
@@ -186,7 +190,7 @@ class RunEnv
       ln_s Binary, "tarantool"
       ln_s root + "/.gdbinit", ".gdbinit"
       ln_s root + "/.gdb_history", ".gdb_history"
-      @connect_string, config_data = config
+      @connect_string, config_data = connect_string, config
       File.open(ConfigFile, "w+") do |io|
         io.write config_data
       end

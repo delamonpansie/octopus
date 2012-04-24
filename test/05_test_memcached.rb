@@ -1,8 +1,6 @@
 class MemcachedEnv < RunEnv
   def config
-    connect_string, config = super
-
-    config = <<EOD
+    <<EOD
 pid_file = "tarantool.pid"
 
 slab_alloc_arena = 1
@@ -14,7 +12,6 @@ memcached = 1
 object_space = []
 
 EOD
-    return connect_string, config
   end
 end
 
