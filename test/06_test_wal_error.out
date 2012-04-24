@@ -1,0 +1,7 @@
+# box.ping()
+:pong
+
+# box.insert([1, 2, "abc", "def"])
+Failed with: {code: 0x2702, message: 'unable write wal row'}
+# box.insert([1, 2, "abc", "def"])
+Failed with: {code: 0x2702, message: 'unable write wal row'}

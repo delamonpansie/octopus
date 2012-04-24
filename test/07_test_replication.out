@@ -1,0 +1,12 @@
+# box.ping()
+:pong
+
+# box.insert([1, 2, "abc", "def"])
+1
+
+# box.insert([1, 2, "abc", "def"])
+2
+
+# box.select([1])
+[["\001\000\000\000", "\002\000\000\000", "abc", "def"]]
+
