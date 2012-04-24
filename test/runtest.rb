@@ -186,7 +186,6 @@ class RunEnv
     rm_rf @test_dir if exists? @test_dir
     mkdir @test_dir
     cd @test_dir do
-      mkdir "scripts"
       ln_s Binary, "tarantool"
       ln_s root + "/.gdbinit", ".gdbinit"
       ln_s root + "/.gdb_history", ".gdb_history"
