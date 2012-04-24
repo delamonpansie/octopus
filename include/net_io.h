@@ -56,7 +56,7 @@ struct netmsg {
 
 	TAILQ_ENTRY(netmsg) link;
 
-	struct iovec iov[1024];
+	struct iovec iov[1024]; // TODO: use IOV_MAX
 	struct tnt_object *ref[1024];
 #ifdef NET_IO_TIMESTAMPS
 	ev_tstamp tstamp[1024];
@@ -92,7 +92,7 @@ struct service {
 	const char *name;
 	TAILQ_HEAD(, conn) processing;
 	LIST_HEAD(, conn) conn;
-	struct fiber *acceptor, *handler, *input_reader, *output_flusher;
+	struct fiber *acceptor/* , *handler */, *input_reader, *output_flusher;
 	SLIST_HEAD(, fiber) workers;
 	ev_prepare wakeup;
 };
