@@ -83,17 +83,22 @@ class RunEnv
   include FileTest
   include FileUtils
 
+  Root = FileUtils.getwd
   ConfigFile = "tarantool.cfg"
   PidFile = "tarantool.pid"
   LogFile = "tarantool.log"
-  Binary = FileUtils.getwd + "/tarantool"
-  Suppressions = FileUtils.getwd + "/scripts/valgrind.supp"
+  Binary = Root + "/tarantool"
+  Suppressions = Root + "/scripts/valgrind.supp"
 
   attr_reader :pid
 
   def initialize
-    @test_dir = "test/var"
-    @config_template = File.read("test/basic.cfg")
+    @test_dir = "test"
+    @config_template = File.read(Root + "/test/basic.cfg")
+  end
+
+  def server_root
+    @test_dir + "/var"
   end
 
   def connect_string
@@ -182,19 +187,20 @@ class RunEnv
   end
 
   def init_workdir
-    root = getwd
-    rm_rf @test_dir if exists? @test_dir
-    mkdir @test_dir
-    cd @test_dir do
-      ln_s Binary, "tarantool"
-      ln_s root + "/.gdbinit", ".gdbinit"
-      ln_s root + "/.gdb_history", ".gdb_history"
-      @connect_string, config_data = connect_string, config
-      File.open(ConfigFile, "w+") do |io|
-        io.write config_data
-      end
+    cd Root do
+      rm_rf server_root if exists? server_root
+      mkdir server_root
+      cd server_root do
+        ln_s Binary, "tarantool"
+        ln_s Root + "/.gdbinit", ".gdbinit"
+        ln_s Root + "/.gdb_history", ".gdb_history"
+        @connect_string, config_data = connect_string, config
+        File.open(ConfigFile, "w+") do |io|
+          io.write config_data
+        end
 
-      waitpid(tarantool ['--init-storage'], :out => "/dev/null", :err => "/dev/null")
+        waitpid(tarantool ['--init-storage'], :out => "/dev/null", :err => "/dev/null")
+      end
     end
   end
 
@@ -206,7 +212,7 @@ class RunEnv
     raise unless block_given?
     init_workdir
 
-    cd @test_dir do
+    cd Root + "/" + server_root do
       begin
         start_server
         yield connect_to_box
@@ -220,7 +226,7 @@ class RunEnv
     raise unless block_given?
     init_workdir
 
-    cd @test_dir do
+    cd Root + "/" + server_root do
       begin
         yield self
       ensure
