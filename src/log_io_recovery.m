@@ -606,23 +606,34 @@ pull_wal(Recovery *r, struct conn *c, u32 version)
 		}
 
 		if (pack_rows > 0) {
-			pack = [r wal_pack_prepare];
-			for (int i = 0; i < pack_rows; i++) {
-				row = rows[i];
-				[r wal_pack_append:pack
-					      data:row_v12(row)->data
-					       len:row_v12(row)->len
-					       tag:row_v12(row)->tag
-					    cookie:row_v12(row)->cookie];
+			@try {
+				for (int j = 0; j < pack_rows; j++) {
+					row = rows[j];
+					[r recover_row:tbuf_clone(fiber->pool, row)];
+				}
 			}
-			int confirmed = [r wal_pack_submit];
+			@catch (id e) {
+				panic("Replication failure: row lsn: %"PRIi64, row_v12(row)->lsn);
+			}
 
-			for (int j = 0; j < confirmed; j++)
-				[r recover_row:rows[j]];
-
-			if (confirmed != pack_rows)
-				raise("wal write failed confirmed:%i < sent:%i",
-				      confirmed, pack_rows);
+			int confirmed = 0;
+			while (confirmed != pack_rows) {
+				pack = [r wal_pack_prepare];
+				for (int i = confirmed; i < pack_rows; i++) {
+					row = rows[i];
+					[r wal_pack_append:pack
+						      data:row_v12(row)->data
+						       len:row_v12(row)->len
+						       tag:row_v12(row)->tag
+						    cookie:row_v12(row)->cookie];
+				}
+				confirmed += [r wal_pack_submit];
+				if (confirmed != pack_rows) {
+					say_warn("wal write failed confirmed:%i != sent:%i",
+						 confirmed, pack_rows);
+					fiber_sleep(0.05);
+				}
+			}
 		}
 
 		if (special_row) {
