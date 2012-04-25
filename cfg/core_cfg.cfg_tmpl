@@ -41,6 +41,13 @@ io_collect_interval=0.0, ro
 # size of listen backlog
 backlog=1024, ro
 
+# net_io tunables
+output_low_watermark = 262144
+output_high_watermark = 524288
+input_buffer_size = 32768
+input_high_watermark = 26214
+input_low_watermark = 4096
+
 # path for search scripts
 lua_path = "src-lua/?.lua;?.lua", ro
 

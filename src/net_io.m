@@ -518,8 +518,8 @@ service_output_flusher(va_list ap __attribute__((unused)))
 		if (conn_write_netmsg(c) == NULL)
 			ev_io_stop(&c->out);
 
-		if ((tbuf_len(c->rbuf) < 4 * 1024 || c->state == READING) &&
-		    c->out_messages.bytes < 256 * 1024)
+		if ((tbuf_len(c->rbuf) < cfg.input_low_watermark || c->state == READING) &&
+		    c->out_messages.bytes < cfg.output_low_watermark)
 			ev_io_start(&c->in);
 	}
 }
