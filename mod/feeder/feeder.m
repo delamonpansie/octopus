@@ -199,7 +199,7 @@ init(void)
 	exit(EXIT_FAILURE);
 }
 
-struct tnt_module feeder = {
+static struct tnt_module feeder = {
         .name = "WAL feeder",
         .init = init,
         .check_config = NULL,

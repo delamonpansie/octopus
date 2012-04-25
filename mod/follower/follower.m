@@ -101,7 +101,7 @@ init(void)
 	exit(EXIT_SUCCESS);
 }
 
-struct tnt_module follower = {
+static struct tnt_module follower = {
         .name = "(silver)box",
         .init = init,
         .check_config = check_config,

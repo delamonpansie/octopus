@@ -1400,7 +1400,7 @@ info(struct tbuf *out)
 }
 
 
-struct tnt_module box = {
+static struct tnt_module box = {
         .name = "box",
         .init = init,
         .check_config = NULL,
