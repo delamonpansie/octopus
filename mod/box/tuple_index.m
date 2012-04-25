@@ -34,7 +34,7 @@
 #include <stdbool.h>
 
 #import <mod/box/box.h>
-#import <cfg/tarantool_cfg.h>
+#import <cfg/tarantool.h>
 
 @implementation Index (Tuple)
 static struct index_node *

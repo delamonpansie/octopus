@@ -26,7 +26,7 @@
 
 #import <util.h>
 #import <tbuf.h>
-#import <cfg/tarantool_cfg.h>
+#import <cfg/tarantool.h>
 
 #include <stdbool.h>
 

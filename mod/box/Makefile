@@ -19,4 +19,4 @@ ifeq (1,$(HAVE_RAGEL))
 	dist += mod/box/memcached.m
 endif
 
-cfg_tmpl += mod/box/box_cfg.cfg_tmpl
+cfg_tmpl += mod/box/box.cfg_tmpl
