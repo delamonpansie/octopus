@@ -6,10 +6,6 @@ $options = {}
 OptionParser.new do |opt|
   opt.banner = "Usage: #{$0} ..."
 
-  opt.on('-v', '--[no-]verbose', 'Verbose output') do |v|
-    $options[:verbose] = v
-  end
-
   opt.on('-m', '--match REGEXP', 'Select tests matching REGEXP') do |pattern|
     $options[:match] = Regexp.new(pattern)
   end
@@ -30,6 +26,11 @@ OptionParser.new do |opt|
   opt.on('--valgrind', 'Use valgrind') do |v|
     $options[:valgrind] = v
   end
+
+  opt.on('--stdout', 'Print test output to stdout') do |v|
+    $options[:stdout] = v
+  end
+
 end.parse!
 
 
@@ -251,6 +252,10 @@ end
 tests.sort.each do |filename|
   print "running #{filename.sub(%r{.*test/},'')}..."
 
+  if $options[:stdout] then
+    require filename
+    next
+  end
 
   test_output = LogPpProxy.capture_stdout do
     require filename
