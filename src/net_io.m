@@ -78,8 +78,6 @@ netmsg_unref(struct netmsg *m, int from)
 	struct tnt_object **obj = m->ref;
 
 	for (int i = from; i < m->count; i++) {
-		m->head->bytes -= m->iov[i].iov_len;
-
 		if (obj[i] == 0)
 			continue;
 
@@ -120,6 +118,7 @@ netmsg_concat(struct netmsg_head *dst, struct netmsg_head *src)
 	tail = TAILQ_EMPTY(&dst->q) ? NULL : TAILQ_LAST(&dst->q, netmsg_tailq);
 
 	dst->bytes += src->bytes;
+	src->bytes = 0;
 	TAILQ_FOREACH_SAFE(m, &src->q, link, tmp) {
 		TAILQ_REMOVE(&src->q, m, link); /* FIXME: TAILQ_INIT ? */
 		if (src->pool != dst->pool)
@@ -263,6 +262,8 @@ restart:
 			conn_close(c);
 			break;
 		};
+		m->head->bytes -= r;
+
 		while (iov_cnt > 0) {
 			if (iov->iov_len > r) {
 				iov->iov_base += r;
