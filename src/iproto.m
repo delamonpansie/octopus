@@ -101,8 +101,11 @@ next:
 		}
 	}
 
-	if (!TAILQ_EMPTY(&c->out_messages.q))
+	if (!TAILQ_EMPTY(&c->out_messages.q)) {
 		ev_io_start(&c->out);
+		if (c->out_messages.bytes > 512 * 1024)
+			ev_io_stop(&c->in);
+	}
 
 	if (palloc_allocated(service->pool) > 64 * 1024 * 1024) /* FIXME: do it after change of that size */
 		palloc_gc(service->pool);
