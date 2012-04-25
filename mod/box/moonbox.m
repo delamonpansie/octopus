@@ -120,11 +120,13 @@ const char *netmsgpromise_metaname = "Tarantool.netmsg.promise";
 static int
 luaT_pushnetmsg(struct lua_State *L)
 {
-	struct netmsg_tailq *q = lua_newuserdata(L, sizeof(struct netmsg_tailq));
+	struct netmsg_head *h = lua_newuserdata(L, sizeof(struct netmsg_head));
 	luaL_getmetatable(L, netmsg_metaname);
 	lua_setmetatable(L, -2);
 
-	TAILQ_INIT(q);
+	TAILQ_INIT(&h->q);
+	h->pool = NULL;
+	h->bytes = 0;
 	return 1;
 }
 
@@ -186,6 +188,10 @@ netmsg_fixup_promise(struct lua_State *L)
 	lua_rawgeti(L, 1, 1);
 	struct iovec *v = lua_touserdata(L, -1);
 	v->iov_base = (char *) luaL_checklstring(L, 2, &v->iov_len);
+	lua_pop(L, 1);
+	lua_rawgeti(L, 1, 2);
+	struct netmsg_head *h = luaT_checknetmsg(L, -1);
+	h->bytes += v->iov_len;
 	return 0;
 }
 
