@@ -42,7 +42,7 @@ init
 {
 	[super init];
 	for (int i = 0; i < INDEX_NODE_CACHE; i++)
-		node_cache[i] = malloc(512);
+		node_cache[i] = calloc(1, 512);
 	return self;
 }
 
