@@ -357,7 +357,7 @@ static int
 luaT_static_module(lua_State *L)
 {
     const char *_name = luaL_checkstring(L, 1);
-    char *name = alloca(strlen(_name));
+    char *name = alloca(strlen(_name) + 1);
     strcpy(name, _name);
 
     for (char *p = name; *p; p++)
