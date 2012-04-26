@@ -278,10 +278,17 @@ luaT_pushfield(struct lua_State *L)
 	size_t len, flen;
 	const char *str = luaL_checklstring(L, 1, &len);
 	flen = len + varint32_sizeof(len);
-	u8 *dst = alloca(flen); /* FIXME: this will crash, given str is large enougth */
+	u8 *dst;
+	/* FIXME: this will crash, given str is large enougth */
+	if (flen > 128)
+		dst = malloc(flen);
+	else
+		dst = alloca(flen);
 	u8 *tail = save_varint32(dst, len);
 	memcpy(tail, str, len);
 	lua_pushlstring(L, (char *)dst, flen);
+	if (flen > 128)
+		free(dst);
 	return 1;
 }
 
