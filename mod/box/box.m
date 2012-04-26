@@ -1302,6 +1302,7 @@ init(void)
 
 	if (!cfg.local_hot_standby)
 		[recovery enable_local_writes];
+	title("%s", [recovery status]);
 }
 
 static int
