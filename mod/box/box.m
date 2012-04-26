@@ -799,6 +799,7 @@ box_process(struct conn *c, struct tbuf *request)
 
 			if (msg_code == EXEC_LUA) {
 				box_dispach_lua(&txn, &request_data);
+				stat_collect(stat_base, EXEC_LUA, 1);
 			} else {
 				box_prepare_update(&txn, &request_data);
 				/* we'r potentially block here */
