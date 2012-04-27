@@ -231,7 +231,8 @@ net_add_lua_iov(struct netmsg **m, lua_State *L, int str)
 	struct tnt_object **ref = (*m)->ref + (*m)->count;
 	struct iovec *v = (*m)->iov + (*m)->count;
 
-	v->iov_base = (char *)lua_tolstring(L, str, &v->iov_len);
+	lua_pushvalue(L, str);
+	v->iov_base = (char *)lua_tolstring(L, -1, &v->iov_len);
 	(*m)->head->bytes += v->iov_len;
 	uintptr_t obj = luaL_ref(L, LUA_REGISTRYINDEX);
 	*ref = (void *)(obj * 2 + 1);
