@@ -357,7 +357,6 @@ exit:
 void
 snapshot_write_row(XLog *l, u16 tag, struct tbuf *data)
 {
-	static int rows;
 	static int bytes;
 	ev_tstamp elapsed;
 	static ev_tstamp last = 0;
@@ -365,9 +364,6 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *data)
 
 	if ([l append_row:data->data len:tbuf_len(data) tag:tag cookie:default_cookie] < 0)
 		panic("unable write row");
-
-	if (++rows % 100000 == 0)
-		say_crit("%.1fM rows written", rows / 1000000.);
 
 	prelease_after(fiber->pool, 128 * 1024);
 

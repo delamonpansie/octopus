@@ -1319,8 +1319,13 @@ snapshot_rows(XLog *l)
 	struct tnt_object *obj;
 	struct box_tuple *tuple;
 	struct tbuf *row;
+	size_t rows = 0, total_rows = 0;
 
-	for (uint32_t n = 0; n < object_space_count; ++n) {
+	for (int n = 0; n < object_space_count; n++)
+		if (object_space_registry[n].enabled)
+			total_rows += [object_space_registry[n].index[0] size];
+
+	for (int n = 0; n < object_space_count; n++) {
 		if (!object_space_registry[n].enabled)
 			continue;
 
@@ -1339,6 +1344,12 @@ snapshot_rows(XLog *l)
 			tbuf_append(row, tuple->data, tuple->bsize);
 
 			snapshot_write_row(l, snap_tag, row);
+
+			if (++rows % 100000 == 0) {
+				float pct = (float)rows / total_rows * 100.;
+				say_crit("%.1fM/%.2f%% rows written", rows / 1000000., pct);
+				set_proc_title("dumper %.2f%% (%" PRIu32 ")", pct, getppid());
+			}
 		}
 	}
 }
