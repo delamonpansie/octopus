@@ -490,7 +490,7 @@ memcached_dispatch(struct conn *c)
 					net_add_iov(&m, b->data, tbuf_len(b));
 					stats.bytes_written += tbuf_len(b);
 				} else {
-					net_add_iov(&m, "VALUE ", 6);
+					ADD_IOV_LITERAL(&m, "VALUE ");
 					net_add_iov(&m, key, key_len);
 					net_add_iov(&m, suffix, suffix_len);
 				}
