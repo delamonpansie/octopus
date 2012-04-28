@@ -108,6 +108,7 @@ struct iovec *net_reserve_iov(struct netmsg **m);
 void net_add_iov_dup(struct netmsg **m, const void *buf, size_t len);
 void net_add_ref_iov(struct netmsg **m, struct tnt_object *obj, const void *buf, size_t len);
 void net_add_lua_iov(struct netmsg **m, lua_State *L, int str);
+void netmsg_verify_ownership(struct netmsg_head *h);
 
 struct conn *conn_create(struct palloc_pool *pool, int fd);
 void conn_init(struct conn *c, struct palloc_pool *pool, int fd, int ref);

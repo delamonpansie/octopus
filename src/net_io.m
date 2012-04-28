@@ -245,6 +245,19 @@ net_add_lua_iov(struct netmsg **m, lua_State *L, int str)
 		enlarge(m);
 }
 
+void
+netmsg_verify_ownership(struct netmsg_head *h)
+{
+	struct netmsg *m;
+
+	TAILQ_FOREACH(m, &h->q, link)
+		for (int i = 0; i < m->count; i++)
+			if (m->ref[i] != 0)
+				assert(!palloc_owner(h->pool, m->iov[i].iov_base));
+			else
+				assert(palloc_owner(h->pool, m->iov[i].iov_base));
+}
+
 
 struct netmsg *
 conn_write_netmsg(struct conn *c)

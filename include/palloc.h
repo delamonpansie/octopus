@@ -55,3 +55,4 @@ void palloc_unregister_gc_root(struct palloc_pool *pool, void *ptr);
 void palloc_gc(struct palloc_pool *pool);
 
 void palloc_stat(struct tbuf *buf);
+bool palloc_owner(struct palloc_pool *pool, void *ptr);

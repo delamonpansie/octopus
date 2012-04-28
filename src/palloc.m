@@ -487,3 +487,19 @@ palloc_allocated(struct palloc_pool *pool)
 {
 	return pool->allocated;
 }
+
+bool
+palloc_owner(struct palloc_pool *pool, void *ptr)
+{
+	struct chunk *chunk, *next_chunk;
+
+	for (chunk = SLIST_FIRST(&pool->chunks); chunk != NULL; chunk = next_chunk) {
+		next_chunk = SLIST_NEXT(chunk, busy_link);
+
+		void *data_start = (void *)chunk + sizeof(struct chunk);
+		void *data_end = data_start + chunk->data_size;
+		if (data_start <= ptr && ptr < data_end)
+			return true;
+	}
+	return false;
+}

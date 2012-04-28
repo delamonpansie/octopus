@@ -831,6 +831,9 @@ box_process(struct conn *c, struct tbuf *request)
 	}
 	@finally {
 		txn_cleanup(&txn);
+#ifdef NET_IO_PARANOIA
+		netmsg_verify_ownership(&c->out_messages);
+#endif
 	}
 }
 
