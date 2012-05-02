@@ -1,6 +1,6 @@
 
-local error, print, type, pairs, ipairs, table, setmetatable =
-      error, print, type, pairs, ipairs, table, setmetatable
+local assert, error, print, type, pairs, ipairs, table, setmetatable =
+      assert, error, print, type, pairs, ipairs, table, setmetatable
 
 local string, tostring =
       string, tostring
@@ -119,8 +119,8 @@ function wrap(proc_body)
                 return nil
         end
 
-        local function proc(out, object_space, ...)
-                local retcode, result = proc_body(object_space, ...)
+        local function proc(out, ...)
+                local retcode, result = proc_body(...)
 
                 if type(result) == "table" then
                         netmsg.add_iov(out, tou32(#result))
@@ -161,6 +161,7 @@ struct box_tuple {
 ]]
 
 function decode_varint32(ptr, offt)
+        local initial_offt = offt
         local result = 0
         local byte
         
@@ -191,6 +192,8 @@ function decode_varint32(ptr, offt)
                         end
                 end
         end
+        assert(initial_offt < offt)
+        assert(offt - initial_offt <= 4)
         return result, offt
 end
 
