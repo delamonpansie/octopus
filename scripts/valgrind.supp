@@ -1,10 +1,4 @@
 {
-   lua_str_new
-   Memcheck:Cond
-   fun:lj_str_new
-}
-
-{
    objc_runtime_class_leak
    Memcheck:Leak
    fun:malloc
