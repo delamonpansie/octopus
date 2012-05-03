@@ -18,15 +18,26 @@ function print (...)
         end
 end
 
-function reloadfile(filename, module)
-        if not filename or not module then
+
+
+function reloadfile(filename)
+        if not filename then
                 error("reloadfile: bad arguments")
         end
 
         local function print_warn(msg)
-                print(string.format("reloadfile(\"%s\", \"%s\"): %s", filename, module, msg))
+                print(string.format("reloadfile(\"%s\"): %s", filename, msg))
         end
 
+        local function require(filename)
+                local modulename = string.gsub(string.gsub(filename, "^.*/", ""), "%.lua$", "")
+                local module = loadfile(filename)
+                local modulev = module(modulename)
+
+                if modulev then
+                        package.loaded[module] = modulev
+                end
+        end
         local function reload_loop()
                 local tm = 0
                 while true do
@@ -34,8 +45,7 @@ function reloadfile(filename, module)
                         local r, v = pcall(os.ctime, filename)
                         if r then
                                 if v > tm then
-                                        package.loaded[module] = nil
-                                        local r, err = pcall(require, module)
+                                        local r, err = pcall(require, filename)
                                         if r then
                                                 tm = v
                                         else
