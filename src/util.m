@@ -49,6 +49,8 @@
 void *STACK_END_ADDRESS;
 #endif
 
+extern int keepalive_pipe[2];
+
 void
 close_all_xcpt(int fdc, ...)
 {
@@ -130,9 +132,22 @@ tnt_fork()
 		   our parent will send SIGTERM to us when he catches SIGINT */
 		signal(SIGINT, SIG_IGN);
 		ev_loop_fork();
+		if (keepalive_pipe[0] > 0) {
+			close(keepalive_pipe[0]);
+			keepalive_pipe[0] = -1;
+		}
 	}
 	return pid;
 }
+
+void
+keepalive(void)
+{
+	char c = 0;
+	if (write(keepalive_pipe[1], &c, 1) != 1)
+		panic("parent is dead");
+}
+
 
 void *
 xrealloc(void *ptr, size_t size)

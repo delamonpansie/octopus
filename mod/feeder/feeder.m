@@ -111,6 +111,7 @@ recover_feed_slave(int sock)
 	socklen_t addrlen = sizeof(addr);
 	const char *peer_name = "<unknown>";
 	ev_io io = { .coro = 0 };
+	ev_timer tm = { .coro = 0 };
 
 	if (getpeername(sock, (struct sockaddr *)&addr, &addrlen) != -1)
 		peer_name = inet_ntoa(addr.sin_addr);
@@ -125,6 +126,9 @@ recover_feed_slave(int sock)
 
 	ev_io_init(&io, (void *)eof_monitor, sock, EV_READ);
 	ev_io_start(&io);
+
+	ev_timer_init(&tm, (void *)keepalive, 1, 1);
+	ev_timer_start(&tm);
 
 	ev_run(0);
 }
@@ -176,12 +180,18 @@ init(void)
 
 	listen(server, 5);
 
+	struct timeval tm = { .tv_sec = 0, .tv_usec = 100000};
+	setsockopt(server, SOL_SOCKET, SO_RCVTIMEO, &tm,sizeof(tm));
 	say_info("WAL feeder initilized");
 
 	for (;;) {
 		pid_t child;
+		keepalive();
+
 		client = accept(server, NULL, NULL);
 		if (client < 0) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK)
+				continue;
 			say_syserror("accept");
 			continue;
 		}

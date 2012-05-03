@@ -75,6 +75,7 @@ struct tarantool_cfg cfg;
 char *custom_proc_title;
 
 Recovery *recovery_state;
+int keepalive_pipe[2];
 
 extern int daemonize(int nochdir, int noclose);
 void out_warning(int v, char *format, ...);
@@ -445,6 +446,17 @@ initialize_minimal()
 
 #ifdef STORAGE
 static void
+keepalive_read(ev_io *e, int events __attribute__((unused)))
+{
+	char buf[16];
+	ssize_t r = read(e->fd, buf, sizeof(buf));
+	if (r > 0 || errno == EAGAIN || errno == EWOULDBLOCK)
+		return;
+
+	panic("read from keepalive_pipe failed");
+}
+
+static void
 ev_panic(const char *msg)
 {
 	/* panic is a macro */
@@ -671,6 +683,15 @@ main(int argc, char **argv)
 			      cfg.coredump * 60, 0);
 		ev_timer_start(&coredump_timer);
 	}
+
+	if (pipe(keepalive_pipe) == -1 || set_nonblock(keepalive_pipe[0] == -1)) {
+		say_syserror("can't create keepalive pipe");
+		exit(1);
+	}
+
+	ev_io keepalive = { .coro = 0 };
+	ev_io_init(&keepalive, keepalive_read, keepalive_pipe[0], EV_READ);
+	ev_io_start(&keepalive);
 
 	if (module("WAL feeder"))
 		module("WAL feeder")->init();
