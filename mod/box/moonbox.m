@@ -393,6 +393,8 @@ luaT_find_proc(lua_State *L, char *fname, i32 len)
 		if (e == NULL)
 			e = fname + len;
 
+		if (lua_isnil(L, -1))
+			return 0;
 		lua_pushlstring(L, fname, e - fname);
 		lua_gettable(L, -2);
 		lua_remove(L, -2);
@@ -400,6 +402,8 @@ luaT_find_proc(lua_State *L, char *fname, i32 len)
 		len -= e - fname + 1;
 		fname = e + 1;
 	} while (len > 0);
+	if (lua_isnil(L, -1))
+		return 0;
 	return 1;
 }
 
@@ -415,7 +419,10 @@ box_dispach_lua(struct box_txn *txn, struct tbuf *data)
 
 	luaT_pushnetmsg(L);
 
-	luaT_find_proc(L, fname, flen);
+	if (luaT_find_proc(L, fname, flen) == 0) {
+		lua_pop(L, 1);
+		iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "no such proc: %*s", flen, fname);
+	}
 	lua_pushvalue(L, 1);
 	for (int i = 0; i < nargs; i++)
 		read_push_field(L, data);
