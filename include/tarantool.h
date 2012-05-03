@@ -80,7 +80,6 @@ unsigned tnt_uptime(void);
 char **init_set_proc_title(int argc, char **argv);
 void set_proc_title(const char *format, ...);
 
-
 struct tnt_object *object_alloc(u8 type, size_t size);
 void object_ref(struct tnt_object *obj, int count);
 void object_incr_ref(struct tnt_object *obj);
