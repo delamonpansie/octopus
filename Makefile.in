@@ -45,7 +45,7 @@ ifneq (.,$(srcdir))
     CFLAGS += -I$(srcdir) -I$(srcdir)/include
 endif
 
-CFLAGS += -Wno-strict-aliasing
+CFLAGS += -Wno-strict-aliasing -funwind-tables
 
 ifeq ("$(origin V)", "command line")
     VERBOSE = $(V)
@@ -73,7 +73,8 @@ LIBS += -lluajit
 tarantool: third_party/luajit/src/libluajit.a
 third_party/luajit/src/libluajit.a:
 	$(E) "MAKE	$@"
-	@$(MAKE) -q -C third_party/luajit/src CC="$(CC)" E="$(E)" Q="$(Q)" libluajit.a
+	@$(MAKE) -C third_party/luajit/src CC="$(CC)" E="$(E)" Q="$(Q)" \
+		TARGET_CFLAGS='-funwind-tables -DLUAJIT_UNWIND_EXTERNAL' libluajit.a
 
 $(obj): $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
 $(obj): Makefile
