@@ -41,7 +41,6 @@ function reloadfile(filename)
         local function reload_loop()
                 local tm = 0
                 while true do
-                        fiber.sleep(1)
                         local r, v = pcall(os.ctime, filename)
                         if r then
                                 if v > tm then
@@ -55,10 +54,9 @@ function reloadfile(filename)
                         else
                                 print_warn(v)
                         end
+                        fiber.sleep(1)
                 end
         end
         return fiber.create(reload_loop)
 end
-
-pcall(dofile, "init.lua")
 print("Lua prelude initialized.")

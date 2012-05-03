@@ -714,6 +714,11 @@ main(int argc, char **argv)
 	}
 
 	admin_init();
+
+	lua_getglobal(root_L, "dofile");
+	lua_pushliteral(root_L, "init.lua");
+	lua_pcall(root_L, 1, 0, 0);
+
 	prelease(fiber->pool);
 	say_crit("log level %i", cfg.log_level);
 	say_crit("entering event loop");
