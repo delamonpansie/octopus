@@ -36,7 +36,7 @@
 @interface Error : Object {
 @public
 	char *reason;
-	char buf[128];
+	char buf[1024];
 	unsigned line;
 	const char *file;
 	char *backtrace;
