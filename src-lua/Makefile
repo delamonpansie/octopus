@@ -12,14 +12,15 @@ dist-clean += src-lua/registry.m
 
 src-lua/bundle.o: $(src-lua)
 	@mkdir -p $(dir $@)
-	$(LD) -r -b binary $(filter %.lua,$^) -o $@
-	$(NM) $@ | $(SED) 's/.* //; h; s/src_lua_/\n/; s/.*\n//; x; G; s/\n/ /' > $@.redefine
-	$(OBJCOPY) --redefine-syms $@.redefine $@
+	$(Q)$(LD) $(LD_EMU) -r -b binary $(filter %.lua,$^) -o $@
+	$(Q)$(NM) $@ | $(SED) 's/.* //; h; s/src_lua_/\n/; s/.*\n//; x; G; s/\n/ /' > $@.redefine
+	$(E) "OBJCOPY	$@"
+	$(Q)$(OBJCOPY) --redefine-syms $@.redefine $@
 
 src-lua/bundle.nm: src-lua/bundle.o
 	@mkdir -p $(dir $@)
-	$(NM) $^ | $(SED) '/end$$/d; s/.* //;' | sort -r > $@
+	$(Q)$(NM) $^ | $(SED) '/end$$/d; s/.* //;' | sort -r > $@
 
 src-lua/registry.m: src-lua/bundle.nm
 	@mkdir -p $(dir $@)
-	@sh $(srcdir)/scripts/gen-lua-registry.sh $< > $@
+	$(Q)sh $(srcdir)/scripts/gen-lua-registry.sh $< > $@

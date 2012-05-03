@@ -20,7 +20,8 @@ ifeq (1, $(HAVE_CONFETTI))
 	@echo "#include <cfg/tarantool.h>" >> $@
 	@echo "void out_warning(ConfettyError r, char *format, ...);" >> $@
 	@echo '%}' >> $@
-	$(CAT) $(filter-out Makefile,$^) >> $@
+	$(E) "GEN	$@"
+	$(Q)$(CAT) $(filter-out Makefile,$^) >> $@
 endif
 
 obj += cfg/tarantool.o

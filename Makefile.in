@@ -47,19 +47,33 @@ endif
 
 CFLAGS += -Wno-strict-aliasing
 
+ifeq ("$(origin V)", "command line")
+    VERBOSE = $(V)
+endif
+ifeq (,$(VERBOSE))
+  E:=@echo
+  Q:=@
+else
+  E:=@:
+  Q:=
+endif
+
+
 all: tarantool
 
 subdirs += third_party $(foreach module,$(modules),mod/$(module)) cfg src src-lua
 include $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
 
 tarantool: $(obj)
-	$(CC) $(LDFLAGS) $^ $(LIBS) -o $@
+	$E "CC	$@"
+	$Q$(CC) $(LDFLAGS) $^ $(LIBS) -o $@
 
 LDFLAGS += -Lthird_party/luajit/src -Wl,--export-dynamic
 LIBS += -lluajit
 tarantool: third_party/luajit/src/libluajit.a
 third_party/luajit/src/libluajit.a:
-	@$(MAKE) -C third_party/luajit/src libluajit.a
+	$(E) "MAKE	$@"
+	@$(MAKE) -q -C third_party/luajit/src CC="$(CC)" E="$(E)" Q="$(Q)" libluajit.a
 
 $(obj): $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
 $(obj): Makefile
@@ -71,38 +85,46 @@ $(filter-out $(disable-warns-obj),$(obj)): CFLAGS += $(CFLAGS_WARNS)
 
 %.o: %.m
 	@mkdir -p $(dir $@)
-	$(CC) $(CPPFLAGS) $(CFLAGS) -Wno-protocol -fobjc-exceptions -fgnu-runtime -c $< -o $@
+	$(E) "CC	$@"
+	$(Q)$(CC) $(CPPFLAGS) $(CFLAGS) -Wno-protocol -fobjc-exceptions -fgnu-runtime -c $< -o $@
 
 %.o: %.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+	$(E) "CC	$@"
+	$(Q)$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 ifeq (1,$(HAVE_RAGEL))
 %.m: %.rl
 	@mkdir -p $(dir $@)
-	$(RAGEL) -G2 $< -o $@
+	$(E) "RAGEL	$@"
+	$(Q)$(RAGEL) -G2 $< -o $@
 
 %.dot: %.rl
 	@mkdir -p $(dir $@)
-	$(RAGEL) -p -V $< -o $(basename $@).dot
+	$(E) "RAGEL	$@"
+	$(Q)$(RAGEL) -p -V $< -o $(basename $@).dot
 
 %.png: %.dot
 	@mkdir -p $(dir $@)
-	$(DOT) -Tpng $< -o $(basename $@).png
+	$(E) "DOT	$@"
+	$(Q)$(DOT) -Tpng $< -o $(basename $@).png
 endif
 
 ifeq (1,$(HAVE_CONFETTI))
 %.cfg: %.cfg_tmpl
 	@mkdir -p $(dir $@)
-	$(CONFETTI) -i $< -n tarantool_cfg -f $@
+	$(E) "CNFTY	$@"
+	$(Q)$(CONFETTI) -i $< -n tarantool_cfg -f $@
 
 %.h: %.cfg_tmpl
 	@mkdir -p $(dir $@)
-	$(CONFETTI) -i $< -n tarantool_cfg -h $@
+	$(E) "CNFTY	$@"
+	$(Q)$(CONFETTI) -i $< -n tarantool_cfg -h $@
 
 %.c: %.cfg_tmpl
 	@mkdir -p $(dir $@)
-	$(CONFETTI) -i $< -n tarantool_cfg -c $@
+	$(E) "CNFTY	$@"
+	$(Q)$(CONFETTI) -i $< -n tarantool_cfg -c $@
 endif
 
 
@@ -113,7 +135,7 @@ tarantool_version.h: FORCE
 	@echo -n 'const char tarantool_version_string[] = "' > $@_
 	@DARCS=$(DARCS) sh $(srcdir)/scripts/darcs-describe >> $@_
 	@echo '";' >> $@_
-	@diff -q $@ $@_ 2>/dev/null >/dev/null || ($(ECHO) "GEN	" $(notdir $@); cp $@_ $@)
+	@diff -q $@ $@_ 2>/dev/null >/dev/null || (echo "GEN	$(notdir $@)"; cp $@_ $@)
 	@rm $@_
 else
 ifeq (1,$(HAVE_GIT))
@@ -121,7 +143,7 @@ tarantool_version.h: FORCE
 	@echo -n 'const char tarantool_version_string[] = "' > $@_
 	@$(GIT) describe HEAD | tr -d \\n >> $@_
 	@echo '";' >> $@_
-	@diff -q $@ $@_ 2>/dev/null >/dev/null || ($(ECHO) "GEN	" $(notdir $@); cp $@_ $@)
+	@diff -q $@ $@_ 2>/dev/null >/dev/null || (echo "GEN	$(notdir $@)"; cp $@_ $@)
 	@rm $@_
 endif
 endif
@@ -190,20 +212,6 @@ configure: $(srcdir)/configure.ac $(srcdir)/third_party/libev/libev.m4
 .PHONY:
 dist: configure $(dist) tarantool_version.h
 	@rm -rf $(configure-byproducts)
-
-ifeq ("$(origin V)", "command line")
-    VERBOSE = $(V)
-endif
-ifeq (,$(VERBOSE))
-    $(eval override CC = @$(ECHO)    "CC	" $$@; $(CC))
-    $(eval override RAGEL = @$(ECHO) "RGL	" $$@; $(RAGEL))
-    $(eval override DOT = @$(ECHO) "DOT	" $$@; $(DOT))
-    $(eval override CONFETTI = @$(ECHO) "CNF	" $$@; $(CONFETTI))
-    $(eval override CAT = @$(ECHO) "CAT	" $$@; $(CAT))
-    $(eval override NM = @$(ECHO) "NM	" $$@; $(NM))
-    $(eval override OBJCOPY = @$(ECHO) "OBJCOPY	" $$@; $(OBJCOPY))
-    $(eval override LD = @$(ECHO) "LD	" $$@; $(LD))
-endif
 
 $(eval $(defered))
 
