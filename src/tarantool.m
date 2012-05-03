@@ -472,9 +472,6 @@ main(int argc, char **argv)
 #endif
 	const char *cfg_paramname = NULL;
 
-#ifndef HAVE_STACK_END_ADDRESS
-        STACK_END_ADDRESS = &argc;
-#endif
 	cfg.log_level = S_INFO;
 	master_pid = getpid();
 	srand(master_pid);

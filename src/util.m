@@ -45,10 +45,6 @@
 # include <gelf.h>
 #endif
 
-#ifndef HAVE_STACK_END_ADDRESS
-void *STACK_END_ADDRESS;
-#endif
-
 extern int keepalive_pipe[2];
 
 void
@@ -171,48 +167,57 @@ drand(double top)
 	return (top * (double)rand()) / RAND_MAX;
 }
 
-#ifdef BACKTRACE
-
-/*
- * we use global static buffer because it is too late to do
- * any allocation when we are printing bactrace and fiber stack is small
- */
+#if defined(__ia64__) && defined(__hpux__)
+typedef unsigned _Unwind_Ptr __attribute__((__mode__(__word__)));
+#else
+typedef unsigned _Unwind_Ptr __attribute__((__mode__(__pointer__)));
+#endif
+typedef enum
+{
+  _URC_NO_REASON = 0,
+  _URC_FOREIGN_EXCEPTION_CAUGHT = 1,
+  _URC_FATAL_PHASE2_ERROR = 2,
+  _URC_FATAL_PHASE1_ERROR = 3,
+  _URC_NORMAL_STOP = 4,
+  _URC_END_OF_STACK = 5,
+  _URC_HANDLER_FOUND = 6,
+  _URC_INSTALL_CONTEXT = 7,
+  _URC_CONTINUE_UNWIND = 8
+} _Unwind_Reason_Code;
+struct _Unwind_Context;
+typedef _Unwind_Reason_Code (*_Unwind_Trace_Fn) (struct _Unwind_Context *, void *);
+extern _Unwind_Reason_Code _Unwind_Backtrace (_Unwind_Trace_Fn, void *);
+extern _Unwind_Ptr _Unwind_GetIP (struct _Unwind_Context *);
+extern void * _Unwind_FindEnclosingFunction (void *pc);
 
 static char backtrace_buf[4096 * 4];
-
-/*
- * note, stack unwinding code assumes that binary is compiled with frame pointers
- */
-
-struct frame {
-	struct frame *rbp;
-	void *ret;
-};
-
-char *
-backtrace(void *frame_, void *stack, size_t stack_size)
+const char *
+tnt_backtrace(void)
 {
-	struct frame *frame = frame_;
-	void *stack_top = stack + stack_size;
-	void *stack_bottom = stack;
-
 	char *p = backtrace_buf;
 	size_t r, len = sizeof(backtrace_buf);
-	while (stack_bottom <= (void *)frame && (void *)frame < stack_top) {
-		r = snprintf(p, len, "        - { frame: %p, caller: %p",
-			     (void *)frame + 2 * sizeof(void *), frame->ret);
 
+	_Unwind_Reason_Code print_frame(struct _Unwind_Context *ctx,
+					void *arg __attribute__((unused)))
+	{
+		void *pc = (void *)_Unwind_GetIP(ctx);
+		void *fn = _Unwind_FindEnclosingFunction(pc);
+
+		if (pc == NULL || fn == NULL)
+			return _URC_NO_REASON;
+
+		r = snprintf(p, len, "        - { pc: %p", fn);
 		if (r >= len)
-			goto out;
+			r = len;
 		p += r;
 		len -= r;
 
 #ifdef HAVE_LIBELF
-		struct symbol *s = addr2symbol(frame->ret);
+		struct symbol *s = addr2symbol(fn);
 		if (s != NULL) {
-			r = snprintf(p, len, " <%s+%zu> ", s->name, frame->ret - s->addr);
+			r = snprintf(p, len, ", sym: '%s+%zu'", s->name, pc - fn);
 			if (r >= len)
-				goto out;
+				r = len;
 			p += r;
 			len -= r;
 
@@ -220,53 +225,16 @@ backtrace(void *frame_, void *stack, size_t stack_size)
 #endif
 		r = snprintf(p, len, " }\r\n");
 		if (r >= len)
-			goto out;
+			r = len;
+
 		p += r;
 		len -= r;
-
-#ifdef HAVE_LIBELF
-		if (s != NULL) {
-			if (strcmp(s->name, "main") == 0)
-				break;
-			if (strcmp(s->name, "coro_init") == 0)
-				break;
-		}
-#endif
-		frame = frame->rbp;
+		return _URC_NO_REASON;
 	}
-	r = 0;
-out:
-	p += MIN(len - 1, r);
+	_Unwind_Backtrace(print_frame, NULL);
 	*p = 0;
         return backtrace_buf;
 }
-#endif
-
-#ifdef BACKTRACE
-const char *
-tnt_backtrace(void)
-{
-	void *frame = frame_addess();
-	void *stack_top;
-	size_t stack_size;
-
-	if (fiber == NULL || fiber->name == NULL || strcmp(fiber->name, "sched") == 0) {
-		stack_top = frame; /* we don't know where the system stack top is */
-		stack_size = STACK_END_ADDRESS - frame;
-	} else {
-		stack_top = fiber->coro.stack;
-		stack_size = fiber->coro.stack_size;
-	}
-
-	return backtrace(frame, stack_top, stack_size);
-}
-#else
-const char *
-tnt_backtrace(void)
-{
-	return NULL;
-}
-#endif
 
 void __attribute__((format(FORMAT_PRINTF, 6, 7), noreturn))
 _panic(int status, const char *filename, unsigned line,

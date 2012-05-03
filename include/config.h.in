@@ -84,9 +84,6 @@
 /* Define to 1 if you have the `signalfd' function. */
 #undef HAVE_SIGNALFD
 
-/* Define to 1 if you have pointer holding address of stack end */
-#undef HAVE_STACK_END_ADDRESS
-
 /* Define to 1 if stdbool.h conforms to C99. */
 #undef HAVE_STDBOOL_H
 
@@ -178,9 +175,6 @@
 	STACK_DIRECTION < 0 => grows toward lower addresses
 	STACK_DIRECTION = 0 => direction of growth unknown */
 #undef STACK_DIRECTION
-
-/* Define to name of the pointer holding address of stack end */
-#undef STACK_END_ADDRESS
 
 /* Define to 1 if you have the ANSI C header files. */
 #undef STDC_HEADERS

@@ -151,16 +151,6 @@ void wait_gdb(void);
 
 double drand(double top);
 
-#ifndef STACK_END_ADDRESS
-#define STACK_END_ADDRESS stack_end_address
-#endif
-extern void *STACK_END_ADDRESS;
-
-#if __GNUC__ && (defined(__x86) || defined (__amd64) || defined(__i386))
-#define BACKTRACE
-#define frame_addess() __builtin_frame_address(0)
-char *backtrace(void *frame, void *stack, size_t stack_size);
-#endif
 const char *tnt_backtrace(void);
 
 #ifdef HAVE_LIBELF

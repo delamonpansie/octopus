@@ -102,18 +102,12 @@ int main(void)
 
 AC_LANG_POP
 
-AC_ARG_ENABLE([backtrace],
-              [AS_HELP_STRING([--enable-backtrace],
-                              [compile with backtrace printer])],
-            [backtrace=$enableval])
-
-AS_IF([test "x$backtrace" == xyes],
-      [AC_CHECK_HEADER(libelf.h)
-       AC_CHECK_HEADER(gelf.h)
-       AC_SEARCH_LIBS([elf_begin], [elf])
-       AS_IF([test -n "$ac_cv_header_libelf_h" -a -n "$ac_cv_header_gelf_h" -a "$ac_cv_search_elf_begin" != no],
-             [AC_MSG_NOTICE([Will use libelf to resolve symbol names])]
-             [AC_DEFINE(HAVE_LIBELF, 1, [Define to 1 if you have libelf installed])])])
+AC_CHECK_HEADER(libelf.h)
+AC_CHECK_HEADER(gelf.h)
+AC_SEARCH_LIBS([elf_begin], [elf])
+AS_IF([test -n "$ac_cv_header_libelf_h" -a -n "$ac_cv_header_gelf_h" -a "$ac_cv_search_elf_begin" != no],
+      [AC_MSG_NOTICE([Will use libelf to resolve symbol names])]
+      [AC_DEFINE(HAVE_LIBELF, 1, [Define to 1 if you have libelf installed])])
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_C_INLINE
@@ -168,10 +162,6 @@ AS_IF([test "x$ac_cv_no_stack_protector" == xyes]
 AC_CC_FLAG_CHECK([-pipe])
 AS_IF([test "x$ac_cv_pipe" == xyes]
       CFLAGS="$CFLAGS -pipe")
-AS_IF([test "x$backtrace" == xyes],
-      [AC_CC_FLAG_CHECK([-fno-omit-frame-pointer])]
-      AS_IF([test "x$ac_cv_no_omit_frame_pointer" == xyes]
-                  CFLAGS="$CFLAGS -fno-omit-frame-pointer"))
 
 AC_CC_FLAG_CHECK([-Werror], [CFLAGS_WARNS="-Werror $CFLAGS_WARNS"])
 AC_CC_FLAG_CHECK([-Wno-sign-compare], [CFLAGS_WARNS="-Wno-sign-compare $CFLAGS_WARNS"])
@@ -186,21 +176,6 @@ AS_IF([test $ac_cv_MD__MP == yes],
 AC_CC_FLAG_CHECK([-Wno-comment], [AC_SUBST(HAVE_CC_FLAG_W_NO_COMMENT, 1)])
 AC_CC_FLAG_CHECK([-Wno-unused-value], [AC_SUBST(HAVE_CC_FLAG_W_NO_UNUSED_VALUE, 1)])
 AC_CC_FLAG_CHECK([-Wno-unused-parameter], [AC_SUBST(HAVE_CC_FLAG_W_NO_UNUSED_PARAMETER, 1)])
-
-AC_MSG_CHECKING([for stack end address pointer])
-ac_cv_stack_end_address=no
-for addr in __libc_stack_end _SEND; do
-  AC_LINK_IFELSE(
-    [AC_LANG_PROGRAM([extern void *$addr;],
-                     [if (!$addr) return 1;])],
-                     [ac_cv_stack_end_address="$addr"; break])
-done
-AS_IF([test $ac_cv_stack_end_address != no],
-      [AC_DEFINE_UNQUOTED(STACK_END_ADDRESS, $ac_cv_stack_end_address,
-                          [Define to name of the pointer holding address of stack end])
-       AC_DEFINE([HAVE_STACK_END_ADDRESS], [1],
-                 [Define to 1 if you have pointer holding address of stack end])])
-AC_MSG_RESULT([$ac_cv_stack_end_address])
 
 AC_ARG_ENABLE([coverage],
               [AS_HELP_STRING([--enable-coverage],
