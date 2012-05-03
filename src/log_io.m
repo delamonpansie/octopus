@@ -506,7 +506,7 @@ reset_inprogress
 inprogress_rename
 {
 	const char *final_filename = [self final_filename];
-	say_crit("renaming %s to %s", filename, final_filename);
+	say_info("renaming %s to %s", filename, final_filename);
 
 	if (rename(filename, final_filename) != 0) {
 		say_syserror("can't rename %s to %s", filename, final_filename);
