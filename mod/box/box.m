@@ -953,7 +953,7 @@ snap_print(Recovery *r __attribute__((unused)), struct tbuf *t)
 
 	if (tag == snap_tag) {
 		tuple_print(out, row->tuple_size, row->data);
-		printf("lsn:%" PRIi64 " tm:%.3f n:%i %*s\n",
+		printf("lsn:%" PRIi64 " tm:%.3f n:%i %.*s\n",
 		       raw_row->lsn, raw_row->tm,
 		       row->object_space, tbuf_len(out), (char *)out->data);
 	} else if (tag == snap_initial_tag)
@@ -967,7 +967,7 @@ xlog_print(Recovery *r __attribute__((unused)), struct tbuf *t)
 	struct tbuf *out = tbuf_alloc(t->pool);
 	int res = box_xlog_sprint(out, t);
 	if (res >= 0)
-		printf("%*s\n", tbuf_len(out), (char *)out->data);
+		printf("%.*s\n", tbuf_len(out), (char *)out->data);
 	return res;
 }
 

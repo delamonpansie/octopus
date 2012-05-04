@@ -421,7 +421,7 @@ box_dispach_lua(struct box_txn *txn, struct tbuf *data)
 
 	if (luaT_find_proc(L, fname, flen) == 0) {
 		lua_pop(L, 1);
-		iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "no such proc: %*s", flen, fname);
+		iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "no such proc: %.*s", flen, fname);
 	}
 	lua_pushvalue(L, 1);
 	for (int i = 0; i < nargs; i++)
