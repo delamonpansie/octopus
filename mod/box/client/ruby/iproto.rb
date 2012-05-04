@@ -33,6 +33,14 @@ include Socket::Constants
 class IProtoError < RuntimeError
 end
 
+if not String.instance_methods.member?("bytesize") then
+  class String
+    def bytesize
+      self.size
+    end
+  end
+end
+
 class IProto
   @@sync = 0
 
@@ -115,7 +123,7 @@ class IProto
     reply = send message
     result = pre_process_reply message, reply
 
-    return yield result if block_given?
+    return yield(result) if block_given?
     result
   end
 
