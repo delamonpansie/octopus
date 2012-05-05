@@ -34,7 +34,11 @@
 
 #include <stdlib.h>
 
-#define BUFFER_TOO_SHORT() iproto_raise(ERR_CODE_UNKNOWN_ERROR, "tbuf too short")
+void __attribute__((cold,noreturn))
+buffer_too_short()
+{
+	iproto_raise(ERR_CODE_UNKNOWN_ERROR, "tbuf too short");
+}
 
 /* caller must ensure that there is space in target */
 u8 *
@@ -86,7 +90,7 @@ write_varint32(struct tbuf *b, u32 value)
 	u##bits read_u##bits(struct tbuf *b)				\
 	{								\
 		if (tbuf_len(b) < (bits)/8)				\
-			BUFFER_TOO_SHORT();				\
+			buffer_too_short();				\
 		u##bits r = *(u##bits *)b->data;			\
 		b->size -= (bits)/8;					\
 		b->len -= (bits)/8;					\
@@ -147,7 +151,7 @@ read_field(struct tbuf *buf)
 	u32 data_len = read_varint32(buf);
 
 	if (data_len > tbuf_len(buf))
-		BUFFER_TOO_SHORT();
+		buffer_too_short();
 
 	buf->size -= data_len;
 	buf->len -= data_len;
@@ -161,7 +165,7 @@ read_push_field(lua_State *L, struct tbuf *buf)
 	u32 data_len = read_varint32(buf);
 
 	if (data_len > tbuf_len(buf))
-		BUFFER_TOO_SHORT();
+		buffer_too_short();
 
 	lua_pushlstring(L, buf->data, data_len);
 
@@ -177,7 +181,7 @@ read_bytes(struct tbuf *buf, u32 data_len)
 	void *p = buf->data;
 
 	if (data_len > tbuf_len(buf))
-		BUFFER_TOO_SHORT();
+		buffer_too_short();
 
 	buf->size -= data_len;
 	buf->len -= data_len;
