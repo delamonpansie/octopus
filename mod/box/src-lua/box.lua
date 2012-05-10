@@ -160,7 +160,23 @@ struct box_tuple {
 } __attribute__((packed));
 ]]
 
-function decode_varint32(ptr, offt)
+
+local tnt_object_ref = ffi.typeof("struct tnt_object **") -- userdata holding pointer to tnt_obj, hence double ptr
+local box_tuple = ffi.typeof("struct box_tuple *")
+
+function ctuple(obj)
+        if obj == nil then
+                error("nil tuple")
+        end
+        obj = ffi.cast(tnt_object_ref, obj)
+        if obj[0].type == 1 then
+                return ffi.cast(box_tuple, obj[0].data)
+        else
+                error("not a box tuple")
+        end
+end
+
+function unsafe_decode_varint32(ptr, offt)
         local initial_offt = offt
         local result = 0
         local byte
@@ -192,16 +208,54 @@ function decode_varint32(ptr, offt)
                         end
                 end
         end
-        assert(initial_offt < offt)
-        assert(offt - initial_offt <= 4)
+
         return result, offt
 end
 
-function ctuple(obj)
-        obj = ffi.cast("struct tnt_object **", obj)
-        if obj[0].type == 1 then
-                return ffi.cast("struct box_tuple *", obj[0].data)
-        else
-                error("not a box tuple")
+decode = {}
+
+function decode.varint32(obj, offt)
+        local tuple = ctuple(obj)
+        if (offt < 0 or offt + 1 > tuple.bsize) then
+                error("out of bounds")
         end
+        local result, offt = unsafe_decode_varint32(tuple.data, offt)
+        if (offt > tuple.bsize) then
+                error("out of bounds")
+        end
+        return result, offt
+end
+
+function decode.string(obj, offt, len)
+        local tuple = ctuple(obj)
+        if (offt < 0 or offt + len > tuple.bsize) then
+                error("out of bounds")
+        end
+        return ffi.string(tuple.data + off , len)
+end
+
+local u8_ptr, u16_ptr, u32_ptr = ffi.typeof("uint8_t *"), ffi.typeof("uint16_t *"), ffi.typeof("uint32_t *")
+
+function decode.u8(obj, offt)
+        local tuple = ctuple(obj)
+        if (offt < 0 or offt + 1 > tuple.bsize) then
+                error("out of bounds")
+        end
+        return ffi.cast(u8_ptr , tuple.data)[offt]
+end
+
+function decode.u16(obj, offt)
+        local tuple = ctuple(obj)
+        if (offt < 0 or offt + 2 > tuple.bsize) then
+                error("out of bounds")
+        end
+        return ffi.cast(u16_ptr , tuple.data)[offt]
+end
+
+function decode.u32(obj, offt)
+        local tuple = ctuple(obj)
+        if (offt < 0 or offt + 4 > tuple.bsize) then
+                error("out of bounds")
+        end
+        return ffi.cast(u32_ptr , tuple.data)[offt]
 end
