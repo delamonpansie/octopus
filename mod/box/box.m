@@ -155,16 +155,14 @@ tuple_alloc(size_t size)
 	return obj;
 }
 
-static u32
+static bool
 valid_tuple(struct tbuf *buf, u32 cardinality)
 {
-	struct tbuf tmp;
-
-	memcpy(&tmp, buf, sizeof(tmp));
+	struct tbuf tmp = *buf;
 	for (int i = 0; i < cardinality; i++)
 		read_field(&tmp);
 
-	return tbuf_len(buf) - tbuf_len(&tmp);
+	return tbuf_len(&tmp) == 0;
 }
 
 static void
@@ -213,7 +211,7 @@ prepare_replace(struct box_txn *txn, size_t cardinality, struct tbuf *data)
 {
 	if (cardinality == 0)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "cardinality can't be equal to 0");
-	if (tbuf_len(data) == 0 || tbuf_len(data) != valid_tuple(data, cardinality))
+	if (tbuf_len(data) == 0 || !valid_tuple(data, cardinality))
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "tuple encoding error");
 
 	txn->obj = txn_acquire(txn, tuple_alloc(tbuf_len(data)));
@@ -783,6 +781,12 @@ box_prepare_update(struct box_txn *txn, struct tbuf *data)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "unknown op code");
 	}
 
+	if (txn->obj) {
+		struct box_tuple *tuple = box_tuple(txn->obj);
+		struct tbuf buf = TBUF(tuple->data, tuple->bsize, NULL);
+		if (!valid_tuple(&buf, tuple->cardinality))
+			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "internal error");
+	}
 	if (tbuf_len(data) != 0)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
 }
