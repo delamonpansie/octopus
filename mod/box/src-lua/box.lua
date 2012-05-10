@@ -176,7 +176,7 @@ function ctuple(obj)
         end
 end
 
-function unsafe_decode_varint32(ptr, offt)
+function decode_varint32(ptr, offt)
         local initial_offt = offt
         local result = 0
         local byte
@@ -219,7 +219,7 @@ function decode.varint32(obj, offt)
         if (offt < 0 or offt + 1 > tuple.bsize) then
                 error("out of bounds")
         end
-        local result, offt = unsafe_decode_varint32(tuple.data, offt)
+        local result, offt = decode_varint32(tuple.data, offt)
         if (offt > tuple.bsize) then
                 error("out of bounds")
         end
