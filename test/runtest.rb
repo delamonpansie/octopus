@@ -107,7 +107,11 @@ class RunEnv
   end
 
   def config
-    ERB.new(@config_template).result(binding)
+    cfg = ERB.new(@config_template).result(binding)
+    if not $options[:valgrind] then
+      cfg += %Q{logger = "exec cat - >> tarantool.log"\n}
+    end
+    cfg
   end
 
   def tarantool(args, param = {})
@@ -118,7 +122,9 @@ class RunEnv
       Process.setpgid($$, 0)
       argv = ['./tarantool', '-c', ConfigFile, *args]
       if $options[:valgrind]
-        argv.unshift 'valgrind', '-q', "--suppressions=#{Suppressions}"
+        argv.unshift('valgrind', '-q',
+                     "--suppressions=#{Root + '/scripts/valgrind.supp'}",
+                     "--suppressions=#{Root + '/third_party/luajit/src/lj.supp'}")
       end
       exec *argv
     end
@@ -137,7 +143,18 @@ class RunEnv
     return 4 if $options[:valgrind]
     return 0.1
   end
+
   def start_server
+    i = 0
+    while true do
+      if readable? "#{LogFile}.#{i}" then
+        i += 1
+        next
+      end
+      mv LogFile, "#{LogFile}.#{i}" if readable? LogFile
+      break
+    end
+
     @pid = tarantool [], :out => "/dev/null"
 
     50.times do
@@ -170,19 +187,9 @@ class RunEnv
       STDERR.puts "server prematurely exit"
     end
 
-    i = 0
-    while true do
-      if readable? "#{LogFile}.#{i}" then
-        i += 1
-        next
-      end
-      mv LogFile, "#{LogFile}.#{i}"
-      break
-    end
-
     @pid = nil
+    gdb_if_core
     if $?.signaled? and $?.termsig != Signal.list['INT'] then
-      gdb_if_core
       raise "#{File.basename Binary} exited on uncaught signal #{$?.termsig}"
     end
   end
