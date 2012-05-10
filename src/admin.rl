@@ -33,6 +33,7 @@
 #import <tarantool.h>
 #import <tbuf.h>
 #import <net_io.h>
+#import <pickle.h>
 
 #include <third_party/luajit/src/lua.h>
 
@@ -93,7 +94,7 @@ static void
 fail(struct tbuf *out, struct tbuf *err)
 {
 	start(out);
-	tbuf_printf(out, "fail:%.*s" CRLF, (int)tbuf_len(err), (char *)err->data);
+	tbuf_printf(out, "fail:%.*s" CRLF, (int)tbuf_len(err), (char *)err->ptr);
 	end(out);
 }
 
@@ -108,7 +109,7 @@ tbuf_reader(lua_State *L __attribute__((unused)), void *data, size_t *size)
 	} else {
 		struct tbuf *code = data;
 		*size = tbuf_len(code);
-		return tbuf_peek(code, tbuf_len(code));
+		return read_bytes(code, tbuf_len(code));
 	}
 }
 
@@ -142,13 +143,13 @@ admin_dispatch(struct conn *c)
 	int cs;
 	char *p, *pe;
 	char *strstart, *strend;
-	while ((pe = memchr(c->rbuf->data, '\n', tbuf_len(c->rbuf))) == NULL) {
+	while ((pe = memchr(c->rbuf->ptr, '\n', tbuf_len(c->rbuf))) == NULL) {
 		if (conn_readahead(c, 1) <= 0)
 			return 0;
 	}
 
 	pe++;
-	p = c->rbuf->data;
+	p = c->rbuf->ptr;
 
 	%%{
 		action show_configuration {
@@ -273,10 +274,8 @@ admin_dispatch(struct conn *c)
 		write exec;
 	}%%
 
-	size_t parsed = (void *)pe - (void *)c->rbuf->data;
-	c->rbuf->len -= parsed;
-	c->rbuf->size -= parsed;
-	c->rbuf->data = pe;
+	size_t parsed = (void *)pe - (void *)c->rbuf->ptr;
+	tbuf_ltrim(c->rbuf, parsed);
 
 	if (p != pe) {
 		start(out);
@@ -284,7 +283,7 @@ admin_dispatch(struct conn *c)
 		end(out);
 	}
 
-	return conn_write(c, out->data, tbuf_len(out));
+	return conn_write(c, out->ptr, tbuf_len(out));
 }
 
 

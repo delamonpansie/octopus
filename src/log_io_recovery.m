@@ -129,7 +129,7 @@ dummy_row_lsn:(i64)lsn_ tag:(u16)tag
 {
 	struct tbuf *b = tbuf_alloc(fiber->pool);
 	tbuf_ensure(b, sizeof(struct row_v12));
-	b->len = sizeof(struct row_v12);
+	tbuf_append(b, NULL, sizeof(struct row_v12));
 
 	row_v12(b)->scn = scn;
 	row_v12(b)->lsn = lsn_;
@@ -745,19 +745,17 @@ input_dispatch(va_list ap __attribute__((unused)))
 		struct conn *c = ((struct ev_watcher *)yield())->data;
 		tbuf_ensure(c->rbuf, 128 * 1024);
 
-		int r = read(c->fd, c->rbuf->data + tbuf_len(c->rbuf), c->rbuf->size - tbuf_len(c->rbuf));
-		if (r > 0) {
-			c->rbuf->len += r;
-		} else {
+		ssize_t r = tbuf_read(c->fd, c->rbuf);
+		if (r <= 0) {
 			if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
 				continue;
 			panic("unable to read from WAL writer");
 		}
 
 		while (tbuf_len(c->rbuf) > sizeof(u32) * 2 &&
-		       tbuf_len(c->rbuf) >= *(u32 *)c->rbuf->data)
+		       tbuf_len(c->rbuf) >= *(u32 *)c->rbuf->ptr)
 		{
-			struct wal_reply *r = c->rbuf->data;
+			struct wal_reply *r = c->rbuf->ptr;
 			resume(fid2fiber(r->fid), r);
 			tbuf_ltrim(c->rbuf, sizeof(*r));
 		}

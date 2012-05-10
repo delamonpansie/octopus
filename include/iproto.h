@@ -59,7 +59,7 @@ union iproto_any_header {
 
 static inline struct iproto_header *iproto(const struct tbuf *t)
 {
-	return (struct iproto_header *)t->data;
+	return (struct iproto_header *)t->ptr;
 }
 
 

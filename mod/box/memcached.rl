@@ -235,7 +235,7 @@ print_stats(struct netmsg **m)
 	tbuf_printf(out, "STAT limit_maxbytes %"PRIu64"\r\n", (u64)(cfg.slab_alloc_arena * (1 << 30)));
 	tbuf_printf(out, "STAT threads 1\r\n");
 	tbuf_printf(out, "END\r\n");
-	net_add_iov(m, out->data, tbuf_len(out));
+	net_add_iov(m, out->ptr, tbuf_len(out));
 }
 
 static void
@@ -272,8 +272,8 @@ memcached_dispatch(struct conn *c)
 	i32 flush_delay = 0;
 	size_t keys_count = 0;
 
-	p = c->rbuf->data;
-	pe = c->rbuf->data + tbuf_len(c->rbuf);
+	p = c->rbuf->ptr;
+	pe = c->rbuf->end;
 
 	say_debug("memcached_dispatch '%.*s'", MIN((int)(pe - p), 40) , p);
 
@@ -353,7 +353,7 @@ memcached_dispatch(struct conn *c)
 				}
 
 				bytes += value_len;
-				data = b->data;
+				data = b->ptr;
 				STORE();
 			}
 		}
@@ -392,13 +392,13 @@ memcached_dispatch(struct conn *c)
 
 					b = tbuf_alloc(fiber->pool);
 					tbuf_printf(b, "%"PRIu64, value);
-					data = b->data;
+					data = b->ptr;
 					bytes = tbuf_len(b);
 
 					stats.cmd_set++;
 					if (store(key, exptime, flags, bytes, data) == 0) {
 						stats.total_items++;
-						net_add_iov(&m, b->data, tbuf_len(b));
+						net_add_iov(&m, b->ptr, tbuf_len(b));
 						ADD_IOV_LITERAL(&m, "\r\n");
 					} else {
 						ADD_IOV_LITERAL(&m, "SERVER_ERROR\r\n");
@@ -487,7 +487,7 @@ memcached_dispatch(struct conn *c)
 					struct tbuf *b = tbuf_alloc(fiber->pool);
 					tbuf_printf(b, "VALUE %.*s %"PRIu32" %"PRIu32" %"PRIu64"\r\n",
 						    (int)key_len, (u8 *)key, meta->flags, value_len, meta->cas);
-					net_add_iov(&m, b->data, tbuf_len(b));
+					net_add_iov(&m, b->ptr, tbuf_len(b));
 					stats.bytes_written += tbuf_len(b);
 				} else {
 					ADD_IOV_LITERAL(&m, "VALUE ");
@@ -546,7 +546,7 @@ memcached_dispatch(struct conn *c)
 		flush_delay = digit+ >fstart %{flush_delay = natoq(fstart, p);};
 
 		action read_data {
-			size_t parsed = p - (u8 *)c->rbuf->data;
+			size_t parsed = p - (u8 *)c->rbuf->ptr;
 			while (tbuf_len(c->rbuf) - parsed < bytes + 2) {
 				if ((r = conn_readahead(c, bytes + 2 - (pe - p))) <= 0) {
 					say_debug("read returned %i, closing connection", r);
@@ -554,8 +554,8 @@ memcached_dispatch(struct conn *c)
 				}
 			}
 
-			p = c->rbuf->data + parsed;
-			pe = c->rbuf->data + tbuf_len(c->rbuf);
+			p = c->rbuf->ptr + parsed;
+			pe = c->rbuf->end;
 
 			data = p;
 
@@ -568,8 +568,8 @@ memcached_dispatch(struct conn *c)
 
 		action done {
 			done = true;
-			stats.bytes_read += p - (u8 *)c->rbuf->data;
-			tbuf_peek(c->rbuf, p - (u8 *)c->rbuf->data);
+			stats.bytes_read += p - (u8 *)c->rbuf->ptr;
+			tbuf_ltrim(c->rbuf, p - (u8 *)c->rbuf->ptr);
 		}
 
 		eol = ("\r\n" | "\n") @{ p++; };
@@ -612,7 +612,7 @@ memcached_dispatch(struct conn *c)
 		}
 		char *r;
 		if ((r = memmem(p, pe - p, "\r\n", 2)) != NULL) {
-			tbuf_peek(c->rbuf, r + 2 - (char *)c->rbuf->data);
+			tbuf_ltrim(c->rbuf, r + 2 - (char *)c->rbuf->ptr);
 			ADD_IOV_LITERAL(&m, "CLIENT_ERROR bad command line format\r\n");
 			return 1;
 		}

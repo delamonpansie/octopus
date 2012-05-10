@@ -64,8 +64,8 @@ save_varint32(u8 *target, u32 value)
 inline static void
 append_byte(struct tbuf *b, u8 byte)
 {
-	*((u8 *)b->data + tbuf_len(b)) = byte;
-	b->len++;
+	*((u8 *)b->end++) = byte;
+	b->free--;
 }
 
 void
@@ -89,12 +89,10 @@ write_varint32(struct tbuf *b, u32 value)
 #define read_u(bits)							\
 	u##bits read_u##bits(struct tbuf *b)				\
 	{								\
-		if (tbuf_len(b) < (bits)/8)				\
+		if (unlikely(tbuf_len(b) < bits/8))			\
 			buffer_too_short();				\
-		u##bits r = *(u##bits *)b->data;			\
-		b->size -= (bits)/8;					\
-		b->len -= (bits)/8;					\
-		b->data += (bits)/8;					\
+		u##bits r = *(u##bits *)b->ptr;				\
+		b->ptr += bits/8;					\
 		return r;						\
 	}
 
@@ -106,32 +104,15 @@ read_u(64)
 u32
 read_varint32(struct tbuf *buf)
 {
-	u8 b, *data = buf->data;
-	int l, len = tbuf_len(buf);
-	u32 r = 0;
+	void *p = buf->ptr;
+	u32 r = load_varint32(&p);
 
-#define ROUND(x)				\
-	l = x;					\
-	if (len < l)				\
-		goto err;			\
-	b = *data++;				\
-	r = (r << 7) | (b & 0x7f);		\
-	if ((b & 0x80) == 0)			\
-		goto exit;
+	if (unlikely(p - buf->ptr > 4))
+	    iproto_raise(ERR_CODE_UNKNOWN_ERROR, "bad varint32");
+	if (unlikely(p >= buf->end))
+		buffer_too_short();
 
-
-	ROUND(1);
-	ROUND(2);
-	ROUND(3);
-	ROUND(4);
-
-err:
-	iproto_raise(ERR_CODE_UNKNOWN_ERROR, "bad varint32");
-
-exit:
-	buf->size -= l;
-	buf->len -= l;
-	buf->data += l;
+	buf->ptr = p;
 	return r;
 }
 
@@ -147,83 +128,61 @@ pick_u32(void *data, void **rest)
 void *
 read_field(struct tbuf *buf)
 {
-	void *p = buf->data;
-	u32 data_len = read_varint32(buf);
-
-	if (data_len > tbuf_len(buf))
+	void *p = buf->ptr;
+	u32 data_len = load_varint32(&buf->ptr);
+	buf->ptr += data_len;
+	if (unlikely(buf->ptr > buf->end)) {
+		buf->ptr = p;
 		buffer_too_short();
+	}
 
-	buf->size -= data_len;
-	buf->len -= data_len;
-	buf->data += data_len;
 	return p;
 }
 
 void
 read_push_field(lua_State *L, struct tbuf *buf)
 {
-	u32 data_len = read_varint32(buf);
+	void *p = buf->ptr;
+	u32 data_len = load_varint32(&buf->ptr);
 
-	if (data_len > tbuf_len(buf))
+	if (unlikely(buf->ptr + data_len > buf->end)) {
+		buf->ptr = p;
 		buffer_too_short();
-
-	lua_pushlstring(L, buf->data, data_len);
-
-	buf->size -= data_len;
-	buf->len -= data_len;
-	buf->data += data_len;
+	} else {
+		lua_pushlstring(L, buf->ptr, data_len);
+		buf->ptr += data_len;
+	}
 }
 
 
 void *
 read_bytes(struct tbuf *buf, u32 data_len)
 {
-	void *p = buf->data;
-
-	if (data_len > tbuf_len(buf))
+	if (unlikely(data_len > tbuf_len(buf)))
 		buffer_too_short();
 
-	buf->size -= data_len;
-	buf->len -= data_len;
-	buf->data += data_len;
+	void *p = buf->ptr;
+	buf->ptr += data_len;
 	return p;
 }
 
 size_t
 varint32_sizeof(u32 value)
 {
-	if (value < (1 << 7))
-		return 1;
-	if (value < (1 << 14))
-		return 2;
-	if (value < (1 << 21))
-		return 3;
-	if (value < (1 << 28))
-		return 4;
-	return 5;
+	int s = 1;
+	while (value >= 1 << 7) {
+		value >>= 7;
+		s++;
+	}
+	return s;
 }
 
 u32
-load_varint32(void **data)
+load_varint32(void **pp)
 {
-	unsigned char b;
-	u32 r = 0;
-
-	b = *(u8 *)(*data)++;
-	r = b & 0x7f;
-	if ((b & 0x80) != 0) {
-		b = *(u8 *)(*data)++;
-		r = (r << 7) | (b & 0x7f);
-		if ((b & 0x80) != 0) {
-			b = *(u8 *)(*data)++;
-			r = (r << 7) | (b & 0x7f);
-			if ((b & 0x80) != 0) {
-				b = *(u8 *)(*data)++;
-				r = (r << 7) | (b & 0x7f);
-				if ((b & 0x80) != 0)
-					assert(0);
-			}
-		}
-	}
-	return r;
+	u8 *p = *pp;
+	u32 v = 0;
+	do v = (v << 7) | (*p & 0x7f); while (*p++ & 0x80 && p - (u8 *)*pp < 5);
+	*pp = p;
+	return v;
 }

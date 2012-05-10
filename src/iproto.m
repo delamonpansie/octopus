@@ -90,7 +90,7 @@ next:
 	if (unlikely(msg_code == msg_ping)) {
 		struct netmsg *m = netmsg_tail(&c->out_messages);
 		iproto(request)->len = 0;
-		net_add_iov_dup(&m, request->data, sizeof(struct iproto_header));
+		net_add_iov_dup(&m, request->ptr, sizeof(struct iproto_header));
 	} else {
 		c->ref++;
 		callback(c, request);
@@ -177,10 +177,9 @@ loop:
 	c = w->data;
 
 	tbuf_ensure(c->rbuf, cfg.input_buffer_size);
-	r = read(c->fd, c->rbuf->data + tbuf_len(c->rbuf), c->rbuf->size - tbuf_len(c->rbuf));
+	r = tbuf_read(c->fd, c->rbuf);
 
 	if (r > 0) {
-		c->rbuf->len += r;
 		if (tbuf_len(c->rbuf) >= sizeof(struct iproto_header)) {
 			if (tbuf_len(c->rbuf) > cfg.input_high_watermark)
 				ev_io_stop(&c->in);

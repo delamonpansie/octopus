@@ -91,7 +91,7 @@ submit_change:(struct tbuf *)change
 	h->data_len = tbuf_len(change);
 
 	net_add_iov(&pack->netmsg, msg + sizeof(pack->netmsg), len - sizeof(pack->netmsg));
-	net_add_iov(&pack->netmsg, change->data, tbuf_len(change));
+	net_add_iov(&pack->netmsg, change->ptr, tbuf_len(change));
 
 	if ([self wal_pack_submit] <= 0)
 		raise("unable write wal row");
@@ -216,7 +216,7 @@ int
 wal_disk_writer(int fd, void *state)
 {
 	Recovery *rcvr = state;
-	struct tbuf *wbuf, *rbuf;
+	struct tbuf *wbuf, rbuf = TBUF(NULL, 0, fiber->pool);;
 	int result = EXIT_FAILURE;
 	i64 lsn;
 	bool io_failure = false, reparse = false;
@@ -226,8 +226,7 @@ wal_disk_writer(int fd, void *state)
 		u32 repeat_count;
 	} *reply = malloc(sizeof(*reply) * 1024);
 	ev_tstamp start_time = ev_now();
-	rbuf = tbuf_alloca(fiber->pool);
-	palloc_register_gc_root(fiber->pool, (void *)rbuf, tbuf_gc);
+	palloc_register_gc_root(fiber->pool, &rbuf, tbuf_gc);
 
 	if ((r = recv(fd, &lsn, sizeof(lsn), 0)) != sizeof(lsn)) {
 		if (r == 0) {
@@ -241,9 +240,8 @@ wal_disk_writer(int fd, void *state)
 	[rcvr initial_lsn:lsn];
 	for (;;) {
 		if (!reparse) {
-			tbuf_ensure(rbuf, 16 * 1024);
-			r = recv(fd, rbuf->data + tbuf_len(rbuf),
-				 rbuf->size - tbuf_len(rbuf), 0);
+			tbuf_ensure(&rbuf, 16 * 1024);
+			r = recv(fd, rbuf.end, tbuf_free(&rbuf), 0);
 			if (r < 0 && (errno == EINTR))
 				continue;
 			else if (r < 0) {
@@ -254,7 +252,7 @@ wal_disk_writer(int fd, void *state)
 				result = EX_OK;
 				goto exit;
 			}
-			rbuf->len += r;
+			tbuf_append(&rbuf, NULL, r);
 		}
 
 		/* we're not running inside ev_loop, so update ev_now manually */
@@ -267,7 +265,7 @@ wal_disk_writer(int fd, void *state)
 
 		int p = 0;
 		reparse = false;
-		while (tbuf_len(rbuf) > sizeof(u32) && tbuf_len(rbuf) >= *(u32 *)rbuf->data) {
+		while (tbuf_len(&rbuf) > sizeof(u32) && tbuf_len(&rbuf) >= *(u32 *)rbuf.ptr) {
 			if (p == 0) {
 				if ([rcvr prepare_write] != -1) {
 					io_failure = false;
@@ -276,22 +274,22 @@ wal_disk_writer(int fd, void *state)
 					io_failure = true;
 			}
 
-			u32 repeat_count = ((u32 *)rbuf->data)[2];
+			u32 repeat_count = ((u32 *)rbuf.ptr)[2];
 			if (!io_failure && repeat_count > [rcvr->current_wal wet_rows_offset_available]) {
 				assert(p != 0);
 				reparse = true;
 				break;
 			}
 
-			tbuf_ltrim(rbuf, sizeof(u32)); /* drop packet_len */
-			reply[p].fid = read_u32(rbuf);
-			reply[p].repeat_count = read_u32(rbuf);
+			tbuf_ltrim(&rbuf, sizeof(u32)); /* drop packet_len */
+			reply[p].fid = read_u32(&rbuf);
+			reply[p].repeat_count = read_u32(&rbuf);
 
 			for (int i = 0; i < reply[p].repeat_count; i++) {
-				u16 tag = read_u16(rbuf);
-				u64 cookie = read_u64(rbuf);
-				u32 data_len = read_u32(rbuf);
-				void *data = read_bytes(rbuf, data_len);
+				u16 tag = read_u16(&rbuf);
+				u64 cookie = read_u64(&rbuf);
+				u32 data_len = read_u32(&rbuf);
+				void *data = read_bytes(&rbuf, data_len);
 
 				if (io_failure)
 					continue;
@@ -335,7 +333,7 @@ wal_disk_writer(int fd, void *state)
 
 
 		while (tbuf_len(wbuf) > 0) {
-			ssize_t r = write(fd, wbuf->data, tbuf_len(wbuf));
+			ssize_t r = write(fd, wbuf->ptr, tbuf_len(wbuf));
 			if (r < 0) {
 				if (errno == EINTR)
 					continue;
@@ -355,17 +353,15 @@ exit:
 }
 
 void
-snapshot_write_row(XLog *l, u16 tag, struct tbuf *data)
+snapshot_write_row(XLog *l, u16 tag, struct tbuf *row)
 {
 	static int bytes;
 	ev_tstamp elapsed;
 	static ev_tstamp last = 0;
 	const int io_rate_limit = l->dir->recovery_state->snap_io_rate_limit;
 
-	if ([l append_row:data->data len:tbuf_len(data) tag:tag cookie:default_cookie] < 0) {
-		say_error("unable write row");
-		_exit(EXIT_FAILURE);
-	}
+	if ([l append_row:data->data len:tbuf_len(data) tag:tag cookie:default_cookie] < 0)
+		panic("unable write row");
 
 	prelease_after(fiber->pool, 128 * 1024);
 
@@ -375,7 +371,7 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *data)
 			last = ev_now();
 		}
 
-		bytes += tbuf_len(data) + sizeof(struct row_v12);
+		bytes += tbuf_len(row) + sizeof(struct row_v12);
 
 		while (bytes >= io_rate_limit) {
 			[l flush];

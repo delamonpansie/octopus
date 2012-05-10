@@ -732,13 +732,12 @@ struct tbuf *
 convert_row_v11_to_v12(struct tbuf *m)
 {
 	struct tbuf *n = tbuf_alloc(m->pool);
-	tbuf_ensure(n, sizeof(struct row_v12));
-	n->len = sizeof(struct row_v12);
+	tbuf_append(n, NULL, sizeof(struct row_v12));
 	row_v12(n)->lsn = _row_v11(m)->lsn;
 	row_v12(n)->tm = _row_v11(m)->tm;
 	row_v12(n)->len = _row_v11(m)->len - sizeof(u16) - sizeof(u64); /* tag & cookie */
 
-	tbuf_peek(m, sizeof(struct _row_v11));
+	tbuf_ltrim(m, sizeof(struct _row_v11));
 
 	u16 tag = read_u16(m);
 	if (tag == (u16)-1) {
@@ -752,7 +751,7 @@ convert_row_v11_to_v12(struct tbuf *m)
 
 	row_v12(n)->cookie = read_u64(m);
 
-	tbuf_append(n, m->data, row_v12(n)->len);
+	tbuf_append(n, m->ptr, row_v12(n)->len);
 	return n;
 }
 
@@ -778,16 +777,16 @@ read_row
 	u32 header_crc, data_crc;
 
 	tbuf_ensure(m, sizeof(struct _row_v11));
-	if (fread(m->data, sizeof(struct _row_v11), 1, fd) != 1) {
+	if (fread(m->ptr, sizeof(struct _row_v11), 1, fd) != 1) {
 		if (ferror(fd))
 			say_error("fread error");
 		return NULL;
 	}
 
-	m->len = offsetof(struct _row_v11, data);
+	tbuf_append(m, NULL, offsetof(struct _row_v11, data));
 
 	/* header crc32c calculated on <lsn, tm, len, data_crc32c> */
-	header_crc = crc32c(0, m->data + offsetof(struct _row_v11, lsn),
+	header_crc = crc32c(0, m->ptr + offsetof(struct _row_v11, lsn),
 			    sizeof(struct _row_v11) - offsetof(struct _row_v11, lsn));
 
 	if (_row_v11(m)->header_crc32c != header_crc) {
@@ -802,7 +801,7 @@ read_row
 		return NULL;
 	}
 
-	m->len += _row_v11(m)->len;
+	tbuf_append(m, NULL, _row_v11(m)->len);
 
 	data_crc = crc32c(0, _row_v11(m)->data, _row_v11(m)->len);
 	if (_row_v11(m)->data_crc32c != data_crc) {
@@ -898,16 +897,16 @@ read_row
 	u32 header_crc, data_crc;
 
 	tbuf_ensure(m, sizeof(struct row_v12));
-	if (fread(m->data, sizeof(struct row_v12), 1, fd) != 1) {
+	if (fread(m->ptr, sizeof(struct row_v12), 1, fd) != 1) {
 		if (ferror(fd))
 			say_error("fread error");
 		return NULL;
 	}
 
-	m->len = offsetof(struct row_v12, data);
+	tbuf_append(m, NULL, offsetof(struct row_v12, data));
 
 	/* header crc32c calculated on all fields before data_crc32c> */
-	header_crc = crc32c(0, m->data + offsetof(struct row_v12, lsn),
+	header_crc = crc32c(0, m->ptr + offsetof(struct row_v12, lsn),
 			    sizeof(struct row_v12) - offsetof(struct row_v12, lsn));
 
 	if (row_v12(m)->header_crc32c != header_crc) {
@@ -922,7 +921,7 @@ read_row
 		return NULL;
 	}
 
-	m->len += row_v12(m)->len;
+	tbuf_append(m, NULL, row_v12(m)->len);
 
 	data_crc = crc32c(0, row_v12(m)->data, row_v12(m)->len);
 	if (row_v12(m)->data_crc32c != data_crc) {

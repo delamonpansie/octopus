@@ -235,12 +235,12 @@ struct row_v12 {
 
 static inline struct _row_v11 *_row_v11(const struct tbuf *t)
 {
-	return (struct _row_v11 *)t->data;
+	return (struct _row_v11 *)t->ptr;
 }
 
 static inline struct row_v12 *row_v12(const struct tbuf *t)
 {
-	return (struct row_v12 *)t->data;
+	return (struct row_v12 *)t->ptr;
 }
 
 

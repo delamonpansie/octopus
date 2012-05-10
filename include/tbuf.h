@@ -34,69 +34,62 @@
 
 
 struct tbuf {
-	u32 len;
-	u32 size;
-	void *data;
+	void *ptr, *end;
+	u32 free;
 	struct palloc_pool *pool;
 };
 
+#define TBUF(d, l, p) ({ void *ptr = (d); (struct tbuf) { .free = 0, .ptr = ptr, .end = ptr + (l), .pool = (p) }; })
+
 static inline int __attribute__((pure)) tbuf_len(const struct tbuf *b)
 {
+#ifdef TBUF_PARANOIA
 	assert(b != NULL);
-	return b->len;
+	assert(b->end >= b->ptr);
+#endif
+	return b->end - b->ptr;
+}
+static inline int __attribute__((pure)) tbuf_size(const struct tbuf *b)
+{
+#ifdef TBUF_PARANOIA
+	assert(b != NULL);
+#endif
+	return b->end - b->ptr + b->free;
+}
+static inline int __attribute__((pure)) tbuf_free(const struct tbuf *b)
+{
+#ifdef TBUF_PARANOIA
+	assert(b != NULL);
+#endif
+	return b->free;
 }
 
-#define tbuf_alloca(p) ({			\
-	struct tbuf *b = alloca(sizeof(*b));	\
-	b->pool = (p);				\
-	b->data = NULL;				\
-	b->len = b->size = 0;			\
-	b;					\
-})
-
 struct tbuf *tbuf_alloc(struct palloc_pool *pool);
-struct tbuf *tbuf_alloc_fixed(struct palloc_pool *pool, void *data, u32 len);
 
 void __attribute__((regparm(2)))
 tbuf_ensure_resize(struct tbuf *e, size_t bytes_required);
 static __attribute__((always_inline)) inline void
 tbuf_ensure(struct tbuf *e, size_t required)
 {
-	assert(tbuf_len(e) <= e->size);
-	if (unlikely(e->size - tbuf_len(e) < required))
+	assert(tbuf_len(e) <= tbuf_size(e));
+	if (unlikely(tbuf_free(e) < required))
 		tbuf_ensure_resize(e, required);
-}
-
-static __attribute__((always_inline)) inline void
-tbuf_append(struct tbuf *b, const void *data, size_t len)
-{
-	tbuf_ensure(b, len + 1);
-	memcpy(b->data + tbuf_len(b), data, len);
-	b->len += len;
-	*(((char *)b->data) + tbuf_len(b)) = '\0';
-}
-
-static __attribute__((always_inline)) inline void
-tbuf_ptr_append(struct tbuf *b, const void *data)
-{
-	tbuf_ensure(b, sizeof(void *));
-	memcpy(b->data + tbuf_len(b), &data, sizeof(void *));
-	b->len += sizeof(void *);
 }
 
 struct tbuf *tbuf_clone(struct palloc_pool *pool, const struct tbuf *orig);
 void tbuf_gc(struct palloc_pool *pool, void *ptr);
 
 struct tbuf *tbuf_split(struct tbuf *e, size_t at);
-size_t tbuf_reserve(struct tbuf *b, size_t count);
 void tbuf_reset(struct tbuf *b);
 void *tbuf_peek(struct tbuf *b, size_t count);
 void tbuf_ltrim(struct tbuf *b, size_t diff);
 
+void tbuf_append(struct tbuf *b, const void *data, size_t len);
 void tbuf_append_field(struct tbuf *b, void *f);
 void tbuf_vprintf(struct tbuf *b, const char *format, va_list ap)
 	__attribute__ ((format(FORMAT_PRINTF, 2, 0)));
 void tbuf_printf(struct tbuf *b, const char *format, ...)
 	__attribute__ ((format(FORMAT_PRINTF, 2, 3)));
 
+ssize_t tbuf_read(int fd, struct tbuf *b);
 char *tbuf_to_hex(const struct tbuf *x);

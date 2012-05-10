@@ -381,9 +381,8 @@ conn_readahead(struct conn *c, size_t min)
 	for (;;) {
 		yield();
 
-		r = read(c->fd, c->rbuf->data + tbuf_len(c->rbuf), c->rbuf->size - tbuf_len(c->rbuf));
+		r = tbuf_read(c->fd, c->rbuf);
 		if (r > 0) {
-			c->rbuf->len += r;
 			if (tbuf_len(c->rbuf) >= min)
 				break;
 		} else {

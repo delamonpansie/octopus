@@ -56,12 +56,12 @@ static void
 send_tbuf(int fd, struct tbuf *b)
 {
 	do {
-		ssize_t r = write(fd, b->data, b->len);
+		ssize_t r = write(fd, b->ptr, tbuf_len(b));
 		if (r < 0) {
 			say_syserror("write");
 			exit(EXIT_SUCCESS);
 		}
-		tbuf_peek(b, r);
+		tbuf_ltrim(b, r);
 	} while (tbuf_len(b) > 0);
 }
 

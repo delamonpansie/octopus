@@ -79,7 +79,7 @@ bad_object_type()
 static inline struct box_snap_row *
 box_snap_row(const struct tbuf *t)
 {
-	return (struct box_snap_row *)t->data;
+	return (struct box_snap_row *)t->ptr;
 }
 
 
@@ -217,7 +217,7 @@ prepare_replace(struct box_txn *txn, size_t cardinality, struct tbuf *data)
 	txn->obj = txn_acquire(txn, tuple_alloc(tbuf_len(data)));
 	struct box_tuple *tuple = box_tuple(txn->obj);
 	tuple->cardinality = cardinality;
-	memcpy(tuple->data, data->data, tbuf_len(data));
+	memcpy(tuple->data, data->ptr, tbuf_len(data));
 	tbuf_ltrim(data, tbuf_len(data));
 
 	txn->old_obj = txn_acquire(txn, [txn->index find_by_obj:txn->obj]);
@@ -296,16 +296,16 @@ do_field_arith(u8 op, struct tbuf *field, void *arg, u32 arg_size)
 
 	switch (op) {
 	case 1:
-		*(i32 *)field->data += *(i32 *)arg;
+		*(i32 *)field->ptr += *(i32 *)arg;
 		break;
 	case 2:
-		*(u32 *)field->data &= *(u32 *)arg;
+		*(u32 *)field->ptr &= *(u32 *)arg;
 		break;
 	case 3:
-		*(u32 *)field->data ^= *(u32 *)arg;
+		*(u32 *)field->ptr ^= *(u32 *)arg;
 		break;
 	case 4:
-		*(u32 *)field->data |= *(u32 *)arg;
+		*(u32 *)field->ptr |= *(u32 *)arg;
 		break;
 	}
 }
@@ -313,12 +313,7 @@ do_field_arith(u8 op, struct tbuf *field, void *arg, u32 arg_size)
 static size_t
 do_field_splice(struct tbuf *field, void *args_data, u32 args_data_size)
 {
-	struct tbuf args = {
-		.len = args_data_size,
-		.size = args_data_size,
-		.data = args_data,
-		.pool = NULL
-	};
+	struct tbuf args = TBUF(args_data, args_data_size, NULL);
 	struct tbuf *new_field = NULL;
 	void *offset_field, *length_field, *list_field;
 	u32 offset_size, length_size, list_size;
@@ -381,13 +376,13 @@ do_field_splice(struct tbuf *field, void *args_data, u32 args_data_size)
 	say_debug("do_field_splice: noffset = %i, nlength = %i, list_size = %u",
 		  noffset, nlength, list_size);
 
-	new_field->len = 0;
-	tbuf_append(new_field, field->data, noffset);
+	tbuf_reset(new_field);
+	tbuf_append(new_field, field->ptr, noffset);
 	tbuf_append(new_field, list_field, list_size);
-	tbuf_append(new_field, field->data + noffset + nlength, tbuf_len(field) - (noffset + nlength));
+	tbuf_append(new_field, field->ptr + noffset + nlength, tbuf_len(field) - (noffset + nlength));
 
-	size_t diff = (varint32_sizeof(new_field->len) + new_field->len) -
-		      (varint32_sizeof(field->len) + field->len);
+	size_t diff = (varint32_sizeof(tbuf_len(new_field)) + tbuf_len(new_field)) -
+		      (varint32_sizeof(tbuf_len(field)) + tbuf_len(field));
 
 	*field = *new_field;
 	return diff;
@@ -426,8 +421,16 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 	for (i = 0, field = old_tuple->data; i < cardinality; i++) {
 		void *src = field;
 		int len = LOAD_VARINT32(field);
-		fields[i] = (struct tbuf){len, field - src, src,  NULL};
+		/* .ptr  - start of varint
+		   .end  - start of data
+		   .free - len(data) */
+		fields[i] = (struct tbuf){ .ptr = src, .end = field, .free = len, .pool = NULL };
 		field += len;
+	}
+
+	int __attribute__((pure)) field_len(const struct tbuf *b)
+	{
+		return varint32_sizeof(tbuf_len(b)) + tbuf_len(b);
 	}
 
 	while (op_cnt-- > 0) {
@@ -448,23 +451,23 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 			field = &fields[field_no];
 
 			if (field->pool == NULL) {
-				void *tmp = field->data + field->size;
-				field->size = MAX(arg_size, field->len);
-				if (field->size == 0)
-					field->size = 8;
-				field->data = palloc(fiber->pool, field->size);
-				memcpy(field->data, tmp, field->len);
+				void *field_data = field->end;
+				int field_len = field->free;
+				int expected_size = MAX(arg_size, field_len);
+				field->ptr = palloc(fiber->pool, expected_size ? : 8);
+				memcpy(field->ptr, field_data, field_len);
+				field->end = field->ptr + field_len;
+				field->free = expected_size - field_len;
 				field->pool = fiber->pool;
 			}
 		}
 
 		switch (op) {
 		case 0:
-			tbuf_ensure(field, arg_size);
-			bsize -= varint32_sizeof(field->len) + field->len;
+			bsize -= field_len(field);
 			bsize += varint32_sizeof(arg_size) + arg_size;
-			field->len = arg_size;
-			memcpy(field->data, arg, arg_size);
+			tbuf_reset(field);
+			tbuf_append(field, arg, arg_size);
 			break;
 		case 1 ... 4:
 			do_field_arith(op, field, arg, arg_size);
@@ -478,7 +481,7 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 			if (field_no == 0)
 				iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "unabled to delete PK");
 
-			bsize -= varint32_sizeof(field->len) + field->len;
+			bsize -= varint32_sizeof(tbuf_len(field)) + tbuf_len(field);
 			for (int i = field_no; i < cardinality - 1; i++)
 				fields[i] = fields[i + 1];
 			cardinality--;
@@ -497,10 +500,8 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 			}
 			for (int i = cardinality - 1; i >= field_no; i--)
 				fields[i + 1] = fields[i];
-			fields[field_no] = (struct tbuf){arg_size, arg_size,
-							 palloc(fiber->pool, arg_size),
-							 fiber->pool};
-			memcpy(fields[field_no].data, arg, arg_size);
+			fields[field_no] = TBUF(palloc(fiber->pool, arg_size), arg_size, fiber->pool);
+			memcpy(fields[field_no].ptr, arg, arg_size);
 			bsize += varint32_sizeof(arg_size) + arg_size;
 			cardinality++;
 			break;
@@ -519,16 +520,20 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 	i = 0;
 	do {
 		if (fields[i].pool == NULL) {
-			void *src = fields[i].data;
-			int len = fields[i].len + fields[i].size;
-			for (i++; i < cardinality && src + len == fields[i].data; i++)
-				len += fields[i].len + fields[i].size;
-			memcpy(p, src, len);
-			p += len;
+			void *ptr = fields[i].ptr;
+			void *end = fields[i].end + fields[i].free;
+			for (i++; i < cardinality; i++) {
+				if (end != fields[i].ptr)
+					break;
+				else
+					end = fields[i].end + fields[i].free;
+			}
+			memcpy(p, ptr, end - ptr);
+			p += end - ptr;
 		} else {
-			int len = fields[i].len;
+			int len = tbuf_len(&fields[i]);
 			p = save_varint32(p, len);
-			memcpy(p, fields[i].data, len);
+			memcpy(p, fields[i].ptr, len);
 			p += len;
 			i++;
 		}
@@ -747,7 +752,7 @@ box_prepare_update(struct box_txn *txn, struct tbuf *data)
 {
 	txn->wal_record = tbuf_alloc(fiber->pool);
 	tbuf_append(txn->wal_record, &txn->op, sizeof(txn->op));
-	tbuf_append(txn->wal_record, data->data, tbuf_len(data));
+	tbuf_append(txn->wal_record, data->ptr, tbuf_len(data));
 
 	say_debug("box_dispach(%i)", txn->op);
 
@@ -796,10 +801,7 @@ box_process(struct conn *c, struct tbuf *request)
 {
 	struct box_txn txn = { .op = 0 };
 	u32 msg_code = iproto(request)->msg_code;
-	struct tbuf request_data = { .pool = fiber->pool,
-				     .len = iproto(request)->len,
-				     .size = iproto(request)->len,
-				     .data = iproto(request)->data };
+	struct tbuf request_data = TBUF(iproto(request)->data, iproto(request)->len, fiber->pool);
 	@try {
 		if (op_is_select(msg_code)) {
 			txn_init(iproto(request), &txn, netmsg_tail(&c->out_messages));
@@ -858,9 +860,7 @@ box_xlog_sprint(struct tbuf *buf, const struct tbuf *t)
 {
 	struct row_v12 *row = row_v12(t);
 
-	struct tbuf *b = palloc(fiber->pool, sizeof(*b));
-	b->data = row->data;
-	b->len = row->len;
+	struct tbuf b = TBUF(row->data, row->len, NULL);
 	u16 tag, op;
 	u64 cookie;
 	struct sockaddr_in *peer = (void *)&cookie;
@@ -875,8 +875,8 @@ box_xlog_sprint(struct tbuf *buf, const struct tbuf *t)
 
 	tag = row->tag;
 	cookie = row->cookie;
-	op = read_u16(b);
-	n = read_u32(b);
+	op = read_u16(&b);
+	n = read_u32(&b);
 
 	tbuf_printf(buf, "tm:%.3f t:%s %s %s n:%i ",
 		    row->tm, xlog_tag_to_a(tag), sintoa(peer),
@@ -884,34 +884,34 @@ box_xlog_sprint(struct tbuf *buf, const struct tbuf *t)
 
 	switch (op) {
 	case INSERT:
-		flags = read_u32(b);
-		cardinality = read_u32(b);
-		if (tbuf_len(b) != valid_tuple(b, cardinality))
+		flags = read_u32(&b);
+		cardinality = read_u32(&b);
+		if (!valid_tuple(&b, cardinality))
 			abort();
-		tuple_print(buf, cardinality, b->data);
+		tuple_print(buf, cardinality, b.ptr);
 		break;
 
 	case DELETE:
-		key_len = read_u32(b);
-		key = read_field(b);
-		if (tbuf_len(b) != 0)
+		key_len = read_u32(&b);
+		key = read_field(&b);
+		if (tbuf_len(&b) != 0)
 			abort();
 		tuple_print(buf, key_len, key);
 		break;
 
 	case UPDATE_FIELDS:
-		flags = read_u32(b);
-		key_len = read_u32(b);
-		key = read_field(b);
-		op_cnt = read_u32(b);
+		flags = read_u32(&b);
+		key_len = read_u32(&b);
+		key = read_field(&b);
+		op_cnt = read_u32(&b);
 
 		tbuf_printf(buf, "flags:%08X ", flags);
 		tuple_print(buf, key_len, key);
 
 		while (op_cnt-- > 0) {
-			field_no = read_u32(b);
-			u8 op = read_u8(b);
-			void *arg = read_field(b);
+			field_no = read_u32(&b);
+			u8 op = read_u8(&b);
+			void *arg = read_field(&b);
 
 			tbuf_printf(buf, " [field_no:%i op:", field_no);
 			switch (op) {
@@ -958,20 +958,16 @@ snap_print(Recovery *r __attribute__((unused)), struct tbuf *t)
 	struct tbuf *out = tbuf_alloc(t->pool);
 	struct box_snap_row *row;
 	struct row_v12 *raw_row = row_v12(t);
-
-	struct tbuf *b = palloc(fiber->pool, sizeof(*b));
-	b->data = raw_row->data;
-	b->len = raw_row->len;
-
+	struct tbuf b = TBUF(raw_row->data, raw_row->len, NULL);
 	u16 tag = raw_row->tag;
 
-	row = box_snap_row(b);
+	row = box_snap_row(&b);
 
 	if (tag == snap_tag) {
 		tuple_print(out, row->tuple_size, row->data);
 		printf("lsn:%" PRIi64 " tm:%.3f n:%i %.*s\n",
 		       raw_row->lsn, raw_row->tm,
-		       row->object_space, tbuf_len(out), (char *)out->data);
+		       row->object_space, tbuf_len(out), (char *)out->ptr);
 	} else if (tag == snap_initial_tag)
 		printf("lsn:%" PRIi64 " initial row\n", raw_row->lsn);
 	return 0;
@@ -983,7 +979,7 @@ xlog_print(Recovery *r __attribute__((unused)), struct tbuf *t)
 	struct tbuf *out = tbuf_alloc(t->pool);
 	int res = box_xlog_sprint(out, t);
 	if (res >= 0)
-		printf("%.*s\n", tbuf_len(out), (char *)out->data);
+		printf("%.*s\n", tbuf_len(out), (char *)out->ptr);
 	return res;
 }
 
@@ -1135,7 +1131,7 @@ build_secondary_indexes()
 		foreach_index(index, &object_space_registry[n])
 			tbuf_printf(i, " %i:%s", index->n, [index class]->name);
 
-		say_info("Object space %i indexes:%.*s", n, tbuf_len(i), (char *)i->data);
+		say_info("Object space %i indexes:%.*s", n, tbuf_len(i), (char *)i->ptr);
 	}
 }
 
@@ -1192,10 +1188,7 @@ snap_apply(struct box_txn *txn, struct tbuf *t)
 	txn->index = txn->object_space->index[0];
 	assert(txn->index != nil);
 
-	struct tbuf b = { .size = row->data_size,
-			  .len = row->data_size,
-			  .data = row->data,
-			  .pool = NULL };
+	struct tbuf b = TBUF(row->data, row->data_size, NULL);
 
 	prepare_replace(txn, row->tuple_size, &b);
 	txn->op = INSERT;
@@ -1217,7 +1210,7 @@ recover_row(struct tbuf *row)
 	memset(&txn, 0, sizeof(txn));
 
 	/* drop header */
-	tbuf_peek(row, sizeof(struct row_v12));
+	tbuf_ltrim(row, sizeof(struct row_v12));
 
 	switch (tag) {
 	case wal_tag:

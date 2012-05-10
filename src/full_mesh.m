@@ -304,11 +304,9 @@ input_reader_aux(va_list ap)
 		struct mesh_peer *p = (void *)c - offsetof(struct mesh_peer, c);
 		tbuf_ensure(c->rbuf, 16 * 1024);
 
-		int r = read(c->fd, c->rbuf->data + tbuf_len(c->rbuf), c->rbuf->size - tbuf_len(c->rbuf));
+		ssize_t r = tbuf_read(c->fd, c->rbuf);
 
-		if (r > 0) {
-			c->rbuf->len += r;
-		} else if (r == 0 || /* r < 0 && */ (errno != EAGAIN && errno != EWOULDBLOCK)) {
+		if (r == 0 || /* r < 0 && */ (errno != EAGAIN && errno != EWOULDBLOCK)) {
 			if (r < 0)
 				say_debug("closing conn r:%i errno:%i", (int)r, errno);
 			else
@@ -318,7 +316,7 @@ input_reader_aux(va_list ap)
 		}
 
 		while (have_mesh_msg(c)) {
-			struct mesh_msg *msg = c->rbuf->data;
+			struct mesh_msg *msg = c->rbuf->ptr;
 			tbuf_ltrim(c->rbuf, msg->len);
 			if (hostid(msg->seq) == self_id)
 				collect_response(msg);

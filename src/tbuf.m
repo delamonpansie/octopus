@@ -28,7 +28,6 @@
 #import <palloc.h>
 #import <pickle.h>
 #import <tbuf.h>
-#import <fiber.h> // FIXME: remove dependency
 
 #include <third_party/luajit/src/lua.h>
 #include <third_party/luajit/src/lauxlib.h>
@@ -42,41 +41,30 @@
 #  define TBUF_POISON
 #endif
 
-#ifdef TBUF_POISON
+#if defined(TBUF_POISON) || defined(TBUF_PARANOIA)
 #  define poison(ptr, len) memset((ptr), 'A', (len))
-#else
-#  define poison(ptr, len)
-#endif
-
 static void
 tbuf_assert(const struct tbuf *b)
 {
-	(void)b;		/* arg used :-) */
-	assert(tbuf_len(b) <= b->size);
+	(void)b;
+	assert(tbuf_len(b) <= tbuf_size(b));
 }
+#else
+#  define poison(ptr, len) (void)0
+#  define tbuf_assert(b) (void)0
+#endif
+
 
 struct tbuf *
 tbuf_alloc(struct palloc_pool *pool)
 {
 	const size_t initial_size = 128 - sizeof(struct tbuf);
 	struct tbuf *e = palloc(pool, sizeof(*e) + initial_size);
-	e->len = 0;
-	e->size = initial_size;
-	e->data = (char *)e + sizeof(*e);
+	e->free = initial_size;
+	e->ptr = e->end = (char *)e + sizeof(*e);
 	e->pool = pool;
-	poison(e->data, e->size);
+	poison(e->ptr, e->free);
 	tbuf_assert(e);
-	return e;
-}
-
-struct tbuf *
-tbuf_alloc_fixed(struct palloc_pool *pool, void *data, u32 len)
-{
-	struct tbuf *e = palloc(pool, sizeof(*e));
-	e->pool = NULL;
-	e->len = 0;
-	e->size = len;
-	e->data = data;
 	return e;
 }
 
@@ -86,19 +74,21 @@ tbuf_ensure_resize(struct tbuf *e, size_t required)
 	tbuf_assert(e);
 	assert(e->pool != NULL); /* attemp to resize fixed size tbuf */
 
-	const size_t initial_size = MAX(e->size, 128 - sizeof(*e));
+	const size_t initial_size = MAX(tbuf_size(e), 128 - sizeof(*e));
 	size_t new_size = initial_size * 2;
 
 	while (new_size - tbuf_len(e) < required)
 		new_size *= 2;
 
 	void *p = palloc(e->pool, new_size);
+	int len = tbuf_len(e);
 
 	poison(p, new_size);
-	memcpy(p, e->data, e->len);
-	poison(e->data, e->len);
-	e->data = p;
-	e->size = new_size;
+	memcpy(p, e->ptr, len);
+	poison(e->ptr, len);
+	e->ptr = p;
+	e->end = p + len;
+	e->free = new_size - len;
 	tbuf_assert(e);
 }
 
@@ -107,7 +97,7 @@ tbuf_clone(struct palloc_pool *pool, const struct tbuf *orig)
 {
 	struct tbuf *clone = tbuf_alloc(pool);
 	tbuf_assert(orig);
-	tbuf_append(clone, orig->data, tbuf_len(orig));
+	tbuf_append(clone, orig->ptr, tbuf_len(orig));
 	return clone;
 }
 
@@ -115,11 +105,17 @@ void
 tbuf_gc(struct palloc_pool *pool, void *ptr)
 {
 	struct tbuf *b = ptr;
-	if (unlikely(b->size == 0))
-		b->size = 128;
-	void *data = palloc(pool, b->size);
-	memcpy(data, b->data, b->len);
-	b->data = data;
+	tbuf_assert(b);
+	if (unlikely(tbuf_size(b) == 0)) {
+		b->free = 128;
+		b->ptr = b->end = palloc(pool, b->free);
+	} else {
+		void *data = palloc(pool, tbuf_size(b));
+		int len = tbuf_len(b);
+		memcpy(data, b->ptr, len);
+		b->ptr = data;
+		b->end = data + len;
+	}
 }
 
 struct tbuf *
@@ -128,44 +124,36 @@ tbuf_split(struct tbuf *orig, size_t at)
 	tbuf_assert(orig);
 	assert(at <= tbuf_len(orig));
 
-	struct tbuf *head = tbuf_alloc_fixed(orig->pool, orig->data, at);
-	orig->data += at;
-	orig->size -= at;
-	orig->len -= at;
-	head->len += at;
-	return head;
-}
+	struct tbuf *h = palloc(orig->pool, sizeof(*h));
+	h->ptr = orig->ptr;
+	h->end = orig->ptr + at;
+	h->free = 0;
+	h->pool = orig->pool;
 
-void *
-tbuf_peek(struct tbuf *b, size_t count)
-{
-	void *p = b->data;
-	tbuf_assert(b);
-	if (count <= tbuf_len(b)) {
-		b->data += count;
-		b->len -= count;
-		b->size -= count;
-		return p;
-	}
-	return NULL;
-}
-
-size_t
-tbuf_reserve(struct tbuf *b, size_t count)
-{
-	tbuf_assert(b);
-	tbuf_ensure(b, count);
-	size_t offt = tbuf_len(b);
-	b->len += count;
-	return offt;
+	tbuf_ltrim(orig, at);
+	return h;
 }
 
 void
 tbuf_reset(struct tbuf *b)
 {
 	tbuf_assert(b);
-	poison(b->data, b->len);
-	b->len = 0;
+	poison(b->ptr, tbuf_len(b));
+	b->end = b->ptr;
+	b->free += tbuf_len(b);
+}
+
+void
+tbuf_append(struct tbuf *b, const void *data, size_t len)
+{
+	tbuf_assert(b);
+	if (likely(data != NULL)) {
+		tbuf_ensure(b, len + 1);
+		memcpy(b->end, data, len);
+		*(((char *)b->end) + len) = '\0';
+	}
+	b->end += len;
+	b->free -= len;
 }
 
 void
@@ -183,22 +171,20 @@ tbuf_ltrim(struct tbuf *b, size_t diff)
 	tbuf_assert(b);
 	assert(diff <= tbuf_len(b));
 
-	b->data += diff;
-	b->size -= diff;
-	b->len -= diff;
+	b->ptr += diff;
 }
 
 void
 tbuf_vprintf(struct tbuf *b, const char *format, va_list ap)
 {
 	int printed_len;
-	size_t free_len = b->size - tbuf_len(b);
+	size_t free_len = tbuf_free(b);
 	va_list ap_copy;
 
 	va_copy(ap_copy, ap);
 
 	tbuf_assert(b);
-	printed_len = vsnprintf(((char *)b->data) + tbuf_len(b), free_len, format, ap);
+	printed_len = vsnprintf((char *)b->end, free_len, format, ap);
 
 	/*
 	 * if buffer too short, resize buffer and
@@ -206,11 +192,11 @@ tbuf_vprintf(struct tbuf *b, const char *format, va_list ap)
 	 */
 	if (free_len < printed_len + 1) {
 		tbuf_ensure(b, printed_len + 1);
-		free_len = b->size - tbuf_len(b);
-		printed_len = vsnprintf(((char *)b->data) + tbuf_len(b), free_len, format, ap_copy);
+		free_len = tbuf_free(b);
+		printed_len = vsnprintf((char *)b->end, free_len, format, ap_copy);
 	}
 
-	b->len += printed_len;
+	tbuf_append(b, NULL, printed_len);
 
 	va_end(ap_copy);
 }
@@ -225,11 +211,22 @@ tbuf_printf(struct tbuf *b, const char *format, ...)
 	va_end(args);
 }
 
+ssize_t
+tbuf_read(int fd, struct tbuf *buf)
+{
+	ssize_t r = read(fd, buf->end, tbuf_free(buf));
+	if (r > 0) {
+		buf->end += r;
+		buf->free -= r;
+	}
+	return r;
+}
+
 /* for debug printing */
 char *
 tbuf_to_hex(const struct tbuf *x)
 {
-	const unsigned char *data = x->data;
+	const unsigned char *data = x->ptr;
 	size_t len = tbuf_len(x);
 	char *out = palloc(x->pool, len * 3 + 1);
 	out[len * 3] = 0;
