@@ -34,7 +34,7 @@
 
 #include <stdlib.h>
 
-void __attribute__((cold,noreturn))
+void __attribute__((noreturn))
 buffer_too_short()
 {
 	iproto_raise(ERR_CODE_UNKNOWN_ERROR, "tbuf too short");
