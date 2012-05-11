@@ -152,6 +152,7 @@ recover_row:(struct tbuf *)row
 	ev_tstamp tm = row_v12(row)->tm;
 
 	@try {
+		say_debug("%s: lsn:%li tag:%s", __func__, row_lsn, xlog_tag_to_a(tag));
 		recover_row(row);
 		switch (tag) {
 		case wal_tag:
