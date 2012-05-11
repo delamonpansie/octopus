@@ -31,12 +31,12 @@ function reloadfile(filename)
 
         local function require(filename)
                 local modulename = string.gsub(string.gsub(filename, "^.*/", ""), "%.lua$", "")
-                local module = loadfile(filename)
-                local modulev = module(modulename)
-
-                if modulev then
-                        package.loaded[module] = modulev
+                local module, err = loadfile(filename)
+                if module == nil then
+                        print_warn(err)
+                        return
                 end
+                package.loaded[module] = module(modulename)
         end
         local function reload_loop()
                 local tm = 0
