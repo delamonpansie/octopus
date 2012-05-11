@@ -26,6 +26,7 @@
 
 #import <util.h>
 #import <fiber.h>
+#import <tarantool_ev.h>
 
 #include <stdarg.h>
 #include <stdbool.h>
@@ -45,6 +46,7 @@
 # include <gelf.h>
 #endif
 
+extern ev_io keepalive_ev;
 extern int keepalive_pipe[2];
 
 void
@@ -128,6 +130,7 @@ tnt_fork()
 		   our parent will send SIGTERM to us when he catches SIGINT */
 		signal(SIGINT, SIG_IGN);
 		ev_loop_fork();
+		ev_io_stop(&keepalive_ev);
 		if (keepalive_pipe[0] > 0) {
 			close(keepalive_pipe[0]);
 			keepalive_pipe[0] = -1;

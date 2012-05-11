@@ -74,6 +74,8 @@ int cfg_err_len, cfg_err_offt;
 struct tarantool_cfg cfg;
 char *custom_proc_title;
 
+
+ev_io keepalive_ev = { .coro = 0 };
 Recovery *recovery_state;
 int keepalive_pipe[2];
 
@@ -686,9 +688,8 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
-	ev_io keepalive = { .coro = 0 };
-	ev_io_init(&keepalive, keepalive_read, keepalive_pipe[0], EV_READ);
-	ev_io_start(&keepalive);
+	ev_io_init(&keepalive_ev, keepalive_read, keepalive_pipe[0], EV_READ);
+	ev_io_start(&keepalive_ev);
 
 	if (module("WAL feeder"))
 		module("WAL feeder")->init();
