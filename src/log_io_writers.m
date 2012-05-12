@@ -329,7 +329,7 @@ wal_disk_writer(int fd, void *state)
 			tbuf_append(wbuf, &reply[i].fid, sizeof(reply[i].fid));
 			tbuf_append(wbuf, &reply[i].repeat_count, sizeof(reply[i].repeat_count));
 
-			say_debug("sending lsn:%"PRIi64" rows:%i to parent", lsn, rows);
+			say_debug("sending lsn:%"PRIi64" rows:%i to parent", pack_lsn, reply[i].repeat_count);
 		}
 
 
