@@ -362,10 +362,10 @@ recover_local:(i64)start_lsn
 	return lsn;
 }
 
-static void recover_follow_file(ev_stat *w, int events __attribute__((unused)));
+static void follow_file(ev_stat *w, int events __attribute__((unused)));
 
 static void
-recover_follow_dir(ev_timer *w, int events __attribute__((unused)))
+follow_dir(ev_timer *w, int events __attribute__((unused)))
 {
 	Recovery *r = w->data;
 	[r recover_remaining_wals];
@@ -376,11 +376,11 @@ recover_follow_dir(ev_timer *w, int events __attribute__((unused)))
 	if (r->current_wal->inprogress && [r->current_wal rows] > 1)
 		[r->current_wal reset_inprogress];
 
-	[r->current_wal follow:recover_follow_file];
+	[r->current_wal follow:follow_file];
 }
 
 static void
-recover_follow_file(ev_stat *w, int events __attribute__((unused)))
+follow_file(ev_stat *w, int events __attribute__((unused)))
 {
 	Recovery *r = w->data;
 	[r recover_wal:r->current_wal];
@@ -388,24 +388,24 @@ recover_follow_file(ev_stat *w, int events __attribute__((unused)))
 		say_info("done `%s' lsn:%" PRIi64, r->current_wal->filename, r->lsn);
 		[r->current_wal close];
 		r->current_wal = nil;
-		recover_follow_dir((ev_timer *)w, 0);
+		follow_dir((ev_timer *)w, 0);
 		return;
 	}
 
 	if (r->current_wal->inprogress && [r->current_wal rows] > 1) {
 		[r->current_wal reset_inprogress];
-		[r->current_wal follow:recover_follow_file];
+		[r->current_wal follow:follow_file];
 	}
 }
 
 - (void)
 recover_follow:(ev_tstamp)wal_dir_rescan_delay
 {
-	ev_timer_init(&wal_timer, recover_follow_dir,
+	ev_timer_init(&wal_timer, follow_dir,
 		      wal_dir_rescan_delay, wal_dir_rescan_delay);
 	ev_timer_start(&wal_timer);
 	if (current_wal != nil)
-		[current_wal follow:recover_follow_file];
+		[current_wal follow:follow_file];
 }
 
 - (void)
