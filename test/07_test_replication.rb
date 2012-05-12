@@ -40,9 +40,23 @@ end
 
 MasterEnv.new.with_server do |master|
   master.ping
-  master.insert [1, 2, "abc", "def"]
-  master.insert [1, 2, "abc", "def"]
-  SlaveEnv.new.with_server do |slave|
-    slave.select [1]
+
+  100.times do |i|
+    master.insert [i, i + 1, "abc", "def"]
+    master.insert [i, i + 1, "abc", "def"]
+  end
+
+  slave_env = SlaveEnv.new
+  slave_env.with_server do |slave|
+    slave.select [99]
+
+    Process.kill("STOP", slave_env.pid)
+    1000.times do |i|
+      master.insert [i, i + 1, "ABC", "DEF"]
+      master.insert [i, i + 1, "ABC", "DEF"]
+    end
+    Process.kill("CONT", slave_env.pid)
+    sleep(0.3)
+    slave.select [999]
   end
 end

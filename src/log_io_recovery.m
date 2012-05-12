@@ -588,14 +588,15 @@ pull_wal(Recovery *r, struct conn *c, u32 version)
 {
 	struct tbuf *row, *special_row = NULL, *rows[WAL_PACK_MAX];
 	struct wal_pack *pack;
-	int pack_rows = 0;
 
 	/* TODO: use designated palloc_pool */
 	for (;;) {
 		pull(c, version);
 
-		pack_rows = 0;
+		int pack_rows = 0;
+		i64 remote_lsn = 0;
 		while ((row = fetch_row(c, version))) {
+			remote_lsn = row_v12(row)->lsn;
 			if (row_v12(row)->tag != wal_tag) {
 				special_row = row;
 				break;
@@ -635,6 +636,9 @@ pull_wal(Recovery *r, struct conn *c, u32 version)
 					fiber_sleep(0.05);
 				}
 			}
+			say_debug("local lsn:%"PRIi64" remote lsn:%"PRIi64,
+				  [r lsn], remote_lsn);
+			assert([r lsn] == remote_lsn);
 		}
 
 		if (special_row) {
