@@ -259,11 +259,6 @@ fiber_create(const char *name, void (*f)(va_list va), ...)
 	return new;
 }
 
-/*
- * note, we can't release memory allocated via palloc(eter_pool, ...)
- * so, struct fiber and some of its members are leaked forever
- */
-
 void
 fiber_destroy_all()
 {

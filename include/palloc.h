@@ -35,7 +35,6 @@
 
 
 struct palloc_pool;
-extern struct palloc_pool *eter_pool;
 int palloc_init(void);
 void *palloc(struct palloc_pool *pool, size_t size)
 	__attribute__((regparm(2),malloc));
