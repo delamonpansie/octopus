@@ -233,9 +233,7 @@ format_filename:(i64)lsn
 	return [self format_filename:lsn suffix:""];
 }
 
-
-
-- (id)
+- (XLog *)
 open_for_read_filename:(const char *)filename fd:(FILE *)fd lsn:(i64)lsn
 {
 	char filetype_[32], version_[32];

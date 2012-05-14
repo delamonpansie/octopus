@@ -69,7 +69,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 	Recovery *recovery_state;
 };
 - (id) init_dirname:(const char *)dirname_;
-- (id) open_for_read_filename:(const char *)filename fd:(FILE *)fd lsn:(i64)lsn;
+- (XLog *) open_for_read_filename:(const char *)filename fd:(FILE *)fd lsn:(i64)lsn;
 - (id) open_for_read:(i64)lsn;
 - (id) open_for_write:(i64)lsn;
 - (i64) greatest_lsn;
