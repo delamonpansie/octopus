@@ -317,7 +317,7 @@ open_for_write:(i64)lsn
 
 	const char *final_filename = [self format_filename:lsn];
 	if (access(final_filename, F_OK) == 0) {
-		say_error("failed to create snapshot: '%s' already exists", final_filename);
+		say_error("failed to create '%s': file already exists", final_filename);
 		goto error;
 	}
 
