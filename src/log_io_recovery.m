@@ -674,8 +674,6 @@ pull_from_remote(va_list ap)
 					[r recover_row:[r dummy_row_lsn:[r lsn] tag:wal_final_tag]];
 				pull_wal(r, &c, version);
 			}
-
-
 		}
 		@catch (Error *e) {
 			say_error("replication failure: %s", e->reason);
