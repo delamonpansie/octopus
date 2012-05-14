@@ -683,7 +683,7 @@ main(int argc, char **argv)
 		ev_timer_start(&coredump_timer);
 	}
 
-	if (pipe(keepalive_pipe) == -1 || set_nonblock(keepalive_pipe[0] == -1)) {
+	if (pipe(keepalive_pipe) == -1 || set_nonblock(keepalive_pipe[0]) == -1) {
 		say_syserror("can't create keepalive pipe");
 		exit(1);
 	}
