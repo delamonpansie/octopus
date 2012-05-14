@@ -136,7 +136,6 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 
 @interface Recovery: Object {
 	struct child *wal_writer;
-
 	i64 lsn, scn;
 	ev_tstamp lag, last_update_tstamp;
 	char status[64];
@@ -144,7 +143,6 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 	XLog *wal_to_close;
 
 	void (*recover_row)(struct tbuf *);
-	struct sockaddr_in *feeder;
 
         XLogDir *wal_dir, *snap_dir;
 
@@ -155,6 +153,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 	bool local_writes;
 	struct fiber *remote_puller;
 	const char *feeder_addr;
+	struct sockaddr_in *feeder;
 }
 
 - (i64)lsn;
