@@ -63,14 +63,16 @@ const u32 eof_marker = 0x10adab1e;
 const char *
 xlog_tag_to_a(u16 tag)
 {
+	static char buf[16];
 	switch (tag) {
-	case snap_initial_tag: return "snap_initial_tag";
-	case snap_tag: return "snap_tag";
-	case wal_tag: return "wal_tag";
-	case snap_final_tag: return "snap_final_tag";
-	case wal_final_tag: return "wal_final_tag";
+	case snap_initial_tag:	return "snap_initial_tag";
+	case snap_tag:		return "snap_tag";
+	case wal_tag:		return "wal_tag";
+	case snap_final_tag:	return "snap_final_tag";
+	case wal_final_tag:	return "wal_final_tag";
 	}
-	return "<unknow tag>";
+	snprintf(buf, sizeof(buf), "unknown_%i", tag);
+	return buf;
 }
 
 @implementation XLogDir
