@@ -364,7 +364,7 @@ recover_local:(i64)start_lsn
 	return lsn;
 }
 
-static void follow_file(ev_stat *w, int events __attribute__((unused)));
+static void follow_file(ev_stat *, int);
 
 static void
 follow_dir(ev_timer *w, int events __attribute__((unused)))
