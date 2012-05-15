@@ -99,8 +99,10 @@ say_logger_init(int nonblock)
 		sayfd = STDERR_FILENO;
 	}
 out:
-	if (nonblock)
+	if (nonblock) {
+		say_info("setting nonblocking log output");
 		set_nonblock(sayfd);
+	}
 
 	setvbuf(stderr, NULL, _IONBF, 0);
 }
