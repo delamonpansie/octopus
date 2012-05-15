@@ -54,6 +54,12 @@ peer_netmsg_tail(struct mesh_peer *p)
 	return netmsg_tail(&p->c.out_messages);
 }
 
+void
+mesh_set_seq(u64 s)
+{
+	seq = s >> 8;
+}
+
 static i64
 next_seq(void)
 {
@@ -64,6 +70,12 @@ int
 hostid(u64 seq)
 {
 	return seq & 0xff;
+}
+
+struct mesh_peer *
+owner_of_seq(u64 seq)
+{
+	return mesh_peer(seq & 0xff);
 }
 
 static void
@@ -192,17 +204,20 @@ release_response(struct mesh_response *r)
 	ev_timer_start(&r->timeout);
 }
 
+
 void
-broadcast(int quorum, ev_tstamp timeout, struct mesh_msg *op)
+broadcast(struct mesh_msg *op, u32 value_len, const char *value)
 {
-	op->seq = make_response(quorum, timeout)->seq;
+	assert(op->seq != 0);
 
 	foreach_peer (p) {
 		if (p->c.fd < 0)
 			continue;
 
 		struct netmsg *m = netmsg_tail(&p->c.out_messages);
-		net_add_iov(&m, op, op->len);
+		net_add_iov_dup(&m, op, op->len - value_len);
+		if (value_len > 0)
+			net_add_iov_dup(&m, value, value_len);
 		ev_io_start(&p->c.out);
 	}
 }
@@ -217,8 +232,9 @@ ping(va_list ap __attribute__((unused)))
 		fiber_sleep(1);
 
 		ping.sent = ev_now();
+		ping.seq = make_response(mesh_peers, 2.0)->seq;
 
-		broadcast(mesh_peers, 2.0, &ping);
+		broadcast(&ping, 0, NULL);
 		r = yield();
 
 		say_debug("ping seq:%i q:%i/c:%i %.4f%s",
@@ -228,7 +244,6 @@ ping(va_list ap __attribute__((unused)))
 
 		release_response(r);
 	}
-
 }
 
 
@@ -330,7 +345,7 @@ input_reader_aux(va_list ap)
 }
 
 struct mesh_peer *
-make_mesh_peer(int id, const char *name, const char *addr, struct mesh_peer *next)
+make_mesh_peer(int id, const char *name, const char *addr, short primary_port, struct mesh_peer *next)
 {
 	struct mesh_peer *p;
 
@@ -339,6 +354,8 @@ make_mesh_peer(int id, const char *name, const char *addr, struct mesh_peer *nex
 		free(p);
 		return NULL;
 	}
+	p->primary_addr = p->addr;
+	p->primary_addr.sin_port = htons(primary_port);
 	p->id = id;
 	p->name = strdup(name);
 	p->next = next;

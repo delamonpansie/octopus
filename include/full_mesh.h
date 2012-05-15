@@ -38,13 +38,13 @@ struct mesh_peer {
 	struct conn c;
 	char *name;
 	struct sockaddr_in addr;
+	struct sockaddr_in primary_addr;
 	struct mesh_peer *next;
 	bool connect_err_said;
 };
 
 struct mesh_msg {
 	int len;
-	int ver;
 	i64 seq;
 	int type;
 	ev_tstamp sent;
@@ -60,12 +60,16 @@ struct mesh_response {
 };
 
 int hostid(u64 seq);
+void mesh_set_seq(u64 seq);
 struct mesh_peer *mesh_peer(int id);
-struct mesh_peer *make_mesh_peer(int id, const char *name, const char *addr,
+struct mesh_peer *owner_of_seq(u64 seq);
+struct mesh_peer *make_mesh_peer(int id, const char *name,
+				 const char *addr, short primary_port,
 				 struct mesh_peer *next);
 struct netmsg *peer_netmsg_tail(struct mesh_peer *p);
 void mesh_init(struct mesh_peer *self_,
 	       struct mesh_peer *peers_,
 	       void (*reply_callback)(struct mesh_peer *, struct mesh_msg *));
-void broadcast(int quorum, ev_tstamp timeout, struct mesh_msg *op);
+void broadcast(struct mesh_msg *op, u32 data_len, const char *data);
+struct mesh_response *make_response(int quorum, ev_tstamp timeout);
 void release_response(struct mesh_response *r);
