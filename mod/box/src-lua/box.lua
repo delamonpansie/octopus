@@ -231,7 +231,7 @@ function decode.string(obj, offt, len)
         if (offt < 0 or offt + len > tuple.bsize) then
                 error("out of bounds")
         end
-        return ffi.string(tuple.data + off , len)
+        return ffi.string(tuple.data + offt, len)
 end
 
 local u8_ptr, u16_ptr, u32_ptr = ffi.typeof("uint8_t *"), ffi.typeof("uint16_t *"), ffi.typeof("uint32_t *")
