@@ -706,6 +706,7 @@ txn_common_parser(struct box_txn *txn, struct tbuf *data)
 	}
 
 	txn->object_space = &object_space_registry[n];
+	txn->index = txn->object_space->index[0];
 }
 
 static bool __attribute__((pure))
@@ -741,11 +742,10 @@ box_prepare_update(struct box_txn *txn, struct tbuf *data)
 	tbuf_append(txn->wal_record, data->data, tbuf_len(data));
 
 	say_debug("box_dispach(%i)", txn->op);
-	txn_common_parser(txn, data);
-	txn->index = txn->object_space->index[0];
 
 	switch (txn->op) {
 	case INSERT:
+		txn_common_parser(txn, data);
 		txn->flags = read_u32(data);
 		u32 cardinality = read_u32(data);
 		if (txn->object_space->cardinality > 0
@@ -758,10 +758,12 @@ box_prepare_update(struct box_txn *txn, struct tbuf *data)
 		break;
 
 	case DELETE:
+		txn_common_parser(txn, data);
 		prepare_delete(txn, data);
 		break;
 
 	case UPDATE_FIELDS:
+		txn_common_parser(txn, data);
 		txn->flags = read_u32(data);
 		prepare_update_fields(txn, data);
 		break;
