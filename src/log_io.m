@@ -74,7 +74,8 @@ xlog_tag_to_a(u16 tag)
 }
 
 @implementation XLogDir
-- (id) init_dirname:(const char *)dirname_
+- (id)
+init_dirname:(const char *)dirname_
 {
         dirname = dirname_;
         return self;
