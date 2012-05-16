@@ -114,7 +114,7 @@ recover_feed_slave(int sock)
 	ev_timer tm = { .coro = 0 };
 
 	if (getpeername(sock, (struct sockaddr *)&addr, &addrlen) != -1)
-		peer_name = inet_ntoa(addr.sin_addr);
+		peer_name = sintoa(&addr);
 
 	set_proc_title("feeder:client_handler%s %s", custom_proc_title, peer_name);
 
