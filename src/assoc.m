@@ -1,7 +1,6 @@
 #define MH_SOURCE 1
 #include <assoc.h>
 
-
 int XX__ac_X31_hash_str(void *s)
 {
 	int l;

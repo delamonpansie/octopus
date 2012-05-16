@@ -39,7 +39,7 @@ struct tbuf {
 	struct palloc_pool *pool;
 };
 
-#define TBUF(d, l, p) ({ void *ptr = (d); (struct tbuf) { .free = 0, .ptr = ptr, .end = ptr + (l), .pool = (p) }; })
+#define TBUF(d, l, p) (struct tbuf){ .free = 0, .ptr = (char *)(d), .end = (char *)(d) + (l), .pool = (p) }
 
 static inline int __attribute__((pure)) tbuf_len(const struct tbuf *b)
 {

@@ -215,12 +215,11 @@ luaT_box_dispatch(struct lua_State *L)
 	u32 op = luaL_checkinteger(L, 1);
 	size_t len;
 	const char *req = luaL_checklstring(L, 2, &len);
-	struct tbuf request_data = TBUF((char *)req, len, NULL);
 	struct box_txn txn;
 	memset(&txn, 0, sizeof(txn));
 	txn.op = op;
 	@try {
-		box_prepare_update(&txn, &request_data);
+		box_prepare_update(&txn, &TBUF(req, len, NULL));
 		txn_submit_to_storage(&txn);
 		txn_commit(&txn);
 		if (txn.obj != NULL) {

@@ -217,7 +217,7 @@ int
 wal_disk_writer(int fd, void *state)
 {
 	Recovery *rcvr = state;
-	struct tbuf *wbuf, rbuf = TBUF(NULL, 0, fiber->pool);;
+	struct tbuf *wbuf, rbuf = TBUF(NULL, 0, fiber->pool);
 	int result = EXIT_FAILURE;
 	i64 lsn;
 	bool io_failure = false, reparse = false;

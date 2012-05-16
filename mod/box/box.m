@@ -500,7 +500,8 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 			}
 			for (int i = cardinality - 1; i >= field_no; i--)
 				fields[i + 1] = fields[i];
-			fields[field_no] = TBUF(palloc(fiber->pool, arg_size), arg_size, fiber->pool);
+			void *ptr = palloc(fiber->pool, arg_size);
+			fields[field_no] = TBUF(ptr, arg_size, fiber->pool);
 			memcpy(fields[field_no].ptr, arg, arg_size);
 			bsize += varint32_sizeof(arg_size) + arg_size;
 			cardinality++;
@@ -807,8 +808,7 @@ box_prepare_update(struct box_txn *txn, struct tbuf *data)
 
 	if (txn->obj) {
 		struct box_tuple *tuple = box_tuple(txn->obj);
-		struct tbuf buf = TBUF(tuple->data, tuple->bsize, NULL);
-		if (!valid_tuple(&buf, tuple->cardinality))
+		if (!valid_tuple(&TBUF(tuple->data, tuple->bsize, NULL), tuple->cardinality))
 			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "internal error");
 	}
 	if (tbuf_len(data) != 0)
@@ -981,11 +981,9 @@ snap_print(Recovery *r __attribute__((unused)), struct tbuf *t)
 	struct tbuf *out = tbuf_alloc(t->pool);
 	struct box_snap_row *row;
 	struct row_v12 *raw_row = row_v12(t);
-	struct tbuf b = TBUF(raw_row->data, raw_row->len, NULL);
 	u16 tag = raw_row->tag;
 
-	row = box_snap_row(&b);
-
+	row = box_snap_row(&TBUF(raw_row->data, raw_row->len, NULL));
 	if (tag == snap_tag) {
 		tuple_print(out, row->tuple_size, row->data);
 		printf("lsn:%" PRIi64 " tm:%.3f n:%i %.*s\n",
@@ -1211,9 +1209,7 @@ snap_apply(struct box_txn *txn, struct tbuf *t)
 	txn->index = txn->object_space->index[0];
 	assert(txn->index != nil);
 
-	struct tbuf b = TBUF(row->data, row->data_size, NULL);
-
-	prepare_replace(txn, row->tuple_size, &b);
+	prepare_replace(txn, row->tuple_size, &TBUF(row->data, row->data_size, NULL));
 	txn->op = INSERT;
 }
 
