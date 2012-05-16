@@ -29,10 +29,6 @@
 
 #include <stdlib.h>
 
-#if !MH_SOURCE
-#define MH_UNDEF
-#endif
-
 typedef void* ptr_t;
 typedef void* lstr;
 typedef void* str;
@@ -43,9 +39,6 @@ typedef void* str;
       mh_key_t key;
    }
 */
-
-#define mh_node_key(node) *(mh_key_t *)((void *)node + sizeof(mh_val_t))
-
 
 #define mh_name _i32
 #define mh_key_t i32

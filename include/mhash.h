@@ -51,19 +51,43 @@ e * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
 
 #import <util.h>
 
-#ifndef MH_INCREMENTAL_RESIZE
-#define MH_INCREMENTAL_RESIZE 1
-#endif
-
 #include <stdlib.h>
 #include <stdint.h>
 #include <math.h>
 
+#ifndef MH_INCREMENTAL_RESIZE
+#define MH_INCREMENTAL_RESIZE 1
+#endif
+
+#ifdef MH_STATIC
+#define MH_SOURCE
+#define MH_DECL static inline
+#endif
+
+#ifndef MH_DECL
+#define MH_DECL
+#endif
+
+#ifndef MH_HELPER_MACRO
+#define MH_HELPER_MACRO
 #define mh_cat(a, b) mh##a##_##b
 #define mh_ecat(a, b) mh_cat(a, b)
 #define _mh(x) mh_ecat(mh_name, x)
-
 #define mh_unlikely(x)  __builtin_expect((x),0)
+
+#define mh_exist(h, i)		({ h->b[i >> 4] & (1 << (i % 16)); })
+#define mh_dirty(h, i)		({ h->b[i >> 4] & (1 << (i % 16 + 16)); })
+
+#define mh_setfree(h, i)	({ h->b[i >> 4] &= ~(1 << (i % 16)); })
+#define mh_setexist(h, i)	({ h->b[i >> 4] |= (1 << (i % 16)); })
+#define mh_setdirty(h, i)	({ h->b[i >> 4] |= (1 << (i % 16 + 16)); })
+
+#define mh_slot(h, i)		({ ((h)->p + (size_t)(h)->node_size * (i)); })
+#define mh_node_key(node) 	*(mh_key_t *)((void *)node + sizeof(mh_val_t))
+
+#define mh_size(h)		({ (h)->size; 		})
+#define mh_end(h)		({ (h)->n_buckets;	})
+#endif
 
 #ifndef __ac_HASH_PRIME_SIZE
 #define __ac_HASH_PRIME_SIZE 31
@@ -95,42 +119,37 @@ struct mhash_t {
 };
 #endif
 
-#ifndef MH_HEADER
-#define MH_HEADER
-
-#define mh_exist(h, i)		({ h->b[i >> 4] & (1 << (i % 16)); })
-#define mh_dirty(h, i)		({ h->b[i >> 4] & (1 << (i % 16 + 16)); })
-
-#define mh_setfree(h, i)	({ h->b[i >> 4] &= ~(1 << (i % 16)); })
-#define mh_setexist(h, i)	({ h->b[i >> 4] |= (1 << (i % 16)); })
-#define mh_setdirty(h, i)	({ h->b[i >> 4] |= (1 << (i % 16 + 16)); })
-
-
-#define mh_slot(h, i)		({ ((h)->p + (size_t)(h)->node_size * (i)); })
-#define mh_size(h)		({ (h)->size; 		})
-#define mh_end(h)		({ (h)->n_buckets;	})
 
 #ifndef mh_node_size
 #define mh_node_size (sizeof(mh_val_t) + sizeof(mh_key_t))
 #endif
 
-struct mhash_t * _mh(init)();
-void mh_clear(struct mhash_t *h);
-size_t mh_bytes(struct mhash_t *h);
-void mh_destroy(struct mhash_t *h);
-void _mh(resize)(struct mhash_t *h);
-void _mh(start_resize)(struct mhash_t *h, uint32_t buckets, uint32_t batch);
-void __attribute__((noinline)) _mh(put_resize)(struct mhash_t *h, mh_key_t key, mh_val_t val);
-void __attribute__((noinline)) _mh(put_node_resize)(struct mhash_t *h, struct index_node *node);
-void __attribute__((noinline)) _mh(del_resize)(struct mhash_t *h, uint32_t x);
-void _mh(dump)(struct mhash_t *h);
+/* public api */
+MH_DECL struct mhash_t * _mh(init)();
+static inline mh_val_t _mh(value)(struct mhash_t *h, uint32_t i);
+static inline uint32_t _mh(get)(struct mhash_t *h, mh_key_t key);
+static inline uint32_t _mh(put)(struct mhash_t *h, mh_key_t key, mh_val_t val, int *ret);
+static inline uint32_t _mh(put_node)(struct mhash_t *h, struct index_node *node);
+static inline uint32_t _mh(get_node)(struct mhash_t *h, struct index_node *node);
+static inline uint32_t _mh(get_slot)(struct mhash_t *h, mh_key_t key);
+static inline uint32_t _mh(put_slot)(struct mhash_t *h, mh_key_t key);
+static inline void _mh(del)(struct mhash_t *h, uint32_t x);
+MH_DECL void mh_clear(struct mhash_t *h);
+MH_DECL size_t mh_bytes(struct mhash_t *h);
+MH_DECL void mh_destroy(struct mhash_t *h);
 
-#define get_slot(h, key) _mh(get_slot)(h, key)
-#define put_slot(h, key) _mh(put_slot)(h, key)
-
+/* internal api */
+MH_DECL void _mh(resize)(struct mhash_t *h);
+MH_DECL void _mh(start_resize)(struct mhash_t *h, uint32_t buckets, uint32_t batch);
+MH_DECL void _mh(put_resize)(struct mhash_t *h, mh_key_t key, mh_val_t val);
+MH_DECL void _mh(put_node_resize)(struct mhash_t *h, struct index_node *node);
+MH_DECL void _mh(del_resize)(struct mhash_t *h, uint32_t x);
+#ifdef MH_DEBUG
+MH_DECL void _mh(dump)(struct mhash_t *h);
+#endif
 
 static inline mh_val_t
-_mh(value)(struct mhash_t *h, u32 i)
+_mh(value)(struct mhash_t *h, uint32_t i)
 {
 	return *(mh_val_t *)mh_slot(h, i);
 }
@@ -226,7 +245,7 @@ next_slot:
 static inline uint32_t
 _mh(get)(struct mhash_t *h, mh_key_t key)
 {
-	uint32_t i = get_slot(h, key);
+	uint32_t i = _mh(get_slot)(h, key);
 	if (!mh_exist(h, i))
 		return i = h->n_buckets;
 #ifdef MH_PARANOIA
@@ -256,7 +275,7 @@ _mh(put)(struct mhash_t *h, mh_key_t key, mh_val_t val, int *ret)
 	if (mh_unlikely(h->n_occupied >= h->upper_bound))
 		_mh(start_resize)(h, 0, -1);
 #endif
-	uint32_t x = put_slot(h, key);
+	uint32_t x = _mh(put_slot)(h, key);
 	int found = !mh_exist(h, x);
 	if (ret)
 		*ret = found;
@@ -288,7 +307,7 @@ _mh(put_node)(struct mhash_t *h, struct index_node *node)
 	if (mh_unlikely(h->n_occupied >= h->upper_bound))
 		_mh(start_resize)(h, 0, -1);
 #endif
-	uint32_t x = put_slot(h, key);
+	uint32_t x = _mh(put_slot)(h, key);
 
 	if (!mh_exist(h, x)) {
 		mh_setexist(h, x);
@@ -314,10 +333,9 @@ _mh(del)(struct mhash_t *h, uint32_t x)
 #endif
 	}
 }
-#endif
 
-#ifdef MH_SOURCE
-void __attribute__((noinline))
+#if defined(MH_SOURCE)
+MH_DECL void
 _mh(put_resize)(struct mhash_t *h, mh_key_t key, mh_val_t val)
 {
 	if (h->resizing > 0)
@@ -327,7 +345,8 @@ _mh(put_resize)(struct mhash_t *h, mh_key_t key, mh_val_t val)
 	if (h->resizing)
 		_mh(put)(h->shadow, key, val, NULL);
 }
-void __attribute__((noinline))
+
+MH_DECL void
 _mh(put_node_resize)(struct mhash_t *h, struct index_node *node)
 {
 	if (h->resizing > 0)
@@ -338,17 +357,16 @@ _mh(put_node_resize)(struct mhash_t *h, struct index_node *node)
 		_mh(put_node)(h->shadow, node);
 }
 
-
-void __attribute__((noinline))
+MH_DECL void
 _mh(del_resize)(struct mhash_t *h, uint32_t x)
 {
 	struct mhash_t *s = h->shadow;
-	uint32_t y = get_slot(s, mh_node_key(mh_slot(h, x)));
+	uint32_t y = _mh(get_slot)(s, mh_node_key(mh_slot(h, x)));
 	_mh(del)(s, y);
 	_mh(resize)(h);
 }
 
-struct mhash_t *
+MH_DECL struct mhash_t *
 _mh(init)()
 {
 	struct mhash_t *h = calloc(1, sizeof(*h));
@@ -361,7 +379,7 @@ _mh(init)()
 	return h;
 }
 
-void
+MH_DECL void
 _mh(resize)(struct mhash_t *h)
 {
 	struct mhash_t *s = h->shadow;
@@ -377,7 +395,7 @@ _mh(resize)(struct mhash_t *h)
 #endif
 		if (!mh_exist(h, o))
 			continue;
-		uint32_t n = put_slot(s, mh_node_key(mh_slot(h, o)));
+		uint32_t n = _mh(put_slot)(s, mh_node_key(mh_slot(h, o)));
 		memcpy(mh_slot(s, n), mh_slot(h, o), mh_node_size);
 		mh_setexist(s, n);
 		s->n_occupied++;
@@ -389,7 +407,7 @@ _mh(resize)(struct mhash_t *h)
 	h->resize_cnt++;
 }
 
-void
+MH_DECL void
 _mh(start_resize)(struct mhash_t *h, uint32_t buckets, uint32_t batch)
 {
 	if (h->resizing)
@@ -417,52 +435,8 @@ _mh(start_resize)(struct mhash_t *h, uint32_t buckets, uint32_t batch)
 	_mh(resize)(h);
 }
 
-#ifndef MH_COMMON_SOURCE
-#define MH_COMMON_SOURCE
-void
-mh_clear(struct mhash_t *h)
-{
-	free(h->p);
-	free(h->b);
-	h->n_buckets = 3;
-	h->prime = 0;
-	h->upper_bound = h->n_buckets * 0.7;
-	h->p = malloc((size_t)h->n_buckets * h->node_size);
-	h->b = calloc(h->n_buckets / 16 + 1, sizeof(uint32_t));
-}
-void
-_mh(destroy)(struct mhash_t *h)
-{
-	free(h->shadow);
-	free(h->b);
-	free(h->p);
-	free(h);
-}
-size_t
-mh_bytes(struct mhash_t *h)
-{
-	return h->resizing ? mh_bytes(h->shadow) : 0 +
-		sizeof(*h) +
-		(size_t)h->n_buckets * h->node_size +
-		((size_t)h->n_buckets / 16 + 1) *  sizeof(uint32_t);
-
-}
-#define mh_stat(buf, h) ({					    \
-                tbuf_printf(buf, "  n_buckets: %"PRIu32 CRLF        \
-                            "  n_occupied: %"PRIu32 CRLF            \
-                            "  size: %"PRIu32 CRLF                  \
-                            "  resize_cnt: %"PRIu32 CRLF	    \
-			    "  resizing: %"PRIu32 CRLF,		    \
-                            h->n_buckets,                           \
-                            h->n_occupied,                          \
-                            h->size,                                \
-                            h->resize_cnt,			    \
-			    h->resizing);			    \
-			})
-#endif
-
-#ifdef MH_DEBUG
-void
+#  ifdef MH_DEBUG
+MH_DECL void
 _mh(dump)(struct mhash_t *h)
 {
 	printf("slots:\n");
@@ -481,26 +455,63 @@ _mh(dump)(struct mhash_t *h)
 	}
 	printf("end(%i)\n", k);
 }
+#  endif
 #endif
 
-#endif
-
-#if defined(MH_SOURCE) || defined(MH_UNDEF)
-#undef MH_HEADER
 #undef mh_key_t
 #undef mh_val_t
 #undef mh_name
 #undef mh_hash
 #undef mh_eq
-#undef mh_dirty
-#undef mh_free
-#undef mh_place
-#undef mh_setdirty
-#undef mh_setexist
-#undef mh_setvalue
-#undef mh_unlikely
-#endif
 
-#undef mh_cat
-#undef mh_ecat
-#undef _mh
+
+#if defined(MH_SOURCE) && !defined(MH_COMMON_SOURCE)
+#define MH_COMMON_SOURCE
+
+MH_DECL void
+mh_clear(struct mhash_t *h)
+{
+	free(h->p);
+	free(h->b);
+	h->n_buckets = 3;
+	h->prime = 0;
+	h->upper_bound = h->n_buckets * 0.7;
+	h->p = malloc((size_t)h->n_buckets * h->node_size);
+	h->b = calloc(h->n_buckets / 16 + 1, sizeof(uint32_t));
+}
+
+MH_DECL void
+mh_destroy(struct mhash_t *h)
+{
+	free(h->shadow);
+	free(h->b);
+	free(h->p);
+	free(h);
+}
+
+MH_DECL size_t
+mh_bytes(struct mhash_t *h)
+{
+	return h->resizing ? mh_bytes(h->shadow) : 0 +
+		sizeof(*h) +
+		(size_t)h->n_buckets * h->node_size +
+		((size_t)h->n_buckets / 16 + 1) *  sizeof(uint32_t);
+
+}
+
+struct tbuf;
+MH_DECL void
+mh_stat(struct tbuf *out, struct mhash_t *h)
+{
+	tbuf_printf(out, "  n_buckets: %"PRIu32 CRLF
+		    "  n_occupied: %"PRIu32 CRLF
+		    "  size: %"PRIu32 CRLF
+		    "  resize_cnt: %"PRIu32 CRLF
+		    "  resizing: %"PRIu32 CRLF,
+		    h->n_buckets,
+		    h->n_occupied,
+		    h->size,
+		    h->resize_cnt,
+		    h->resizing);
+}
+#endif
