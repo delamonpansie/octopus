@@ -100,6 +100,12 @@ submit:(void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag
 	return [self wal_pack_submit];
 }
 
+- (int)
+submit:(void *)data len:(u32)len
+{
+	return [self submit:data len:len scn:0 tag:wal_tag];
+}
+
 - (struct wal_pack *)
 wal_pack_prepare
 {

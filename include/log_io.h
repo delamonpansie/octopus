@@ -206,6 +206,7 @@ struct wal_reply {
 
 @interface Recovery (writers)
 - (int) submit:(void *)data len:(u32)len scn:(i64)scn_ tag:(u16)tag;
+- (int) submit:(void *)data len:(u32)len;
 - (void) configure_wal_writer;
 - (struct wal_pack *) wal_pack_prepare;
 - (u32) wal_pack_append:(struct wal_pack *)pack
