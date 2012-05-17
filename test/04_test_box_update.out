@@ -81,3 +81,20 @@ Failed with: {code: 0x202, message: 'update of field beyond tuple cardinality'}
 # box.select(10)
 [["\n\000\000\000", ""]]
 
+# box.insert([2, "foo"])
+1
+
+# box.insert([3, "bar"])
+1
+
+# box.select(2, 3, 4)
+[["\002\000\000\000", "foo"], ["\003\000\000\000", "bar"]]
+
+# box.update_fields(2, [0, :set, 4])
+1
+
+# box.select(2, 3, 4)
+[["\003\000\000\000", "bar"], ["\004\000\000\000", "foo"]]
+
+# box.update_fields(4, [0, :set, 3])
+Failed with: {code: 0x3802, message: 'duplicate key value violates unique index 0:StringHash'}

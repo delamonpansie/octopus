@@ -51,4 +51,11 @@ UpdateEnv.new.with_server do |box|
   box.update_fields 10, [1, :set, ""]
   box.select 10
 
+  # test update of PK
+  box.insert [2, "foo"]
+  box.insert [3, "bar"]
+  box.select 2, 3, 4
+  box.update_fields 2, [0, :set, 4]
+  box.select 2, 3, 4
+  LogPpProxy.try { box.update_fields 4, [0, :set, 3] }
 end
