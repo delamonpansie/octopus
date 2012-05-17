@@ -963,20 +963,10 @@ xlog_print(struct tbuf *out, struct tbuf *b)
 static void
 snap_print(struct tbuf *out, struct tbuf *t)
 {
-	struct row_v12 *raw_row = row_v12(t);
-	struct tbuf b = TBUF(raw_row->data, raw_row->len, NULL);
-	u16 tag = raw_row->tag;
-
-	row = box_snap_row(&b);
-
-	if (tag == snap_tag) {
-		tuple_print(out, row->tuple_size, row->data);
-		printf("lsn:%" PRIi64 " tm:%.3f n:%i %.*s\n",
-		       raw_row->lsn, raw_row->tm,
-		       row->object_space, tbuf_len(out), (char *)out->ptr);
-	} else if (tag == snap_initial_tag)
-		printf("lsn:%" PRIi64 " initial row\n", raw_row->lsn);
-	return 0;
+	struct row_v12 *raw = row_v12(t);
+	struct box_snap_row *snap = box_snap_row(&TBUF(raw->data, raw->len, NULL));
+	tbuf_printf(out, "m:%i ", snap->object_space);
+	tuple_print(out, snap->tuple_size, snap->data);
 }
 
 
