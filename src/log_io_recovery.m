@@ -33,7 +33,6 @@
 #import <pickle.h>
 #import <tbuf.h>
 #import <net_io.h>
-#import <iproto.h>
 
 #include <third_party/crc32.h>
 
@@ -59,47 +58,64 @@
 
 - (i64)lsn { return lsn; }
 - (i64)scn { return scn; }
+- (bool)auto_scn { return auto_scn; }
 - (const char *)status { return status; };
 - (ev_tstamp)lag { return lag; };
 - (ev_tstamp)last_update_tstamp { return last_update_tstamp; };
 - (struct child *)wal_writer { return wal_writer; };
 
 - (void)
-initial_lsn:(i64)new_lsn
+set_lsn:(i64)lsn_
 {
-        lsn = new_lsn;
+	assert(lsn_ > 0);
+        lsn = lsn_;
 }
 
 /* this little hole shouldn't be used too much */
 int
-read_log(const char *filename, row_handler *xlog_handler, row_handler *snap_handler, void *state)
+read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, struct tbuf *row))
 {
 	XLog *l;
 	struct tbuf *row;
-	row_handler *h = NULL;
-	FILE *fd;
-
-	if ((fd = fopen(filename, "r")) == NULL) {
-		say_syserror("fopen(%s)", filename);
-		return -1;
-	}
+	XLogDir *dir;
 
 	if (strstr(filename, ".xlog")) {
-                XLogDir *dir = [[WALDir alloc] init_dirname:NULL];
-		l = [dir open_for_read_filename:filename fd:fd lsn:0];
-		h = xlog_handler;
+                dir = [[WALDir alloc] init_dirname:NULL];
 	} else if (strstr(filename, ".snap")) {
-                XLogDir *dir = [[SnapDir alloc] init_dirname:NULL];
-		l = [dir open_for_read_filename:filename fd:fd lsn:0];
-		h = snap_handler;
+                dir = [[SnapDir alloc] init_dirname:NULL];
 	} else {
 		say_error("don't know what how to read `%s'", filename);
 		return -1;
 	}
 
+	l = [dir open_for_read_filename:filename];
+	if (l == nil) {
+		say_syserror("unable to open filename `%s'", filename);
+		return -1;
+	}
 	fiber->pool = l->pool;
 	while ((row = [l next_row])) {
-		h(state, row);
+		struct tbuf *out = tbuf_alloc(l->pool);
+		struct row_v12 *v12 = row_v12(row);
+
+		tbuf_printf(out, "lsn:%" PRIi64 " scn:%" PRIi64 " tm:%.3f t:%s %s ",
+			    v12->lsn, v12->scn, v12->tm, xlog_tag_to_a(v12->tag),
+			    sintoa((void *)&v12->cookie));
+
+		struct tbuf row_data = TBUF(v12->data, v12->len, NULL);
+
+		switch (v12->tag) {
+		case snap_initial_tag:
+			tbuf_printf(out, "initial row");
+			break;
+		case snap_tag:
+		case wal_tag:
+			handler(out, v12->tag, &row_data);
+			break;
+		default:
+			tbuf_printf(out, "UNKNOWN");
+		}
+		printf("%.*s\n", tbuf_len(out), (char *)out->ptr);
 		prelease_after(l->pool, 128 * 1024);
 	}
 
@@ -115,7 +131,12 @@ read_log(const char *filename, row_handler *xlog_handler, row_handler *snap_hand
 validate_row:(struct tbuf *)row
 {
 	u16 tag = row_v12(row)->tag;
-	if (tag == wal_tag && row_v12(row)->lsn != lsn + 1) {
+	if (tag == snap_initial_tag ||
+	    tag == snap_tag ||
+	    tag == snap_final_tag)
+		return;
+
+	if (row_v12(row)->lsn != lsn + 1) {
 		if (!cfg.io_compat)
 			raise("lsn sequence has gap after %"PRIi64 " -> %"PRIi64,
 			      lsn, row_v12(row)->lsn);
@@ -126,46 +147,80 @@ validate_row:(struct tbuf *)row
 }
 
 - (struct tbuf *)
-dummy_row_lsn:(i64)lsn_ tag:(u16)tag
+dummy_row_lsn:(i64)lsn_ scn:(i64)scn_ tag:(u16)tag
 {
 	struct tbuf *b = tbuf_alloc(fiber->pool);
 	tbuf_ensure(b, sizeof(struct row_v12));
 	tbuf_append(b, NULL, sizeof(struct row_v12));
 
-	row_v12(b)->scn = scn;
 	row_v12(b)->lsn = lsn_;
+	row_v12(b)->scn = scn_;
 	row_v12(b)->tm = ev_now();
 	row_v12(b)->tag = tag;
 	row_v12(b)->cookie = default_cookie;
 	row_v12(b)->len = 0;
 	row_v12(b)->data_crc32c = crc32c(0, (unsigned char *)"", 0);
-	row_v12(b)->header_crc32c = crc32c(0,
-					   (unsigned char *)row_v12(b) + sizeof(row_v12(b)->header_crc32c),
-					   sizeof(row_v12(b)) - sizeof(row_v12(b)->header_crc32c));
+	row_v12(b)->header_crc32c =
+		crc32c(0, (unsigned char *)row_v12(b) + sizeof(row_v12(b)->header_crc32c),
+		       sizeof(row_v12(b)) - sizeof(row_v12(b)->header_crc32c));
 	return b;
+}
+
+- (void)
+collect_row:(struct tbuf *)row
+{
+	lsn = row_v12(row)->lsn;
+
+	say_debug("%s: lsn:%"PRIi64" scn:%"PRIi64" tag:%s", __func__,
+		  row_v12(row)->lsn, row_v12(row)->scn, xlog_tag_to_a(row_v12(row)->tag));
+
+	if (row_v12(row)->scn == scn + 1) {
+		[self recover_row:row];
+	} else {
+		if (mh_size(pending_row) > 10 * 1024)
+			raise("too many pending rows");
+
+		struct tbuf *clone = malloc(sizeof(*clone) + tbuf_len(row));
+		*clone = TBUF((void *)clone + sizeof(*clone), tbuf_len(row), fiber->pool);
+		memcpy(clone->ptr, row->ptr, tbuf_len(row));
+		int ret;
+		mh_i64_put(pending_row, row_v12(clone)->scn, clone, &ret);
+	}
+
+
+	for (;;) {
+		u32 k = mh_i64_get(pending_row, scn + 1);
+		if (k == mh_end(pending_row))
+			break;
+		row = mh_i64_value(pending_row, k);
+		mh_i64_del(pending_row, k);
+		[self recover_row:row];
+		free(row);
+	}
 }
 
 - (void)
 recover_row:(struct tbuf *)row
 {
-	i64 row_lsn = row_v12(row)->lsn;
+	i64 row_scn = row_v12(row)->scn;
 	u16 tag = row_v12(row)->tag;
 	ev_tstamp tm = row_v12(row)->tm;
 
 	@try {
-		say_debug("%s: lsn:%li tag:%s", __func__, row_lsn, xlog_tag_to_a(tag));
+		say_debug("%s: lsn:%"PRIi64" scn:%"PRIi64" tag:%s",
+			  __func__, row_v12(row)->lsn, row_scn, xlog_tag_to_a(tag));
 		recover_row(row);
 		switch (tag) {
 		case wal_tag:
-			lsn = row_lsn;
+			assert(row_scn > 0);
+			scn = row_scn; /* each wal_tag row represent a single atomic change */
 			lag = ev_now() - tm;
 			last_update_tstamp = ev_now();
 			break;
 		case snap_initial_tag:
-			lsn = 0;
 			break;
 		case snap_final_tag:
-			lsn = row_lsn;
+			scn = row_scn;
 			break;
 		default:
 			break;
@@ -182,18 +237,17 @@ recover_snap
 {
 	XLog *snap = nil;
 	struct tbuf *row;
-	i64 max_snap_lsn;
 
 	struct palloc_pool *saved_pool = fiber->pool;
 	@try {
-		max_snap_lsn = [snap_dir greatest_lsn];
-		if (max_snap_lsn == -1)
+		i64 snap_lsn = [snap_dir greatest_lsn];
+		if (snap_lsn == -1)
 			raise("snap_dir reading failed");
 
-		if (max_snap_lsn < 1)
+		if (snap_lsn < 1)
 			return 0;
 
-		snap = [snap_dir open_for_read:max_snap_lsn];
+		snap = [snap_dir open_for_read:snap_lsn];
 		if (snap == nil)
 			raise("can't find/open snapshot");
 
@@ -202,27 +256,34 @@ recover_snap
 		fiber->pool = snap->pool;
 
 		if ([snap isKindOf:[XLog11 class]])
-			[self recover_row:[self dummy_row_lsn:max_snap_lsn
+			[self recover_row:[self dummy_row_lsn:0
+							  scn:0
 							  tag:snap_initial_tag]];
-
 		while ((row = [snap next_row])) {
+			if (unlikely(row_v12(row)->tag == snap_final_tag)) {
+				[self collect_row:row];
+				continue;
+			}
 			[self validate_row:row];
 			[self recover_row:row];
 			prelease_after(snap->pool, 128 * 1024);
 		}
 
+		/* old v11 snapshot, scn == lsn from filename */
+		if ([snap isKindOf:[XLog11 class]])
+			[self collect_row:[self dummy_row_lsn:snap_lsn
+							  scn:snap_lsn
+							  tag:snap_final_tag]];
+
 		if (!snap->eof)
 			raise("unable to fully read snapshot");
-
-		[self recover_row:[self dummy_row_lsn:max_snap_lsn tag:snap_final_tag]];
-
-		say_info("snapshot recovered, lsn:%" PRIi64, lsn);
 	}
 	@finally {
 		fiber->pool = saved_pool;
 		[snap close];
 		snap = nil;
 	}
+	say_info("snapshot recovered, lsn:%"PRIi64 " scn:%"PRIi64, lsn, scn);
 	return lsn;
 }
 
@@ -237,7 +298,7 @@ recover_wal:(XLog *)l
 		while ((row = [l next_row])) {
 			if (row_v12(row)->lsn > lsn) {
 				[self validate_row:row];
-				[self recover_row:row];
+				[self collect_row:row];
 			}
 
 			prelease_after(l->pool, 128 * 1024);
@@ -249,18 +310,19 @@ recover_wal:(XLog *)l
 	say_debug("after recover wal:%s lsn:%"PRIi64, l->filename, lsn);
 }
 
+- (XLog *)
+next_wal
+{
+	return [wal_dir open_for_read:lsn + 1];
+}
+
 /*
  * this function will not close r->current_wal if recovery was successful
  */
 - (void)
 recover_remaining_wals
 {
-	XLog *next_wal;
-	i64 current_lsn, wal_greatest_lsn;
-
-	current_lsn = lsn + 1;
-	wal_greatest_lsn = [wal_dir greatest_lsn];
-
+	i64 wal_greatest_lsn = [wal_dir greatest_lsn];
 	if (wal_greatest_lsn == -1)
 		raise("wal_dir reading failed");
 
@@ -270,36 +332,27 @@ recover_remaining_wals
 
 	while (lsn < wal_greatest_lsn) {
 		if (current_wal != nil) {
-                        say_warn("wal `%s' wasn't correctly closed, lsn:%"PRIi64,
-				 current_wal->filename, lsn);
+                        say_warn("wal `%s' wasn't correctly closed, lsn:%"PRIi64" scn:%"PRIi64,
+				 current_wal->filename, lsn, scn);
                         [current_wal close];
                         current_wal = nil;
 		}
 
-
-		/* FIXME: lsn + 1 */
-		current_lsn = lsn + 1;
-                next_wal = [wal_dir open_for_read:current_lsn];
-
-		if (next_wal == nil)
+		current_wal = [self next_wal];
+		if (current_wal == nil)
 			break;
-
-		assert(current_wal == nil);
-		current_wal = next_wal;
-
-		if (!current_wal->valid) /* broken or yet to be written inprogress. will decide later  */
+		if (!current_wal->valid) /* unable to read & parse header */
 			break;
 
 		say_info("recover from `%s'", current_wal->filename);
-
 	recover_current_wal:
 		[self recover_wal:current_wal];
-		if ([current_wal rows] == 0) /* probably broken wal */
+		if ([current_wal rows] == 0) /* either broken wal or empty inprogress */
 			break;
 
 		if (current_wal->eof) {
-			say_info("done `%s' lsn:%" PRIi64,
-				 current_wal->filename, lsn);
+			say_info("done `%s' lsn:%"PRIi64" scn:%"PRIi64,
+				 current_wal->filename, lsn, scn);
 			[current_wal close];
 			current_wal = nil;
 		}
@@ -308,8 +361,8 @@ recover_remaining_wals
 	fiber_gc();
 
 	/*
-	 * It's not a fatal error when last WAL is empty, but if
-	 * we lost some logs it is a fatal error.
+	 * It's not a fatal error when last WAL is empty,
+	 * but if it's in the middle then we lost some logs.
 	 */
 	if (wal_greatest_lsn > lsn + 1)
 		raise("not all WALs have been successfully read! "
@@ -328,7 +381,7 @@ recover_local:(i64)start_lsn
 	say_info("local recovery start");
 	if (start_lsn == 0) {
 		[self recover_snap];
-		if (lsn == 0)
+		if (scn == 0)
 			return 0;
 	} else {
 		/*
@@ -341,25 +394,18 @@ recover_local:(i64)start_lsn
 	 * just after snapshot recovery current_wal isn't known
 	 * so find wal which contains record with next lsn
 	 */
-	if (current_wal == nil) {
-		i64 wal_start_lsn = [wal_dir find_file_containg_lsn:(lsn + 1)];
-		if (lsn + 1 != wal_start_lsn && wal_start_lsn > 0) {
-			current_wal = [wal_dir open_for_read:wal_start_lsn];
-			if (current_wal == nil)
-				raise("unable to open WAL %s",
-				      [wal_dir format_filename:wal_start_lsn]);
-			say_info("recover from `%s'", current_wal->filename);
-		}
-	}
+	current_wal = [wal_dir containg_lsn:lsn + 1];
+	if (current_wal != nil)
+		say_info("recover from `%s'", current_wal->filename);
 
 	[self recover_remaining_wals];
 	[self recover_follow:cfg.wal_dir_rescan_delay]; /* FIXME: make this conf */
-	say_info("wals recovered, lsn: %" PRIi64, lsn);
+	say_info("wals recovered, lsn:%"PRIi64" scn:%"PRIi64, lsn, scn);
 	strcpy(status, "hot_standby/local");
 
 	/* all curently readable wal rows were read, notify about that */
 	if (feeder_addr == NULL || cfg.local_hot_standby)
-		[self recover_row:[self dummy_row_lsn:lsn tag:wal_final_tag]];
+		[self recover_row:[self dummy_row_lsn:lsn scn:scn tag:wal_final_tag]];
 
 	return lsn;
 }
@@ -387,7 +433,8 @@ follow_file(ev_stat *w, int events __attribute__((unused)))
 	Recovery *r = w->data;
 	[r recover_wal:r->current_wal];
 	if (r->current_wal->eof) {
-		say_info("done `%s' lsn:%" PRIi64, r->current_wal->filename, r->lsn);
+		say_info("done `%s' lsn:%"PRIi64" scn:%"PRIi64,
+			 r->current_wal->filename, r->lsn, r->scn);
 		[r->current_wal close];
 		r->current_wal = nil;
 		follow_dir((ev_timer *)w, 0);
@@ -436,6 +483,9 @@ recover_finalize
 
         [current_wal close];
         current_wal = nil;
+
+	if (mh_size(pending_row) != 0)
+		panic("pending rows: unable to proceed");
 }
 
 - (u32)
@@ -446,21 +496,10 @@ remote_handshake:(struct sockaddr_in *)addr conn:(struct conn *)c
 	const char *err = NULL;
 	u32 version;
 
-	struct replication_handshake hshake = {1, lsn > 0 ? lsn + 1 : 0, {0}};
-	if (cfg.wal_feeder_filter != NULL) {
-		if (strlen(cfg.wal_feeder_filter) + 1 > sizeof(hshake.filter)) {
-			say_error("wal_feeder_filter too big");
-			exit(EXIT_FAILURE);
-		}
-		strcpy(hshake.filter, cfg.wal_feeder_filter);
-	}
-	struct tbuf *req = tbuf_alloc(fiber->pool);
-	tbuf_append(req, &(struct iproto_header){ .msg_code = 0, .sync = 0, .len = sizeof(hshake) },
-		    sizeof(struct iproto_header));
-	tbuf_append(req, &hshake, sizeof(hshake));
+	i64 initial_lsn = 0;
 
-	struct tbuf *rep = tbuf_alloc(fiber->pool);
-	tbuf_ensure(rep, sizeof(struct iproto_header_retcode));
+	if (lsn > 0)
+		initial_lsn = lsn + 1;
 
 	do {
 		if ((c->fd = tcp_connect(addr, NULL, 0)) < 0) {
@@ -468,8 +507,8 @@ remote_handshake:(struct sockaddr_in *)addr conn:(struct conn *)c
 			goto err;
 		}
 
-		if (conn_write(c, req->ptr, tbuf_len(req)) != tbuf_len(req)) {
-			err = "can't write initial handshake";
+		if (conn_write(c, &initial_lsn, sizeof(initial_lsn)) != sizeof(initial_lsn)) {
+			err = "can't write initial lsn";
 			goto err;
 		}
 
@@ -497,13 +536,15 @@ remote_handshake:(struct sockaddr_in *)addr conn:(struct conn *)c
 		}
 
 		say_crit("succefully connected to feeder");
-		say_crit("starting remote recovery from lsn:%" PRIi64, hshake.lsn);
+		say_crit("starting remote recovery from lsn:%" PRIi64, initial_lsn);
 		break;
 
 	err:
 		if (err != NULL && !warning_said) {
 			say_info("%s", err);
 			say_info("will retry every %i second", reconnect_delay);
+			/* no more WAL rows in near future, notify module about that */
+			[self recover_row:[self dummy_row_lsn:lsn scn:scn tag:wal_final_tag]];
 			warning_said = true;
 		}
 		conn_close(c);
@@ -620,11 +661,12 @@ pull_wal(Recovery *r, struct conn *c, u32 version)
 			@try {
 				for (int j = 0; j < pack_rows; j++) {
 					row = rows[j];
-					[r recover_row:tbuf_clone(fiber->pool, row)];
+					[r collect_row:tbuf_clone(fiber->pool, row)];
 				}
 			}
 			@catch (id e) {
-				panic("Replication failure: row lsn: %"PRIi64, row_v12(row)->lsn);
+				panic("Replication failure: remote row lsn:%"PRIi64 " scn:%"PRIi64,
+				      row_v12(row)->lsn, row_v12(row)->scn);
 			}
 
 			int confirmed = 0;
@@ -635,6 +677,7 @@ pull_wal(Recovery *r, struct conn *c, u32 version)
 					[r wal_pack_append:pack
 						      data:row_v12(row)->data
 						       len:row_v12(row)->len
+						       scn:row_v12(row)->scn
 						       tag:row_v12(row)->tag
 						    cookie:row_v12(row)->cookie];
 				}
@@ -678,10 +721,11 @@ pull_from_remote(va_list ap)
 
 			if ([r lsn] == 0)
 				pull_snapshot(r, &c, version);
-
-			if (version == 11)
-				[r recover_row:[r dummy_row_lsn:[r lsn] tag:wal_final_tag]];
-			pull_wal(r, &c, version);
+			else {
+				if (version == 11)
+					[r recover_row:[r dummy_row_lsn:[r lsn] tag:wal_final_tag]];
+				pull_wal(r, &c, version);
+			}
 		}
 		@catch (Error *e) {
 			say_error("replication failure: %s", e->reason);
@@ -715,7 +759,7 @@ enable_local_writes
 	local_writes = true;
 
 	if (feeder_addr != NULL) {
-		if (lsn > 0) /* we'll fetch remote snapshot first */
+		if (lsn > 0) /* we're already have some xlogs and recovered from them */
 			[self configure_wal_writer];
 
 		[self recover_follow_remote];
@@ -734,12 +778,11 @@ enable_local_writes
 - (id) init_snap_dir:(const char *)snap_dirname
              wal_dir:(const char *)wal_dirname
 {
-        snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
-        wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
+	snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
+	wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
 
-        snap_dir->recovery_state = self;
-        wal_dir->recovery_state = self;
-
+	snap_dir->recovery = self;
+	wal_dir->recovery = self;
 	wal_timer.data = self;
 
 	return self;
@@ -790,10 +833,10 @@ input_dispatch(va_list ap __attribute__((unused)))
         snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
         wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
 
-        snap_dir->recovery_state = self;
-        wal_dir->recovery_state = self;
-
+	snap_dir->recovery = self;
+	wal_dir->recovery = self;
 	wal_timer.data = self;
+	auto_scn = true;
 
 	if ((flags & RECOVER_READONLY) == 0) {
 		if (wal_rows_per_file <= 4)
@@ -820,6 +863,7 @@ input_dispatch(va_list ap __attribute__((unused)))
 	}
 
 	recover_row = recover_row_;
+	pending_row = mh_i64_init();
 
 	if (feeder_addr_ != NULL) {
 		feeder_addr = feeder_addr_;
@@ -829,7 +873,6 @@ input_dispatch(va_list ap __attribute__((unused)))
 		feeder = malloc(sizeof(struct sockaddr_in));
 		if (atosin(feeder_addr, feeder) == -1 || feeder->sin_addr.s_addr == INADDR_ANY)
 			panic("bad feeder_addr: `%s'", feeder_addr);
-
 	}
 
 	return self;

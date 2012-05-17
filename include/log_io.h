@@ -54,7 +54,7 @@ const char *xlog_tag_to_a(u16 tag);
 
 @class XLog;
 @class Recovery;
-typedef int (row_handler) (Recovery *, struct tbuf *);
+@class XLog;
 typedef void (follow_cb)(ev_stat *w, int events);
 
 @interface XLogDir: Object {
@@ -67,16 +67,16 @@ typedef void (follow_cb)(ev_stat *w, int events);
 	const char *suffix;
 	const char *dirname;
 
-	Recovery *recovery_state;
+	Recovery *recovery;
 };
 - (id) init_dirname:(const char *)dirname_;
-- (XLog *) open_for_read_filename:(const char *)filename fd:(FILE *)fd lsn:(i64)lsn;
-- (id) open_for_read:(i64)lsn;
-- (id) open_for_write:(i64)lsn;
+- (XLog *) open_for_read_filename:(const char *)filename;
+- (XLog *) open_for_read:(i64)lsn;
+- (XLog *) open_for_write:(i64)lsn;
 - (i64) greatest_lsn;
 - (const char *) format_filename:(i64)lsn suffix:(const char *)extra_suffix;
 - (const char *) format_filename:(i64)lsn;
-- (i64) find_file_containg_lsn:(i64)target_lsn;
+- (XLog *) containg_lsn:(i64)target_lsn;
 @end
 
 @interface SnapDir: XLogDir
@@ -94,6 +94,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 	ev_stat stat;
 
 	XLogDir *dir;
+	Recovery *recovery;
 	i64 next_lsn;
 
 	struct palloc_pool *pool;
@@ -109,9 +110,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 }
 - (XLog *) init_filename:(const char *)filename_
 		      fd:(FILE *)fd_
-		    mode:(int)mode
-		     dir:(XLogDir *)dir_
-		     lsn:(i64)lsn_;
+		     dir:(XLogDir *)dir_;
 - (const char *)final_filename;
 - (void) follow:(follow_cb *)cb;
 - (void) reset_inprogress;
@@ -124,7 +123,9 @@ typedef void (follow_cb)(ev_stat *w, int events);
 - (int) close;
 - (size_t) rows;
 - (size_t)wet_rows_offset_available;
-- (int) append_row:(const void *)data len:(u32)data_len tag:(u16)tag cookie:(u64)cookie;
+- (int) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie;
+- (int) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag;
+- (void) configure_for_write:(i64)lsn;
 - (i64) confirm_write;
 @end
 
@@ -135,6 +136,8 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 @interface XLog12: XLog
 @end
 
+
+
 @interface Recovery: Object {
 	struct child *wal_writer;
 	i64 lsn, scn;
@@ -144,6 +147,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 	XLog *wal_to_close;
 
 	void (*recover_row)(struct tbuf *);
+	struct mhash_t *pending_row;
 
         XLogDir *wal_dir, *snap_dir;
 
@@ -151,23 +155,23 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 
 	int snap_io_rate_limit;
 
-	bool local_writes;
+	bool auto_scn, local_writes;
 	struct fiber *remote_puller;
 	const char *feeder_addr;
 	struct sockaddr_in *feeder;
 }
 
-- (i64)lsn;
-- (i64)scn;
-- (const char *)status;
-- (ev_tstamp)lag;
-- (ev_tstamp)last_update_tstamp;
-- (struct child *)wal_writer;
+- (i64) lsn;
+- (void) set_lsn:(i64)lsn_;
+- (bool) auto_scn;
+- (const char *) status;
+- (ev_tstamp) lag;
+- (ev_tstamp) last_update_tstamp;
+- (struct child *) wal_writer;
 
-- (void) initial_lsn:(i64)new_lsn;
 - (void) recover_row:(struct tbuf *)row;
 - (void) recover_finalize;
-- (i64) recover_local:(i64)lsn;
+- (i64) recover_local:(i64)scn;
 - (void) recover_follow:(ev_tstamp)delay;
 - (void) enable_local_writes;
 - (id) init_snap_dir:(const char *)snap_dir
@@ -201,12 +205,13 @@ struct wal_reply {
 } __attribute__((packed));
 
 @interface Recovery (writers)
-- (void) submit_change:(struct tbuf *)change;
+- (int) submit:(void *)data len:(u32)len scn:(i64)scn_ tag:(u16)tag;
 - (void) configure_wal_writer;
 - (struct wal_pack *) wal_pack_prepare;
 - (u32) wal_pack_append:(struct wal_pack *)pack
 		   data:(void *)data
 		    len:(u32)data_len
+		    scn:(i64)scn_
 		    tag:(u16)tag
 		 cookie:(u64)cookie;
 - (int) wal_pack_submit;
@@ -252,5 +257,4 @@ static inline struct row_v12 *row_v12(const struct tbuf *t)
 }
 
 
-int read_log(const char *filename,
-	     row_handler xlog_handler, row_handler snap_handler, void *state);
+int read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, struct tbuf *row));

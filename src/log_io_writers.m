@@ -57,6 +57,7 @@ configure_wal_writer
 /* packet is : packet_len: u32
 	       fid: u32
 	       repeat_count: u32
+	       scn: i64
 	       tag: u16
 	       cookie: u64
 	       data_len: u32
@@ -64,13 +65,14 @@ configure_wal_writer
 */
 
 struct wal_row_header {
+	i64 scn;
 	u16 tag;
 	u64 cookie;
 	u32 data_len;
 } __attribute__((packed));
 
-- (void)
-submit_change:(struct tbuf *)change
+- (int)
+submit:(void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag
 {
 	if (feeder_addr != NULL)
 		raise("replica is readonly");
@@ -82,19 +84,20 @@ submit_change:(struct tbuf *)change
 	struct wal_row_header *h = msg + sizeof(*pack);
 
 	pack->netmsg = netmsg_tail(&wal_writer->c->out_messages);
-	pack->packet_len = sizeof(*pack) - sizeof(pack->netmsg) + sizeof(*h) + tbuf_len(change);
+	pack->packet_len = sizeof(*pack) - sizeof(pack->netmsg) + sizeof(*h) + data_len;
 	pack->fid = fiber->fid;
 	pack->repeat_count = 1;
 
-	h->tag = wal_tag;
+	h->scn = scn_;
+	h->tag = tag;
 	h->cookie = 0;
-	h->data_len = tbuf_len(change);
+	h->data_len = data_len;
 
 	net_add_iov(&pack->netmsg, msg + sizeof(pack->netmsg), len - sizeof(pack->netmsg));
-	net_add_iov(&pack->netmsg, change->ptr, tbuf_len(change));
+	net_add_iov(&pack->netmsg, data, data_len); /* safe, since when wal_pack_submit returns
+						       data is already sent */
 
-	if ([self wal_pack_submit] <= 0)
-		raise("unable write wal row");
+	return [self wal_pack_submit];
 }
 
 - (struct wal_pack *)
@@ -114,7 +117,8 @@ wal_pack_prepare
 
 
 - (u32)
-wal_pack_append:(struct wal_pack *)pack data:(void *)data len:(u32)data_len tag:(u16)tag cookie:(u64)cookie
+wal_pack_append:(struct wal_pack *)pack data:(void *)data len:(u32)data_len
+	    scn:(i64)scn_ tag:(u16)tag cookie:(u64)cookie
 {
 	struct wal_row_header *h = palloc(fiber->pool, sizeof(*h));
 
@@ -123,6 +127,7 @@ wal_pack_append:(struct wal_pack *)pack data:(void *)data len:(u32)data_len tag:
 	assert(pack->repeat_count <= WAL_PACK_MAX);
 
 
+	h->scn = scn_;
 	h->tag = tag;
 	h->cookie = cookie;
 	h->data_len = data_len;
@@ -144,17 +149,18 @@ wal_pack_submit
 
 	ev_io_start(&wal_writer->c->out);
 	struct wal_reply *r = yield();
-	say_debug("%s: read inbox lsn=%"PRIi64" rows:%i", __func__, r->lsn, r->repeat_count);
+	say_debug("wal_write read inbox lsn=%"PRIi64" rows:%i", r->lsn, r->repeat_count);
 	if (r->lsn == 0)
 		say_warn("wal writer returned error status");
 	else
 		lsn = r->lsn; /* update local lsn */
+	say_debug("%s: lsn=%"PRIi64" rows:%i", __func__, r->lsn, r->repeat_count);
 	return r->repeat_count;
 }
 
 
 - (int)
-append_row:(const void *)data len:(u32)len tag:(u16)tag cookie:(u64)cookie
+append_row:(const void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag cookie:(u64)cookie
 {
         if ([current_wal rows] == 1) {
 		/* rename wal after first successfull write to name without inprogress suffix*/
@@ -164,15 +170,15 @@ append_row:(const void *)data len:(u32)len tag:(u16)tag cookie:(u64)cookie
 		}
 	}
 
-	return [current_wal append_row:data len:len tag:tag cookie:cookie];
+	return [current_wal append_row:data len:data_len scn:scn_ tag:tag cookie:cookie];
 }
 
 - (int)
 prepare_write
 {
 	if (current_wal == nil)
-		/* Open WAL with '.inprogress' suffix. */
 		current_wal = [wal_dir open_for_write:lsn + 1];
+
         if (current_wal == nil) {
                 say_error("can't open wal");
                 return -1;
@@ -237,8 +243,8 @@ wal_disk_writer(int fd, void *state)
 		say_syserror("recv: failed");
 		panic("unable to start WAL writer");
 	}
+	[rcvr set_lsn:lsn];
 
-	[rcvr initial_lsn:lsn];
 	for (;;) {
 		if (!reparse) {
 			tbuf_ensure(&rbuf, 16 * 1024);
@@ -264,17 +270,11 @@ wal_disk_writer(int fd, void *state)
 			cfg.coredump = 0;
 		}
 
+		i64 start_lsn = [rcvr lsn];
 		int p = 0;
 		reparse = false;
+		io_failure = [rcvr prepare_write] == -1;
 		while (tbuf_len(&rbuf) > sizeof(u32) && tbuf_len(&rbuf) >= *(u32 *)rbuf.ptr) {
-			if (p == 0) {
-				if ([rcvr prepare_write] != -1) {
-					io_failure = false;
-					lsn = [rcvr lsn];
-				} else
-					io_failure = true;
-			}
-
 			u32 repeat_count = ((u32 *)rbuf.ptr)[2];
 			if (!io_failure && repeat_count > [rcvr->current_wal wet_rows_offset_available]) {
 				assert(p != 0);
@@ -287,15 +287,18 @@ wal_disk_writer(int fd, void *state)
 			reply[p].repeat_count = read_u32(&rbuf);
 
 			for (int i = 0; i < reply[p].repeat_count; i++) {
-				u16 tag = read_u16(&rbuf);
-				u64 cookie = read_u64(&rbuf);
-				u32 data_len = read_u32(&rbuf);
-				void *data = read_bytes(&rbuf, data_len);
+				struct wal_row_header *h = read_bytes(&rbuf, sizeof(*h));
+				void *data = read_bytes(&rbuf, h->data_len);
 
 				if (io_failure)
 					continue;
 
-				if ([rcvr append_row:data len:data_len tag:tag cookie:cookie] <= 0) {
+				if ([rcvr append_row:data
+						 len:h->data_len
+						 scn:0
+						 tag:h->tag
+					      cookie:h->cookie] <= 0)
+				{
 					say_error("append_row failed");
 					io_failure = true;
 				}
@@ -305,7 +308,8 @@ wal_disk_writer(int fd, void *state)
 		if (p == 0)
 			continue;
 
-		u32 rows = [rcvr confirm_write] - lsn;
+		assert(start_lsn > 0);
+		u32 rows = [rcvr confirm_write] - start_lsn;
 
 		wbuf = tbuf_alloc(fiber->pool);
 		for (int i = 0; i < p; i++) {
@@ -315,8 +319,8 @@ wal_disk_writer(int fd, void *state)
 					reply[i].repeat_count = rows;
 
 				rows -= reply[i].repeat_count;
-				lsn += reply[i].repeat_count;
-				pack_lsn = lsn;
+				start_lsn += reply[i].repeat_count;
+				pack_lsn = start_lsn;
 			} else {
 				pack_lsn = 0;
 				reply[i].repeat_count = 0;
@@ -359,12 +363,10 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *row)
 	static int bytes;
 	ev_tstamp elapsed;
 	static ev_tstamp last = 0;
-	const int io_rate_limit = l->dir->recovery_state->snap_io_rate_limit;
+	const int io_rate_limit = l->recovery->snap_io_rate_limit;
 
-	if ([l append_row:row->ptr len:tbuf_len(row) tag:tag cookie:default_cookie] < 0) {
-		say_error("unable write row");
-		_exit(EXIT_FAILURE);
-	}
+	if ([l append_row:data->data len:tbuf_len(data) tag:tag cookie:default_cookie] < 0)
+		panic("unable write row");
 
 	prelease_after(fiber->pool, 128 * 1024);
 
@@ -416,20 +418,17 @@ snapshot_save:(void (*)(XLog *))callback
 	say_info("saving snapshot `%s'", final_filename);
 
 	const char init[] = "make world";
-	if ([snap append_row:init len:strlen(init) tag:snap_initial_tag cookie:default_cookie] < 0) {
+	if ([snap append_row:init len:strlen(init) scn:0 tag:snap_initial_tag] < 0) {
 		say_error("unable write initial row");
 		_exit(EXIT_FAILURE);
 	}
+
 	callback(snap);
 
-	if ([snap flush] == -1) {
-		say_syserror("snap flush failed");
-		_exit(EXIT_FAILURE);
-	}
-	if ([snap close] == -1) {
-		say_syserror("snap close failed");
-		_exit(EXIT_FAILURE);
-	}
+	if ([snap flush] == -1)
+		return;
+	if ([snap close] == -1)
+		return;
 	snap = nil;
 
 	if (link(filename, final_filename) == -1) {

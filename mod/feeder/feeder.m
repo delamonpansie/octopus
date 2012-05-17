@@ -72,7 +72,7 @@ writef(int fd, const char *b, size_t len)
 }
 
 - (void)
-recover_row:(struct tbuf *)row
+collect_row:(struct tbuf *)row
 {
 	i64 row_lsn = row_v12(row)->lsn;
 	u16 tag = row_v12(row)->tag;
@@ -105,24 +105,6 @@ recover_row:(struct tbuf *)row
 	if (tag == snap_initial_tag || tag == snap_final_tag || tag == wal_tag)
 		lsn = row_lsn;
 }
-
-- (void)
-recover_local:(i64)initial_scn filter:(const char *)filter_name
-{
-	say_debug("%s initial_scn:%"PRIi64" filter:%s", __func__, initial_scn, filter_name);
-	if (strlen(filter_name) > 0) {
-		lua_getglobal(fiber->L, "replication_filter");
-		lua_pushstring(fiber->L, filter_name);
-		lua_gettable(fiber->L, -2);
-		lua_remove(fiber->L, -2);
-		if (lua_isnil(fiber->L, -1)) {
-			say_error("nonexistent filter: %s", filter_name);
-			_exit(EXIT_FAILURE);
-		}
-		filtering = true;
-	}
-	[self recover_local:initial_scn];
-}
 @end
 
 static i64
@@ -130,58 +112,20 @@ handshake(int sock, char *filter)
 {
 	struct tbuf *rep, *input, *req;
 	bool compat = 0;
-	i64 lsn;
+	i64 scn;
 
-	input = tbuf_alloc(fiber->pool);
-	rep = tbuf_alloc(fiber->pool);
-
-	for (;;) {
-		tbuf_ensure(input, 4096);
-		if (tbuf_recv(input, sock) <= 0) {
-			say_syserror("closing connection, recv");
-			_exit(EXIT_SUCCESS);
-		}
-		if (tbuf_len(input) < sizeof(lsn))
-			continue;
-
-		if ((req = iproto_parse(input)) != NULL)
-			break;
-
-		if (*(u32 *)input->ptr != msg_replica) {
-			compat = 1;
-			break;
-		}
-	}
-
-	if (compat) {
-		lsn = read_u64(input);
-		filter[0] = 0;
-	} else {
-		if (iproto(req)->len != sizeof(struct replication_handshake)) {
-			say_error("bad handshake len");
-			_exit(EXIT_FAILURE);
-		}
-
-		struct replication_handshake *hshake = (void *)&iproto(req)->data;
-		if (hshake->ver != 1) {
-			say_error("bad replication version");
-			_exit(EXIT_FAILURE);
-		}
-		lsn = hshake->lsn;
-		memcpy(filter, hshake->filter, sizeof(hshake->filter));
-
-		tbuf_append(rep, &(struct iproto_header_retcode)
-			    { .msg_code = iproto(req)->msg_code,
-			      .len = sizeof(default_version) +
-			             field_sizeof(struct iproto_header_retcode, ret_code),
-			      .sync = iproto(req)->sync,
-			      .ret_code = 0 },
-			    sizeof(struct iproto_header_retcode));
+	r = read(sock, &lsn, sizeof(lsn));
+	if (r != sizeof(lsn)) {
+		if (r < 0)
+			say_syserror("read");
+		exit(EXIT_SUCCESS);
 	}
 
 	tbuf_append(rep, &default_version, sizeof(default_version));
 	writef(sock, rep->ptr, tbuf_len(rep));
-	return lsn;
+
+	say_debug("remote requested scn:%"PRIi64, scn);
+	return scn;
 }
 
 static void

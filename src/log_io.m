@@ -185,20 +185,18 @@ greatest_lsn
 	return lsn[count - 1];
 }
 
-- (i64)
-find_file_containg_lsn:(i64)target_lsn
+- (XLog *)
+containg_lsn:(i64)target_lsn
 {
 	i64 *lsn;
 	ssize_t count = [self scan_dir:&lsn];
 
 	if (count <= 0)
-		return count;
+		return nil;
 
 	while (count > 1) {
-		if (*lsn <= target_lsn && target_lsn < *(lsn + 1)) {
+		if (*lsn <= target_lsn && target_lsn < *(lsn + 1))
 			goto out;
-			return *lsn;
-		}
 		lsn++;
 		count--;
 	}
@@ -208,9 +206,8 @@ find_file_containg_lsn:(i64)target_lsn
 	 * contain record with desired lsn since number of rows in file
 	 * is not known beforehand. so, we simply return the last one.
 	 */
-
-      out:
-	return *lsn;
+out:
+	return [self open_for_read:*lsn];
 }
 
 - (const char *)
@@ -236,11 +233,15 @@ format_filename:(i64)lsn
 }
 
 - (XLog *)
-open_for_read_filename:(const char *)filename fd:(FILE *)fd lsn:(i64)lsn
+open_for_read_filename:(const char *)filename
 {
 	char filetype_[32], version_[32];
 	char *error = "unknown error";
 	XLog *l = nil;
+	FILE *fd = fopen(filename, "r");
+
+	if (fd == NULL)
+		return nil;
 
 	if (fgets(filetype_, sizeof(filetype_), fd) == NULL) {
 		error = "header reading failed";
@@ -266,11 +267,7 @@ open_for_read_filename:(const char *)filename fd:(FILE *)fd lsn:(i64)lsn
                 goto error;
         }
 
-	[l init_filename:filename
-		      fd:fd
-		    mode:LOG_READ
-		     dir:self
-		     lsn:lsn];
+	[l init_filename:filename fd:fd dir:self];
 
         if ([l read_header] < 0) {
                 error = "header reading failed";
@@ -282,32 +279,24 @@ open_for_read_filename:(const char *)filename fd:(FILE *)fd lsn:(i64)lsn
 error:
 	say_warn("[open_for_read_filename `%s']: %s", filename, error);
 	[l free];
-	l = [[XLog alloc] init_filename:filename
-				     fd:fd
-				   mode:LOG_READ
-				    dir:self
-				    lsn:lsn];
+	l = [[XLog alloc] init_filename:filename fd:fd dir:self];
 	l->valid = false;
 	return l;
 }
 
 
-- (id)
+- (XLog *)
 open_for_read:(i64)lsn
 {
 	const char *filename = [self format_filename:lsn];
-	FILE *fd = fopen(filename, "r");
-	if (fd == NULL) {
-		say_syserror("[open_for_read %"PRIi64"]: filename:`%s'",
-			     lsn, filename);
-		return nil;
-	}
-	return [self open_for_read_filename:filename
-					 fd:fd
-					lsn:lsn];
+	XLog *l = [self open_for_read_filename:filename];
+	if (l == nil)
+		say_syserror("[open_for_read %"PRIi64"]: filename:`%s'", lsn, filename);
+
+	return l;
 }
 
-- (id)
+- (XLog *)
 open_for_write:(i64)lsn
 {
         XLog *l = nil;
@@ -345,11 +334,8 @@ open_for_write:(i64)lsn
 	}
 
 	l = cfg.io_compat ? [XLog11 alloc] : [XLog12 alloc];
-	l = [l init_filename:filename
-			  fd:file
-			mode:LOG_WRITE
-			 dir:self
-			 lsn:lsn];
+	[l init_filename:filename fd:file dir:self];
+	[l configure_for_write:lsn];
 
 	say_info("creating `%s'", l->filename);
 	if ([l write_header] < 0) {
@@ -367,7 +353,7 @@ open_for_write:(i64)lsn
 @end
 
 @implementation WALDir
-- (id)
+- (XLogDir *)
 init_dirname:(const char *)dirname_
 {
         if ((self = [super init_dirname:dirname_])) {
@@ -381,12 +367,9 @@ init_dirname:(const char *)dirname_
 - (id)
 open_for_read:(i64)lsn
 {
-	FILE *fd;
 	const char *filename = [self format_filename:lsn suffix:inprogress_suffix];
-	if ((fd = fopen(filename, "r")) != NULL) {
-		XLog *l = [self open_for_read_filename:filename
-						    fd:fd
-						   lsn:lsn];
+	XLog *l = [self open_for_read_filename:filename];
+	if (l != nil) {
 		l->inprogress = true;
 		return l;
 	}
@@ -413,20 +396,17 @@ init_dirname:(const char *)dirname_
 - (XLog *)
 init_filename:(const char *)filename_
            fd:(FILE *)fd_
-	 mode:(int)mode_
           dir:(XLogDir *)dir_
-	  lsn:(i64)lsn
 {
 	[super init];
 	valid = true;
-
 	filename = strdup(filename_);
 	pool = palloc_create_pool(filename);
 	fd = fd_;
-	mode = mode_;
+	mode = LOG_READ;
 	dir = dir_;
-	next_lsn = lsn;
-	stat.data = dir->recovery_state;
+	recovery = dir->recovery;
+	stat.data = dir->recovery;
 
 #ifdef __GLIBC__
 	const int bufsize = 1024 * 1024;
@@ -457,7 +437,6 @@ wet_rows_offset_available
 {
 	return nelem(wet_rows_offset) - wet_rows;
 }
-
 
 - (int)
 inprogress_unlink
@@ -537,7 +516,7 @@ close
 		if (rows == 0 && access(filename, F_OK) == 0) {
 			bool legacy_snap = cfg.io_compat &&
 					   [dir isMemberOf:[SnapDir class]] &&
-					   [dir->recovery_state lsn] == 1; /* TODO: check file lsn */
+					   [recovery lsn] == 1; /* TODO: check file lsn */
 			if (!legacy_snap)
 				panic("no valid rows were read");
 		}
@@ -677,17 +656,25 @@ follow:(follow_cb *)cb
 - (i64)
 next_lsn
 {
+	assert(next_lsn != 0);
 	if ([dir isKindOf:[SnapDir class]])
 		return next_lsn;
 	return next_lsn + wet_rows;
 }
 
 - (int)
-append_row:(void *)data len:(u32)data_len tag:(u16)tag cookie:(u64)cookie
+append_row:(void *)data len:(u32)len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie
 {
-	(void)data; (void)data_len; (void)tag; (void)cookie;
+	(void)data; (void)len; (void)scn; (void)tag; (void)cookie;
 	assert(false);
 	return 0;
+}
+
+- (int)
+append_row:(void *)data len:(u32)len scn:(i64)scn tag:(u16)tag
+{
+
+	return [self append_row:data len:len scn:scn tag:tag cookie:default_cookie];
 }
 
 - (void)
@@ -701,9 +688,19 @@ append_successful:(size_t)bytes
 	wet_rows++;
 }
 
+- (void)
+configure_for_write:(i64)lsn
+{
+	mode = LOG_WRITE;
+	next_lsn = lsn;
+}
+
 - (i64)
 confirm_write
 {
+	assert(next_lsn != 0);
+	assert(mode == LOG_WRITE);
+
 	if (fflush(fd) < 0)
 		say_syserror("can't flush wal");
 
@@ -735,7 +732,7 @@ convert_row_v11_to_v12(struct tbuf *m)
 {
 	struct tbuf *n = tbuf_alloc(m->pool);
 	tbuf_append(n, NULL, sizeof(struct row_v12));
-	row_v12(n)->lsn = _row_v11(m)->lsn;
+	row_v12(n)->scn = row_v12(n)->lsn = _row_v11(m)->lsn;
 	row_v12(n)->tm = _row_v11(m)->tm;
 	row_v12(n)->len = _row_v11(m)->len - sizeof(u16) - sizeof(u64); /* tag & cookie */
 
@@ -823,7 +820,7 @@ read_row
 
 
 - (int)
-append_row:(void *)data len:(u32)data_len tag:(u16)tag cookie:(u64)cookie
+append_row:(void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie
 {
 	struct _row_v11 row;
 
@@ -839,6 +836,11 @@ append_row:(void *)data len:(u32)data_len tag:(u16)tag cookie:(u64)cookie
 		return 0;
 	} else {
 		say_error("unknown tag %i", (int)tag);
+		return -1;
+	}
+
+	if (scn != 0) {
+		say_error("io_compat mode doesn't support SCN tagged rows");
 		return -1;
 	}
 
@@ -942,14 +944,13 @@ read_row
 }
 
 - (int)
-append_row:(const void *)data len:(u32)data_len tag:(u16)tag cookie:(u64)cookie
+append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie
 {
-	Recovery *r = dir->recovery_state;
 	struct row_v12 row;
 	assert(wet_rows < nelem(wet_rows_offset));
 
-	row.scn = [r scn];
 	row.lsn = [self next_lsn];
+	row.scn = [recovery auto_scn] ? row.lsn : scn;
 	row.tm = ev_now();
 	row.tag = tag;
 	row.cookie = cookie;

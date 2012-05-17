@@ -715,9 +715,6 @@ txn_abort(struct box_txn *txn)
 void
 txn_submit_to_storage(struct box_txn *txn)
 {
-	say_debug("%s: old_obj:refs=%i,%p obj:ref=%i,%p", __func__,
-		 txn->old_obj ? txn->old_obj->refs : 0, txn->old_obj,
-		 txn->obj ? txn->obj->refs : 0, txn->obj);
 	[recovery submit_change:txn->wal_record];
 }
 
@@ -875,115 +872,103 @@ box_process(struct conn *c, struct tbuf *request)
 	}
 }
 
-static int
-box_xlog_sprint(struct tbuf *buf, const struct tbuf *t)
+static void
+xlog_print(struct tbuf *out, struct tbuf *b)
 {
-	struct row_v12 *row = row_v12(t);
-
-	struct tbuf b = TBUF(row->data, row->len, NULL);
-	u16 tag, op;
-	u64 cookie;
-	struct sockaddr_in *peer = (void *)&cookie;
-
+	u16 op;
 	u32 n, key_len;
 	void *key;
 	u32 cardinality, field_no;
 	u32 flags;
 	u32 op_cnt;
 
-	tbuf_printf(buf, "lsn:%" PRIi64 " ", row->lsn);
-
-	tag = row->tag;
-	cookie = row->cookie;
-	op = read_u16(&b);
-	n = read_u32(&b);
-
-	tbuf_printf(buf, "tm:%.3f t:%s %s %s n:%i ",
-		    row->tm, xlog_tag_to_a(tag), sintoa(peer),
-		    messages_strs[op], n);
+	op = read_u16(b);
 
 	switch (op) {
 	case INSERT:
-		flags = read_u32(&b);
-		cardinality = read_u32(&b);
-		if (!valid_tuple(&b, cardinality))
+		n = read_u32(b);
+		tbuf_printf(out, "%s n:%i ", messages_strs[op], n);
+		flags = read_u32(b);
+		cardinality = read_u32(b);
+		if (!valid_tuple(b, cardinality))
 			abort();
-		tuple_print(buf, cardinality, b.ptr);
+		tuple_print(out, cardinality, b->ptr);
 		break;
 
 	case DELETE:
-		key_len = read_u32(&b);
-		key = read_field(&b);
-		if (tbuf_len(&b) != 0)
+		n = read_u32(b);
+		tbuf_printf(out, "%s n:%i ", messages_strs[op], n);
+		key_len = read_u32(b);
+		key = read_field(b);
+		if (tbuf_len(b) != 0)
 			abort();
-		tuple_print(buf, key_len, key);
+		tuple_print(out, key_len, key);
 		break;
 
 	case UPDATE_FIELDS:
-		flags = read_u32(&b);
-		key_len = read_u32(&b);
-		key = read_field(&b);
-		op_cnt = read_u32(&b);
+		n = read_u32(b);
+		tbuf_printf(out, "%s n:%i ", messages_strs[op], n);
+		flags = read_u32(b);
+		key_len = read_u32(b);
+		key = read_field(b);
+		op_cnt = read_u32(b);
 
-		tbuf_printf(buf, "flags:%08X ", flags);
-		tuple_print(buf, key_len, key);
+		tbuf_printf(out, "flags:%08X ", flags);
+		tuple_print(out, key_len, key);
 
 		while (op_cnt-- > 0) {
-			field_no = read_u32(&b);
-			u8 op = read_u8(&b);
-			void *arg = read_field(&b);
+			field_no = read_u32(b);
+			u8 op = read_u8(b);
+			void *arg = read_field(b);
 
-			tbuf_printf(buf, " [field_no:%i op:", field_no);
+			tbuf_printf(out, " [field_no:%i op:", field_no);
 			switch (op) {
 			case 0:
-				tbuf_printf(buf, "set ");
+				tbuf_printf(out, "set ");
 				break;
 			case 1:
-				tbuf_printf(buf, "add ");
+				tbuf_printf(out, "add ");
 				break;
 			case 2:
-				tbuf_printf(buf, "and ");
+				tbuf_printf(out, "and ");
 				break;
 			case 3:
-				tbuf_printf(buf, "xor ");
+				tbuf_printf(out, "xor ");
 				break;
 			case 4:
-				tbuf_printf(buf, "or ");
+				tbuf_printf(out, "or ");
 				break;
 			case 5:
-				tbuf_printf(buf, "splice ");
+				tbuf_printf(out, "splice ");
 				break;
 			case 6:
-				tbuf_printf(buf, "delete ");
+				tbuf_printf(out, "delete ");
 				break;
 			case 7:
-				tbuf_printf(buf, "insert ");
+				tbuf_printf(out, "insert ");
 				break;
 			}
-			tuple_print(buf, 1, arg);
-			tbuf_printf(buf, "] ");
+			tuple_print(out, 1, arg);
+			tbuf_printf(out, "] ");
 		}
 		break;
 
 	case NOP:
 		break;
 	default:
-		tbuf_printf(buf, "unknown wal op %" PRIi32, op);
+		tbuf_printf(out, "unknown wal op %" PRIi32, op);
 	}
-	return 0;
 }
 
-
-
-static int
-snap_print(Recovery *r __attribute__((unused)), struct tbuf *t)
+static void
+snap_print(struct tbuf *out, struct tbuf *t)
 {
-	struct tbuf *out = tbuf_alloc(t->pool);
-	struct box_snap_row *row;
 	struct row_v12 *raw_row = row_v12(t);
+	struct tbuf b = TBUF(raw_row->data, raw_row->len, NULL);
 	u16 tag = raw_row->tag;
 
-	row = box_snap_row(&TBUF(raw_row->data, raw_row->len, NULL));
+	row = box_snap_row(&b);
+
 	if (tag == snap_tag) {
 		tuple_print(out, row->tuple_size, row->data);
 		printf("lsn:%" PRIi64 " tm:%.3f n:%i %.*s\n",
@@ -994,14 +979,14 @@ snap_print(Recovery *r __attribute__((unused)), struct tbuf *t)
 	return 0;
 }
 
-static int
-xlog_print(Recovery *r __attribute__((unused)), struct tbuf *t)
+
+static void
+print_row(struct tbuf *out, u16 tag, struct tbuf *r)
 {
-	struct tbuf *out = tbuf_alloc(t->pool);
-	int res = box_xlog_sprint(out, t);
-	if (res >= 0)
-		printf("%.*s\n", tbuf_len(out), (char *)out->ptr);
-	return res;
+	if (tag == wal_tag)
+		xlog_print(out, r);
+	else if (tag == snap_tag)
+		snap_print(out, r);
 }
 
 static void
@@ -1340,7 +1325,7 @@ init(void)
 static int
 cat(const char *filename)
 {
-	return read_log(filename, xlog_print, snap_print, NULL);
+	return read_log(filename, print_row);
 }
 
 static void
@@ -1390,10 +1375,6 @@ snapshot(bool initial)
 {
 	if (initial)
 		[recovery initial_lsn:1];
-	if ([recovery lsn] == 0) {
-		say_warn("lsn == 0");
-		_exit(EXIT_FAILURE);
-	}
 	[recovery snapshot_save:snapshot_rows];
 }
 
