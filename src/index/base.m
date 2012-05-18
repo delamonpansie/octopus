@@ -49,7 +49,6 @@ init
 - (void)
 valid_object:(struct tnt_object*)obj
 {
-	/* FIXME: add caching caching */
 	GET_NODE(obj);
 }
 
