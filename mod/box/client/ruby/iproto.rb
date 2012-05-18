@@ -107,8 +107,8 @@ class IProto
       header = header.unpack('L3')
       @logger.debug { "#{@end_point} => recv hdr #{header.map{ |c| "%010i" % c }.join(' ')}" } if @logger
 
-      raise IProtoError, "response:#{header[0]} != message:#{message[:code]}" if header[0] != message[:code]
-      raise IProtoError, "response:#{header[2]} != message:#{sync}" if header[2] != sync
+      raise IProtoError, "response.sync:#{header[2]} != message.sync:#{sync}" if header[2] != sync
+      raise IProtoError, "response.code:#{header[0]} != message.code:#{message[:code]}" if header[0] != message[:code]
 
       data = @sock.read(header[1])
       @logger.debug { "#{@end_point} => recv bdy #{hexdump(data)}" } if @logger
