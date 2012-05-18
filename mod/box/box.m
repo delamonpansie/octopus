@@ -230,11 +230,11 @@ prepare_replace(struct box_txn *txn, size_t cardinality, struct tbuf *data)
 		/*
 		 * if tuple doesn't exist insert GHOST tuple in indeces
 		 * in order to avoid race condition
-		 * ref count will be incr in commit
 		 */
 
 		foreach_index(index, txn->object_space)
 			[index replace: txn->obj];
+		object_ref(txn->obj, +1);
 
 		lock_object(txn, txn->obj);
 		txn->obj->flags |= GHOST;
@@ -250,14 +250,16 @@ commit_replace(struct box_txn *txn)
 			[index remove: txn->old_obj];
 
 		object_ref(txn->old_obj, -1);
-
-		foreach_index(index, txn->object_space)
-			[index replace: txn->obj];
 	}
 
 	if (txn->obj != NULL) {
-		txn->obj->flags &= ~GHOST;
-		object_ref(txn->obj, +1);
+		if (txn->obj->flags & GHOST) {
+			txn->obj->flags &= ~GHOST;
+		} else {
+			foreach_index(index, txn->object_space)
+				[index replace: txn->obj];
+			object_ref(txn->obj, +1);
+		}
 	}
 
 	if (txn->m) {
@@ -276,6 +278,7 @@ rollback_replace(struct box_txn *txn)
 	if (txn->obj && txn->obj->flags & GHOST) {
 		foreach_index(index, txn->object_space)
 			[index remove: txn->obj];
+		object_ref(txn->obj, -1);
 	}
 }
 
@@ -532,6 +535,18 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 	} while (i < cardinality);
 
 	validate_indexes(txn);
+
+	Index<BasicIndex> *pk = txn->object_space->index[0];
+	if (![pk eq:txn->old_obj :txn->obj]) {
+		foreach_index(index, txn->object_space)
+			[index replace: txn->obj];
+		object_ref(txn->obj, +1);
+
+		lock_object(txn, txn->obj);
+		txn->obj->flags |= GHOST;
+		txn->obj_affected++;
+	}
+	say_debug("%s: old_obj:%p obj:%p", __func__, txn->old_obj, txn->obj);
 }
 
 void
@@ -684,7 +699,7 @@ txn_abort(struct box_txn *txn)
 	if (txn->op == DELETE)
 		return;
 
-	if (txn->op == INSERT)
+	if (txn->op == INSERT || txn->op == UPDATE_FIELDS)
 		rollback_replace(txn);
 }
 

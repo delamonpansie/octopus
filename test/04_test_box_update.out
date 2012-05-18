@@ -91,7 +91,7 @@ Failed with: {code: 0x202, message: 'update of field beyond tuple cardinality'}
 [["\002\000\000\000", "foo"], ["\003\000\000\000", "bar"]]
 
 # box.update_fields(2, [0, :set, 4])
-1
+2
 
 # box.select(2, 3, 4)
 [["\003\000\000\000", "bar"], ["\004\000\000\000", "foo"]]
