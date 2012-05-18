@@ -1,0 +1,38 @@
+# box.insert([3, "baz"])
+1
+
+# wal_writer stop
+# box.insert([1, "foo"])
+# box.insert([1, "foobar"])
+Failed with: {code: 0x401, message: 'object is locked'}
+# box.select(1)
+[]
+
+# wal_writer cont
+1
+
+# box.select(1)
+[["\001\000\000\000", "foo"]]
+
+# box.delete(1)
+1
+
+# box.select(1)
+[]
+
+# box.insert([3, "bar"])
+2
+
+# wal_writer stop
+# box.update_fields(3, [0, :set, 1])
+# box.insert([1, "foo"])
+Failed with: {code: 0x401, message: 'object is locked'}
+# box.select(1, 3)
+[["\003\000\000\000", "bar"]]
+
+# wal_writer cont
+2
+
+# box.select(1)
+[["\001\000\000\000", "bar"]]
+
