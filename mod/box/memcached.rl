@@ -304,7 +304,7 @@ memcached_dispatch(struct conn *c)
 		action add {
 			key = read_field(keys);
 			struct tnt_object *obj = [memcached_index find:key];
-			if (obj != NULL && !expired(obj))
+			if (obj != NULL && !ghost(obj) && !expired(obj))
 				ADD_IOV_LITERAL(&m, "NOT_STORED\r\n");
 			else
 				STORE();
@@ -313,7 +313,7 @@ memcached_dispatch(struct conn *c)
 		action replace {
 			key = read_field(keys);
 			struct tnt_object *obj = [memcached_index find:key];
-			if (obj == NULL || expired(obj))
+			if (obj == NULL || ghost(obj) || expired(obj))
 				ADD_IOV_LITERAL(&m, "NOT_STORED\r\n");
 			else
 				STORE();
@@ -322,7 +322,7 @@ memcached_dispatch(struct conn *c)
 		action cas {
 			key = read_field(keys);
 			struct tnt_object *obj = [memcached_index find:key];
-			if (obj == NULL || expired(obj))
+			if (obj == NULL || ghost(obj) || expired(obj))
 				ADD_IOV_LITERAL(&m, "NOT_FOUND\r\n");
 			else if (obj_meta(obj)->cas != cas)
 				ADD_IOV_LITERAL(&m, "EXISTS\r\n");
@@ -337,7 +337,7 @@ memcached_dispatch(struct conn *c)
 
 			key = read_field(keys);
 			struct tnt_object *obj = [memcached_index find:key];
-			if (obj == NULL) {
+			if (obj == NULL || ghost(obj)) {
 				ADD_IOV_LITERAL(&m, "NOT_STORED\r\n");
 			} else {
 				struct box_tuple *tuple = box_tuple(obj);
@@ -367,7 +367,7 @@ memcached_dispatch(struct conn *c)
 
 			key = read_field(keys);
 			struct tnt_object *obj = [memcached_index find:key];
-			if (obj == NULL || expired(obj)) {
+			if (obj == NULL || ghost(obj) || expired(obj)) {
 				ADD_IOV_LITERAL(&m, "NOT_FOUND\r\n");
 			} else {
 				struct box_tuple *tuple = box_tuple(obj);
@@ -414,7 +414,7 @@ memcached_dispatch(struct conn *c)
 		action delete {
 			key = read_field(keys);
 			struct tnt_object *obj = [memcached_index find:key];
-			if (obj == NULL || expired(obj)) {
+			if (obj == NULL || ghost(obj) || expired(obj)) {
 				ADD_IOV_LITERAL(&m, "NOT_FOUND\r\n");
 			} else {
 				u32 ret_code;
@@ -446,7 +446,7 @@ memcached_dispatch(struct conn *c)
 				obj = [memcached_index find:key];
 				key_len = LOAD_VARINT32(key);
 
-				if (obj == NULL) {
+				if (obj == NULL || ghost(obj)) {
 					stat_collect(stat_base, MEMC_GET_MISS, 1);
 					stats.get_misses++;
 					continue;

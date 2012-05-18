@@ -72,7 +72,7 @@ find_key:(struct tbuf *)key_data with_cardinalty:(u32)cardinality
 {
         init_pattern(key_data, cardinality, &node, dtor_arg);
  	struct index_node *r = sptree_find(tree, &node);
-	return likely(r && !ghost(r->obj)) ? r->obj : NULL;
+	return r != NULL ? r->obj : NULL;
 }
 
 - (struct tnt_object *)
@@ -80,7 +80,7 @@ find_by_obj:(struct tnt_object *)obj
 {
 	dtor(obj, &node, dtor_arg);
 	struct index_node *r = sptree_find(tree, &node);
-	return likely(r != NULL) ? r->obj : NULL;
+	return r != NULL ? r->obj : NULL;
 }
 
 - (u32)
@@ -139,7 +139,7 @@ iterator_init_with_object:(struct tnt_object *)obj
 iterator_next
 {
 	struct index_node *r = sptree_iterator_next(iterator);
-	return likely(r && !ghost(r->obj)) ? r->obj : NULL;
+	return likely(r != NULL) ? r->obj : NULL;
 }
 
 - (struct tnt_object *)

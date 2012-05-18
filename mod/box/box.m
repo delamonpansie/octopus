@@ -212,8 +212,11 @@ prepare_replace(struct box_txn *txn, size_t cardinality, struct tbuf *data)
 	tbuf_ltrim(data, tbuf_len(data));
 
 	txn->old_obj = [txn->index find_by_obj:txn->obj];
-	if (txn->old_obj != NULL)
+	if (txn->old_obj != NULL) {
 		object_ref(txn->old_obj, +1);
+		lock_object(txn, txn->old_obj);
+		txn->obj_affected = 2;
+	}
 
 	if (txn->flags & BOX_ADD && txn->old_obj != NULL)
 		iproto_raise(ERR_CODE_NODE_FOUND, "tuple found");
@@ -225,10 +228,7 @@ prepare_replace(struct box_txn *txn, size_t cardinality, struct tbuf *data)
 
 	say_debug("%s: old_obj:%p obj:%p", __func__, txn->old_obj, txn->obj);
 
-	if (txn->old_obj != NULL) {
-		lock_object(txn, txn->old_obj);
-		txn->obj_affected = 2;
-	} else {
+	if (txn->old_obj == NULL) {
 		/*
 		 * if tuple doesn't exist insert GHOST tuple in indeces
 		 * in order to avoid race condition
@@ -251,7 +251,6 @@ commit_replace(struct box_txn *txn)
 	if (txn->old_obj != NULL) {
 		foreach_index(index, txn->object_space)
 			[index remove: txn->old_obj];
-
 		object_ref(txn->old_obj, -1);
 	}
 
@@ -402,6 +401,10 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 
 	u32 key_cardinality = read_u32(data);
 	txn->old_obj = [txn->index find_key:data with_cardinalty:key_cardinality];
+	object_ref(txn->old_obj, +1);
+	lock_object(txn, txn->old_obj);
+	txn->obj_affected = 1;
+
 	op_cnt = read_u32(data);
 
 	if (op_cnt > 128)
@@ -414,10 +417,6 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 		tbuf_ltrim(data, tbuf_len(data));
 		return;
 	}
-
-	object_ref(txn->old_obj, +1);
-	lock_object(txn, txn->old_obj);
-	txn->obj_affected = 1;
 
 	struct box_tuple *old_tuple = box_tuple(txn->old_obj);
 	size_t bsize = old_tuple->bsize;
@@ -579,6 +578,8 @@ process_select(struct box_txn *txn, u32 limit, u32 offset, struct tbuf *data)
 			obj = [txn->index find_key:data with_cardinalty:c];
 			if (obj == NULL)
 				continue;
+			if (unlikely(ghost(obj)))
+				continue;
 			if (unlikely(limit == 0))
 				continue;
 			if (unlikely(offset > 0)) {
@@ -601,6 +602,8 @@ process_select(struct box_txn *txn, u32 limit, u32 offset, struct tbuf *data)
 				continue;
 
 			while ((obj = [tree iterator_next_verify_pattern]) != NULL) {
+				if (unlikely(ghost(obj)))
+					continue;
 				if (unlikely(limit == 0))
 					continue;
 				if (unlikely(offset > 0)) {

@@ -148,11 +148,8 @@ find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
 	i32 num = read_u32(key_data);
 
         u32 k = mh_i32_get(h, num);
-        if (k != mh_end(h)) {
-		struct tnt_object *r = mh_i32_value(h, k);
-		if (likely(!ghost(r)))
-			return r;
-	}
+        if (k != mh_end(h))
+		return mh_i32_value(h, k);
 	return NULL;
 }
 
@@ -165,11 +162,8 @@ find:(void *)key
 
 	i32 num = ((i32 *)(key + 1))[0];
 	u32 k = mh_i32_get(h, num);
-	if (k != mh_end(h)) {
-		struct tnt_object *r = mh_i32_value(h, k);
-		if (likely(!ghost(r)))
-			return r;
-	}
+	if (k != mh_end(h))
+		return mh_i32_value(h, k);
 	return NULL;
 }
 
@@ -198,11 +192,8 @@ find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
 	i64 num = read_u64(key_data);
 
         u32 k = mh_i64_get(h, num);
-        if (k != mh_end(h)) {
-		struct tnt_object *r = mh_i64_value(h, k);
-		if (likely(!ghost(r)))
-			return r;
-        }
+        if (k != mh_end(h))
+		return mh_i64_value(h, k);
 	return NULL;
 }
 
@@ -215,11 +206,8 @@ find:(void *)key
 
 	i64 num = ((i64 *)(key + 1))[0];
 	u32 k = mh_i64_get(h, num);
-	if (k != mh_end(h)) {
-		struct tnt_object *r = mh_i64_value(h, k);
-		if (likely(!ghost(r)))
-			return r;
-	}
+	if (k != mh_end(h))
+		return mh_i64_value(h, k);
 	return NULL;
 }
 
@@ -244,11 +232,8 @@ find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
 
 	void *f = read_field(key_data);
         u32 k = mh_lstr_get(h, f);
-        if (k != mh_end(h)) {
-		struct tnt_object *r = mh_lstr_value(h, k);
-		if (likely(!ghost(r)))
-		    return r;
-	}
+        if (k != mh_end(h))
+		return mh_lstr_value(h, k);
 	return NULL;
 }
 
@@ -256,11 +241,8 @@ find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
 find:(void *)key
 {
 	u32 k = mh_lstr_get(h, key);
-	if (k != mh_end(h)) {
-		struct tnt_object *r = mh_lstr_value(h, k);
-		if (likely(!ghost(r)))
-			return r;
-	}
+	if (k != mh_end(h))
+		return mh_lstr_value(h, k);
 	return NULL;
 }
 

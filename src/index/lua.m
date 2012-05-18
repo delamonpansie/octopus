@@ -147,7 +147,7 @@ luaT_index_index(struct lua_State *L)
 
 	key = index->lua_ctor(L, 2);
 	obj = [index find_key:key with_cardinalty:1];
-	if (obj != NULL) {
+	if (obj != NULL && !ghost(obj)) {
 		luaT_pushobject(L, obj);
 		return 1;
 	}
@@ -160,7 +160,7 @@ luaT_iter_next(struct lua_State *L)
 	Index<BasicIndex> *index = luaT_checkindex(L, 1);
 
 	struct tnt_object *obj = [index iterator_next];
-	if (obj != NULL) {
+	if (obj != NULL && !ghost(obj)) {
 		luaT_pushobject(L, obj);
 		return 1;
 	}
