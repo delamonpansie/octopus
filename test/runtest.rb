@@ -260,6 +260,7 @@ tests.sort.each do |filename|
   print "running #{filename.sub(%r{.*test/},'')}..."
 
   if $options[:stdout] then
+    puts "\n"
     require filename
     next
   end
