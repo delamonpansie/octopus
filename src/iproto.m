@@ -140,6 +140,8 @@ iproto_commit(struct netmsg_mark *mark)
 	} while ((m = TAILQ_NEXT(m, link)) != NULL);
 	h->ret_code = ERR_CODE_OK;
 	h->len += len;
+	say_debug("%s: op:%i len:%i sync:%i ret:%i", __func__,
+		  h->msg_code, h->len, h->sync, h->ret_code);
 }
 
 void
@@ -155,6 +157,8 @@ iproto_error(struct netmsg **m, struct netmsg_mark *header_mark, u32 ret_code, c
 		header->len += strlen(err);
 		net_add_iov_dup(m, err, strlen(err));
 	}
+	say_debug("%s: op:%i len:%i sync:%i ret:%i", __func__,
+		  header->msg_code, header->len, header->sync, header->ret_code);
 }
 
 

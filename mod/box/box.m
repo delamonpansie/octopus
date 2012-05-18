@@ -223,6 +223,8 @@ prepare_replace(struct box_txn *txn, size_t cardinality, struct tbuf *data)
 
 	validate_indexes(txn);
 
+	say_debug("%s: old_obj:%p obj:%p", __func__, txn->old_obj, txn->obj);
+
 	if (txn->old_obj != NULL) {
 		lock_object(txn, txn->old_obj);
 		txn->obj_affected = 2;
@@ -245,6 +247,7 @@ prepare_replace(struct box_txn *txn, size_t cardinality, struct tbuf *data)
 static void
 commit_replace(struct box_txn *txn)
 {
+	say_debug("%s: old_obj:%p obj:%p", __func__, txn->old_obj, txn->obj);
 	if (txn->old_obj != NULL) {
 		foreach_index(index, txn->object_space)
 			[index remove: txn->old_obj];
