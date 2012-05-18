@@ -107,12 +107,12 @@ tuple_field(struct box_tuple *tuple, size_t i)
 static void
 lock_object(struct box_txn *txn, struct tnt_object *obj)
 {
-	if (obj->flags & WAL_WAIT)
-		iproto_raise(ERR_CODE_NODE_IS_RO, "object is locked");
-
-	say_debug("lock_object(%p)", obj);
-	txn->lock_obj = obj;
-	obj->flags |= WAL_WAIT;
+	object_lock(obj);
+	for (int i = 0; i < nelem(txn->lock_obj); i++)
+		if (txn->lock_obj[i] == NULL) {
+			txn->lock_obj[i] = obj;
+			break;
+		}
 }
 
 static void
@@ -647,9 +647,10 @@ txn_cleanup(struct box_txn *txn)
 {
 	assert(txn->op != 0);
 
-	if (txn->lock_obj) {
-		txn->lock_obj->flags &= ~WAL_WAIT;
-		txn->lock_obj = NULL;
+	for (int i = 0; i < nelem(txn->lock_obj); i++) {
+		if (txn->lock_obj[i] == NULL)
+			break;
+		object_unlock(txn->lock_obj[i]);
 	}
 
 	if (txn->obj)
