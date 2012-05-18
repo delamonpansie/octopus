@@ -84,6 +84,24 @@ object_decr_ref(struct tnt_object *obj)
 		sfree(obj);
 }
 
+void
+object_lock(struct tnt_object *obj)
+{
+	if (obj->flags & WAL_WAIT)
+		iproto_raise(ERR_CODE_NODE_IS_RO, "object is locked");
+
+	say_debug("object_lock(%p)", obj);
+	obj->flags |= WAL_WAIT;
+}
+
+void
+object_unlock(struct tnt_object *obj)
+{
+	assert(obj->flags & WAL_WAIT);
+
+	say_debug("object_unlock(%p)", obj);
+	obj->flags &= ~WAL_WAIT;
+}
 
 const char *objectlib_name = "Tarantool.object";
 

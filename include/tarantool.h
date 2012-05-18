@@ -84,6 +84,8 @@ struct tnt_object *object_alloc(u8 type, size_t size);
 void object_ref(struct tnt_object *obj, int count);
 void object_incr_ref(struct tnt_object *obj);
 void object_decr_ref(struct tnt_object *obj);
+void object_lock(struct tnt_object *obj);
+void object_unlock(struct tnt_object *obj);
 
 enum tnt_object_flags {
 	WAL_WAIT = 0x1,
