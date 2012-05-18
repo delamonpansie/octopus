@@ -69,6 +69,7 @@ typedef struct tbuf *(index_lua_ctor)(struct lua_State *L, int i);
 typedef int (*index_cmp)(const void *, const void *, void *);
 
 @protocol BasicIndex
+- (int)eq:(struct tnt_object *)a :(struct tnt_object *)b;
 - (struct tnt_object *)find_by_obj:(struct tnt_object *)obj;
 - (struct tnt_object *) find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality;
 - (void) remove: (struct tnt_object *)obj;
@@ -97,7 +98,6 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 	bool unique;
 	enum { HASH, TREE } type;
 
-	struct tnt_object *find_obj_cache;
 	index_dtor *dtor;
 	void *dtor_arg;
 	index_lua_ctor *lua_ctor;

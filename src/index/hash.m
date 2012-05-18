@@ -103,31 +103,21 @@ resize:(u32)buckets							\
 - (struct tnt_object *)							\
 find_by_obj:(struct tnt_object *)obj					\
 {									\
-	if (find_obj_cache == obj)					\
-		return find_obj_cache;					\
 	struct index_node *node_ = GET_NODE(obj);			\
-	find_obj_cache = obj;						\
-									\
 	u32 k = mh_##type##_get_node(h, (void *)node_);			\
-	if (k != mh_end(h)) {						\
-		struct tnt_object *r = mh_##type##_value(h, k);		\
-		if (likely(!ghost(r)))					\
-			return (find_obj_cache = r);			\
-	}								\
-	find_obj_cache = NULL;						\
+	if (k != mh_end(h)) 						\
+		return mh_##type##_value(h, k);				\
 	return NULL;							\
 }									\
 - (void)								\
 replace:(struct tnt_object *)obj					\
 {									\
-	find_obj_cache = NULL;						\
 	struct index_node *node_ = GET_NODE(obj);			\
         mh_##type##_put_node(h, (void *)node_);				\
 }									\
 - (void)								\
 remove:(struct tnt_object *)obj						\
 {									\
-	find_obj_cache = NULL;						\
 	struct index_node *node_ = GET_NODE(obj);			\
         u32 k = mh_##type##_get_node(h, (void *)node_);			\
 	node_->obj = NULL;						\
@@ -137,6 +127,14 @@ remove:(struct tnt_object *)obj						\
 
 @implementation Int32Hash
 DEFINE_METHODS(i32)
+
+- (int)
+eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
+{
+	struct index_node *na = GET_NODE(obj_a),
+			  *nb = GET_NODE(obj_b);
+	return *(i32 *)na->key == *(i32 *)nb->key;
+}
 
 - (struct tnt_object *)
 find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
@@ -180,6 +178,14 @@ find:(void *)key
 @implementation Int64Hash
 DEFINE_METHODS(i64)
 
+- (int)
+eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
+{
+	struct index_node *na = GET_NODE(obj_a),
+			  *nb = GET_NODE(obj_b);
+	return *(i32 *)na->key == *(i32 *)nb->key;
+}
+
 - (struct tnt_object *)
 find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
 {
@@ -221,6 +227,14 @@ find:(void *)key
 
 @implementation StringHash
 DEFINE_METHODS(lstr)
+
+- (int)
+eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
+{
+	struct index_node *na = GET_NODE(obj_a),
+			  *nb = GET_NODE(obj_b);
+	return lstrcmp(*(void **)na->key, *(void **)nb->key) == 0;
+}
 
 - (struct tnt_object *)
 find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality

@@ -59,6 +59,13 @@ unwrap
 	return i;
 }
 
+- (int)
+eq:(struct tnt_object *)a :(struct tnt_object *)b
+{
+	(void)a; (void)b;
+	return 0;
+}
+
 - (struct tnt_object *)
 iterator_next_verify_pattern
 {

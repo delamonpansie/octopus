@@ -59,6 +59,14 @@ init_with_unique:(bool)_unique
 	return self;
 }
 
+- (int)
+eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
+{
+	struct index_node *na = GET_NODE(obj_a),
+			  *nb = GET_NODE(obj_b);
+	return compare(na, nb, NULL) == 0;
+}
+
 - (struct tnt_object *)
 find_key:(struct tbuf *)key_data with_cardinalty:(u32)cardinality
 {
@@ -72,7 +80,7 @@ find_by_obj:(struct tnt_object *)obj
 {
 	dtor(obj, &node, dtor_arg);
 	struct index_node *r = sptree_find(tree, &node);
-	return likely(r && !ghost(r->obj)) ? r->obj : NULL;
+	return likely(r != NULL) ? r->obj : NULL;
 }
 
 - (u32)
