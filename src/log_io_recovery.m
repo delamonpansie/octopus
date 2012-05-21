@@ -304,6 +304,7 @@ recover_remaining_wals
 		}
 		fiber_gc();
 	}
+	fiber_gc();
 
 	/*
 	 * It's not a fatal error when last WAL is empty, but if
