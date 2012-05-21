@@ -88,12 +88,11 @@ struct conn {
 
 struct service {
 	struct palloc_pool *pool;
-	int listen_fd;
 	const char *name;
 	TAILQ_HEAD(, conn) processing;
 	LIST_HEAD(, conn) conn;
-	struct fiber *acceptor/* , *handler */, *input_reader, *output_flusher;
-	SLIST_HEAD(, fiber) workers;
+	struct fiber *acceptor, *input_reader, *output_flusher;
+	SLIST_HEAD(, fiber) workers; /* <- handlers */
 	ev_prepare wakeup;
 };
 
