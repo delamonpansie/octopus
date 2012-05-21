@@ -105,17 +105,6 @@ tuple_field(struct box_tuple *tuple, size_t i)
 }
 
 static void
-lock_object(struct box_txn *txn, struct tnt_object *obj)
-{
-	object_lock(obj);
-	for (int i = 0; i < nelem(txn->lock_obj); i++)
-		if (txn->lock_obj[i] == NULL) {
-			txn->lock_obj[i] = obj;
-			break;
-		}
-}
-
-static void
 field_print(struct tbuf *buf, void *f)
 {
 	uint32_t size;
@@ -195,6 +184,29 @@ validate_indexes(struct box_txn *txn)
 	}
 }
 
+static struct tnt_object *
+txn_acquire(struct box_txn *txn, struct tnt_object *obj)
+{
+	if (unlikely(obj == NULL))
+		return NULL;
+
+	int i;
+	for (i = 0; i < nelem(txn->ref); i++)
+		if (txn->ref[i] == NULL) {
+			@try {
+				object_ref(obj, +1);
+				object_lock(obj);
+				txn->ref[i] = obj;
+				return obj;
+			}
+			@catch (id e) {
+				object_ref(obj, -1);
+				@throw;
+			}
+		}
+	panic("txn->ref to small i:%i", i);
+}
+
 
 static void __attribute((noinline))
 prepare_replace(struct box_txn *txn, size_t cardinality, struct tbuf *data)
@@ -204,19 +216,14 @@ prepare_replace(struct box_txn *txn, size_t cardinality, struct tbuf *data)
 	if (tbuf_len(data) == 0 || tbuf_len(data) != valid_tuple(data, cardinality))
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "tuple encoding error");
 
-	txn->obj = tuple_alloc(tbuf_len(data));
+	txn->obj = txn_acquire(txn, tuple_alloc(tbuf_len(data)));
 	struct box_tuple *tuple = box_tuple(txn->obj);
-	object_ref(txn->obj, +1);
 	tuple->cardinality = cardinality;
 	memcpy(tuple->data, data->data, tbuf_len(data));
 	tbuf_ltrim(data, tbuf_len(data));
 
-	txn->old_obj = [txn->index find_by_obj:txn->obj];
-	if (txn->old_obj != NULL) {
-		object_ref(txn->old_obj, +1);
-		lock_object(txn, txn->old_obj);
-		txn->obj_affected = 2;
-	}
+	txn->old_obj = txn_acquire(txn, [txn->index find_by_obj:txn->obj]);
+	txn->obj_affected = txn->old_obj != NULL ? 2 : 1;
 
 	if (txn->flags & BOX_ADD && txn->old_obj != NULL)
 		iproto_raise(ERR_CODE_NODE_FOUND, "tuple found");
@@ -233,14 +240,11 @@ prepare_replace(struct box_txn *txn, size_t cardinality, struct tbuf *data)
 		 * if tuple doesn't exist insert GHOST tuple in indeces
 		 * in order to avoid race condition
 		 */
-
 		foreach_index(index, txn->object_space)
 			[index replace: txn->obj];
 		object_ref(txn->obj, +1);
 
-		lock_object(txn, txn->obj);
 		txn->obj->flags |= GHOST;
-		txn->obj_affected = 1;
 	}
 }
 
@@ -400,13 +404,9 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 	u32 op_cnt;
 
 	u32 key_cardinality = read_u32(data);
-	txn->old_obj = [txn->index find_key:data with_cardinalty:key_cardinality];
-	object_ref(txn->old_obj, +1);
-	lock_object(txn, txn->old_obj);
-	txn->obj_affected = 1;
+	txn->old_obj = txn_acquire(txn, [txn->index find_key:data with_cardinalty:key_cardinality]);
 
 	op_cnt = read_u32(data);
-
 	if (op_cnt > 128)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "too many ops");
 	if (op_cnt == 0)
@@ -417,6 +417,7 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 		tbuf_ltrim(data, tbuf_len(data));
 		return;
 	}
+	txn->obj_affected = 1;
 
 	struct box_tuple *old_tuple = box_tuple(txn->old_obj);
 	size_t bsize = old_tuple->bsize;
@@ -513,8 +514,7 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 	if (tbuf_len(data) != 0)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
 
-	txn->obj = tuple_alloc(bsize);
-	object_ref(txn->obj, +1);
+	txn->obj = txn_acquire(txn, tuple_alloc(bsize));
 	box_tuple(txn->obj)->cardinality = cardinality;
 
 	u8 *p = box_tuple(txn->obj)->data;
@@ -544,7 +544,6 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 			[index replace: txn->obj];
 		object_ref(txn->obj, +1);
 
-		lock_object(txn, txn->obj);
 		txn->obj->flags |= GHOST;
 		txn->obj_affected++;
 	}
@@ -629,14 +628,8 @@ static void __attribute__((noinline))
 prepare_delete(struct box_txn *txn, struct tbuf *key_data)
 {
 	u32 c = read_u32(key_data);
-	txn->old_obj = [txn->index find_key:key_data with_cardinalty:c];
-
-	if (txn->old_obj == NULL)
-		return;
-
-	object_ref(txn->old_obj, +1);
-	lock_object(txn, txn->old_obj);
-	txn->obj_affected = 1;
+	txn->old_obj = txn_acquire(txn, [txn->index find_key:key_data with_cardinalty:c]);
+	txn->obj_affected = txn->old_obj != NULL;
 }
 
 static void
@@ -668,17 +661,12 @@ txn_cleanup(struct box_txn *txn)
 {
 	assert(txn->op != 0);
 
-	for (int i = 0; i < nelem(txn->lock_obj); i++) {
-		if (txn->lock_obj[i] == NULL)
+	for (int i = 0; i < nelem(txn->ref); i++) {
+		if (txn->ref[i] == NULL)
 			break;
-		object_unlock(txn->lock_obj[i]);
+		object_unlock(txn->ref[i]);
+		object_ref(txn->ref[i], -1);
 	}
-
-	if (txn->obj)
-		object_ref(txn->obj, -1);
-
-	if (txn->old_obj)
-		object_ref(txn->old_obj, -1);
 
 	/* mark txn as clean */
 	memset(txn, 0, sizeof(*txn));

@@ -78,7 +78,7 @@ struct box_txn {
 	Index<BasicIndex> *index;
 
 	struct tnt_object *old_obj, *obj;
-	struct tnt_object *lock_obj[2];
+	struct tnt_object *ref[2];
 	u32 obj_affected;
 
 	struct tbuf *wal_record;
