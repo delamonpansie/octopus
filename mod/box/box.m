@@ -648,7 +648,7 @@ commit_delete(struct box_txn *txn)
 }
 
 void
-txn_init(struct iproto_header *req, struct box_txn *txn, struct netmsg *m)
+txn_init(struct iproto *req, struct box_txn *txn, struct netmsg *m)
 {
 	memset(txn, 0, sizeof(*txn));
 	txn->op = req->msg_code;
@@ -817,7 +817,7 @@ box_process(struct conn *c, struct tbuf *request)
 {
 	struct box_txn txn = { .op = 0 };
 	u32 msg_code = iproto(request)->msg_code;
-	struct tbuf request_data = TBUF(iproto(request)->data, iproto(request)->len, fiber->pool);
+	struct tbuf request_data = TBUF(iproto(request)->data, iproto(request)->data_len, fiber->pool);
 	@try {
 		if (op_is_select(msg_code)) {
 			txn_init(iproto(request), &txn, netmsg_tail(&c->out_messages));

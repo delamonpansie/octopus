@@ -112,7 +112,7 @@ store(void *key, u32 exptime, u32 flags, u32 bytes, u8 *data)
 	struct box_txn txn;
 	@try {
 		ev_tstamp start = ev_now(), stop;
-		struct iproto_header r = { .msg_code = INSERT };
+		struct iproto r = { .msg_code = INSERT };
 		txn_init(&r, &txn, NULL);
 		box_prepare_update(&txn, req);
 		txn_submit_to_storage(&txn);
@@ -151,7 +151,7 @@ delete(void *key)
 
 	struct box_txn txn;
 	@try {
-		struct iproto_header r = { .msg_code = DELETE };
+		struct iproto r = { .msg_code = DELETE };
 		txn_init(&r, &txn, NULL);
 		box_prepare_update(&txn, req);
 		txn_submit_to_storage(&txn);

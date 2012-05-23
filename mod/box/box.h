@@ -119,7 +119,7 @@ struct box_txn {
 
 ENUM(messages, MESSAGES);
 
-void txn_init(struct iproto_header *req, struct box_txn *txn, struct netmsg *m);
+void txn_init(struct iproto *req, struct box_txn *txn, struct netmsg *m);
 void txn_commit(struct box_txn *txn);
 void txn_abort(struct box_txn *txn);
 void txn_cleanup(struct box_txn *txn);

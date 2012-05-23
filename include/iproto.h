@@ -36,31 +36,31 @@
  * share common prefix {msg_code, len, sync}
  */
 
-struct iproto_header {
-	uint32_t msg_code;
-	uint32_t len;						/* not including header */
-	uint32_t sync;
-	uint8_t data[];
+struct iproto {
+	u32 msg_code;
+	u32 data_len;						/* not including header */
+	u32 sync;
+	u8 data[];
 } __attribute__((packed));
 
-struct iproto_header_retcode {
-	uint32_t msg_code;
-	uint32_t len;
-	uint32_t sync;
-	uint32_t ret_code;
-	uint8_t data[];
+struct iproto_retcode {
+	u32 msg_code;
+	u32 data_len;
+	u32 sync;
+	u32 ret_code;
+	u8 data[];
 } __attribute__((packed));
 
 union iproto_any_header {
-	struct iproto_header header;
-	struct iproto_header_retcode header_retcode;
+	struct iproto header;
+	struct iproto_retcode header_retcode;
 };
 
 extern const uint32_t msg_replica;
 
-static inline struct iproto_header *iproto(const struct tbuf *t)
+static inline struct iproto *iproto(const struct tbuf *t)
 {
-	return (struct iproto_header *)t->ptr;
+	return (struct iproto *)t->ptr;
 }
 
 static inline struct iproto_header_retcode *iproto_retcode(const struct tbuf *t)
@@ -72,6 +72,7 @@ struct tbuf *iproto_parse(struct tbuf *in);
 
 struct netmsg;
 struct netmsg_mark;
+u32 iproto_next_sync(void);
 void iproto_reply(struct netmsg **m, u32 msg_code, u32 sync);
 void iproto_commit(struct netmsg_mark *header_mark, u32 ret_code);
 void iproto_error(struct netmsg **m, struct netmsg_mark *header_mark, u32 ret_code, const char *err);

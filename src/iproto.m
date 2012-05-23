@@ -46,15 +46,15 @@ const uint32_t msg_replica = 0xff01;
 STRS(error_codes, ERROR_CODES);
 DESC_STRS(error_codes, ERROR_CODES);
 
-struct tbuf *
+static struct tbuf *
 iproto_parse(struct tbuf *in)
 {
-	if (tbuf_len(in) < sizeof(struct iproto_header))
+	if (tbuf_len(in) < sizeof(struct iproto))
 		return NULL;
-	if (tbuf_len(in) < sizeof(struct iproto_header) + iproto(in)->len)
+	if (tbuf_len(in) < sizeof(struct iproto) + iproto(in)->data_len)
 		return NULL;
 
-	return tbuf_split(in, sizeof(struct iproto_header) + iproto(in)->len);
+	return tbuf_split(in, sizeof(struct iproto) + iproto(in)->data_len);
 }
 
 
@@ -90,8 +90,8 @@ next:
 	u32 msg_code = iproto(request)->msg_code;
 	if (unlikely(msg_code == msg_ping)) {
 		struct netmsg *m = netmsg_tail(&c->out_messages);
-		iproto(request)->len = 0;
-		net_add_iov_dup(&m, request->ptr, sizeof(struct iproto_header));
+		iproto(request)->data_len = 0;
+		net_add_iov_dup(&m, request->ptr, sizeof(struct iproto));
 	} else {
 		c->ref++;
 		callback(c, request);
@@ -119,10 +119,10 @@ next:
 void
 iproto_reply(struct netmsg **m, u32 msg_code, u32 sync)
 {
-	struct iproto_header_retcode *h = palloc((*m)->head->pool, sizeof(*h));
+	struct iproto_retcode *h = palloc((*m)->head->pool, sizeof(*h));
 	net_add_iov(m, h, sizeof(*h));
 	h->msg_code = msg_code;
-	h->len = sizeof(h->ret_code);
+	h->data_len = sizeof(h->ret_code);
 	h->sync = sync;
 }
 
@@ -130,7 +130,7 @@ void
 iproto_commit(struct netmsg_mark *mark, u32 ret_code)
 {
 	struct netmsg *m = mark->m;
-	struct iproto_header_retcode *h = m->iov[mark->offset].iov_base;
+	struct iproto_retcode *h = m->iov[mark->offset].iov_base;
 	int len = 0, offset = mark->offset + 1;
 	do {
 		for (int i = offset; i < m->count; i++) {
@@ -140,9 +140,9 @@ iproto_commit(struct netmsg_mark *mark, u32 ret_code)
 		offset = 0;
 	} while ((m = TAILQ_NEXT(m, link)) != NULL);
 	h->ret_code = ret_code;
-	h->len += len;
-	say_debug("%s: op:%i len:%i sync:%i ret:%i", __func__,
-		  h->msg_code, h->len, h->sync, h->ret_code);
+	h->data_len += len;
+	say_debug("%s: op:%i data_len:%i sync:%i ret:%i", __func__,
+		  h->msg_code, h->data_len, h->sync, h->ret_code);
 }
 
 void
@@ -150,17 +150,116 @@ iproto_error(struct netmsg **m, struct netmsg_mark *header_mark, u32 ret_code, c
 {
 	struct netmsg *h = header_mark->m;
 	netmsg_rewind(m, header_mark);
-	h->iov[header_mark->offset].iov_len = sizeof(struct iproto_header_retcode);
-	struct iproto_header_retcode *header = h->iov[header_mark->offset].iov_base;
-	header->len = sizeof(u32);
+	h->iov[header_mark->offset].iov_len = sizeof(struct iproto_retcode);
+	struct iproto_retcode *header = h->iov[header_mark->offset].iov_base;
+	header->data_len = sizeof(u32);
 	header->ret_code = ret_code;
 	if (err && strlen(err) > 0) {
-		header->len += strlen(err);
+		header->data_len += strlen(err);
 		net_add_iov_dup(m, err, strlen(err));
 	}
-	say_debug("%s: op:%i len:%i sync:%i ret:%i", __func__,
-		  header->msg_code, header->len, header->sync, header->ret_code);
+	say_debug("%s: op:%i data_len:%i sync:%i ret:%i", __func__,
+		  header->msg_code, header->data_len, header->sync, header->ret_code);
 }
+
+
+static void
+input_reader(va_list ap)
+{
+	struct service *service = va_arg(ap, struct service *);
+	struct conn *c;
+	ev_watcher *w;
+	ssize_t r;
+
+	say_info("input reader for service %p started", service);
+	yield();
+loop:
+	w = yield();
+	c = w->data;
+
+	tbuf_ensure(c->rbuf, cfg.input_buffer_size);
+	r = tbuf_recv(c->rbuf, c->fd);
+
+	if (r > 0) {
+		if (tbuf_len(c->rbuf) >= sizeof(struct iproto_header)) {
+			if (tbuf_len(c->rbuf) > cfg.input_high_watermark)
+				ev_io_stop(&c->in);
+			if (c->state != PROCESSING) {
+				TAILQ_INSERT_HEAD(&c->service->processing, c, processing_link);
+				c->state = PROCESSING;
+			}
+		}
+	} else if (r == 0 || /* r < 0 && */ (errno != EAGAIN && errno != EWOULDBLOCK)) {
+		say_debug("closing conn r:%i errno:%i", (int)r, errno);
+		conn_close(c);
+	}
+
+	goto loop;
+}
+
+static void
+wakeup_workers(ev_prepare *ev)
+{
+	struct service *service = (void *)ev - offsetof(struct service, wakeup);
+	struct fiber *w;
+
+	while (!TAILQ_EMPTY(&service->processing)) {
+		w = SLIST_FIRST(&service->workers);
+		if (w == NULL)
+			return;
+		SLIST_REMOVE_HEAD(&service->workers, worker_link);
+		resume(w, NULL);
+	}
+}
+
+static void
+service_gc(struct palloc_pool *pool, void *ptr)
+{
+	struct service *s = ptr;
+	struct conn *c;
+
+	s->pool = pool;
+	LIST_FOREACH(c, &s->conn, link)
+		conn_gc(pool, c);
+}
+
+static void
+accept_client(int fd, void *data)
+{
+	struct service *service = data;
+	struct conn *clnt = conn_create(service->pool, fd);
+	LIST_INSERT_HEAD(&service->conn, clnt, link);
+	clnt->service = service;
+	ev_io_init(&clnt->out, (void *)service->output_flusher, fd, EV_WRITE);
+	ev_io_init(&clnt->in, (void *)service->input_reader, fd, EV_READ);
+	ev_io_start(&clnt->in);
+	clnt->state = READING;
+}
+
+struct service *
+iproto_service(u16 port, void (*on_bind)(int fd))
+{
+	struct service *service = calloc(1, sizeof(*service));
+	char *name = malloc(13);  /* strlen("iproto:xxxxx") */
+	snprintf(name, 13, "iproto:%i", port);
+
+	TAILQ_INIT(&service->processing);
+	service->pool = palloc_create_pool(name);
+	service->name = name;
+
+	palloc_register_gc_root(service->pool, service, service_gc);
+
+	service->output_flusher = fiber_create("iproto/output_flusher", service_output_flusher);
+	service->input_reader = fiber_create("iproto/input_reader", input_reader, service);
+	service->acceptor = fiber_create("iproto/acceptor",
+					 tcp_server, port, accept_client, on_bind, service);
+
+	ev_prepare_init(&service->wakeup, (void *)wakeup_workers);
+	ev_prepare_start(&service->wakeup);
+
+	return service;
+}
+
 
 @implementation IProtoError
 - (IProtoError *)
