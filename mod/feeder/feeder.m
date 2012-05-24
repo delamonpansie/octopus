@@ -206,7 +206,7 @@ init(void)
 			close(client);
 	}
       exit:
-	exit(EXIT_FAILURE);
+	_exit(EXIT_FAILURE);
 }
 
 static struct tnt_module feeder = {
