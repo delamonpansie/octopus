@@ -229,13 +229,20 @@ _mh(get)(struct mhash_t *h, mh_key_t key)
 	uint32_t i = get_slot(h, key);
 	if (!mh_exist(h, i))
 		return i = h->n_buckets;
+#ifdef MH_PARANOIA
+	assert(mh_eq(mh_slot(h, i), key));
+#endif
 	return i;
 }
 
 static inline uint32_t
 _mh(get_node)(struct mhash_t *h, struct index_node *node)
 {
-	return _mh(get)(h, mh_node_key(node));
+	uint32_t i = _mh(get)(h, mh_node_key(node));
+#ifdef MH_PARANOIA
+	assert(i == h->n_buckets || mh_eq(mh_slot(h, i), mh_node_key(node)));
+#endif
+	return i;
 }
 
 static inline uint32_t
