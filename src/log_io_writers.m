@@ -362,8 +362,10 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *data)
 	static ev_tstamp last = 0;
 	const int io_rate_limit = l->dir->recovery_state->snap_io_rate_limit;
 
-	if ([l append_row:data->data len:tbuf_len(data) tag:tag cookie:default_cookie] < 0)
-		panic("unable write row");
+	if ([l append_row:data->data len:tbuf_len(data) tag:tag cookie:default_cookie] < 0) {
+		say_error("unable write row");
+		_exit(EXIT_FAILURE);
+	}
 
 	prelease_after(fiber->pool, 128 * 1024);
 
@@ -399,7 +401,7 @@ snapshot_save:(void (*)(XLog *))callback
 	snap = [snap_dir open_for_write:lsn];
 	if (snap == nil) {
 		say_error("can't open snap for writing");
-		return;
+		_exit(EXIT_FAILURE);
 	}
 	snap->no_wet = true; /* disable wet row tracking */;
 
@@ -417,24 +419,28 @@ snapshot_save:(void (*)(XLog *))callback
 	const char init[] = "make world";
 	if ([snap append_row:init len:strlen(init) tag:snap_initial_tag cookie:default_cookie] < 0) {
 		say_error("unable write initial row");
-		return;
+		_exit(EXIT_FAILURE);
 	}
 	callback(snap);
 
-	if ([snap flush] == -1)
-		return;
-	if ([snap close] == -1)
-		return;
+	if ([snap flush] == -1) {
+		say_syserror("snap flush failed");
+		_exit(EXIT_FAILURE);
+	}
+	if ([snap close] == -1) {
+		say_syserror("snap close failed");
+		_exit(EXIT_FAILURE);
+	}
 	snap = nil;
 
 	if (link(filename, final_filename) == -1) {
 		say_syserror("can't create hard link to snapshot");
-		return;
+		_exit(EXIT_FAILURE);
 	}
 
 	if (unlink(filename) == -1) {
 		say_syserror("can't unlink 'inprogress' snapshot");
-		return;
+		_exit(EXIT_FAILURE);
 	}
 
 	say_info("done");
