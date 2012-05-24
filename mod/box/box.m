@@ -192,13 +192,13 @@ txn_acquire(struct box_txn *txn, struct tnt_object *obj)
 	for (i = 0; i < nelem(txn->ref); i++)
 		if (txn->ref[i] == NULL) {
 			@try {
-				object_ref(obj, +1);
+				object_incr_ref(obj);
 				object_lock(obj);
 				txn->ref[i] = obj;
 				return obj;
 			}
 			@catch (id e) {
-				object_ref(obj, -1);
+				object_decr_ref(obj);
 				@throw;
 			}
 		}
@@ -240,7 +240,7 @@ prepare_replace(struct box_txn *txn, size_t cardinality, struct tbuf *data)
 		 */
 		foreach_index(index, txn->object_space)
 			[index replace: txn->obj];
-		object_ref(txn->obj, +1);
+		object_incr_ref(txn->obj);
 
 		txn->obj->flags |= GHOST;
 	}
@@ -253,7 +253,7 @@ commit_replace(struct box_txn *txn)
 	if (txn->old_obj != NULL) {
 		foreach_index(index, txn->object_space)
 			[index remove: txn->old_obj];
-		object_ref(txn->old_obj, -1);
+		object_decr_ref(txn->old_obj);
 	}
 
 	if (txn->obj != NULL) {
@@ -262,7 +262,7 @@ commit_replace(struct box_txn *txn)
 		} else {
 			foreach_index(index, txn->object_space)
 				[index replace: txn->obj];
-			object_ref(txn->obj, +1);
+			object_incr_ref(txn->obj);
 		}
 	}
 
@@ -282,7 +282,7 @@ rollback_replace(struct box_txn *txn)
 	if (txn->obj && txn->obj->flags & GHOST) {
 		foreach_index(index, txn->object_space)
 			[index remove: txn->obj];
-		object_ref(txn->obj, -1);
+		object_decr_ref(txn->obj);
 	}
 }
 
@@ -668,7 +668,7 @@ txn_cleanup(struct box_txn *txn)
 		if (txn->ref[i] == NULL)
 			break;
 		object_unlock(txn->ref[i]);
-		object_ref(txn->ref[i], -1);
+		object_decr_ref(txn->ref[i]);
 	}
 
 	/* mark txn as clean */

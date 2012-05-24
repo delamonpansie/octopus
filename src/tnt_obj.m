@@ -67,11 +67,8 @@ object_ref(struct tnt_object *obj, int count)
 void
 object_incr_ref(struct tnt_object *obj)
 {
-	assert(obj->refs + 1 >= 0);
+	assert(obj->refs + 1 > 0);
 	obj->refs++;
-
-	if (obj->refs == 0)
-		sfree(obj);
 }
 
 void
