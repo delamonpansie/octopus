@@ -703,6 +703,7 @@ txn_abort(struct box_txn *txn)
 void
 txn_submit_to_storage(struct box_txn *txn)
 {
+	say_debug("%s", __func__);
 	[recovery submit_change:txn->wal_record];
 }
 
