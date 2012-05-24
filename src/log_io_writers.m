@@ -360,8 +360,10 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *row)
 	static ev_tstamp last = 0;
 	const int io_rate_limit = l->dir->recovery_state->snap_io_rate_limit;
 
-	if ([l append_row:data->data len:tbuf_len(data) tag:tag cookie:default_cookie] < 0)
-		panic("unable write row");
+	if ([l append_row:row->ptr len:tbuf_len(row) tag:tag cookie:default_cookie] < 0) {
+		say_error("unable write row");
+		_exit(EXIT_FAILURE);
+	}
 
 	prelease_after(fiber->pool, 128 * 1024);
 
