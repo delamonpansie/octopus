@@ -33,8 +33,12 @@ def pfield
 end
 
 def ptuple
-  set $cardinlaity = $arg0->cardinality
-  set $ptr = $arg0->data
+  if $arg0->type != 1
+    printf "bad tnt_obj type\n"
+  end
+  set $tuple = (struct box_tuple *)$arg0->data
+  set $cardinlaity = $tuple->cardinality
+  set $ptr = $tuple->data
 
   printf "["
   while $cardinlaity > 0
