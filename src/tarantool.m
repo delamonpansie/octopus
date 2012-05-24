@@ -315,14 +315,17 @@ create_pid(void)
 	}
 
         fseeko(f, 0, SEEK_SET);
-	fprintf(f, "%i\n", getpid());
+	fprintf(f, "%i\n", master_pid);
 	fclose(f);
 }
 
 static void
 remove_pid(void)
 {
-	unlink(cfg.pid_file);
+	if (getpid() == master_pid)
+		unlink(cfg.pid_file);
+	else
+		say_warn("%s: not a master", __func__);
 }
 
 static int
