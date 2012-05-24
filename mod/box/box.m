@@ -1374,6 +1374,10 @@ snapshot(bool initial)
 {
 	if (initial)
 		[recovery initial_lsn:1];
+	if ([recovery lsn] == 0) {
+		say_warn("lsn == 0");
+		_exit(EXIT_FAILURE);
+	}
 	[recovery snapshot_save:snapshot_rows];
 }
 
