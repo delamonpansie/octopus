@@ -87,7 +87,7 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 #define INDEX_NODE_CACHE 11 /* FIXME: better hashing scheme */
 #define GET_NODE(x) ({							\
 	struct index_node *__node = node_cache[(uintptr_t)(x) % INDEX_NODE_CACHE]; \
-	__node->obj != (x) ?						\
+	(1 || __node->obj != (x)) ?					\
 		dtor(x, __node, dtor_arg) :				\
 		__node;							\
 })
