@@ -241,6 +241,7 @@ _mh(get_node)(struct mhash_t *h, struct index_node *node)
 	uint32_t i = _mh(get)(h, mh_node_key(node));
 #ifdef MH_PARANOIA
 	assert(i == h->n_buckets || mh_eq(mh_slot(h, i), mh_node_key(node)));
+	assert(i <= h->n_buckets);
 #endif
 	return i;
 }
