@@ -45,6 +45,12 @@ def ptuple
     xgetlen
 
     if $len > 0
+      if $len == 4
+        output *(i32 *)$ptr
+      end
+      if $len == 8
+        output *(i64 *)$ptr
+      end
       output *$ptr@$len
       set $ptr = (char *)$ptr + $len
     else
