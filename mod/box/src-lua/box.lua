@@ -217,7 +217,7 @@ decode = {}
 function decode.varint32(obj, offt)
         local tuple = ctuple(obj)
         if (offt < 0 or offt + 1 > tuple.bsize) then
-                error("out of bounds\n" .. debug.traceback())
+                error(string.format("out of bounds: offt:%i bsize:%i\n%s", offt, tuple.bsize, debug.traceback()))
         end
         local result, offt = decode_varint32(tuple.data, offt)
         if (offt > tuple.bsize) then
@@ -229,7 +229,7 @@ end
 function decode.string(obj, offt, len)
         local tuple = ctuple(obj)
         if (offt < 0 or offt + len > tuple.bsize) then
-                error("out of bounds\n" .. debug.traceback())
+                error(string.format("out of bounds: offt:%i bsize:%i\n%s", offt, tuple.bsize, debug.traceback()))
         end
         return ffi.string(tuple.data + offt, len)
 end
@@ -239,7 +239,7 @@ local u8_ptr, u16_ptr, u32_ptr = ffi.typeof("uint8_t *"), ffi.typeof("uint16_t *
 function decode.u8(obj, offt)
         local tuple = ctuple(obj)
         if (offt < 0 or offt + 1 > tuple.bsize) then
-                error("out of bounds\n" .. debug.traceback())
+                error(string.format("out of bounds: len:1 offt:%i bsize:%i\n%s", offt, tuple.bsize, debug.traceback()))
         end
         return ffi.cast(u8_ptr , tuple.data)[offt]
 end
@@ -247,7 +247,7 @@ end
 function decode.u16(obj, offt)
         local tuple = ctuple(obj)
         if (offt < 0 or offt + 2 > tuple.bsize) then
-                error("out of bounds\n" .. debug.traceback())
+                error(string.format("out of bounds: len:2 offt:%i bsize:%i\n%s", offt, tuple.bsize, debug.traceback()))
         end
         return ffi.cast(u16_ptr , tuple.data)[offt]
 end
@@ -255,7 +255,7 @@ end
 function decode.u32(obj, offt)
         local tuple = ctuple(obj)
         if (offt < 0 or offt + 4 > tuple.bsize) then
-                error("out of bounds\n" .. debug.traceback())
+                error(string.format("out of bounds: len:4 offt:%i bsize:%i\n%s", offt, tuple.bsize, debug.traceback()))
         end
         return ffi.cast(u32_ptr , tuple.data)[offt]
 end
