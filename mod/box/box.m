@@ -145,13 +145,14 @@ tuple_print(struct tbuf *buf, uint8_t cardinality, void *f)
 }
 
 static struct tnt_object *
-tuple_alloc(size_t size)
+tuple_alloc(unsigned cardinality, unsigned size)
 {
 	struct tnt_object *obj = object_alloc(BOX_TUPLE, sizeof(struct box_tuple) + size);
 	struct box_tuple *tuple = box_tuple(obj);
 
 	tuple->bsize = size;
-	say_debug("tuple_alloc(%zu) = %p", size, tuple);
+	tuple->cardinality = cardinality;
+	say_debug("tuple_alloc(%u, %u) = %p", cardinality, size, tuple);
 	return obj;
 }
 
@@ -214,9 +215,8 @@ prepare_replace(struct box_txn *txn, size_t cardinality, struct tbuf *data)
 	if (tbuf_len(data) == 0 || !valid_tuple(data, cardinality))
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "tuple encoding error");
 
-	txn->obj = txn_acquire(txn, tuple_alloc(tbuf_len(data)));
+	txn->obj = txn_acquire(txn, tuple_alloc(cardinality, tbuf_len(data)));
 	struct box_tuple *tuple = box_tuple(txn->obj);
-	tuple->cardinality = cardinality;
 	memcpy(tuple->data, data->ptr, tbuf_len(data));
 	tbuf_ltrim(data, tbuf_len(data));
 
@@ -513,8 +513,7 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 	if (tbuf_len(data) != 0)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
 
-	txn->obj = txn_acquire(txn, tuple_alloc(bsize));
-	box_tuple(txn->obj)->cardinality = cardinality;
+	txn->obj = txn_acquire(txn, tuple_alloc(cardinality, bsize));
 
 	u8 *p = box_tuple(txn->obj)->data;
 	i = 0;
