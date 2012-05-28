@@ -44,6 +44,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <sys/types.h>
+#include <sys/ioctl.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <signal.h>
@@ -289,7 +290,7 @@ struct child *
 spawn_child(const char *name, int (*handler)(int fd, void *state), void *state)
 {
 	char *child_name;
-	int socks[2];
+	int one = 1, socks[2];
 	int pid;
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, 0, socks) == -1) {
@@ -304,7 +305,7 @@ spawn_child(const char *name, int (*handler)(int fd, void *state), void *state)
 
 	if (pid) {
 		close(socks[0]);
-		if (set_nonblock(socks[1]) == -1)
+		if (ioctl(socks[1], FIONBIO, &one) < 0)
 			return NULL;
 
 		struct child *child = malloc(sizeof(*child));

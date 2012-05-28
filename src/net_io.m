@@ -35,6 +35,7 @@
 #include <sys/uio.h>
 #include <sysexits.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -539,7 +540,7 @@ service_output_flusher(va_list ap __attribute__((unused)))
 int
 tcp_connect(struct sockaddr_in *dst, struct sockaddr_in *src, ev_tstamp timeout)
 {
-	int fd, optval = 1, flags;
+	int fd, optval = 1;
 	socklen_t optlen = sizeof(optval);
 	ev_io io = { .coro = 1 };
 	ev_timer timer = { .coro = 1 };
@@ -551,7 +552,7 @@ tcp_connect(struct sockaddr_in *dst, struct sockaddr_in *src, ev_tstamp timeout)
 		goto error;
 	}
 
-	if ((flags = fcntl(fd, F_GETFL, 0)) < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+	if (ioctl(fd, FIONBIO, &optval) < 0) {
 		say_syserror("fcntl");
 		goto error;
 	}
@@ -610,7 +611,7 @@ server_socket(int type, struct in_addr *src, int port, void (*on_bind)(int fd))
 {
 	int fd;
 	bool warning_said = false;
-	int flags, one = 1;
+	int one = 1;
 	struct sockaddr_in sin;
 	struct linger ling = { 0, 0 };
 
@@ -633,7 +634,7 @@ server_socket(int type, struct in_addr *src, int port, void (*on_bind)(int fd))
 			return -1;
 		}
 
-	if ((flags = fcntl(fd, F_GETFL, 0)) < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+	if (ioctl(fd, FIONBIO, &one) < 0) {
 		say_syserror("fcntl");
 		return -1;
 	}
@@ -691,7 +692,7 @@ tcp_server(va_list ap)
 	void (*on_bind)(int fd) = va_arg(ap, void (*)(int fd));
 	void *data = va_arg(ap, void *);
 
-	int cfd, fd, one = 1, flags;
+	int cfd, fd, one = 1;
 
 	if ((fd = server_socket(SOCK_STREAM, NULL, port, on_bind)) < 0)
 		exit(EX_OSERR); /* TODO: better error handling */
@@ -704,10 +705,8 @@ tcp_server(va_list ap)
 		yield();
 
 		while ((cfd = accept(fd, NULL, NULL)) > 0) {
-			if ((flags = fcntl(cfd, F_GETFL, 0)) < 0 ||
-			    fcntl(cfd, F_SETFL, flags | O_NONBLOCK) < 0)
-			{
-				say_syserror("fcntl");
+			if (ioctl(fd, FIONBIO, &one) < 0) {
+				say_syserror("ioctl");
 				close(cfd);
 				continue;
 			}
