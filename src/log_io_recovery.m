@@ -879,3 +879,5 @@ input_dispatch(va_list ap __attribute__((unused)))
 }
 
 @end
+
+register_source(S_INFO);

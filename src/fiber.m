@@ -430,3 +430,5 @@ luaT_openfiber(struct lua_State *L)
 	lua_pop(L, 1);
 	return 0;
 }
+
+register_source(S_INFO);

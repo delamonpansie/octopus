@@ -384,3 +384,5 @@ out:
 }
 
 #endif
+
+register_source(S_INFO);

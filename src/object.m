@@ -94,3 +94,5 @@ backtrace:(const char *)backtrace_
 	return [self init_line:line_ file:file_ backtrace:backtrace_ reason:buf];
 }
 @end
+
+register_source(S_INFO);

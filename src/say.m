@@ -38,9 +38,24 @@
 # include <sys/param.h>
 #endif
 
+typedef const char* cstr;
+struct node {
+	int value;
+	cstr key;
+} __attribute__((packed));
+#define mh_name _cstr
+#define mh_key_t cstr
+#define mh_val_t int
+#define mh_hash(a) ({ (uint32_t)(((uintptr_t)a)>>33^((uintptr_t)a)^((uintptr_t)a)<<11); })
+#define mh_eq(a, b) ({ strcmp(*(mh_key_t *)((a) + sizeof(mh_val_t)), (b)) == 0; })
+#define MH_STATIC
+#include <mhash.h>
+
+static struct mhash_t *filter;
 
 int stderrfd, sayfd = STDERR_FILENO;
 bool dup_to_stderr = false;
+int max_level;
 
 static char
 level_to_char(int level)
@@ -62,6 +77,54 @@ level_to_char(int level)
 		return '_';
 	}
 }
+
+void
+say_register_source(const char *file, int level)
+{
+	int ret;
+	if (unlikely(filter == NULL)) {
+		filter = mh_cstr_init();
+		max_level = 0;
+	}
+
+	mh_cstr_put(filter, file, level, &ret);
+}
+
+void
+say_level_source(const char *file, int diff)
+{
+	int max = 0;
+	for (int k = 0; k < mh_end(filter); k++) {
+		if (!mh_exist(filter, k))
+		    continue;
+		struct node *n = mh_slot(filter, k);
+		if (strcmp(file, "ALL") == 0 || strcmp(file, n->key) == 0)
+			n->value += diff;
+		if (n->value > max)
+			max = n->value;
+	}
+	max_level = max;
+}
+
+void
+say_list_sources(void)
+{
+	puts("ALL");
+	for (int k = 0; k < mh_end(filter); k++) {
+		if (!mh_exist(filter, k))
+		    continue;
+		struct node *n = mh_slot(filter, k);
+		puts(n->key);
+	}
+}
+
+int
+say_filter(int level, const char *file)
+{
+	int k = mh_cstr_get(filter, file);
+	return mh_end(filter) == k || mh_cstr_value(filter, k) >= level;
+}
+
 
 void
 say_logger_init(int nonblock)

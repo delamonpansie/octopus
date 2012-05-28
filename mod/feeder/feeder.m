@@ -261,3 +261,4 @@ static struct tnt_module feeder = {
 };
 
 register_module(feeder);
+register_source(S_INFO);

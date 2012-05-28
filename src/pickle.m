@@ -186,3 +186,5 @@ load_varint32(void **pp)
 	*pp = p;
 	return v;
 }
+
+register_source(S_INFO);

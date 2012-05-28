@@ -113,3 +113,4 @@ static struct tnt_module follower = {
 };
 
 register_module(follower);
+register_source(S_INFO);

@@ -497,8 +497,10 @@ main(int argc, char **argv)
 				       gopt_longs("init-storage"),
 				       NULL, "initialize storage (an empty snapshot file) and exit"),
 #endif
-			   gopt_option('v', GOPT_REPEAT, gopt_shorts('v'), gopt_longs("verbose"),
-				       NULL, "increase verbosity level in log messages"),
+			   gopt_option('v', GOPT_ARG|GOPT_REPEAT, gopt_shorts('v'), gopt_longs("verbose"),
+				       "=LEVEL", "increase verbosity level of particular source or ALL; where LEVEL is n|ALL[=n]|filename[=n] , n = 1..6"),
+			   gopt_option('H', 0, gopt_shorts(0), gopt_longs("list-sources"),
+				       NULL, "list known sources"),
 			   gopt_option('e', 0, gopt_shorts('e'), gopt_longs("stderr"),
 				       NULL, "Duplicate log output to stderr"),
 			   gopt_option('D', 0, gopt_shorts('D'), gopt_longs("daemonize"),
@@ -525,6 +527,10 @@ main(int argc, char **argv)
 		return 0;
 	}
 
+	if (gopt(opt, 'H')) {
+		say_list_sources();
+		return 0;
+	}
 #ifdef STORAGE
 	if (gopt_arg(opt, 'C', &cat_filename)) {
 		initialize_minimal();
@@ -576,8 +582,26 @@ main(int argc, char **argv)
 	if (fill_default_tarantool_cfg(&cfg) != 0 || load_cfg(&cfg, 0) != 0)
 		panic("can't load config: %s", cfg_err);
 
-	cfg.log_level += gopt(opt, 'v');
 	dup_to_stderr = gopt(opt, 'e');
+
+	const char *filename;
+	int i = 0;
+	say_level_source("ALL", cfg.log_level);
+	while ((filename = gopt_arg_i(opt, 'v', i++))) {
+		if (strlen(filename) == 1) {
+			say_level_source("ALL", atoi(filename));
+			continue;
+		}
+		if (strchr(filename, '=') != NULL) {
+			char *dup = strdup(filename);
+			char *eq = strchr(dup, '=');
+			*eq++ = 0;
+			say_level_source(dup, atoi(eq));
+			free(dup);
+			continue;
+		}
+		say_level_source(filename, 1);
+	}
 
 	if (gopt_arg(opt, 'g', &cfg_paramname)) {
 		tarantool_cfg_iterator_t *i;
@@ -725,7 +749,6 @@ main(int argc, char **argv)
 	}
 
 	prelease(fiber->pool);
-	say_crit("log level %i", cfg.log_level);
 	say_crit("entering event loop");
 	if (cfg.io_collect_interval > 0)
 		ev_set_io_collect_interval(cfg.io_collect_interval);
@@ -746,3 +769,5 @@ main(int argc, char **argv)
 
 	return 0;
 }
+
+register_source(S_INFO);

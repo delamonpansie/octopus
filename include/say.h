@@ -41,7 +41,7 @@ enum say_level {
 	S_DEBUG
 };
 
-extern int stderrfd, sayfd;
+extern int stderrfd, sayfd, max_level;
 extern bool dup_to_stderr;
 
 void say_logger_init(int nonblock);
@@ -53,8 +53,18 @@ void _say(int level, const char *filename, unsigned line, const char *error,
     __attribute__ ((format(FORMAT_PRINTF, 5, 6)));
 
 
-#define say(level, ...) 	({ if(cfg.log_level >= level)		\
-					_say(level, __FILE__, __LINE__, __VA_ARGS__); })
+void say_register_source(const char *file, int level);
+void say_level_source(const char *file, int diff);
+void say_list_sources(void);
+#define register_source(level)				\
+	__attribute__((constructor)) static void	\
+	register_source_(void) {			\
+		say_register_source(__FILE__, (level));	\
+	}
+
+int say_filter(int, const char *);
+#define say(level, ...) ({ if(max_level >= level && say_filter(level, __FILE__)) \
+				_say(level, __FILE__, __LINE__, __VA_ARGS__); })
 #define say_syserror(...)	say(S_ERROR, strerror(errno), __VA_ARGS__)
 #define say_error(...)		say(S_ERROR, NULL, __VA_ARGS__)
 #define say_crit(...)		say(S_CRIT, NULL, __VA_ARGS__)

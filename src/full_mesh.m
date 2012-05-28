@@ -407,3 +407,5 @@ mesh_init(struct mesh_peer *self_,
 	fiber_create("mesh/rendevouz_accept", tcp_server, accept_port, rendevouz_accept, NULL, NULL);
 	fiber_create("mesh/ping", ping);
 }
+
+register_source(S_INFO);

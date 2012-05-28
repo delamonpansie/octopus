@@ -296,3 +296,5 @@ code
 	return code;
 }
 @end
+
+register_source(S_INFO);

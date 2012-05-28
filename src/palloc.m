@@ -503,3 +503,5 @@ palloc_owner(struct palloc_pool *pool, void *ptr)
 	}
 	return false;
 }
+
+register_source(S_INFO);
