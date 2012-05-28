@@ -136,7 +136,7 @@ wal_pack_append:(struct wal_pack *)pack data:(void *)data len:(u32)data_len tag:
 - (int)
 wal_pack_submit
 {
-	say_debug("%s", __func__);
+	say_debug("%s sent", __func__);
 	if (!local_writes) {
 		say_warn("local writes disabled");
 		return 0;

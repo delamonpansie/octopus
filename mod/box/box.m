@@ -203,7 +203,7 @@ txn_acquire(struct box_txn *txn, struct tnt_object *obj)
 				@throw;
 			}
 		}
-	panic("txn->ref to small i:%i", i);
+	panic("txn->ref[] to small i:%i", i);
 }
 
 
@@ -549,7 +549,6 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 		txn->obj->flags |= GHOST;
 		txn->obj_affected++;
 	}
-	say_debug("%s: old_obj:%p obj:%p", __func__, txn->old_obj, txn->obj);
 }
 
 void
@@ -569,6 +568,7 @@ process_select(struct box_txn *txn, u32 limit, u32 offset, struct tbuf *data)
 	uint32_t *found;
 	u32 count = read_u32(data);
 
+	say_debug("SELECT");
 	found = palloc(txn->m->head->pool, sizeof(*found));
 	net_add_iov(&txn->m, found, sizeof(*found));
 	*found = 0;
@@ -670,6 +670,10 @@ txn_cleanup(struct box_txn *txn)
 		object_decr_ref(txn->ref[i]);
 	}
 
+	say_debug("%s: old_obj:refs=%i,%p obj:ref=%i,%p", __func__,
+		 txn->old_obj ? txn->old_obj->refs : 0, txn->old_obj,
+		 txn->obj ? txn->obj->refs : 0, txn->obj);
+
 	/* mark txn as clean */
 	memset(txn, 0, sizeof(*txn));
 }
@@ -685,6 +689,10 @@ txn_commit(struct box_txn *txn)
 
 	say_debug("txn_commit(op:%s)", messages_strs[txn->op]);
 	stat_collect(stat_base, txn->op, 1);
+
+	say_debug("%s: old_obj:refs=%i,%p obj:ref=%i,%p", __func__,
+		 txn->old_obj ? txn->old_obj->refs : 0, txn->old_obj,
+		 txn->obj ? txn->obj->refs : 0, txn->obj);
 }
 
 void
@@ -697,12 +705,18 @@ txn_abort(struct box_txn *txn)
 
 	if (txn->op == INSERT || txn->op == UPDATE_FIELDS)
 		rollback_replace(txn);
+
+	say_debug("%s: old_obj:refs=%i,%p obj:ref=%i,%p", __func__,
+		 txn->old_obj ? txn->old_obj->refs : 0, txn->old_obj,
+		 txn->obj ? txn->obj->refs : 0, txn->obj);
 }
 
 void
 txn_submit_to_storage(struct box_txn *txn)
 {
-	say_debug("%s", __func__);
+	say_debug("%s: old_obj:refs=%i,%p obj:ref=%i,%p", __func__,
+		 txn->old_obj ? txn->old_obj->refs : 0, txn->old_obj,
+		 txn->obj ? txn->obj->refs : 0, txn->obj);
 	[recovery submit_change:txn->wal_record];
 }
 
@@ -732,6 +746,7 @@ static void
 box_dispach_select(struct box_txn *txn, struct tbuf *data)
 {
 	txn_common_parser(txn, data);
+	say_debug("box_dispach(%i)", txn->op);
 
 	u32 i = read_u32(data);
 	u32 offset = read_u32(data);
