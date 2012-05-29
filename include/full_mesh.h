@@ -24,52 +24,14 @@
  * SUCH DAMAGE.
  */
 
-#import <net_io.h>
+#import <iproto.h>
 
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-
-#define MAX_MESH_PEERS 7
-#define MESH_PING 1
-
-struct mesh_peer {
-	int id;
-	struct conn c;
-	char *name;
-	struct sockaddr_in addr;
-	struct sockaddr_in primary_addr;
-	struct mesh_peer *next;
-	bool connect_err_said;
-};
-
-struct mesh_msg {
-	int len;
-	i64 seq;
-	int type;
-	ev_tstamp sent;
-};
-
-struct mesh_response {
-	int seq;
-	int count, quorum;
-	ev_timer timeout;
-	struct fiber *waiter;
-	ev_tstamp sent, closed;
-	struct mesh_msg *reply[MAX_MESH_PEERS];
-};
-
+struct iproto_peer *mesh_peers;
 int hostid(u64 seq);
 void mesh_set_seq(u64 seq);
-struct mesh_peer *mesh_peer(int id);
-struct mesh_peer *owner_of_seq(u64 seq);
-struct mesh_peer *make_mesh_peer(int id, const char *name,
-				 const char *addr, short primary_port,
-				 struct mesh_peer *next);
-struct netmsg *peer_netmsg_tail(struct mesh_peer *p);
-void mesh_init(struct mesh_peer *self_,
-	       struct mesh_peer *peers_,
-	       void (*reply_callback)(struct mesh_peer *, struct mesh_msg *));
-void broadcast(struct mesh_msg *op, u32 data_len, const char *data);
-struct mesh_response *make_response(int quorum, ev_tstamp timeout);
-void release_response(struct mesh_response *r);
+struct iproto_peer *mesh_peer(int id);
+struct iproto_peer *owner_of_seq(u64 seq);
+void mesh_init(struct iproto_peer *self_,
+	       struct iproto_peer *peers_,
+	       void (*reply_callback)(struct iproto_peer *, struct iproto *, void *arg),
+	       void *arg);

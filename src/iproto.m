@@ -30,7 +30,7 @@
 #import <iproto.h>
 #import <tbuf.h>
 #import <say.h>
-#import <net_io.h>
+#import <assoc.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -42,7 +42,6 @@
 
 
 const uint32_t msg_ping = 0xff00;
-const uint32_t msg_replica = 0xff01;
 STRS(error_codes, ERROR_CODES);
 DESC_STRS(error_codes, ERROR_CODES);
 
@@ -126,6 +125,7 @@ iproto_reply(struct netmsg **m, u32 msg_code, u32 sync)
 	h->sync = sync;
 }
 
+#define SSYNC(x) x >> 8, x & 0xff
 void
 iproto_commit(struct netmsg_mark *mark, u32 ret_code)
 {
@@ -141,8 +141,8 @@ iproto_commit(struct netmsg_mark *mark, u32 ret_code)
 	} while ((m = TAILQ_NEXT(m, link)) != NULL);
 	h->ret_code = ret_code;
 	h->data_len += len;
-	say_debug("%s: op:%i data_len:%i sync:%i ret:%i", __func__,
-		  h->msg_code, h->data_len, h->sync, h->ret_code);
+	say_debug("%s: op:%i data_len:%i sync:%i,%i ret:%i", __func__,
+		  h->msg_code, h->data_len, SSYNC(h->sync), h->ret_code);
 }
 
 void
@@ -158,8 +158,8 @@ iproto_error(struct netmsg **m, struct netmsg_mark *header_mark, u32 ret_code, c
 		header->data_len += strlen(err);
 		net_add_iov_dup(m, err, strlen(err));
 	}
-	say_debug("%s: op:%i data_len:%i sync:%i ret:%i", __func__,
-		  header->msg_code, header->data_len, header->sync, header->ret_code);
+	say_debug("%s: op:%i data_len:%i sync:%i,%i ret:%i", __func__,
+		  header->msg_code, header->data_len, SSYNC(header->sync), header->ret_code);
 }
 
 

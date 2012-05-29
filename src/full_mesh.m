@@ -30,6 +30,7 @@
 #import <palloc.h>
 #import <say.h>
 #import <fiber.h>
+#import <iproto.h>
 #import <full_mesh.h>
 
 #include <sys/socket.h>
@@ -39,91 +40,12 @@
 static struct palloc_pool *pool;
 static struct fiber *output_flusher, *input_reader;
 
-static struct mhash_t *response_registry;
-static i64 seq;
 
-static int self_id, mesh_peers;
-static struct mesh_peer *peers;
+u32 self_id;
+struct iproto_peer *mesh_peers;
 
+#define foreach_peer(p) for (struct iproto_peer *p = mesh_peers; p; p = p->next)
 
-#define foreach_peer(p) for (struct mesh_peer *p = peers; p; p = p->next)
-
-struct netmsg *
-peer_netmsg_tail(struct mesh_peer *p)
-{
-	return netmsg_tail(&p->c.out_messages);
-}
-
-void
-mesh_set_seq(u64 s)
-{
-	seq = s >> 8;
-}
-
-static i64
-next_seq(void)
-{
-	return (++seq << 8) | (self_id & 0xff);
-}
-
-int
-hostid(u64 seq)
-{
-	return seq & 0xff;
-}
-
-struct mesh_peer *
-owner_of_seq(u64 seq)
-{
-	return mesh_peer(seq & 0xff);
-}
-
-static void
-peer_connect(struct mesh_peer *p, int fd)
-{
-	p->c.fd = fd;
-	ev_io_set(&p->c.out, fd, EV_WRITE);
-	ev_io_set(&p->c.in, fd, EV_READ);
-	ev_io_start(&p->c.in);
-
-	say_info("connect with %s %s", p->name, sintoa(&p->addr));
-}
-
-static void
-rendevouz(va_list ap)
-{
-	struct sockaddr_in *self_addr = va_arg(ap, struct sockaddr_in *);
-
-loop:
-	foreach_peer (p) {
-		/* This delay randomizes order in which mesh peers connects to each other */
-		fiber_sleep(drand(0.2));
-
-		if (p->c.fd > 0)
-			continue;
-
-		int fd = tcp_connect(&p->addr, self_addr, 5);
-		if (p->c.fd > 0) {
-			assert(p->c.fd != fd);
-			say_error("mesh peer %s already connected, closing fd:%i", p->name, fd);
-			if (fd)
-				close(fd);
-			continue;
-		}
-
-		if (fd > 0) {
-			peer_connect(p, fd);
-			p->connect_err_said = false;
-		} else {
-			if (!p->connect_err_said)
-				say_syserror("connect!");
-			p->connect_err_said = true;
-		}
-	}
-
-	fiber_sleep(1); /* no more then one reconnect to each member of cluster in second */
-	goto loop;
-}
 
 static int
 pair(const struct sockaddr_in *a, const struct sockaddr_in *b)
@@ -153,7 +75,7 @@ rendevouz_accept(int fd, void *data __attribute__((unused)))
 				return;
 			}
 
-			peer_connect(p, fd);
+			iproto_peer_connect(p, fd);
 			return;
 		}
 	}
@@ -319,16 +241,13 @@ input_reader_aux(va_list ap)
 		struct mesh_peer *p = (void *)c - offsetof(struct mesh_peer, c);
 		tbuf_ensure(c->rbuf, 16 * 1024);
 
-		ssize_t r = tbuf_recv(c->rbuf, c->fd);
+		ssize_t r = tbuf_read(c->fd, c->rbuf);
 
-		if (unlikely(r <= 0)) {
-			if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
-				continue;
-
+		if (r == 0 || /* r < 0 && */ (errno != EAGAIN && errno != EWOULDBLOCK)) {
 			if (r < 0)
-				say_syserror("%s: peer:%s fd:%i recv", __func__, p->name, c->fd);
+				say_debug("closing conn r:%i errno:%i", (int)r, errno);
 			else
-				say_debug("%s: peer %s EOF", __func__, p->name);
+				say_debug("peer %s disconnected, fd:%i", p->name, c->fd);
 			conn_close(c);
 			continue;
 		}
@@ -363,7 +282,7 @@ make_mesh_peer(int id, const char *name, const char *addr, short primary_port, s
 	return p;
 }
 
-struct mesh_peer *
+struct iproto_peer *
 mesh_peer(int id)
 {
 	foreach_peer (p)
@@ -374,28 +293,27 @@ mesh_peer(int id)
 
 
 void
-mesh_init(struct mesh_peer *self_,
-	  struct mesh_peer *peers_,
-	  void (*reply_callback)(struct mesh_peer *, struct mesh_msg *))
+mesh_init(struct iproto_peer *self_,
+	  struct iproto_peer *peers_,
+	  void (*reply_callback)(struct iproto_peer *, struct iproto *, void *),
+	  void *arg)
 {
 	short accept_port;
 	struct sockaddr_in *outgoing_addr;
 
 	pool = palloc_create_pool("mesh");
-	response_registry = mh_i64_init();
 
-	peers = peers_;
+	mesh_peers = peers_;
 	self_id = self_->id;
 	accept_port = ntohs(self_->addr.sin_port);
 	outgoing_addr = &self_->addr;
 	outgoing_addr->sin_port = htons(ntohs(outgoing_addr->sin_port) + 1);
 
 	output_flusher = fiber_create("mesh/output_flusher", service_output_flusher);
-	input_reader = fiber_create("mesh/input_reader", input_reader_aux, reply_callback);
+	input_reader = fiber_create("mesh/input_reader", iproto_input_reader, reply_callback, arg);
 
 	foreach_peer (p) {
 		say_debug("init mesh peer %s/%p", p->name, p);
-		mesh_peers++;
 		conn_init(&p->c, pool, -1, REF_STATIC);
 		/* FIXME: meld into conn_init */
 		ev_init(&p->c.out, (void *)output_flusher);
@@ -403,9 +321,9 @@ mesh_init(struct mesh_peer *self_,
 	}
 
 
-	fiber_create("mesh/rendevouz", rendevouz, outgoing_addr);
+	fiber_create("mesh/rendevouz", iproto_rendevouz, outgoing_addr, mesh_peers);
 	fiber_create("mesh/rendevouz_accept", tcp_server, accept_port, rendevouz_accept, NULL, NULL);
-	fiber_create("mesh/ping", ping);
+	fiber_create("mesh/ping", iproto_pinger, mesh_peers);
 }
 
 register_source(S_INFO);

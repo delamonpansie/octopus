@@ -27,9 +27,11 @@
 #import <util.h>
 #import <object.h>
 #import <tbuf.h>
+#import <net_io.h>
 
 #include <stdint.h>
 
+extern const uint32_t msg_ping;
 
 /*
  * struct iproto_header and struct iproto_header_retcode
@@ -72,13 +74,47 @@ struct tbuf *iproto_parse(struct tbuf *in);
 
 struct netmsg;
 struct netmsg_mark;
-u32 iproto_next_sync(void);
 void iproto_reply(struct netmsg **m, u32 msg_code, u32 sync);
 void iproto_commit(struct netmsg_mark *header_mark, u32 ret_code);
 void iproto_error(struct netmsg **m, struct netmsg_mark *header_mark, u32 ret_code, const char *err);
 
 
 void iproto_interact(va_list ap);
+
+
+struct iproto_peer {
+	int id;
+	struct conn c;
+	char *name;
+	struct sockaddr_in addr;
+	struct sockaddr_in primary_addr;
+
+	struct iproto_peer *next;
+	bool connect_err_said;
+};
+struct iproto_peer *make_iproto_peer(int id, const char *name,
+				     const char *addr, short primary_port,
+				     struct iproto_peer *next);
+
+u32 iproto_next_sync();
+void iproto_peer_connect(struct iproto_peer *p, int fd);
+void iproto_rendevouz(va_list ap);
+void iproto_input_reader(va_list ap);
+void iproto_pinger(va_list ap);
+
+#define MAX_IPROTO_PEERS 7
+struct iproto_response {
+	uint32_t sync;
+	int count, quorum;
+	ev_timer timeout;
+	struct fiber *waiter;
+	ev_tstamp sent, closed;
+	struct iproto *reply[MAX_IPROTO_PEERS];
+};
+
+void broadcast(struct iproto_peer *peers, struct iproto *msg, const char *data);
+struct iproto_response *make_response(int quorum, ev_tstamp timeout);
+void release_response(struct iproto_response *r);
 
 
 @interface IProtoError : Error {
