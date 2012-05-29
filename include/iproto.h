@@ -66,7 +66,7 @@ static inline struct iproto_header *iproto(const struct tbuf *t)
 struct netmsg;
 struct netmsg_mark;
 void iproto_reply(struct netmsg **m, u32 msg_code, u32 sync);
-void iproto_commit(struct netmsg_mark *header_mark);
+void iproto_commit(struct netmsg_mark *header_mark, u32 ret_code);
 void iproto_error(struct netmsg **m, struct netmsg_mark *header_mark, u32 ret_code, const char *err);
 
 

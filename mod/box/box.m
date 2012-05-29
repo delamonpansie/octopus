@@ -821,7 +821,7 @@ box_process(struct conn *c, struct tbuf *request)
 		if (op_is_select(msg_code)) {
 			txn_init(iproto(request), &txn, netmsg_tail(&c->out_messages));
 			box_dispach_select(&txn, &request_data);
-			iproto_commit(&txn.header_mark);
+			iproto_commit(&txn.header_mark, ERR_CODE_OK);
 		} else {
 			ev_tstamp start = ev_now(), stop;
 			struct netmsg_head h = { TAILQ_HEAD_INITIALIZER(h.q), fiber->pool, 0 };
@@ -830,8 +830,9 @@ box_process(struct conn *c, struct tbuf *request)
 			if (unlikely(c->service != box_primary))
 				iproto_raise(ERR_CODE_NONMASTER, "updates forbiden on secondary port");
 
+			u32 rc = ERR_CODE_OK;
 			if (msg_code == EXEC_LUA) {
-				box_dispach_lua(&txn, &request_data);
+				rc = box_dispach_lua(&txn, &request_data);
 				stat_collect(stat_base, EXEC_LUA, 1);
 			} else {
 				box_prepare_update(&txn, &request_data);
@@ -839,7 +840,7 @@ box_process(struct conn *c, struct tbuf *request)
 				txn_submit_to_storage(&txn);
 				txn_commit(&txn);
 			}
-			iproto_commit(&txn.header_mark);
+			iproto_commit(&txn.header_mark, rc);
 			netmsg_concat(&c->out_messages, &h);
 
 			stop = ev_now();
