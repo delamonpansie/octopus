@@ -534,8 +534,6 @@ main(int argc, char **argv)
 		puts("");
 		gopt_help(opt_def);
 		puts("");
-		puts("Please visit project home page at http://launchpad.net/tarantool");
-		puts("to see online documentation, submit bugs or contribute a patch.");
 		return 0;
 	}
 
