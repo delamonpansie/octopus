@@ -715,7 +715,12 @@ txn_abort(struct box_txn *txn)
 void
 txn_submit_to_storage(struct box_txn *txn)
 {
-	[recovery submit_change:txn->wal_record];
+	if ([recovery submit:txn->wal_record->ptr
+			 len:tbuf_len(txn->wal_record)] != 1)
+		iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
+	say_debug("%s: old_obj:refs=%i,%p obj:ref=%i,%p", __func__,
+		 txn->old_obj ? txn->old_obj->refs : 0, txn->old_obj,
+		 txn->obj ? txn->obj->refs : 0, txn->obj);
 }
 
 static void
@@ -1364,7 +1369,11 @@ static void
 snapshot(bool initial)
 {
 	if (initial)
-		[recovery initial_lsn:1];
+		[recovery set_lsn:1];
+	if ([recovery lsn] == 0) {
+		say_warn("lsn == 0");
+		_exit(EXIT_FAILURE);
+	}
 	[recovery snapshot_save:snapshot_rows];
 }
 

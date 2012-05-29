@@ -155,7 +155,7 @@ wal_pack_submit
 
 	ev_io_start(&wal_writer->c->out);
 	struct wal_reply *r = yield();
-	say_debug("wal_write read inbox lsn=%"PRIi64" rows:%i", r->lsn, r->repeat_count);
+	say_debug("%s: read inbox lsn=%"PRIi64" rows:%i", __func__, r->lsn, r->repeat_count);
 	if (r->lsn == 0)
 		say_warn("wal writer returned error status");
 	else
@@ -371,8 +371,10 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *row)
 	static ev_tstamp last = 0;
 	const int io_rate_limit = l->recovery->snap_io_rate_limit;
 
-	if ([l append_row:data->data len:tbuf_len(data) tag:tag cookie:default_cookie] < 0)
-		panic("unable write row");
+	if ([l append_row:row->ptr len:tbuf_len(row) scn:0 tag:tag] < 0) {
+		say_error("unable write row");
+		_exit(EXIT_FAILURE);
+	}
 
 	prelease_after(fiber->pool, 128 * 1024);
 
@@ -431,10 +433,19 @@ snapshot_save:(void (*)(XLog *))callback
 
 	callback(snap);
 
-	if ([snap flush] == -1)
-		return;
-	if ([snap close] == -1)
-		return;
+	const char end[] = "END";
+	if ([snap append_row:end len:strlen(end) scn:scn tag:snap_final_tag] < 0) {
+		say_error("unable write final row");
+		_exit(EXIT_FAILURE);
+	}
+	if ([snap flush] == -1) {
+		say_syserror("snap flush failed");
+		_exit(EXIT_FAILURE);
+	}
+	if ([snap close] == -1) {
+		say_syserror("snap close failed");
+		_exit(EXIT_FAILURE);
+	}
 	snap = nil;
 
 	if (link(filename, final_filename) == -1) {
