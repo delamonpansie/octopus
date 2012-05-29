@@ -168,7 +168,7 @@ distclean: clean luaclean
 
 .PHONY: TAGS
 TAGS:
-	find $(srcdir) -name \*.[mch] | etags -
+	ctags-exuberant --langmap=ObjectiveC:.m.h.rl -eR
 
 .PHONY: test
 test:	tarantool
