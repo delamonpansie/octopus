@@ -297,4 +297,4 @@ code
 }
 @end
 
-register_source(S_INFO);
+register_source();

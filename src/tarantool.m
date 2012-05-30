@@ -770,4 +770,4 @@ main(int argc, char **argv)
 	return 0;
 }
 
-register_source(S_INFO);
+register_source();

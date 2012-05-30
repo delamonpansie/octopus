@@ -760,7 +760,7 @@ memcached_init()
 	memcached_index = (StringHash *)object_space_registry[n].index[0];
 }
 
-register_source(S_INFO);
+register_source();
 
 /*
  * Local Variables:

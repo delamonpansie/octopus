@@ -95,4 +95,4 @@ backtrace:(const char *)backtrace_
 }
 @end
 
-register_source(S_INFO);
+register_source();

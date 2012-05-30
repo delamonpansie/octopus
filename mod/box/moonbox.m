@@ -441,5 +441,5 @@ box_dispach_lua(struct box_txn *txn, struct tbuf *data)
 	return ret;
 }
 
-register_source(S_INFO);
+register_source();
 

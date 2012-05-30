@@ -431,4 +431,4 @@ luaT_openfiber(struct lua_State *L)
 	return 0;
 }
 
-register_source(S_INFO);
+register_source();

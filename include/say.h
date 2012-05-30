@@ -53,13 +53,13 @@ void _say(int level, const char *filename, unsigned line, const char *error,
     __attribute__ ((format(FORMAT_PRINTF, 5, 6)));
 
 
-void say_register_source(const char *file, int level);
 void say_level_source(const char *file, int diff);
 void say_list_sources(void);
-#define register_source(level)				\
+void say_register_source(const char *file);
+#define register_source()				\
 	__attribute__((constructor)) static void	\
 	register_source_(void) {			\
-		say_register_source(__FILE__, (level));	\
+		say_register_source(__FILE__);		\
 	}
 
 int say_filter(int, const char *);

@@ -463,4 +463,4 @@ snapshot_save:(void (*)(XLog *))callback
 
 @end
 
-register_source(S_INFO);
+register_source();

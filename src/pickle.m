@@ -187,4 +187,4 @@ load_varint32(void **pp)
 	return v;
 }
 
-register_source(S_INFO);
+register_source();

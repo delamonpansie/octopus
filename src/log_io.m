@@ -973,4 +973,4 @@ append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie
 
 @end
 
-register_source(S_INFO);
+register_source();

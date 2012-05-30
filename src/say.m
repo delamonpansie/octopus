@@ -79,14 +79,14 @@ level_to_char(int level)
 }
 
 void
-say_register_source(const char *file, int level)
+say_register_source(const char *file)
 {
-	int ret;
 	if (unlikely(filter == NULL)) {
 		filter = mh_cstr_init();
 		max_level = 0;
 	}
 
+	int ret, level = 0;
 	mh_cstr_put(filter, file, level, &ret);
 }
 

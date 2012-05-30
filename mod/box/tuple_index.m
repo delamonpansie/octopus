@@ -227,4 +227,4 @@ new_with_n:(int)n cfg:(struct tarantool_cfg_object_space_index *)cfg
 }
 @end
 
-register_source(S_INFO);
+register_source();

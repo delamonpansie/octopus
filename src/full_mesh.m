@@ -326,4 +326,4 @@ mesh_init(struct iproto_peer *self_,
 	fiber_create("mesh/ping", iproto_pinger, mesh_peers);
 }
 
-register_source(S_INFO);
+register_source();

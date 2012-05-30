@@ -152,4 +152,4 @@ stat_init()
 	fiber_create("stat", stat_record);
 }
 
-register_source(S_INFO);
+register_source();

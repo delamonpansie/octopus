@@ -1424,4 +1424,4 @@ static struct tnt_module box = {
 };
 
 register_module(box);
-register_source(S_INFO);
+register_source();

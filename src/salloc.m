@@ -364,4 +364,4 @@ slab_stat2(u64 *bytes_used, u64 *items)
 	}
 }
 
-register_source(S_INFO);
+register_source();
