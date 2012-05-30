@@ -1201,15 +1201,10 @@ wal_apply(struct box_txn *txn, struct tbuf *t)
 }
 
 static void
-recover_row(struct tbuf *row)
+recover_row(struct tbuf *row, int tag)
 {
-	u16 tag = row_v12(row)->tag;
-
 	struct box_txn txn;
 	memset(&txn, 0, sizeof(txn));
-
-	/* drop header */
-	tbuf_ltrim(row, sizeof(struct row_v12));
 
 	switch (tag) {
 	case wal_tag:

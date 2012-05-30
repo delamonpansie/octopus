@@ -167,41 +167,9 @@ dummy_row_lsn:(i64)lsn_ scn:(i64)scn_ tag:(u16)tag
 }
 
 - (void)
-collect_row:(struct tbuf *)row
-{
-	lsn = row_v12(row)->lsn;
-
-	say_debug("%s: lsn:%"PRIi64" scn:%"PRIi64" tag:%s", __func__,
-		  row_v12(row)->lsn, row_v12(row)->scn, xlog_tag_to_a(row_v12(row)->tag));
-
-	if (row_v12(row)->scn == scn + 1) {
-		[self recover_row:row];
-	} else {
-		if (mh_size(pending_row) > 10 * 1024)
-			raise("too many pending rows");
-
-		struct tbuf *clone = malloc(sizeof(*clone) + tbuf_len(row));
-		*clone = TBUF((void *)clone + sizeof(*clone), tbuf_len(row), fiber->pool);
-		memcpy(clone->ptr, row->ptr, tbuf_len(row));
-		int ret;
-		mh_i64_put(pending_row, row_v12(clone)->scn, clone, &ret);
-	}
-
-
-	for (;;) {
-		u32 k = mh_i64_get(pending_row, scn + 1);
-		if (k == mh_end(pending_row))
-			break;
-		row = mh_i64_value(pending_row, k);
-		mh_i64_del(pending_row, k);
-		[self recover_row:row];
-		free(row);
-	}
-}
-
-- (void)
 recover_row:(struct tbuf *)row
 {
+	i64 row_lsn = row_v12(row)->lsn;
 	i64 row_scn = row_v12(row)->scn;
 	u16 tag = row_v12(row)->tag;
 	ev_tstamp tm = row_v12(row)->tm;
@@ -209,7 +177,11 @@ recover_row:(struct tbuf *)row
 	@try {
 		say_debug("%s: lsn:%"PRIi64" scn:%"PRIi64" tag:%s",
 			  __func__, row_v12(row)->lsn, row_scn, xlog_tag_to_a(tag));
-		recover_row(row);
+		if (row_lsn > 0)
+			lsn = row_lsn;
+
+		tbuf_ltrim(row, sizeof(struct row_v12)); /* drop header */
+		recover_row(row, tag);
 		switch (tag) {
 		case wal_tag:
 			assert(row_scn > 0);
@@ -261,7 +233,7 @@ recover_snap
 							  tag:snap_initial_tag]];
 		while ((row = [snap next_row])) {
 			if (unlikely(row_v12(row)->tag == snap_final_tag)) {
-				[self collect_row:row];
+				[self recover_row:row];
 				continue;
 			}
 			[self validate_row:row];
@@ -271,7 +243,7 @@ recover_snap
 
 		/* old v11 snapshot, scn == lsn from filename */
 		if ([snap isKindOf:[XLog11 class]])
-			[self collect_row:[self dummy_row_lsn:snap_lsn
+			[self recover_row:[self dummy_row_lsn:snap_lsn
 							  scn:snap_lsn
 							  tag:snap_final_tag]];
 
@@ -298,7 +270,7 @@ recover_wal:(XLog *)l
 		while ((row = [l next_row])) {
 			if (row_v12(row)->lsn > lsn) {
 				[self validate_row:row];
-				[self collect_row:row];
+				[self recover_row:row];
 			}
 
 			prelease_after(l->pool, 128 * 1024);
@@ -661,7 +633,7 @@ pull_wal(Recovery *r, struct conn *c, u32 version)
 			@try {
 				for (int j = 0; j < pack_rows; j++) {
 					row = rows[j];
-					[r collect_row:tbuf_clone(fiber->pool, row)];
+					[r recover_row:tbuf_clone(fiber->pool, row)];
 				}
 			}
 			@catch (id e) {
@@ -821,7 +793,7 @@ input_dispatch(va_list ap __attribute__((unused)))
 
 - (id) init_snap_dir:(const char *)snap_dirname
              wal_dir:(const char *)wal_dirname
-	 recover_row:(void (*)(struct tbuf *))recover_row_
+	 recover_row:(void (*)(struct tbuf *, int))recover_row_
         rows_per_wal:(int)wal_rows_per_file
 	 feeder_addr:(const char *)feeder_addr_
          fsync_delay:(double)wal_fsync_delay

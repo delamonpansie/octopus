@@ -146,7 +146,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 	XLog *current_wal;	/* the WAL we'r currently reading/writing from/to */
 	XLog *wal_to_close;
 
-	void (*recover_row)(struct tbuf *);
+	void (*recover_row)(struct tbuf *, int);
 	struct mhash_t *pending_row;
 
         XLogDir *wal_dir, *snap_dir;
@@ -179,7 +179,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 
 - (id) init_snap_dir:(const char *)snap_dir
              wal_dir:(const char *)wal_dir
-	 recover_row:(void (*)(struct tbuf *))recover_row
+	 recover_row:(void (*)(struct tbuf *, int))recover_row
         rows_per_wal:(int)rows_per_wal
        feeder_addr:(const char *)feeder_addr
          fsync_delay:(double)wal_fsync_delay
