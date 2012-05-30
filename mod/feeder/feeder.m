@@ -155,8 +155,7 @@ recover_feed_slave(int sock)
 	feeder = [[Feeder alloc] init_snap_dir:cfg.snap_dir
 				       wal_dir:cfg.wal_dir
 					    fd:sock];
-	i64 initial_scn = handshake(sock, filter_name);
-	[feeder recover_local:initial_scn filter:filter_name];
+	[feeder recover_local:handshake(sock)];
 
 	ev_io_init(&io, (void *)eof_monitor, sock, EV_READ);
 	ev_io_start(&io);

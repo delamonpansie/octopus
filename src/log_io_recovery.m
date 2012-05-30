@@ -59,6 +59,7 @@
 - (i64)lsn { return lsn; }
 - (i64)scn { return scn; }
 - (bool)auto_scn { return auto_scn; }
+- (i64)next_scn { return ++scn; }
 - (const char *)status { return status; };
 - (ev_tstamp)lag { return lag; };
 - (ev_tstamp)last_update_tstamp { return last_update_tstamp; };
@@ -69,6 +70,13 @@ set_lsn:(i64)lsn_
 {
 	assert(lsn_ > 0);
         lsn = lsn_;
+}
+
+- (void)
+set_scn:(i64)scn_
+{
+	assert(scn_ > 0);
+	scn = scn_;
 }
 
 /* this little hole shouldn't be used too much */
@@ -343,30 +351,8 @@ recover_remaining_wals
 }
 
 - (i64)
-recover_local:(i64)start_lsn
+recover_cont
 {
-	/*
-	 * if caller set confirmed_lsn to non zero value, snapshot recovery
-	 * will be skipped, but WAL reading still happens
-	 */
-
-	say_info("local recovery start");
-	if (start_lsn == 0) {
-		[self recover_snap];
-		if (scn == 0)
-			return 0;
-	} else {
-		/*
-		 * note, that recovery start with lsn _NEXT_ to confirmed one
-		 */
-		lsn = start_lsn - 1;
-	}
-
-	/*
-	 * just after snapshot recovery current_wal isn't known
-	 * so find wal which contains record with next lsn
-	 */
-	current_wal = [wal_dir containg_lsn:lsn + 1];
 	if (current_wal != nil)
 		say_info("recover from `%s'", current_wal->filename);
 
@@ -380,6 +366,34 @@ recover_local:(i64)start_lsn
 		[self recover_row:[self dummy_row_lsn:lsn scn:scn tag:wal_final_tag]];
 
 	return lsn;
+}
+
+- (i64)
+recover_start
+{
+	say_info("local recovery start");
+	[self recover_snap];
+	if (scn == 0)
+		return 0;
+	/*
+	 * just after snapshot recovery current_wal isn't known
+	 * so find wal which contains record with next lsn
+	 */
+	current_wal = [wal_dir containg_lsn:lsn + 1];
+	return [self recover_cont];
+}
+
+- (i64)
+recover_start_from_scn:(i64)initial_scn
+{
+	if (initial_scn == 0) {
+		[self recover_snap];
+	} else {
+		lsn = [wal_dir containg_scn:initial_scn];
+		scn = initial_scn;
+	}
+	current_wal = [wal_dir containg_lsn:lsn + 1];
+	return [self recover_cont];
 }
 
 static void follow_file(ev_stat *, int);
@@ -616,9 +630,9 @@ pull_wal(Recovery *r, struct conn *c, u32 version)
 			raise("unexpected eof");
 
 		int pack_rows = 0;
-		i64 remote_lsn = 0;
+		i64 remote_scn = 0;
 		while ((row = fetch_row(c, version))) {
-			remote_lsn = row_v12(row)->lsn;
+			remote_scn = row_v12(row)->lsn;
 			if (row_v12(row)->tag != wal_tag) {
 				special_row = row;
 				break;
@@ -660,9 +674,8 @@ pull_wal(Recovery *r, struct conn *c, u32 version)
 					fiber_sleep(0.05);
 				}
 			}
-			say_debug("local lsn:%"PRIi64" remote lsn:%"PRIi64,
-				  [r lsn], remote_lsn);
-			assert([r lsn] == remote_lsn);
+			say_debug("local scn:%"PRIi64" remote scn:%"PRIi64, [r scn], remote_scn);
+			assert([r scn] == remote_scn);
 		}
 
 		if (special_row) {

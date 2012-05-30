@@ -183,7 +183,7 @@ append_row:(const void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag cooki
 prepare_write
 {
 	if (current_wal == nil)
-		current_wal = [wal_dir open_for_write:lsn + 1];
+		current_wal = [wal_dir open_for_write:lsn + 1 scn:scn + 1];
 
         if (current_wal == nil) {
                 say_error("can't open wal");
@@ -407,7 +407,7 @@ snapshot_save:(void (*)(XLog *))callback
         XLog *snap;
 	const char *final_filename, *filename;
 
-	snap = [snap_dir open_for_write:lsn];
+	snap = [snap_dir open_for_write:lsn scn:scn];
 	if (snap == nil) {
 		say_error("can't open snap for writing");
 		_exit(EXIT_FAILURE);

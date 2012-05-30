@@ -72,11 +72,12 @@ typedef void (follow_cb)(ev_stat *w, int events);
 - (id) init_dirname:(const char *)dirname_;
 - (XLog *) open_for_read_filename:(const char *)filename;
 - (XLog *) open_for_read:(i64)lsn;
-- (XLog *) open_for_write:(i64)lsn;
+- (XLog *) open_for_write:(i64)lsn scn:(i64)scn;
 - (i64) greatest_lsn;
 - (const char *) format_filename:(i64)lsn suffix:(const char *)extra_suffix;
 - (const char *) format_filename:(i64)lsn;
 - (XLog *) containg_lsn:(i64)target_lsn;
+- (i64) containg_scn:(i64)target_scn;
 @end
 
 @interface SnapDir: XLogDir
@@ -133,7 +134,10 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 @interface XLog11: XLog
 @end
 
-@interface XLog12: XLog
+@interface XLog12: XLog {
+	i64 next_scn;
+}
+- (void) configure_for_write:(i64)lsn next_scn:(i64)scn;
 @end
 
 
@@ -163,7 +167,10 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 
 - (i64) lsn;
 - (void) set_lsn:(i64)lsn_;
+- (i64) scn;
+- (void) set_scn:(i64)scn_;
 - (bool) auto_scn;
+- (i64) next_scn;
 - (const char *) status;
 - (ev_tstamp) lag;
 - (ev_tstamp) last_update_tstamp;
@@ -171,7 +178,8 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 
 - (void) recover_row:(struct tbuf *)row;
 - (void) recover_finalize;
-- (i64) recover_local:(i64)scn;
+- (i64) recover_start;
+- (i64) recover_start_from_scn:(i64)scn;
 - (void) recover_follow:(ev_tstamp)delay;
 - (void) enable_local_writes;
 - (id) init_snap_dir:(const char *)snap_dir

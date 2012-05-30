@@ -210,6 +210,30 @@ out:
 	return [self open_for_read:*lsn];
 }
 
+- (i64)
+containg_scn:(i64)target_scn
+{
+	i64 *lsn;
+	ssize_t count = [self scan_dir:&lsn];
+	XLog *l = nil;
+
+	if (count <= 0)
+		return 0;
+
+	for (int i = 0; i < count; i++) {
+		l = [self open_for_read:lsn[i]];
+		i64 scn = [l respondsTo:@selector(scn)] ? [(id)l scn] : lsn[i];
+		[l next_row];
+		[l close];
+
+		if (scn > target_scn)
+			return i > 0 ? lsn[i - 1] : 0;
+	}
+
+	return lsn[count - 1];
+}
+
+
 - (const char *)
 format_filename:(i64)lsn prefix:(const char *)prefix suffix:(const char *)extra_suffix
 {
@@ -297,7 +321,7 @@ open_for_read:(i64)lsn
 }
 
 - (XLog *)
-open_for_write:(i64)lsn
+open_for_write:(i64)lsn scn:(i64)scn
 {
         XLog *l = nil;
         FILE *file = NULL;
@@ -333,15 +357,19 @@ open_for_write:(i64)lsn
 		goto error;
 	}
 
-	l = cfg.io_compat ? [XLog11 alloc] : [XLog12 alloc];
-	[l init_filename:filename fd:file dir:self];
-	[l configure_for_write:lsn];
+	if (cfg.io_compat) {
+		l = [[XLog11 alloc] init_filename:filename fd:file dir:self];
+		[l configure_for_write:lsn];
 
+	} else {
+		l = [[XLog12 alloc] init_filename:filename fd:file dir:self];
+		[(XLog12 *)l configure_for_write:lsn next_scn:scn];
+	}
 	say_info("creating `%s'", l->filename);
 	if ([l write_header] < 0) {
-                say_error("failed to write header");
-                goto error;
-        }
+		say_error("failed to write header");
+		goto error;
+	}
 
 	return l;
       error:
@@ -876,15 +904,48 @@ append_row:(void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)
 
 @implementation XLog12
 
+- (i64)
+scn
+{
+	return next_scn;
+}
+
+- (void)
+configure_for_write:(i64)lsn next_scn:(i64)scn
+{
+	[self configure_for_write:lsn];
+	next_scn = scn;
+}
+
+- (int)
+read_header
+{
+        char buf[256];
+        char *r;
+        for (;;) {
+                r = fgets(buf, sizeof(buf), fd);
+                if (r == NULL)
+                        return -1;
+		sscanf(r, "SCN: %"PRIi64"\n", &next_scn);
+		if (strcmp(r, "\n") == 0 || strcmp(r, "\r\n") == 0)
+                        break;
+        }
+        return 0;
+}
+
 - (int)
 write_header
 {
 	const char *comment = "Created-by: octopus\n";
+	char buf[64];
 	if (fwrite(dir->filetype, strlen(dir->filetype), 1, fd) != 1)
 		return -1;
 	if (fwrite(v12, strlen(v12), 1, fd) != 1)
 		return -1;
 	if (fwrite(comment, strlen(comment), 1, fd) != 1)
+                return -1;
+	snprintf(buf, sizeof(buf), "SCN: %"PRIi64"\n", next_scn);
+	if (fwrite(buf, strlen(buf), 1, fd) != 1)
                 return -1;
 	if (fwrite("\n", 1, 1, fd) != 1)
                 return -1;

@@ -1297,7 +1297,7 @@ init(void)
 
 	luaT_openbox(root_L);
 
-	int local_lsn = [recovery recover_local:0];
+	int local_lsn = [recovery recover_start];
 
 	if (local_lsn == 0) {
 		if (!cfg.wal_feeder_addr) {
