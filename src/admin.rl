@@ -101,16 +101,9 @@ fail(struct tbuf *out, struct tbuf *err)
 static const char *
 tbuf_reader(lua_State *L __attribute__((unused)), void *data, size_t *size)
 {
-	static void *ptr;
-	if (ptr != data) {
-		ptr = data;
-		*size = 7;
-		return "return ";
-	} else {
-		struct tbuf *code = data;
-		*size = tbuf_len(code);
-		return read_bytes(code, tbuf_len(code));
-	}
+	struct tbuf *code = data;
+	*size = tbuf_len(code);
+	return read_bytes(code, tbuf_len(code));
 }
 
 void
@@ -119,14 +112,14 @@ exec_lua(lua_State *L, struct tbuf *code, struct tbuf *out)
 	int r = lua_load(L, tbuf_reader, code, "network_input");
 	if (r != 0) {
 		if (r == LUA_ERRSYNTAX)
-			tbuf_printf(out, "error: syntax");
+			tbuf_printf(out, "error: syntax, %s" CRLF, lua_tostring(L, -1));
 		if (r == LUA_ERRMEM)
-			tbuf_printf(out, "error: memory");
+			tbuf_printf(out, "error: memory, %s" CRLF, lua_tostring(L, -1));
 		return;
 	}
 
 	if (lua_pcall(L, 0, 1, 0) != 0) {
-		tbuf_printf(out, "error: pcall: %s", lua_tostring(L, -1));
+		tbuf_printf(out, "error: pcall: %s" CRLF, lua_tostring(L, -1));
 		return;
 	}
 
