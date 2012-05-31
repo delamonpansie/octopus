@@ -9,7 +9,6 @@ function stat.print()
                 if type(stat.records[i]) == "table" then
                         for k, v in pairs(stat.records[i]) do
                                 sum[k] = (sum[k] or 0) + v
-                                stat.total[k] = (stat.total[k] or 0) + v
                         end
                 end
         end
@@ -42,4 +41,7 @@ function stat.record(rec)
                 stat.records[i] = stat.records[i - 1]
         end
         stat.records[0] = rec
+        for k, v in pairs(stat.records[0]) do
+                stat.total[k] = (stat.total[k] or 0) + v
+        end
 end
