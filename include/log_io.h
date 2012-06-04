@@ -141,40 +141,61 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 @end
 
 
-
-@interface Recovery: Object {
+@interface XLogWriter: Object {
+	i64 lsn;
 	struct child *wal_writer;
-	i64 lsn, scn;
-	ev_tstamp lag, last_update_tstamp;
-	char status[64];
-	XLog *current_wal;	/* the WAL we'r currently reading/writing from/to */
+	XLogDir *wal_dir, *snap_dir;
+	bool local_writes;
 	XLog *wal_to_close;
-
-	void (*recover_row)(struct tbuf *, int);
-	struct mhash_t *pending_row;
-
-        XLogDir *wal_dir, *snap_dir;
-
 	ev_timer wal_timer;
-
+@public
+	XLog *current_wal;	/* the WAL we'r currently reading/writing from/to */
 	int snap_io_rate_limit;
-
-	bool auto_scn, local_writes;
-	struct fiber *remote_puller;
-	const char *feeder_addr;
-	struct sockaddr_in *feeder;
 }
 
 - (i64) lsn;
 - (void) set_lsn:(i64)lsn_;
+
+- (struct child *) wal_writer;
+- (void) configure_wal_writer;
+
+- (struct wal_pack *) wal_pack_prepare;
+- (u32) wal_pack_append:(struct wal_pack *)pack
+		   data:(void *)data
+		    len:(u32)data_len
+		    scn:(i64)scn
+		    tag:(u16)tag
+		 cookie:(u64)cookie;
+- (int) wal_pack_submit;
+
+- (int) submit:(void *)data len:(u32)len;
+- (int) submit:(void *)data len:(u32)len scn:(i64)scn tag:(u16)tag;
+
+- (void) snapshot_save:(void (*)(XLog *))callback;
+@end
+
+@interface Recovery: XLogWriter {
+	i64 scn;
+	ev_tstamp lag, last_update_tstamp;
+	char status[64];
+
+	void (*recover_row)(struct tbuf *, int);
+	struct mhash_t *pending_row;
+
+
+	struct fiber *remote_puller;
+	struct sockaddr_in *feeder;
+	const char *feeder_addr;
+}
+
 - (i64) scn;
 - (void) set_scn:(i64)scn_;
 - (bool) auto_scn;
 - (i64) next_scn;
+
 - (const char *) status;
 - (ev_tstamp) lag;
 - (ev_tstamp) last_update_tstamp;
-- (struct child *) wal_writer;
 
 - (void) recover_row:(struct tbuf *)row;
 - (void) recover_finalize;
@@ -226,13 +247,6 @@ struct wal_reply {
 - (int) wal_pack_submit;
 - (void) snapshot_save:(void (*)(XLog *))callback;
 @end
-
-struct replication_handshake {
-		u32 ver;
-		i64 lsn;
-		char filter[32];
-} __attribute__((packed));
-
 
 struct _row_v11 {
 	u32 header_crc32c;

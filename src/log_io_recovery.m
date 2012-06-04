@@ -56,28 +56,14 @@
 
 @implementation Recovery
 
-- (i64)lsn { return lsn; }
-- (i64)scn { return scn; }
-- (bool)auto_scn { return auto_scn; }
-- (i64)next_scn { return ++scn; }
 - (const char *)status { return status; };
 - (ev_tstamp)lag { return lag; };
 - (ev_tstamp)last_update_tstamp { return last_update_tstamp; };
-- (struct child *)wal_writer { return wal_writer; };
 
-- (void)
-set_lsn:(i64)lsn_
-{
-	assert(lsn_ > 0);
-        lsn = lsn_;
-}
-
-- (void)
-set_scn:(i64)scn_
-{
-	assert(scn_ > 0);
-	scn = scn_;
-}
+- (i64) scn { return scn; }
+- (i64) next_scn { return ++scn; }
+- (void) set_scn:(i64)scn_ { scn = scn_; }
+- (bool) auto_scn { return true; }
 
 /* this little hole shouldn't be used too much */
 int
@@ -420,7 +406,7 @@ follow_file(ev_stat *w, int events __attribute__((unused)))
 	[r recover_wal:r->current_wal];
 	if (r->current_wal->eof) {
 		say_info("done `%s' lsn:%"PRIi64" scn:%"PRIi64,
-			 r->current_wal->filename, r->lsn, r->scn);
+			 r->current_wal->filename, r->lsn, [r scn]);
 		[r->current_wal close];
 		r->current_wal = nil;
 		follow_dir((ev_timer *)w, 0);
@@ -758,7 +744,14 @@ enable_local_writes
 	}
 }
 
+- (int)
+submit:(void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag
+{
+	if (feeder_addr != NULL)
+		raise("replica is readonly");
 
+	return [super submit:data len:data_len scn:scn_ tag:tag];
+}
 
 - (id) init_snap_dir:(const char *)snap_dirname
              wal_dir:(const char *)wal_dirname
@@ -821,7 +814,6 @@ input_dispatch(va_list ap __attribute__((unused)))
 	snap_dir->recovery = self;
 	wal_dir->recovery = self;
 	wal_timer.data = self;
-	auto_scn = true;
 
 	if ((flags & RECOVER_READONLY) == 0) {
 		if (wal_rows_per_file <= 4)

@@ -42,7 +42,18 @@
 #include <sys/socket.h>
 #include <sysexits.h>
 
-@implementation Recovery (writers)
+@implementation XLogWriter
+
+- (i64) lsn { return lsn; }
+- (i64) scn { return 0; }
+- (struct child *) wal_writer { return wal_writer; };
+
+- (void)
+set_lsn:(i64)lsn_
+{
+	assert(lsn_ > 0);
+        lsn = lsn_;
+}
 
 - (void)
 configure_wal_writer
@@ -51,6 +62,8 @@ configure_wal_writer
 
 	struct netmsg *n = netmsg_tail(&wal_writer->c->out_messages);
 	net_add_iov(&n, &lsn, sizeof(lsn));
+	i64 scn = [self scn];
+	net_add_iov_dup(&n, &scn, sizeof(scn));
 	ev_io_start(&wal_writer->c->out);
 }
 
@@ -72,10 +85,9 @@ struct wal_row_header {
 } __attribute__((packed));
 
 - (int)
-submit:(void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag
+submit:(void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag
 {
-	if (feeder_addr != NULL)
-		raise("replica is readonly");
+	say_debug("%s: len:%i scn:%"PRIi64" tag:%i", __func__, data_len, scn, tag);
 
 	int len = sizeof(struct wal_pack) + sizeof(struct wal_row_header);
 	void *msg = palloc(fiber->pool, len);
@@ -88,7 +100,7 @@ submit:(void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag
 	pack->fid = fiber->fid;
 	pack->repeat_count = 1;
 
-	h->scn = scn_;
+	h->scn = scn;
 	h->tag = tag;
 	h->cookie = 0;
 	h->data_len = data_len;
@@ -124,7 +136,7 @@ wal_pack_prepare
 
 - (u32)
 wal_pack_append:(struct wal_pack *)pack data:(void *)data len:(u32)data_len
-	    scn:(i64)scn_ tag:(u16)tag cookie:(u64)cookie
+	    scn:(i64)scn tag:(u16)tag cookie:(u64)cookie
 {
 	struct wal_row_header *h = palloc(fiber->pool, sizeof(*h));
 
@@ -132,8 +144,7 @@ wal_pack_append:(struct wal_pack *)pack data:(void *)data len:(u32)data_len
 	pack->repeat_count++;
 	assert(pack->repeat_count <= WAL_PACK_MAX);
 
-
-	h->scn = scn_;
+	h->scn = scn;
 	h->tag = tag;
 	h->cookie = cookie;
 	h->data_len = data_len;
@@ -166,7 +177,7 @@ wal_pack_submit
 
 
 - (int)
-append_row:(const void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag cookie:(u64)cookie
+append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie
 {
         if ([current_wal rows] == 1) {
 		/* rename wal after first successfull write to name without inprogress suffix*/
@@ -176,14 +187,14 @@ append_row:(const void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag cooki
 		}
 	}
 
-	return [current_wal append_row:data len:data_len scn:scn_ tag:tag cookie:cookie];
+	return [current_wal append_row:data len:data_len scn:scn tag:tag cookie:cookie];
 }
 
 - (int)
-prepare_write
+prepare_write:(i64)scn
 {
 	if (current_wal == nil)
-		current_wal = [wal_dir open_for_write:lsn + 1 scn:scn + 1];
+		current_wal = [wal_dir open_for_write:lsn + 1 scn:scn];
 
         if (current_wal == nil) {
                 say_error("can't open wal");
@@ -228,10 +239,10 @@ confirm_write
 int
 wal_disk_writer(int fd, void *state)
 {
-	Recovery *rcvr = state;
+	XLogWriter *writer = state;
 	struct tbuf *wbuf, rbuf = TBUF(NULL, 0, fiber->pool);
 	int result = EXIT_FAILURE;
-	i64 lsn;
+	i64 max_scn = 0;
 	bool io_failure = false, reparse = false;
 	ssize_t r;
 	struct {
@@ -241,7 +252,8 @@ wal_disk_writer(int fd, void *state)
 	ev_tstamp start_time = ev_now();
 	palloc_register_gc_root(fiber->pool, &rbuf, tbuf_gc);
 
-	if ((r = recv(fd, &lsn, sizeof(lsn), 0)) != sizeof(lsn)) {
+	struct wal_conf { i64 lsn; i64 scn; } __attribute__((packed)) conf;
+	if ((r = recv(fd, &conf, sizeof(conf), 0)) != sizeof(conf)) {
 		if (r == 0) {
 			result = EX_OK;
 			goto exit;
@@ -249,7 +261,8 @@ wal_disk_writer(int fd, void *state)
 		say_syserror("recv: failed");
 		panic("unable to start WAL writer");
 	}
-	[rcvr set_lsn:lsn];
+	[writer set_lsn:conf.lsn];
+	max_scn = conf.scn;
 
 	for (;;) {
 		if (!reparse) {
@@ -276,13 +289,14 @@ wal_disk_writer(int fd, void *state)
 			cfg.coredump = 0;
 		}
 
-		i64 start_lsn = [rcvr lsn];
+		i64 start_lsn = [writer lsn];
 		int p = 0;
 		reparse = false;
-		io_failure = [rcvr prepare_write] == -1;
+		/* FIXME: the scn must be set to lowest continious one, not the current */
+		io_failure = [writer prepare_write:max_scn] == -1;
 		while (tbuf_len(&rbuf) > sizeof(u32) && tbuf_len(&rbuf) >= *(u32 *)rbuf.ptr) {
 			u32 repeat_count = ((u32 *)rbuf.ptr)[2];
-			if (!io_failure && repeat_count > [rcvr->current_wal wet_rows_offset_available]) {
+			if (!io_failure && repeat_count > [writer->current_wal wet_rows_offset_available]) {
 				assert(p != 0);
 				reparse = true;
 				break;
@@ -295,15 +309,17 @@ wal_disk_writer(int fd, void *state)
 			for (int i = 0; i < reply[p].repeat_count; i++) {
 				struct wal_row_header *h = read_bytes(&rbuf, sizeof(*h));
 				void *data = read_bytes(&rbuf, h->data_len);
+				if (h->scn > max_scn)
+					max_scn = h->scn;
 
 				if (io_failure)
 					continue;
 
-				if ([rcvr append_row:data
-						 len:h->data_len
-						 scn:0
-						 tag:h->tag
-					      cookie:h->cookie] <= 0)
+				if ([writer append_row:data
+						   len:h->data_len
+						   scn:h->scn
+						   tag:h->tag
+						cookie:h->cookie] <= 0)
 				{
 					say_error("append_row failed");
 					io_failure = true;
@@ -315,7 +331,7 @@ wal_disk_writer(int fd, void *state)
 			continue;
 
 		assert(start_lsn > 0);
-		u32 rows = [rcvr confirm_write] - start_lsn;
+		u32 rows = [writer confirm_write] - start_lsn;
 
 		wbuf = tbuf_alloc(fiber->pool);
 		for (int i = 0; i < p; i++) {
@@ -358,8 +374,8 @@ wal_disk_writer(int fd, void *state)
 		fiber_gc();
 	}
 exit:
-	[rcvr->current_wal close];
-	rcvr->current_wal = nil;
+	[writer->current_wal close];
+	writer->current_wal = nil;
 	return result;
 }
 
@@ -407,7 +423,8 @@ snapshot_save:(void (*)(XLog *))callback
         XLog *snap;
 	const char *final_filename, *filename;
 
-	snap = [snap_dir open_for_write:lsn scn:scn];
+	say_debug("%s: lsn:%"PRIi64" scn:%"PRIi64, __func__, lsn, [self scn]);
+	snap = [snap_dir open_for_write:lsn scn:[self scn]];
 	if (snap == nil) {
 		say_error("can't open snap for writing");
 		_exit(EXIT_FAILURE);
@@ -434,7 +451,7 @@ snapshot_save:(void (*)(XLog *))callback
 	callback(snap);
 
 	const char end[] = "END";
-	if ([snap append_row:end len:strlen(end) scn:scn tag:snap_final_tag] < 0) {
+	if ([snap append_row:end len:strlen(end) scn:[self scn] tag:snap_final_tag] < 0) {
 		say_error("unable write final row");
 		_exit(EXIT_FAILURE);
 	}
