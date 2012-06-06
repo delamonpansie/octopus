@@ -36,6 +36,8 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 
 #ifdef POISON
 #  define TBUF_POISON
@@ -212,9 +214,9 @@ tbuf_printf(struct tbuf *b, const char *format, ...)
 }
 
 ssize_t
-tbuf_read(int fd, struct tbuf *buf)
+tbuf_recv(struct tbuf *buf, int fd)
 {
-	ssize_t r = read(fd, buf->end, tbuf_free(buf));
+	ssize_t r = recv(fd, buf->end, tbuf_free(buf), 0);
 	if (r > 0) {
 		buf->end += r;
 		buf->free -= r;

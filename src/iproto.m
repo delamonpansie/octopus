@@ -177,7 +177,7 @@ loop:
 	c = w->data;
 
 	tbuf_ensure(c->rbuf, cfg.input_buffer_size);
-	r = tbuf_read(c->fd, c->rbuf);
+	r = tbuf_recv(c->rbuf, c->fd);
 
 	if (r > 0) {
 		if (tbuf_len(c->rbuf) >= sizeof(struct iproto_header)) {

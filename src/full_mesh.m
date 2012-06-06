@@ -304,7 +304,7 @@ input_reader_aux(va_list ap)
 		struct mesh_peer *p = (void *)c - offsetof(struct mesh_peer, c);
 		tbuf_ensure(c->rbuf, 16 * 1024);
 
-		ssize_t r = tbuf_read(c->fd, c->rbuf);
+		ssize_t r = tbuf_recv(c->rbuf, c->fd);
 
 		if (r == 0 || /* r < 0 && */ (errno != EAGAIN && errno != EWOULDBLOCK)) {
 			if (r < 0)

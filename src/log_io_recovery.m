@@ -745,7 +745,7 @@ input_dispatch(va_list ap __attribute__((unused)))
 		struct conn *c = ((struct ev_watcher *)yield())->data;
 		tbuf_ensure(c->rbuf, 128 * 1024);
 
-		ssize_t r = tbuf_read(c->fd, c->rbuf);
+		ssize_t r = tbuf_recv(c->rbuf, c->fd);
 		if (r <= 0) {
 			if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
 				continue;

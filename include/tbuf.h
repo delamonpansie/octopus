@@ -91,5 +91,5 @@ void tbuf_vprintf(struct tbuf *b, const char *format, va_list ap)
 void tbuf_printf(struct tbuf *b, const char *format, ...)
 	__attribute__ ((format(FORMAT_PRINTF, 2, 3)));
 
-ssize_t tbuf_read(int fd, struct tbuf *b);
+ssize_t tbuf_recv(struct tbuf *b, int fd);
 char *tbuf_to_hex(const struct tbuf *x);
