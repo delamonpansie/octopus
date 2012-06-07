@@ -426,5 +426,6 @@ int
 luaT_openfiber(struct lua_State *L)
 {
 	luaL_register(L, "fiber", fiberlib);
+	lua_pop(L, 1);
 	return 0;
 }

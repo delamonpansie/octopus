@@ -413,12 +413,12 @@ luaT_init()
 	lua_pushinteger(L, lua_objlen(L, -1));
 	lua_pushcfunction(L, luaT_static_module);
 	lua_settable(L, -3);
-	lua_pop(L, 1);
+	lua_pop(L, 2);
 
         lua_getglobal(L, "package");
         lua_pushstring(L, cfg.lua_path);
         lua_setfield(L, -2, "path");
-        lua_pop(L, 1);
+        lua_pop(L, 2);
 
 	lua_getglobal(L, "os");
 	lua_pushcfunction(L, luaT_os_ctime);
@@ -433,6 +433,12 @@ luaT_init()
 		panic("lua_pcall() failed: %s", lua_tostring(L, -1));
 
 	lua_atpanic(L, luaT_error);
+
+	lua_getglobal(root_L, "dofile");
+	lua_pushliteral(root_L, "init.lua");
+	if (lua_pcall(root_L, 1, 0, 0))
+		lua_pop(L, 1);
+
 }
 
 static void
@@ -694,6 +700,8 @@ main(int argc, char **argv)
 	ev_io_init(&keepalive_ev, keepalive_read, keepalive_pipe[0], EV_READ);
 	ev_io_start(&keepalive_ev);
 
+	luaT_init();
+
 	if (module("WAL feeder"))
 		module("WAL feeder")->init();
 
@@ -703,9 +711,7 @@ main(int argc, char **argv)
 
 	initialize(cfg.slab_alloc_arena, cfg.slab_alloc_minimal, cfg.slab_alloc_factor);
 
-	luaT_init();
 	stat_init();
-
 	@try {
 		module(NULL)->init();
 	}
@@ -718,10 +724,6 @@ main(int argc, char **argv)
 	}
 
 	admin_init();
-
-	lua_getglobal(root_L, "dofile");
-	lua_pushliteral(root_L, "init.lua");
-	lua_pcall(root_L, 1, 0, 0);
 
 	prelease(fiber->pool);
 	say_crit("log level %i", cfg.log_level);
