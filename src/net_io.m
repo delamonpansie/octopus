@@ -403,6 +403,7 @@ conn_readahead(struct conn *c, size_t min)
 void
 conn_close(struct conn *c)
 {
+	tbuf_reset(c->rbuf);
 	if (c->fd > 0) {
 		ev_io_stop(&c->out);
 		ev_io_stop(&c->in);
