@@ -519,25 +519,6 @@ contains_full_row_v11(const struct tbuf *b)
 		tbuf_len(b) >= sizeof(struct _row_v11) + _row_v11(b)->len;
 }
 
-static void
-pull(struct conn *c, u32 version)
-{
-	switch (version) {
-	case 12:
-		while (!contains_full_row_v12(c->rbuf))
-			if (conn_readahead(c, sizeof(struct row_v12)) <= 0)
-				raise("unexpected eof");
-		break;
-	case 11:
-		while (!contains_full_row_v11(c->rbuf))
-			if (conn_readahead(c, sizeof(struct _row_v11)) <= 0)
-				raise("unexpected eof");
-		break;
-	default:
-		raise("unexpected version: %i", version);
-	}
-}
-
 static struct tbuf *
 fetch_row(struct conn *c, u32 version)
 {
@@ -579,7 +560,8 @@ pull_snapshot(Recovery *r, struct conn *c, u32 version)
 {
 	struct tbuf *row;
 	for (;;) {
-		pull(c, version);
+		if (conn_readahead(c, 1) <= 0)
+			raise("unexpected eof");
 		while ((row = fetch_row(c, version))) {
 			switch (row_v12(row)->tag) {
 			case snap_initial_tag:
@@ -609,7 +591,8 @@ pull_wal(Recovery *r, struct conn *c, u32 version)
 
 	/* TODO: use designated palloc_pool */
 	for (;;) {
-		pull(c, version);
+		if (conn_readahead(c, 1) <= 0)
+			raise("unexpected eof");
 
 		int pack_rows = 0;
 		i64 remote_lsn = 0;
@@ -687,11 +670,10 @@ pull_from_remote(va_list ap)
 
 			if ([r lsn] == 0)
 				pull_snapshot(r, &c, version);
-			else {
-				if (version == 11)
-					[r recover_row:[r dummy_row_lsn:[r lsn] tag:wal_final_tag]];
-				pull_wal(r, &c, version);
-			}
+
+			if (version == 11)
+				[r recover_row:[r dummy_row_lsn:[r lsn] tag:wal_final_tag]];
+			pull_wal(r, &c, version);
 		}
 		@catch (Error *e) {
 			say_error("replication failure: %s", e->reason);
