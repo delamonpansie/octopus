@@ -117,12 +117,12 @@ ifeq (1,$(HAVE_CONFETTI))
 	$(E) "CNFTY	$@"
 	$(Q)$(CONFETTI) -i $< -n tarantool_cfg -f $@
 
-%.h: %.cfg_tmpl
+cfg/%.h: cfg/%.cfg_tmpl
 	@mkdir -p $(dir $@)
 	$(E) "CNFTY	$@"
 	$(Q)$(CONFETTI) -i $< -n tarantool_cfg -h $@
 
-%.c: %.cfg_tmpl
+cfg/%.c: cfg/%.cfg_tmpl
 	@mkdir -p $(dir $@)
 	$(E) "CNFTY	$@"
 	$(Q)$(CONFETTI) -i $< -n tarantool_cfg -c $@
