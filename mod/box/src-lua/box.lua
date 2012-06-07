@@ -241,7 +241,7 @@ function decode.u8(obj, offt)
         if (offt < 0 or offt + 1 > tuple.bsize) then
                 error(string.format("out of bounds: len:1 offt:%i bsize:%i\n%s", offt, tuple.bsize, debug.traceback()))
         end
-        return ffi.cast(u8_ptr , tuple.data)[offt]
+        return ffi.cast(u8_ptr , tuple.data + offt)[0]
 end
 
 function decode.u16(obj, offt)
@@ -249,7 +249,7 @@ function decode.u16(obj, offt)
         if (offt < 0 or offt + 2 > tuple.bsize) then
                 error(string.format("out of bounds: len:2 offt:%i bsize:%i\n%s", offt, tuple.bsize, debug.traceback()))
         end
-        return ffi.cast(u16_ptr , tuple.data)[offt]
+        return ffi.cast(u16_ptr , tuple.data + offt)[0]
 end
 
 function decode.u32(obj, offt)
@@ -257,5 +257,5 @@ function decode.u32(obj, offt)
         if (offt < 0 or offt + 4 > tuple.bsize) then
                 error(string.format("out of bounds: len:4 offt:%i bsize:%i\n%s", offt, tuple.bsize, debug.traceback()))
         end
-        return ffi.cast(u32_ptr , tuple.data)[offt]
+        return ffi.cast(u32_ptr , tuple.data + offt)[0]
 end
