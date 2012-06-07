@@ -212,6 +212,13 @@ struct wal_reply {
 - (void) snapshot_save:(void (*)(XLog *))callback;
 @end
 
+struct replication_handshake {
+		u32 ver;
+		i64 lsn;
+		char filter[32];
+} __attribute__((packed));
+
+
 struct _row_v11 {
 	u32 header_crc32c;
 	i64 lsn;

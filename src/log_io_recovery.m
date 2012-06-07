@@ -33,6 +33,7 @@
 #import <pickle.h>
 #import <tbuf.h>
 #import <net_io.h>
+#import <iproto.h>
 
 #include <third_party/crc32.h>
 
@@ -445,10 +446,14 @@ remote_handshake:(struct sockaddr_in *)addr conn:(struct conn *)c
 	const char *err = NULL;
 	u32 version;
 
-	i64 initial_lsn = 0;
+	struct replication_handshake hshake = {1, lsn > 0 ? lsn + 1 : 0, ""};
+	struct tbuf *req = tbuf_alloc(fiber->pool);
+	tbuf_append(req, &(struct iproto_header){ .msg_code = 0, .sync = 0, .len = sizeof(hshake) },
+		    sizeof(struct iproto_header));
+	tbuf_append(req, &hshake, sizeof(hshake));
 
-	if (lsn > 0)
-		initial_lsn = lsn + 1;
+	struct tbuf *rep = tbuf_alloc(fiber->pool);
+	tbuf_ensure(rep, sizeof(struct iproto_header_retcode));
 
 	do {
 		if ((c->fd = tcp_connect(addr, NULL, 0)) < 0) {
@@ -456,23 +461,35 @@ remote_handshake:(struct sockaddr_in *)addr conn:(struct conn *)c
 			goto err;
 		}
 
-		if (conn_write(c, &initial_lsn, sizeof(initial_lsn)) != sizeof(initial_lsn)) {
-			err = "can't write initial lsn";
+		if (conn_write(c, req->ptr, tbuf_len(req)) != tbuf_len(req)) {
+			err = "can't write initial handshake";
 			goto err;
 		}
 
-		if (conn_read(c, &version, sizeof(version)) != sizeof(version)) {
-			err = "can't read version";
+		conn_readahead(c, sizeof(struct iproto_header_retcode) + sizeof(version));
+		struct tbuf *rep = iproto_parse(c->rbuf);
+		if (rep == NULL) {
+			err = "can't read reply";
 			goto err;
 		}
 
+		if (iproto_retcode(rep)->ret_code != 0 ||
+		    iproto_retcode(rep)->sync != iproto(req)->sync ||
+		    iproto_retcode(rep)->msg_code != iproto(req)->msg_code ||
+		    iproto_retcode(rep)->len != sizeof(iproto_retcode(rep)->ret_code) + sizeof(version))
+		{
+			err = "bad reply";
+			goto err;
+		}
+		say_debug("go reply len:%i, rbuf %i", iproto_retcode(rep)->len, tbuf_len(c->rbuf));
+		memcpy(&version, iproto_retcode(rep)->data, sizeof(version));
 		if (version != default_version && version != version_11) {
 			err = "unknown remote version";
 			goto err;
 		}
 
 		say_crit("succefully connected to feeder");
-		say_crit("starting remote recovery from lsn:%" PRIi64, initial_lsn);
+		say_crit("starting remote recovery from lsn:%" PRIi64, hshake.lsn);
 		break;
 
 	err:

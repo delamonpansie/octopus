@@ -56,12 +56,19 @@ union iproto_any_header {
 	struct iproto_header_retcode header_retcode;
 };
 
+extern const uint32_t msg_replica;
 
 static inline struct iproto_header *iproto(const struct tbuf *t)
 {
 	return (struct iproto_header *)t->ptr;
 }
 
+static inline struct iproto_header_retcode *iproto_retcode(const struct tbuf *t)
+{
+	return (struct iproto_header_retcode *)t->ptr;
+}
+
+struct tbuf *iproto_parse(struct tbuf *in);
 
 struct netmsg;
 struct netmsg_mark;

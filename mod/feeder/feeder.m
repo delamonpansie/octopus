@@ -28,6 +28,8 @@
 #import <fiber.h>
 #import <log_io.h>
 #import <net_io.h>
+#import <iproto.h>
+#import <pickle.h>
 
 #include <string.h>
 #include <sys/types.h>
@@ -79,20 +81,58 @@ recover_row:(struct tbuf *)row
 static i64
 handshake(int sock)
 {
-	struct tbuf *ver;
-	ssize_t r;
+	struct tbuf *rep, *input, *req;
+	bool compat = 0;
 	i64 lsn;
 
-	r = read(sock, &lsn, sizeof(lsn));
-	if (r != sizeof(lsn)) {
-		if (r < 0)
-			say_syserror("read");
-		exit(EXIT_SUCCESS);
+	input = tbuf_alloc(fiber->pool);
+	rep = tbuf_alloc(fiber->pool);
+
+	for (;;) {
+		tbuf_ensure(input, 4096);
+		if (tbuf_recv(input, sock) <= 0) {
+			say_syserror("closing connection, recv");
+			_exit(EXIT_SUCCESS);
+		}
+		if (tbuf_len(input) < sizeof(lsn))
+			continue;
+
+		if ((req = iproto_parse(input)) != NULL)
+			break;
+
+		if (*(u32 *)input->ptr != msg_replica) {
+			compat = 1;
+			break;
+		}
 	}
 
-	ver = tbuf_alloc(fiber->pool);
-	tbuf_append(ver, &default_version, sizeof(default_version));
-	send_tbuf(sock, ver);
+	if (compat) {
+		lsn = read_u64(input);
+	} else {
+		if (iproto(req)->len != sizeof(struct replication_handshake)) {
+			say_error("bad handshake len");
+			_exit(EXIT_FAILURE);
+		}
+
+		struct replication_handshake *hshake = (void *)&iproto(req)->data;
+		lsn = hshake->lsn;
+
+		if (hshake->ver != 1) {
+			say_error("bad replication version");
+			_exit(EXIT_FAILURE);
+		}
+
+		tbuf_append(rep, &(struct iproto_header_retcode)
+			    { .msg_code = iproto(req)->msg_code,
+			      .len = sizeof(default_version) +
+			             field_sizeof(struct iproto_header_retcode, ret_code),
+			      .sync = iproto(req)->sync,
+			      .ret_code = 0 },
+			    sizeof(struct iproto_header_retcode));
+	}
+
+	tbuf_append(rep, &default_version, sizeof(default_version));
+	send_tbuf(sock, rep);
 	return lsn;
 }
 
