@@ -760,6 +760,123 @@ udp_server(va_list ap)
 	}
 }
 
+static void
+input_reader(va_list ap)
+{
+	struct service *service = va_arg(ap, struct service *);
+	struct conn *c;
+	ev_watcher *w;
+	ssize_t r;
+
+	say_info("input reader for service %p started", service);
+	yield();
+loop:
+	w = yield();
+	c = w->data;
+
+	tbuf_ensure(c->rbuf, cfg.input_buffer_size);
+	r = tbuf_recv(c->rbuf, c->fd);
+
+	if (r > 0) {
+		if (tbuf_len(c->rbuf) > cfg.input_high_watermark)
+			ev_io_stop(&c->in);
+		if (c->state != PROCESSING) {
+			TAILQ_INSERT_HEAD(&c->service->processing, c, processing_link);
+			c->state = PROCESSING;
+		}
+	} else if (r == 0 || /* r < 0 && */ (errno != EAGAIN && errno != EWOULDBLOCK)) {
+		say_debug("closing conn r:%i errno:%i", (int)r, errno);
+		conn_close(c);
+	}
+
+	goto loop;
+}
+
+static void
+wakeup_workers(ev_prepare *ev)
+{
+	struct service *service = (void *)ev - offsetof(struct service, wakeup);
+	struct fiber *w;
+
+	while (!TAILQ_EMPTY(&service->processing)) {
+		w = SLIST_FIRST(&service->workers);
+		if (w == NULL)
+			return;
+		SLIST_REMOVE_HEAD(&service->workers, worker_link);
+		resume(w, NULL);
+	}
+}
+
+static void
+service_gc(struct palloc_pool *pool, void *ptr)
+{
+	struct service *s = ptr;
+	struct conn *c;
+
+	s->pool = pool;
+	LIST_FOREACH(c, &s->conn, link)
+		conn_gc(pool, c);
+}
+
+static void
+accept_client(int fd, void *data)
+{
+	struct service *service = data;
+	struct conn *clnt = conn_create(service->pool, fd);
+	LIST_INSERT_HEAD(&service->conn, clnt, link);
+	clnt->service = service;
+	ev_io_init(&clnt->out, (void *)service->output_flusher, fd, EV_WRITE);
+	ev_io_init(&clnt->in, (void *)service->input_reader, fd, EV_READ);
+	ev_io_start(&clnt->in);
+	clnt->state = READING;
+}
+
+struct service *
+tcp_service(u16 port, void (*on_bind)(int fd))
+{
+	struct service *service = calloc(1, sizeof(*service));
+	char *name = malloc(13);  /* strlen("iproto:xxxxx") */
+	snprintf(name, 13, "iproto:%i", port);
+
+	TAILQ_INIT(&service->processing);
+	service->pool = palloc_create_pool(name);
+	service->name = name;
+
+	palloc_register_gc_root(service->pool, service, service_gc);
+
+	service->output_flusher = fiber_create("iproto/output_flusher", service_output_flusher);
+	service->input_reader = fiber_create("iproto/input_reader", input_reader, service);
+	service->acceptor = fiber_create("iproto/acceptor",
+					 tcp_server, port, accept_client, on_bind, service);
+
+	ev_prepare_init(&service->wakeup, (void *)wakeup_workers);
+	ev_prepare_start(&service->wakeup);
+
+	return service;
+}
+
+void
+service_info(struct tbuf *out, struct service *service)
+{
+	struct conn *c;
+	struct netmsg *m;
+
+	tbuf_printf(out, "%s:" CRLF, service->name);
+	LIST_FOREACH(c, &service->conn, link) {
+		tbuf_printf(out, "    - peer: %s" CRLF, conn_peer_name(c));
+		tbuf_printf(out, "      fd: %i" CRLF, c->fd);
+		tbuf_printf(out, "      state: %i,%s%s" CRLF, c->state,
+			    ev_is_active(&c->in) ? "in" : "",
+			    ev_is_active(&c->out) ? "out" : "");
+		tbuf_printf(out, "      rbuf: %i" CRLF, tbuf_len(c->rbuf));
+		tbuf_printf(out, "      pending_bytes: %zi" CRLF, c->out_messages.bytes);
+		if (!TAILQ_EMPTY(&c->out_messages.q))
+			tbuf_printf(out, "      out_messages:" CRLF);
+		TAILQ_FOREACH(m, &c->out_messages.q, link)
+			tbuf_printf(out, "      - { offt: %i, count: %i }" CRLF, m->offset, m->count);
+	}
+}
+
 int
 atosin(const char *orig, struct sockaddr_in *addr)
 {
@@ -803,24 +920,3 @@ sintoa(const struct sockaddr_in *addr)
 	return buf;
 }
 
-void
-service_info(struct tbuf *out, struct service *service)
-{
-	struct conn *c;
-	struct netmsg *m;
-
-	tbuf_printf(out, "%s:" CRLF, service->name);
-	LIST_FOREACH(c, &service->conn, link) {
-		tbuf_printf(out, "    - peer: %s" CRLF, conn_peer_name(c));
-		tbuf_printf(out, "      fd: %i" CRLF, c->fd);
-		tbuf_printf(out, "      state: %i,%s%s" CRLF, c->state,
-			    ev_is_active(&c->in) ? "in" : "",
-			    ev_is_active(&c->out) ? "out" : "");
-		tbuf_printf(out, "      rbuf: %i" CRLF, tbuf_len(c->rbuf));
-		tbuf_printf(out, "      pending_bytes: %zi" CRLF, c->out_messages.bytes);
-		if (!TAILQ_EMPTY(&c->out_messages.q))
-			tbuf_printf(out, "      out_messages:" CRLF);
-		TAILQ_FOREACH(m, &c->out_messages.q, link)
-			tbuf_printf(out, "      - { offt: %i, count: %i }" CRLF, m->offset, m->count);
-	}
-}

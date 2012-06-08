@@ -1184,12 +1184,12 @@ initialize_service()
 	if (cfg.memcached != 0) {
 		memcached_init();
 	} else {
-		box_primary = iproto_service(cfg.primary_port, box_bound_to_primary);
+		box_primary = tcp_service(cfg.primary_port, box_bound_to_primary);
 		for (int i = 0; i < cfg.wal_writer_inbox_size - 2; i++)
 			fiber_create("box_worker", iproto_interact, box_primary, box_process);
 
 		if (cfg.secondary_port > 0) {
-			box_secondary = iproto_service(cfg.secondary_port, NULL);
+			box_secondary = tcp_service(cfg.secondary_port, NULL);
 			fiber_create("box_secondary_worker", iproto_interact, box_secondary, box_process);
 		}
 

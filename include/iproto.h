@@ -78,7 +78,6 @@ void iproto_error(struct netmsg **m, struct netmsg_mark *header_mark, u32 ret_co
 
 
 void iproto_interact(va_list ap);
-struct service *iproto_service(u16 port, void (*on_bind)(int fd));
 
 
 @interface IProtoError : Error {

@@ -125,6 +125,8 @@ int tcp_connect(struct sockaddr_in *dst, struct sockaddr_in *src, ev_tstamp time
 void tcp_server(va_list ap);
 void udp_server(va_list ap);
 
+struct service *tcp_service(u16 port, void (*on_bind)(int fd));
+
 int atosin(const char *orig, struct sockaddr_in *addr);
 const char *sintoa(const struct sockaddr_in *addr);
 void service_info(struct tbuf *out, struct service *service);
