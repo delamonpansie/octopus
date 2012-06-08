@@ -53,8 +53,6 @@ STRS(memcached_stat, STAT);
 int stat_base;
 
 
-#define ADD_IOV_LITERAL(m, s) net_add_iov((m), (s), sizeof(s) - 1)
-
 StringHash *memcached_index;
 
 /* memcached tuple format:
@@ -277,20 +275,23 @@ memcached_dispatch(struct conn *c)
 
 	say_debug("memcached_dispatch '%.*s'", MIN((int)(pe - p), 40) , p);
 
-	struct netmsg *m = netmsg_tail(&c->out_messages);
-	struct netmsg_mark mark;
-	netmsg_getmark(m, &mark);
+#define ADD_IOV_LITERAL(s) ({						\
+	if (unlikely(!noreply)) {					\
+		struct netmsg *m = netmsg_tail(&c->out_messages);	\
+		net_add_iov(&m, (s), sizeof(s) - 1);			\
+	}								\
+})
 
 #define STORE() ({							\
 	stats.cmd_set++;						\
 	if (bytes > (1<<20)) {						\
-		ADD_IOV_LITERAL(&m, "SERVER_ERROR object too large for cache\r\n"); \
+		ADD_IOV_LITERAL("SERVER_ERROR object too large for cache\r\n"); \
 	} else {							\
 		if (store(key, exptime, flags, bytes, data) == 0) {	\
 			stats.total_items++;				\
-			ADD_IOV_LITERAL(&m, "STORED\r\n");		\
+			ADD_IOV_LITERAL("STORED\r\n");		\
 		} else {						\
-			ADD_IOV_LITERAL(&m, "SERVER_ERROR\r\n");	\
+			ADD_IOV_LITERAL("SERVER_ERROR\r\n");	\
 		}							\
 	}								\
 })
@@ -305,7 +306,7 @@ memcached_dispatch(struct conn *c)
 			key = read_field(keys);
 			struct tnt_object *obj = [memcached_index find:key];
 			if (obj != NULL && !ghost(obj) && !expired(obj))
-				ADD_IOV_LITERAL(&m, "NOT_STORED\r\n");
+				ADD_IOV_LITERAL("NOT_STORED\r\n");
 			else
 				STORE();
 		}
@@ -314,7 +315,7 @@ memcached_dispatch(struct conn *c)
 			key = read_field(keys);
 			struct tnt_object *obj = [memcached_index find:key];
 			if (obj == NULL || ghost(obj) || expired(obj))
-				ADD_IOV_LITERAL(&m, "NOT_STORED\r\n");
+				ADD_IOV_LITERAL("NOT_STORED\r\n");
 			else
 				STORE();
 		}
@@ -323,9 +324,9 @@ memcached_dispatch(struct conn *c)
 			key = read_field(keys);
 			struct tnt_object *obj = [memcached_index find:key];
 			if (obj == NULL || ghost(obj) || expired(obj))
-				ADD_IOV_LITERAL(&m, "NOT_FOUND\r\n");
+				ADD_IOV_LITERAL("NOT_FOUND\r\n");
 			else if (obj_meta(obj)->cas != cas)
-				ADD_IOV_LITERAL(&m, "EXISTS\r\n");
+				ADD_IOV_LITERAL("EXISTS\r\n");
 			else
 				STORE();
 		}
@@ -338,7 +339,7 @@ memcached_dispatch(struct conn *c)
 			key = read_field(keys);
 			struct tnt_object *obj = [memcached_index find:key];
 			if (obj == NULL || ghost(obj)) {
-				ADD_IOV_LITERAL(&m, "NOT_STORED\r\n");
+				ADD_IOV_LITERAL("NOT_STORED\r\n");
 			} else {
 				struct box_tuple *tuple = box_tuple(obj);
 				value = tuple_field(tuple, 3);
@@ -368,7 +369,7 @@ memcached_dispatch(struct conn *c)
 			key = read_field(keys);
 			struct tnt_object *obj = [memcached_index find:key];
 			if (obj == NULL || ghost(obj) || expired(obj)) {
-				ADD_IOV_LITERAL(&m, "NOT_FOUND\r\n");
+				ADD_IOV_LITERAL("NOT_FOUND\r\n");
 			} else {
 				struct box_tuple *tuple = box_tuple(obj);
 				meta = obj_meta(obj);
@@ -398,13 +399,16 @@ memcached_dispatch(struct conn *c)
 					stats.cmd_set++;
 					if (store(key, exptime, flags, bytes, data) == 0) {
 						stats.total_items++;
-						net_add_iov(&m, b->ptr, tbuf_len(b));
-						ADD_IOV_LITERAL(&m, "\r\n");
+						if (!noreply) {
+							struct netmsg *m = netmsg_tail(&c->out_messages);
+							net_add_iov(&m, b->ptr, tbuf_len(b));
+							net_add_iov(&m, "\r\n", 2);
+						}
 					} else {
-						ADD_IOV_LITERAL(&m, "SERVER_ERROR\r\n");
+						ADD_IOV_LITERAL("SERVER_ERROR\r\n");
 					}
 				} else {
-					ADD_IOV_LITERAL(&m, "CLIENT_ERROR cannot increment or decrement"
+					ADD_IOV_LITERAL("CLIENT_ERROR cannot increment or decrement"
 							" non-numeric value\r\n");
 				}
 			}
@@ -415,14 +419,12 @@ memcached_dispatch(struct conn *c)
 			key = read_field(keys);
 			struct tnt_object *obj = [memcached_index find:key];
 			if (obj == NULL || ghost(obj) || expired(obj)) {
-				ADD_IOV_LITERAL(&m, "NOT_FOUND\r\n");
+				ADD_IOV_LITERAL("NOT_FOUND\r\n");
 			} else {
-				u32 ret_code;
-				if ((ret_code = delete(key)) == 0)
-					ADD_IOV_LITERAL(&m, "DELETED\r\n");
-				else {
-					ADD_IOV_LITERAL(&m, "SERVER_ERROR ");
-					net_add_iov(&m, "\r\n", 2);
+				if (delete(key) == 0) {
+					ADD_IOV_LITERAL("DELETED\r\n");
+				} else {
+					ADD_IOV_LITERAL("SERVER_ERROR\r\n");
 				}
 			}
 		}
@@ -430,6 +432,7 @@ memcached_dispatch(struct conn *c)
 		action get {
 			stat_collect(stat_base, MEMC_GET, 1);
 			stats.cmd_get++;
+			struct netmsg *m = netmsg_tail(&c->out_messages);
 			while (keys_count-- > 0) {
 				struct tnt_object *obj;
 				struct box_tuple *tuple;
@@ -490,24 +493,25 @@ memcached_dispatch(struct conn *c)
 					net_add_iov(&m, b->ptr, tbuf_len(b));
 					stats.bytes_written += tbuf_len(b);
 				} else {
-					ADD_IOV_LITERAL(&m, "VALUE ");
+					net_add_iov(&m, "VALUE ", 6);
 					net_add_iov(&m, key, key_len);
 					net_add_iov(&m, suffix, suffix_len);
 				}
 				net_add_ref_iov(&m, obj, value, value_len);
-				ADD_IOV_LITERAL(&m, "\r\n");
+				net_add_iov(&m, "\r\n", 2);
 				stats.bytes_written += value_len + 2;
 			}
-			ADD_IOV_LITERAL(&m, "END\r\n");
+			net_add_iov(&m, "END\r\n", 5);
 			stats.bytes_written += 5;
 		}
 
 		action flush_all {
 			fiber_create("flush_all", flush_all, flush_delay);
-			ADD_IOV_LITERAL(&m, "OK\r\n");
+			ADD_IOV_LITERAL("OK\r\n");
 		}
 
 		action stats {
+			struct netmsg *m = netmsg_tail(&c->out_messages);
 			print_stats(&m);
 		}
 
@@ -606,22 +610,17 @@ memcached_dispatch(struct conn *c)
 		if (pe - p > (1 << 20)) {
 		exit:
 			say_warn("memcached proto error");
-			ADD_IOV_LITERAL(&m, "ERROR\r\n");
+			ADD_IOV_LITERAL("ERROR\r\n");
 			stats.bytes_written += 7;
 			return -1;
 		}
 		char *r;
 		if ((r = memmem(p, pe - p, "\r\n", 2)) != NULL) {
 			tbuf_ltrim(c->rbuf, r + 2 - (char *)c->rbuf->ptr);
-			ADD_IOV_LITERAL(&m, "CLIENT_ERROR bad command line format\r\n");
+			ADD_IOV_LITERAL("CLIENT_ERROR bad command line format\r\n");
 			return 1;
 		}
 		return 0;
-	}
-
-	if (noreply) {
-		netmsg_rewind(&m, &mark);
-		m->count--; /* FIXME: wtf ? */
 	}
 
 	return 1;
