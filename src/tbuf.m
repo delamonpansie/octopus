@@ -177,6 +177,16 @@ tbuf_ltrim(struct tbuf *b, size_t diff)
 }
 
 void
+tbuf_rtrim(struct tbuf *b, size_t diff)
+{
+	tbuf_assert(b);
+	assert(diff <= tbuf_len(b));
+
+	b->end -= diff;
+	b->free += diff;
+}
+
+void
 tbuf_vprintf(struct tbuf *b, const char *format, va_list ap)
 {
 	int printed_len;
