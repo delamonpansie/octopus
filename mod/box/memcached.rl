@@ -548,7 +548,7 @@ memcached_dispatch(struct conn *c)
 		action read_data {
 			size_t parsed = p - (u8 *)c->rbuf->ptr;
 			while (tbuf_len(c->rbuf) - parsed < bytes + 2) {
-				if ((r = conn_readahead(c, bytes + 2 - (pe - p))) <= 0) {
+				if ((r = conn_recv(c)) <= 0) {
 					say_debug("read returned %i, closing connection", r);
 					return -1;
 				}
@@ -694,7 +694,7 @@ memcached_handler(va_list ap)
 	@try {
 		for (;;) {
 			batch_count = 0;
-			if (conn_readahead(c, 1) <= 0)
+			if (conn_recv(c) <= 0)
 				return;
 
 		dispatch:

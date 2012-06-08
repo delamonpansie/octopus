@@ -137,7 +137,7 @@ admin_dispatch(struct conn *c)
 	char *p, *pe;
 	char *strstart, *strend;
 	while ((pe = memchr(c->rbuf->ptr, '\n', tbuf_len(c->rbuf))) == NULL) {
-		if (conn_readahead(c, 1) <= 0)
+		if (conn_recv(c) <= 0)
 			return 0;
 	}
 

@@ -369,32 +369,22 @@ conn_gc(struct palloc_pool *pool, void *ptr)
 		netmsg_gc(pool, m);
 }
 
-int
-conn_readahead(struct conn *c, size_t min)
+ssize_t
+conn_recv(struct conn *c)
 {
 	ssize_t r;
 	ev_io io = { .coro = 1 };
 	ev_io_init(&io, (void *)fiber, c->fd, EV_READ);
-	tbuf_ensure(c->rbuf, MAX(min, 16 * 1024));
+	tbuf_ensure(c->rbuf, 16 * 1024);
 
 	ev_io_start(&io);
-	for (;;) {
-		yield();
-
-		r = tbuf_recv(c->rbuf, c->fd);
-		if (r > 0) {
-			if (tbuf_len(c->rbuf) >= min)
-				break;
-		} else {
-			if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
-				continue;
-			if (r < 0)
-				say_syserror("%s:", __func__);
-
-			break;
-		}
-	}
-
+again:
+	yield();
+	r = tbuf_recv(c->rbuf, c->fd);
+	if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+		goto again;
+	if (r < 0)
+		say_syserror("%s:", __func__);
 	ev_io_stop(&io);
 	return r;
 }

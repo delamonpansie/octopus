@@ -473,7 +473,8 @@ remote_handshake:(struct sockaddr_in *)addr conn:(struct conn *)c
 			goto err;
 		}
 
-		conn_readahead(c, sizeof(struct iproto_header_retcode) + sizeof(version));
+		while (tbuf_len(c->rbuf) < sizeof(struct iproto_header_retcode) + sizeof(version))
+			conn_recv(c);
 		struct tbuf *rep = iproto_parse(c->rbuf);
 		if (rep == NULL) {
 			err = "can't read reply";
@@ -567,7 +568,7 @@ pull_snapshot(Recovery *r, struct conn *c, u32 version)
 {
 	struct tbuf *row;
 	for (;;) {
-		if (conn_readahead(c, 1) <= 0)
+		if (conn_recv(c) <= 0)
 			raise("unexpected eof");
 		while ((row = fetch_row(c, version))) {
 			switch (row_v12(row)->tag) {
@@ -598,7 +599,7 @@ pull_wal(Recovery *r, struct conn *c, u32 version)
 
 	/* TODO: use designated palloc_pool */
 	for (;;) {
-		if (conn_readahead(c, 1) <= 0)
+		if (conn_recv(c) <= 0)
 			raise("unexpected eof");
 
 		int pack_rows = 0;

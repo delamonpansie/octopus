@@ -113,7 +113,7 @@ struct conn *conn_create(struct palloc_pool *pool, int fd);
 void conn_init(struct conn *c, struct palloc_pool *pool, int fd, int ref);
 void conn_close(struct conn *c);
 void conn_gc(struct palloc_pool *pool, void *ptr);
-int conn_readahead(struct conn *c, size_t min);
+ssize_t conn_recv(struct conn *c);
 ssize_t conn_read(struct conn *c, void *buf, size_t count);
 ssize_t conn_write(struct conn *c, const void *buf, size_t count);
 struct netmsg *conn_write_netmsg(struct conn *c);
