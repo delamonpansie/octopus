@@ -108,6 +108,7 @@ struct box_txn {
     DO NOT use those ids!
  */
 #define MESSAGES(_)				\
+	_(NOP, 1)				\
         _(INSERT, 13)				\
         _(SELECT_LIMIT, 15)			\
 	_(SELECT, 17)				\

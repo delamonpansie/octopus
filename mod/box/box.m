@@ -796,6 +796,10 @@ box_prepare_update(struct box_txn *txn, struct tbuf *data)
 		prepare_update_fields(txn, data);
 		break;
 
+	case NOP:
+		txn_common_parser(txn, data);
+		break;
+
 	default:
 		say_error("box_dispach: unsupported command = %" PRIi32 "", txn->op);
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "unknown op code");
@@ -959,6 +963,9 @@ box_xlog_sprint(struct tbuf *buf, const struct tbuf *t)
 			tuple_print(buf, 1, arg);
 			tbuf_printf(buf, "] ");
 		}
+		break;
+
+	case NOP:
 		break;
 	default:
 		tbuf_printf(buf, "unknown wal op %" PRIi32, op);

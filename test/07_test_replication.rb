@@ -25,6 +25,7 @@ class SlaveEnv < RunEnv
     super + <<EOD
 primary_port = 33023
 wal_feeder_addr = "127.0.0.1:33034"
+wal_feeder_filter = "id_log"
 
 object_space[0].enabled = 1
 object_space[0].index[0].type = "HASH"

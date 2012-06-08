@@ -446,7 +446,14 @@ remote_handshake:(struct sockaddr_in *)addr conn:(struct conn *)c
 	const char *err = NULL;
 	u32 version;
 
-	struct replication_handshake hshake = {1, lsn > 0 ? lsn + 1 : 0, ""};
+	struct replication_handshake hshake = {1, lsn > 0 ? lsn + 1 : 0, {0}};
+	if (cfg.wal_feeder_filter != NULL) {
+		if (strlen(cfg.wal_feeder_filter) + 1 > sizeof(hshake.filter)) {
+			say_error("wal_feeder_filter too big");
+			exit(EXIT_FAILURE);
+		}
+		strcpy(hshake.filter, cfg.wal_feeder_filter);
+	}
 	struct tbuf *req = tbuf_alloc(fiber->pool);
 	tbuf_append(req, &(struct iproto_header){ .msg_code = 0, .sync = 0, .len = sizeof(hshake) },
 		    sizeof(struct iproto_header));

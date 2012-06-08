@@ -31,6 +31,8 @@
 #import <iproto.h>
 #import <pickle.h>
 
+#include <third_party/crc32.h>
+
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -40,6 +42,7 @@
 
 @interface Feeder: Recovery {
 	int fd;
+	bool filtering;
 }
 @end
 
@@ -55,16 +58,17 @@
 }
 
 static void
-send_tbuf(int fd, struct tbuf *b)
+writef(int fd, const char *b, size_t len)
 {
 	do {
-		ssize_t r = write(fd, b->ptr, tbuf_len(b));
-		if (r < 0) {
+		ssize_t r = write(fd, b, len);
+		if (r <= 0) {
 			say_syserror("write");
 			exit(EXIT_SUCCESS);
 		}
-		tbuf_ltrim(b, r);
-	} while (tbuf_len(b) > 0);
+		b += r;
+		len -= r;
+	} while (len > 0);
 }
 
 - (void)
@@ -72,14 +76,57 @@ recover_row:(struct tbuf *)row
 {
 	i64 row_lsn = row_v12(row)->lsn;
 	u16 tag = row_v12(row)->tag;
-	send_tbuf(fd, row);
+	if (filtering) {
+		lua_pushvalue(fiber->L, 1);
+		lua_pushlstring(fiber->L, row->ptr, tbuf_len(row));
+
+		if (lua_pcall(fiber->L, 1, 1, 0) != 0) {
+			say_error("lua filter error: %s", lua_tostring(fiber->L, -1));
+			_exit(EXIT_FAILURE);
+		}
+		if (!lua_isnil(fiber->L, -1)) {
+			size_t len;
+			const char *new_data = lua_tolstring(fiber->L, -1, &len);
+
+			tbuf_ensure(row, len);
+			struct row_v12 *row12 = row_v12(row);
+			memcpy(row12->data, new_data, len);
+			if (row12->len > len)
+				tbuf_rtrim(row, row12->len - len);
+			row12->len = len;
+			row12->data_crc32c = crc32c(0, row12->data, row12->len);
+			row12->header_crc32c = crc32c(0, (u8 *)row12 + sizeof(row12->header_crc32c),
+						      sizeof(row12) - sizeof(row12->header_crc32c));
+		}
+		lua_pop(fiber->L, 1);
+	}
+
+	writef(fd, row->ptr, tbuf_len(row));
 	if (tag == snap_initial_tag || tag == snap_final_tag || tag == wal_tag)
 		lsn = row_lsn;
+}
+
+- (void)
+recover_local:(i64)initial_scn filter:(const char *)filter_name
+{
+	say_debug("%s initial_scn:%"PRIi64" filter:%s", __func__, initial_scn, filter_name);
+	if (strlen(filter_name) > 0) {
+		lua_getglobal(fiber->L, "replication_filter");
+		lua_pushstring(fiber->L, filter_name);
+		lua_gettable(fiber->L, -2);
+		lua_remove(fiber->L, -2);
+		if (lua_isnil(fiber->L, -1)) {
+			say_error("nonexistent filter: %s", filter_name);
+			_exit(EXIT_FAILURE);
+		}
+		filtering = true;
+	}
+	[self recover_local:initial_scn];
 }
 @end
 
 static i64
-handshake(int sock)
+handshake(int sock, char *filter)
 {
 	struct tbuf *rep, *input, *req;
 	bool compat = 0;
@@ -108,6 +155,7 @@ handshake(int sock)
 
 	if (compat) {
 		lsn = read_u64(input);
+		filter[0] = 0;
 	} else {
 		if (iproto(req)->len != sizeof(struct replication_handshake)) {
 			say_error("bad handshake len");
@@ -115,12 +163,12 @@ handshake(int sock)
 		}
 
 		struct replication_handshake *hshake = (void *)&iproto(req)->data;
-		lsn = hshake->lsn;
-
 		if (hshake->ver != 1) {
 			say_error("bad replication version");
 			_exit(EXIT_FAILURE);
 		}
+		lsn = hshake->lsn;
+		memcpy(filter, hshake->filter, sizeof(hshake->filter));
 
 		tbuf_append(rep, &(struct iproto_header_retcode)
 			    { .msg_code = iproto(req)->msg_code,
@@ -132,7 +180,7 @@ handshake(int sock)
 	}
 
 	tbuf_append(rep, &default_version, sizeof(default_version));
-	send_tbuf(sock, rep);
+	writef(sock, rep->ptr, tbuf_len(rep));
 	return lsn;
 }
 
@@ -152,6 +200,7 @@ recover_feed_slave(int sock)
 	const char *peer_name = "<unknown>";
 	ev_io io = { .coro = 0 };
 	ev_timer tm = { .coro = 0 };
+	char filter_name[field_sizeof(struct replication_handshake, filter)];
 
 	if (getpeername(sock, (struct sockaddr *)&addr, &addrlen) != -1)
 		peer_name = sintoa(&addr);
@@ -162,7 +211,8 @@ recover_feed_slave(int sock)
 	feeder = [[Feeder alloc] init_snap_dir:cfg.snap_dir
 				       wal_dir:cfg.wal_dir
 					    fd:sock];
-	[feeder recover_local:handshake(sock)];
+	i64 initial_scn = handshake(sock, filter_name);
+	[feeder recover_local:initial_scn filter:filter_name];
 
 	ev_io_init(&io, (void *)eof_monitor, sock, EV_READ);
 	ev_io_start(&io);
@@ -192,6 +242,12 @@ init(void)
 
 	fiber->name = "feeder";
 	fiber->pool = palloc_create_pool("feeder");
+	fiber->L = root_L;
+
+	lua_getglobal(fiber->L, "require");
+        lua_pushliteral(fiber->L, "feeder");
+	if (lua_pcall(fiber->L, 1, 0, 0) != 0)
+		panic("feeder: %s", lua_tostring(fiber->L, -1));
 
 	if (cfg.wal_dir == NULL || cfg.snap_dir == NULL)
 		panic("can't start feeder without snap_dir or wal_dir");
