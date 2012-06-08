@@ -384,7 +384,7 @@ again:
 	if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
 		goto again;
 	if (r < 0)
-		say_syserror("%s:", __func__);
+		say_syserror("%s", __func__);
 	ev_io_stop(&io);
 	return r;
 }
