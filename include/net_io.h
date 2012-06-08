@@ -77,7 +77,7 @@ struct conn {
 	int fd, ref;
 	struct netmsg_head out_messages;
 
-	enum { READING, PROCESSING } state;
+	enum { READING, PROCESSING, CLOSE_AFTER_WRITE } state;
 	LIST_ENTRY(conn) link;
 	TAILQ_ENTRY(conn) processing_link;
 	SLIST_ENTRY(conn) pool_link;
