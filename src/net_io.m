@@ -839,7 +839,7 @@ tcp_service(u16 port, void (*on_bind)(int fd))
 {
 	struct service *service = calloc(1, sizeof(*service));
 	char *name = malloc(13);  /* strlen("iproto:xxxxx") */
-	snprintf(name, 13, "iproto:%i", port);
+	snprintf(name, 13, "tcp:%i", port);
 
 	TAILQ_INIT(&service->processing);
 	service->pool = palloc_create_pool(name);
@@ -847,10 +847,9 @@ tcp_service(u16 port, void (*on_bind)(int fd))
 
 	palloc_register_gc_root(service->pool, service, service_gc);
 
-	service->output_flusher = fiber_create("iproto/output_flusher", service_output_flusher);
-	service->input_reader = fiber_create("iproto/input_reader", input_reader, service);
-	service->acceptor = fiber_create("iproto/acceptor",
-					 tcp_server, port, accept_client, on_bind, service);
+	service->output_flusher = fiber_create("tcp/output_flusher", service_output_flusher);
+	service->input_reader = fiber_create("tcp/input_reader", input_reader, service);
+	service->acceptor = fiber_create("tcp/acceptor", tcp_server, port, accept_client, on_bind, service);
 
 	ev_prepare_init(&service->wakeup, (void *)wakeup_workers);
 	ev_prepare_start(&service->wakeup);
