@@ -52,7 +52,6 @@ extern const char *inprogress_suffix;
 const char *xlog_tag_to_a(u16 tag);
 
 
-@class XLog;
 @class Recovery;
 @class XLog;
 typedef void (follow_cb)(ev_stat *w, int events);
@@ -67,7 +66,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 	const char *suffix;
 	const char *dirname;
 
-	Recovery *recovery;
+	XLogWriter *writer;
 };
 - (id) init_dirname:(const char *)dirname_;
 - (XLog *) open_for_read_filename:(const char *)filename;
@@ -95,7 +94,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 	ev_stat stat;
 
 	XLogDir *dir;
-	Recovery *recovery;
+	XLogWriter *writer;
 	i64 next_lsn;
 
 	struct palloc_pool *pool;
@@ -155,6 +154,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 
 - (i64) lsn;
 - (void) set_lsn:(i64)lsn_;
+- (bool) auto_scn;
 
 - (struct child *) wal_writer;
 - (void) configure_wal_writer;
@@ -189,10 +189,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 }
 
 - (i64) scn;
-- (void) set_scn:(i64)scn_;
-- (bool) auto_scn;
-- (i64) next_scn;
-
+- (void) initial;
 - (const char *) status;
 - (ev_tstamp) lag;
 - (ev_tstamp) last_update_tstamp;
@@ -233,20 +230,11 @@ struct wal_reply {
 	u32 repeat_count;
 } __attribute__((packed));
 
-@interface Recovery (writers)
-- (int) submit:(void *)data len:(u32)len scn:(i64)scn_ tag:(u16)tag;
-- (int) submit:(void *)data len:(u32)len;
-- (void) configure_wal_writer;
-- (struct wal_pack *) wal_pack_prepare;
-- (u32) wal_pack_append:(struct wal_pack *)pack
-		   data:(void *)data
-		    len:(u32)data_len
-		    scn:(i64)scn_
-		    tag:(u16)tag
-		 cookie:(u64)cookie;
-- (int) wal_pack_submit;
-- (void) snapshot_save:(void (*)(XLog *))callback;
-@end
+struct replication_handshake {
+		u32 ver;
+		i64 scn;
+		char filter[32];
+} __attribute__((packed));
 
 struct _row_v11 {
 	u32 header_crc32c;

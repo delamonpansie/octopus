@@ -72,7 +72,7 @@ writef(int fd, const char *b, size_t len)
 }
 
 - (void)
-collect_row:(struct tbuf *)row
+recover_row:(struct tbuf *)row
 {
 	i64 row_lsn = row_v12(row)->lsn;
 	u16 tag = row_v12(row)->tag;
@@ -105,21 +105,68 @@ collect_row:(struct tbuf *)row
 	if (tag == snap_initial_tag || tag == snap_final_tag || tag == wal_tag)
 		lsn = row_lsn;
 }
+
+- (void)
+recover_start_from_scn:(i64)initial_scn filter:(const char *)filter_name
+{
+	say_debug("%s initial_scn:%"PRIi64" filter:%s", __func__, initial_scn, filter_name);
+	if (strlen(filter_name) > 0) {
+		lua_getglobal(fiber->L, "replication_filter");
+		lua_pushstring(fiber->L, filter_name);
+		lua_gettable(fiber->L, -2);
+		lua_remove(fiber->L, -2);
+		if (lua_isnil(fiber->L, -1)) {
+			say_error("nonexistent filter: %s", filter_name);
+			_exit(EXIT_FAILURE);
+		}
+		filtering = true;
+	}
+	[self recover_start_from_scn:initial_scn];
+}
 @end
 
 static i64
 handshake(int sock, char *filter)
 {
 	struct tbuf *rep, *input, *req;
-	bool compat = 0;
 	i64 scn;
 
-	r = read(sock, &lsn, sizeof(lsn));
-	if (r != sizeof(lsn)) {
-		if (r < 0)
-			say_syserror("read");
-		exit(EXIT_SUCCESS);
+	input = tbuf_alloc(fiber->pool);
+	rep = tbuf_alloc(fiber->pool);
+
+	for (;;) {
+		tbuf_ensure(input, 4096);
+		if (tbuf_recv(input, sock) <= 0) {
+			say_syserror("closing connection, recv");
+			_exit(EXIT_SUCCESS);
+		}
+		if (tbuf_len(input) < sizeof(scn))
+			continue;
+
+		if ((req = iproto_parse(input)) != NULL)
+			break;
 	}
+
+	if (iproto(req)->data_len != sizeof(struct replication_handshake)) {
+		say_error("bad handshake len");
+		_exit(EXIT_FAILURE);
+	}
+
+	struct replication_handshake *hshake = (void *)&iproto(req)->data;
+	if (hshake->ver != 1) {
+		say_error("bad replication version");
+		_exit(EXIT_FAILURE);
+	}
+	scn = hshake->scn;
+	memcpy(filter, hshake->filter, sizeof(hshake->filter));
+
+	tbuf_append(rep, &(struct iproto_retcode)
+			 { .msg_code = iproto(req)->msg_code,
+			   .data_len = sizeof(default_version) +
+				       field_sizeof(struct iproto_retcode, ret_code),
+			   .sync = iproto(req)->sync,
+			   .ret_code = 0 },
+		    sizeof(struct iproto_retcode));
 
 	tbuf_append(rep, &default_version, sizeof(default_version));
 	writef(sock, rep->ptr, tbuf_len(rep));
@@ -155,7 +202,8 @@ recover_feed_slave(int sock)
 	feeder = [[Feeder alloc] init_snap_dir:cfg.snap_dir
 				       wal_dir:cfg.wal_dir
 					    fd:sock];
-	[feeder recover_local:handshake(sock)];
+	i64 initial_scn = handshake(sock, filter_name);
+	[feeder recover_start_from_scn:initial_scn filter:filter_name];
 
 	ev_io_init(&io, (void *)eof_monitor, sock, EV_READ);
 	ev_io_start(&io);

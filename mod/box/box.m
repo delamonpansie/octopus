@@ -1364,7 +1364,8 @@ static void
 snapshot(bool initial)
 {
 	if (initial)
-		[recovery set_lsn:1];
+		[recovery initial];
+
 	if ([recovery lsn] == 0) {
 		say_warn("lsn == 0");
 		_exit(EXIT_FAILURE);

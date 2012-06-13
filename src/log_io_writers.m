@@ -47,6 +47,7 @@
 - (i64) lsn { return lsn; }
 - (i64) scn { return 0; }
 - (struct child *) wal_writer { return wal_writer; };
+- (bool) auto_scn { return true; }
 
 - (void)
 set_lsn:(i64)lsn_
@@ -385,7 +386,7 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *row)
 	static int bytes;
 	ev_tstamp elapsed;
 	static ev_tstamp last = 0;
-	const int io_rate_limit = l->recovery->snap_io_rate_limit;
+	const int io_rate_limit = l->writer->snap_io_rate_limit;
 
 	if ([l append_row:row->ptr len:tbuf_len(row) scn:0 tag:tag] < 0) {
 		say_error("unable write row");

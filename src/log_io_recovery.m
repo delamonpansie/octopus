@@ -33,6 +33,8 @@
 #import <pickle.h>
 #import <tbuf.h>
 #import <net_io.h>
+#import <assoc.h>
+#import <iproto.h>
 
 #include <third_party/crc32.h>
 
@@ -61,9 +63,14 @@
 - (ev_tstamp)last_update_tstamp { return last_update_tstamp; };
 
 - (i64) scn { return scn; }
-- (i64) next_scn { return ++scn; }
 - (void) set_scn:(i64)scn_ { scn = scn_; }
-- (bool) auto_scn { return true; }
+
+- (void)
+initial
+{
+	[self set_lsn:1];
+	[self set_scn:1];
+}
 
 /* this little hole shouldn't be used too much */
 int
@@ -178,7 +185,7 @@ recover_row:(struct tbuf *)row
 		recover_row(row, tag);
 		switch (tag) {
 		case wal_tag:
-			assert(row_scn > 0);
+			assert(row_scn == scn + 1);
 			scn = row_scn; /* each wal_tag row represent a single atomic change */
 			lag = ev_now() - tm;
 			last_update_tstamp = ev_now();
@@ -375,10 +382,10 @@ recover_start_from_scn:(i64)initial_scn
 	if (initial_scn == 0) {
 		[self recover_snap];
 	} else {
-		lsn = [wal_dir containg_scn:initial_scn];
+		lsn = [wal_dir containg_scn:initial_scn] - 1;
 		scn = initial_scn;
 	}
-	current_wal = [wal_dir containg_lsn:lsn + 1];
+	current_wal = [wal_dir containg_lsn:lsn];
 	return [self recover_cont];
 }
 
@@ -468,10 +475,27 @@ remote_handshake:(struct sockaddr_in *)addr conn:(struct conn *)c
 	const char *err = NULL;
 	u32 version;
 
-	i64 initial_lsn = 0;
+	struct replication_handshake hshake = {1, 0, {0}};
+	if ([self scn] > 0) {
+		hshake.scn = [self scn] - 1024;
+		if (hshake.scn < 1)
+			 hshake.scn = 1;
+	}
 
-	if (lsn > 0)
-		initial_lsn = lsn + 1;
+	if (cfg.wal_feeder_filter != NULL) {
+		if (strlen(cfg.wal_feeder_filter) + 1 > sizeof(hshake.filter)) {
+			say_error("wal_feeder_filter too big");
+			exit(EXIT_FAILURE);
+		}
+		strcpy(hshake.filter, cfg.wal_feeder_filter);
+	}
+	struct tbuf *req = tbuf_alloc(fiber->pool);
+	tbuf_append(req, &(struct iproto){ .msg_code = 0, .sync = 0, .data_len = sizeof(hshake) },
+		    sizeof(struct iproto));
+	tbuf_append(req, &hshake, sizeof(hshake));
+
+	struct tbuf *rep = tbuf_alloc(fiber->pool);
+	tbuf_ensure(rep, sizeof(struct iproto_retcode));
 
 	do {
 		if ((c->fd = tcp_connect(addr, NULL, 0)) < 0) {
@@ -479,12 +503,12 @@ remote_handshake:(struct sockaddr_in *)addr conn:(struct conn *)c
 			goto err;
 		}
 
-		if (conn_write(c, &initial_lsn, sizeof(initial_lsn)) != sizeof(initial_lsn)) {
-			err = "can't write initial lsn";
+		if (conn_write(c, req->ptr, tbuf_len(req)) != tbuf_len(req)) {
+			err = "can't write initial handshake";
 			goto err;
 		}
 
-		while (tbuf_len(c->rbuf) < sizeof(struct iproto_header_retcode) + sizeof(version))
+		while (tbuf_len(c->rbuf) < sizeof(struct iproto_retcode) + sizeof(version))
 			conn_recv(c);
 		struct tbuf *rep = iproto_parse(c->rbuf);
 		if (rep == NULL) {
@@ -495,12 +519,12 @@ remote_handshake:(struct sockaddr_in *)addr conn:(struct conn *)c
 		if (iproto_retcode(rep)->ret_code != 0 ||
 		    iproto_retcode(rep)->sync != iproto(req)->sync ||
 		    iproto_retcode(rep)->msg_code != iproto(req)->msg_code ||
-		    iproto_retcode(rep)->len != sizeof(iproto_retcode(rep)->ret_code) + sizeof(version))
+		    iproto_retcode(rep)->data_len != sizeof(iproto_retcode(rep)->ret_code) + sizeof(version))
 		{
 			err = "bad reply";
 			goto err;
 		}
-		say_debug("go reply len:%i, rbuf %i", iproto_retcode(rep)->len, tbuf_len(c->rbuf));
+		say_debug("go reply len:%i, rbuf %i", iproto_retcode(rep)->data_len, tbuf_len(c->rbuf));
 		memcpy(&version, iproto_retcode(rep)->data, sizeof(version));
 		if (version != default_version && version != version_11) {
 			err = "unknown remote version";
@@ -508,7 +532,7 @@ remote_handshake:(struct sockaddr_in *)addr conn:(struct conn *)c
 		}
 
 		say_crit("succefully connected to feeder");
-		say_crit("starting remote recovery from lsn:%" PRIi64, initial_lsn);
+		say_crit("starting remote recovery from scn:%" PRIi64, hshake.scn);
 		break;
 
 	err:
@@ -618,11 +642,19 @@ pull_wal(Recovery *r, struct conn *c, u32 version)
 		int pack_rows = 0;
 		i64 remote_scn = 0;
 		while ((row = fetch_row(c, version))) {
-			remote_scn = row_v12(row)->lsn;
-			if (row_v12(row)->tag != wal_tag) {
+			say_debug("row scn:%"PRIi64 " tag:%s",
+				  row_v12(row)->scn, xlog_tag_to_a(row_v12(row)->tag));
+
+			if (row_v12(row)->tag == wal_final_tag) {
 				special_row = row;
 				break;
 			}
+
+			if (row_v12(row)->scn <= [r scn])
+				continue;
+
+			remote_scn = row_v12(row)->scn;
+
 
 			rows[pack_rows++] = row;
 			if (pack_rows == WAL_PACK_MAX)
@@ -692,11 +724,12 @@ pull_from_remote(va_list ap)
 
 			if ([r lsn] == 0)
 				pull_snapshot(r, &c, version);
-			else {
-				if (version == 11)
-					[r recover_row:[r dummy_row_lsn:[r lsn] tag:wal_final_tag]];
-				pull_wal(r, &c, version);
-			}
+
+			if (version == 11)
+				[r recover_row:[r dummy_row_lsn:[r lsn]
+							    scn:0
+							    tag:wal_final_tag]];
+			pull_wal(r, &c, version);
 		}
 		@catch (Error *e) {
 			say_error("replication failure: %s", e->reason);
@@ -759,8 +792,8 @@ submit:(void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag
 	snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
 	wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
 
-	snap_dir->recovery = self;
-	wal_dir->recovery = self;
+	snap_dir->writer = self;
+	wal_dir->writer = self;
 	wal_timer.data = self;
 
 	return self;
@@ -811,8 +844,8 @@ input_dispatch(va_list ap __attribute__((unused)))
         snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
         wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
 
-	snap_dir->recovery = self;
-	wal_dir->recovery = self;
+	snap_dir->writer = self;
+	wal_dir->writer = self;
 	wal_timer.data = self;
 
 	if ((flags & RECOVER_READONLY) == 0) {

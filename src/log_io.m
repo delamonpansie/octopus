@@ -433,8 +433,8 @@ init_filename:(const char *)filename_
 	fd = fd_;
 	mode = LOG_READ;
 	dir = dir_;
-	recovery = dir->recovery;
-	stat.data = dir->recovery;
+	writer = dir->writer;
+	stat.data = dir->writer;
 
 #ifdef __GLIBC__
 	const int bufsize = 1024 * 1024;
@@ -544,7 +544,7 @@ close
 		if (rows == 0 && access(filename, F_OK) == 0) {
 			bool legacy_snap = cfg.io_compat &&
 					   [dir isMemberOf:[SnapDir class]] &&
-					   [recovery lsn] == 1; /* TODO: check file lsn */
+					   [writer lsn] == 1; /* FIXME: is this correct? TODO: check file lsn */
 			if (!legacy_snap)
 				panic("no valid rows were read");
 		}
@@ -1011,7 +1011,7 @@ append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie
 	assert(wet_rows < nelem(wet_rows_offset));
 
 	row.lsn = [self next_lsn];
-	row.scn = [recovery auto_scn] ? row.lsn : scn;
+	row.scn = [writer auto_scn] ? row.lsn : scn;
 	row.tm = ev_now();
 	row.tag = tag;
 	row.cookie = cookie;
