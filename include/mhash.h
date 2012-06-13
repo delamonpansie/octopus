@@ -49,8 +49,6 @@ e * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
    SOFTWARE.
 */
 
-#import <util.h>
-
 #include <stdlib.h>
 #include <stdint.h>
 #include <math.h>
@@ -499,19 +497,4 @@ mh_bytes(struct mhash_t *h)
 
 }
 
-struct tbuf;
-MH_DECL void
-mh_stat(struct tbuf *out, struct mhash_t *h)
-{
-	tbuf_printf(out, "  n_buckets: %"PRIu32 CRLF
-		    "  n_occupied: %"PRIu32 CRLF
-		    "  size: %"PRIu32 CRLF
-		    "  resize_cnt: %"PRIu32 CRLF
-		    "  resizing: %"PRIu32 CRLF,
-		    h->n_buckets,
-		    h->n_occupied,
-		    h->size,
-		    h->resize_cnt,
-		    h->resizing);
-}
 #endif
