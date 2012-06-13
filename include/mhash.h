@@ -124,6 +124,7 @@ struct mhash_t {
 
 /* public api */
 MH_DECL struct mhash_t * _mh(init)();
+static inline mh_key_t _mh(key)(struct mhash_t *h, uint32_t i);
 static inline mh_val_t _mh(value)(struct mhash_t *h, uint32_t i);
 static inline uint32_t _mh(get)(struct mhash_t *h, mh_key_t key);
 static inline uint32_t _mh(put)(struct mhash_t *h, mh_key_t key, mh_val_t val, int *ret);
@@ -145,6 +146,12 @@ MH_DECL void _mh(del_resize)(struct mhash_t *h, uint32_t x);
 #ifdef MH_DEBUG
 MH_DECL void _mh(dump)(struct mhash_t *h);
 #endif
+
+static inline mh_key_t
+_mh(key)(struct mhash_t *h, uint32_t i)
+{
+	return mh_node_key(mh_slot(h, i));
+}
 
 static inline mh_val_t
 _mh(value)(struct mhash_t *h, uint32_t i)
