@@ -441,18 +441,10 @@ luaT_init()
 
 }
 
-static void
-initialize(double slab_alloc_arena, int slab_alloc_minimal, double slab_alloc_factor)
-{
-
-	salloc_init(slab_alloc_arena * (1 << 30), slab_alloc_minimal, slab_alloc_factor);
-	fiber_init();
-}
-
-static void
+ void
 initialize_minimal()
 {
-	initialize(0.1, 4, 2);
+	salloc_init(0.1 * (1 << 30), 4, 2);
 }
 
 #ifdef STORAGE
@@ -540,6 +532,7 @@ main(int argc, char **argv)
 #ifdef STORAGE
 	if (gopt_arg(opt, 'C', &cat_filename)) {
 		initialize_minimal();
+		fiber_init();
 		if (access(cat_filename, R_OK) == -1) {
 			say_syserror("access(\"%s\")", cat_filename);
 			exit(EX_OSFILE);
@@ -665,6 +658,7 @@ main(int argc, char **argv)
 	if (gopt(opt, 'I')) {
 		init_storage = true;
 		initialize_minimal();
+		fiber_init();
 		luaT_init();
 		module(NULL)->init();
 		module(NULL)->snapshot(true);
@@ -674,6 +668,7 @@ main(int argc, char **argv)
 
 #if defined(UTILITY)
 	initialize_minimal();
+	fiber_init();
 	luaT_init();
 	signal_init();
 	module(NULL)->init();
@@ -698,6 +693,7 @@ main(int argc, char **argv)
 	ev_io_init(&keepalive_ev, keepalive_read, keepalive_pipe[0], EV_READ);
 	ev_io_start(&keepalive_ev);
 
+	fiber_init(); /* must be initialized before Lua */
 	luaT_init();
 
 	if (module("WAL feeder"))
@@ -707,7 +703,7 @@ main(int argc, char **argv)
 	ev_signal_init(&ev_sig, (void *)save_snapshot, SIGUSR1);
 	ev_signal_start(&ev_sig);
 
-	initialize(cfg.slab_alloc_arena, cfg.slab_alloc_minimal, cfg.slab_alloc_factor);
+	salloc_init(cfg.slab_alloc_arena * (1 << 30), cfg.slab_alloc_minimal, cfg.slab_alloc_factor);
 
 	stat_init();
 	@try {
