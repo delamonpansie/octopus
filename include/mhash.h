@@ -73,14 +73,14 @@ e * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
 #define _mh(x) mh_ecat(mh_name, x)
 #define mh_unlikely(x)  __builtin_expect((x),0)
 
-#define mh_exist(h, i)		({ h->b[i >> 4] & (1 << (i % 16)); })
-#define mh_dirty(h, i)		({ h->b[i >> 4] & (1 << (i % 16 + 16)); })
+#define mh_exist(h, i)		({ h->bitmap[i >> 4] & (1 << (i % 16)); })
+#define mh_dirty(h, i)		({ h->bitmap[i >> 4] & (1 << (i % 16 + 16)); })
 
-#define mh_setfree(h, i)	({ h->b[i >> 4] &= ~(1 << (i % 16)); })
-#define mh_setexist(h, i)	({ h->b[i >> 4] |= (1 << (i % 16)); })
-#define mh_setdirty(h, i)	({ h->b[i >> 4] |= (1 << (i % 16 + 16)); })
+#define mh_setfree(h, i)	({ h->bitmap[i >> 4] &= ~(1 << (i % 16)); })
+#define mh_setexist(h, i)	({ h->bitmap[i >> 4] |= (1 << (i % 16)); })
+#define mh_setdirty(h, i)	({ h->bitmap[i >> 4] |= (1 << (i % 16 + 16)); })
 
-#define mh_slot(h, i)		({ ((h)->p + (size_t)(h)->node_size * (i)); })
+#define mh_slot(h, i)		({ ((h)->nodes + (size_t)(h)->node_size * (i)); })
 #define mh_node_key(node) 	*(mh_key_t *)((void *)node + sizeof(mh_val_t))
 
 #define mh_size(h)		({ (h)->size; 		})
@@ -105,9 +105,9 @@ static const uint32_t __ac_prime_list[__ac_HASH_PRIME_SIZE] = {
 #define MH_HASH_T
 struct index_node;
 struct mhash_t {
-	void *p;
+	void *nodes;
 	uint32_t node_size;
-	uint32_t *b;
+	uint32_t *bitmap;
 	uint32_t n_buckets, n_occupied, size, upper_bound;
 	uint32_t prime;
 
@@ -378,8 +378,8 @@ _mh(init)()
 	h->node_size = mh_node_size;
 	h->shadow = calloc(1, sizeof(*h));
 	h->n_buckets = 3;
-	h->p = calloc(h->n_buckets, h->node_size);
-	h->b = calloc(h->n_buckets / 16 + 1, sizeof(uint32_t));
+	h->nodes = calloc(h->n_buckets, h->node_size);
+	h->bitmap = calloc(h->n_buckets / 16 + 1, sizeof(uint32_t));
 	h->upper_bound = h->n_buckets * 0.7;
 	return h;
 }
@@ -405,8 +405,8 @@ _mh(resize)(struct mhash_t *h)
 		mh_setexist(s, n);
 		s->n_occupied++;
 	}
-	free(h->p);
-	free(h->b);
+	free(h->nodes);
+	free(h->bitmap);
 	s->size = h->size;
 	memcpy(h, s, sizeof(*h));
 	h->resize_cnt++;
@@ -435,8 +435,8 @@ _mh(start_resize)(struct mhash_t *h, uint32_t buckets, uint32_t batch)
 	s->n_buckets = __ac_prime_list[h->prime];
 	s->upper_bound = s->n_buckets * 0.7;
 	s->n_occupied = 0;
-	s->p = malloc((size_t)s->n_buckets * h->node_size);
-	s->b = calloc(s->n_buckets / 16 + 1, sizeof(uint32_t));
+	s->nodes = malloc((size_t)s->n_buckets * h->node_size);
+	s->bitmap = calloc(s->n_buckets / 16 + 1, sizeof(uint32_t));
 	_mh(resize)(h);
 }
 
@@ -476,21 +476,21 @@ _mh(dump)(struct mhash_t *h)
 MH_DECL void
 mh_clear(struct mhash_t *h)
 {
-	free(h->p);
-	free(h->b);
+	free(h->nodes);
+	free(h->bitmap);
 	h->n_buckets = 3;
 	h->prime = 0;
 	h->upper_bound = h->n_buckets * 0.7;
-	h->p = malloc((size_t)h->n_buckets * h->node_size);
-	h->b = calloc(h->n_buckets / 16 + 1, sizeof(uint32_t));
+	h->nodes = malloc((size_t)h->n_buckets * h->node_size);
+	h->bitmap = calloc(h->n_buckets / 16 + 1, sizeof(uint32_t));
 }
 
 MH_DECL void
 mh_destroy(struct mhash_t *h)
 {
 	free(h->shadow);
-	free(h->b);
-	free(h->p);
+	free(h->bitmap);
+	free(h->nodes);
 	free(h);
 }
 
