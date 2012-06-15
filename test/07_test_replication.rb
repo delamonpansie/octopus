@@ -22,8 +22,8 @@ class SlaveEnv < RunEnv
   end
 
   def config
+    @primary_port = 33023
     super + <<EOD
-primary_port = 33023
 wal_feeder_addr = "127.0.0.1:33034"
 wal_feeder_filter = "id_log"
 
