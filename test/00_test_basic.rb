@@ -36,4 +36,18 @@ basic_env.with_env do |env|
   env.start_server
   box = env.connect_to_box
   box.select [1, 500, 505, 999, 1001]
+
+  Process.kill('USR1', env.pid)
+  box.insert [1]
+  box.insert [2]
+  sleep 0.5
+  raise "no snapshot" unless FileTest.readable?("00000000000000001001.snap")
+  raise "no xlog" unless FileTest.readable?("00000000000000001002.xlog")
+  puts File.open("00000000000000001001.snap").lines.take(4)
+  puts
+
+  puts File.open("00000000000000001002.xlog").lines.take(4)
+  puts
+
+  puts `./tarantool --cat 00000000000000001002.xlog | sed 's/tm:[^ ]* //'`
 end
