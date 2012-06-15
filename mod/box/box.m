@@ -818,7 +818,7 @@ box_prepare_update(struct box_txn *txn, struct tbuf *data)
 }
 
 static void
-box_process(struct conn *c, struct tbuf *request)
+box_process(struct conn *c, struct tbuf *request, void *arg __attribute__((unused)))
 {
 	struct box_txn txn = { .op = 0 };
 	u32 msg_code = iproto(request)->msg_code;
@@ -1164,7 +1164,7 @@ initialize_service()
 	} else {
 		box_primary = tcp_service(cfg.primary_port, box_bound_to_primary);
 		for (int i = 0; i < cfg.wal_writer_inbox_size - 2; i++)
-			fiber_create("box_worker", iproto_interact, box_primary, box_process);
+			fiber_create("box_worker", iproto_interact, box_primary, box_process, NULL);
 
 		if (cfg.secondary_port > 0) {
 			box_secondary = tcp_service(cfg.secondary_port, NULL);

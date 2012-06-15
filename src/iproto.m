@@ -42,10 +42,23 @@
 
 
 const uint32_t msg_ping = 0xff00;
+const uint32_t msg_replica = 0xff01;
 STRS(error_codes, ERROR_CODES);
 DESC_STRS(error_codes, ERROR_CODES);
 
-static struct tbuf *
+static struct mhash_t *response_registry;
+
+u32
+iproto_next_sync()
+{
+	static u32 iproto_sync;
+	iproto_sync++;
+	if (unlikely(iproto_sync == 0))
+		iproto_sync++;
+	return iproto_sync;
+}
+
+struct tbuf *
 iproto_parse(struct tbuf *in)
 {
 	if (tbuf_len(in) < sizeof(struct iproto))
@@ -61,8 +74,9 @@ void
 iproto_interact(va_list ap)
 {
 	struct service *service = va_arg(ap, struct service *);
-	void (*callback)(struct conn *c, struct tbuf *request) =
-		va_arg(ap, void (*)(struct conn *c, struct tbuf *request));
+	void (*callback)(struct conn *c, struct tbuf *request, void *arg) =
+		va_arg(ap, void (*)(struct conn *c, struct tbuf *request, void *arg));
+	void *arg = va_arg(ap, void *);
 	struct tbuf *request;
 	struct conn *c;
 
@@ -93,7 +107,7 @@ next:
 		net_add_iov_dup(&m, request->ptr, sizeof(struct iproto));
 	} else {
 		c->ref++;
-		callback(c, request);
+		callback(c, request, arg);
 		c->ref--;
 		if (c->fd < 0) {
 			conn_close(c);
@@ -125,7 +139,6 @@ iproto_reply(struct netmsg **m, u32 msg_code, u32 sync)
 	h->sync = sync;
 }
 
-#define SSYNC(x) x >> 8, x & 0xff
 void
 iproto_commit(struct netmsg_mark *mark, u32 ret_code)
 {
@@ -141,8 +154,8 @@ iproto_commit(struct netmsg_mark *mark, u32 ret_code)
 	} while ((m = TAILQ_NEXT(m, link)) != NULL);
 	h->ret_code = ret_code;
 	h->data_len += len;
-	say_debug("%s: op:%i data_len:%i sync:%i,%i ret:%i", __func__,
-		  h->msg_code, h->data_len, SSYNC(h->sync), h->ret_code);
+	say_debug("%s: op:%x data_len:%i sync:%i ret:%i", __func__,
+		  h->msg_code, h->data_len, h->sync, h->ret_code);
 }
 
 void
@@ -158,108 +171,221 @@ iproto_error(struct netmsg **m, struct netmsg_mark *header_mark, u32 ret_code, c
 		header->data_len += strlen(err);
 		net_add_iov_dup(m, err, strlen(err));
 	}
-	say_debug("%s: op:%i data_len:%i sync:%i,%i ret:%i", __func__,
-		  header->msg_code, header->data_len, SSYNC(header->sync), header->ret_code);
+	say_debug("%s: op:%x data_len:%i sync:%i ret:%i", __func__,
+		  header->msg_code, header->data_len, header->sync, header->ret_code);
 }
 
 
-static void
-input_reader(va_list ap)
+struct iproto_peer *
+make_iproto_peer(int id, const char *name, const char *addr, short primary_port, struct iproto_peer *next)
 {
-	struct service *service = va_arg(ap, struct service *);
-	struct conn *c;
-	ev_watcher *w;
-	ssize_t r;
+	struct iproto_peer *p;
 
-	say_info("input reader for service %p started", service);
-	yield();
-loop:
-	w = yield();
-	c = w->data;
+	if (response_registry == NULL)
+		response_registry = mh_i32_init();
 
-	tbuf_ensure(c->rbuf, cfg.input_buffer_size);
-	r = tbuf_recv(c->rbuf, c->fd);
+	p = calloc(1, sizeof(*p));
+	if (atosin(addr, &p->addr) == -1) {
+		free(p);
+		return NULL;
+	}
+	p->primary_addr = p->addr;
+	p->primary_addr.sin_port = htons(primary_port);
+	p->id = id;
+	p->name = strdup(name);
+	p->next = next;
 
-	if (r > 0) {
-		if (tbuf_len(c->rbuf) >= sizeof(struct iproto_header)) {
-			if (tbuf_len(c->rbuf) > cfg.input_high_watermark)
-				ev_io_stop(&c->in);
-			if (c->state != PROCESSING) {
-				TAILQ_INSERT_HEAD(&c->service->processing, c, processing_link);
-				c->state = PROCESSING;
+	say_debug("%s: %s/%p", __func__, p->name, p);
+	return p;
+}
+
+static void
+response_timeout(ev_timer *w, int events __attribute__((unused)))
+{
+	struct iproto_response *r = (void *)w - offsetof(struct iproto_response, timeout);
+	for (int i = 0; i < nelem(r->sync) && r->sync[i]; i++)
+		say_debug("%s: sync:%i", __func__, r->sync[i]);
+	r->closed = ev_now();
+	fiber_wake(r->waiter, r);
+}
+
+
+struct iproto_response *
+make_response(int quorum, ev_tstamp timeout)
+{
+	struct iproto_response *r = calloc(1, sizeof(*r));
+	r->sent = ev_now();
+	//FIXME: r->sync = iproto_next_sync();
+	r->quorum = quorum;
+	ev_timer_init(&r->timeout, response_timeout, timeout, 0.);
+	ev_timer_start(&r->timeout);
+	r->waiter = fiber;
+	return r;
+}
+
+static void
+delete_response(ev_timer *w, int events __attribute__((unused)))
+{
+	struct iproto_response *r = (void *)w - offsetof(struct iproto_response, timeout);
+	ev_timer_stop(&r->timeout);
+	for (int i = 0; i < nelem(r->sync) && r->sync[i]; i++) {
+		u32 k = mh_i32_get(response_registry, r->sync[i]);
+		assert(k != mh_end(response_registry));
+		mh_i32_del(response_registry, k);
+	}
+	free(r);
+}
+
+void
+release_response(struct iproto_response *r)
+{
+	ev_timer_stop(&r->timeout);
+	ev_timer_init(&r->timeout, delete_response, 15., 0.);
+	ev_timer_start(&r->timeout);
+}
+
+
+void
+broadcast(struct iproto_peer *peers, struct iproto_response *r, const void *data, size_t len)
+{
+	say_debug("%s", __func__);
+	for (struct iproto_peer *p = peers; p; p = p->next) {
+		if (p->c.fd < 0)
+			continue;
+
+		void *clone = palloc(p->c.pool, len);
+		memcpy(clone, data, len);
+		if (r) {
+			struct iproto *h = clone;
+			h->sync = iproto_next_sync();
+			say_debug("  peer:%s/%p op:%x sync:%i", p->name, p, h->msg_code, h->sync);
+			for (int i = 0; i < nelem(r->sync); i++) {
+				if (r->sync[i] == 0) {
+					r->sync[i] = h->sync;
+					mh_i32_put(response_registry, h->sync, r, NULL);
+					break;
+				}
 			}
 		}
-	} else if (r == 0 || /* r < 0 && */ (errno != EAGAIN && errno != EWOULDBLOCK)) {
-		say_debug("closing conn r:%i errno:%i", (int)r, errno);
-		conn_close(c);
+		struct netmsg *m = netmsg_tail(&p->c.out_messages);
+		net_add_iov(&m, clone, len);
+		ev_io_start(&p->c.out);
+	}
+}
+
+void
+iproto_pinger(va_list ap)
+{
+	struct iproto_peer *peers = va_arg(ap, struct iproto_peer *);
+	struct iproto ping = { .data_len = 0, .msg_code = msg_ping };
+	struct iproto_response *r;
+
+	for (;;) {
+		fiber_sleep(1);
+		int q = 0;
+		for (struct iproto_peer *p = peers; p; p = p->next)
+			q++;
+		ev_tstamp sent = ev_now();
+
+		broadcast(peers, make_response(q, 2.0), &ping, sizeof(ping));
+		r = yield();
+
+		say_info("ping q:%i/c:%i %.4f%s",
+			 r->quorum, r->count,
+			 ev_now() - sent, r->count == 0 ? " TIMEOUT" : "");
+
+		release_response(r);
+	}
+}
+
+static void
+collect_response(u32 k, struct iproto *msg)
+{
+	struct iproto_response *r = mh_i32_value(response_registry, k);
+	if (r->closed > 0 && ev_now() - r->closed > 1) {
+		say_warn("%s: stale reply: op:%x sync:%i q:%i/c:%i %.4f", __func__,
+			 msg->msg_code, msg->sync, r->quorum, r->count,
+			 ev_now() - r->closed);
+		return;
 	}
 
+	r->reply[r->count++] = msg;
+	if (r->count == r->quorum) {
+		ev_timer_stop(&r->timeout);
+		// say_debug("%s: quorum reached", __func__);
+		r->closed = ev_now();
+		fiber_wake(r->waiter, r);
+	}
+}
+
+void
+iproto_reply_reader(va_list ap __attribute__((unused)))
+{
+	for (;;) {
+		struct ev_watcher *w = yield();
+		struct conn *c = w->data;
+		struct iproto_peer *p = (void *)c - offsetof(struct iproto_peer, c);
+		tbuf_ensure(c->rbuf, 16 * 1024);
+
+		ssize_t r = tbuf_recv(c->rbuf, c->fd);
+
+		if (r == 0 || (r < 0 && errno != EAGAIN && errno != EWOULDBLOCK)) {
+			if (r < 0)
+				say_debug("closing conn r:%i errno:%i", (int)r, errno);
+			else {
+				say_debug("peer %s disconnected, fd:%i", p->name, c->fd);
+			}
+			conn_close(c);
+			continue;
+		}
+		while (tbuf_len(c->rbuf) >= sizeof(struct iproto) &&
+		       tbuf_len(c->rbuf) >= sizeof(struct iproto) + iproto(c->rbuf)->data_len)
+		{
+			struct iproto *msg = c->rbuf->ptr;
+			tbuf_ltrim(c->rbuf, sizeof(struct iproto) + msg->data_len);
+
+			u32 k = mh_i32_get(response_registry, msg->sync);
+			if (k != mh_end(response_registry)) {
+				say_debug("peer:%s op:%x sync:%i", p->name, msg->msg_code, msg->sync);
+				collect_response(k, msg);
+			} else {
+				say_debug("peer:%s op:%x sync:%i STALE", p->name, msg->msg_code, msg->sync);
+			}
+		}
+	}
+}
+
+void
+iproto_rendevouz(va_list ap)
+{
+	struct sockaddr_in *self_addr = va_arg(ap, struct sockaddr_in *);
+	struct iproto_peer *peers = va_arg(ap, struct iproto_peer *);
+
+loop:
+	for (struct iproto_peer *p = peers; p; p = p->next) {
+		if (p->c.fd > 0)
+			continue;
+
+		int fd = tcp_connect(&p->addr, self_addr, 5);
+		assert(p->c.fd < 0);
+
+		if (fd > 0) {
+			p->c.fd = fd;
+			ev_io_set(&p->c.out, fd, EV_WRITE);
+			ev_io_set(&p->c.in, fd, EV_READ);
+			ev_io_start(&p->c.in);
+			say_info("connect with %s %s", p->name, sintoa(&p->addr));
+			p->connect_err_said = false;
+		} else {
+			if (!p->connect_err_said)
+				say_syserror("connect!");
+			p->connect_err_said = true;
+		}
+	}
+
+	fiber_sleep(0.1); /* no more then one reconnect in second */
 	goto loop;
 }
-
-static void
-wakeup_workers(ev_prepare *ev)
-{
-	struct service *service = (void *)ev - offsetof(struct service, wakeup);
-	struct fiber *w;
-
-	while (!TAILQ_EMPTY(&service->processing)) {
-		w = SLIST_FIRST(&service->workers);
-		if (w == NULL)
-			return;
-		SLIST_REMOVE_HEAD(&service->workers, worker_link);
-		resume(w, NULL);
-	}
-}
-
-static void
-service_gc(struct palloc_pool *pool, void *ptr)
-{
-	struct service *s = ptr;
-	struct conn *c;
-
-	s->pool = pool;
-	LIST_FOREACH(c, &s->conn, link)
-		conn_gc(pool, c);
-}
-
-static void
-accept_client(int fd, void *data)
-{
-	struct service *service = data;
-	struct conn *clnt = conn_create(service->pool, fd);
-	LIST_INSERT_HEAD(&service->conn, clnt, link);
-	clnt->service = service;
-	ev_io_init(&clnt->out, (void *)service->output_flusher, fd, EV_WRITE);
-	ev_io_init(&clnt->in, (void *)service->input_reader, fd, EV_READ);
-	ev_io_start(&clnt->in);
-	clnt->state = READING;
-}
-
-struct service *
-iproto_service(u16 port, void (*on_bind)(int fd))
-{
-	struct service *service = calloc(1, sizeof(*service));
-	char *name = malloc(13);  /* strlen("iproto:xxxxx") */
-	snprintf(name, 13, "iproto:%i", port);
-
-	TAILQ_INIT(&service->processing);
-	service->pool = palloc_create_pool(name);
-	service->name = name;
-
-	palloc_register_gc_root(service->pool, service, service_gc);
-
-	service->output_flusher = fiber_create("iproto/output_flusher", service_output_flusher);
-	service->input_reader = fiber_create("iproto/input_reader", input_reader, service);
-	service->acceptor = fiber_create("iproto/acceptor",
-					 tcp_server, port, accept_client, on_bind, service);
-
-	ev_prepare_init(&service->wakeup, (void *)wakeup_workers);
-	ev_prepare_start(&service->wakeup);
-
-	return service;
-}
-
 
 @implementation IProtoError
 - (IProtoError *)

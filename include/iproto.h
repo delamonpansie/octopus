@@ -65,9 +65,9 @@ static inline struct iproto *iproto(const struct tbuf *t)
 	return (struct iproto *)t->ptr;
 }
 
-static inline struct iproto_header_retcode *iproto_retcode(const struct tbuf *t)
+static inline struct iproto_retcode *iproto_retcode(const struct tbuf *t)
 {
-	return (struct iproto_header_retcode *)t->ptr;
+	return (struct iproto_retcode *)t->ptr;
 }
 
 struct tbuf *iproto_parse(struct tbuf *in);
@@ -97,14 +97,13 @@ struct iproto_peer *make_iproto_peer(int id, const char *name,
 				     struct iproto_peer *next);
 
 u32 iproto_next_sync();
-void iproto_peer_connect(struct iproto_peer *p, int fd);
 void iproto_rendevouz(va_list ap);
-void iproto_input_reader(va_list ap);
+void iproto_reply_reader(va_list ap);
 void iproto_pinger(va_list ap);
 
 #define MAX_IPROTO_PEERS 7
 struct iproto_response {
-	uint32_t sync;
+	uint32_t sync[MAX_IPROTO_PEERS];
 	int count, quorum;
 	ev_timer timeout;
 	struct fiber *waiter;
@@ -112,7 +111,7 @@ struct iproto_response {
 	struct iproto *reply[MAX_IPROTO_PEERS];
 };
 
-void broadcast(struct iproto_peer *peers, struct iproto *msg, const char *data);
+void broadcast(struct iproto_peer *peers, struct iproto_response *r, const void *data, size_t len);
 struct iproto_response *make_response(int quorum, ev_tstamp timeout);
 void release_response(struct iproto_response *r);
 
