@@ -42,7 +42,13 @@ enum { snap_initial_tag = 1,
        snap_tag,
        wal_tag,
        snap_final_tag,
-       wal_final_tag };
+       wal_final_tag
+};
+
+static inline bool dummy_tag(int tag) /* dummy row tag */
+{
+	return tag == wal_final_tag;
+}
 
 extern const u64 default_cookie;
 extern const u32 default_version, version_11;

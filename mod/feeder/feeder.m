@@ -102,7 +102,8 @@ recover_row:(struct tbuf *)row
 	}
 
 	writef(fd, row->ptr, tbuf_len(row));
-	if (tag == snap_initial_tag || tag == snap_final_tag || tag == wal_tag)
+
+	if (!dummy_tag(tag))
 		lsn = row_lsn;
 }
 

@@ -356,7 +356,7 @@ recover_cont
 
 	/* all curently readable wal rows were read, notify about that */
 	if (feeder_addr == NULL || cfg.local_hot_standby)
-		[self recover_row:[self dummy_row_lsn:lsn scn:scn tag:wal_final_tag]];
+		[self recover_row:[self dummy_row_lsn:0 scn:0 tag:wal_final_tag]];
 
 	return lsn;
 }
@@ -540,7 +540,7 @@ remote_handshake:(struct sockaddr_in *)addr conn:(struct conn *)c
 			say_info("%s", err);
 			say_info("will retry every %i second", reconnect_delay);
 			/* no more WAL rows in near future, notify module about that */
-			[self recover_row:[self dummy_row_lsn:lsn scn:scn tag:wal_final_tag]];
+			[self recover_row:[self dummy_row_lsn:0 scn:0 tag:wal_final_tag]];
 			warning_said = true;
 		}
 		conn_close(c);
@@ -726,7 +726,7 @@ pull_from_remote(va_list ap)
 				pull_snapshot(r, &c, version);
 
 			if (version == 11)
-				[r recover_row:[r dummy_row_lsn:[r lsn]
+				[r recover_row:[r dummy_row_lsn:0
 							    scn:0
 							    tag:wal_final_tag]];
 			pull_wal(r, &c, version);
