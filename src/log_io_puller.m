@@ -152,23 +152,6 @@ contains_full_row_v11(const struct tbuf *b)
 		tbuf_len(b) >= sizeof(struct _row_v11) + _row_v11(b)->len;
 }
 
-- (void)
-recv
-{
-	switch (version) {
-	case 12:
-		while (!contains_full_row_v12(c.rbuf))
-			if (conn_recv(&c) <= 0)
-				raise("eof");
-		break;
-	case 11:
-		while (!contains_full_row_v11(c.rbuf))
-			if (conn_recv(&c) <= 0)
-				raise("eof");
-		break;
-	}
-}
-
 - (struct tbuf *)
 fetch_row
 {
@@ -177,8 +160,14 @@ fetch_row
 
 	switch (version) {
 	case 12:
-		if (!contains_full_row_v12(c.rbuf))
-			return NULL;
+		while (!contains_full_row_v12(c.rbuf)) {
+			if (pack) {
+				pack = 0;
+				return NULL;
+			}
+			if (conn_recv(&c) <= 0)
+				raise("eof");
+		}
 
 		row = tbuf_split(c.rbuf, sizeof(struct row_v12) + row_v12(c.rbuf)->len);
 		row->pool = c.rbuf->pool; /* FIXME: this is cludge */
@@ -188,8 +177,14 @@ fetch_row
 			raise("data crc32c mismatch");
 		break;
 	case 11:
-		if (!contains_full_row_v11(c.rbuf))
-			return NULL;
+		while (!contains_full_row_v11(c.rbuf)) {
+			if (pack) {
+				pack = 0;
+				return NULL;
+			}
+			if (conn_recv(&c) <= 0)
+				raise("eof");
+		}
 
 		row = tbuf_split(c.rbuf, sizeof(struct _row_v11) + _row_v11(c.rbuf)->len);
 		row->pool = c.rbuf->pool;
@@ -207,6 +202,7 @@ fetch_row
 	say_debug("%s: scn:%"PRIi64 " tag:%s", __func__,
 		  row_v12(row)->scn, xlog_tag_to_a(row_v12(row)->tag));
 
+	pack++;
 	return row;
 }
 

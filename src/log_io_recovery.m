@@ -465,7 +465,6 @@ pull_snapshot(Recovery *r, XLogPuller *puller)
 {
 	struct tbuf *row;
 	for (;;) {
-		[puller recv];
 		while ((row = [puller fetch_row])) {
 			switch (row_v12(row)->tag) {
 			case snap_initial_tag:
@@ -499,7 +498,6 @@ pull_wal(Recovery *r, XLogPuller *puller)
 	for (;;) {
 		int pack_rows = 0;
 		i64 remote_scn = 0;
-		[puller recv];
 		while ((row = [puller fetch_row])) {
 			if (row_v12(row)->tag == wal_final_tag) {
 				special_row = row;
@@ -517,7 +515,6 @@ pull_wal(Recovery *r, XLogPuller *puller)
 				break;
 		}
 
-		say_debug("%s: pack_rows:%i", __func__, pack_rows);
 		if (pack_rows > 0) {
 			@try {
 				for (int j = 0; j < pack_rows; j++) {
