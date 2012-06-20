@@ -47,6 +47,7 @@ MasterEnv.new.with_server do |master|
     master.insert [i, i + 1, "abc", "def"]
   end
 
+  sleep(0.1)
   slave_env = SlaveEnv.new
   slave_env.with_server do |slave|
     slave.select [99]
