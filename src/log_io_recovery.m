@@ -285,6 +285,7 @@ next_wal
 - (void)
 recover_remaining_wals
 {
+	say_debug("%s: lsn:%"PRIi64, __func__, lsn);
 	i64 wal_greatest_lsn = [wal_dir greatest_lsn];
 	if (wal_greatest_lsn == -1)
 		raise("wal_dir reading failed");
@@ -369,6 +370,7 @@ recover_start
 - (i64)
 recover_start_from_scn:(i64)initial_scn
 {
+	say_debug("%s: initial_scn:%"PRIi64, __func__, initial_scn);
 	if (initial_scn == 0) {
 		[self recover_snap];
 	} else {
@@ -457,147 +459,14 @@ recover_finalize
 		panic("pending rows: unable to proceed");
 }
 
-- (u32)
-remote_handshake:(struct sockaddr_in *)addr conn:(struct conn *)c
-{
-	bool warning_said = false;
-	const int reconnect_delay = 1;
-	const char *err = NULL;
-	u32 version;
-
-	struct replication_handshake hshake = {1, 0, {0}};
-	if ([self scn] > 0) {
-		hshake.scn = [self scn] - 1024;
-		if (hshake.scn < 1)
-			 hshake.scn = 1;
-	}
-
-	if (cfg.wal_feeder_filter != NULL) {
-		if (strlen(cfg.wal_feeder_filter) + 1 > sizeof(hshake.filter)) {
-			say_error("wal_feeder_filter too big");
-			exit(EXIT_FAILURE);
-		}
-		strcpy(hshake.filter, cfg.wal_feeder_filter);
-	}
-	struct tbuf *req = tbuf_alloc(fiber->pool);
-	tbuf_append(req, &(struct iproto){ .msg_code = 0, .sync = 0, .data_len = sizeof(hshake) },
-		    sizeof(struct iproto));
-	tbuf_append(req, &hshake, sizeof(hshake));
-
-	struct tbuf *rep = tbuf_alloc(fiber->pool);
-	tbuf_ensure(rep, sizeof(struct iproto_retcode));
-
-	do {
-		if ((c->fd = tcp_connect(addr, NULL, 0)) < 0) {
-			err = "can't connect to feeder";
-			goto err;
-		}
-
-		if (conn_write(c, req->ptr, tbuf_len(req)) != tbuf_len(req)) {
-			err = "can't write initial handshake";
-			goto err;
-		}
-
-		while (tbuf_len(c->rbuf) < sizeof(struct iproto_retcode) + sizeof(version))
-			conn_recv(c);
-		struct tbuf *rep = iproto_parse(c->rbuf);
-		if (rep == NULL) {
-			err = "can't read reply";
-			goto err;
-		}
-
-		if (iproto_retcode(rep)->ret_code != 0 ||
-		    iproto_retcode(rep)->sync != iproto(req)->sync ||
-		    iproto_retcode(rep)->msg_code != iproto(req)->msg_code ||
-		    iproto_retcode(rep)->data_len != sizeof(iproto_retcode(rep)->ret_code) + sizeof(version))
-		{
-			err = "bad reply";
-			goto err;
-		}
-		say_debug("go reply len:%i, rbuf %i", iproto_retcode(rep)->data_len, tbuf_len(c->rbuf));
-		memcpy(&version, iproto_retcode(rep)->data, sizeof(version));
-		if (version != default_version && version != version_11) {
-			err = "unknown remote version";
-			goto err;
-		}
-
-		say_crit("succefully connected to feeder");
-		say_crit("starting remote recovery from scn:%" PRIi64, hshake.scn);
-		break;
-
-	err:
-		if (err != NULL && !warning_said) {
-			say_info("%s", err);
-			say_info("will retry every %i second", reconnect_delay);
-			/* no more WAL rows in near future, notify module about that */
-			[self recover_row:[self dummy_row_lsn:0 scn:0 tag:wal_final_tag]];
-			warning_said = true;
-		}
-		conn_close(c);
-		fiber_sleep(reconnect_delay);
-	} while (c->fd < 0);
-
-	return version;
-}
-
-static bool
-contains_full_row_v12(const struct tbuf *b)
-{
-	return tbuf_len(b) >= sizeof(struct row_v12) &&
-		tbuf_len(b) >= sizeof(struct row_v12) + row_v12(b)->len;
-}
-
-static bool
-contains_full_row_v11(const struct tbuf *b)
-{
-	return tbuf_len(b) >= sizeof(struct _row_v11) &&
-		tbuf_len(b) >= sizeof(struct _row_v11) + _row_v11(b)->len;
-}
-
-static struct tbuf *
-fetch_row(struct conn *c, u32 version)
-{
-	struct tbuf *row;
-	u32 data_crc;
-
-	switch (version) {
-	case 12:
-		if (!contains_full_row_v12(c->rbuf))
-			return NULL;
-
-		row = tbuf_split(c->rbuf, sizeof(struct row_v12) + row_v12(c->rbuf)->len);
-		row->pool = c->rbuf->pool; /* FIXME: this is cludge */
-
-		data_crc = crc32c(0, row_v12(row)->data, row_v12(row)->len);
-		if (row_v12(row)->data_crc32c != data_crc)
-			raise("data crc32c mismatch");
-
-		return row;
-	case 11:
-		if (!contains_full_row_v11(c->rbuf))
-			return NULL;
-
-		row = tbuf_split(c->rbuf, sizeof(struct _row_v11) + _row_v11(c->rbuf)->len);
-		row->pool = c->rbuf->pool;
-
-		data_crc = crc32c(0, _row_v11(row)->data, _row_v11(row)->len);
-		if (_row_v11(row)->data_crc32c != data_crc)
-			raise("data crc32c mismatch");
-
-		return convert_row_v11_to_v12(row);
-	default:
-		raise("unexpected version: %i", version);
-	}
-}
 
 static void
-pull_snapshot(Recovery *r, struct conn *c, u32 version)
+pull_snapshot(Recovery *r, XLogPuller *puller)
 {
 	struct tbuf *row;
 	for (;;) {
-		if (conn_recv(c) <= 0)
-			raise("unexpected eof");
-		while ((row = fetch_row(c, version))) {
+		[puller recv];
+		while ((row = [puller fetch_row])) {
 			switch (row_v12(row)->tag) {
 			case snap_initial_tag:
 			case snap_tag:
@@ -619,22 +488,19 @@ pull_snapshot(Recovery *r, struct conn *c, u32 version)
 }
 
 static void
-pull_wal(Recovery *r, struct conn *c, u32 version)
+pull_wal(Recovery *r, XLogPuller *puller)
 {
 	struct tbuf *row, *special_row = NULL, *rows[WAL_PACK_MAX];
 	struct wal_pack *pack;
 
 	/* TODO: use designated palloc_pool */
-	for (;;) {
-		if (conn_recv(c) <= 0)
-			raise("unexpected eof");
+	say_debug("%s: scn:%"PRIi64, __func__, [r scn]);
 
+	for (;;) {
 		int pack_rows = 0;
 		i64 remote_scn = 0;
-		while ((row = fetch_row(c, version))) {
-			say_debug("row scn:%"PRIi64 " tag:%s",
-				  row_v12(row)->scn, xlog_tag_to_a(row_v12(row)->tag));
-
+		[puller recv];
+		while ((row = [puller fetch_row])) {
 			if (row_v12(row)->tag == wal_final_tag) {
 				special_row = row;
 				break;
@@ -651,6 +517,7 @@ pull_wal(Recovery *r, struct conn *c, u32 version)
 				break;
 		}
 
+		say_debug("%s: pack_rows:%i", __func__, pack_rows);
 		if (pack_rows > 0) {
 			@try {
 				for (int j = 0; j < pack_rows; j++) {
@@ -700,30 +567,24 @@ pull_from_remote(va_list ap)
 {
 	Recovery *r = va_arg(ap, Recovery *);
 	struct sockaddr_in *addr = va_arg(ap, struct sockaddr_in *);
-	struct conn c;
-	u32 version = 0;
-
-	conn_init(&c, fiber->pool, -1, REF_STATIC);
-	palloc_register_gc_root(fiber->pool, &c, conn_gc);
-
+	XLogPuller *puller = [[XLogPuller alloc] init:r addr:addr];
 
 	for (;;) {
 		@try {
-			if (c.fd < 0)
-				version = [r remote_handshake:addr conn:&c];
+			[puller handshake:[r scn] - 1024];
 
 			if ([r lsn] == 0)
-				pull_snapshot(r, &c, version);
+				pull_snapshot(r, puller);
 
-			if (version == 11)
+			if ([puller version] == 11)
 				[r recover_row:[r dummy_row_lsn:0
 							    scn:0
 							    tag:wal_final_tag]];
-			pull_wal(r, &c, version);
+			pull_wal(r, puller);
 		}
 		@catch (Error *e) {
 			say_error("replication failure: %s", e->reason);
-			conn_close(&c);
+			[puller close];
 			fiber_sleep(1);
 			fiber_gc();
 		}

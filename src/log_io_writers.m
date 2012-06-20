@@ -85,7 +85,7 @@ struct wal_row_header {
 - (int)
 submit:(void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag
 {
-	say_debug("%s: len:%i scn:%"PRIi64" tag:%i", __func__, data_len, scn, tag);
+	say_debug("%s: len:%i scn:%"PRIi64" tag:%s", __func__, data_len, scn, xlog_tag_to_a(tag));
 
 	int len = sizeof(struct wal_pack) + sizeof(struct wal_row_header);
 	void *msg = palloc(fiber->pool, len);

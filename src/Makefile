@@ -9,6 +9,7 @@ obj += src/iproto.o
 obj += src/log_io.o
 obj += src/log_io_writers.o
 obj += src/log_io_recovery.o
+obj += src/log_io_puller.o
 obj += src/palloc.o
 obj += src/pickle.o
 obj += src/salloc.o

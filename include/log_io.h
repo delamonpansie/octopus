@@ -59,6 +59,7 @@ struct tbuf;
 
 @class Recovery;
 @class XLog;
+@class Recovery;
 typedef void (follow_cb)(ev_stat *w, int events);
 
 @interface XLogDir: Object {
@@ -179,6 +180,23 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (void) snapshot_save:(void (*)(XLog *))callback;
 @end
 
+@interface XLogPuller: Object {
+	struct conn c;
+	struct sockaddr_in addr;
+	u32 version;
+	Recovery *r;
+}
+
+- (XLogPuller *) init:(Recovery *)r_;
+- (XLogPuller *) init:(Recovery *)r_ addr:(struct sockaddr_in *)addr_;
+- (void) handshake:(i64)scn;
+- (void) handshake:(struct sockaddr_in *)addr_ scn:(i64)scn;
+- (void) recv;
+- (struct tbuf *) fetch_row;
+- (u32) version;
+- (void) close;
+@end
+
 @interface Recovery: XLogWriter {
 	i64 scn;
 	ev_tstamp lag, last_update_tstamp;
@@ -205,6 +223,9 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (i64) recover_start_from_scn:(i64)scn;
 - (void) recover_follow:(ev_tstamp)delay;
 - (void) enable_local_writes;
+
+- (struct tbuf *)dummy_row_lsn:(i64)lsn_ scn:(i64)scn_ tag:(u16)tag;
+
 - (id) init_snap_dir:(const char *)snap_dir
              wal_dir:(const char *)wal_dir;
 
