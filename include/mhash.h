@@ -51,6 +51,7 @@ e * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
 
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
 #include <math.h>
 
 #ifndef MH_INCREMENTAL_RESIZE

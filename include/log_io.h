@@ -25,9 +25,7 @@
  */
 
 #import <util.h>
-#import <fiber.h>
-#import <tarantool_ev.h>
-#import <tbuf.h>
+#import <net_io.h>
 
 #include <objc/Object.h>
 
@@ -57,6 +55,7 @@ extern const char *inprogress_suffix;
 
 const char *xlog_tag_to_a(u16 tag);
 
+struct tbuf;
 
 @class Recovery;
 @class XLog;

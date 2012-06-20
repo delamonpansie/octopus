@@ -34,7 +34,7 @@
 #import <tbuf.h>
 #import <net_io.h>
 #import <assoc.h>
-#import <iproto.h>
+#import <paxos.h>
 
 #include <third_party/crc32.h>
 
@@ -44,17 +44,7 @@
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <time.h>
 #include <unistd.h>
-#include <poll.h>
-#include <sysexits.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 
 @implementation Recovery
 

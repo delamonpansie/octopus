@@ -26,9 +26,6 @@
 
 #import <util.h>
 #import <tarantool_ev.h>
-#import <palloc.h>
-#import <tbuf.h>
-#import <say.h>
 #import <coro.h>
 
 #include <third_party/luajit/src/lua.h>
@@ -36,6 +33,7 @@
 #include <third_party/queue.h>
 
 #include <stdint.h>
+#include <stdbool.h>
 #include <unistd.h>
 #include <sys/uio.h>
 
@@ -78,6 +76,7 @@ void *yield(void);
 void fiber_wake(struct fiber *f, void *arg);
 
 struct msg *read_inbox(void);
+struct tbuf;
 bool write_inbox(struct fiber *recipient, struct tbuf *msg);
 int inbox_size(struct fiber *recipient);
 

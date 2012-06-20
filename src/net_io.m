@@ -28,9 +28,11 @@
 #import <palloc.h>
 #import <fiber.h>
 #import <util.h>
+#import <say.h>
 
 #include <third_party/queue.h>
 
+#include <errno.h>
 #include <stdlib.h>
 #include <sys/uio.h>
 #include <sysexits.h>

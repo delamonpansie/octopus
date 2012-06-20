@@ -29,6 +29,7 @@
 #import <fiber.h>
 #import <object.h>
 #import <palloc.h>
+#import <say.h>
 
 @implementation Object (Palloc)
 + (id)

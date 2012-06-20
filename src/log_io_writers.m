@@ -32,14 +32,11 @@
 #import <palloc.h>
 #import <pickle.h>
 #import <tbuf.h>
+#import <say.h>
 
 #include <third_party/crc32.h>
 
 #include <stdio.h>
-#include <unistd.h>
-#include <string.h>
-#include <sys/types.h>
-#include <sys/socket.h>
 #include <sysexits.h>
 
 @implementation XLogWriter

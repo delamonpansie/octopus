@@ -30,6 +30,7 @@
 #import <net_io.h>
 #import <iproto.h>
 #import <pickle.h>
+#import <say.h>
 
 #include <third_party/crc32.h>
 

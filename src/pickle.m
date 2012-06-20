@@ -31,6 +31,7 @@
 #import <palloc.h>
 #import <iproto.h>		/* for err codes */
 #import <pickle.h>
+#import <say.h>
 
 #include <stdlib.h>
 
