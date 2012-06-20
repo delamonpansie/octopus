@@ -156,7 +156,6 @@ wal_pack_append:(struct wal_pack *)pack data:(void *)data len:(u32)data_len
 - (int)
 wal_pack_submit
 {
-	say_debug("%s sent", __func__);
 	if (!local_writes) {
 		say_warn("local writes disabled");
 		return 0;
@@ -164,12 +163,11 @@ wal_pack_submit
 
 	ev_io_start(&wal_writer->c->out);
 	struct wal_reply *r = yield();
-	say_debug("%s: read inbox lsn=%"PRIi64" rows:%i", __func__, r->lsn, r->repeat_count);
 	if (r->lsn == 0)
 		say_warn("wal writer returned error status");
 	else
 		lsn = r->lsn; /* update local lsn */
-	say_debug("%s: lsn=%"PRIi64" rows:%i", __func__, r->lsn, r->repeat_count);
+	say_debug("%s: => lsn:%"PRIi64" rows:%i", __func__, r->lsn, r->repeat_count);
 	return r->repeat_count;
 }
 
