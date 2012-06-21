@@ -57,8 +57,8 @@ const char *xlog_tag_to_a(u16 tag);
 
 struct tbuf;
 
-@class Recovery;
 @class XLog;
+@class XLogWriter;
 @class Recovery;
 typedef void (follow_cb)(ev_stat *w, int events);
 
