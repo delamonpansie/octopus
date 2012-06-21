@@ -326,6 +326,6 @@ admin_init(void)
 
 /*
  * Local Variables:
- * mode: c
+ * mode: objc
  * End:
  */
