@@ -453,7 +453,9 @@ keepalive_read(ev_io *e, int events __attribute__((unused)))
 {
 	char buf[16];
 	ssize_t r = read(e->fd, buf, sizeof(buf));
-	if (r > 0 || errno == EAGAIN || errno == EWOULDBLOCK)
+	if (r > 0)
+		return;
+	if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR))
 		return;
 
 	panic("read from keepalive_pipe failed");

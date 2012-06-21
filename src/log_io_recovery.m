@@ -753,10 +753,14 @@ input_dispatch(va_list ap __attribute__((unused)))
 		tbuf_ensure(c->rbuf, 128 * 1024);
 
 		ssize_t r = tbuf_recv(c->rbuf, c->fd);
-		if (r <= 0) {
-			if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
-				continue;
-			panic("unable to read from WAL writer");
+		if (unlikely(r <= 0)) {
+			if (r < 0) {
+				if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+					continue;
+				say_syserror("%s: recv", __func__);
+				panic("WAL writer connection read error");
+			} else
+				panic("WAL writer connection EOF");
 		}
 
 		while (tbuf_len(c->rbuf) > sizeof(u32) * 2 &&

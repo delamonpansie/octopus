@@ -273,9 +273,13 @@ restart:
 	ssize_t r = 0;
 	while (iov_cnt > 0) {
 		r = writev(c->fd, iov, MIN(iov_cnt, IOV_MAX));
-		if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+		if (unlikely(r < 0)) {
+			if (errno == EINTR)
+				continue;
+			if (errno == EAGAIN || errno == EWOULDBLOCK)
 				break;
-		if (r < 0) {
+
+			say_syserror("%s: writev", __func__);
 			conn_close(c);
 			break;
 		};
@@ -381,10 +385,11 @@ conn_recv(struct conn *c)
 again:
 	yield();
 	r = tbuf_recv(c->rbuf, c->fd);
-	if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
-		goto again;
-	if (r < 0)
+	if (unlikely(r < 0)) {
+		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+			goto again;
 		say_syserror("%s", __func__);
+	}
 	ev_io_stop(&io);
 	return r;
 }
@@ -442,12 +447,19 @@ conn_read(struct conn *c, void *buf, size_t count)
 	ev_io_start(&io);
 	while (count > done) {
 		yield();
+		r = read(c->fd, buf + done, count - done);
 
-		if ((r = read(c->fd, buf + done, count - done)) <= 0) {
-			if (errno == EAGAIN || errno == EWOULDBLOCK)
-				continue;
-			else
+		if (unlikely(r <= 0)) {
+			if (r < 0) {
+				if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+					continue;
+				say_syserror("%s: read", __func__);
 				break;
+			}
+			if (r == 0) {
+				say_debug("%s: c:%p fd:%i eof", __func__, c, c->fd);
+				break;
+			}
 		}
 		done += r;
 	}
@@ -463,25 +475,15 @@ conn_write(struct conn *c, const void *buf, size_t count)
 	unsigned int done = 0;
 	ev_io io = { .coro = 1, .cb = NULL };
 
-	if ((r = write(c->fd, buf + done, count - done)) == -1) {
-		if (errno != EAGAIN && errno != EWOULDBLOCK)
-			return r;
-	}
-	done += r;
-
-	if (count == done)
-		return done;
+	ev_io_init(&io, (void *)fiber, c->fd, EV_WRITE);
+	ev_io_start(&io);
 
 	do {
-		if ((r = write(c->fd, buf + done, count - done)) == -1) {
-			if (errno == EAGAIN || errno == EWOULDBLOCK) {
-				if (!io.cb) {
-					ev_io_init(&io, (void *)fiber, c->fd, EV_WRITE);
-					ev_io_start(&io);
-				}
-				yield();
+		yield();
+		if ((r = write(c->fd, buf + done, count - done)) < 0) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
 				continue;
-			}
+			say_syserror("%s: write", __func__);
 			break;
 		}
 		done += r;
@@ -725,10 +727,11 @@ tcp_server(va_list ap)
 			ev_io_start(&io);
 			continue;
 		}
-		if (errno != EAGAIN && errno != EWOULDBLOCK) {
-			say_syserror("accept");
+		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
 			continue;
-		}
+
+		say_syserror("accept");
+		fiber_sleep(1);
 	}
 }
 
@@ -758,8 +761,11 @@ udp_server(va_list ap)
 		while ((sz = recv(fd, buf, MAXUDPPACKETLEN, MSG_DONTWAIT)) > 0)
 			handler(buf, sz, data);
 
-		if (!(errno == EAGAIN || errno == EWOULDBLOCK))
-			say_syserror("recvfrom");
+		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+			continue;
+
+		say_syserror("recvfrom");
+		fiber_sleep(1);
 	}
 }
 
@@ -780,15 +786,20 @@ loop:
 	tbuf_ensure(c->rbuf, cfg.input_buffer_size);
 	r = tbuf_recv(c->rbuf, c->fd);
 
-	if (r > 0) {
+	if (likely(r > 0)) {
 		if (tbuf_len(c->rbuf) > cfg.input_high_watermark)
 			ev_io_stop(&c->in);
 		if (c->state != PROCESSING) {
 			TAILQ_INSERT_HEAD(&c->service->processing, c, processing_link);
 			c->state = PROCESSING;
 		}
-	} else if (r == 0 || /* r < 0 && */ (errno != EAGAIN && errno != EWOULDBLOCK)) {
-		say_debug("closing conn r:%i errno:%i", (int)r, errno);
+	} else if (r == 0) {
+		say_debug("closing conn c:%p fd:%i EOF", c, c->fd);
+		conn_close(c);
+	} else if (r < 0) {
+		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+			goto loop;
+		say_debug("closing conn c:%p fd:%i r:%i errno:%i", c, c->fd, (int)r, errno);
 		conn_close(c);
 	}
 

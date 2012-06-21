@@ -285,8 +285,8 @@ init(void)
 		keepalive();
 
 		client = accept(server, NULL, NULL);
-		if (client < 0) {
-			if (errno == EAGAIN || errno == EWOULDBLOCK)
+		if (unlikely(client < 0)) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
 				continue;
 			say_syserror("accept");
 			continue;
