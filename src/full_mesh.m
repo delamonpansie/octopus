@@ -241,13 +241,16 @@ input_reader_aux(va_list ap)
 		struct mesh_peer *p = (void *)c - offsetof(struct mesh_peer, c);
 		tbuf_ensure(c->rbuf, 16 * 1024);
 
-		ssize_t r = tbuf_read(c->fd, c->rbuf);
+		ssize_t r = tbuf_recv(c->rbuf, c->fd);
 
-		if (r == 0 || /* r < 0 && */ (errno != EAGAIN && errno != EWOULDBLOCK)) {
+		if (unlikely(r <= 0)) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+				continue;
+
 			if (r < 0)
-				say_debug("closing conn r:%i errno:%i", (int)r, errno);
+				say_syserror("%s: peer:%s fd:%i recv", __func__, p->name, c->fd);
 			else
-				say_debug("peer %s disconnected, fd:%i", p->name, c->fd);
+				say_debug("%s: peer %s EOF", __func__, p->name);
 			conn_close(c);
 			continue;
 		}
