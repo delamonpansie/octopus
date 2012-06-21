@@ -375,7 +375,6 @@ luaT_openbox(struct lua_State *L)
         lua_pushliteral(L, "box_prelude");
 	if (lua_pcall(L, 1, 0, 0) != 0)
 		panic("moonbox: %s", lua_tostring(L, -1));
-
 }
 
 

@@ -433,12 +433,6 @@ luaT_init()
 		panic("lua_pcall() failed: %s", lua_tostring(L, -1));
 
 	lua_atpanic(L, luaT_error);
-
-	lua_getglobal(root_L, "dofile");
-	lua_pushliteral(root_L, "init.lua");
-	if (lua_pcall(root_L, 1, 0, 0))
-		lua_pop(L, 1);
-
 }
 
  void
@@ -720,6 +714,15 @@ main(int argc, char **argv)
 	}
 
 	admin_init();
+
+	/* Run lua initilization _after_ module's one */
+	if (access("init.lua", R_OK) == 0) {
+		lua_getglobal(root_L, "dofile");
+		lua_pushliteral(root_L, "init.lua");
+		if (lua_pcall(root_L, 1, 0, 0))
+			panic("lua_pcall() failed: %s", lua_tostring(root_L, -1));
+		say_info("init.lua loaded");
+	}
 
 	prelease(fiber->pool);
 	say_crit("log level %i", cfg.log_level);
