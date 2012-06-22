@@ -528,8 +528,10 @@ close
 			result = -1;
 			say_error("can't write eof_marker");
 		}
-		if ([self flush] == -1)
-			result = -1;
+		if (cfg.wal_fsync_on_close) {
+			if ([self flush] == -1)
+				result = -1;
+		}
 	} else {
 		/* file may be already unlink()'ed if it was broken */
 		if (rows == 0 && access(filename, F_OK) == 0) {

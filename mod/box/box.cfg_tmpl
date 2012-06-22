@@ -36,6 +36,9 @@ rows_per_wal=500000, ro
 # WARNING: actually, several last requsts may stall for much longer
 wal_fsync_delay=0.0, ro
 
+# do fsync on close of WAL or not
+wal_fsync_on_close=1, ro
+
 # size of WAL writer requests buffer
 wal_writer_inbox_size=128, ro
 
