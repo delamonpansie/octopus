@@ -33,6 +33,8 @@ snap_io_rate_limit=0.0, ro
 rows_per_wal=500000, ro
 
 # fsync WAL delay, only issue fsync if last fsync was wal_fsync_delay seconds ago
+# -1 : no fsync
+# 0 : fsycn every record
 # WARNING: actually, several last requsts may stall for much longer
 wal_fsync_delay=0.0, ro
 
