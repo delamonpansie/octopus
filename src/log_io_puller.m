@@ -35,36 +35,39 @@
 
 @implementation XLogPuller
 - (XLogPuller *)
-init:(Recovery *)r_
+init
 {
 	conn_init(&c, fiber->pool, -1, REF_STATIC);
 	palloc_register_gc_root(fiber->pool, &c, conn_gc);
 
-	r = r_;
 	return [super init];
 }
 
 - (XLogPuller *)
-init:(Recovery *)r_ addr:(struct sockaddr_in *)addr_
+init_addr:(struct sockaddr_in *)addr_
 {
 	memcpy(&addr, addr_, sizeof(addr));
-	return [self init:r_];
+	return [self init];
 }
 
-- (void)
+- (i64)
+handshake:(struct sockaddr_in *)addr_ scn:(i64)scn err:(const char **)err_ptr
+{
+	memcpy(&addr, addr_, sizeof(addr));
+	return [self handshake:scn err:err_ptr];
+}
+
+- (i64)
 handshake:(struct sockaddr_in *)addr_ scn:(i64)scn
 {
-	memcpy(&addr, addr_, sizeof(addr));
-	[self handshake:scn];
+	return [self handshake:addr_ scn:scn err:NULL];
 }
 
-- (void)
-handshake:(i64)scn
+- (i64)
+handshake:(i64)scn err:(const char **)err_ptr
 {
-	bool warning_said = false;
-	const int reconnect_delay = 1;
-	const char *err = NULL;
-
+	const char *err;
+	struct tbuf *rep;
 	assert(c.fd < 0);
 
 	struct replication_handshake hshake = {1, scn, {0}};
@@ -83,59 +86,51 @@ handshake:(i64)scn
 		    sizeof(struct iproto));
 	tbuf_append(req, &hshake, sizeof(hshake));
 
-	struct tbuf *rep = tbuf_alloc(fiber->pool);
+	rep = tbuf_alloc(fiber->pool);
 	tbuf_ensure(rep, sizeof(struct iproto_retcode));
 
-	do {
-		if ((c.fd = tcp_connect(&addr, NULL, 0)) < 0) {
-			err = "can't connect to feeder";
-			goto err;
-		}
+	if ((c.fd = tcp_connect(&addr, NULL, 0)) < 0) {
+		err = "can't connect to feeder";
+		goto err;
+	}
 
-		if (conn_write(&c, req->ptr, tbuf_len(req)) != tbuf_len(req)) {
-			err = "can't write initial handshake";
-			goto err;
-		}
+	if (conn_write(&c, req->ptr, tbuf_len(req)) != tbuf_len(req)) {
+		err = "can't write initial handshake";
+		goto err;
+	}
 
-		while (tbuf_len(c.rbuf) < sizeof(struct iproto_retcode) + sizeof(version))
-			conn_recv(&c);
-		struct tbuf *rep = iproto_parse(c.rbuf);
-		if (rep == NULL) {
-			err = "can't read reply";
-			goto err;
-		}
+	while (tbuf_len(c.rbuf) < sizeof(struct iproto_retcode) + sizeof(version))
+		conn_recv(&c);
+	rep = iproto_parse(c.rbuf);
+	if (rep == NULL) {
+		err = "can't read reply";
+		goto err;
+	}
 
-		if (iproto_retcode(rep)->ret_code != 0 ||
-		    iproto_retcode(rep)->sync != iproto(req)->sync ||
-		    iproto_retcode(rep)->msg_code != iproto(req)->msg_code ||
-		    iproto_retcode(rep)->data_len != sizeof(iproto_retcode(rep)->ret_code) + sizeof(version))
-		{
-			err = "bad reply";
-			goto err;
-		}
-		say_debug("go reply len:%i, rbuf %i", iproto_retcode(rep)->data_len, tbuf_len(c.rbuf));
-		memcpy(&version, iproto_retcode(rep)->data, sizeof(version));
-		if (version != default_version && version != version_11) {
-			err = "unknown remote version";
-			goto err;
-		}
+	if (iproto_retcode(rep)->ret_code != 0 ||
+	    iproto_retcode(rep)->sync != iproto(req)->sync ||
+	    iproto_retcode(rep)->msg_code != iproto(req)->msg_code ||
+	    iproto_retcode(rep)->data_len != sizeof(iproto_retcode(rep)->ret_code) + sizeof(version))
+	{
+		err = "bad reply";
+		goto err;
+	}
 
-		say_crit("succefully connected to feeder");
-		say_crit("starting remote recovery from scn:%" PRIi64, hshake.scn);
-		break;
+	say_debug("go reply len:%i, rbuf %i", iproto_retcode(rep)->data_len, tbuf_len(c.rbuf));
+	memcpy(&version, iproto_retcode(rep)->data, sizeof(version));
+	if (version != default_version && version != version_11) {
+		err = "unknown remote version";
+		goto err;
+	}
 
-	err:
-		if (err != NULL && !warning_said) {
-			say_info("%s", err);
-			say_info("will retry every %i second", reconnect_delay);
-			/* no more WAL rows in near future, notify module about that */
-			/* TODO: drop this dependency */
-			[r recover_row:[r dummy_row_lsn:0 scn:0 tag:wal_final_tag]];
-			warning_said = true;
-		}
-		conn_close(&c);
-		fiber_sleep(reconnect_delay);
-	} while (c.fd < 0);
+	say_crit("succefully connected to feeder");
+	say_crit("starting remote recovery from scn:%" PRIi64, hshake.scn);
+	return hshake.scn;
+err:
+	if (err_ptr)
+		*err_ptr = err;
+	conn_close(&c);
+	return 0;
 }
 
 static bool

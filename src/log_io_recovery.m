@@ -564,11 +564,28 @@ pull_from_remote(va_list ap)
 {
 	Recovery *r = va_arg(ap, Recovery *);
 	struct sockaddr_in *addr = va_arg(ap, struct sockaddr_in *);
-	XLogPuller *puller = [[XLogPuller alloc] init:r addr:addr];
+	XLogPuller *puller = [[XLogPuller alloc] init_addr:addr];
 
 	for (;;) {
 		@try {
-			[puller handshake:[r scn] - 1024];
+			const char *err;
+			bool warning_said;
+			i64 remote_scn = 0;
+			while ((remote_scn = [puller handshake:[r scn] - 1024 err:&err]) <= 0) {
+				/* no more WAL rows in near future, notify module about that */
+				[r recover_row:[r dummy_row_lsn:0 scn:0 tag:wal_final_tag]];
+
+				if (!warning_said) {
+					say_error("%s", err);
+					warning_said = 1;
+				}
+				ev_tstamp reconnect_delay = 0.5;
+				say_info("will retry every %.2f second", reconnect_delay);
+				fiber_sleep(reconnect_delay);
+			}
+			say_crit("succefully connected to feeder");
+			say_crit("starting remote recovery from scn:%"PRIi64, remote_scn);
+
 
 			if ([r lsn] == 0)
 				pull_snapshot(r, puller);

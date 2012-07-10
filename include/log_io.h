@@ -184,14 +184,14 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 	struct conn c;
 	struct sockaddr_in addr;
 	u32 version;
-	Recovery *r;
 	size_t pack;
 }
 
-- (XLogPuller *) init:(Recovery *)r_;
-- (XLogPuller *) init:(Recovery *)r_ addr:(struct sockaddr_in *)addr_;
-- (void) handshake:(i64)scn;
-- (void) handshake:(struct sockaddr_in *)addr_ scn:(i64)scn;
+- (XLogPuller *) init;
+- (XLogPuller *) init_addr:(struct sockaddr_in *)addr_;
+- (i64) handshake:(i64)scn err:(const char **)err_ptr;
+- (i64) handshake:(struct sockaddr_in *)addr_ scn:(i64)scn;
+- (i64) handshake:(struct sockaddr_in *)addr_ scn:(i64)scn err:(const char **)err_ptr;
 - (struct tbuf *) fetch_row;
 - (u32) version;
 - (void) close;
