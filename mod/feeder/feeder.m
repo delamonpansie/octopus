@@ -102,6 +102,8 @@ recover_row:(struct tbuf *)row
 		lua_pop(fiber->L, 1);
 	}
 
+	say_debug("%s: lsn:%"PRIi64" scn:%"PRIi64" tag:%s", __func__,
+		  row_lsn, row_v12(row)->scn, xlog_tag_to_a(tag));
 	writef(fd, row->ptr, tbuf_len(row));
 
 	if (!dummy_tag(tag))
