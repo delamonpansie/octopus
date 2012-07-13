@@ -493,7 +493,8 @@ pull_snapshot(Recovery *r, XLogPuller *puller)
 					raise("replication failure: failed save snapshot");
 				return;
 			default:
-				raise("unexpected tag %i", row_v12(row)->tag);
+				raise("unexpected tag %i/%s",
+				      row_v12(row)->tag, xlog_tag_to_a(row_v12(row)->tag));
 			}
 		}
 		fiber_gc();
@@ -578,25 +579,27 @@ pull_wal(Recovery *r, XLogPuller *puller, int exit_on_eof)
 	}
 }
 
-static void
-pull_from_remote(va_list ap)
+- (void)
+recover_follow_remote:(struct sockaddr_in *)addr exit_on_eof:(int)exit_on_eof
 {
-	Recovery *r = va_arg(ap, Recovery *);
-	struct sockaddr_in *addr = va_arg(ap, struct sockaddr_in *);
-	int exit_on_eof = va_arg(ap, int);
-	XLogPuller *puller = [[XLogPuller alloc] init_addr:addr];
-
 	for (;;) {
+		XLogPuller *puller = nil;
 		@try {
 			const char *err;
 			bool warning_said;
-			i64 remote_scn = 0;
-			while ((remote_scn = [puller handshake:[r scn] - 1024 err:&err]) <= 0) {
+			i64 want_scn = scn, remote_scn = 0;
+			puller = [[XLogPuller alloc] init_addr:addr];
+			if (want_scn > 0) {
+				want_scn -= 1024;
+				if (want_scn < 1)
+					want_scn = 1;
+			}
+			while ((remote_scn = [puller handshake:want_scn err:&err]) < 0) {
 				if (exit_on_eof)
 					return;
 
 				/* no more WAL rows in near future, notify module about that */
-				[r wal_final_row];
+				[self wal_final_row];
 
 				if (!warning_said) {
 					say_error("%s", err);
@@ -610,30 +613,43 @@ pull_from_remote(va_list ap)
 			say_crit("starting remote recovery from scn:%"PRIi64, remote_scn);
 
 
-			if ([r lsn] == 0)
-				pull_snapshot(r, puller);
+			if (lsn == 0)
+				pull_snapshot(self, puller);
 
 			if ([puller version] == 11)
-				[r wal_final_row];
+				[self wal_final_row];
 
-			pull_wal(r, puller, exit_on_eof);
+			pull_wal(self, puller, exit_on_eof);
+			if (exit_on_eof)
+				return;
 		}
 		@catch (Error *e) {
 			say_error("replication failure: %s", e->reason);
-			[puller close];
 			fiber_sleep(1);
 			fiber_gc();
+		}
+		@finally {
+			[puller free];
+			puller = nil;
 		}
 	}
 }
 
+static void
+pull_from_remote_trampoline(va_list ap)
+{
+	Recovery *r = va_arg(ap, Recovery *);
+	struct sockaddr_in *addr = va_arg(ap, struct sockaddr_in *);
+	[r recover_follow_remote:addr exit_on_eof:false];
+}
+
 - (struct fiber *)
-recover_follow_remote:(struct sockaddr_in *)addr exit_on_eof:(int)exit_on_eof;
+recover_follow_remote_async:(struct sockaddr_in *)addr;
 {
 	char *name = malloc(64);
 	snprintf(name, 64, "remote_hot_standby/%s", sintoa(addr));
 
-	remote_puller = fiber_create(name, pull_from_remote, self, addr, exit_on_eof);
+	remote_puller = fiber_create(name, pull_from_remote_trampoline, self, addr);
 	if (remote_puller == NULL) {
 		free(name);
 		return NULL;
@@ -657,7 +673,7 @@ enable_local_writes
 		if (atosin(feeder_addr, sin) == -1 || sin->sin_addr.s_addr == INADDR_ANY)
 			panic("bad feeder addr: `%s'", feeder_addr);
 
-		[self recover_follow_remote:sin exit_on_eof:false];
+		[self recover_follow_remote_async:sin];
 
 		say_info("starting remote hot standby");
 		snprintf(status, sizeof(status), "hot_standby/%s", feeder_addr);

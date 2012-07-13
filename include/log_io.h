@@ -221,7 +221,8 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (i64) recover_start_from_scn:(i64)scn;
 - (void) recover_follow:(ev_tstamp)delay;
 - (void) wal_final_row;
-- (struct fiber *) recover_follow_remote:(struct sockaddr_in *)addr exit_on_eof:(int)exit_on_eof;
+- (void) recover_follow_remote:(struct sockaddr_in *)addr exit_on_eof:(int)exit_on_eof;
+- (struct fiber *) recover_follow_remote_async:(struct sockaddr_in *)addr;
 - (void) enable_local_writes;
 
 - (struct tbuf *)dummy_row_lsn:(i64)lsn_ scn:(i64)scn_ tag:(u16)tag;

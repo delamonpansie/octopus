@@ -1208,7 +1208,6 @@ apply_row:(struct tbuf *)row tag:(u16)tag
 	struct box_txn txn;
 	memset(&txn, 0, sizeof(txn));
 
-	say_debug("%s: tag:%s", __func__, xlog_tag_to_a(tag));
 	switch (tag) {
 	case wal_tag:
 		wal_apply(&txn, row);
@@ -1241,6 +1240,8 @@ wal_final_row
 
 @end
 
+
+static void init_second_stage(va_list ap __attribute__((unused)));
 
 static void
 init(void)
@@ -1303,9 +1304,14 @@ init(void)
 	if (init_storage)
 		return;
 
-	luaT_openbox(root_L);
+	/* fiber is required to successfully pull from remote */
+	fiber_create("box_init", init_second_stage);
+}
 
-	int local_lsn = [recovery recover_start];
+static void
+init_second_stage(va_list ap __attribute__((unused)))
+{
+	luaT_openbox(root_L);
 
 	if (local_lsn == 0) {
 		if (!cfg.wal_feeder_addr) {
