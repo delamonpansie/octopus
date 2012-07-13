@@ -83,7 +83,7 @@ struct wal_row_header {
 } __attribute__((packed));
 
 - (int)
-submit:(void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag
+submit:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag
 {
 	say_debug("%s: len:%i scn:%"PRIi64" tag:%s", __func__, data_len, scn, xlog_tag_to_a(tag));
 
@@ -111,7 +111,7 @@ submit:(void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag
 }
 
 - (int)
-submit:(void *)data len:(u32)len
+submit:(const void *)data len:(u32)len
 {
 	return [self submit:data len:len scn:0 tag:wal_tag];
 }
@@ -133,7 +133,7 @@ wal_pack_prepare
 
 
 - (u32)
-wal_pack_append:(struct wal_pack *)pack data:(void *)data len:(u32)data_len
+wal_pack_append:(struct wal_pack *)pack data:(const void *)data len:(u32)data_len
 	    scn:(i64)scn tag:(u16)tag cookie:(u64)cookie
 {
 	struct wal_row_header *h = palloc(fiber->pool, sizeof(*h));

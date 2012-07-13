@@ -158,6 +158,14 @@ dummy_row_lsn:(i64)lsn_ scn:(i64)scn_ tag:(u16)tag
 }
 
 - (void)
+apply_row:(struct tbuf *)row tag:(u16)tag
+{
+	(void)row;
+	(void)tag;
+	panic("%s must be specilized in subclass", __func__);
+}
+
+- (void)
 recover_row:(struct tbuf *)row
 {
 	i64 row_lsn = row_v12(row)->lsn;
@@ -172,7 +180,8 @@ recover_row:(struct tbuf *)row
 			lsn = row_lsn;
 
 		tbuf_ltrim(row, sizeof(struct row_v12)); /* drop header */
-		recover_row(row, tag);
+
+		[self apply_row:row tag:tag];
 		switch (tag) {
 		case wal_tag:
 			assert(row_scn == scn + 1);
@@ -193,6 +202,11 @@ recover_row:(struct tbuf *)row
 		say_error("Recovery: %s at %s:%i", e->reason, e->file, e->line);
 		@throw;
 	}
+}
+
+- (void)
+wal_final_row
+{
 }
 
 - (i64)
@@ -347,7 +361,7 @@ recover_cont
 
 	/* all curently readable wal rows were read, notify about that */
 	if (feeder_addr == NULL || cfg.local_hot_standby)
-		[self recover_row:[self dummy_row_lsn:0 scn:0 tag:wal_final_tag]];
+		[self wal_final_row];
 
 	return lsn;
 }
@@ -487,7 +501,7 @@ pull_snapshot(Recovery *r, XLogPuller *puller)
 }
 
 static void
-pull_wal(Recovery *r, XLogPuller *puller)
+pull_wal(Recovery *r, XLogPuller *puller, int exit_on_eof)
 {
 	struct tbuf *row, *special_row = NULL, *rows[WAL_PACK_MAX];
 	struct wal_pack *pack;
@@ -503,6 +517,9 @@ pull_wal(Recovery *r, XLogPuller *puller)
 				special_row = row;
 				break;
 			}
+
+			if (row_v12(row)->tag != wal_tag)
+				continue;
 
 			if (row_v12(row)->scn <= [r scn])
 				continue;
@@ -551,8 +568,10 @@ pull_wal(Recovery *r, XLogPuller *puller)
 		}
 
 		if (special_row) {
-			[r recover_row:special_row];
+			[r wal_final_row];
 			special_row = NULL;
+			if (exit_on_eof)
+				return;
 		}
 
 		fiber_gc();
@@ -564,6 +583,7 @@ pull_from_remote(va_list ap)
 {
 	Recovery *r = va_arg(ap, Recovery *);
 	struct sockaddr_in *addr = va_arg(ap, struct sockaddr_in *);
+	int exit_on_eof = va_arg(ap, int);
 	XLogPuller *puller = [[XLogPuller alloc] init_addr:addr];
 
 	for (;;) {
@@ -572,8 +592,11 @@ pull_from_remote(va_list ap)
 			bool warning_said;
 			i64 remote_scn = 0;
 			while ((remote_scn = [puller handshake:[r scn] - 1024 err:&err]) <= 0) {
+				if (exit_on_eof)
+					return;
+
 				/* no more WAL rows in near future, notify module about that */
-				[r recover_row:[r dummy_row_lsn:0 scn:0 tag:wal_final_tag]];
+				[r wal_final_row];
 
 				if (!warning_said) {
 					say_error("%s", err);
@@ -591,10 +614,9 @@ pull_from_remote(va_list ap)
 				pull_snapshot(r, puller);
 
 			if ([puller version] == 11)
-				[r recover_row:[r dummy_row_lsn:0
-							    scn:0
-							    tag:wal_final_tag]];
-			pull_wal(r, puller);
+				[r wal_final_row];
+
+			pull_wal(r, puller, exit_on_eof);
 		}
 		@catch (Error *e) {
 			say_error("replication failure: %s", e->reason);
@@ -606,13 +628,12 @@ pull_from_remote(va_list ap)
 }
 
 - (struct fiber *)
-recover_follow_remote
+recover_follow_remote:(struct sockaddr_in *)addr exit_on_eof:(int)exit_on_eof;
 {
-	char *name;
-	name = malloc(64);
-	snprintf(name, 64, "remote_hot_standby/%s", feeder_addr);
+	char *name = malloc(64);
+	snprintf(name, 64, "remote_hot_standby/%s", sintoa(addr));
 
-	remote_puller = fiber_create(name, pull_from_remote, self, feeder);
+	remote_puller = fiber_create(name, pull_from_remote, self, addr, exit_on_eof);
 	if (remote_puller == NULL) {
 		free(name);
 		return NULL;
@@ -624,6 +645,7 @@ recover_follow_remote
 - (void)
 enable_local_writes
 {
+	say_debug("%s", __func__);
 	[self recover_finalize];
 	local_writes = true;
 
@@ -631,7 +653,11 @@ enable_local_writes
 		if (lsn > 0) /* we're already have some xlogs and recovered from them */
 			[self configure_wal_writer];
 
-		[self recover_follow_remote];
+		struct sockaddr_in *sin = malloc(sizeof(*sin));
+		if (atosin(feeder_addr, sin) == -1 || sin->sin_addr.s_addr == INADDR_ANY)
+			panic("bad feeder addr: `%s'", feeder_addr);
+
+		[self recover_follow_remote:sin exit_on_eof:false];
 
 		say_info("starting remote hot standby");
 		snprintf(status, sizeof(status), "hot_standby/%s", feeder_addr);
@@ -697,7 +723,6 @@ input_dispatch(va_list ap __attribute__((unused)))
 
 - (id) init_snap_dir:(const char *)snap_dirname
              wal_dir:(const char *)wal_dirname
-	 recover_row:(void (*)(struct tbuf *, int))recover_row_
         rows_per_wal:(int)wal_rows_per_file
 	 feeder_addr:(const char *)feeder_addr_
          fsync_delay:(double)wal_fsync_delay
@@ -734,20 +759,13 @@ input_dispatch(va_list ap __attribute__((unused)))
 		ev_set_priority(&wal_writer->c->out, 1);
 
 		ev_io_start(&wal_writer->c->in);
-
 	}
 
-	recover_row = recover_row_;
 	pending_row = mh_i64_init();
 
 	if (feeder_addr_ != NULL) {
-		feeder_addr = feeder_addr_;
-
 		say_crit("configuring remote hot standby, WAL feeder %s", feeder_addr);
-
-		feeder = malloc(sizeof(struct sockaddr_in));
-		if (atosin(feeder_addr, feeder) == -1 || feeder->sin_addr.s_addr == INADDR_ANY)
-			panic("bad feeder_addr: `%s'", feeder_addr);
+		feeder_addr = feeder_addr_;
 	}
 
 	return self;

@@ -167,15 +167,15 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 
 - (struct wal_pack *) wal_pack_prepare;
 - (u32) wal_pack_append:(struct wal_pack *)pack
-		   data:(void *)data
+		   data:(const void *)data
 		    len:(u32)data_len
 		    scn:(i64)scn
 		    tag:(u16)tag
 		 cookie:(u64)cookie;
 - (int) wal_pack_submit;
 
-- (int) submit:(void *)data len:(u32)len;
-- (int) submit:(void *)data len:(u32)len scn:(i64)scn tag:(u16)tag;
+- (int) submit:(const void *)data len:(u32)len;
+- (int) submit:(const void *)data len:(u32)len scn:(i64)scn tag:(u16)tag;
 
 - (void) snapshot_save:(void (*)(XLog *))callback;
 @end
@@ -202,12 +202,9 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 	ev_tstamp lag, last_update_tstamp;
 	char status[64];
 
-	void (*recover_row)(struct tbuf *, int);
 	struct mhash_t *pending_row;
 
-
 	struct fiber *remote_puller;
-	struct sockaddr_in *feeder;
 	const char *feeder_addr;
 }
 
@@ -217,11 +214,14 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (ev_tstamp) lag;
 - (ev_tstamp) last_update_tstamp;
 
+- (void) apply_row:(struct tbuf *)row tag:(u16)tag;
 - (void) recover_row:(struct tbuf *)row;
 - (void) recover_finalize;
 - (i64) recover_start;
 - (i64) recover_start_from_scn:(i64)scn;
 - (void) recover_follow:(ev_tstamp)delay;
+- (void) wal_final_row;
+- (struct fiber *) recover_follow_remote:(struct sockaddr_in *)addr exit_on_eof:(int)exit_on_eof;
 - (void) enable_local_writes;
 
 - (struct tbuf *)dummy_row_lsn:(i64)lsn_ scn:(i64)scn_ tag:(u16)tag;
@@ -231,7 +231,6 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 
 - (id) init_snap_dir:(const char *)snap_dir
              wal_dir:(const char *)wal_dir
-	 recover_row:(void (*)(struct tbuf *, int))recover_row
         rows_per_wal:(int)rows_per_wal
        feeder_addr:(const char *)feeder_addr
          fsync_delay:(double)wal_fsync_delay

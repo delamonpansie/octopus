@@ -1200,12 +1200,15 @@ wal_apply(struct box_txn *txn, struct tbuf *t)
 	box_prepare_update(txn, t);
 }
 
-static void
-recover_row(struct tbuf *row, int tag)
+@implementation Recovery (Box)
+
+- (void)
+apply_row:(struct tbuf *)row tag:(u16)tag
 {
 	struct box_txn txn;
 	memset(&txn, 0, sizeof(txn));
 
+	say_debug("%s: tag:%s", __func__, xlog_tag_to_a(tag));
 	switch (tag) {
 	case wal_tag:
 		wal_apply(&txn, row);
@@ -1221,17 +1224,22 @@ recover_row(struct tbuf *row, int tag)
 		break;
 	case snap_final_tag:
 		break;
-	case wal_final_tag:
-		if (box_primary == NULL) {
-			build_secondary_indexes();
-			initialize_service();
-			title("%s", [recovery status]);
-		}
-		break;
 	default:
-		raise("unknown row tag :%u", tag);
+		raise("unknown row tag: %u/%s", tag, xlog_tag_to_a(tag));
 	}
 }
+
+- (void)
+wal_final_row
+{
+	if (box_primary == NULL) {
+		build_secondary_indexes();
+		initialize_service();
+		title("%s", [recovery status]);
+	}
+}
+
+@end
 
 
 static void

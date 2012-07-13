@@ -109,6 +109,12 @@ recover_row:(struct tbuf *)row
 }
 
 - (void)
+wal_final_row
+{
+	[self recover_row:[self dummy_row_lsn:0 scn:0 tag:wal_final_tag]];
+}
+
+- (void)
 recover_start_from_scn:(i64)initial_scn filter:(const char *)filter_name
 {
 	say_debug("%s initial_scn:%"PRIi64" filter:%s", __func__, initial_scn, filter_name);
