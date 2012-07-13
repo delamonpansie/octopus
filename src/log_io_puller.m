@@ -37,6 +37,7 @@
 - (XLogPuller *)
 init
 {
+	say_debug("%s", __func__);
 	conn_init(&c, fiber->pool, -1, REF_STATIC);
 	palloc_register_gc_root(fiber->pool, &c, conn_gc);
 
@@ -71,8 +72,6 @@ handshake:(i64)scn err:(const char **)err_ptr
 	assert(c.fd < 0);
 
 	struct replication_handshake hshake = {1, scn, {0}};
-	if (hshake.scn < 1)
-		hshake.scn = 1;
 
 	if (cfg.wal_feeder_filter != NULL) {
 		if (strlen(cfg.wal_feeder_filter) + 1 > sizeof(hshake.filter)) {
@@ -130,7 +129,7 @@ err:
 	if (err_ptr)
 		*err_ptr = err;
 	conn_close(&c);
-	return 0;
+	return -1;
 }
 
 static bool
@@ -216,6 +215,8 @@ close
 - (void)
 free
 {
+	say_debug("%s", __func__);
+	palloc_unregister_gc_root(fiber->pool, &c);
 	[self close];
 	[super free];
 }
