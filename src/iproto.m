@@ -40,7 +40,6 @@
 #include <sys/socket.h>
 #include <netinet/tcp.h>
 
-
 const uint32_t msg_ping = 0xff00;
 const uint32_t msg_replica = 0xff01;
 STRS(error_codes, ERROR_CODES);
@@ -146,11 +145,9 @@ iproto_commit(struct netmsg_mark *mark, u32 ret_code)
 	struct iproto_retcode *h = m->iov[mark->offset].iov_base;
 	int len = 0, offset = mark->offset + 1;
 	do {
-		for (int i = offset; i < m->count; i++) {
+		for (int i = offset; i < m->count; i++)
 			len += m->iov[i].iov_len;
-			assert(i < 1024);
-		}
-		offset = 0;
+		offset = 0; /* offset used only for first netmsg */
 	} while ((m = TAILQ_NEXT(m, link)) != NULL);
 	h->ret_code = ret_code;
 	h->data_len += len;
@@ -162,7 +159,7 @@ void
 iproto_error(struct netmsg **m, struct netmsg_mark *header_mark, u32 ret_code, const char *err)
 {
 	struct netmsg *h = header_mark->m;
-	netmsg_rewind(m, header_mark);
+	netmsg_rewind(m, header_mark); /* TODO: set iov's length to zero instead? */
 	h->iov[header_mark->offset].iov_len = sizeof(struct iproto_retcode);
 	struct iproto_retcode *header = h->iov[header_mark->offset].iov_base;
 	header->data_len = sizeof(u32);
