@@ -79,16 +79,16 @@ struct palloc_pool;
 struct gc_root {
 	void (*copy)(struct palloc_pool *, void *);
 	void *ptr;
+	SLIST_ENTRY(gc_root) link;
 };
+SLIST_HEAD(gc_list, gc_root);
 
-/* FIXME: dynamicaly allocate this */
-#define NROOT 2048
 struct palloc_pool {
 	struct chunk_list_head chunks;
 	SLIST_ENTRY(palloc_pool) link;
 	size_t allocated;
 	const char *name;
-	struct gc_root gc_root[NROOT], *last_root;
+	struct gc_list gc_list;
 };
 
 SLIST_HEAD(palloc_pool_head, palloc_pool) pools;
@@ -344,8 +344,6 @@ palloc_create_pool(const char *name)
 	pool->name = name;
 	SLIST_INIT(&pool->chunks);
 	SLIST_INSERT_HEAD(&pools, pool, link);
-	pool->last_root = pool->gc_root;
-	pool->last_root->ptr = (void *)1;
 	VALGRIND_CREATE_MEMPOOL(pool, PALLOC_REDZONE, 0);
 	return pool;
 }
@@ -376,26 +374,21 @@ void
 palloc_register_gc_root(struct palloc_pool *pool,
 			void *ptr, void (*copy)(struct palloc_pool *, void *))
 {
-	assert(pool->last_root < &pool->gc_root[NROOT]);
-	pool->last_root++;
-	pool->last_root->ptr = ptr;
-	pool->last_root->copy = copy;
+	struct gc_root *root = palloc(pool, sizeof(*root));
+	root->ptr = ptr;
+	root->copy = copy;
+	SLIST_INSERT_HEAD(&pool->gc_list, root, link);
 }
 
 void
 palloc_unregister_gc_root(struct palloc_pool *pool, void *ptr)
 {
-	assert(pool->last_root < &pool->gc_root[NROOT]);
-
-	void *last_ptr = pool->last_root->ptr;
-	while (pool->last_root->ptr != ptr)
-		pool->last_root--;
-
-	while (pool->last_root->ptr != last_ptr) {
-		*pool->last_root = *(pool->last_root + 1);
-		pool->last_root++;
-	}
-	pool->last_root--;
+	struct gc_root *root;
+	SLIST_FOREACH(root, &pool->gc_list, link)
+		if (root->ptr == ptr) {
+			SLIST_REMOVE(&pool->gc_list, root, gc_root, link);
+			break;
+		}
 }
 
 void
@@ -413,12 +406,18 @@ palloc_gc(struct palloc_pool *pool)
 		VALGRIND_MAKE_MEM_DEFINED((void *)chunk + sizeof(struct chunk),  chunk->data_size);
 #endif
 
-	for(int i = 1; i < nelem(pool->gc_root); i++) {
-		if (pool->gc_root[i].ptr == NULL)
-			break;
-
-		pool->gc_root[i].copy(pool, pool->gc_root[i].ptr);
+	struct gc_list new_list = SLIST_HEAD_INITIALIZER(list);
+	struct gc_root *old, *new;
+	SLIST_FOREACH(old, &pool->gc_list, link) {
+		new = palloc(pool, sizeof(*new));
+		memcpy(new, old, sizeof(*new));
+		SLIST_INSERT_HEAD(&new_list, new, link);
 	}
+	memcpy(&pool->gc_list, &new_list, sizeof(new_list));
+
+	struct gc_root *root;
+	SLIST_FOREACH(root, &pool->gc_list, link)
+		root->copy(pool, root->ptr);
 
 	release_chunks(&old_chunks);
 	say_debug("palloc_gc survived %zi bytes", pool->allocated);
