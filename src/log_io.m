@@ -737,6 +737,9 @@ confirm_write
 		next_lsn++;
 		rows++;
 	}
+#if HAVE_POSIX_FADVISE
+	posix_fadvise(fileno(fd), offset, bytes_written, POSIX_FADV_DONTNEED);
+#endif
 	bytes_written += tail - offset;
 	offset = tail;
 	wet_rows = 0;
