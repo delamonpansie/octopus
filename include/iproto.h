@@ -83,18 +83,16 @@ void iproto_interact(va_list ap);
 
 
 struct iproto_peer {
-	int id;
 	struct conn c;
+	SLIST_ENTRY(iproto_peer) link;
+	int id;
 	char *name;
 	struct sockaddr_in addr;
-	struct sockaddr_in primary_addr;
-
-	struct iproto_peer *next;
 	bool connect_err_said;
 };
-struct iproto_peer *make_iproto_peer(int id, const char *name,
-				     const char *addr, short primary_port,
-				     struct iproto_peer *next);
+SLIST_HEAD(iproto_group, iproto_peer);
+
+struct iproto_peer *make_iproto_peer(int id, const char *name, const char *addr);
 
 u32 iproto_next_sync();
 void iproto_rendevouz(va_list ap);
@@ -103,17 +101,20 @@ void iproto_pinger(va_list ap);
 
 #define MAX_IPROTO_PEERS 7
 struct iproto_response {
+	const char *name;
+	struct palloc_pool *pool;
 	uint32_t sync[MAX_IPROTO_PEERS];
 	int count, quorum;
 	ev_timer timeout;
 	struct fiber *waiter;
-	ev_tstamp sent, closed;
+	ev_tstamp sent, delay, closed;
 	struct iproto *reply[MAX_IPROTO_PEERS];
 };
 
-void broadcast(struct iproto_peer *peers, struct iproto_response *r, const void *data, size_t len);
-struct iproto_response *make_response(int quorum, ev_tstamp timeout);
-void release_response(struct iproto_response *r);
+void broadcast(struct iproto_group *group, struct iproto_response *r,
+	       const struct iproto *req, const void *data, size_t len);
+struct iproto_response *response_make(const char *name, int quorum, ev_tstamp timeout);
+void response_release(struct iproto_response *r);
 
 
 @interface IProtoError : Error {
