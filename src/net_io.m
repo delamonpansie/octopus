@@ -349,6 +349,7 @@ conn_create(struct palloc_pool *pool, int fd)
 void
 conn_init(struct conn *c, struct palloc_pool *pool, int fd, int ref)
 {
+	say_debug("%s: c:%p fd:%i", __func__, c, fd);
 	c->out.coro = c->in.coro = 1;
 	c->out.data = c->in.data = c;
 
