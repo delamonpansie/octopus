@@ -1,0 +1,11 @@
+paxos_enabled = 0, ro
+paxos_self_id = -1, ro
+paxos_peer = [
+  {
+     id = -1, required
+     name = ""
+     addr = NULL, required
+     primary_port = -1, required
+     feeder_port = -1, required
+  }
+], ro

@@ -40,7 +40,12 @@ enum { snap_initial_tag = 1,
        snap_tag,
        wal_tag,
        snap_final_tag,
-       wal_final_tag
+       wal_final_tag,
+       paxos_prepare,
+       paxos_promise,
+       paxos_propose,
+       paxos_accept,
+       paxos_nop
 };
 
 static inline bool dummy_tag(int tag) /* dummy row tag */

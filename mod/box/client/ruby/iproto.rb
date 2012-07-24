@@ -120,8 +120,19 @@ class IProto
   end
 
   def msg(message)
-    reply = send message
-    result = pre_process_reply message, reply
+    begin
+      reply = send message
+      result = pre_process_reply message, reply
+    rescue IProtoError => exc
+      if exc.to_s =~ /code: 0x4100, message: '([\d.]+):(\d+)/
+      then
+        @end_point = [$1, $2]
+        reconnect
+        retry
+      else
+        raise
+      end
+    end
 
     return yield(result) if block_given?
     result
@@ -142,10 +153,10 @@ class IProto
 end
 
 class IProtoRetCode < IProto
-  def pre_process_reply(message, data)
-    raise IProtoError, "too small response" if data.nil? or data.bytesize < 4
-    ret_code = data.slice!(0, 4).unpack('L')[0]
-    raise IProtoError, "{code: #{'0x%x' % ret_code}, message: '#{data}'}" if ret_code != 0
-    super message, data
+  def pre_process_reply(message, reply)
+    raise IProtoError, "too small response" if reply.nil? or reply.bytesize < 4
+    ret_code = reply.slice!(0, 4).unpack('L')[0]
+    raise IProtoError, "{code: #{'0x%x' % ret_code}, message: '#{reply}'}" if ret_code != 0
+    super message, reply
   end
 end

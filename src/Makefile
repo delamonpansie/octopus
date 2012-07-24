@@ -19,6 +19,7 @@ obj += src/tarantool_ev.o
 obj += src/tbuf.o
 obj += src/util.o
 obj += src/assoc.o
+obj += src/paxos.o
 obj += src/tarantool.o
 
 ifeq (1,$(HAVE_RAGEL))

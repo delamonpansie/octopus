@@ -64,6 +64,10 @@ xlog_tag_to_a(u16 tag)
 	case wal_tag:		return "wal_tag";
 	case snap_final_tag:	return "snap_final_tag";
 	case wal_final_tag:	return "wal_final_tag";
+	case paxos_prepare:	return "paxos_prepare";
+	case paxos_promise:	return "paxos_promise";
+	case paxos_propose:	return "paxos_propose";
+	case paxos_accept:	return "paxos_accept";
 	}
 	snprintf(buf, sizeof(buf), "unknown_%i", tag);
 	return buf;

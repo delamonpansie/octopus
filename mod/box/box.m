@@ -39,6 +39,7 @@
 #import <object.h>
 #import <assoc.h>
 #import <index.h>
+#import <paxos.h>
 
 #import <mod/box/box.h>
 #import <mod/box/moonbox.h>
@@ -1262,14 +1263,21 @@ init(void)
 	}
 
 	title("loading");
-	recovery = [[Recovery alloc] init_snap_dir:cfg.snap_dir
-					   wal_dir:cfg.wal_dir
-				       recover_row:recover_row
-				      rows_per_wal:cfg.rows_per_wal
-				       feeder_addr:cfg.wal_feeder_addr
-				       fsync_delay:cfg.wal_fsync_delay
-					     flags:init_storage ? RECOVER_READONLY : 0
-				snap_io_rate_limit:cfg.snap_io_rate_limit * 1024 * 1024];
+	if (cfg.paxos_enabled) {
+		if (cfg.wal_feeder_addr)
+			panic("wal_feeder_addr is incompatible with paxos");
+		if (cfg.local_hot_standby)
+			panic("wal_hot_standby is incompatible with paxos");
+	}
+
+	recovery = cfg.paxos_enabled ? [PaxosRecovery alloc] : [Recovery alloc];
+	recovery = [recovery init_snap_dir:cfg.snap_dir
+				   wal_dir:cfg.wal_dir
+			      rows_per_wal:cfg.rows_per_wal
+			       feeder_addr:cfg.wal_feeder_addr
+			       fsync_delay:cfg.wal_fsync_delay
+				     flags:init_storage ? RECOVER_READONLY : 0
+			snap_io_rate_limit:cfg.snap_io_rate_limit * 1024 * 1024];
 
 	/* initialize hashes _after_ starting wal writer */
 
@@ -1315,16 +1323,21 @@ init_second_stage(va_list ap __attribute__((unused)))
 {
 	luaT_openbox(root_L);
 
-	if (local_lsn == 0) {
-		if (!cfg.wal_feeder_addr) {
-			say_crit("don't you forget to initialize "
-				 "storage with --init-storage switch?");
-			exit(EX_USAGE);
-		}
-	}
-
-	if (!cfg.local_hot_standby)
+	i64 local_lsn = [recovery recover_start];
+	if (cfg.paxos_enabled) {
 		[recovery enable_local_writes];
+	} else {
+		if (local_lsn == 0) {
+			if (!cfg.wal_feeder_addr) {
+				say_crit("don't you forget to initialize "
+					 "storage with --init-storage switch?");
+				exit(EX_USAGE);
+			}
+		}
+
+		if (!cfg.local_hot_standby)
+			[recovery enable_local_writes];
+	}
 	title("%s", [recovery status]);
 }
 

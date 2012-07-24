@@ -103,6 +103,12 @@ read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, struct
 		case wal_tag:
 			handler(out, v12->tag, &row_data);
 			break;
+		case paxos_prepare:
+		case paxos_promise:
+		case paxos_propose:
+		case paxos_accept:
+			paxos_print(out, handler, row);
+			break;
 		default:
 			tbuf_printf(out, "UNKNOWN");
 		}

@@ -20,3 +20,4 @@ ifeq (1,$(HAVE_RAGEL))
 endif
 
 cfg_tmpl += mod/box/box.cfg_tmpl
+cfg_tmpl += cfg/paxos.cfg_tmpl

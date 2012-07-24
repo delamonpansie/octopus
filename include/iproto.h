@@ -178,7 +178,9 @@ void response_release(struct iproto_response *r);
 	_(ERR_CODE_NODE_NOT_FOUND,	  0x00003102, "node isn't found")      \
 	_(ERR_CODE_NODE_FOUND,		  0x00003702, "node is found") \
 	_(ERR_CODE_INDEX_VIOLATION,	  0x00003802, "some index violation occur") \
-	_(ERR_CODE_NO_SUCH_NAMESPACE,	  0x00003902, "there is no such namespace")
+	_(ERR_CODE_NO_SUCH_NAMESPACE,	  0x00003902, "there is no such namespace") \
+	_(ERR_CODE_NAUTH_OK,              0x00004000, "non authoritative ok") \
+	_(ERR_CODE_REDIRECT,              0x00004100, "redirect")
 
 ENUM(error_codes, ERROR_CODES);
 extern char *error_codes_strs[];
