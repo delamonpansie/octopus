@@ -8,11 +8,11 @@ Failed with: {code: 0x401, message: 'object is locked'}
 # box.select(1)
 []
 
-# wal_writer cont
 1
 
+# wal_writer cont
 # box.select(1)
-[["\001\000\000\000", "foo"]]
+[["\x01\x00\x00\x00", "foo"]]
 
 # box.delete(1)
 1
@@ -28,11 +28,11 @@ Failed with: {code: 0x401, message: 'object is locked'}
 # box.insert([1, "foo"])
 Failed with: {code: 0x401, message: 'object is locked'}
 # box.select(1, 3)
-[["\003\000\000\000", "bar"]]
+[["\x03\x00\x00\x00", "bar"]]
 
-# wal_writer cont
 2
 
+# wal_writer cont
 # box.select(1)
-[["\001\000\000\000", "bar"]]
+[["\x01\x00\x00\x00", "bar"]]
 

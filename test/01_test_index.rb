@@ -1,4 +1,9 @@
-class IndexEnv < RunEnv
+#!/usr/bin/ruby1.9.1
+
+$:.push 'test/lib'
+require 'standalone_env'
+
+class Env < StandAloneEnv
   def config
     super + <<EOD
 object_space[0].enabled = 1
@@ -58,45 +63,41 @@ EOD
   end
 end
 
-index_env = IndexEnv.new
+Env.clean.with_server do
+  ping
+  insert ['1', '2', 3]
+  select '1', :index => 0
+  select '2', :index => 1
+  select 2, :index => 1
 
-index_env.with_server do |box|
-  box.ping
-  box.insert ['1', '2', 3]
-  box.select '1', :index => 0
-  box.select '2', :index => 1
-  box.select 2, :index => 1
+  delete '1'
+  select '1'
 
-  box.delete '1'
-  box.select '1'
+  self.object_space = 1
+  log_try { insert [0] }
+  log_try { select [0] }
+  insert ["00000000", "00000000", "1"]
+  insert ["00000001", "00000000", "2"]
+  select "00000000", :index => 1
+  select "00000000", :index => 2
 
-  box.object_space = 1
-
-  LogPpProxy.try { box.insert [0] }
-  LogPpProxy.try { box.select [0] }
-  box.insert ["00000000", "00000000", "1"]
-  box.insert ["00000001", "00000000", "2"]
-  box.select "00000000", :index => 1
-  box.select "00000000", :index => 2
-
-  box.object_space = 2
-  box.insert ["000", "00000000", 0, 0]
-  box.select "000"
-  box.select "000", :index => 1
+  self.object_space = 2
+  insert ["000", "00000000", 0, 0]
+  select "000"
+  select "000", :index => 1
 end
 
-index_env.with_server do |box|
-  box.ping
+Env.clean.with_server do
+  ping
 
-  LogPpProxy.try { box.insert [] }
-  LogPpProxy.try { box.insert [1] }
-  LogPpProxy.try { box.insert [1,2] }
+  log_try { insert [] }
+  log_try { insert [1] }
+  log_try { insert [1,2] }
 end
 
+Env.clean.with_server do
+  100.times {|i| insert [i.to_s, i.to_s, i] }
 
-index_env.with_server do |box|
-  100.times {|i| box.insert [i.to_s, i.to_s, i] }
-
-  box.pks
-  box.select 1
+  pks
+  select 1
 end

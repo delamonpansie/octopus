@@ -172,7 +172,7 @@ TAGS:
 
 .PHONY: test
 test:	tarantool
-	ruby test/runtest.rb
+	test/run.rb
 
 ifeq (1,$(COVERAGE))
 clean: clean-coverage

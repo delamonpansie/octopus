@@ -1,4 +1,9 @@
-class UpdateEnv < RunEnv
+#!/usr/bin/ruby1.9.1
+
+$:.push 'test/lib'
+require 'standalone_env'
+
+class Env < StandAloneEnv
   def config
     super + <<EOD
 wal_dir = "/"
@@ -12,8 +17,8 @@ EOD
   end
 end
 
-UpdateEnv.new.with_server do |box|
-  box.ping
-  LogPpProxy.try { box.insert [1, 2, "abc", "def"] }
-  LogPpProxy.try { box.insert [1, 2, "abc", "def"] }
+Env.clean.with_server do
+  ping
+  log_try { insert [1, 2, "abc", "def"] }
+  log_try { insert [1, 2, "abc", "def"] }
 end

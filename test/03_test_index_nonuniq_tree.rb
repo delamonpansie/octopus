@@ -1,4 +1,9 @@
-class Test3Env < RunEnv
+#!/usr/bin/ruby1.9.1
+
+$:.push 'test/lib'
+require 'standalone_env'
+
+class Env < StandAloneEnv
   def config
     super + <<EOD
 object_space[0].enabled = 1
@@ -17,9 +22,9 @@ EOD
   end
 end
 
-Test3Env.new.with_server do |box|
-  3.times {|i| box.insert [i.to_s, 'x'] }
+Env.clean.with_server do
+  3.times {|i| insert [i.to_s, 'x'] }
 
-  box.select %w{0 1 2}
-  box.select 'x', :index => 1
+  select %w{0 1 2}
+  select 'x', :index => 1
 end

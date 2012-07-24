@@ -1,5 +1,10 @@
-class MasterEnv < RunEnv
-  def server_root
+#!/usr/bin/ruby1.9.1
+
+$:.push 'test/lib'
+require 'standalone_env'
+
+class MasterEnv < StandAloneEnv
+  def test_root
     super + "_master"
   end
 
@@ -16,8 +21,8 @@ EOD
   end
 end
 
-class SlaveEnv < RunEnv
-  def server_root
+class SlaveEnv < StandAloneEnv
+  def test_root
     super + "_slave"
   end
 
@@ -39,7 +44,9 @@ EOD
   end
 end
 
-MasterEnv.new.with_server do |master|
+MasterEnv.clean do
+  start
+  master = connect
   master.ping
 
   100.times do |i|
@@ -48,16 +55,17 @@ MasterEnv.new.with_server do |master|
   end
 
   sleep(0.1)
-  slave_env = SlaveEnv.new
-  slave_env.with_server do |slave|
+  SlaveEnv.clean do
+    start
+    slave = connect
     slave.select [99]
 
-    Process.kill("STOP", slave_env.pid)
+    Process.kill("STOP", pid)
     1000.times do |i|
       master.insert [i, i + 1, "ABC", "DEF"]
       master.insert [i, i + 1, "ABC", "DEF"]
     end
-    Process.kill("CONT", slave_env.pid)
+    Process.kill("CONT", pid)
     sleep(0.3)
     slave.select [999]
   end
