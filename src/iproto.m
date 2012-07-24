@@ -168,7 +168,7 @@ iproto_error(struct netmsg **m, struct netmsg_mark *header_mark, u32 ret_code, c
 		header->data_len += strlen(err);
 		net_add_iov_dup(m, err, strlen(err));
 	}
-	say_debug("%s: op:%x data_len:%i sync:%i ret:%i", __func__,
+	say_debug("%s: op:%02x data_len:%i sync:%i ret:%i", __func__,
 		  header->msg_code, header->data_len, header->sync, header->ret_code);
 }
 
