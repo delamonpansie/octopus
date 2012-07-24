@@ -213,7 +213,7 @@ response_delete(ev_timer *w, int events __attribute__((unused)))
 		assert(k != mh_end(response_registry));
 		mh_i32_del(response_registry, k);
 	}
-	free(r);
+	palloc_destroy_pool(r->pool);
 }
 
 void
@@ -222,8 +222,6 @@ response_release(struct iproto_response *r)
 	ev_timer_stop(&r->timeout);
 	ev_timer_init(&r->timeout, response_delete, 15., 0.);
 	ev_timer_start(&r->timeout);
-	if (r->pool)
-		palloc_destroy_pool(r->pool);
 }
 
 static void
