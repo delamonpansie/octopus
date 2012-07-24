@@ -823,6 +823,7 @@ box_process(struct conn *c, struct tbuf *request, void *arg __attribute__((unuse
 	struct box_txn txn = { .op = 0 };
 	u32 msg_code = iproto(request)->msg_code;
 	struct tbuf request_data = TBUF(iproto(request)->data, iproto(request)->data_len, fiber->pool);
+	say_debug("%s: c:%p", __func__, c);
 	@try {
 		if (op_is_select(msg_code)) {
 			txn_init(iproto(request), &txn, netmsg_tail(&c->out_messages));
@@ -870,6 +871,7 @@ box_process(struct conn *c, struct tbuf *request, void *arg __attribute__((unuse
 			netmsg_concat(&c->out_messages, txn.m->head);
 	}
 	@finally {
+		say_debug("%s: @finally c:%p", __func__, c);
 		txn_cleanup(&txn);
 #ifdef NET_IO_PARANOIA
 		netmsg_verify_ownership(&c->out_messages);
