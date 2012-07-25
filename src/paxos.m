@@ -98,7 +98,7 @@ struct msg_leader {
 struct msg_paxos {
 	struct iproto header;
 	i64 scn;
-	i64 ballot;
+	u64 ballot;
 	u32 value_len;
 	char value[];
 } __attribute__((packed));
@@ -108,7 +108,7 @@ struct msg_paxos {
 
 struct proposal {
 	i64 scn;
-	i64 ballot;
+	u64 ballot;
 	u32 flags;
 	u32 value_len; /* must be same type with msg_paxos->value_len */
 	char *value;
@@ -146,7 +146,7 @@ paxos_leader()
 
 static void
 paxos_broadcast(PaxosRecovery *r, enum paxos_msg_code code, ev_tstamp delay,
-		i64 scn, i64 ballot, const char *value, u32 value_len)
+		i64 scn, u64 ballot, const char *value, u32 value_len)
 {
 	struct msg_paxos msg = { .header = { .data_len = sizeof(msg) - sizeof(struct iproto),
 					     .sync = 0,
@@ -161,7 +161,7 @@ paxos_broadcast(PaxosRecovery *r, enum paxos_msg_code code, ev_tstamp delay,
 		delay = 1;
 		quorum = 0;
 	}
-	say_debug("%s: > %s sync:bcast ballot:%"PRIi64" scn:%"PRIi64, __func__,
+	say_debug("%s: > %s sync:bcast ballot:%"PRIu64" scn:%"PRIi64, __func__,
 		  paxos_msg_code_strs[code], ballot, scn);
 
 	broadcast(&r->remotes, response_make(paxos_msg_code_strs[code], quorum, delay),
@@ -170,7 +170,7 @@ paxos_broadcast(PaxosRecovery *r, enum paxos_msg_code code, ev_tstamp delay,
 
 static void
 paxos_reply(struct conn *c, struct msg_paxos *req, enum paxos_msg_code code,
-	    i64 ballot, const char *value, u32 value_len)
+	    u64 ballot, const char *value, u32 value_len)
 {
 	struct msg_paxos *msg = palloc(c->pool, sizeof(*msg));
 	memcpy(msg, req, sizeof(*msg));
@@ -185,7 +185,7 @@ paxos_reply(struct conn *c, struct msg_paxos *req, enum paxos_msg_code code,
 	if (value_len)
 		net_add_iov_dup(&m, value, value_len);
 
-	say_debug("%s: > %s sync:%i scn:%"PRIi64" ballot:%"PRIi64, __func__, paxos_msg_code_strs[code],
+	say_debug("%s: > %s sync:%i scn:%"PRIi64" ballot:%"PRIu64, __func__, paxos_msg_code_strs[code],
 		  msg->header.sync, msg->scn, msg->ballot);
 
 }
@@ -283,9 +283,9 @@ find_proposal(PaxosRecovery *r, i64 scn)
 }
 
 static void
-update_proposal_ballot(struct proposal *p, i64 ballot)
+update_proposal_ballot(struct proposal *p, u64 ballot)
 {
-	say_debug("%s: scn:%"PRIi64" ballot:%"PRIi64, __func__, p->scn, ballot);
+	say_debug("%s: scn:%"PRIi64" ballot:%"PRIu64, __func__, p->scn, ballot);
 	assert(p->ballot <= ballot);
 	p->ballot = ballot;
 }
@@ -305,9 +305,9 @@ update_proposal_value(struct proposal *p, u32 value_len, const char *value)
 }
 
 static struct proposal *
-create_proposal(PaxosRecovery *r, i64 scn, i64 ballot)
+create_proposal(PaxosRecovery *r, i64 scn, u64 ballot)
 {
-	say_debug("%s: scn:%"PRIi64" ballot:%"PRIi64, __func__, scn, ballot);
+	say_debug("%s: scn:%"PRIi64" ballot:%"PRIu64, __func__, scn, ballot);
 
 	struct proposal *n, *p = calloc(1, sizeof(*p));
 	TAILQ_FOREACH(n, &r->proposals, link) {
@@ -338,7 +338,7 @@ promise(PaxosRecovery *r, struct proposal *p, struct conn *c, struct msg_paxos *
 	if ([r submit:&req->ballot len:sizeof(req->ballot) scn:req->scn tag:paxos_promise] == 0)
 		return;
 
-	i64 old_ballot = p->ballot;
+	u64 old_ballot = p->ballot;
 	update_proposal_ballot(p, req->ballot);
 	paxos_reply(c, req, PROMISE, old_ballot, p->value, p->value_len);
 }
@@ -362,7 +362,7 @@ accepted(PaxosRecovery *r, struct proposal *p, struct conn *c, struct msg_paxos 
 }
 
 static struct iproto_response *
-prepare(PaxosRecovery *r, struct proposal *p, i64 ballot)
+prepare(PaxosRecovery *r, struct proposal *p, u64 ballot)
 {
 	if ([r submit:&ballot len:sizeof(ballot) scn:p->scn tag:paxos_prepare] == 0)
 		return NULL;
@@ -400,7 +400,7 @@ decide(PaxosRecovery *r, struct proposal *p)
 }
 
 static void
-nack(struct conn *c, struct msg_paxos *req, i32 ballot)
+nack(struct conn *c, struct msg_paxos *req, u64 ballot)
 {
 	paxos_reply(c, req, NACK, ballot, NULL, 0);
 }
@@ -452,7 +452,7 @@ learner(PaxosRecovery *r, struct iproto *msg)
 	update_proposal_ballot(p, mp->ballot);
 	update_proposal_value(p, mp->value_len, mp->value);
 
-	say_debug("%s: < sync:%i type:DECIDE scn:%"PRIi64" ballot:%"PRIi64" value_len:%i %s", __func__,
+	say_debug("%s: < sync:%i type:DECIDE scn:%"PRIi64" ballot:%"PRIu64" value_len:%i %s", __func__,
 		  msg->sync, mp->scn, mp->ballot, mp->value_len,
 		  tbuf_to_hex(&TBUF(mp->value, mp->value_len, fiber->pool)));
 
@@ -472,7 +472,7 @@ acceptor(PaxosRecovery *r, struct conn *c, struct iproto *msg)
 	} else if (p->flags & DECIDED) {
 		decided(c, mp, p);
 	} else {
-		say_debug("%s: < c:%p type:%s sync:%i scn:%"PRIi64" ballot:%"PRIi64" value_len: %i", __func__,
+		say_debug("%s: < c:%p type:%s sync:%i scn:%"PRIi64" ballot:%"PRIu64" value_len: %i", __func__,
 			  c, paxos_msg_code_strs[msg->msg_code], msg->sync, mp->scn, mp->ballot, mp->value_len);
 		switch (msg->msg_code) {
 		case PREPARE:
@@ -498,7 +498,7 @@ run_protocol(PaxosRecovery *r, struct proposal *p)
 
 	/* phase 1 */
 	const int quorum = 1; /* not counting myself */
-	i64 ballot = 0, min_ballot = p->ballot, recover_ballot = 0;
+	u64 ballot = 0, min_ballot = p->ballot, recover_ballot = 0;
 	int recover_i = -1;
 
 	goto start;
@@ -522,7 +522,7 @@ start:
 
 	assert(p);
 
-	say_debug(">>> phase 1 scn:%"PRIi64 " ballot:%"PRIi64" delay:%.2f", p->scn, ballot, p->delay);
+	say_debug(">>> phase 1 scn:%"PRIi64 " ballot:%"PRIu64" delay:%.2f", p->scn, ballot, p->delay);
 
 	rsp = prepare(r, p, ballot);
 
@@ -593,7 +593,6 @@ start:
 		goto retry;
 
 	struct tbuf *x = tbuf_alloc(fiber->pool);
-	say_debug("XXXX store ballot: %"PRIi64, ballot);
 	tbuf_append(x, &ballot, sizeof(ballot));
 	tbuf_append(x, &p->value_len, sizeof(p->value_len));
 	tbuf_append(x, p->value, p->value_len);
@@ -793,7 +792,7 @@ loop:
 						struct proposal *p = find_proposal(r, v->scn);
 						if (!p)
 							create_proposal(r, v->scn, 0);
-						update_proposal_ballot(p, LLONG_MAX);
+						update_proposal_ballot(p, ULLONG_MAX);
 						update_proposal_value(p, v->len, (char *)v->data);
 						p->flags |= DECIDED;
 						learn(r, v->scn);
@@ -973,7 +972,7 @@ recover_row:(struct tbuf *)row
 	case paxos_nop:
 		lsn = row_lsn;
 		tbuf_ltrim(row, sizeof(struct row_v12));
-		i64 ballot = read_u64(row);
+		u64 ballot = read_u64(row);
 		struct proposal *p = find_proposal(self, row_scn);
 		if (!p)
 			p = create_proposal(self, row_scn, 0);
@@ -1015,7 +1014,7 @@ paxos_print(struct tbuf *out,
 {
 	u16 tag = row_v12(row)->tag;
 	struct tbuf b = TBUF(row_v12(row)->data, row_v12(row)->len, fiber->pool);
-	i64 ballot, value_len;
+	u64 ballot, value_len;
 
 	switch (tag) {
 	case paxos_prepare:
