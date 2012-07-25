@@ -56,5 +56,7 @@ env.with_server do
   puts File.open("00000000000000001002.xlog").lines.take(4)
   puts
 
+  puts `./tarantool --cat 00000000000000000500.xlog | sed 's/tm:[^ ]* //'`
+
   puts `./tarantool --cat 00000000000000001002.xlog | sed 's/tm:[^ ]* //'`
 end
