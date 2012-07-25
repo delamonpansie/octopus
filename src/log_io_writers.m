@@ -243,8 +243,8 @@ wal_disk_writer(int fd, void *state)
 	ssize_t r;
 	struct {
 		u32 fid;
-		u32 repeat_count;
-	} *reply = malloc(sizeof(*reply) * 1024);
+		u32 row_count;
+	} *request = malloc(sizeof(*request) * 1024);
 	ev_tstamp start_time = ev_now();
 	palloc_register_gc_root(fiber->pool, &rbuf, tbuf_gc);
 
@@ -299,10 +299,10 @@ wal_disk_writer(int fd, void *state)
 			}
 
 			tbuf_ltrim(&rbuf, sizeof(u32)); /* drop packet_len */
-			reply[p].fid = read_u32(&rbuf);
-			reply[p].repeat_count = read_u32(&rbuf);
+			request[p].fid = read_u32(&rbuf);
+			request[p].row_count = read_u32(&rbuf);
 
-			for (int i = 0; i < reply[p].repeat_count; i++) {
+			for (int i = 0; i < request[p].row_count; i++) {
 				struct wal_row_header *h = read_bytes(&rbuf, sizeof(*h));
 				void *data = read_bytes(&rbuf, h->data_len);
 				if (h->scn > max_scn)
@@ -327,31 +327,30 @@ wal_disk_writer(int fd, void *state)
 			continue;
 
 		assert(start_lsn > 0);
-		u32 rows = [writer confirm_write] - start_lsn;
+		u32 rows_confirmed = [writer confirm_write] - start_lsn;
 
 		wbuf = tbuf_alloc(fiber->pool);
 		for (int i = 0; i < p; i++) {
-			i64 pack_lsn;
-			if (rows > 0) {
-				if (rows < reply[i].repeat_count)
-					reply[i].repeat_count = rows;
+			i64 pack_lsn = 0;
+			u32 pack_rows_confirmed = 0;
 
-				rows -= reply[i].repeat_count;
-				start_lsn += reply[i].repeat_count;
+			if (rows_confirmed > 0) {
+				pack_rows_confirmed = MIN(rows_confirmed, request[i].row_count);
+
+				rows_confirmed -= pack_rows_confirmed;
+				start_lsn += pack_rows_confirmed;
 				pack_lsn = start_lsn;
-			} else {
-				pack_lsn = 0;
-				reply[i].repeat_count = 0;
 			}
 
 			/* struct wal_reply */
 			u32 data_len = sizeof(struct wal_reply);
 			tbuf_append(wbuf, &data_len, sizeof(data_len));
 			tbuf_append(wbuf, &pack_lsn, sizeof(pack_lsn));
-			tbuf_append(wbuf, &reply[i].fid, sizeof(reply[i].fid));
-			tbuf_append(wbuf, &reply[i].repeat_count, sizeof(reply[i].repeat_count));
+			tbuf_append(wbuf, &request[i].fid, sizeof(request[i].fid));
+			tbuf_append(wbuf, &pack_rows_confirmed, sizeof(pack_rows_confirmed));
 
-			say_debug("sending lsn:%"PRIi64" rows:%i to parent", pack_lsn, reply[i].repeat_count);
+			say_debug("sending lsn:%"PRIi64" rows:%i to parent",
+				  pack_lsn, pack_rows_confirmed);
 		}
 
 
