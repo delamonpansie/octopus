@@ -290,8 +290,8 @@ wal_disk_writer(int fd, void *state)
 		/* FIXME: the scn must be set to lowest continious one, not the current */
 		io_failure = [writer prepare_write:next_scn] == -1;
 		while (tbuf_len(&rbuf) > sizeof(u32) && tbuf_len(&rbuf) >= *(u32 *)rbuf.ptr) {
-			u32 repeat_count = ((u32 *)rbuf.ptr)[2];
-			if (!io_failure && repeat_count > [writer->current_wal wet_rows_offset_available]) {
+			u32 row_count = ((u32 *)rbuf.ptr)[2];
+			if (!io_failure && row_count > [writer->current_wal wet_rows_offset_available]) {
 				assert(p != 0);
 				reparse = true;
 				break;
