@@ -134,8 +134,8 @@ typedef void (follow_cb)(ev_stat *w, int events);
 - (int) close;
 - (size_t) rows;
 - (size_t)wet_rows_offset_available;
-- (int) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie;
-- (int) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag;
+- (i64) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie;
+- (i64) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag;
 - (void) configure_for_write:(i64)lsn;
 - (i64) confirm_write;
 @end
@@ -165,7 +165,6 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 
 - (i64) lsn;
 - (void) set_lsn:(i64)lsn_;
-- (bool) auto_scn;
 
 - (struct child *) wal_writer;
 - (void) configure_wal_writer;

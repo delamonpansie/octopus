@@ -688,7 +688,7 @@ next_lsn
 	return next_lsn + wet_rows;
 }
 
-- (int)
+- (i64)
 append_row:(void *)data len:(u32)len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie
 {
 	(void)data; (void)len; (void)scn; (void)tag; (void)cookie;
@@ -696,7 +696,7 @@ append_row:(void *)data len:(u32)len scn:(i64)scn tag:(u16)tag cookie:(u64)cooki
 	return 0;
 }
 
-- (int)
+- (i64)
 append_row:(void *)data len:(u32)len scn:(i64)scn tag:(u16)tag
 {
 
@@ -848,7 +848,7 @@ read_row
 }
 
 
-- (int)
+- (i64)
 append_row:(void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie
 {
 	struct _row_v11 row;
@@ -1005,14 +1005,14 @@ read_row
 	return m;
 }
 
-- (int)
+- (i64)
 append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie
 {
 	struct row_v12 row;
 	assert(wet_rows < nelem(wet_rows_offset));
 
 	row.lsn = [self next_lsn];
-	row.scn = [writer auto_scn] ? row.lsn : scn;
+	row.scn = scn ?: row.lsn;
 	row.tm = ev_now();
 	row.tag = tag;
 	row.cookie = cookie;
@@ -1030,7 +1030,7 @@ append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie
 	}
 
 	[self append_successful:sizeof(marker) + sizeof(row) + data_len];
-	return 1;
+	return row.scn;
 }
 
 @end

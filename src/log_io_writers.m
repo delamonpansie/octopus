@@ -44,7 +44,6 @@
 - (i64) lsn { return lsn; }
 - (i64) scn { return 0; }
 - (struct child *) wal_writer { return wal_writer; };
-- (bool) auto_scn { return true; }
 
 - (void)
 set_lsn:(i64)lsn_
@@ -172,7 +171,7 @@ wal_pack_submit
 }
 
 
-- (int)
+- (i64)
 append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie
 {
         if ([current_wal rows] == 1) {
@@ -238,7 +237,7 @@ wal_disk_writer(int fd, void *state)
 	XLogWriter *writer = state;
 	struct tbuf *wbuf, rbuf = TBUF(NULL, 0, fiber->pool);
 	int result = EXIT_FAILURE;
-	i64 max_scn = 0;
+	i64 next_scn = 0;
 	bool io_failure = false, reparse = false;
 	ssize_t r;
 	struct {
@@ -248,8 +247,8 @@ wal_disk_writer(int fd, void *state)
 	ev_tstamp start_time = ev_now();
 	palloc_register_gc_root(fiber->pool, &rbuf, tbuf_gc);
 
-	struct wal_conf { i64 lsn; i64 scn; } __attribute__((packed)) conf;
-	if ((r = recv(fd, &conf, sizeof(conf), 0)) != sizeof(conf)) {
+	struct wal_conf { i64 lsn; i64 scn; } __attribute__((packed)) wal_conf;
+	if ((r = recv(fd, &wal_conf, sizeof(wal_conf), 0)) != sizeof(wal_conf)) {
 		if (r == 0) {
 			result = EX_OK;
 			goto exit;
@@ -257,8 +256,8 @@ wal_disk_writer(int fd, void *state)
 		say_syserror("recv: failed");
 		panic("unable to start WAL writer");
 	}
-	[writer set_lsn:conf.lsn];
-	max_scn = conf.scn;
+	[writer set_lsn:wal_conf.lsn];
+	next_scn = wal_conf.scn;
 
 	for (;;) {
 		if (!reparse) {
@@ -289,7 +288,7 @@ wal_disk_writer(int fd, void *state)
 		int p = 0;
 		reparse = false;
 		/* FIXME: the scn must be set to lowest continious one, not the current */
-		io_failure = [writer prepare_write:max_scn] == -1;
+		io_failure = [writer prepare_write:next_scn] == -1;
 		while (tbuf_len(&rbuf) > sizeof(u32) && tbuf_len(&rbuf) >= *(u32 *)rbuf.ptr) {
 			u32 repeat_count = ((u32 *)rbuf.ptr)[2];
 			if (!io_failure && repeat_count > [writer->current_wal wet_rows_offset_available]) {
@@ -305,20 +304,20 @@ wal_disk_writer(int fd, void *state)
 			for (int i = 0; i < request[p].row_count; i++) {
 				struct wal_row_header *h = read_bytes(&rbuf, sizeof(*h));
 				void *data = read_bytes(&rbuf, h->data_len);
-				if (h->scn > max_scn)
-					max_scn = h->scn;
 
 				if (io_failure)
 					continue;
 
-				if ([writer append_row:data
-						   len:h->data_len
-						   scn:h->scn
-						   tag:h->tag
-						cookie:h->cookie] <= 0)
-				{
+				i64 ret = [writer append_row:data
+							 len:h->data_len
+							 scn:h->scn
+							 tag:h->tag
+						      cookie:h->cookie];
+				if (ret <= 0) {
 					say_error("append_row failed");
 					io_failure = true;
+				} else {
+					next_scn = ret + 1;
 				}
 			}
 			p++;
@@ -417,9 +416,10 @@ snapshot_save:(void (*)(XLog *))callback
 {
         XLog *snap;
 	const char *final_filename, *filename;
+	i64 scn = [self scn];
 
 	say_debug("%s: lsn:%"PRIi64" scn:%"PRIi64, __func__, lsn, [self scn]);
-	snap = [snap_dir open_for_write:lsn scn:[self scn]];
+	snap = [snap_dir open_for_write:lsn scn:scn];
 	if (snap == nil) {
 		say_error("can't open snap for writing");
 		_exit(EXIT_FAILURE);
@@ -438,7 +438,7 @@ snapshot_save:(void (*)(XLog *))callback
 	say_info("saving snapshot `%s'", final_filename);
 
 	const char init[] = "make world";
-	if ([snap append_row:init len:strlen(init) scn:0 tag:snap_initial_tag] < 0) {
+	if ([snap append_row:init len:strlen(init) scn:scn tag:snap_initial_tag] < 0) {
 		say_error("unable write initial row");
 		_exit(EXIT_FAILURE);
 	}
@@ -446,7 +446,7 @@ snapshot_save:(void (*)(XLog *))callback
 	callback(snap);
 
 	const char end[] = "END";
-	if ([snap append_row:end len:strlen(end) scn:[self scn] tag:snap_final_tag] < 0) {
+	if ([snap append_row:end len:strlen(end) scn:scn tag:snap_final_tag] < 0) {
 		say_error("unable write final row");
 		_exit(EXIT_FAILURE);
 	}

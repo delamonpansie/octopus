@@ -995,12 +995,6 @@ recover_row:(struct tbuf *)row
 	}
 }
 
-- (bool)
-auto_scn
-{
-	return false;
-}
-
 - (i64) scn { return scn; }
 - (i64) next_scn { return ++scn; }
 - (void) set_scn:(i64)scn_ { scn = scn_; }
