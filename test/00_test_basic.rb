@@ -6,6 +6,8 @@ require 'standalone_env'
 class Env < StandAloneEnv
   def config
     super + <<EOD
+rows_per_wal=100
+
 object_space[0].enabled = 1
 object_space[0].index[0].type = "HASH"
 object_space[0].index[0].unique = 1
@@ -42,8 +44,12 @@ env.with_server do
   insert [2]
   sleep 0.5
 
-  raise "no snapshot" unless FileTest.readable?("00000000000000001001.snap")
-  raise "no xlog" unless FileTest.readable?("00000000000000001002.xlog")
+  puts Dir.glob("*.snap").sort
+  puts
+
+  puts Dir.glob("*.xlog").sort
+  puts
+
   puts File.open("00000000000000001001.snap").lines.take(4)
   puts
 
