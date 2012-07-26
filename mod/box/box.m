@@ -969,10 +969,9 @@ xlog_print(struct tbuf *out, struct tbuf *b)
 }
 
 static void
-snap_print(struct tbuf *out, struct tbuf *t)
+snap_print(struct tbuf *out, struct tbuf *row)
 {
-	struct row_v12 *raw = row_v12(t);
-	struct box_snap_row *snap = box_snap_row(&TBUF(raw->data, raw->len, NULL));
+	struct box_snap_row *snap = box_snap_row(row);
 	tbuf_printf(out, "m:%i ", snap->object_space);
 	tuple_print(out, snap->tuple_size, snap->data);
 }
