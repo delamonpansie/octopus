@@ -324,7 +324,7 @@ spawn_child(const char *name, int (*handler)(int fd, void *state), void *state)
 		sched.name = child_name;
 		set_proc_title(name);
 		say_crit("%s initialized", name);
-		exit(handler(socks[0], state));
+		_exit(handler(socks[0], state));
 	}
 }
 

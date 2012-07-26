@@ -284,15 +284,6 @@ signal_init(void)
 }
 
 static void
-kill_children(void)
-{
-	if (getpid() == master_pid) {
-		signal(SIGTERM, SIG_IGN);
-		kill(0, SIGTERM);
-	}
-}
-
-static void
 create_pid(void)
 {
 	FILE *f;
@@ -667,8 +658,6 @@ main(int argc, char **argv)
 		create_pid();
 		atexit(remove_pid);
 	}
-
-	atexit(kill_children);
 
 	say_logger_init(cfg.logger_nonblock);
 	booting = false;
