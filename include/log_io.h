@@ -118,6 +118,11 @@ typedef void (follow_cb)(ev_stat *w, int events);
 
 	size_t bytes_written;
 	off_t offset, wet_rows_offset[WAL_PACK_MAX * 8];
+
+#if HAVE_POSIX_FADVISE
+	size_t fadvise_bytes;
+	off_t fadvise_offset;
+#endif
 }
 - (XLog *) init_filename:(const char *)filename_
 		      fd:(FILE *)fd_

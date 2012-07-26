@@ -742,7 +742,12 @@ confirm_write
 		rows++;
 	}
 #if HAVE_POSIX_FADVISE
-	posix_fadvise(fileno(fd), offset, bytes_written, POSIX_FADV_DONTNEED);
+	fadvise_bytes += bytes_written;
+	if (unlikely(fadvise_bytes > 32 * 4096)) {
+		posix_fadvise(fileno(fd), fadvise_offset % 4096, fadvise_offset, POSIX_FADV_DONTNEED);
+		fadvise_offset += fadvise_bytes;
+		fadvise_bytes = 0;
+	}
 #endif
 	bytes_written += tail - offset;
 	offset = tail;
