@@ -158,6 +158,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 	bool local_writes;
 	XLog *wal_to_close;
 	ev_timer wal_timer;
+	u32 run_crc;
 @public
 	XLog *current_wal;	/* the WAL we'r currently reading/writing from/to */
 	int snap_io_rate_limit;
@@ -244,21 +245,8 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 @end
 
 int wal_disk_writer(int fd, void *state);
+void wal_disk_writer_input_dispatch(va_list ap __attribute__((unused)));
 void snapshot_write_row(XLog *l, u16 tag, struct tbuf *row);
-
-struct wal_pack {
-	struct netmsg *netmsg;
-	u32 packet_len;
-	u32 fid;
-	u32 repeat_count;
-} __attribute__((packed));
-
-struct wal_reply {
-	u32 data_len;
-	i64 lsn;
-	u32 fid;
-	u32 repeat_count;
-} __attribute__((packed));
 
 struct replication_handshake {
 		u32 ver;

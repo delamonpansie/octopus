@@ -39,6 +39,54 @@
 #include <stdio.h>
 #include <sysexits.h>
 
+struct wal_pack {
+	struct netmsg *netmsg;
+	u32 packet_len;
+	u32 fid;
+	u32 row_count;
+} __attribute__((packed));
+
+struct wal_reply {
+	u32 data_len;
+	i64 lsn;
+	u32 fid;
+	u32 row_count;
+	u32 run_crc;
+} __attribute__((packed));
+
+
+void
+wal_disk_writer_input_dispatch(va_list ap __attribute__((unused)))
+{
+	for (;;) {
+		struct conn *c = ((struct ev_watcher *)yield())->data;
+		tbuf_ensure(c->rbuf, 128 * 1024);
+
+		ssize_t r = tbuf_recv(c->rbuf, c->fd);
+		if (unlikely(r <= 0)) {
+			if (r < 0) {
+				if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+					continue;
+				say_syserror("%s: recv", __func__);
+				panic("WAL writer connection read error");
+			} else
+				panic("WAL writer connection EOF");
+		}
+
+		while (tbuf_len(c->rbuf) > sizeof(u32) * 2 &&
+		       tbuf_len(c->rbuf) >= *(u32 *)c->rbuf->ptr)
+		{
+			struct wal_reply *r = c->rbuf->ptr;
+			resume(fid2fiber(r->fid), r);
+			tbuf_ltrim(c->rbuf, sizeof(*r));
+		}
+
+		if (palloc_allocated(fiber->pool) > 4 * 1024 * 1024)
+			palloc_gc(c->pool);
+	}
+}
+
+
 @implementation XLogWriter
 
 - (i64) lsn { return lsn; }
@@ -58,15 +106,20 @@ configure_wal_writer
 	say_info("Configuring WAL writer lsn:%"PRIi64, lsn);
 
 	struct netmsg *n = netmsg_tail(&wal_writer->c->out_messages);
-	net_add_iov(&n, &lsn, sizeof(lsn));
 	i64 scn = [self scn];
+	net_add_iov(&n, &lsn, sizeof(lsn));
 	net_add_iov_dup(&n, &scn, sizeof(scn));
+	net_add_iov_dup(&n, &run_crc, sizeof(run_crc));
 	ev_io_start(&wal_writer->c->out);
 }
 
-/* packet is : packet_len: u32
+
+/* packet is :
+   Header:     packet_len: u32
 	       fid: u32
-	       repeat_count: u32
+	       row_count: u32
+
+   Row x row_count:
 	       scn: i64
 	       tag: u16
 	       cookie: u64
@@ -95,7 +148,7 @@ submit:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag
 	pack->netmsg = netmsg_tail(&wal_writer->c->out_messages);
 	pack->packet_len = sizeof(*pack) - sizeof(pack->netmsg) + sizeof(*h) + data_len;
 	pack->fid = fiber->fid;
-	pack->repeat_count = 1;
+	pack->row_count = 1;
 
 	h->scn = scn;
 	h->tag = tag;
@@ -123,7 +176,7 @@ wal_pack_prepare
 	pack->netmsg = netmsg_tail(&wal_writer->c->out_messages);
 	pack->packet_len = sizeof(*pack) - sizeof(pack->netmsg);
 	pack->fid = fiber->fid;
-	pack->repeat_count = 0;
+	pack->row_count = 0;
 
 	net_add_iov(&pack->netmsg, &pack->packet_len, pack->packet_len);
 
@@ -138,8 +191,8 @@ wal_pack_append:(struct wal_pack *)pack data:(const void *)data len:(u32)data_le
 	struct wal_row_header *h = palloc(fiber->pool, sizeof(*h));
 
 	pack->packet_len += sizeof(*h) + data_len;
-	pack->repeat_count++;
-	assert(pack->repeat_count <= WAL_PACK_MAX);
+	pack->row_count++;
+	assert(pack->row_count <= WAL_PACK_MAX);
 
 	h->scn = scn;
 	h->tag = tag;
@@ -149,7 +202,7 @@ wal_pack_append:(struct wal_pack *)pack data:(const void *)data len:(u32)data_le
 	net_add_iov(&pack->netmsg, h, sizeof(*h));
 	net_add_iov(&pack->netmsg, data, data_len);
 
-	return WAL_PACK_MAX - pack->repeat_count;
+	return WAL_PACK_MAX - pack->row_count;
 }
 
 - (int)
@@ -162,12 +215,16 @@ wal_pack_submit
 
 	ev_io_start(&wal_writer->c->out);
 	struct wal_reply *r = yield();
-	if (r->lsn == 0)
+	if (r->lsn == 0) {
 		say_warn("wal writer returned error status");
-	else
-		lsn = r->lsn; /* update local lsn */
-	say_debug("%s: => lsn:%"PRIi64" rows:%i", __func__, r->lsn, r->repeat_count);
-	return r->repeat_count;
+	} else {
+		/* update local vars */
+		lsn = r->lsn;
+		run_crc = r->run_crc;
+	}
+	say_debug("%s: => lsn:%"PRIi64" rows:%i run_crc:0x%x", __func__,
+		  r->lsn, r->row_count, r->run_crc);
+	return r->row_count;
 }
 
 
@@ -238,16 +295,18 @@ wal_disk_writer(int fd, void *state)
 	struct tbuf *wbuf, rbuf = TBUF(NULL, 0, fiber->pool);
 	int result = EXIT_FAILURE;
 	i64 next_scn = 0;
+	u32 run_crc;
 	bool io_failure = false, reparse = false;
 	ssize_t r;
 	struct {
 		u32 fid;
 		u32 row_count;
+		u32 run_crc; /* run_crc is computed */
 	} *request = malloc(sizeof(*request) * 1024);
 	ev_tstamp start_time = ev_now();
 	palloc_register_gc_root(fiber->pool, &rbuf, tbuf_gc);
 
-	struct wal_conf { i64 lsn; i64 scn; } __attribute__((packed)) wal_conf;
+	struct wal_conf { i64 lsn; i64 scn; u32 run_crc; } __attribute__((packed)) wal_conf;
 	if ((r = recv(fd, &wal_conf, sizeof(wal_conf), 0)) != sizeof(wal_conf)) {
 		if (r == 0) {
 			result = EX_OK;
@@ -258,6 +317,7 @@ wal_disk_writer(int fd, void *state)
 	}
 	[writer set_lsn:wal_conf.lsn];
 	next_scn = wal_conf.scn;
+	run_crc = wal_conf.run_crc;
 
 	for (;;) {
 		if (!reparse) {
@@ -316,9 +376,14 @@ wal_disk_writer(int fd, void *state)
 				if (ret <= 0) {
 					say_error("append_row failed");
 					io_failure = true;
-				} else {
-					next_scn = ret + 1;
+					continue;
 				}
+
+				if (h->tag == wal_tag) {
+					run_crc = crc32c(run_crc, data, h->data_len);
+					request[p].run_crc = run_crc;
+				}
+				next_scn = ret + 1;
 			}
 			p++;
 		}
@@ -330,26 +395,24 @@ wal_disk_writer(int fd, void *state)
 
 		wbuf = tbuf_alloc(fiber->pool);
 		for (int i = 0; i < p; i++) {
-			i64 pack_lsn = 0;
-			u32 pack_rows_confirmed = 0;
+			struct wal_reply reply = { .data_len = sizeof(reply),
+						   .lsn = 0,
+						   .row_count = 0,
+						   .fid = request[i].fid,
+						   .run_crc = request[i].run_crc };
 
 			if (rows_confirmed > 0) {
-				pack_rows_confirmed = MIN(rows_confirmed, request[i].row_count);
+				reply.row_count = MIN(rows_confirmed, request[i].row_count);
 
-				rows_confirmed -= pack_rows_confirmed;
-				start_lsn += pack_rows_confirmed;
-				pack_lsn = start_lsn;
+				rows_confirmed -= reply.row_count;
+				start_lsn += reply.row_count;
+				reply.lsn = start_lsn;
 			}
 
-			/* struct wal_reply */
-			u32 data_len = sizeof(struct wal_reply);
-			tbuf_append(wbuf, &data_len, sizeof(data_len));
-			tbuf_append(wbuf, &pack_lsn, sizeof(pack_lsn));
-			tbuf_append(wbuf, &request[i].fid, sizeof(request[i].fid));
-			tbuf_append(wbuf, &pack_rows_confirmed, sizeof(pack_rows_confirmed));
+			tbuf_append(wbuf, &reply, sizeof(reply));
 
-			say_debug("sending lsn:%"PRIi64" rows:%i to parent",
-				  pack_lsn, pack_rows_confirmed);
+			say_debug("sending lsn:%"PRIi64" rows:%i run_crc:0x%x to parent",
+				  reply.lsn, reply.row_count, reply.run_crc);
 		}
 
 
@@ -437,8 +500,7 @@ snapshot_save:(void (*)(XLog *))callback
 
 	say_info("saving snapshot `%s'", final_filename);
 
-	const char init[] = "make world";
-	if ([snap append_row:init len:strlen(init) scn:scn tag:snap_initial_tag] < 0) {
+	if ([snap append_row:&run_crc len:sizeof(run_crc) scn:scn tag:snap_initial_tag] < 0) {
 		say_error("unable write initial row");
 		_exit(EXIT_FAILURE);
 	}

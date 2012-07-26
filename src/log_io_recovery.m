@@ -97,7 +97,10 @@ read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, struct
 
 		switch (v12->tag) {
 		case snap_initial_tag:
-			tbuf_printf(out, "initial row");
+			if (tbuf_len(&row_data) == 4)
+				tbuf_printf(out, "RunCRC 0x%08x", read_u32(&row_data));
+			else
+				tbuf_printf(out, "RunCRC missing");
 			break;
 		case snap_tag:
 		case wal_tag:
@@ -187,6 +190,10 @@ recover_row:(struct tbuf *)row
 
 		tbuf_ltrim(row, sizeof(struct row_v12)); /* drop header */
 
+		/* since apply_row may change contents of `row' header,
+		   make a clone for crc calulation */
+		struct tbuf row_clone = TBUF(row->ptr, tbuf_len(row), NULL);
+
 		[self apply_row:row tag:tag];
 		switch (tag) {
 		case wal_tag:
@@ -194,8 +201,12 @@ recover_row:(struct tbuf *)row
 			scn = row_scn; /* each wal_tag row represent a single atomic change */
 			lag = ev_now() - tm;
 			last_update_tstamp = ev_now();
+			run_crc = crc32c(run_crc, row_clone.ptr, tbuf_len(&row_clone));
 			break;
 		case snap_initial_tag:
+			if (tbuf_len(&row_clone) == 4) /* not a dummy row */
+				run_crc = read_u32(&row_clone);
+			say_debug("%s: run_crc: 0x%x", __func__, run_crc);
 			break;
 		case snap_final_tag:
 			scn = row_scn;
@@ -712,37 +723,6 @@ submit:(void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag
 	return self;
 }
 
-static void
-input_dispatch(va_list ap __attribute__((unused)))
-{
-	for (;;) {
-		struct conn *c = ((struct ev_watcher *)yield())->data;
-		tbuf_ensure(c->rbuf, 128 * 1024);
-
-		ssize_t r = tbuf_recv(c->rbuf, c->fd);
-		if (unlikely(r <= 0)) {
-			if (r < 0) {
-				if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
-					continue;
-				say_syserror("%s: recv", __func__);
-				panic("WAL writer connection read error");
-			} else
-				panic("WAL writer connection EOF");
-		}
-
-		while (tbuf_len(c->rbuf) > sizeof(u32) * 2 &&
-		       tbuf_len(c->rbuf) >= *(u32 *)c->rbuf->ptr)
-		{
-			struct wal_reply *r = c->rbuf->ptr;
-			resume(fid2fiber(r->fid), r);
-			tbuf_ltrim(c->rbuf, sizeof(*r));
-		}
-
-		if (palloc_allocated(fiber->pool) > 4 * 1024 * 1024)
-			palloc_gc(c->pool);
-	}
-}
-
 - (id) init_snap_dir:(const char *)snap_dirname
              wal_dir:(const char *)wal_dirname
         rows_per_wal:(int)wal_rows_per_file
@@ -774,7 +754,8 @@ input_dispatch(va_list ap __attribute__((unused)))
 			   (void *)fiber_create("wal_writer/output_flusher", service_output_flusher),
 			   wal_writer->c->fd, EV_WRITE);
 
-		struct fiber *dispatcher = fiber_create("wal_writer/input_dispatcher", input_dispatch);
+		struct fiber *dispatcher = fiber_create("wal_writer/input_dispatcher",
+							wal_disk_writer_input_dispatch);
 		ev_io_init(&wal_writer->c->in, (void *)dispatcher, wal_writer->c->fd, EV_READ);
 
 		ev_set_priority(&wal_writer->c->in, 1);

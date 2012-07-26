@@ -3142,5 +3142,9 @@ lsn:596 scn:596 t:wal_tag 0.0.0.0:0 INSERT n:0 <594:"R\x02\x00\x00", 595:"S\x02\
 lsn:597 scn:597 t:wal_tag 0.0.0.0:0 INSERT n:0 <595:"S\x02\x00\x00", 596:"T\x02\x00\x00", 597:"U\x02\x00\x00">
 lsn:598 scn:598 t:wal_tag 0.0.0.0:0 INSERT n:0 <596:"T\x02\x00\x00", 597:"U\x02\x00\x00", 598:"V\x02\x00\x00">
 lsn:599 scn:599 t:wal_tag 0.0.0.0:0 INSERT n:0 <597:"U\x02\x00\x00", 598:"V\x02\x00\x00", 599:"W\x02\x00\x00">
+
 lsn:1002 scn:1002 t:wal_tag 0.0.0.0:0 INSERT n:0 <1:"\x01\x00\x00\x00">
 lsn:1003 scn:1003 t:wal_tag 0.0.0.0:0 INSERT n:0 <2:"\x02\x00\x00\x00">
+
+lsn:1001 scn:1001 t:snap_initial_tag 0.0.0.0:0 RunCRC 0xc31bee7b
+lsn:1001 scn:1001 t:snap_final_tag 0.0.0.0:0 UNKNOWN

@@ -44,19 +44,17 @@ env.with_server do
   insert [2]
   sleep 0.5
 
-  puts Dir.glob("*.snap").sort
-  puts
+  puts Dir.glob("*.snap").sort + ["\n"]
 
-  puts Dir.glob("*.xlog").sort
-  puts
+  puts Dir.glob("*.xlog").sort + ["\n"]
 
-  puts File.open("00000000000000001001.snap").lines.take(4)
-  puts
+  puts File.open("00000000000000001001.snap").lines.take(4) + ["\n"]
 
-  puts File.open("00000000000000001002.xlog").lines.take(4)
-  puts
+  puts File.open("00000000000000001002.xlog").lines.take(4) + ["\n"]
 
-  puts `./tarantool --cat 00000000000000000500.xlog | sed 's/tm:[^ ]* //'`
+  puts `./tarantool --cat 00000000000000000500.xlog | sed 's/tm:[^ ]* //'` + "\n"
 
-  puts `./tarantool --cat 00000000000000001002.xlog | sed 's/tm:[^ ]* //'`
+  puts `./tarantool --cat 00000000000000001002.xlog | sed 's/tm:[^ ]* //'` + "\n"
+
+  puts `./tarantool --cat 00000000000000001001.snap | sed 's/tm:[^ ]* //' | egrep 't:snap_(initial|final)_tag'`
 end
