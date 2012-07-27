@@ -175,7 +175,12 @@ recover_row:(struct tbuf *)row
 		say_debug("%s: lsn:%"PRIi64" scn:%"PRIi64" tag:%s",
 			  __func__, row_v12(row)->lsn, row_scn, xlog_tag_to_a(tag));
 
-		if (row_lsn > 0 && tag != snap_final_tag && row_lsn != lsn + 1) {
+		if (row_lsn > 0 &&
+		    tag != snap_final_tag &&
+		    tag != snap_initial_tag &&
+		    tag != snap_tag &&
+		    row_lsn != lsn + 1)
+		{
 			if (!cfg.io_compat)
 				raise("lsn sequence has gap after %"PRIi64 " -> %"PRIi64,
 				      lsn, row_lsn);

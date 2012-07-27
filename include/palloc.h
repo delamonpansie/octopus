@@ -24,18 +24,12 @@
  * SUCH DAMAGE.
  */
 
-#import <util.h>
-#import <tbuf.h>
-
-#include <third_party/queue.h>
-
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
 
-
 struct palloc_pool;
-int palloc_init(void);
+void palloc_init(void);
 void *palloc(struct palloc_pool *pool, size_t size)
 	__attribute__((regparm(2),malloc));
 void *p0alloc(struct palloc_pool *pool, size_t size);
@@ -53,5 +47,6 @@ void palloc_register_gc_root(struct palloc_pool *pool,
 void palloc_unregister_gc_root(struct palloc_pool *pool, void *ptr);
 void palloc_gc(struct palloc_pool *pool);
 
-void palloc_stat(struct tbuf *buf);
+struct tbuf;
+void palloc_stat_info(struct tbuf *buf);
 bool palloc_owner(struct palloc_pool *pool, void *ptr);

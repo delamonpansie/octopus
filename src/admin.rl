@@ -250,7 +250,7 @@ admin_dispatch(struct conn *c)
 			    show " "+ fiber		%{start(out); fiber_info(out); end(out);}	|
 			    show " "+ configuration 	%show_configuration				|
 			    show " "+ slab		%{start(out); slab_stat(out); end(out);}	|
-			    show " "+ palloc		%{start(out); palloc_stat(out); end(out);}	|
+			    show " "+ palloc		%{start(out); palloc_stat_info(out); end(out);}	|
 			    show " "+ stat		%show_stat					|
 			    enable " "+ coredump        %{maximize_core_rlimit(); ok(out);}		|
 			    save " "+ coredump		%{coredump(60); ok(out);}			|
