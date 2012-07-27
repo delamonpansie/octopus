@@ -546,6 +546,9 @@ close
 			if (!legacy_snap)
 				panic("no valid rows were read");
 		}
+#if HAVE_POSIX_FADVISE
+		posix_fadvise(fileno(fd), 0, ftello(fd), POSIX_FADV_DONTNEED);
+#endif
 	}
 
 	ev_stat_stop(&stat);
