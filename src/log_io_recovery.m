@@ -97,15 +97,24 @@ read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, struct
 
 		switch (v12->tag) {
 		case snap_initial_tag:
-			if (tbuf_len(&row_data) == 4)
-				tbuf_printf(out, "RunCRC 0x%08x", read_u32(&row_data));
-			else
-				tbuf_printf(out, "RunCRC missing");
+			if (tbuf_len(&row_data) == sizeof(u32) * 2) {
+				u32 log = read_u32(&row_data);
+				u32 mod = read_u32(&row_data);
+				tbuf_printf(out, "run_crc_log:0x%08x run_crc_mod:0x%08x", log, mod);
+			} else {
+				tbuf_printf(out, "run_crc missing");
+			}
 			break;
 		case snap_tag:
 		case wal_tag:
 			handler(out, v12->tag, &row_data);
 			break;
+		case run_crc: {
+			u32 log = read_u32(&row_data);
+			u32 mod = read_u32(&row_data);
+			tbuf_printf(out, "log:0x%08x mod:0x%08x", log, mod);
+			break;
+		}
 		case paxos_prepare:
 		case paxos_promise:
 		case paxos_propose:
@@ -124,26 +133,6 @@ read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, struct
 		return -1;
 	}
 	return 0;
-}
-
-
-- (void)
-validate_row:(struct tbuf *)row
-{
-	u16 tag = row_v12(row)->tag;
-	if (tag == snap_initial_tag ||
-	    tag == snap_tag ||
-	    tag == snap_final_tag)
-		return;
-
-	if (row_v12(row)->lsn != lsn + 1) {
-		if (!cfg.io_compat)
-			raise("lsn sequence has gap after %"PRIi64 " -> %"PRIi64,
-			      lsn, row_v12(row)->lsn);
-		else
-			say_warn("lsn sequence has gap after %"PRIi64 " -> %"PRIi64,
-				 lsn, row_v12(row)->lsn);
-	}
 }
 
 - (struct tbuf *)
@@ -185,6 +174,16 @@ recover_row:(struct tbuf *)row
 	@try {
 		say_debug("%s: lsn:%"PRIi64" scn:%"PRIi64" tag:%s",
 			  __func__, row_v12(row)->lsn, row_scn, xlog_tag_to_a(tag));
+
+		if (row_lsn > 0 && tag != snap_final_tag && row_lsn != lsn + 1) {
+			if (!cfg.io_compat)
+				raise("lsn sequence has gap after %"PRIi64 " -> %"PRIi64,
+				      lsn, row_lsn);
+			else
+				say_warn("lsn sequence has gap after %"PRIi64 " -> %"PRIi64,
+					 lsn, row_lsn);
+		}
+
 		if (row_lsn > 0)
 			lsn = row_lsn;
 
@@ -201,15 +200,33 @@ recover_row:(struct tbuf *)row
 			scn = row_scn; /* each wal_tag row represent a single atomic change */
 			lag = ev_now() - tm;
 			last_update_tstamp = ev_now();
-			run_crc = crc32c(run_crc, row_clone.ptr, tbuf_len(&row_clone));
+			run_crc_log = crc32c(run_crc_log, row_clone.ptr, tbuf_len(&row_clone));
 			break;
 		case snap_initial_tag:
-			if (tbuf_len(&row_clone) == 4) /* not a dummy row */
-				run_crc = read_u32(&row_clone);
-			say_debug("%s: run_crc: 0x%x", __func__, run_crc);
+			if (tbuf_len(&row_clone) == sizeof(u32) * 2) { /* not a dummy row */
+				run_crc_log = read_u32(&row_clone);
+				run_crc_mod = read_u32(&row_clone);
+			}
+			say_debug("%s: run_crc_log/mod: 0x%x/0x%x", __func__, run_crc_log, run_crc_mod);
 			break;
 		case snap_final_tag:
 			scn = row_scn;
+			break;
+		case run_crc:
+			assert(row_scn == scn + 1);
+			u32 log = read_u32(&row_clone);
+			u32 mod = read_u32(&row_clone);
+			if (run_crc_log != log)
+				say_crit("run_crc_log mismatch: saved:0x%08x computed:0x%08x",
+					 log, run_crc_log);
+			if (run_crc_mod != mod)
+				say_crit("run_crc_mod mismatch: saved:0x%08x computed:0x%08x",
+					 mod, run_crc_mod);
+			say_debug("%s: verified run_crc_log:0x%08x run_crc_mod:0x%08x", __func__, log, mod);
+
+			scn = row_scn;
+			lag = ev_now() - tm;
+			last_update_tstamp = ev_now();
 			break;
 		default:
 			break;
@@ -258,7 +275,6 @@ recover_snap
 				[self recover_row:row];
 				continue;
 			}
-			[self validate_row:row];
 			[self recover_row:row];
 			prelease_after(snap->pool, 128 * 1024);
 		}
@@ -291,7 +307,6 @@ recover_wal:(XLog *)l
 	@try {
 		while ((row = [l next_row])) {
 			if (row_v12(row)->lsn > lsn) {
-				[self validate_row:row];
 				[self recover_row:row];
 			}
 
@@ -723,11 +738,26 @@ submit:(void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag
 	return self;
 }
 
+static void
+run_crc_writer(va_list ap)
+{
+	Recovery *recovery = va_arg(ap, Recovery *);
+	ev_tstamp delay = va_arg(ap, ev_tstamp);
+	for (;;) {
+		fiber_sleep(delay);
+		if (!recovery->local_writes)
+			continue;
+		[recovery submit_run_crc];
+	}
+}
+
+
 - (id) init_snap_dir:(const char *)snap_dirname
              wal_dir:(const char *)wal_dirname
         rows_per_wal:(int)wal_rows_per_file
 	 feeder_addr:(const char *)feeder_addr_
          fsync_delay:(double)wal_fsync_delay
+       run_crc_delay:(double)run_crc_delay
                flags:(int)flags
   snap_io_rate_limit:(int)snap_io_rate_limit_
 {
@@ -762,6 +792,8 @@ submit:(void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag
 		ev_set_priority(&wal_writer->c->out, 1);
 
 		ev_io_start(&wal_writer->c->in);
+
+		fiber_create("run_crc", run_crc_writer, self, run_crc_delay);
 	}
 
 	pending_row = mh_i64_init();

@@ -149,7 +149,7 @@ contains_full_row_v11(const struct tbuf *b)
 - (struct tbuf *)
 fetch_row
 {
-	struct tbuf *row;
+	struct tbuf *row = NULL;
 	u32 data_crc;
 
 	switch (version) {

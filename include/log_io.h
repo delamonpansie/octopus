@@ -41,6 +41,7 @@ enum { snap_initial_tag = 1,
        wal_tag,
        snap_final_tag,
        wal_final_tag,
+       run_crc,
        paxos_prepare,
        paxos_promise,
        paxos_propose,
@@ -163,10 +164,10 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 	bool local_writes;
 	XLog *wal_to_close;
 	ev_timer wal_timer;
-	u32 run_crc;
 @public
 	XLog *current_wal;	/* the WAL we'r currently reading/writing from/to */
 	int snap_io_rate_limit;
+	u32 run_crc_log, run_crc_mod;
 }
 
 - (i64) lsn;
@@ -186,6 +187,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 
 - (int) submit:(const void *)data len:(u32)len;
 - (int) submit:(const void *)data len:(u32)len scn:(i64)scn tag:(u16)tag;
+- (int) submit_run_crc;
 
 - (void) snapshot_save:(void (*)(XLog *))callback;
 @end
@@ -243,8 +245,9 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (id) init_snap_dir:(const char *)snap_dir
              wal_dir:(const char *)wal_dir
         rows_per_wal:(int)rows_per_wal
-       feeder_addr:(const char *)feeder_addr
-         fsync_delay:(double)wal_fsync_delay
+	 feeder_addr:(const char *)feeder_addr
+	 fsync_delay:(double)wal_fsync_delay
+       run_crc_delay:(double)run_crc_delay
                flags:(int)flags
   snap_io_rate_limit:(int)snap_io_rate_limit;
 @end

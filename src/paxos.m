@@ -819,6 +819,7 @@ init_snap_dir:(const char *)snap_dirname
  rows_per_wal:(int)wal_rows_per_file
   feeder_addr:(const char *)feeder_addr_
   fsync_delay:(double)wal_fsync_delay
+run_crc_delay:(double)run_crc_delay
 	flags:(int)flags
 snap_io_rate_limit:(int)snap_io_rate_limit_
 {
@@ -832,6 +833,7 @@ snap_io_rate_limit:(int)snap_io_rate_limit_
 		rows_per_wal:wal_rows_per_file
 		 feeder_addr:feeder_addr_
 		 fsync_delay:wal_fsync_delay
+	       run_crc_delay:run_crc_delay
 		       flags:flags
 	  snap_io_rate_limit:snap_io_rate_limit_];
 

@@ -1,0 +1,15 @@
+# box.ping()
+:pong
+
+# box.insert([0, 1, 2])
+1
+
+# box.insert([1, 2, 3])
+1
+
+# box.insert([2, 3, 4])
+1
+
+lsn:3 scn:3 t:run_crc 0.0.0.0:0 log:0x5cdc7a8e mod:0x6283ebdb
+lsn:5 scn:5 t:run_crc 0.0.0.0:0 log:0x3450f038 mod:0x1108d8e8
+

@@ -44,6 +44,8 @@
 #import <mod/box/box.h>
 #import <mod/box/moonbox.h>
 
+#include <third_party/crc32.h>
+
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -681,6 +683,17 @@ txn_cleanup(struct box_txn *txn)
 }
 
 
+static void
+update_crc(struct tnt_object *obj, u32 *crc)
+{
+	if (!obj)
+		return;
+
+	struct box_tuple *tuple = box_tuple(obj);
+	u32 len = tuple->bsize + sizeof(tuple->bsize) + sizeof(tuple->cardinality);
+	*crc = crc32c(*crc, (void *)obj, len);
+}
+
 void
 txn_commit(struct box_txn *txn)
 {
@@ -688,6 +701,9 @@ txn_commit(struct box_txn *txn)
 		commit_delete(txn);
 	else
 		commit_replace(txn);
+
+	update_crc(txn->old_obj, &recovery->run_crc_mod);
+	update_crc(txn->obj, &recovery->run_crc_mod);
 
 	say_debug("txn_commit(op:%s)", messages_strs[txn->op]);
 	stat_collect(stat_base, txn->op, 1);
@@ -1222,8 +1238,8 @@ apply_row:(struct tbuf *)row tag:(u16)tag
 		txn_cleanup(&txn);
 		break;
 	case snap_initial_tag:
-		break;
 	case snap_final_tag:
+	case run_crc:
 		break;
 	default:
 		raise("unknown row tag: %u/%s", tag, xlog_tag_to_a(tag));
@@ -1275,6 +1291,7 @@ init(void)
 			      rows_per_wal:cfg.rows_per_wal
 			       feeder_addr:cfg.wal_feeder_addr
 			       fsync_delay:cfg.wal_fsync_delay
+			     run_crc_delay:cfg.run_crc_delay
 				     flags:init_storage ? RECOVER_READONLY : 0
 			snap_io_rate_limit:cfg.snap_io_rate_limit * 1024 * 1024];
 

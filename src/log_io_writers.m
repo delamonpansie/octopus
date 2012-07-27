@@ -109,7 +109,7 @@ configure_wal_writer
 	i64 scn = [self scn];
 	net_add_iov(&n, &lsn, sizeof(lsn));
 	net_add_iov_dup(&n, &scn, sizeof(scn));
-	net_add_iov_dup(&n, &run_crc, sizeof(run_crc));
+	net_add_iov_dup(&n, &run_crc_log, sizeof(run_crc_log));
 	ev_io_start(&wal_writer->c->out);
 }
 
@@ -168,6 +168,13 @@ submit:(const void *)data len:(u32)len
 	return [self submit:data len:len scn:0 tag:wal_tag];
 }
 
+- (int)
+submit_run_crc
+{
+	u32 crc[2] = { run_crc_log, run_crc_mod };
+	return [self submit:crc len:sizeof(u32)*2 scn:0 tag:run_crc];
+}
+
 - (struct wal_pack *)
 wal_pack_prepare
 {
@@ -220,13 +227,12 @@ wal_pack_submit
 	} else {
 		/* update local vars */
 		lsn = r->lsn;
-		run_crc = r->run_crc;
+		run_crc_log = r->run_crc;
 	}
 	say_debug("%s: => lsn:%"PRIi64" rows:%i run_crc:0x%x", __func__,
 		  r->lsn, r->row_count, r->run_crc);
 	return r->row_count;
 }
-
 
 - (i64)
 append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie
@@ -500,7 +506,11 @@ snapshot_save:(void (*)(XLog *))callback
 
 	say_info("saving snapshot `%s'", final_filename);
 
-	if ([snap append_row:&run_crc len:sizeof(run_crc) scn:scn tag:snap_initial_tag] < 0) {
+	struct tbuf *run_crc = tbuf_alloc(fiber->pool);
+	tbuf_append(run_crc, &run_crc_log, sizeof(run_crc_log));
+	tbuf_append(run_crc, &run_crc_mod, sizeof(run_crc_mod));
+
+	if ([snap append_row:run_crc->ptr len:tbuf_len(run_crc) scn:scn tag:snap_initial_tag] < 0) {
 		say_error("unable write initial row");
 		_exit(EXIT_FAILURE);
 	}
