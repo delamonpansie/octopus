@@ -48,10 +48,10 @@
 # define VALGRIND_MEMPOOL_TRIM(pool, addr, size)
 #endif
 
-#if HAVE_QUEUE_H
-# include "queue.h"
-#elif HAVE_THIRD_PARTY_QUEUE_H
+#if HAVE_THIRD_PARTY_QUEUE_H
 # include <third_party/queue.h>
+#else
+# include "queue.h"
 #endif
 
 #include <assert.h>
