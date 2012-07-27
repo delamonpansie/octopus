@@ -1322,20 +1322,24 @@ init_second_stage(va_list ap __attribute__((unused)))
 {
 	luaT_openbox(root_L);
 
-	i64 local_lsn = [recovery recover_start];
-	if (cfg.paxos_enabled) {
-		[recovery enable_local_writes];
-	} else {
-		if (local_lsn == 0) {
-			if (!cfg.wal_feeder_addr) {
-				say_crit("don't you forget to initialize "
-					 "storage with --init-storage switch?");
-				exit(EX_USAGE);
-			}
-		}
-
-		if (!cfg.local_hot_standby)
+	@try {
+		i64 local_lsn = [recovery recover_start];
+		if (cfg.paxos_enabled) {
 			[recovery enable_local_writes];
+		} else {
+			if (local_lsn == 0) {
+				if (!cfg.wal_feeder_addr) {
+					say_crit("don't you forget to initialize "
+						 "storage with --init-storage switch?");
+					exit(EX_USAGE);
+				}
+			}
+			if (!cfg.local_hot_standby)
+				[recovery enable_local_writes];
+		}
+	}
+	@catch (Error *e) {
+		panic("Recovery failure: %s", e->reason);
 	}
 	title("%s", [recovery status]);
 }
