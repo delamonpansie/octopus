@@ -258,7 +258,6 @@ palloc(struct palloc_pool *pool, size_t size)
 	stat_collect(stat_base, PALLOC_CALL, 1);
 	stat_collect(stat_base, PALLOC_BYTES, size);
 #endif
-	assert(size > 0);
 
 	if (likely(chunk != NULL && chunk->free >= rz_size)) {
 		ptr = chunk->brk;
