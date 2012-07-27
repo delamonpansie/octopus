@@ -65,7 +65,7 @@ writef(int fd, const char *b, size_t len)
 		ssize_t r = write(fd, b, len);
 		if (r <= 0) {
 			say_syserror("write");
-			exit(EXIT_SUCCESS);
+			_exit(EXIT_SUCCESS);
 		}
 		b += r;
 		len -= r;
@@ -189,7 +189,7 @@ static void
 eof_monitor(void)
 {
 	say_info("client gone, exiting");
-	exit(0);
+	_exit(0);
 }
 
 static void
