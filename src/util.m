@@ -251,7 +251,7 @@ _panic(int status, const char *filename, unsigned line,
 	if (backtrace)
 		_say(S_FATAL, NULL, 0, NULL, "backtrace:\n%s", backtrace);
 
-	exit(status);
+	_exit(status);
 }
 
 void __attribute__ ((noreturn))
