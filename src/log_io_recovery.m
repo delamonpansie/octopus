@@ -48,9 +48,9 @@
 
 @implementation Recovery
 
-- (const char *)status { return status; };
-- (ev_tstamp)lag { return lag; };
-- (ev_tstamp)last_update_tstamp { return last_update_tstamp; };
+- (const char *) status { return status; };
+- (ev_tstamp) lag { return lag; };
+- (ev_tstamp) last_update_tstamp { return last_update_tstamp; };
 - (ev_tstamp) run_crc_lag { return ev_now() - run_crc_verify_tstamp; };
 
 - (i64) scn { return scn; }
