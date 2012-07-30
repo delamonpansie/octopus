@@ -215,9 +215,12 @@ containg_scn:(i64)target_scn
 	i64 *lsn;
 	ssize_t count = [self scan_dir:&lsn];
 	XLog *l = nil;
+	const i64 initial_lsn = 2;
 
-	if (count <= 0)
-		return 0;
+	if (count <= 0) {
+		say_error("%s: WAL dir is either empty or unreadable", __func__);
+		return -1;
+	}
 
 	for (int i = 0; i < count; i++) {
 		l = [self open_for_read:lsn[i]];
@@ -225,8 +228,9 @@ containg_scn:(i64)target_scn
 		[l next_row];
 		[l close];
 
-		if (scn > target_scn)
-			return i > 0 ? lsn[i - 1] : 0;
+		say_debug("%s: LSN:%"PRIi64" => SCN:%"PRIi64, __func__, lsn[i], scn);
+		if (scn >= target_scn)
+			return i > 0 ? lsn[i - 1] : initial_lsn;
 	}
 
 	return lsn[count - 1];
