@@ -705,7 +705,8 @@ txn_commit(struct box_txn *txn)
 	update_crc(txn->old_obj, &recovery->run_crc_mod);
 	update_crc(txn->obj, &recovery->run_crc_mod);
 
-	say_debug("txn_commit(op:%s)", messages_strs[txn->op]);
+	say_debug("txn_commit(op:%s) scn:%"PRIi64 " run_crc_mod:0x%x",
+		  messages_strs[txn->op], [recovery scn], recovery->run_crc_mod);
 	stat_collect(stat_base, txn->op, 1);
 
 	say_debug("%s: old_obj:refs=%i,%p obj:ref=%i,%p", __func__,

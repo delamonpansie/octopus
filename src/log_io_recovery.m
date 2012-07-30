@@ -190,8 +190,10 @@ recover_row:(struct tbuf *)row
 					 lsn, row_lsn);
 		}
 
-		if (row_lsn > 0)
+		if (row_lsn > 0) {
+			say_debug("%s: lsn %"PRIi64" => %"PRIi64, __func__, lsn, row_lsn);
 			lsn = row_lsn;
+		}
 
 		tbuf_ltrim(row, sizeof(struct row_v12)); /* drop header */
 
@@ -426,7 +428,11 @@ recover_start_from_scn:(i64)initial_scn
 	if (initial_scn == 0) {
 		[self recover_snap];
 	} else {
-		lsn = [wal_dir containg_scn:initial_scn] - 1;
+		i64 initial_lsn = [wal_dir containg_scn:initial_scn];
+		if (initial_lsn <= 0)
+			raise("unable to find WAL containing SCN:%"PRIi64, initial_scn);
+		say_debug("%s: SCN:%"PRIi64" => LSN:%"PRIi64, __func__, initial_scn, initial_lsn);
+		lsn =  initial_lsn - 1;
 		scn = initial_scn;
 	}
 	current_wal = [wal_dir containg_lsn:lsn];
@@ -639,12 +645,12 @@ recover_follow_remote:(struct sockaddr_in *)addr exit_on_eof:(int)exit_on_eof
 				/* no more WAL rows in near future, notify module about that */
 				[self wal_final_row];
 
+				ev_tstamp reconnect_delay = 0.5;
 				if (!warning_said) {
 					say_error("%s", err);
+					say_info("will retry every %.2f second", reconnect_delay);
 					warning_said = 1;
 				}
-				ev_tstamp reconnect_delay = 0.5;
-				say_info("will retry every %.2f second", reconnect_delay);
 				fiber_sleep(reconnect_delay);
 			}
 			say_crit("succefully connected to feeder");
