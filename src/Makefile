@@ -30,7 +30,7 @@ endif
 src/tarantool.o: tarantool_version.h
 src/tarantool.o: CFLAGS += -DPRIMARY_MOD='"$(firstword $(modules))"'
 
-src/palloc.o: CFLAGS += -DPALLOC_STAT_INFO -DHAVE_VALGRIND_H=1 -DHAVE_THIRD_PARTY_QUEUE_H=1
+src/palloc.o: CFLAGS += -DPALLOC_STAT_INFO -DHAVE_THIRD_PARTY_VALGRIND_H=1 -DHAVE_THIRD_PARTY_QUEUE_H=1
 disable-warns-obj += src/tarantool_ev.o
 src/tarantool_ev.o: CFLAGS += -U_FORTIFY_SOURCE
 ifeq (1,$(HAVE_CC_FLAG_W_NO_COMMENT))

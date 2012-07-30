@@ -630,7 +630,7 @@ recover_follow_remote:(struct sockaddr_in *)addr exit_on_eof:(int)exit_on_eof
 		XLogPuller *puller = nil;
 		@try {
 			const char *err;
-			bool warning_said;
+			bool warning_said = false;
 			i64 want_scn = scn, remote_scn = 0;
 			puller = [[XLogPuller alloc] init_addr:addr];
 			if (want_scn > 0) {
@@ -649,7 +649,7 @@ recover_follow_remote:(struct sockaddr_in *)addr exit_on_eof:(int)exit_on_eof
 				if (!warning_said) {
 					say_error("%s", err);
 					say_info("will retry every %.2f second", reconnect_delay);
-					warning_said = 1;
+					warning_said = true;
 				}
 				fiber_sleep(reconnect_delay);
 			}
