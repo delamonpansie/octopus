@@ -1,6 +1,6 @@
 
-local assert, error, print, type, pairs, ipairs, table, setmetatable =
-      assert, error, print, type, pairs, ipairs, table, setmetatable
+local assert, error, print, type, pairs, ipairs, table, setmetatable, getmetatable =
+      assert, error, print, type, pairs, ipairs, table, setmetatable, getmetatable
 
 local string, tostring =
       string, tostring
@@ -16,8 +16,13 @@ user_proc = {}
 
 -- make useful aliases
 space = object_space
+
+local object_space_mt = getmetatable(object_space) or {}
+assert(not object_space_mt.__index)
+object_space_mt.__index = function(table, i) return table[tonumber(i)] end
+setmetatable(object_space, object_space_mt)
+
 for n, v in pairs(object_space) do
-        object_space[tostring(n)] = v
         v.index = {}
         v.index.mt = {}
         v.index.mt.__index = function (table, i) return index(n, i) end
