@@ -51,6 +51,7 @@
 - (const char *)status { return status; };
 - (ev_tstamp)lag { return lag; };
 - (ev_tstamp)last_update_tstamp { return last_update_tstamp; };
+- (ev_tstamp) run_crc_lag { return ev_now() - run_crc_verify_tstamp; };
 
 - (i64) scn { return scn; }
 - (void) set_scn:(i64)scn_ { scn = scn_; }
@@ -231,7 +232,7 @@ recover_row:(struct tbuf *)row
 
 			scn = row_scn;
 			lag = ev_now() - tm;
-			last_update_tstamp = ev_now();
+			last_update_tstamp = run_crc_verify_tstamp = ev_now();
 			break;
 		default:
 			break;
@@ -556,7 +557,7 @@ pull_wal(Recovery *r, XLogPuller *puller, int exit_on_eof)
 				break;
 			}
 
-			if (row_v12(row)->tag != wal_tag)
+			if (row_v12(row)->tag != wal_tag && row_v12(row)->tag != run_crc)
 				continue;
 
 			if (row_v12(row)->scn <= [r scn])
@@ -721,10 +722,21 @@ enable_local_writes
 	}
 }
 
+- (bool) is_replica
+{
+	say_debug("%s: local_writes:%i feeder_addr:%p", __func__, local_writes, feeder_addr);
+
+	if (!local_writes)
+		return true;
+	if (feeder_addr != NULL)
+		return true;
+	return false;
+}
+
 - (int)
 submit:(void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag
 {
-	if (feeder_addr != NULL)
+	if ([self is_replica])
 		raise("replica is readonly");
 
 	return [super submit:data len:data_len scn:scn_ tag:tag];
@@ -747,11 +759,19 @@ static void
 run_crc_writer(va_list ap)
 {
 	Recovery *recovery = va_arg(ap, Recovery *);
-	ev_tstamp delay = va_arg(ap, ev_tstamp);
+	ev_tstamp submit_tstamp, delay = va_arg(ap, ev_tstamp);
+	i64 lsn = [recovery lsn];
 	for (;;) {
-		fiber_sleep(delay);
-		if (!recovery->local_writes)
+		fiber_sleep(1.);
+		if ([recovery is_replica])
 			continue;
+		if ([recovery lsn] - lsn < 128)
+			continue;
+		if (ev_now() - submit_tstamp < delay)
+			continue;
+
+		submit_tstamp = ev_now();
+		lsn = [recovery lsn];
 		[recovery submit_run_crc];
 	}
 }

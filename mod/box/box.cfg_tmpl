@@ -38,7 +38,7 @@ rows_per_wal=500000, ro
 wal_fsync_delay=0.0, ro
 
 # how often run_crc is submited to wal
-run_crc_delay=60.0, ro
+run_crc_delay=5.0, ro
 
 # do fsync on close of WAL or not
 wal_fsync_on_close=1, ro

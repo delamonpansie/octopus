@@ -1433,8 +1433,8 @@ info(struct tbuf *out)
 		    (i64) [recovery wal_writer]->pid);
 	tbuf_printf(out, "  lsn: %" PRIi64 CRLF, [recovery lsn]);
 	tbuf_printf(out, "  recovery_lag: %.3f" CRLF, [recovery lag]);
-	tbuf_printf(out, "  recovery_last_update: %.3f" CRLF,
-		    [recovery last_update_tstamp]);
+	tbuf_printf(out, "  recovery_last_update: %.3f" CRLF, [recovery last_update_tstamp]);
+	tbuf_printf(out, "  recovery_run_crc_lag: %.3f" CRLF, [recovery run_crc_lag]);
 	tbuf_printf(out, "  status: %s%s" CRLF, [recovery status], custom_proc_title);
 	tbuf_printf(out, "  config: \"%s\""CRLF, cfg_filename);
 

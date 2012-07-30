@@ -19,11 +19,10 @@ end
 
 Env.clean.with_server do
   ping
-  3.times do |i|
+  129.times do |i|
     insert [i, i + 1, i + 2]
-    break if i == 2
-    sleep 0.5
   end
+  sleep 1.1
 
   puts `./tarantool --cat 00000000000000000002.xlog | sed 's/tm:[^ ]* //' | grep run_crc` + "\n"
 end

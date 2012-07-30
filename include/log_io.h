@@ -211,7 +211,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 
 @interface Recovery: XLogWriter {
 	i64 scn;
-	ev_tstamp lag, last_update_tstamp;
+	ev_tstamp lag, last_update_tstamp, run_crc_verify_tstamp;
 	char status[64];
 
 	struct mhash_t *pending_row;
@@ -225,6 +225,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (const char *) status;
 - (ev_tstamp) lag;
 - (ev_tstamp) last_update_tstamp;
+- (ev_tstamp) run_crc_lag;
 
 - (void) apply_row:(struct tbuf *)row tag:(u16)tag;
 - (void) recover_row:(struct tbuf *)row;
