@@ -728,7 +728,8 @@ enable_local_writes
 	}
 }
 
-- (bool) is_replica
+- (bool)
+is_replica
 {
 	say_debug("%s: local_writes:%i feeder_addr:%p", __func__, local_writes, feeder_addr);
 
