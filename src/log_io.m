@@ -211,6 +211,7 @@ containg_lsn:(i64)target_lsn
 	 * is not known beforehand. so, we simply return the last one.
 	 */
 out:
+	say_debug("%s: target_lsn:%"PRIi64 " file_lsn:%"PRIi64, __func__, target_lsn, *lsn);
 	return [self open_for_read:*lsn];
 }
 
@@ -233,7 +234,6 @@ containg_scn:(i64)target_scn
 		[l next_row];
 		[l close];
 
-		say_debug("%s: LSN:%"PRIi64" => SCN:%"PRIi64, __func__, lsn[i], scn);
 		if (scn >= target_scn)
 			return i > 0 ? lsn[i - 1] : initial_lsn;
 	}
