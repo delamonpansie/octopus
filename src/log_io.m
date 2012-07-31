@@ -379,6 +379,7 @@ open_for_write:(i64)lsn scn:(i64)scn
 		goto error;
 	}
 
+	l->inprogress = true;
 	return l;
       error:
         if (file != NULL)
@@ -547,6 +548,8 @@ close
 			if ([self flush] == -1)
 				result = -1;
 		}
+		if (inprogress)
+			[self inprogress_rename];
 	} else {
 		/* file may be already unlink()'ed if it was broken */
 		if (rows == 0 && access(filename, F_OK) == 0) {

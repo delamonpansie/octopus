@@ -238,6 +238,7 @@ wal_pack_submit
 append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie
 {
         if ([current_wal rows] == 1) {
+		assert(current_wal->inprogress == true);
 		/* rename wal after first successfull write to name without inprogress suffix*/
 		if ([current_wal inprogress_rename] != 0) {
 			say_error("can't rename inprogress wal");
@@ -493,6 +494,7 @@ snapshot_save:(void (*)(XLog *))callback
 		say_error("can't open snap for writing");
 		_exit(EXIT_FAILURE);
 	}
+	snap->inprogress = false; /* we do .inprogress rename ourself */
 	snap->no_wet = true; /* disable wet row tracking */;
 
 	/*

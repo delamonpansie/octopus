@@ -500,10 +500,6 @@ recover_finalize
 			[current_wal inprogress_unlink];
 			[current_wal close];
 			current_wal = nil;
-		} else {
-			assert([current_wal rows] == 1);
-			if ([current_wal inprogress_rename] != 0)
-				panic("can't rename 'inprogress' wal");
 		}
 	}
 
