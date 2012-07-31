@@ -499,6 +499,7 @@ recover_finalize
 
 	if (current_wal != nil && current_wal->inprogress) {
 		if ([current_wal rows] < 1) {
+			say_warn("%s: Removed broken WAL %s", __func__, current_wal->filename);
 			[current_wal inprogress_unlink];
 			[current_wal close];
 			current_wal = nil;
