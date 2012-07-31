@@ -556,7 +556,7 @@ tcp_connect(struct sockaddr_in *dst, struct sockaddr_in *src, ev_tstamp timeout)
 	}
 
 	if (ioctl(fd, FIONBIO, &optval) < 0) {
-		say_syserror("fcntl");
+		say_syserror("ioctl");
 		goto error;
 	}
 
@@ -638,7 +638,7 @@ server_socket(int type, struct in_addr *src, int port, void (*on_bind)(int fd))
 		}
 
 	if (ioctl(fd, FIONBIO, &one) < 0) {
-		say_syserror("fcntl");
+		say_syserror("ioctl");
 		return -1;
 	}
 
@@ -708,7 +708,7 @@ tcp_server(va_list ap)
 		yield();
 
 		while ((cfd = accept(fd, NULL, NULL)) > 0) {
-			if (ioctl(fd, FIONBIO, &one) < 0) {
+			if (ioctl(cfd, FIONBIO, &one) < 0) {
 				say_syserror("ioctl");
 				close(cfd);
 				continue;
