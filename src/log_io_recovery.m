@@ -567,6 +567,10 @@ pull_wal(Recovery *r, XLogPuller *puller, int exit_on_eof)
 
 			remote_scn = row_v12(row)->scn;
 
+			if (cfg.io_compat) {
+				if (row_v12(row)->tag == run_crc)
+					continue;
+			}
 
 			rows[pack_rows++] = row;
 			if (pack_rows == WAL_PACK_MAX)
@@ -818,7 +822,8 @@ run_crc_writer(va_list ap)
 
 		ev_io_start(&wal_writer->c->in);
 
-		fiber_create("run_crc", run_crc_writer, self, run_crc_delay);
+		if (!cfg.io_compat)
+			fiber_create("run_crc", run_crc_writer, self, run_crc_delay);
 	}
 
 	pending_row = mh_i64_init();
