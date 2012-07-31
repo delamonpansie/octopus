@@ -122,7 +122,7 @@ handshake:(i64)scn err:(const char **)err_ptr
 		goto err;
 	}
 
-	say_crit("succefully connected to feeder");
+	say_crit("succefully connected to feeder, version:%i", version);
 	say_crit("starting remote recovery from scn:%" PRIi64, hshake.scn);
 	return hshake.scn;
 err:
