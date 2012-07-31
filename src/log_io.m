@@ -193,6 +193,11 @@ containg_lsn:(i64)target_lsn
 	if (count <= 0)
 		return nil;
 
+	if (target_lsn < *lsn) {
+		say_warn("%s: requested LSN:%"PRIi64" is missing", __func__, target_lsn);
+		return nil;
+	}
+
 	while (count > 1) {
 		if (*lsn <= target_lsn && target_lsn < *(lsn + 1))
 			goto out;
