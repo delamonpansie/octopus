@@ -2,8 +2,8 @@
 local assert, error, print, type, pairs, ipairs, table, setmetatable, getmetatable =
       assert, error, print, type, pairs, ipairs, table, setmetatable, getmetatable
 
-local string, tostring =
-      string, tostring
+local string, tostring, tonumber =
+      string, tostring, tonumber
 
 local tou32, tofield = string.tou32, string.tofield
 local netmsg = netmsg
