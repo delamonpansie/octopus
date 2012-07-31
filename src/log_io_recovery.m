@@ -770,7 +770,7 @@ static void
 run_crc_writer(va_list ap)
 {
 	Recovery *recovery = va_arg(ap, Recovery *);
-	ev_tstamp submit_tstamp, delay = va_arg(ap, ev_tstamp);
+	ev_tstamp submit_tstamp = ev_now(), delay = va_arg(ap, ev_tstamp);
 	i64 lsn = [recovery lsn];
 	for (;;) {
 		fiber_sleep(1.);
