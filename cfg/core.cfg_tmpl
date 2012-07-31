@@ -18,7 +18,7 @@ slab_alloc_arena=1.0, ro
 # Size of minimal allocation unit
 slab_alloc_minimal=53, ro
 # Growth factor, each subsecuent unit size is factor * prev unit size
-slab_alloc_factor=1.7, ro
+slab_alloc_factor=1.7325, ro
 
 # working directory (daemon will chdir(2) to it)
 work_dir=NULL, ro

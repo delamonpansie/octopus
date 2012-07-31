@@ -107,13 +107,16 @@ slab_classes_init(size_t minimal, double factor)
 	int i, size;
 	const size_t ptr_size = sizeof(void *);
 
-	for (i = 0, size = minimal; i < nelem(slab_classes) && size <= MAX_SLAB_ITEM; i++) {
+	for (i = 0, size = minimal; i < nelem(slab_classes) - 1 && size <= MAX_SLAB_ITEM; i++) {
 		slab_classes[i].item_size = size - sizeof(red_zone);
 		TAILQ_INIT(&slab_classes[i].free_slabs);
 
 		size = MAX((size_t)(size * factor) & ~(ptr_size - 1),
 			   (size + ptr_size) & ~(ptr_size - 1));
 	}
+	slab_classes[i].item_size = MAX_SLAB_ITEM - sizeof(red_zone);
+	TAILQ_INIT(&slab_classes[i].free_slabs);
+	i++;
 
 	SLIST_INIT(&slabs);
 	SLIST_INIT(&free_slabs);
