@@ -345,8 +345,10 @@ recover_remaining_wals
 		raise("wal_dir reading failed");
 
 	/* if the caller already opened WAL for us, recover from it first */
-	if (current_wal != nil)
+	if (current_wal != nil) {
+		say_debug("%s: current_wal:%s", __func__, current_wal->filename);
 		goto recover_current_wal;
+	}
 
 	while (lsn < wal_greatest_lsn) {
 		if (current_wal != nil) {
