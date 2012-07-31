@@ -649,9 +649,6 @@ recover_follow_remote:(struct sockaddr_in *)addr exit_on_eof:(int)exit_on_eof
 				}
 				fiber_sleep(reconnect_delay);
 			}
-			say_crit("succefully connected to feeder");
-			say_crit("starting remote recovery from scn:%"PRIi64, remote_scn);
-
 
 			if (lsn == 0)
 				pull_snapshot(self, puller);
