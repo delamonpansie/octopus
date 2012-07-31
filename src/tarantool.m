@@ -682,6 +682,7 @@ main(int argc, char **argv)
 	signal_init();
 	module(NULL)->init();
 #elif defined(STORAGE)
+	say_crit("octopus version: %s", tarantool_version());
 	signal_init();
 	ev_set_syserr_cb(ev_panic);
 	ev_default_loop(ev_recommended_backends() | EVFLAG_SIGNALFD);
