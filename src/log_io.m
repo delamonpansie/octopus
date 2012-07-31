@@ -799,8 +799,12 @@ convert_row_v11_to_v12(struct tbuf *m)
 	}
 
 	row_v12(n)->cookie = read_u64(m);
-
 	tbuf_append(n, m->ptr, row_v12(n)->len);
+
+	row_v12(n)->data_crc32c = crc32c(0, m->ptr, row_v12(n)->len);
+	row_v12(n)->header_crc32c = crc32c(0, n->ptr + field_sizeof(struct row_v12, header_crc32c),
+					   sizeof(struct row_v12) - field_sizeof(struct row_v12, header_crc32c));
+
 	return n;
 }
 
