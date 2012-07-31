@@ -893,12 +893,19 @@ append_row:(void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)
 		return -1;
 	}
 
-	if (scn != 0) {
+
+	row.lsn = [self next_lsn];
+
+	/* When running remote recovery of octopus (read: we'r replica) remote rows
+	   come in v12 format with SCN != 0.
+	   If cfg.io_compat enabled, ensure invariant LSN == SCN, since in this mode
+	   rows doesn't have distinct SCN field. */
+
+	if (scn != 0 && scn != row.lsn) {
 		say_error("io_compat mode doesn't support SCN tagged rows");
 		return -1;
 	}
 
-	row.lsn = [self next_lsn];
 	row.tm = ev_now();
 	row.len = sizeof(tag) + sizeof(cookie) + data_len;
 
