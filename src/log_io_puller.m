@@ -71,60 +71,73 @@ handshake:(i64)scn err:(const char **)err_ptr
 	struct tbuf *rep;
 	assert(c.fd < 0);
 
-	struct replication_handshake hshake = {1, scn, {0}};
-
-	if (cfg.wal_feeder_filter != NULL) {
-		if (strlen(cfg.wal_feeder_filter) + 1 > sizeof(hshake.filter)) {
-			say_error("wal_feeder_filter too big");
-			exit(EXIT_FAILURE);
-		}
-		strcpy(hshake.filter, cfg.wal_feeder_filter);
-	}
-	struct tbuf *req = tbuf_alloc(fiber->pool);
-	tbuf_append(req, &(struct iproto){ .msg_code = 0, .sync = 0, .data_len = sizeof(hshake) },
-		    sizeof(struct iproto));
-	tbuf_append(req, &hshake, sizeof(hshake));
-
-	rep = tbuf_alloc(fiber->pool);
-	tbuf_ensure(rep, sizeof(struct iproto_retcode));
-
 	if ((c.fd = tcp_connect(&addr, NULL, 0)) < 0) {
 		err = "can't connect to feeder";
 		goto err;
 	}
 
-	if (conn_write(&c, req->ptr, tbuf_len(req)) != tbuf_len(req)) {
-		err = "can't write initial handshake";
-		goto err;
+	if (cfg.replication_compat) {
+		if (conn_write(&c, &scn, sizeof(scn)) != sizeof(scn)) {
+			err = "can't write initial lsn";
+			goto err;
+		}
+
+		if (conn_read(&c, &version, sizeof(version)) != sizeof(version)) {
+			err = "can't read version";
+			goto err;
+		}
+	} else {
+		struct replication_handshake hshake = {1, scn, {0}};
+
+		if (cfg.wal_feeder_filter != NULL) {
+			if (strlen(cfg.wal_feeder_filter) + 1 > sizeof(hshake.filter)) {
+				say_error("wal_feeder_filter too big");
+				exit(EXIT_FAILURE);
+			}
+			strcpy(hshake.filter, cfg.wal_feeder_filter);
+		}
+		struct tbuf *req = tbuf_alloc(fiber->pool);
+		tbuf_append(req, &(struct iproto){ .msg_code = 0, .sync = 0, .data_len = sizeof(hshake) },
+			    sizeof(struct iproto));
+		tbuf_append(req, &hshake, sizeof(hshake));
+
+		rep = tbuf_alloc(fiber->pool);
+		tbuf_ensure(rep, sizeof(struct iproto_retcode));
+
+		if (conn_write(&c, req->ptr, tbuf_len(req)) != tbuf_len(req)) {
+			err = "can't write initial handshake";
+			goto err;
+		}
+
+		while (tbuf_len(c.rbuf) < sizeof(struct iproto_retcode) + sizeof(version))
+			conn_recv(&c);
+		rep = iproto_parse(c.rbuf);
+		if (rep == NULL) {
+			err = "can't read reply";
+			goto err;
+		}
+
+		if (iproto_retcode(rep)->ret_code != 0 ||
+		    iproto_retcode(rep)->sync != iproto(req)->sync ||
+		    iproto_retcode(rep)->msg_code != iproto(req)->msg_code ||
+		    iproto_retcode(rep)->data_len != sizeof(iproto_retcode(rep)->ret_code) + sizeof(version))
+		{
+			err = "bad reply";
+			goto err;
+		}
+
+		say_debug("go reply len:%i, rbuf %i", iproto_retcode(rep)->data_len, tbuf_len(c.rbuf));
+		memcpy(&version, iproto_retcode(rep)->data, sizeof(version));
 	}
 
-	while (tbuf_len(c.rbuf) < sizeof(struct iproto_retcode) + sizeof(version))
-		conn_recv(&c);
-	rep = iproto_parse(c.rbuf);
-	if (rep == NULL) {
-		err = "can't read reply";
-		goto err;
-	}
-
-	if (iproto_retcode(rep)->ret_code != 0 ||
-	    iproto_retcode(rep)->sync != iproto(req)->sync ||
-	    iproto_retcode(rep)->msg_code != iproto(req)->msg_code ||
-	    iproto_retcode(rep)->data_len != sizeof(iproto_retcode(rep)->ret_code) + sizeof(version))
-	{
-		err = "bad reply";
-		goto err;
-	}
-
-	say_debug("go reply len:%i, rbuf %i", iproto_retcode(rep)->data_len, tbuf_len(c.rbuf));
-	memcpy(&version, iproto_retcode(rep)->data, sizeof(version));
 	if (version != default_version && version != version_11) {
 		err = "unknown remote version";
 		goto err;
 	}
 
 	say_crit("succefully connected to feeder, version:%i", version);
-	say_crit("starting remote recovery from scn:%" PRIi64, hshake.scn);
-	return hshake.scn;
+	say_crit("starting remote recovery from scn:%" PRIi64, scn);
+	return scn;
 err:
 	if (err_ptr)
 		*err_ptr = err;
