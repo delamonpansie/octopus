@@ -56,4 +56,5 @@ custom_proc_title=NULL, ro
 
 # backward compatibility mode
 io_compat = 0, ro
+io12_hack = 0, ro
 replication_compat = 0, ro

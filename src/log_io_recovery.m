@@ -172,6 +172,10 @@ recover_row:(struct tbuf *)row
 	u16 tag = row_v12(row)->tag;
 	ev_tstamp tm = row_v12(row)->tm;
 
+	/* FIXME: temporary hack */
+	if (cfg.io12_hack && row_lsn > 0)
+		row_scn = row_v12(row)->scn = lsn;
+
 	@try {
 		say_debug("%s: lsn:%"PRIi64" scn:%"PRIi64" tag:%s",
 			  __func__, row_v12(row)->lsn, row_scn, xlog_tag_to_a(tag));
