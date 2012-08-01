@@ -48,9 +48,9 @@
 
 @implementation Recovery
 
-- (const char *) status { return status; };
-- (ev_tstamp) lag { return lag; };
-- (ev_tstamp) last_update_tstamp { return last_update_tstamp; };
+- (const char *) status { return status; }
+- (ev_tstamp) lag { return lag; }
+- (ev_tstamp) last_update_tstamp { return last_update_tstamp; }
 
 - (i64) scn { return scn; }
 - (void) set_scn:(i64)scn_ { scn = scn_; }
