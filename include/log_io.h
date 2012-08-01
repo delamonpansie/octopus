@@ -218,6 +218,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 
 	struct fiber *remote_puller;
 	const char *feeder_addr;
+	bool run_crc_log_mismatch, run_crc_mod_mismatch;
 }
 
 - (i64) scn;
@@ -226,6 +227,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (ev_tstamp) lag;
 - (ev_tstamp) last_update_tstamp;
 - (ev_tstamp) run_crc_lag;
+- (const char *) run_crc_status;
 
 - (void) apply_row:(struct tbuf *)row tag:(u16)tag;
 - (void) recover_row:(struct tbuf *)row;

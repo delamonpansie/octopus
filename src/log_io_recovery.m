@@ -51,7 +51,6 @@
 - (const char *) status { return status; };
 - (ev_tstamp) lag { return lag; };
 - (ev_tstamp) last_update_tstamp { return last_update_tstamp; };
-- (ev_tstamp) run_crc_lag { return ev_now() - run_crc_verify_tstamp; };
 
 - (i64) scn { return scn; }
 - (void) set_scn:(i64)scn_ { scn = scn_; }
@@ -232,12 +231,16 @@ recover_row:(struct tbuf *)row
 			assert(row_scn == scn + 1);
 			u32 log = read_u32(&row_clone);
 			u32 mod = read_u32(&row_clone);
-			if (run_crc_log != log)
+			if (run_crc_log != log) {
+				run_crc_log_mismatch |= 1;
 				say_crit("run_crc_log mismatch: saved:0x%08x computed:0x%08x",
 					 log, run_crc_log);
-			if (run_crc_mod != mod)
+			}
+			if (run_crc_mod != mod) {
+				run_crc_mod_mismatch |= 1;
 				say_crit("run_crc_mod mismatch: saved:0x%08x computed:0x%08x",
 					 mod, run_crc_mod);
+			}
 			say_debug("%s: verified run_crc_log:0x%08x run_crc_mod:0x%08x", __func__, log, mod);
 
 			scn = row_scn;
@@ -781,6 +784,22 @@ submit:(void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag
 	wal_timer.data = self;
 
 	return self;
+}
+
+- (ev_tstamp)
+run_crc_lag
+{
+	return ev_now() - run_crc_verify_tstamp;
+}
+
+- (const char *)
+run_crc_status
+{
+	if (run_crc_log_mismatch)
+		return "LOG_CRC_MISMATCH";
+	if (run_crc_mod_mismatch)
+		return "MOD_CRC_MISMATCH";
+	return "ok";
 }
 
 static void
