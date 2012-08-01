@@ -24,6 +24,7 @@
  * SUCH DAMAGE.
  */
 
+#include <config.h>
 #import <util.h>
 #import <fiber.h>
 #import <say.h>
@@ -46,7 +47,12 @@ struct node {
 #define mh_name _cstr
 #define mh_key_t cstr
 #define mh_val_t int
-#define mh_hash(a) ({ (uint32_t)(((uintptr_t)a)>>33^((uintptr_t)a)^((uintptr_t)a)<<11); })
+#if SIZEOF_VOID_P == 8
+# define mh_hash(a) ({ (uint32_t)(((uintptr_t)a)>>33^((uintptr_t)a)^((uintptr_t)a)<<11); })
+#else
+# define mh_hash(a) ({ a; })
+#endif
+
 #define mh_eq(a, b) ({ strcmp(*(mh_key_t *)((a) + sizeof(mh_val_t)), (b)) == 0; })
 #define MH_STATIC
 #include <mhash.h>

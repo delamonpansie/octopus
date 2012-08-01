@@ -113,6 +113,7 @@ AS_IF([test -n "$ac_cv_header_libelf_h" -a -n "$ac_cv_header_gelf_h" -a "$ac_cv_
 AC_C_INLINE
 AC_C_BIGENDIAN
 AC_C_RESTRICT
+AC_CHECK_SIZEOF([void *])
 
 # Check largefile support.  You might think this is a system service not a
 # compiler characteristic, but you'd be wrong.  We must check this before
