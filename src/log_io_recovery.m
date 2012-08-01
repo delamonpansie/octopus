@@ -221,6 +221,10 @@ recover_row:(struct tbuf *)row
 			}
 			say_debug("%s: run_crc_log/mod: 0x%x/0x%x", __func__, run_crc_log, run_crc_mod);
 			break;
+		/* remove case snap_tag with io12_hack */
+		case snap_tag:
+			scn = row_scn;
+			break;
 		case snap_final_tag:
 			scn = row_scn;
 			break;
