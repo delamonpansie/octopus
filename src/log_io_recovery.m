@@ -533,6 +533,7 @@ static void
 pull_snapshot(Recovery *r, XLogPuller *puller)
 {
 	struct tbuf *row;
+	int rows = 0;
 	for (;;) {
 		while ((row = [puller fetch_row])) {
 			switch (row_v12(row)->tag) {
@@ -551,6 +552,10 @@ pull_snapshot(Recovery *r, XLogPuller *puller)
 				raise("unexpected tag %i/%s",
 				      row_v12(row)->tag, xlog_tag_to_a(row_v12(row)->tag));
 			}
+
+			if (++rows % 100000 == 0)
+				say_info("%.1fM rows fetched", rows / 1000000.);
+
 		}
 		fiber_gc();
 	}
@@ -561,7 +566,7 @@ pull_wal(Recovery *r, XLogPuller *puller, int exit_on_eof)
 {
 	struct tbuf *row, *special_row = NULL, *rows[WAL_PACK_MAX];
 	struct wal_pack *pack;
-
+	int row_count = 0;
 	/* TODO: use designated palloc_pool */
 	say_debug("%s: scn:%"PRIi64, __func__, [r scn]);
 
@@ -586,6 +591,9 @@ pull_wal(Recovery *r, XLogPuller *puller, int exit_on_eof)
 				if (row_v12(row)->tag == run_crc)
 					continue;
 			}
+
+			if (++row_count % 100000 == 0)
+				say_info("%.1fM rows fetched", row_count / 1000000.);
 
 			rows[pack_rows++] = row;
 			if (pack_rows == WAL_PACK_MAX)
