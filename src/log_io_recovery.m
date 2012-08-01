@@ -174,7 +174,7 @@ recover_row:(struct tbuf *)row
 
 	/* FIXME: temporary hack */
 	if (cfg.io12_hack && row_lsn > 0)
-		row_scn = row_v12(row)->scn = lsn;
+		row_scn = row_v12(row)->scn = row_lsn;
 
 	@try {
 		say_debug("%s: lsn:%"PRIi64" scn:%"PRIi64" tag:%s",
