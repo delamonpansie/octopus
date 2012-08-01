@@ -210,12 +210,16 @@ config.status: $(srcdir)/configure
 configure: $(srcdir)/configure.ac $(srcdir)/third_party/libev/libev.m4
 	cd $(srcdir) && autoconf
 
-.PHONY:
-dist: configure $(dist) tarantool_version.h
-	@rm -rf $(configure-byproducts)
 ifeq (1,$(HAVE_DARCS))
-	$(DARCS) changes --repodir=$(REPODIR) --context > darcs.context
+.PHONY: darcs.context
+darcs.context:
+	$E "DARCS	$@"
+	$Q$(DARCS) changes --repodir=$(or $(REPODIR),".") --context > darcs.context
 endif
+
+.PHONY:
+dist: configure $(dist) tarantool_version.h darcs.context
+	@rm -rf $(configure-byproducts)
 
 $(eval $(defered))
 
