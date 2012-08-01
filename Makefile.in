@@ -213,6 +213,9 @@ configure: $(srcdir)/configure.ac $(srcdir)/third_party/libev/libev.m4
 .PHONY:
 dist: configure $(dist) tarantool_version.h
 	@rm -rf $(configure-byproducts)
+ifeq (1,$(HAVE_DARCS))
+	$(DARCS) changes --repodir=$(REPODIR) --context > darcs.context
+endif
 
 $(eval $(defered))
 
