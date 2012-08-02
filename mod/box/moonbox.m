@@ -288,6 +288,16 @@ luaT_pushfield(struct lua_State *L)
 }
 
 static int
+luaT_pushvarint32(struct lua_State *L)
+{
+	u32 i = luaL_checkinteger(L, 1);
+	u8 buf[5], *end;
+	end = save_varint32(buf, i);
+	lua_pushlstring(L, (char *)buf, end - buf);
+	return 1;
+}
+
+static int
 luaT_pushu32(struct lua_State *L)
 {
 	u32 i = luaL_checkinteger(L, 1);
@@ -336,6 +346,8 @@ luaT_openbox(struct lua_State *L)
 	lua_getglobal(L, "string");
 	lua_pushcfunction(L, luaT_pushfield);
 	lua_setfield(L, -2, "tofield");
+	lua_pushcfunction(L, luaT_pushvarint32);
+	lua_setfield(L, -2, "tovarint32");
 	lua_pushcfunction(L, luaT_pushu32);
 	lua_setfield(L, -2, "tou32");
 	lua_pushcfunction(L, luaT_pushu16);
