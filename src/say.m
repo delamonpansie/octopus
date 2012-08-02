@@ -50,7 +50,7 @@ struct node {
 #if SIZEOF_VOID_P == 8
 # define mh_hash(a) ({ (uint32_t)(((uintptr_t)a)>>33^((uintptr_t)a)^((uintptr_t)a)<<11); })
 #else
-# define mh_hash(a) ({ a; })
+# define mh_hash(a) ({ (uintptr_t)a; })
 #endif
 
 #define mh_eq(a, b) ({ strcmp(*(mh_key_t *)((a) + sizeof(mh_val_t)), (b)) == 0; })
