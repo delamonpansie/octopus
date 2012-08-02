@@ -34,6 +34,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
+#include <sys/ioctl.h>
 #include <unistd.h>
 #ifndef PIPE_BUF
 # include <sys/param.h>
@@ -62,6 +63,7 @@ static struct mhash_t *filter;
 int stderrfd, sayfd = STDERR_FILENO;
 bool dup_to_stderr = false;
 int max_level;
+int nonblocking;
 
 static char
 level_to_char(int level)
@@ -170,7 +172,9 @@ say_logger_init(int nonblock)
 out:
 	if (nonblock) {
 		say_info("setting nonblocking log output");
-		set_nonblock(sayfd);
+		int one = 1;
+		ioctl(sayfd, FIONBIO, &one);
+		nonblocking = 1;
 	}
 
 	setvbuf(stderr, NULL, _IONBF, 0);
@@ -216,8 +220,14 @@ vsay(int level, const char *filename, unsigned line,
 		p = len - 1;
 	*(buf + p) = '\n';
 
-	int r = write(sayfd, buf, p + 1);
+	int r, one = 1, zero = 0;
+	if (level >= S_CRIT)
+		ioctl(sayfd, FIONBIO, &zero);
+	r = write(sayfd, buf, p + 1);
 	(void)r;
+	if (nonblocking && level >= S_CRIT)
+		ioctl(sayfd, FIONBIO, &one);
+
 	if (sayfd != STDERR_FILENO && (dup_to_stderr || level == S_FATAL)) {
 		r = write(stderrfd, buf, p + 1);
 	}

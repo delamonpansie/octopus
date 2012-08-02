@@ -51,6 +51,7 @@
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <sys/resource.h>
+#include <sys/ioctl.h>
 #include <pwd.h>
 #include <unistd.h>
 #include <getopt.h>
@@ -695,7 +696,8 @@ main(int argc, char **argv)
 		ev_timer_start(&coredump_timer);
 	}
 
-	if (pipe(keepalive_pipe) == -1 || set_nonblock(keepalive_pipe[0]) == -1) {
+	int one = 1;
+	if (pipe(keepalive_pipe) == -1 || ioctl(keepalive_pipe[0], FIONBIO, &one) == -1) {
 		say_syserror("can't create keepalive pipe");
 		exit(1);
 	}

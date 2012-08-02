@@ -83,7 +83,6 @@ int inbox_size(struct fiber *recipient);
 void fiber_gc(void);
 void fiber_sleep(ev_tstamp s);
 void fiber_info(struct tbuf *out);
-int set_nonblock(int sock);
 struct fiber *fid2fiber(int fid);
 
 struct child *spawn_child(const char *name, int (*handler)(int fd, void *state), void *state);

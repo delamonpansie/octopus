@@ -276,16 +276,6 @@ fiber_destroy_all()
 }
 
 
-int
-set_nonblock(int sock)
-{
-	int flags;
-	if ((flags = fcntl(sock, F_GETFL, 0)) < 0 || fcntl(sock, F_SETFL, flags | O_NONBLOCK) < 0)
-		return -1;
-	return sock;
-}
-
-
 struct child *
 spawn_child(const char *name, int (*handler)(int fd, void *state), void *state)
 {
