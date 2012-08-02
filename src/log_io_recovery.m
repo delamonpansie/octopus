@@ -851,6 +851,8 @@ run_crc_writer(va_list ap)
 		snap_io_rate_limit = snap_io_rate_limit_ * 1024 * 1024;
 
 		wal_writer = spawn_child("wal_writer", wal_disk_writer, self);
+		if (!wal_writer)
+			panic("unable to start WAL writer");
 
 		ev_io_init(&wal_writer->c->out,
 			   (void *)fiber_create("wal_writer/output_flusher", service_output_flusher),
