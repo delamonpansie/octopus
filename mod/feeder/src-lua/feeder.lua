@@ -59,7 +59,7 @@ function decode.u8(obj, offt)
         if (offt < 0 or offt + 1 > row.len) then
                 error(string.format("out of bounds: offt:%i len:%i\n%s", offt, row.len, debug.traceback()))
         end
-        return ffi.cast(u8_ptr , tuple.data + offt)[0]
+        return ffi.cast(u8_ptr , row.data + offt)[0]
 end
 
 function decode.u16(obj, offt)
@@ -67,7 +67,7 @@ function decode.u16(obj, offt)
         if (offt < 0 or offt + 2 > row.len) then
                 error(string.format("out of bounds: offt:%i len:%i\n%s", offt, row.len, debug.traceback()))
         end
-        return ffi.cast(u16_ptr , tuple.data + offt)[0]
+        return ffi.cast(u16_ptr , row.data + offt)[0]
 end
 
 function decode.u32(obj, offt)
@@ -75,7 +75,7 @@ function decode.u32(obj, offt)
         if (offt < 0 or offt + 4 > row.len) then
                 error(string.format("out of bounds: offt:%i len:%i\n%s", offt, row.len, debug.traceback()))
         end
-        return ffi.cast(u32_ptr , tuple.data + offt)[0]
+        return ffi.cast(u32_ptr , row.data + offt)[0]
 end
 
 function replication_filter.id_log(obj)
