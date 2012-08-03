@@ -205,8 +205,10 @@ recover_row:(struct tbuf *)row
 		struct tbuf row_clone = TBUF(row->ptr, tbuf_len(row), NULL);
 
 		[self apply_row:row tag:tag];
+
 		switch (tag) {
 		case wal_tag:
+			assert(row_scn > 0);
 			assert(row_scn == scn + 1);
 			scn = row_scn; /* each wal_tag row represent a single atomic change */
 			lag = ev_now() - tm;
@@ -225,6 +227,7 @@ recover_row:(struct tbuf *)row
 			scn = row_scn;
 			break;
 		case snap_final_tag:
+			assert(row_scn > 0);
 			scn = row_scn;
 			break;
 		case run_crc:
