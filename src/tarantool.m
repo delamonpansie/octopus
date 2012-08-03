@@ -61,7 +61,7 @@
 # include <sys/prctl.h>
 #endif
 
-#define DEFAULT_CFG_FILENAME "tarantool.cfg"
+#define DEFAULT_CFG_FILENAME "octopus.cfg"
 const char *cfg_filename = DEFAULT_CFG_FILENAME;
 char *cfg_filename_fullpath = NULL;
 char *binary_filename;
