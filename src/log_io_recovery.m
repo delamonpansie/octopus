@@ -575,7 +575,6 @@ pull_wal(Recovery *r, XLogPuller *puller, int exit_on_eof)
 
 	for (;;) {
 		int pack_rows = 0;
-		i64 remote_scn = 0;
 		while ((row = [puller fetch_row])) {
 			if (row_v12(row)->tag == wal_final_tag) {
 				special_row = row;
@@ -591,8 +590,6 @@ pull_wal(Recovery *r, XLogPuller *puller, int exit_on_eof)
 			if (row_v12(row)->scn <= [r scn])
 				continue;
 
-			remote_scn = row_v12(row)->scn;
-
 			if (cfg.io_compat) {
 				if (row_v12(row)->tag == run_crc)
 					continue;
@@ -607,6 +604,10 @@ pull_wal(Recovery *r, XLogPuller *puller, int exit_on_eof)
 		}
 
 		if (pack_rows > 0) {
+			i64 pack_min_scn = row_v12(rows[0])->scn,
+			    pack_max_scn = row_v12(rows[pack_rows - 1])->scn;
+
+			assert([r scn] == pack_min_scn - 1);
 			@try {
 				for (int j = 0; j < pack_rows; j++) {
 					row = rows[j];
@@ -614,7 +615,7 @@ pull_wal(Recovery *r, XLogPuller *puller, int exit_on_eof)
 				}
 			}
 			@catch (id e) {
-				panic("Replication failure: remote row lsn:%"PRIi64 " scn:%"PRIi64,
+				panic("Replication failure: remote row LSN:%"PRIi64 " SCN:%"PRIi64,
 				      row_v12(row)->lsn, row_v12(row)->scn);
 			}
 
@@ -632,13 +633,12 @@ pull_wal(Recovery *r, XLogPuller *puller, int exit_on_eof)
 				}
 				confirmed += [r wal_pack_submit];
 				if (confirmed != pack_rows) {
-					say_warn("wal write failed confirmed:%i != sent:%i",
+					say_warn("WAL write failed confirmed:%i != sent:%i",
 						 confirmed, pack_rows);
 					fiber_sleep(0.05);
 				}
 			}
-			say_debug("local scn:%"PRIi64" remote scn:%"PRIi64, [r scn], remote_scn);
-			assert([r scn] == remote_scn);
+			assert([r scn] == pack_max_scn);
 		}
 
 		if (special_row) {
