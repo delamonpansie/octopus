@@ -25,5 +25,5 @@ Env.clean do
   connect.insert [2]
   stop
 
-  puts Dir.glob("*.xlog*")
+  puts Dir.glob("*.xlog*").sort
 end
