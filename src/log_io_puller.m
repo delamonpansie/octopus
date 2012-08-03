@@ -182,6 +182,9 @@ fetch_row
 		data_crc = crc32c(0, row_v12(row)->data, row_v12(row)->len);
 		if (row_v12(row)->data_crc32c != data_crc)
 			raise("data crc32c mismatch");
+
+		if (cfg.io12_hack && row_v12(row)->scn == 0)
+			row_v12(row)->scn = row_v12(row)->lsn;
 		break;
 	case 11:
 		while (!contains_full_row_v11(c.rbuf)) {
