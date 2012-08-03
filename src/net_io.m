@@ -350,6 +350,7 @@ void
 conn_init(struct conn *c, struct palloc_pool *pool, int fd, int ref)
 {
 	say_debug("%s: c:%p fd:%i", __func__, c, fd);
+	assert(c->out.data == NULL && c->in.data == NULL);
 	c->out.coro = c->in.coro = 1;
 	c->out.data = c->in.data = c;
 
@@ -406,6 +407,8 @@ conn_close(struct conn *c)
 	if (c->fd > 0) {
 		ev_io_stop(&c->out);
 		ev_io_stop(&c->in);
+		memset(&c->out, 0, sizeof(c->out));
+		memset(&c->in, 0, sizeof(c->in));
 
 		close(c->fd);
 		c->fd = -1;
