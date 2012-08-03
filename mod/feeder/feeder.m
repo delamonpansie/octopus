@@ -102,7 +102,7 @@ recover_row:(struct tbuf *)row
 		lua_pop(fiber->L, 1);
 	}
 
-	say_debug("%s: lsn:%"PRIi64" scn:%"PRIi64" tag:%s", __func__,
+	say_info("%s: lsn:%"PRIi64" scn:%"PRIi64" tag:%s", __func__,
 		  row_lsn, row_v12(row)->scn, xlog_tag_to_a(tag));
 	writef(fd, row->ptr, tbuf_len(row));
 
@@ -131,8 +131,24 @@ recover_start_from_scn:(i64)initial_scn filter:(const char *)filter_name
 		}
 		filtering = true;
 	}
-	[self recover_start_from_scn:initial_scn];
+
+	if (initial_scn == 0) {
+		[self recover_snap];
+		current_wal = [wal_dir containg_lsn:lsn];
+	} else {
+		i64 initial_lsn = [wal_dir containg_scn:initial_scn];
+		if (initial_lsn <= 0)
+			raise("unable to find WAL containing SCN:%"PRIi64, initial_scn);
+		say_debug("%s: SCN:%"PRIi64" => LSN:%"PRIi64, __func__, initial_scn, initial_lsn);
+		current_wal = [wal_dir containg_lsn:initial_lsn];
+		lsn =  initial_lsn - 1; /* first row read by recovery process will be row
+					   with lsn + 1 ==> equal to initial_lsn */
+		scn = initial_scn;
+	}
+	say_debug("%s: current_wal:%s", __func__, current_wal->filename);
+	[self recover_cont];
 }
+
 @end
 
 static i64
@@ -208,11 +224,11 @@ recover_feed_slave(int sock)
 
 	set_proc_title("feeder:client_handler%s %s", custom_proc_title, peer_name);
 
-
 	feeder = [[Feeder alloc] init_snap_dir:cfg.snap_dir
 				       wal_dir:cfg.wal_dir
 					    fd:sock];
 	i64 initial_scn = handshake(sock, filter_name);
+	say_info("intiail scn:%"PRIi64" filter: '%s'", initial_scn, filter_name);
 	[feeder recover_start_from_scn:initial_scn filter:filter_name];
 
 	ev_io_init(&io, (void *)eof_monitor, sock, EV_READ);

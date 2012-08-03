@@ -439,26 +439,6 @@ recover_start
 	return lsn;
 }
 
-- (i64)
-recover_start_from_scn:(i64)initial_scn
-{
-	say_debug("%s: initial_scn:%"PRIi64, __func__, initial_scn);
-	if (initial_scn == 0) {
-		[self recover_snap];
-		current_wal = [wal_dir containg_lsn:lsn];
-	} else {
-		i64 initial_lsn = [wal_dir containg_scn:initial_scn];
-		if (initial_lsn <= 0)
-			raise("unable to find WAL containing SCN:%"PRIi64, initial_scn);
-		say_debug("%s: SCN:%"PRIi64" => LSN:%"PRIi64, __func__, initial_scn, initial_lsn);
-		current_wal = [wal_dir containg_lsn:initial_lsn];
-		lsn =  initial_lsn - 1; /* first row read by recovery process will be row
-					   with lsn + 1 ==> equal to initial_lsn */
-		scn = initial_scn;
-	}
-	say_debug("%s: current_wal:%s", __func__, current_wal->filename);
-	return [self recover_cont];
-}
 
 static void follow_file(ev_stat *, int);
 
