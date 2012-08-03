@@ -339,9 +339,11 @@ conn_create(struct palloc_pool *pool, int fd)
 	struct conn *c = SLIST_FIRST(&conn_pool);
 	if (c)
 		SLIST_REMOVE_HEAD(&conn_pool, pool_link);
-	else
+	else {
 		c = calloc(1, sizeof(*c));
-
+		c->out.coro = c->in.coro = 1;
+		c->out.data = c->in.data = c;
+	}
 	conn_init(c, pool, fd, 0);
 	return c;
 }
@@ -350,9 +352,7 @@ void
 conn_init(struct conn *c, struct palloc_pool *pool, int fd, int ref)
 {
 	say_debug("%s: c:%p fd:%i", __func__, c, fd);
-	assert(c->out.data == NULL && c->in.data == NULL);
-	c->out.coro = c->in.coro = 1;
-	c->out.data = c->in.data = c;
+	assert(c->out.cb == NULL && c->in.cb == NULL);
 
 	TAILQ_INIT(&c->out_messages.q);
 	c->out_messages.pool = pool;
@@ -407,8 +407,7 @@ conn_close(struct conn *c)
 	if (c->fd > 0) {
 		ev_io_stop(&c->out);
 		ev_io_stop(&c->in);
-		memset(&c->out, 0, sizeof(c->out));
-		memset(&c->in, 0, sizeof(c->in));
+		c->in.cb = c->out.cb = NULL;
 
 		close(c->fd);
 		c->fd = -1;
