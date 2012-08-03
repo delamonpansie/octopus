@@ -856,10 +856,19 @@ box_process(struct conn *c, struct tbuf *request, void *arg __attribute__((unuse
 				iproto_raise(ERR_CODE_NONMASTER, "updates forbiden on secondary port");
 
 			u32 rc = ERR_CODE_OK;
-			if (msg_code == EXEC_LUA) {
+			switch (msg_code) {
+			case EXEC_LUA:
 				rc = box_dispach_lua(&txn, &request_data);
 				stat_collect(stat_base, EXEC_LUA, 1);
-			} else {
+				break;
+			case PAXOS_LEADER:
+				if ([recovery respondsTo:@selector(leader_redirect_raise)])
+					[recovery perform:@selector(leader_redirect_raise)];
+				else
+					iproto_raise(ERR_CODE_UNSUPPORTED_COMMAND,
+						     "PAXOS_LEADER unsupported in non cluster configuration");
+				break;
+			default:
 				box_prepare_update(&txn, &request_data);
 				/* we'r potentially block here */
 				txn_submit_to_storage(&txn);

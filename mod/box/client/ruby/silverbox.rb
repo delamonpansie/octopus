@@ -202,6 +202,10 @@ class SilverBox < IProtoRetCode
     unpack_reply!(reply, :return_tuple => true)
   end
 
+  def leader
+    msg :code => 90, :raw => ''
+  end
+
   def pks(*args)
     param = args[-1].is_a?(Hash) ? args.pop : {}
     object_space = param[:object_space] || @object_space

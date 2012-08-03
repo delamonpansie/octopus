@@ -934,17 +934,21 @@ out:
 	strcpy(status, "active");
 }
 
+- (void)
+leader_redirect_raise
+{
+	iproto_raise_fmt(ERR_CODE_REDIRECT,
+			 "%s",
+			 leader_id >= 0
+			 ? sintoa(&paxos_peer(self, leader_id)->primary_addr)
+			 : "UNKNOWN");
+}
 
 - (int)
 submit:(void *)data len:(u32)len
 {
-	if (!paxos_leader()) {
-		iproto_raise_fmt(ERR_CODE_REDIRECT,
-				 "%s",
-				 leader_id >= 0
-				 ? sintoa(&paxos_peer(self, leader_id)->primary_addr)
-				 : "UNKNOWN");
-	}
+	if (!paxos_leader())
+		[self leader_redirect_raise];
 
 	struct pending_value *p = calloc(1, sizeof(*p));
 	p->value_len = len;
