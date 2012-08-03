@@ -730,7 +730,8 @@ enable_local_writes
 		if (atosin(feeder_addr, sin) == -1 || sin->sin_addr.s_addr == INADDR_ANY)
 			panic("bad feeder addr: `%s'", feeder_addr);
 
-		[self recover_follow_remote_async:sin];
+		if ([self recover_follow_remote_async:sin] == NULL)
+			panic("unable to start remote hot standby fiber");
 
 		say_info("starting remote hot standby");
 		snprintf(status, sizeof(status), "hot_standby/%s", feeder_addr);
