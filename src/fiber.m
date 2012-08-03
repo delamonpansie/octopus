@@ -70,22 +70,11 @@ static struct mhash_t *fibers_registry;
 
 STAILQ_HEAD(, fiber) wake_list;
 
-static void
-update_last_stack_frame(struct fiber *fiber)
-{
-#ifdef BACKTRACE
-	fiber->last_stack_frame = frame_addess();
-#else
-	(void)fiber;
-#endif
-}
-
 void
 resume(struct fiber *callee, void *w)
 {
 	assert(callee != &sched);
 	struct fiber *caller = fiber;
-	update_last_stack_frame(caller);
 	callee->caller = caller;
 	assert(callee->name);
 	fiber = callee;
@@ -98,7 +87,6 @@ void *
 yield(void)
 {
 	struct fiber *callee = fiber;
-	update_last_stack_frame(callee);
 	fiber = callee->caller;
 	coro_transfer(&callee->coro.ctx, &callee->caller->coro.ctx);
 	return fiber->coro.w;
@@ -330,11 +318,6 @@ fiber_info(struct tbuf *out)
 		tbuf_printf(out, "  - fid: %4i" CRLF, fiber->fid);
 		tbuf_printf(out, "    name: %s" CRLF, fiber->name);
 		tbuf_printf(out, "    stack: %p" CRLF, stack_top);
-#ifdef BACKTRACE
-		tbuf_printf(out, "    backtrace:"CRLF "%s" CRLF,
-			    backtrace(fiber->last_stack_frame,
-				      fiber->coro.stack, fiber->coro.stack_size));
-#endif
 	}
 }
 

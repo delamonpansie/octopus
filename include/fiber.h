@@ -40,9 +40,6 @@
 struct fiber {
 	struct tarantool_coro coro;
 	struct fiber *caller;
-#ifdef BACKTRACE
-	void *last_stack_frame;
-#endif
 	struct palloc_pool *pool;
 	uint32_t fid;
 
