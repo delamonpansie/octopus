@@ -326,9 +326,9 @@ recover_wal:(XLog *)l
 	@try {
 		while ((row = [l next_row])) {
 			if (row_v12(row)->lsn > lsn) {
+				last_wal_lsn = row_v12(row)->lsn;
 				[self recover_row:row];
 			}
-
 			prelease_after(l->pool, 128 * 1024);
 		}
 	}
@@ -409,8 +409,9 @@ recover_cont
 		say_info("recover from `%s'", current_wal->filename);
 
 	[self recover_remaining_wals];
-	[self recover_follow:cfg.wal_dir_rescan_delay]; /* FIXME: make this conf */
 	say_info("wals recovered, lsn:%"PRIi64" scn:%"PRIi64, lsn, scn);
+
+	[self recover_follow:cfg.wal_dir_rescan_delay]; /* FIXME: make this conf */
 	strcpy(status, "hot_standby/local");
 
 	/* all curently readable wal rows were read, notify about that */
@@ -432,7 +433,10 @@ recover_start
 	 * so find wal which contains record with next lsn
 	 */
 	current_wal = [wal_dir containg_lsn:lsn + 1];
-	return [self recover_cont];
+	[self recover_cont];
+	if (last_wal_lsn && last_wal_lsn < lsn)
+		raise("Snapshot LSN is greater then last WAL LSN");
+	return lsn;
 }
 
 - (i64)

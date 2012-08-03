@@ -210,7 +210,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 @end
 
 @interface Recovery: XLogWriter {
-	i64 scn;
+	i64 scn, last_wal_lsn;
 	ev_tstamp lag, last_update_tstamp, run_crc_verify_tstamp;
 	char status[64];
 
