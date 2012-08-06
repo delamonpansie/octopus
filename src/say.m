@@ -221,11 +221,11 @@ vsay(int level, const char *filename, unsigned line,
 	*(buf + p) = '\n';
 
 	int r, one = 1, zero = 0;
-	if (level >= S_CRIT)
+	if (level <= S_CRIT)
 		ioctl(sayfd, FIONBIO, &zero);
 	r = write(sayfd, buf, p + 1);
 	(void)r;
-	if (nonblocking && level >= S_CRIT)
+	if (nonblocking && level <= S_CRIT)
 		ioctl(sayfd, FIONBIO, &one);
 
 	if (sayfd != STDERR_FILENO && (dup_to_stderr || level == S_FATAL)) {
