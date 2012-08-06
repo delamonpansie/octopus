@@ -122,7 +122,7 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 
 @interface Index (Tuple)
 + (Index *)new_with_n:(int)n_
-		  cfg:(struct tarantool_cfg_object_space_index *)cfg;
+		  cfg:(struct octopus_cfg_object_space_index *)cfg;
 @end
 
 @protocol HashIndex <BasicIndex>

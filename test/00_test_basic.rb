@@ -52,9 +52,9 @@ env.with_server do
 
   puts File.open("00000000000000001002.xlog").lines.take(4) + ["\n"]
 
-  puts `./tarantool --cat 00000000000000000500.xlog | sed 's/tm:[^ ]* //'` + "\n"
+  puts `./octopus --cat 00000000000000000500.xlog | sed 's/tm:[^ ]* //'` + "\n"
 
-  puts `./tarantool --cat 00000000000000001002.xlog | sed 's/tm:[^ ]* //'` + "\n"
+  puts `./octopus --cat 00000000000000001002.xlog | sed 's/tm:[^ ]* //'` + "\n"
 
-  puts `./tarantool --cat 00000000000000001001.snap | sed 's/tm:[^ ]* //' | egrep 't:snap_(initial|final)_tag'`
+  puts `./octopus --cat 00000000000000001001.snap | sed 's/tm:[^ ]* //' | egrep 't:snap_(initial|final)_tag'`
 end

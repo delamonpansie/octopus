@@ -33,7 +33,7 @@
 #import <salloc.h>
 #import <say.h>
 #import <stat.h>
-#import <tarantool.h>
+#import <octopus.h>
 #import <tbuf.h>
 #import <util.h>
 #import <object.h>
@@ -1436,7 +1436,7 @@ static void
 info(struct tbuf *out)
 {
 	tbuf_printf(out, "info:" CRLF);
-	tbuf_printf(out, "  version: \"%s\"" CRLF, tarantool_version());
+	tbuf_printf(out, "  version: \"%s\"" CRLF, octopus_version());
 	tbuf_printf(out, "  uptime: %i" CRLF, tnt_uptime());
 	tbuf_printf(out, "  pid: %i" CRLF, getpid());
 	tbuf_printf(out, "  wal_writer_pid: %" PRIi64 CRLF,

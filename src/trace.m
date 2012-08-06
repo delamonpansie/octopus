@@ -25,7 +25,7 @@
  */
 
 #import <util.h>
-#import <tarantool.h>
+#import <octopus.h>
 
 #include <stdio.h>
 #include <stdlib.h>

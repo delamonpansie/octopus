@@ -30,7 +30,7 @@
 #import <salloc.h>
 #import <say.h>
 #import <stat.h>
-#import <tarantool.h>
+#import <octopus.h>
 #import <tbuf.h>
 #import <net_io.h>
 #import <pickle.h>
@@ -146,13 +146,13 @@ admin_dispatch(struct conn *c)
 
 	%%{
 		action show_configuration {
-			tarantool_cfg_iterator_t *i;
+			octopus_cfg_iterator_t *i;
 			char *key, *value;
 
 			start(out);
 			tbuf_printf(out, "configuration:" CRLF);
-			i = tarantool_cfg_iterator_init();
-			while ((key = tarantool_cfg_iterator_next(i, &cfg, &value)) != NULL) {
+			i = octopus_cfg_iterator_init();
+			while ((key = octopus_cfg_iterator_next(i, &cfg, &value)) != NULL) {
 				if (value) {
 					tbuf_printf(out, "  %s: \"%s\"" CRLF, key, value);
 					free(value);

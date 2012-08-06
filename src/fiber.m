@@ -28,8 +28,8 @@
 #import <palloc.h>
 #import <salloc.h>
 #import <say.h>
-#import <tarantool.h>
-#import <tarantool_ev.h>
+#import <octopus.h>
+#import <octopus_ev.h>
 #import <tbuf.h>
 #import <stat.h>
 #import <pickle.h>
@@ -218,7 +218,7 @@ fiber_create(const char *name, void (*f)(va_list va), ...)
 		if (new == NULL)
 			return NULL;
 
-		if (tarantool_coro_create(&new->coro, fiber_loop, NULL) == NULL)
+		if (octopus_coro_create(&new->coro, fiber_loop, NULL) == NULL)
 			return NULL;
 
 		char lua_reg_name[16];
@@ -259,7 +259,7 @@ fiber_destroy_all()
 			continue;
 
 		palloc_destroy_pool(f->pool);
-		tarantool_coro_destroy(&f->coro);
+		octopus_coro_destroy(&f->coro);
 	}
 }
 

@@ -35,8 +35,8 @@
 #include <string.h>
 #include <sys/mman.h>
 
-struct tarantool_coro *
-tarantool_coro_create(struct tarantool_coro *coro, void (*f) (void *), void *data)
+struct octopus_coro *
+octopus_coro_create(struct octopus_coro *coro, void (*f) (void *), void *data)
 {
 	const int page = sysconf(_SC_PAGESIZE);
 
@@ -64,7 +64,7 @@ tarantool_coro_create(struct tarantool_coro *coro, void (*f) (void *), void *dat
 }
 
 void
-tarantool_coro_destroy(struct tarantool_coro *coro)
+octopus_coro_destroy(struct octopus_coro *coro)
 {
 	if (coro->stack != NULL && coro->stack != MAP_FAILED)
 		munmap(coro->stack, coro->stack_size);

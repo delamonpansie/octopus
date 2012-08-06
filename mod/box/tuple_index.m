@@ -34,7 +34,7 @@
 #include <stdbool.h>
 
 #import <mod/box/box.h>
-#import <cfg/tarantool.h>
+#import <cfg/octopus.h>
 
 @implementation Index (Tuple)
 static struct index_node *
@@ -118,7 +118,7 @@ box_tuple_gen_dtor(struct tnt_object *obj, struct index_node *node_, void *arg)
 }
 
 static struct gen_dtor *
-cfg_box_tuple_gen_dtor(struct tarantool_cfg_object_space_index *c)
+cfg_box_tuple_gen_dtor(struct octopus_cfg_object_space_index *c)
 {
 	struct gen_dtor *d = calloc(1, sizeof(*d));
 
@@ -165,7 +165,7 @@ cfg_box_tuple_gen_dtor(struct tarantool_cfg_object_space_index *c)
 }
 
 + (Index *)
-new_with_n:(int)n cfg:(struct tarantool_cfg_object_space_index *)cfg
+new_with_n:(int)n cfg:(struct octopus_cfg_object_space_index *)cfg
 {
 	Index *i;
 

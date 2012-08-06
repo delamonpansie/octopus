@@ -27,13 +27,13 @@
 #include <stdlib.h>
 #include <third_party/libcoro/coro.h>
 
-struct tarantool_coro {
+struct octopus_coro {
 	coro_context ctx;
 	void *stack;
 	size_t stack_size;
 	void *w;
 };
 
-struct tarantool_coro *
-tarantool_coro_create(struct tarantool_coro *ctx, void (*f) (void *), void *data);
-void tarantool_coro_destroy(struct tarantool_coro *ctx);
+struct octopus_coro *
+octopus_coro_create(struct octopus_coro *ctx, void (*f) (void *), void *data);
+void octopus_coro_destroy(struct octopus_coro *ctx);

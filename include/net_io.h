@@ -26,8 +26,8 @@
 
 
 #import <tbuf.h>
-#import <tarantool.h>
-#import <tarantool_ev.h>
+#import <octopus.h>
+#import <octopus_ev.h>
 #import <palloc.h>
 
 #include <third_party/queue.h>

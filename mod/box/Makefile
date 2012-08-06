@@ -1,4 +1,4 @@
-src/tarantool.o: CFLAGS += -DSTORAGE
+src/octopus.o: CFLAGS += -DSTORAGE
 
 obj += src/admin.o
 obj += mod/box/box.o

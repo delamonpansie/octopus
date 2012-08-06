@@ -3,7 +3,7 @@
 extern char *cfg_err;
 extern int cfg_err_len, cfg_err_offt;
 
-#include <tarantool.h>
+#include <octopus.h>
 #include <util.h>
 #include <third_party/confetti/prscfg.h>
 

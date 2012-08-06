@@ -25,7 +25,7 @@
  */
 
 #import <salloc.h>
-#import <tarantool.h>
+#import <octopus.h>
 #import <say.h>
 #import <net_io.h>
 #import <iproto.h>

@@ -59,18 +59,18 @@ else
 endif
 
 
-all: tarantool
+all: octopus
 
 subdirs += third_party $(foreach module,$(modules),mod/$(module)) cfg src src-lua
 include $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
 
-tarantool: $(obj)
+octopus: $(obj)
 	$E "CC	$@"
 	$Q$(CC) $(LDFLAGS) $^ $(LIBS) -o $@
 
 LDFLAGS += -Lthird_party/luajit/src -Wl,--export-dynamic
 LIBS += -lluajit
-tarantool: third_party/luajit/src/libluajit.a
+octopus: third_party/luajit/src/libluajit.a
 third_party/luajit/src/libluajit.a:
 	$(E) "MAKE	$@"
 	@$(MAKE) -C third_party/luajit/src CC="$(CC)" E="$(E)" Q="$(Q)" \
@@ -115,33 +115,33 @@ ifeq (1,$(HAVE_CONFETTI))
 %.cfg: %.cfg_tmpl
 	@mkdir -p $(dir $@)
 	$(E) "CNFTY	$@"
-	$(Q)$(CONFETTI) -i $< -n tarantool_cfg -f $@
+	$(Q)$(CONFETTI) -i $< -n octopus_cfg -f $@
 
 cfg/%.h: cfg/%.cfg_tmpl
 	@mkdir -p $(dir $@)
 	$(E) "CNFTY	$@"
-	$(Q)$(CONFETTI) -i $< -n tarantool_cfg -h $@
+	$(Q)$(CONFETTI) -i $< -n octopus_cfg -h $@
 
 cfg/%.c: cfg/%.cfg_tmpl
 	@mkdir -p $(dir $@)
 	$(E) "CNFTY	$@"
-	$(Q)$(CONFETTI) -i $< -n tarantool_cfg -c $@
+	$(Q)$(CONFETTI) -i $< -n octopus_cfg -c $@
 endif
 
 
 FORCE:
 .PHONY: FORCE
 ifeq (1,$(HAVE_DARCS))
-tarantool_version.h: FORCE
-	@echo -n 'const char tarantool_version_string[] = "' > $@_
+octopus_version.h: FORCE
+	@echo -n 'const char octopus_version_string[] = "' > $@_
 	@DARCS=$(DARCS) sh $(srcdir)/scripts/darcs-describe >> $@_
 	@echo '";' >> $@_
 	@diff -q $@ $@_ 2>/dev/null >/dev/null || (echo "GEN	$(notdir $@)"; cp $@_ $@)
 	@rm $@_
 else
 ifeq (1,$(HAVE_GIT))
-tarantool_version.h: FORCE
-	@echo -n 'const char tarantool_version_string[] = "' > $@_
+octopus_version.h: FORCE
+	@echo -n 'const char octopus_version_string[] = "' > $@_
 	@$(GIT) describe HEAD | tr -d \\n >> $@_
 	@echo '";' >> $@_
 	@diff -q $@ $@_ 2>/dev/null >/dev/null || (echo "GEN	$(notdir $@)"; cp $@_ $@)
@@ -151,9 +151,9 @@ endif
 
 .PHONY: distclean clean
 clean:
-	@echo "CLEAN tarantool"
+	@echo "CLEAN octopus"
 	@rm -rf $(obj) $(patsubst %.o,%.gcno,$(obj))
-	@rm -rf $(dep) tarantool lcov test/var
+	@rm -rf $(dep) octopus lcov test/var
 
 luaclean:
 	@$(MAKE) -C third_party/luajit/src clean
@@ -171,33 +171,33 @@ TAGS:
 	ctags-exuberant --langmap=ObjectiveC:.m.h.rl -eR
 
 .PHONY: test
-test:	tarantool
+test:	octopus
 	test/run.rb
 
 ifeq (1,$(COVERAGE))
 clean: clean-coverage
 ifeq (1,$(HAVE_LCOV))
-tarantool.cov: $(patsubst %.o,%.gcda,$(obj)) $(patsubst %.o,%.gcno,$(obj))
+octopus.cov: $(patsubst %.o,%.gcda,$(obj)) $(patsubst %.o,%.gcno,$(obj))
 	lcov --output-file $@ --base-directory . --capture --directory .
 	lcov --output-file $@ --remove $@ y.tab.c prscfg.l prscfg.y prscfg_scan.c /usr/\*
-tarantool.coverage/index.html: tarantool.cov
+octopus.coverage/index.html: octopus.cov
 	genhtml --output-directory $(dir $@) $<
 else
-tarantool.cov: $(patsubst %.o,%.gcda,$(obj)) $(patsubst %.o,%.gcno,$(obj))
+octopus.cov: $(patsubst %.o,%.gcda,$(obj)) $(patsubst %.o,%.gcno,$(obj))
 	python scripts/zcov/zcov-scan $@
-tarantool.coverage/index.html: tarantool.cov
+octopus.coverage/index.html: octopus.cov
 	python scripts/zcov/zcov-genhtml $< $(dir $@)
 endif
 
 $(patsubst %.o,%.gcda,$(obj)): test
 
 .PHONY: coverage clean-coverage
-coverage: tarantool.coverage/index.html
+coverage: octopus.coverage/index.html
 	sensible-browser $<
 
 clean-coverage:
 	@rm -rf $(patsubst %.o,%.gcda,$(obj)) \
-		tarantool.coverage tarantool.cov
+		octopus.coverage octopus.cov
 endif
 
 
@@ -218,7 +218,7 @@ darcs.context:
 endif
 
 .PHONY:
-dist: configure $(dist) tarantool_version.h darcs.context
+dist: configure $(dist) octopus_version.h darcs.context
 	@rm -rf $(configure-byproducts)
 
 $(eval $(defered))

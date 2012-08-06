@@ -1,4 +1,4 @@
-src/tarantool.o: CFLAGS += -DUTILITY
+src/octopus.o: CFLAGS += -DUTILITY
 
 obj += mod/follower/follower.o
 

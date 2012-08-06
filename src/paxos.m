@@ -823,7 +823,7 @@ run_crc_delay:(double)run_crc_delay
 	flags:(int)flags
 snap_io_rate_limit:(int)snap_io_rate_limit_
 {
-	struct tarantool_cfg_paxos_peer *c;
+	struct octopus_cfg_paxos_peer *c;
 	struct iproto_peer *ipeer;
 	struct paxos_peer *ppeer;
 

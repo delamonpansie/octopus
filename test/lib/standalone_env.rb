@@ -2,10 +2,10 @@ require 'run_env'
 require 'erb'
 
 class StandAloneEnv < RunEnv
-  ConfigFile = "tarantool.cfg"
-  PidFile = "tarantool.pid"
-  LogFile = "tarantool.log"
-  Binary = Root + "/tarantool"
+  ConfigFile = "octopus.cfg"
+  PidFile = "octopus.pid"
+  LogFile = "octopus.log"
+  Binary = Root + "/octopus"
   Suppressions = Root + "/scripts/valgrind.supp"
 
   def initialize
@@ -20,7 +20,7 @@ class StandAloneEnv < RunEnv
   def config
     body = ERB.new(@config_template).result(binding)
     if not $options[:valgrind] then
-      body += %Q{logger = "exec cat - >> tarantool.log"\n}
+      body += %Q{logger = "exec cat - >> octopus.log"\n}
     end
     body
   end
@@ -48,11 +48,11 @@ class StandAloneEnv < RunEnv
 
   task :setup => [:test_root, :config] do
     cd_test_root do
-      ln_s Binary, "tarantool"
+      ln_s Binary, "octopus"
       ln_s Root + "/.gdbinit", ".gdbinit"
       ln_s Root + "/.gdb_history", ".gdb_history"
 
-      waitpid(tarantool ['--init-storage'], :out => "/dev/null", :err => "/dev/null")
+      waitpid(octopus ['--init-storage'], :out => "/dev/null", :err => "/dev/null")
     end
   end
 
@@ -63,20 +63,20 @@ class StandAloneEnv < RunEnv
   def gdb_if_core
     if FileTest.readable?("core")
       STDERR.puts "\n\nCore found. starting gdb."
-      system *%w[tail -n20 tarantool.log]
+      system *%w[tail -n20 octopus.log]
       STDERR.puts "\n-------\n"
-      exec *%w[gdb --quiet tarantool core]
+      exec *%w[gdb --quiet octopus core]
     end
   end
 
-  def tarantool(args, param = {})
+  def octopus(args, param = {})
     invoke :config
     pid = fork
     if pid
       return pid
     else
       Process.setpgid($$, 0)
-      argv = ['./tarantool', '-c', ConfigFile, *args]
+      argv = ['./octopus', '-c', ConfigFile, *args]
       if $options[:valgrind]
         argv.unshift('valgrind', '-q',
                      "--suppressions=#{Root + '/scripts/valgrind.supp'}",
@@ -98,7 +98,7 @@ class StandAloneEnv < RunEnv
       break
     end
 
-    @pid = tarantool [], :out => "/dev/null"
+    @pid = octopus [], :out => "/dev/null"
 
     50.times do
       delay

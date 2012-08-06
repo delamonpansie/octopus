@@ -26,7 +26,7 @@
 
 #import <util.h>
 #import <fiber.h>
-#import <tarantool_ev.h>
+#import <octopus_ev.h>
 #import <tbuf.h>
 #import <say.h>
 #import <stat.h>

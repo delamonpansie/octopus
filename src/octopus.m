@@ -34,9 +34,9 @@
 #import <say.h>
 #import <net_io.h>
 #import <stat.h>
-#import <tarantool.h>
+#import <octopus.h>
 #import <index.h>
-#import <tarantool_version.h>
+#import <octopus_version.h>
 
 #include <third_party/gopt/gopt.h>
 #include <third_party/luajit/src/lua.h>
@@ -72,7 +72,7 @@ lua_State *root_L;
 
 char cfg_err_buf[1024], *cfg_err;
 int cfg_err_len, cfg_err_offt;
-struct tarantool_cfg cfg;
+struct octopus_cfg cfg;
 char *custom_proc_title;
 
 
@@ -93,7 +93,7 @@ reset_cfg_err()
 }
 
 static i32
-load_cfg(struct tarantool_cfg *conf, i32 check_rdonly)
+load_cfg(struct octopus_cfg *conf, i32 check_rdonly)
 {
 	FILE *f;
 	i32 n_accepted, n_skipped;
@@ -110,10 +110,10 @@ load_cfg(struct tarantool_cfg *conf, i32 check_rdonly)
 		return -1;
 	}
 
-	parse_cfg_file_tarantool_cfg(conf, f, check_rdonly, &n_accepted, &n_skipped);
+	parse_cfg_file_octopus_cfg(conf, f, check_rdonly, &n_accepted, &n_skipped);
 	fclose(f);
 
-	if (check_cfg_tarantool_cfg(conf) != 0)
+	if (check_cfg_octopus_cfg(conf) != 0)
 		return -1;
 
 	if (n_accepted == 0 || n_skipped != 0)
@@ -128,44 +128,44 @@ load_cfg(struct tarantool_cfg *conf, i32 check_rdonly)
 i32
 reload_cfg()
 {
-	struct tarantool_cfg new_cfg1, new_cfg2;
+	struct octopus_cfg new_cfg1, new_cfg2;
 	i32 ret;
 
 	memset(&new_cfg1, 0, sizeof(new_cfg1));
 	memset(&new_cfg2, 0, sizeof(new_cfg2));
 
 	// Load with checking readonly params
-	if (dup_tarantool_cfg(&new_cfg1, &cfg) != 0) {
-		destroy_tarantool_cfg(&new_cfg1);
+	if (dup_octopus_cfg(&new_cfg1, &cfg) != 0) {
+		destroy_octopus_cfg(&new_cfg1);
 		return -1;
 	}
 	ret = load_cfg(&new_cfg1, 1);
 	if (ret == -1) {
-		destroy_tarantool_cfg(&new_cfg1);
+		destroy_octopus_cfg(&new_cfg1);
 		return -1;
 	}
 	// Load without checking readonly params
-	if (fill_default_tarantool_cfg(&new_cfg2) != 0) {
-		destroy_tarantool_cfg(&new_cfg2);
+	if (fill_default_octopus_cfg(&new_cfg2) != 0) {
+		destroy_octopus_cfg(&new_cfg2);
 		return -1;
 	}
 	ret = load_cfg(&new_cfg2, 0);
 	if (ret == -1) {
-		destroy_tarantool_cfg(&new_cfg1);
+		destroy_octopus_cfg(&new_cfg1);
 		return -1;
 	}
 	// Compare only readonly params
-	char *diff = cmp_tarantool_cfg(&new_cfg1, &new_cfg2, 1);
+	char *diff = cmp_octopus_cfg(&new_cfg1, &new_cfg2, 1);
 	if (diff != NULL) {
-		destroy_tarantool_cfg(&new_cfg1);
-		destroy_tarantool_cfg(&new_cfg2);
+		destroy_octopus_cfg(&new_cfg1);
+		destroy_octopus_cfg(&new_cfg2);
 		out_warning(0, "Could not accept read only '%s' option", diff);
 		return -1;
 	}
-	destroy_tarantool_cfg(&new_cfg1);
+	destroy_octopus_cfg(&new_cfg1);
 	if (module(NULL)->reload_config)
 		module(NULL)->reload_config(&cfg, &new_cfg2);
-	destroy_tarantool_cfg(&cfg);
+	destroy_octopus_cfg(&cfg);
 	cfg = new_cfg2;
 	return 0;
 }
@@ -191,9 +191,9 @@ register_module_(struct tnt_module *m)
 }
 
 const char *
-tarantool_version(void)
+octopus_version(void)
 {
-	return tarantool_version_string;
+	return octopus_version_string;
 }
 
 
@@ -506,7 +506,7 @@ main(int argc, char **argv)
 	binary_filename = argv[0];
 
 	if (gopt(opt, 'V')) {
-		puts(tarantool_version());
+		puts(octopus_version());
 		return 0;
 	}
 
@@ -562,7 +562,7 @@ main(int argc, char **argv)
 	}
 
 	if (gopt(opt, 'k')) {
-		if (fill_default_tarantool_cfg(&cfg) != 0 || load_cfg(&cfg, 0) != 0) {
+		if (fill_default_octopus_cfg(&cfg) != 0 || load_cfg(&cfg, 0) != 0) {
 			say_error("check_config FAILED%s", cfg_err);
 
 			return 1;
@@ -571,7 +571,7 @@ main(int argc, char **argv)
 		return 0;
 	}
 
-	if (fill_default_tarantool_cfg(&cfg) != 0 || load_cfg(&cfg, 0) != 0)
+	if (fill_default_octopus_cfg(&cfg) != 0 || load_cfg(&cfg, 0) != 0)
 		panic("can't load config: %s", cfg_err);
 
 	dup_to_stderr = gopt(opt, 'e');
@@ -596,11 +596,11 @@ main(int argc, char **argv)
 	}
 
 	if (gopt_arg(opt, 'g', &cfg_paramname)) {
-		tarantool_cfg_iterator_t *i;
+		octopus_cfg_iterator_t *i;
 		char *key, *value;
 
-		i = tarantool_cfg_iterator_init();
-		while ((key = tarantool_cfg_iterator_next(i, &cfg, &value)) != NULL) {
+		i = octopus_cfg_iterator_init();
+		while ((key = octopus_cfg_iterator_next(i, &cfg, &value)) != NULL) {
 			if (strcmp(key, cfg_paramname) == 0) {
 				printf("%s\n", value);
 				free(value);
@@ -683,7 +683,7 @@ main(int argc, char **argv)
 	signal_init();
 	module(NULL)->init();
 #elif defined(STORAGE)
-	say_crit("octopus version: %s", tarantool_version());
+	say_crit("octopus version: %s", octopus_version());
 	signal_init();
 	ev_set_syserr_cb(ev_panic);
 	ev_default_loop(ev_recommended_backends() | EVFLAG_SIGNALFD);

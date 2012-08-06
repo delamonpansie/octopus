@@ -24,26 +24,5 @@
  * SUCH DAMAGE.
  */
 
-#define EV_MULTIPLICITY 0
-#define ECB_NO_THREADS 1
-#define EV_CONFIG_H "include/config.h"
-
-#include <coro.h>
-extern coro_context *sched_ctx;
-extern struct fiber *fiber;
-
-#define EV_STRINGIFY2(x) #x
-#define EV_STRINGIFY(x) EV_STRINGIFY2(x)
-#define EV_COMMON void *data; char coro; const char *cb_src;
-#define ev_set_cb(ev,cb_) ev_cb (ev) = (cb_); (ev)->cb_src = __FILE__ ":" EV_STRINGIFY(__LINE__);
-#define EV_CB_DECLARE(type) void (*cb)(struct type *w, int revents);
-#define EV_CB_INVOKE(watcher, revents) ({			\
-if ((watcher)->coro) {						\
-	fiber = (struct fiber *)(watcher)->cb;			\
-	((struct tarantool_coro *)fiber)->w = (watcher); 	\
-	coro_transfer(sched_ctx, (coro_context *)fiber);	\
-} else								\
-	(watcher)->cb((watcher), (revents));			\
-})
-
-#include "third_party/libev/ev.h"
+#include <octopus_ev.h>
+#include <third_party/libev/ev.c>

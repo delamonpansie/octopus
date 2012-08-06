@@ -216,7 +216,7 @@ print_stats(struct netmsg **m)
 	tbuf_printf(out, "STAT pid %"PRIu32"\r\n", (u32)getpid());
 	tbuf_printf(out, "STAT uptime %"PRIu32"\r\n", (u32)tnt_uptime());
 	tbuf_printf(out, "STAT time %"PRIu32"\r\n", (u32)ev_now());
-	tbuf_printf(out, "STAT version 1.2.5 (tarantool/(silver)box)\r\n");
+	tbuf_printf(out, "STAT version 1.2.5 (octopus/(silver)box)\r\n");
 	tbuf_printf(out, "STAT pointer_size %zu\r\n", sizeof(void *)*8);
 	tbuf_printf(out, "STAT curr_items %"PRIu64"\r\n", items);
 	tbuf_printf(out, "STAT total_items %"PRIu64"\r\n", stats.total_items);

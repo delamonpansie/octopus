@@ -26,7 +26,7 @@
 
 #import <util.h>
 #import <tbuf.h>
-#import <cfg/tarantool.h>
+#import <cfg/octopus.h>
 
 #include <stdbool.h>
 
@@ -41,8 +41,8 @@ struct tnt_module {
 	struct tnt_module *next;
 	char *name;
 	void (*init)(void);
-	i32  (*check_config)(struct tarantool_cfg *conf);
-	void (*reload_config)(struct tarantool_cfg *old_conf, struct tarantool_cfg *new_conf);
+	i32  (*check_config)(struct octopus_cfg *conf);
+	void (*reload_config)(struct octopus_cfg *old_conf, struct octopus_cfg *new_conf);
 	int  (*cat)(const char *filename);
 	void (*snapshot)(bool);
 	void (*info)(struct tbuf *out);
@@ -65,7 +65,7 @@ struct lua_src {
 };
 extern struct lua_src *lua_src;
 
-extern struct tarantool_cfg cfg;
+extern struct octopus_cfg cfg;
 extern struct tbuf *cfg_out;
 extern const char *cfg_filename;
 extern char *custom_proc_title;
@@ -73,8 +73,8 @@ extern bool init_storage, booting;
 extern char *binary_filename;
 i32 reload_cfg();
 int save_snapshot(void *ev __attribute__((unused)), int events __attribute__((unused)));
-const char *tarantool_version(void);
-void tarantool_info(struct tbuf *out);
+const char *octopus_version(void);
+void octopus_info(struct tbuf *out);
 unsigned tnt_uptime(void);
 
 char **init_set_proc_title(int argc, char **argv);

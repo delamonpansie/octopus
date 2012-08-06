@@ -30,7 +30,7 @@ const char *indexlib_name = "Tarantool.index";
 #import <fiber.h>
 #import <index.h>
 #import <pickle.h>
-#import <tarantool.h>
+#import <octopus.h>
 
 #include <third_party/luajit/src/lua.h>
 #include <third_party/luajit/src/lualib.h>

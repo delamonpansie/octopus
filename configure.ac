@@ -3,8 +3,8 @@
 
 
 AC_PREREQ([2.67])
-AC_INIT([tarantool],[2.0],[mon@unformed.ru])
-AC_CONFIG_SRCDIR([src/tarantool.m])
+AC_INIT([octopus],[2.0],[mon@unformed.ru])
+AC_CONFIG_SRCDIR([src/octopus.m])
 AC_CONFIG_HEADERS([include/config.h])
 AC_CONFIG_FILES([Makefile scripts/gen-lua-registry.sh])
 
@@ -42,7 +42,7 @@ AC_ARG_VAR([CONFETTIFLAGS], [Confetti config generator flags])
 AC_CHECK_PROG([CONFETTI], [confetti], [confetti])
 AS_IF([test -z "$CONFETTI"],
  [AC_MSG_CHECKING([whether we need confetti to regenerate sources])
-  AS_IF([test -f "${srcdir}/cfg/tarantool.c"], [confetti_needed=no], [confetti_needed=yes])
+  AS_IF([test -f "${srcdir}/cfg/octopus.c"], [confetti_needed=no], [confetti_needed=yes])
   AC_MSG_RESULT([$confetti_needed])
   AS_IF([test $confetti_needed = yes],
         [AC_MSG_ERROR([You need Confetti to build from DARCS/GIT checkouts.])])
@@ -199,17 +199,17 @@ AS_IF([test "x$valgrind" != xyes],
 AC_ARG_ENABLE([module],
               [AS_HELP_STRING([--enable-modules[[="box feeder"]]],
                               [select module to build, silver(box) and feeder by default])],
-              [tarantool_modules=$enableval],
-              [tarantool_modules="box feeder"])
+              [octopus_modules=$enableval],
+              [octopus_modules="box feeder"])
 
-AC_SUBST(modules, [$tarantool_modules])
+AC_SUBST(modules, [$octopus_modules])
 
 AC_OUTPUT
 
 AC_MSG_RESULT([
 Configuration:
 
-Modules enabled........$tarantool_modules
+Modules enabled........$octopus_modules
 
 Objective C compiler...$CC
 CPPFLAGS...............$CPPFLAGS

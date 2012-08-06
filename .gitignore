@@ -6,12 +6,12 @@ lcov
 *.o
 *.d
 *.pd
-cfg/tarantool_*_cfg.*
+cfg/octopus_*_cfg.*
 *.snap
 *.xlog
 mod/silverbox/memcached.c
 src/admin.c
-tarantool_version.h
+octopus_version.h
 autom4te.cache
 config.*
 configure

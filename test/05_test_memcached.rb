@@ -6,10 +6,10 @@ require 'standalone_env'
 class Env < StandAloneEnv
   def config
     <<EOD
-pid_file = "tarantool.pid"
+pid_file = "octopus.pid"
 
 slab_alloc_arena = 1
-logger = "exec cat - >> tarantool.log"
+logger = "exec cat - >> octopus.log"
 primary_port = 33013
 wal_fsync_delay = 10
 

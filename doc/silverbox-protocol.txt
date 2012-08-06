@@ -1,7 +1,7 @@
 ; Mail.RU IPROTO protocol, Tarantool/Silverbox subset.
 ;
 ; The latest version of this document can be found in
-; tarantool source tree, doc/silverbox-protocol.txt
+; octopus source tree, doc/silverbox-protocol.txt
 ;
 ; IPROTO is a binary request/response protocol that features a
 ; complete access to Tarantool functionality, including:
@@ -22,7 +22,7 @@
 ; has little to do with ASN.1 standard). 
 ; See http://en.wikipedia.org/wiki/LEB128
 ; for encoding description, or core/pickle.c for implementation
-; in tarantool.
+; in octopus.
 
 ; All requests and responses utilize the same basic structure:
 

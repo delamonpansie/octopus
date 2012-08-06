@@ -22,8 +22,8 @@ How to run:
 1) compile (note GNU make is required)
 	./configure && make
 2) customize config
-	cp cfg/tarantool_box.cfg custom.cfg && emacs custom.cfg
+	cp cfg/octopus_box.cfg custom.cfg && emacs custom.cfg
 3) initialize storage
-        ./tarantool --config custom.cfg --init-storage
+        ./octopus --config custom.cfg --init-storage
 4) run
-	./tarantool --config custom.cfg
+	./octopus --config custom.cfg

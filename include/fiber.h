@@ -25,7 +25,7 @@
  */
 
 #import <util.h>
-#import <tarantool_ev.h>
+#import <octopus_ev.h>
 #import <coro.h>
 
 #include <third_party/luajit/src/lua.h>
@@ -38,7 +38,7 @@
 #include <sys/uio.h>
 
 struct fiber {
-	struct tarantool_coro coro;
+	struct octopus_coro coro;
 	struct fiber *caller;
 	struct palloc_pool *pool;
 	uint32_t fid;

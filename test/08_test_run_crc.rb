@@ -24,5 +24,5 @@ Env.clean.with_server do
   end
   sleep 1.1
 
-  puts `./tarantool --cat 00000000000000000002.xlog | sed 's/tm:[^ ]* //' | grep run_crc` + "\n"
+  puts `./octopus --cat 00000000000000000002.xlog | sed 's/tm:[^ ]* //' | grep run_crc` + "\n"
 end

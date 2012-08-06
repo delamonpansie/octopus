@@ -67,14 +67,14 @@ recover_row:(struct tbuf *)row
 @end
 
 i32
-check_config(struct tarantool_cfg *conf __attribute__((unused)))
+check_config(struct octopus_cfg *conf __attribute__((unused)))
 {
 	return 0;
 }
 
 void
-reload_config(struct tarantool_cfg *old_conf __attribute__((unused)),
-	      struct tarantool_cfg *new_conf __attribute__((unused)))
+reload_config(struct octopus_cfg *old_conf __attribute__((unused)),
+	      struct octopus_cfg *new_conf __attribute__((unused)))
 {
 	return;
 }
