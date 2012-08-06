@@ -54,7 +54,10 @@ lua_path = "src-lua/?.lua;?.lua", ro
 # custom proc title is appended after normal
 custom_proc_title=NULL, ro
 
-# backward compatibility mode
+## backward compatibility mode
+# write xlog's in 11 version format. backward compatible with tarantool.org
 io_compat = 0, ro
+# load from xlogs with scn == 0, broken format between 11 and 12
 io12_hack = 0, ro
+# replication master is a tarantool.org
 replication_compat = 0, ro
