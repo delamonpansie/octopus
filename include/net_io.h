@@ -109,8 +109,9 @@ void net_add_ref_iov(struct netmsg **m, struct tnt_object *obj, const void *buf,
 void net_add_lua_iov(struct netmsg **m, lua_State *L, int str);
 void netmsg_verify_ownership(struct netmsg_head *h);
 
-struct conn *conn_create(struct palloc_pool *pool, int fd);
-void conn_init(struct conn *c, struct palloc_pool *pool, int fd, int ref);
+struct conn *conn_create(struct palloc_pool *pool, int fd, struct fiber *in, struct fiber *out);
+void conn_init(struct conn *c, struct palloc_pool *pool, int fd,
+	       struct fiber *in, struct fiber *out, int ref);
 void conn_close(struct conn *c);
 void conn_gc(struct palloc_pool *pool, void *ptr);
 ssize_t conn_recv(struct conn *c);

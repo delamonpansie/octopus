@@ -887,10 +887,7 @@ snap_io_rate_limit:(int)snap_io_rate_limit_
 
 	SLIST_FOREACH (ipeer, &remotes, link) {
 		say_debug("init_conn: p:%p c:%p", ipeer, &ipeer->c);
-		conn_init(&ipeer->c, pool, -1, REF_STATIC);
-		/* FIXME: meld into conn_init */
-		ev_init(&ipeer->c.out, (void *)output_flusher);
-		ev_init(&ipeer->c.in, (void *)reply_reader);
+		conn_init(&ipeer->c, pool, -1, reply_reader, output_flusher, REF_STATIC);
 	}
 
 	short accept_port;

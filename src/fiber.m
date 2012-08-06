@@ -265,7 +265,8 @@ fiber_destroy_all()
 
 
 struct child *
-spawn_child(const char *name, int (*handler)(int fd, void *state), void *state)
+spawn_child(const char *name, struct fiber *in, struct fiber *out,
+	    int (*handler)(int fd, void *state), void *state)
 {
 	char *child_name;
 	int one = 1, socks[2];
@@ -290,7 +291,7 @@ spawn_child(const char *name, int (*handler)(int fd, void *state), void *state)
 		child->pid = pid;
 
 		struct palloc_pool *p = palloc_create_pool(name);
-		child->c = conn_create(p, socks[1]);
+		child->c = conn_create(p, socks[1], in, out);
 		palloc_register_gc_root(p, child->c, conn_gc);
 
 		return child;

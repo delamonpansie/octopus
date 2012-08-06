@@ -109,6 +109,7 @@ next:
 		callback(c, request, arg);
 		c->ref--;
 		if (c->fd < 0) {
+			/* connection is already closed. decr ref counter */
 			conn_close(c);
 			goto next;
 		}

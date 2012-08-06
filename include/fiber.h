@@ -82,6 +82,7 @@ void fiber_sleep(ev_tstamp s);
 void fiber_info(struct tbuf *out);
 struct fiber *fid2fiber(int fid);
 
-struct child *spawn_child(const char *name, int (*handler)(int fd, void *state), void *state);
+struct child *spawn_child(const char *name, struct fiber *in, struct fiber *out,
+			  int (*handler)(int fd, void *state), void *state);
 
 int luaT_openfiber(struct lua_State *L);

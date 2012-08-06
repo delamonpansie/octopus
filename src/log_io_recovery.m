@@ -838,17 +838,12 @@ run_crc_writer(va_list ap)
 		wal_dir->fsync_delay = wal_fsync_delay;
 		snap_io_rate_limit = snap_io_rate_limit_ * 1024 * 1024;
 
-		wal_writer = spawn_child("wal_writer", wal_disk_writer, self);
+		struct fiber *wal_out = fiber_create("wal_writer/output_flusher", service_output_flusher);
+		struct fiber *wal_in = fiber_create("wal_writer/input_dispatcher",
+							wal_disk_writer_input_dispatch);
+		wal_writer = spawn_child("wal_writer", wal_in, wal_out, wal_disk_writer, self);
 		if (!wal_writer)
 			panic("unable to start WAL writer");
-
-		ev_io_init(&wal_writer->c->out,
-			   (void *)fiber_create("wal_writer/output_flusher", service_output_flusher),
-			   wal_writer->c->fd, EV_WRITE);
-
-		struct fiber *dispatcher = fiber_create("wal_writer/input_dispatcher",
-							wal_disk_writer_input_dispatch);
-		ev_io_init(&wal_writer->c->in, (void *)dispatcher, wal_writer->c->fd, EV_READ);
 
 		ev_set_priority(&wal_writer->c->in, 1);
 		ev_set_priority(&wal_writer->c->out, 1);

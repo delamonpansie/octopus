@@ -38,7 +38,7 @@
 init
 {
 	say_debug("%s", __func__);
-	conn_init(&c, fiber->pool, -1, REF_STATIC);
+	conn_init(&c, fiber->pool, -1, fiber, fiber, REF_STATIC);
 	palloc_register_gc_root(fiber->pool, &c, conn_gc);
 
 	return [super init];
@@ -75,6 +75,8 @@ handshake:(i64)scn err:(const char **)err_ptr
 		err = "can't connect to feeder";
 		goto err;
 	}
+	ev_io_set(&c.in, c.fd, EV_READ);
+	ev_io_set(&c.out, c.fd, EV_WRITE);
 
 	if (cfg.replication_compat) {
 		if (conn_write(&c, &scn, sizeof(scn)) != sizeof(scn)) {

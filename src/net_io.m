@@ -321,38 +321,34 @@ restart:
 ssize_t
 conn_flush(struct conn *c)
 {
-	ev_io io = { .coro = 1, .cb = NULL };
-
-	ev_io_init(&io, (void *)fiber, c->fd, EV_WRITE);
-	ev_io_start(&io);
+	assert(c->out.cb == (void *)fiber);
+	ev_io_start(&c->out);
 	do {
 		yield();
 	} while (conn_write_netmsg(c) && c->fd > 0);
-	ev_io_stop(&io);
+	ev_io_stop(&c->out);
 
 	return TAILQ_EMPTY(&(c->out_messages.q))  ? 0 : -1;
 }
 
 struct conn *
-conn_create(struct palloc_pool *pool, int fd)
+conn_create(struct palloc_pool *pool, int fd, struct fiber *in, struct fiber *out)
 {
 	struct conn *c = SLIST_FIRST(&conn_pool);
 	if (c)
 		SLIST_REMOVE_HEAD(&conn_pool, pool_link);
-	else {
+	else
 		c = calloc(1, sizeof(*c));
-		c->out.coro = c->in.coro = 1;
-		c->out.data = c->in.data = c;
-	}
-	conn_init(c, pool, fd, 0);
+
+	conn_init(c, pool, fd, in, out, 0);
 	return c;
 }
 
 void
-conn_init(struct conn *c, struct palloc_pool *pool, int fd, int ref)
+conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, struct fiber *out, int ref)
 {
 	say_debug("%s: c:%p fd:%i", __func__, c, fd);
-	assert(c->out.cb == NULL && c->in.cb == NULL);
+	assert(ref >= -2 && ref <= 0);
 
 	TAILQ_INIT(&c->out_messages.q);
 	c->out_messages.pool = pool;
@@ -363,6 +359,12 @@ conn_init(struct conn *c, struct palloc_pool *pool, int fd, int ref)
 	c->state = -1;
 	c->peer_name[0] = 0;
 	c->rbuf = tbuf_alloc(c->pool);
+
+	assert(c->out.cb == NULL && c->in.cb == NULL);
+	c->out.coro = c->in.coro = 1;
+	c->out.data = c->in.data = c;
+	ev_io_init(&c->in, (void *)in, c->fd, EV_READ);
+	ev_io_init(&c->out, (void *)out, c->fd, EV_WRITE);
 }
 
 
@@ -382,11 +384,10 @@ ssize_t
 conn_recv(struct conn *c)
 {
 	ssize_t r;
-	ev_io io = { .coro = 1 };
-	ev_io_init(&io, (void *)fiber, c->fd, EV_READ);
+	assert(c->in.cb == (void *)fiber);
 	tbuf_ensure(c->rbuf, 16 * 1024);
 
-	ev_io_start(&io);
+	ev_io_start(&c->in);
 again:
 	yield();
 	r = tbuf_recv(c->rbuf, c->fd);
@@ -395,7 +396,7 @@ again:
 			goto again;
 		say_syserror("%s", __func__);
 	}
-	ev_io_stop(&io);
+	ev_io_stop(&c->in);
 	return r;
 }
 
@@ -447,10 +448,9 @@ ssize_t
 conn_read(struct conn *c, void *buf, size_t count)
 {
 	ssize_t r, done = 0;
-	ev_io io = { .coro = 1 };
-	ev_io_init(&io, (void *)fiber, c->fd, EV_READ);
+	assert(c->in.cb == (void *)fiber);
 
-	ev_io_start(&io);
+	ev_io_start(&c->in);
 	while (count > done) {
 		yield();
 		r = read(c->fd, buf + done, count - done);
@@ -470,7 +470,7 @@ conn_read(struct conn *c, void *buf, size_t count)
 		done += r;
 	}
 
-	ev_io_stop(&io);
+	ev_io_stop(&c->out);
 	return done;
 }
 
@@ -479,10 +479,8 @@ conn_write(struct conn *c, const void *buf, size_t count)
 {
 	int r;
 	unsigned int done = 0;
-	ev_io io = { .coro = 1, .cb = NULL };
-
-	ev_io_init(&io, (void *)fiber, c->fd, EV_WRITE);
-	ev_io_start(&io);
+	assert(c->out.cb == (void *)fiber);
+	ev_io_start(&c->out);
 
 	do {
 		yield();
@@ -494,7 +492,7 @@ conn_write(struct conn *c, const void *buf, size_t count)
 		}
 		done += r;
 	} while (count != done);
-	ev_io_stop(&io);
+	ev_io_stop(&c->out);
 
 	return done;
 }
@@ -840,11 +838,10 @@ static void
 accept_client(int fd, void *data)
 {
 	struct service *service = data;
-	struct conn *clnt = conn_create(service->pool, fd);
+	struct conn *clnt = conn_create(service->pool, fd,
+					service->input_reader, service->output_flusher);
 	LIST_INSERT_HEAD(&service->conn, clnt, link);
 	clnt->service = service;
-	ev_io_init(&clnt->out, (void *)service->output_flusher, fd, EV_WRITE);
-	ev_io_init(&clnt->in, (void *)service->input_reader, fd, EV_READ);
 	ev_io_start(&clnt->in);
 	clnt->state = READING;
 }
