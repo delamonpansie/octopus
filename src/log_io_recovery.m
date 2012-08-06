@@ -847,7 +847,6 @@ run_crc_writer(va_list ap)
 
 		ev_set_priority(&wal_writer->c->in, 1);
 		ev_set_priority(&wal_writer->c->out, 1);
-
 		ev_io_start(&wal_writer->c->in);
 
 		if (!cfg.io_compat)
@@ -857,8 +856,8 @@ run_crc_writer(va_list ap)
 	pending_row = mh_i64_init();
 
 	if (feeder_addr_ != NULL) {
-		say_crit("configuring remote hot standby, WAL feeder %s", feeder_addr);
 		feeder_addr = feeder_addr_;
+		say_crit("configuring remote hot standby, WAL feeder %s", feeder_addr);
 	}
 
 	return self;
