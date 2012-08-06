@@ -1418,6 +1418,8 @@ snapshot_rows(XLog *l)
 				say_crit("%.1fM/%.2f%% rows written", rows / 1000000., pct);
 				set_proc_title("dumper %.2f%% (%" PRIu32 ")", pct, getppid());
 			}
+			if (rows % 10000 == 0)
+				[l confirm_write];
 		}
 	}
 	return total_rows;
