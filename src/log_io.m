@@ -665,13 +665,7 @@ restart:
 		goto restart;
 	}
 
-	if (++rows % 100000 == 0) {
-		struct stat st;
-		if (fstat(fileno(fd), &st) < 0)
-			say_warn("fstat failed");
-		say_info("%.1fM rows %.2f%% bytes processed",
-			 rows / 1000000., 100. * good_offset / st.st_size);
-	}
+	++rows;
 	return row;
 eof:
 	if (ftello(fd) == good_offset + sizeof(eof_marker)) {

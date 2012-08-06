@@ -189,7 +189,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (int) submit:(const void *)data len:(u32)len scn:(i64)scn tag:(u16)tag;
 - (int) submit_run_crc;
 
-- (void) snapshot_save:(void (*)(XLog *))callback;
+- (void) snapshot_save:(u32 (*)(XLog *))callback;
 @end
 
 @interface XLogPuller: Object {
@@ -219,6 +219,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 	struct fiber *remote_puller;
 	const char *feeder_addr;
 	bool run_crc_log_mismatch, run_crc_mod_mismatch;
+	u32 processed_rows, estimated_snap_rows;
 }
 
 - (i64) scn;

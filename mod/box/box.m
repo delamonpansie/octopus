@@ -1377,7 +1377,7 @@ cat(const char *filename)
 	return read_log(filename, print_row);
 }
 
-static void
+static u32
 snapshot_rows(XLog *l)
 {
 	struct box_snap_row header;
@@ -1389,6 +1389,9 @@ snapshot_rows(XLog *l)
 	for (int n = 0; n < object_space_count; n++)
 		if (object_space_registry[n].enabled)
 			total_rows += [object_space_registry[n].index[0] size];
+
+	if (!l)
+		return total_rows;
 
 	for (int n = 0; n < object_space_count; n++) {
 		if (!object_space_registry[n].enabled)
@@ -1417,6 +1420,7 @@ snapshot_rows(XLog *l)
 			}
 		}
 	}
+	return total_rows;
 }
 
 static void

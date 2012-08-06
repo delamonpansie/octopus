@@ -482,7 +482,7 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *row)
 }
 
 - (void)
-snapshot_save:(void (*)(XLog *))callback
+snapshot_save:(u32 (*)(XLog *))callback
 {
         XLog *snap;
 	const char *final_filename, *filename;
@@ -508,11 +508,13 @@ snapshot_save:(void (*)(XLog *))callback
 
 	say_info("saving snapshot `%s'", final_filename);
 
-	struct tbuf *run_crc = tbuf_alloc(fiber->pool);
-	tbuf_append(run_crc, &run_crc_log, sizeof(run_crc_log));
-	tbuf_append(run_crc, &run_crc_mod, sizeof(run_crc_mod));
+	struct tbuf *snap_ini = tbuf_alloc(fiber->pool);
+	u32 rows = callback(NULL);
+	tbuf_append(snap_ini, &rows, sizeof(rows));
+	tbuf_append(snap_ini, &run_crc_log, sizeof(run_crc_log));
+	tbuf_append(snap_ini, &run_crc_mod, sizeof(run_crc_mod));
 
-	if ([snap append_row:run_crc->ptr len:tbuf_len(run_crc) scn:scn tag:snap_initial_tag] < 0) {
+	if ([snap append_row:snap_ini->ptr len:tbuf_len(snap_ini) scn:scn tag:snap_initial_tag] < 0) {
 		say_error("unable write initial row");
 		_exit(EXIT_FAILURE);
 	}

@@ -97,12 +97,12 @@ read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, struct
 
 		switch (v12->tag) {
 		case snap_initial_tag:
-			if (tbuf_len(&row_data) == sizeof(u32) * 2) {
+			if (tbuf_len(&row_data) == sizeof(u32) * 3) {
+				u32 count = read_u32(&row_data);
 				u32 log = read_u32(&row_data);
 				u32 mod = read_u32(&row_data);
-				tbuf_printf(out, "run_crc_log:0x%08x run_crc_mod:0x%08x", log, mod);
-			} else {
-				tbuf_printf(out, "run_crc missing");
+				tbuf_printf(out, "count:%u run_crc_log:0x%08x run_crc_mod:0x%08x",
+					    count, log, mod);
 			}
 			break;
 		case snap_tag:
@@ -198,6 +198,17 @@ recover_row:(struct tbuf *)row
 			lsn = row_lsn;
 		}
 
+		if (++processed_rows % 100000 == 0) {
+			if (estimated_snap_rows && processed_rows <= estimated_snap_rows) {
+				float pct = 100. * processed_rows / estimated_snap_rows;
+				say_info("%.1fM/%.2f%% rows processed",
+					 processed_rows / 1000000., pct);
+				set_proc_title("loading %.2f%%", pct);
+			} else {
+				say_info("%.1fM rows processed", processed_rows / 1000000.);
+			}
+		}
+
 		tbuf_ltrim(row, sizeof(struct row_v12)); /* drop header */
 
 		/* since apply_row may change contents of `row' header,
@@ -216,7 +227,8 @@ recover_row:(struct tbuf *)row
 			run_crc_log = crc32c(run_crc_log, row_clone.ptr, tbuf_len(&row_clone));
 			break;
 		case snap_initial_tag:
-			if (tbuf_len(&row_clone) == sizeof(u32) * 2) { /* not a dummy row */
+			if (tbuf_len(&row_clone) == sizeof(u32) * 3) { /* not a dummy row */
+				estimated_snap_rows = read_u32(&row_clone);
 				run_crc_log = read_u32(&row_clone);
 				run_crc_mod = read_u32(&row_clone);
 			}
@@ -523,7 +535,6 @@ static void
 pull_snapshot(Recovery *r, XLogPuller *puller)
 {
 	struct tbuf *row;
-	int rows = 0;
 	for (;;) {
 		while ((row = [puller fetch_row])) {
 			switch (row_v12(row)->tag) {
@@ -543,9 +554,6 @@ pull_snapshot(Recovery *r, XLogPuller *puller)
 				      row_v12(row)->tag, xlog_tag_to_a(row_v12(row)->tag));
 			}
 
-			if (++rows % 100000 == 0)
-				say_info("%.1fM rows fetched", rows / 1000000.);
-
 		}
 		fiber_gc();
 	}
@@ -556,7 +564,6 @@ pull_wal(Recovery *r, XLogPuller *puller, int exit_on_eof)
 {
 	struct tbuf *row, *special_row = NULL, *rows[WAL_PACK_MAX];
 	struct wal_pack *pack;
-	int row_count = 0;
 	/* TODO: use designated palloc_pool */
 	say_debug("%s: scn:%"PRIi64, __func__, [r scn]);
 
@@ -581,9 +588,6 @@ pull_wal(Recovery *r, XLogPuller *puller, int exit_on_eof)
 				if (row_v12(row)->tag == run_crc)
 					continue;
 			}
-
-			if (++row_count % 100000 == 0)
-				say_info("%.1fM rows fetched", row_count / 1000000.);
 
 			rows[pack_rows++] = row;
 			if (pack_rows == WAL_PACK_MAX)
