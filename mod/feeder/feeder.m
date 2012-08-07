@@ -162,7 +162,10 @@ handshake(int sock, char *filter)
 
 	for (;;) {
 		tbuf_ensure(input, 4096);
-		if (tbuf_recv(input, sock) <= 0) {
+		ssize_t r = tbuf_recv(input, sock);
+		if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR))
+			continue;
+		if (r <= 0) {
 			say_syserror("closing connection, recv");
 			_exit(EXIT_SUCCESS);
 		}
