@@ -38,9 +38,7 @@
 init
 {
 	say_debug("%s", __func__);
-	conn_init(&c, fiber->pool, -1, fiber, fiber, REF_STATIC);
-	palloc_register_gc_root(fiber->pool, &c, conn_gc);
-
+	c.fd = -1;
 	return [super init];
 }
 
@@ -69,15 +67,17 @@ handshake:(i64)scn err:(const char **)err_ptr
 {
 	const char *err;
 	struct tbuf *rep;
-	assert(c.fd < 0);
+	int fd;
 
 	say_debug("%s: connect", __func__);
-	if ((c.fd = tcp_connect(&addr, NULL, 5)) < 0) {
+	if ((fd = tcp_connect(&addr, NULL, 5)) < 0) {
 		err = "can't connect to feeder";
 		goto err;
 	}
-	ev_io_set(&c.in, c.fd, EV_READ);
-	ev_io_set(&c.out, c.fd, EV_WRITE);
+
+	assert(c.fd < 0);
+	conn_init(&c, fiber->pool, fd, fiber, fiber, REF_STATIC);
+	palloc_register_gc_root(fiber->pool, &c, conn_gc);
 
 	if (cfg.replication_compat) {
 		say_debug("%s: compat send scn", __func__);
@@ -138,7 +138,9 @@ handshake:(i64)scn err:(const char **)err_ptr
 			goto err;
 		}
 
-		say_debug("%s: iproto_reply data_len:%i, rbuf len:%i", __func__, iproto_retcode(rep)->data_len, tbuf_len(c.rbuf));
+		say_debug("%s: iproto_reply data_len:%i, rbuf len:%i", __func__,
+			  iproto_retcode(rep)->data_len, tbuf_len(c.rbuf));
+
 		memcpy(&version, iproto_retcode(rep)->data, sizeof(version));
 	}
 
@@ -153,6 +155,8 @@ handshake:(i64)scn err:(const char **)err_ptr
 err:
 	if (err_ptr)
 		*err_ptr = err;
+
+	palloc_unregister_gc_root(fiber->pool, &c);
 	conn_close(&c);
 	return -1;
 }
