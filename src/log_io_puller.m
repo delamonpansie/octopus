@@ -71,7 +71,8 @@ handshake:(i64)scn err:(const char **)err_ptr
 	struct tbuf *rep;
 	assert(c.fd < 0);
 
-	if ((c.fd = tcp_connect(&addr, NULL, 0)) < 0) {
+	say_debug("%s: connect", __func__);
+	if ((c.fd = tcp_connect(&addr, NULL, 5)) < 0) {
 		err = "can't connect to feeder";
 		goto err;
 	}
@@ -79,11 +80,13 @@ handshake:(i64)scn err:(const char **)err_ptr
 	ev_io_set(&c.out, c.fd, EV_WRITE);
 
 	if (cfg.replication_compat) {
+		say_debug("%s: compat send scn", __func__);
 		if (conn_write(&c, &scn, sizeof(scn)) != sizeof(scn)) {
 			err = "can't write initial lsn";
 			goto err;
 		}
 
+		say_debug("%s: compat recv scn", __func__);
 		if (conn_read(&c, &version, sizeof(version)) != sizeof(version)) {
 			err = "can't read version";
 			goto err;
@@ -106,13 +109,17 @@ handshake:(i64)scn err:(const char **)err_ptr
 		rep = tbuf_alloc(fiber->pool);
 		tbuf_ensure(rep, sizeof(struct iproto_retcode));
 
+		say_debug("%s: send handshake, %u bytes", __func__, tbuf_len(req));
 		if (conn_write(&c, req->ptr, tbuf_len(req)) != tbuf_len(req)) {
 			err = "can't write initial handshake";
 			goto err;
 		}
 
-		while (tbuf_len(c.rbuf) < sizeof(struct iproto_retcode) + sizeof(version))
+		do {
 			conn_recv(&c);
+			say_debug("%s: recv handshake part, %u bytes", __func__, tbuf_len(c.rbuf));
+		} while (tbuf_len(c.rbuf) < sizeof(struct iproto_retcode) + sizeof(version));
+
 		rep = iproto_parse(c.rbuf);
 		if (rep == NULL) {
 			err = "can't read reply";
@@ -128,7 +135,7 @@ handshake:(i64)scn err:(const char **)err_ptr
 			goto err;
 		}
 
-		say_debug("go reply len:%i, rbuf %i", iproto_retcode(rep)->data_len, tbuf_len(c.rbuf));
+		say_debug("%s: iproto_reply data_len:%i, rbuf len:%i", __func__, iproto_retcode(rep)->data_len, tbuf_len(c.rbuf));
 		memcpy(&version, iproto_retcode(rep)->data, sizeof(version));
 	}
 
