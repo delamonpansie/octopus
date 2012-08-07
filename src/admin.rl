@@ -286,7 +286,7 @@ admin_handler(va_list ap)
 	int fd = va_arg(ap, int);
 	struct conn *c = NULL;
 
-	c = conn_create(fiber->pool, fd, fiber, fiber);
+	c = conn_init(NULL, fiber->pool, fd, fiber, fiber, 0);
 	palloc_register_gc_root(fiber->pool, c, conn_gc);
 	@try {
 		for (;;) {

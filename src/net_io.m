@@ -332,23 +332,19 @@ conn_flush(struct conn *c)
 }
 
 struct conn *
-conn_create(struct palloc_pool *pool, int fd, struct fiber *in, struct fiber *out)
-{
-	struct conn *c = SLIST_FIRST(&conn_pool);
-	if (c)
-		SLIST_REMOVE_HEAD(&conn_pool, pool_link);
-	else
-		c = calloc(1, sizeof(*c));
-
-	conn_init(c, pool, fd, in, out, 0);
-	return c;
-}
-
-void
 conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, struct fiber *out, int ref)
 {
-	say_debug("%s: c:%p fd:%i", __func__, c, fd);
 	assert(ref >= -2 && ref <= 0);
+
+	say_debug("%s: c:%p fd:%i", __func__, c, fd);
+	if (!c) {
+		assert(ref == 0);
+		c = SLIST_FIRST(&conn_pool);
+		if (c)
+			SLIST_REMOVE_HEAD(&conn_pool, pool_link);
+		else
+			c = calloc(1, sizeof(*c));
+	}
 
 	TAILQ_INIT(&c->out_messages.q);
 	c->out_messages.pool = pool;
@@ -365,6 +361,7 @@ conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, st
 	c->out.data = c->in.data = c;
 	ev_io_init(&c->in, (void *)in, c->fd, EV_READ);
 	ev_io_init(&c->out, (void *)out, c->fd, EV_WRITE);
+	return c;
 }
 
 
@@ -838,8 +835,8 @@ static void
 accept_client(int fd, void *data)
 {
 	struct service *service = data;
-	struct conn *clnt = conn_create(service->pool, fd,
-					service->input_reader, service->output_flusher);
+	struct conn *clnt = conn_init(NULL, service->pool, fd,
+				      service->input_reader, service->output_flusher, 0);
 	LIST_INSERT_HEAD(&service->conn, clnt, link);
 	clnt->service = service;
 	ev_io_start(&clnt->in);
