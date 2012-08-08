@@ -38,7 +38,7 @@
 init
 {
 	say_debug("%s", __func__);
-	c.fd = -1;
+	c.fd = -2;
 	return [super init];
 }
 
@@ -155,9 +155,10 @@ handshake:(i64)scn err:(const char **)err_ptr
 err:
 	if (err_ptr)
 		*err_ptr = err;
-
-	palloc_unregister_gc_root(fiber->pool, &c);
-	conn_close(&c);
+	if (c.fd != -2) {
+		palloc_unregister_gc_root(fiber->pool, &c);
+		conn_close(&c);
+	}
 	return -1;
 }
 
