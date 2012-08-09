@@ -223,6 +223,10 @@ containg_scn:(i64)target_scn
 	XLog *l = nil;
 	const i64 initial_lsn = 2;
 
+	/* new born master without a single commit */
+	if (count == 0 && target_scn <= 2)
+		return initial_lsn;
+
 	if (count <= 0) {
 		say_error("%s: WAL dir is either empty or unreadable", __func__);
 		return -1;

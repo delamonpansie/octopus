@@ -145,7 +145,6 @@ recover_start_from_scn:(i64)initial_scn filter:(const char *)filter_name
 					   with lsn + 1 ==> equal to initial_lsn */
 		scn = initial_scn;
 	}
-	say_debug("%s: current_wal:%s", __func__, current_wal->filename);
 	[self recover_cont];
 }
 
