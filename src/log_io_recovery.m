@@ -580,7 +580,9 @@ pull_wal(Recovery *r, XLogPuller *puller, int exit_on_eof)
 				break;
 			}
 
-			if (row_v12(row)->tag != wal_tag && row_v12(row)->tag != run_crc)
+			if (row_v12(row)->tag != wal_tag &&
+			    row_v12(row)->tag != run_crc &&
+			    row_v12(row)->tag != nop)
 				continue;
 
 			if (cfg.io12_hack && row_v12(row)->lsn > 0)
