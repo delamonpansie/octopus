@@ -1341,7 +1341,6 @@ init(void)
 	if (init_storage)
 		return;
 
-	luaT_dofile("box_init.lua");
 	/* fiber is required to successfully pull from remote */
 	fiber_create("box_init", init_second_stage);
 }
@@ -1350,6 +1349,7 @@ static void
 init_second_stage(va_list ap __attribute__((unused)))
 {
 	luaT_openbox(root_L);
+	luaT_dofile("box_init.lua");
 
 	@try {
 		i64 local_lsn = [recovery recover_start];
