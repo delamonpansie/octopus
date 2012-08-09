@@ -227,13 +227,8 @@ recover_feed_slave(int sock)
 
 	set_proc_title("feeder:client_handler%s %s", custom_proc_title, peer_name);
 
-	if (access("init.lua", R_OK) == 0) {
-		lua_getglobal(root_L, "dofile");
-		lua_pushliteral(root_L, "init.lua");
-		if (lua_pcall(root_L, 1, 0, 0))
-			panic("lua_pcall() failed: %s", lua_tostring(root_L, -1));
-		say_info("init.lua loaded");
-	}
+	luaT_dofile("feeder_init.lua");
+	luaT_dofile("init.lua");
 
 	feeder = [[Feeder alloc] init_snap_dir:cfg.snap_dir
 				       wal_dir:cfg.wal_dir

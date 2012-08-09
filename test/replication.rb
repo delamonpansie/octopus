@@ -19,6 +19,32 @@ object_space[0].index[0].key_field[0].fieldno = 0
 object_space[0].index[0].key_field[0].type = "STR"
 EOD
   end
+
+  task :setup => ["feeder_init.lua"]
+  file "feeder_init.lua" do
+    f = open("feeder_init.lua", "w")
+    f.write <<-EOD
+      function replication_filter.id_xlog(obj)
+        local row = feeder.crow(obj)
+        print("row lsn:" .. tostring(row.lsn) ..
+              " scn:" .. tostring(row.scn) ..
+              " tag:" .. row.tag ..
+              " cookie:" .. tostring(row.cookie) ..
+              " tm:" .. row.tm)
+
+        if row.tag ~= feeder.tag.wal then
+                return nil
+        end
+        local box_nop = "\01\00\00\00\00\00"
+
+        if row.scn == 2198 or row.scn == 2199 then
+                return box_nop
+        end
+        return nil
+      end
+    EOD
+    f.close
+  end
 end
 
 class SlaveEnv < StandAloneEnv
@@ -30,7 +56,7 @@ class SlaveEnv < StandAloneEnv
     @primary_port = 33023
     super + <<EOD
 wal_feeder_addr = "127.0.0.1:33034"
-wal_feeder_filter = "id_log"
+wal_feeder_filter = "id_xlog"
 #{$io_compat}
 object_space[0].enabled = 1
 object_space[0].index[0].type = "HASH"
@@ -68,6 +94,7 @@ def test(master_env, slave_env)
       end
       Process.kill("CONT", pid)
       sleep(0.3)
+      slave.select [998]
       slave.select [999]
     end
   end

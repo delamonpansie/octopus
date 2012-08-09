@@ -1340,6 +1340,7 @@ init(void)
 	if (init_storage)
 		return;
 
+	luaT_dofile("box_init.lua");
 	/* fiber is required to successfully pull from remote */
 	fiber_create("box_init", init_second_stage);
 }

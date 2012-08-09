@@ -100,3 +100,4 @@ static inline bool ghost(struct tnt_object *obj)
 const char *objectlib_name;
 void luaT_pushobject(struct lua_State *L, struct tnt_object *obj);
 int luaT_objinit(struct lua_State *L);
+void luaT_dofile(const char *filename);
