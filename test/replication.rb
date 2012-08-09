@@ -81,9 +81,9 @@ def test(master_env, slave_env)
       master.insert [i, i + 1, "abc", "def"]
     end
 
-    sleep(0.1)
     slave_env.clean do
       start
+      sleep(0.5)
       slave = connect
       slave.select [99]
 
@@ -93,7 +93,7 @@ def test(master_env, slave_env)
         master.insert [i, i + 1, "ABC", "DEF"]
       end
       Process.kill("CONT", pid)
-      sleep(0.3)
+      sleep(0.5)
       slave.select [998]
       slave.select [999]
     end
