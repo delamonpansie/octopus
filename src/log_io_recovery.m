@@ -811,7 +811,7 @@ run_crc_writer(va_list ap)
 		fiber_sleep(1.);
 		if ([recovery is_replica])
 			continue;
-		if ([recovery lsn] - lsn < 128)
+		if ([recovery lsn] - lsn < 32)
 			continue;
 		if (ev_now() - submit_tstamp < delay)
 			continue;
