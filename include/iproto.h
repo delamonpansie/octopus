@@ -180,7 +180,8 @@ void response_release(struct iproto_response *r);
 	_(ERR_CODE_INDEX_VIOLATION,	  0x00003802, "some index violation occur") \
 	_(ERR_CODE_NO_SUCH_NAMESPACE,	  0x00003902, "there is no such namespace") \
 	_(ERR_CODE_NAUTH_OK,              0x00004000, "non authoritative ok") \
-	_(ERR_CODE_REDIRECT,              0x00004102, "redirect")
+	_(ERR_CODE_REDIRECT,              0x00004102, "redirect")	\
+	_(ERR_CODE_LEADER_UNKNOW,	  0x00004202, "leader unknown")
 
 ENUM(error_codes, ERROR_CODES);
 extern char *error_codes_strs[];

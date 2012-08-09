@@ -936,11 +936,11 @@ out:
 - (void)
 leader_redirect_raise
 {
-	iproto_raise_fmt(ERR_CODE_REDIRECT,
-			 "%s",
-			 leader_id >= 0
-			 ? sintoa(&paxos_peer(self, leader_id)->primary_addr)
-			 : "UNKNOWN");
+	if (leader_id >= 0)
+		iproto_raise_fmt(ERR_CODE_REDIRECT,
+				 "%s", sintoa(&paxos_peer(self, leader_id)->primary_addr));
+	else
+		iproto_raise(ERR_CODE_LEADER_UNKNOW, "leader unknown");
 }
 
 - (int)
