@@ -682,6 +682,11 @@ main(int argc, char **argv)
 		initialize_minimal();
 		fiber_init();
 		luaT_init();
+		if (cfg.wal_feeder_addr) {
+			say_warn("--init-storage is no op in replica");
+			exit(EX_USAGE);
+		}
+
 		module(NULL)->init();
 		module(NULL)->snapshot(true);
 		exit(EXIT_SUCCESS);
