@@ -876,7 +876,7 @@ nop_hb_writer(va_list ap)
 		ev_set_priority(&wal_writer->c->out, 1);
 		ev_io_start(&wal_writer->c->in);
 
-		if (!cfg.io_compat)
+		if (!cfg.io_compat && run_crc_delay > 0)
 			fiber_create("run_crc", run_crc_writer, self, run_crc_delay);
 
 		if (!cfg.io_compat && nop_hb_delay > 0)
