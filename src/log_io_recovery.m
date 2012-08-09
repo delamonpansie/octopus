@@ -245,6 +245,8 @@ recover_row:(struct tbuf *)row
 			scn = row_scn;
 			break;
 		case nop:
+			lag = ev_now() - tm;
+			last_update_tstamp = ev_now();
 			scn = row_scn;
 			break;
 		case run_crc:
