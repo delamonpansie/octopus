@@ -988,6 +988,7 @@ xlog_print(struct tbuf *out, struct tbuf *b)
 		break;
 
 	case NOP:
+		tbuf_printf(out, "NOP");
 		break;
 	default:
 		tbuf_printf(out, "unknown wal op %" PRIi32, op);
