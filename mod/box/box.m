@@ -1252,6 +1252,7 @@ apply_row:(struct tbuf *)row tag:(u16)tag
 	case snap_initial_tag:
 	case snap_final_tag:
 	case run_crc:
+	case nop:
 		break;
 	default:
 		raise("unknown row tag: %u/%s", tag, xlog_tag_to_a(tag));
@@ -1304,6 +1305,7 @@ init(void)
 			       feeder_addr:cfg.wal_feeder_addr
 			       fsync_delay:cfg.wal_fsync_delay
 			     run_crc_delay:cfg.run_crc_delay
+			      nop_hb_delay:cfg.nop_hb_delay
 				     flags:init_storage ? RECOVER_READONLY : 0
 			snap_io_rate_limit:cfg.snap_io_rate_limit * 1024 * 1024];
 

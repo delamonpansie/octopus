@@ -40,6 +40,9 @@ wal_fsync_delay=0.0, ro
 # how often run_crc is submited to wal
 run_crc_delay=5.0, ro
 
+# how often nop heartbeat is submited to wal
+nop_hb_delay=60.0, ro
+
 # do fsync on close of WAL or not
 wal_fsync_on_close=1, ro
 

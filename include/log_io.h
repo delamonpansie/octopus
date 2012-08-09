@@ -42,6 +42,7 @@ enum { snap_initial_tag = 1,
        snap_final_tag,
        wal_final_tag,
        run_crc,
+       nop,
        paxos_prepare,
        paxos_promise,
        paxos_propose,
@@ -253,6 +254,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 	 feeder_addr:(const char *)feeder_addr
 	 fsync_delay:(double)wal_fsync_delay
        run_crc_delay:(double)run_crc_delay
+	nop_hb_delay:(double)nop_hb_delay
                flags:(int)flags
   snap_io_rate_limit:(int)snap_io_rate_limit;
 @end

@@ -115,6 +115,8 @@ read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, struct
 			tbuf_printf(out, "log:0x%08x mod:0x%08x", log, mod);
 			break;
 		}
+		case nop:
+			break;
 		case paxos_prepare:
 		case paxos_promise:
 		case paxos_propose:
@@ -240,6 +242,9 @@ recover_row:(struct tbuf *)row
 			break;
 		case snap_final_tag:
 			assert(row_scn > 0);
+			scn = row_scn;
+			break;
+		case nop:
 			scn = row_scn;
 			break;
 		case run_crc:
@@ -815,6 +820,23 @@ run_crc_writer(va_list ap)
 	}
 }
 
+static void
+nop_hb_writer(va_list ap)
+{
+	Recovery *recovery = va_arg(ap, Recovery *);
+	ev_tstamp submit_tstamp = ev_now(), delay = va_arg(ap, ev_tstamp);
+	char body[2] = {0};
+
+	for (;;) {
+		fiber_sleep(delay);
+		if ([recovery is_replica])
+			continue;
+
+		submit_tstamp = ev_now();
+		[recovery submit:body len:nelem(body) scn:0 tag:nop];
+	}
+}
+
 
 - (id) init_snap_dir:(const char *)snap_dirname
              wal_dir:(const char *)wal_dirname
@@ -822,6 +844,7 @@ run_crc_writer(va_list ap)
 	 feeder_addr:(const char *)feeder_addr_
          fsync_delay:(double)wal_fsync_delay
        run_crc_delay:(double)run_crc_delay
+	nop_hb_delay:(double)nop_hb_delay
                flags:(int)flags
   snap_io_rate_limit:(int)snap_io_rate_limit_
 {
@@ -855,6 +878,9 @@ run_crc_writer(va_list ap)
 
 		if (!cfg.io_compat)
 			fiber_create("run_crc", run_crc_writer, self, run_crc_delay);
+
+		if (!cfg.io_compat && nop_hb_delay > 0)
+			fiber_create("nop_hb", nop_hb_writer, self, nop_hb_delay);
 	}
 
 	pending_row = mh_i64_init();
