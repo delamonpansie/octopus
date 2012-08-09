@@ -665,7 +665,8 @@ txn_init(struct iproto *req, struct box_txn *txn, struct netmsg *m)
 void
 txn_cleanup(struct box_txn *txn)
 {
-	assert(txn->op != 0);
+	if (txn->op == 0) /* txn wasn't initialized, e.g. txn->op wasn't set by box_prepare_update */
+		return;
 
 	for (int i = 0; i < nelem(txn->ref); i++) {
 		if (txn->ref[i] == NULL)
