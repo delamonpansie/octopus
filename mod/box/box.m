@@ -749,10 +749,8 @@ txn_common_parser(struct box_txn *txn, struct tbuf *data)
 	if (n < 0 || n > object_space_count - 1)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "bad namespace number");
 
-	if (!object_space_registry[n].enabled) {
-		say_warn("object_space %i is not enabled", n);
-		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "object_space is not enabled");
-	}
+	if (!object_space_registry[n].enabled)
+		iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "object_space %i is not enabled", n);
 
 	txn->object_space = &object_space_registry[n];
 	txn->index = txn->object_space->index[0];
@@ -823,8 +821,7 @@ box_prepare_update(struct box_txn *txn, struct tbuf *data)
 		break;
 
 	default:
-		say_error("box_dispach: unsupported command = %" PRIi32 "", txn->op);
-		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "unknown op code");
+		iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "unknown opcode:%"PRIi32, txn->op);
 	}
 
 	if (txn->obj) {
