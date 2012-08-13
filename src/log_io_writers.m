@@ -301,9 +301,9 @@ wal_disk_writer(int fd, void *state)
 	XLogWriter *writer = state;
 	struct tbuf *wbuf, rbuf = TBUF(NULL, 0, fiber->pool);
 	int result = EXIT_FAILURE;
-	i64 next_scn = 0;
-	u32 run_crc;
-	bool io_failure = false, reparse = false;
+	i64 start_lsn, next_scn = 0;
+	u32 run_crc, requests_processed;
+	bool io_failure = false, have_unwritten_rows = false;
 	ssize_t r;
 	struct {
 		u32 fid;
@@ -327,7 +327,10 @@ wal_disk_writer(int fd, void *state)
 	run_crc = wal_conf.run_crc;
 
 	for (;;) {
-		if (!reparse) {
+		/* we're not running inside ev_loop, so update ev_now manually */
+		ev_now_update();
+
+		if (!have_unwritten_rows) {
 			tbuf_ensure(&rbuf, 16 * 1024);
 			r = recv(fd, rbuf.end, tbuf_free(&rbuf), 0);
 			if (r < 0 && (errno == EINTR))
@@ -343,32 +346,30 @@ wal_disk_writer(int fd, void *state)
 			tbuf_append(&rbuf, NULL, r);
 		}
 
-		/* we're not running inside ev_loop, so update ev_now manually */
-		ev_now_update();
 
 		if (cfg.coredump > 0 && ev_now() - start_time > cfg.coredump * 60) {
 			maximize_core_rlimit();
 			cfg.coredump = 0;
 		}
 
-		i64 start_lsn = [writer lsn];
-		int p = 0;
-		reparse = false;
-		/* FIXME: the scn must be set to lowest continious one, not the current */
+		start_lsn = [writer lsn];
+		requests_processed = 0;
+		have_unwritten_rows = false;
 		io_failure = [writer prepare_write:next_scn] == -1;
+
 		while (tbuf_len(&rbuf) > sizeof(u32) && tbuf_len(&rbuf) >= *(u32 *)rbuf.ptr) {
 			u32 row_count = ((u32 *)rbuf.ptr)[2];
 			if (!io_failure && row_count > [writer->current_wal wet_rows_offset_available]) {
-				assert(p != 0);
-				reparse = true;
+				assert(requests_processed != 0);
+				have_unwritten_rows = true;
 				break;
 			}
 
 			tbuf_ltrim(&rbuf, sizeof(u32)); /* drop packet_len */
-			request[p].fid = read_u32(&rbuf);
-			request[p].row_count = read_u32(&rbuf);
+			request[requests_processed].fid = read_u32(&rbuf);
+			request[requests_processed].row_count = read_u32(&rbuf);
 
-			for (int i = 0; i < request[p].row_count; i++) {
+			for (int i = 0; i < request[requests_processed].row_count; i++) {
 				struct wal_row_header *h = read_bytes(&rbuf, sizeof(*h));
 				void *data = read_bytes(&rbuf, h->data_len);
 
@@ -388,20 +389,22 @@ wal_disk_writer(int fd, void *state)
 
 				if (h->tag == wal_tag) {
 					run_crc = crc32c(run_crc, data, h->data_len);
-					request[p].run_crc = run_crc;
+					request[requests_processed].run_crc = run_crc;
 				}
-				next_scn = ret + 1;
+
+				if (h->tag == wal_tag || h->tag == run_crc || h->tag == nop)
+					next_scn = h->scn;
 			}
-			p++;
+			requests_processed++;
 		}
-		if (p == 0)
+		if (requests_processed == 0)
 			continue;
 
 		assert(start_lsn > 0);
 		u32 rows_confirmed = [writer confirm_write] - start_lsn;
 
 		wbuf = tbuf_alloc(fiber->pool);
-		for (int i = 0; i < p; i++) {
+		for (int i = 0; i < requests_processed; i++) {
 			struct wal_reply reply = { .data_len = sizeof(reply),
 						   .lsn = 0,
 						   .row_count = 0,
@@ -423,7 +426,7 @@ wal_disk_writer(int fd, void *state)
 		}
 
 
-		while (tbuf_len(wbuf) > 0) {
+		do {
 			ssize_t r = write(fd, wbuf->ptr, tbuf_len(wbuf));
 			if (r < 0) {
 				if (errno == EINTR)
@@ -433,7 +436,7 @@ wal_disk_writer(int fd, void *state)
 				goto exit;
 			}
 			tbuf_ltrim(wbuf, r);
-		}
+		} while (tbuf_len(wbuf) > 0);
 
 		fiber_gc();
 	}
