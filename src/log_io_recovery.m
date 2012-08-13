@@ -532,9 +532,6 @@ recover_finalize
 
         [current_wal close];
         current_wal = nil;
-
-	if (mh_size(pending_row) != 0)
-		panic("pending rows: unable to proceed");
 }
 
 
@@ -886,8 +883,6 @@ nop_hb_writer(va_list ap)
 		if (!cfg.io_compat && nop_hb_delay > 0)
 			fiber_create("nop_hb", nop_hb_writer, self, nop_hb_delay);
 	}
-
-	pending_row = mh_i64_init();
 
 	if (feeder_addr_ != NULL) {
 		feeder_addr = feeder_addr_;
