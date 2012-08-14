@@ -595,9 +595,10 @@ pull_wal(Recovery *r, XLogPuller *puller, int exit_on_eof)
 		}
 
 		if (pack_rows > 0) {
+#ifndef NDEBUG
 			i64 pack_min_scn = row_v12(rows[0])->scn,
 			    pack_max_scn = row_v12(rows[pack_rows - 1])->scn;
-
+#endif
 			assert([r scn] == pack_min_scn - 1);
 			@try {
 				for (int j = 0; j < pack_rows; j++) {
