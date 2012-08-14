@@ -384,8 +384,7 @@ recover_remaining_wals
 
 	while (lsn < wal_greatest_lsn) {
 		if (current_wal != nil) {
-                        say_warn("wal `%s' wasn't correctly closed, lsn:%"PRIi64" scn:%"PRIi64,
-				 current_wal->filename, lsn, scn);
+                        say_warn("wal `%s' wasn't correctly closed", current_wal->filename);
                         [current_wal close];
                         current_wal = nil;
 		}
