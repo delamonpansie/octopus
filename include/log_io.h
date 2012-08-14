@@ -170,7 +170,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 
 
 @interface XLogWriter: Object {
-	i64 lsn;
+	i64 lsn, scn;
 	struct child *wal_writer;
 	XLogDir *wal_dir, *snap_dir;
 	bool local_writes;
@@ -182,8 +182,10 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 	u32 run_crc_log, run_crc_mod;
 }
 
+- (i64) scn;
 - (i64) lsn;
 - (void) set_lsn:(i64)lsn_;
+- (void) set_scn:(i64)scn_;
 
 - (struct child *) wal_writer;
 - (void) configure_wal_writer;
@@ -222,7 +224,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 @end
 
 @interface Recovery: XLogWriter {
-	i64 scn, last_wal_lsn;
+	i64 last_wal_lsn;
 	ev_tstamp lag, last_update_tstamp, run_crc_verify_tstamp;
 	char status[64];
 
@@ -234,7 +236,6 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 	u32 processed_rows, estimated_snap_rows;
 }
 
-- (i64) scn;
 - (void) initial;
 - (const char *) status;
 - (ev_tstamp) lag;

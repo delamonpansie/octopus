@@ -52,9 +52,6 @@
 - (ev_tstamp) lag { return lag; }
 - (ev_tstamp) last_update_tstamp { return last_update_tstamp; }
 
-- (i64) scn { return scn; }
-- (void) set_scn:(i64)scn_ { scn = scn_; }
-
 - (void)
 initial
 {
@@ -171,7 +168,6 @@ recover_row:(struct tbuf *)row
 	i64 row_lsn = row_v12(row)->lsn;
 	i64 row_scn = row_v12(row)->scn;
 	u16 tag = row_v12(row)->tag;
-	ev_tstamp tm = row_v12(row)->tm;
 
 	/* FIXME: temporary hack */
 	if (cfg.io12_hack && row_lsn > 0)
@@ -211,48 +207,30 @@ recover_row:(struct tbuf *)row
 			}
 		}
 
-		tbuf_ltrim(row, sizeof(struct row_v12)); /* drop header */
-
 		/* since apply_row may change contents of `row' header,
 		   make a clone for crc calulation */
-		struct tbuf row_clone = TBUF(row->ptr, tbuf_len(row), NULL);
+		struct row_v12 *r = row_v12(row);
 
+		tbuf_ltrim(row, sizeof(struct row_v12)); /* drop header */
 		[self apply_row:row tag:tag];
 
 		switch (tag) {
 		case wal_tag:
-			assert(row_scn > 0);
-			assert(row_scn == scn + 1);
-			scn = row_scn; /* each wal_tag row represent a single atomic change */
-			lag = ev_now() - tm;
-			last_update_tstamp = ev_now();
-			run_crc_log = crc32c(run_crc_log, row_clone.ptr, tbuf_len(&row_clone));
+			run_crc_log = crc32c(run_crc_log, r->data, r->len);
 			break;
 		case snap_initial_tag:
-			if (tbuf_len(&row_clone) == sizeof(u32) * 3) { /* not a dummy row */
-				estimated_snap_rows = read_u32(&row_clone);
-				run_crc_log = read_u32(&row_clone);
-				run_crc_mod = read_u32(&row_clone);
+			if (r->len == sizeof(u32) * 3) { /* not a dummy row */
+				struct tbuf buf = TBUF(r->data, r->len, NULL);
+				estimated_snap_rows = read_u32(&buf);
+				run_crc_log = read_u32(&buf);
+				run_crc_mod = read_u32(&buf);
 			}
 			say_debug("%s: run_crc_log/mod: 0x%x/0x%x", __func__, run_crc_log, run_crc_mod);
 			break;
-		/* remove case snap_tag with io12_hack */
-		case snap_tag:
-			scn = row_scn;
-			break;
-		case snap_final_tag:
-			assert(row_scn > 0);
-			scn = row_scn;
-			break;
-		case nop:
-			lag = ev_now() - tm;
-			last_update_tstamp = ev_now();
-			scn = row_scn;
-			break;
-		case run_crc:
-			assert(row_scn == scn + 1);
-			u32 log = read_u32(&row_clone);
-			u32 mod = read_u32(&row_clone);
+		case run_crc: {
+			struct tbuf buf = TBUF(r->data, r->len, NULL);
+			u32 log = read_u32(&buf);
+			u32 mod = read_u32(&buf);
 			if (run_crc_log != log) {
 				run_crc_log_mismatch |= 1;
 				say_crit("run_crc_log mismatch: saved:0x%08x computed:0x%08x",
@@ -265,13 +243,17 @@ recover_row:(struct tbuf *)row
 			}
 			say_debug("%s: verified run_crc_log:0x%08x run_crc_mod:0x%08x", __func__, log, mod);
 
-			scn = row_scn;
-			lag = ev_now() - tm;
-			last_update_tstamp = run_crc_verify_tstamp = ev_now();
-			break;
-		default:
+			run_crc_verify_tstamp = ev_now();
 			break;
 		}
+		}
+
+		if (tag == tag || tag == nop || tag == run_crc) {
+			scn = row_scn;
+		}
+
+		last_update_tstamp = ev_now();
+		lag = last_update_tstamp - r->tm;
 	}
 	@catch (Error *e) {
 		say_error("Recovery: %s at %s:%i", e->reason, e->file, e->line);
