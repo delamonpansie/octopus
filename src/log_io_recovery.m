@@ -305,26 +305,23 @@ recover_snap
 
 		say_info("recover from `%s'", snap->filename);
 
-		fiber->pool = snap->pool;
+		fiber->pool = [snap pool];
 
-		if ([snap isKindOf:[XLog11 class]])
-			[self recover_row:[self dummy_row_lsn:0
-							  scn:0
-							  tag:snap_initial_tag]];
-		while ((row = [snap fetch_row])) {
-			if (unlikely(row_v12(row)->tag == snap_final_tag)) {
-				[self recover_row:row];
-				continue;
-			}
+		if ([snap isKindOf:[XLog11 class]]) {
+			row = [self dummy_row_lsn:0 scn:0 tag:snap_initial_tag];
 			[self recover_row:row];
-			prelease_after(snap->pool, 128 * 1024);
+		}
+
+		while ((row = [snap fetch_row])) {
+			[self recover_row:row];
+			prelease_after(fiber->pool, 128 * 1024);
 		}
 
 		/* old v11 snapshot, scn == lsn from filename */
-		if ([snap isKindOf:[XLog11 class]])
-			[self recover_row:[self dummy_row_lsn:snap_lsn
-							  scn:snap_lsn
-							  tag:snap_final_tag]];
+		if ([snap isKindOf:[XLog11 class]]) {
+			row = [self dummy_row_lsn:snap_lsn scn:snap_lsn tag:snap_final_tag];
+			[self recover_row:row];
+		}
 
 		if (![snap eof])
 			raise("unable to fully read snapshot");
