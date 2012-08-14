@@ -546,10 +546,6 @@ pull_snapshot(Recovery *r, id<XLogPuller> puller)
 				break;
 			case snap_final_tag:
 				[r recover_row:row];
-				[r configure_wal_writer];
-				say_debug("saving snapshot");
-				if (save_snapshot(NULL, 0) != 0)
-					raise("replication failure: failed save snapshot");
 				return;
 			default:
 				raise("unexpected tag %i/%s",
@@ -678,8 +674,13 @@ recover_follow_remote:(struct sockaddr_in *)addr exit_on_eof:(int)exit_on_eof
 				fiber_sleep(reconnect_delay);
 			}
 
-			if (lsn == 0)
+			if (lsn == 0) {
 				pull_snapshot(self, puller);
+				[self configure_wal_writer];
+				say_debug("saving snapshot");
+				if (save_snapshot(NULL, 0) != 0)
+					raise("replication failure: failed save snapshot");
+			}
 
 			if ([puller version] == 11)
 				[self wal_final_row];
