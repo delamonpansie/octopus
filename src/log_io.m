@@ -236,7 +236,7 @@ containg_scn:(i64)target_scn
 	for (int i = 0; i < count; i++) {
 		l = [self open_for_read:lsn[i]];
 		i64 scn = [l respondsTo:@selector(scn)] ? [(id)l scn] : lsn[i];
-		[l next_row];
+		[l fetch_row];
 		[l close];
 
 		if (scn >= target_scn)
@@ -435,6 +435,10 @@ init_dirname:(const char *)dirname_
 
 
 @implementation XLog
+- (bool) eof { return eof; }
+- (u32) version { return 0; }
+- (struct palloc_pool *) pool { return pool; }
+
 - (XLog *)
 init_filename:(const char *)filename_
            fd:(FILE *)fd_
@@ -630,7 +634,7 @@ read_row
 }
 
 - (struct tbuf *)
-next_row
+fetch_row
 {
 	struct tbuf *row;
 	u32 magic;
@@ -783,6 +787,7 @@ confirm_write
 
 
 @implementation XLog11
+- (u32) version { return 11; }
 
 struct tbuf *
 convert_row_v11_to_v12(struct tbuf *m)
@@ -943,6 +948,7 @@ append_row:(void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)
 
 
 @implementation XLog12
+- (u32) version { return 12; }
 
 - (i64)
 scn

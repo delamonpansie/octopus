@@ -34,6 +34,10 @@
 #include <third_party/crc32.h>
 
 @implementation XLogPuller
+- (u32) version { return version; }
+- (bool) eof { return false; }
+- (struct palloc_pool *) pool { return NULL; }
+
 - (XLogPuller *)
 init
 {
@@ -233,11 +237,6 @@ fetch_row
 	return row;
 }
 
-- (u32)
-version
-{
-	return version;
-}
 
 - (void)
 close

@@ -85,7 +85,7 @@ read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, struct
 		return -1;
 	}
 	fiber->pool = l->pool;
-	while ((row = [l next_row])) {
+	while ((row = [l fetch_row])) {
 		struct tbuf *out = tbuf_alloc(l->pool);
 		struct row_v12 *v12 = row_v12(row);
 
@@ -130,7 +130,7 @@ read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, struct
 		prelease_after(l->pool, 128 * 1024);
 	}
 
-	if (!l->eof) {
+	if (![l eof]) {
 		say_error("binary log `%s' wasn't correctly closed", filename);
 		return -1;
 	}
@@ -311,7 +311,7 @@ recover_snap
 			[self recover_row:[self dummy_row_lsn:0
 							  scn:0
 							  tag:snap_initial_tag]];
-		while ((row = [snap next_row])) {
+		while ((row = [snap fetch_row])) {
 			if (unlikely(row_v12(row)->tag == snap_final_tag)) {
 				[self recover_row:row];
 				continue;
@@ -326,7 +326,7 @@ recover_snap
 							  scn:snap_lsn
 							  tag:snap_final_tag]];
 
-		if (!snap->eof)
+		if (![snap eof])
 			raise("unable to fully read snapshot");
 	}
 	@finally {
@@ -339,25 +339,24 @@ recover_snap
 }
 
 - (void)
-recover_wal:(XLog *)l
+recover_wal:(id<XLogPuller>)l
 {
 	struct tbuf *row = NULL;
 
 	struct palloc_pool *saved_pool = fiber->pool;
-	fiber->pool = l->pool;
+	fiber->pool = [l pool];
 	@try {
-		while ((row = [l next_row])) {
+		while ((row = [l fetch_row])) {
 			if (row_v12(row)->lsn > lsn) {
 				last_wal_lsn = row_v12(row)->lsn;
 				[self recover_row:row];
 			}
-			prelease_after(l->pool, 128 * 1024);
+			prelease_after(fiber->pool, 128 * 1024);
 		}
 	}
 	@finally {
 		fiber->pool = saved_pool;
 	}
-	say_debug("after recover wal:%s lsn:%"PRIi64, l->filename, lsn);
 }
 
 - (XLog *)
@@ -403,7 +402,7 @@ recover_remaining_wals
 		if ([current_wal rows] == 0) /* either broken wal or empty inprogress */
 			break;
 
-		if (current_wal->eof) {
+		if ([current_wal eof]) {
 			say_info("done `%s' lsn:%"PRIi64" scn:%"PRIi64,
 				 current_wal->filename, lsn, scn);
 
@@ -484,7 +483,7 @@ follow_file(ev_stat *w, int events __attribute__((unused)))
 {
 	Recovery *r = w->data;
 	[r recover_wal:r->current_wal];
-	if (r->current_wal->eof) {
+	if ([r->current_wal eof]) {
 		say_info("done `%s' lsn:%"PRIi64" scn:%"PRIi64,
 			 r->current_wal->filename, r->lsn, [r scn]);
 		[r->current_wal close];
@@ -536,7 +535,7 @@ recover_finalize
 
 
 static void
-pull_snapshot(Recovery *r, XLogPuller *puller)
+pull_snapshot(Recovery *r, id<XLogPuller> puller)
 {
 	struct tbuf *row;
 	for (;;) {

@@ -64,6 +64,14 @@ const char *xlog_tag_to_a(u16 tag);
 
 struct tbuf;
 
+@protocol XLogPuller
+- (struct tbuf *) fetch_row;
+- (u32) version;
+- (bool) eof;
+- (void) close;
+- (struct palloc_pool *) pool;
+@end
+
 @class XLog;
 @class XLogWriter;
 @class Recovery;
@@ -98,8 +106,9 @@ typedef void (follow_cb)(ev_stat *w, int events);
 @interface WALDir: XLogDir
 @end
 
-@interface XLog: Object {
+@interface XLog: Object <XLogPuller> {
 	size_t rows, wet_rows;
+	bool eof;
 @public
 	char *filename;
 	FILE *fd;
@@ -116,7 +125,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 		LOG_WRITE
 	} mode;
 
-	bool valid, eof, inprogress, no_wet;
+	bool valid, inprogress, no_wet;
 
 	size_t bytes_written;
 	off_t offset, wet_rows_offset[WAL_PACK_MAX * 8];
@@ -136,10 +145,12 @@ typedef void (follow_cb)(ev_stat *w, int events);
 - (int) inprogress_unlink;
 - (int) read_header;
 - (int) write_header;
-- (struct tbuf *)next_row;
+- (struct tbuf *)fetch_row;
 - (int) flush;
 - (int) close;
 - (size_t) rows;
+- (bool) eof;
+- (u32) version;
 - (size_t)wet_rows_offset_available;
 - (i64) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie;
 - (i64) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag;
@@ -193,7 +204,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (void) snapshot_save:(u32 (*)(XLog *))callback;
 @end
 
-@interface XLogPuller: Object {
+@interface XLogPuller: Object <XLogPuller> {
 	struct conn c;
 	struct sockaddr_in addr;
 	u32 version;
