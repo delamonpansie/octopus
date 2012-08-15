@@ -1,0 +1,52 @@
+## LogIO
+
+# Snapshot directory (where snapshots get saved/read)
+snap_dir=".", ro
+
+# WAL directory (where WAL get saved/read)
+wal_dir=".", ro
+
+# do not write snapshot faster then snap_io_rate_limit MBytes/sec
+snap_io_rate_limit=0.0, ro
+
+# Write no more rows in WAL
+rows_per_wal=500000, ro
+
+# fsync WAL delay, only issue fsync if last fsync was wal_fsync_delay seconds ago
+# -1 : no fsync
+# 0 : fsycn every record
+# WARNING: actually, several last requsts may stall for much longer
+wal_fsync_delay=0.0, ro
+
+# how often run_crc is submited to wal
+run_crc_delay=5.0, ro
+
+# how often nop heartbeat is submited to wal
+nop_hb_delay=60.0, ro
+
+# do fsync on close of WAL or not
+wal_fsync_on_close=1, ro
+
+# size of WAL writer requests buffer
+wal_writer_inbox_size=128, ro
+
+# Local hot standby (if enabled server will run in locale hot standby mode
+# continuously fetching WAL records from shared local directory
+local_hot_standby=0, ro
+# delay in fractional seconds between successive re-readings of wal_dir
+wal_dir_rescan_delay=0.1, ro
+
+
+# Remote hot standby (if wal_feeder_addr configured server will run in
+# hot standby mode continuously fetching WAL records from it
+wal_feeder_addr=NULL, ro
+wal_feeder_filter=NULL, ro
+
+
+## backward compatibility mode
+# write xlog's in 11 version format. backward compatible with tarantool.org
+io_compat = 0, ro
+# load from xlogs with scn == 0, broken format between 11 and 12
+io12_hack = 0, ro
+# replication master is a tarantool.org
+replication_compat = 0, ro
