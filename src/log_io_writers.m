@@ -326,9 +326,6 @@ wal_disk_writer(int fd, void *state)
 	crc = wal_conf.run_crc;
 
 	for (;;) {
-		/* we're not running inside ev_loop, so update ev_now manually */
-		ev_now_update();
-
 		if (!have_unwritten_rows) {
 			tbuf_ensure(&rbuf, 16 * 1024);
 			r = recv(fd, rbuf.end, tbuf_free(&rbuf), 0);
@@ -355,6 +352,9 @@ wal_disk_writer(int fd, void *state)
 		requests_processed = 0;
 		have_unwritten_rows = false;
 		io_failure = [writer prepare_write:next_scn] == -1;
+
+		/* we're not running inside ev_loop, so update ev_now manually just before write */
+		ev_now_update();
 
 		while (tbuf_len(&rbuf) > sizeof(u32) && tbuf_len(&rbuf) >= *(u32 *)rbuf.ptr) {
 			u32 row_count = ((u32 *)rbuf.ptr)[2];
