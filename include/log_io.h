@@ -245,6 +245,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (void) recover_follow_remote:(struct sockaddr_in *)addr exit_on_eof:(int)exit_on_eof;
 - (struct fiber *) recover_follow_remote_async:(struct sockaddr_in *)addr;
 - (void) enable_local_writes;
+- (bool) is_replica;
 
 - (const struct row_v12 *)dummy_row_lsn:(i64)lsn_ scn:(i64)scn_ tag:(u16)tag;
 
