@@ -423,8 +423,8 @@ wal_disk_writer(int fd, void *state)
 
 			tbuf_append(wbuf, &reply, sizeof(reply));
 
-			say_debug("sending lsn:%"PRIi64" rows:%i run_crc:0x%x to parent",
-				  reply.lsn, reply.row_count, reply.run_crc);
+			say_debug("sending LSN:%"PRIi64" SCN:%"PRIi64" rows:%i run_crc:0x%x to parent",
+				  reply.lsn, reply.scn, reply.row_count, reply.run_crc);
 		}
 
 
