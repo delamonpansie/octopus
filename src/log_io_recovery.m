@@ -64,7 +64,7 @@ int
 read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, struct tbuf *row))
 {
 	XLog *l;
-	struct tbuf *row;
+	const struct row_v12 *row;
 	XLogDir *dir;
 
 	if (strstr(filename, ".xlog")) {
@@ -84,15 +84,14 @@ read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, struct
 	fiber->pool = l->pool;
 	while ((row = [l fetch_row])) {
 		struct tbuf *out = tbuf_alloc(l->pool);
-		struct row_v12 *v12 = row_v12(row);
 
 		tbuf_printf(out, "lsn:%" PRIi64 " scn:%" PRIi64 " tm:%.3f t:%s %s ",
-			    v12->lsn, v12->scn, v12->tm, xlog_tag_to_a(v12->tag),
-			    sintoa((void *)&v12->cookie));
+			    row->lsn, row->scn, row->tm, xlog_tag_to_a(row->tag),
+			    sintoa((void *)&row->cookie));
 
-		struct tbuf row_data = TBUF(v12->data, v12->len, NULL);
+		struct tbuf row_data = TBUF(row->data, row->len, NULL);
 
-		switch (v12->tag) {
+		switch (row->tag) {
 		case snap_initial_tag:
 			if (tbuf_len(&row_data) == sizeof(u32) * 3) {
 				u32 count = read_u32(&row_data);
@@ -104,7 +103,7 @@ read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, struct
 			break;
 		case snap_tag:
 		case wal_tag:
-			handler(out, v12->tag, &row_data);
+			handler(out, row->tag, &row_data);
 			break;
 		case run_crc: {
 			u32 log = read_u32(&row_data);
@@ -134,24 +133,21 @@ read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, struct
 	return 0;
 }
 
-- (struct tbuf *)
+- (const struct row_v12 *)
 dummy_row_lsn:(i64)lsn_ scn:(i64)scn_ tag:(u16)tag
 {
-	struct tbuf *b = tbuf_alloc(fiber->pool);
-	tbuf_ensure(b, sizeof(struct row_v12));
-	tbuf_append(b, NULL, sizeof(struct row_v12));
+	struct row_v12 *r = palloc(fiber->pool, sizeof(struct row_v12));
 
-	row_v12(b)->lsn = lsn_;
-	row_v12(b)->scn = scn_;
-	row_v12(b)->tm = ev_now();
-	row_v12(b)->tag = tag;
-	row_v12(b)->cookie = default_cookie;
-	row_v12(b)->len = 0;
-	row_v12(b)->data_crc32c = crc32c(0, (unsigned char *)"", 0);
-	row_v12(b)->header_crc32c =
-		crc32c(0, (unsigned char *)row_v12(b) + sizeof(row_v12(b)->header_crc32c),
-		       sizeof(row_v12(b)) - sizeof(row_v12(b)->header_crc32c));
-	return b;
+	r->lsn = lsn_;
+	r->scn = scn_;
+	r->tm = ev_now();
+	r->tag = tag;
+	r->cookie = default_cookie;
+	r->len = 0;
+	r->data_crc32c = crc32c(0, (unsigned char *)"", 0);
+	r->header_crc32c = crc32c(0, (unsigned char *)r + sizeof(r->header_crc32c),
+				  sizeof(*r) - sizeof(r->header_crc32c));
+	return r;
 }
 
 - (void)
@@ -162,38 +158,41 @@ apply_row:(struct tbuf *)row tag:(u16)tag
 	panic("%s must be specilized in subclass", __func__);
 }
 
-- (void)
-recover_row:(struct tbuf *)row
+const struct row_v12 *
+fix_scn(const struct row_v12 *row)
 {
-	i64 row_lsn = row_v12(row)->lsn;
-	i64 row_scn = row_v12(row)->scn;
-	u16 tag = row_v12(row)->tag;
+	if (row->lsn <= 0)
+		return row;
 
+	struct row_v12 *new = palloc(fiber->pool, sizeof(*row) + row->len);
+	memcpy(new, row, sizeof(*row) + row->len);
+	new->scn = row->lsn;
+	return new;
+}
+
+- (void)
+recover_row:(const struct row_v12 *)r
+{
 	/* FIXME: temporary hack */
-	if (cfg.io12_hack && row_lsn > 0)
-		row_scn = row_v12(row)->scn = row_lsn;
+	if (cfg.io12_hack)
+		r = fix_scn(r);
 
 	@try {
-		say_debug("%s: lsn:%"PRIi64" scn:%"PRIi64" tag:%s",
-			  __func__, row_v12(row)->lsn, row_scn, xlog_tag_to_a(tag));
+		say_debug("%s: LSN:%"PRIi64" SCN:%"PRIi64" tag:%s",
+			  __func__, r->lsn, r->scn, xlog_tag_to_a(r->tag));
 
-		if (row_lsn > 0 &&
-		    tag != snap_final_tag &&
-		    tag != snap_initial_tag &&
-		    tag != snap_tag &&
-		    row_lsn != lsn + 1)
+		if (r->lsn > 0 &&
+		    r->tag != snap_final_tag &&
+		    r->tag != snap_initial_tag &&
+		    r->tag != snap_tag &&
+		    r->lsn != lsn + 1)
 		{
 			if (!cfg.io_compat)
 				raise("lsn sequence has gap after %"PRIi64 " -> %"PRIi64,
-				      lsn, row_lsn);
+				      lsn, r->lsn);
 			else
 				say_warn("lsn sequence has gap after %"PRIi64 " -> %"PRIi64,
-					 lsn, row_lsn);
-		}
-
-		if (row_lsn > 0) {
-			say_debug("%s: lsn %"PRIi64" => %"PRIi64, __func__, lsn, row_lsn);
-			lsn = row_lsn;
+					 lsn, r->lsn);
 		}
 
 		if (++processed_rows % 100000 == 0) {
@@ -207,14 +206,9 @@ recover_row:(struct tbuf *)row
 			}
 		}
 
-		/* since apply_row may change contents of `row' header,
-		   make a clone for crc calulation */
-		struct row_v12 *r = row_v12(row);
+		[self apply_row:&TBUF(r->data, r->len, NULL) tag:r->tag];
 
-		tbuf_ltrim(row, sizeof(struct row_v12)); /* drop header */
-		[self apply_row:row tag:tag];
-
-		switch (tag) {
+		switch (r->tag) {
 		case wal_tag:
 			run_crc_log = crc32c(run_crc_log, r->data, r->len);
 			break;
@@ -248,9 +242,14 @@ recover_row:(struct tbuf *)row
 		}
 		}
 
-		if (tag == tag || tag == nop || tag == run_crc) {
-			scn = row_scn;
+
+		if (r->lsn > 0) {
+			// assert(r->tag == wal_tag && r->lsn == lsn + 1);
+			lsn = r->lsn;
 		}
+
+		if (r->tag == snap_final_tag || r->tag == wal_tag || r->tag == nop || r->tag == run_crc)
+			scn = r->scn;
 
 		last_update_tstamp = ev_now();
 		lag = last_update_tstamp - r->tm;
@@ -258,6 +257,9 @@ recover_row:(struct tbuf *)row
 	@catch (Error *e) {
 		say_error("Recovery: %s at %s:%i", e->reason, e->file, e->line);
 		@throw;
+	}
+	@finally {
+		say_debug("%s: => LSN:%"PRIi64" SCN:%"PRIi64, __func__, lsn, scn);
 	}
 }
 
@@ -270,7 +272,7 @@ wal_final_row
 recover_snap
 {
 	XLog *snap = nil;
-	struct tbuf *row;
+	const struct row_v12 *r;
 
 	struct palloc_pool *saved_pool = fiber->pool;
 	@try {
@@ -290,19 +292,19 @@ recover_snap
 		fiber->pool = [snap pool];
 
 		if ([snap isKindOf:[XLog11 class]]) {
-			row = [self dummy_row_lsn:0 scn:0 tag:snap_initial_tag];
-			[self recover_row:row];
+			r = [self dummy_row_lsn:0 scn:0 tag:snap_initial_tag];
+			[self recover_row:r];
 		}
 
-		while ((row = [snap fetch_row])) {
-			[self recover_row:row];
+		while ((r = [snap fetch_row])) {
+			[self recover_row:r];
 			prelease_after(fiber->pool, 128 * 1024);
 		}
 
 		/* old v11 snapshot, scn == lsn from filename */
 		if ([snap isKindOf:[XLog11 class]]) {
-			row = [self dummy_row_lsn:snap_lsn scn:snap_lsn tag:snap_final_tag];
-			[self recover_row:row];
+			r = [self dummy_row_lsn:snap_lsn scn:snap_lsn tag:snap_final_tag];
+			[self recover_row:r];
 		}
 
 		if (![snap eof])
@@ -320,15 +322,14 @@ recover_snap
 - (void)
 recover_wal:(id<XLogPuller>)l
 {
-	struct tbuf *row = NULL;
-
 	struct palloc_pool *saved_pool = fiber->pool;
 	fiber->pool = [l pool];
 	@try {
-		while ((row = [l fetch_row])) {
-			if (row_v12(row)->lsn > lsn) {
-				last_wal_lsn = row_v12(row)->lsn;
-				[self recover_row:row];
+		const struct row_v12 *r;
+		while ((r = [l fetch_row])) {
+			if (r->lsn > lsn) {
+				last_wal_lsn = r->lsn;
+				[self recover_row:r];
 			}
 			prelease_after(fiber->pool, 128 * 1024);
 		}
@@ -515,10 +516,10 @@ recover_finalize
 static void
 pull_snapshot(Recovery *r, id<XLogPuller> puller)
 {
-	struct tbuf *row;
 	for (;;) {
+		const struct row_v12 *row;
 		while ((row = [puller fetch_row])) {
-			switch (row_v12(row)->tag) {
+			switch (row->tag) {
 			case snap_initial_tag:
 			case snap_tag:
 				[r recover_row:row];
@@ -528,7 +529,7 @@ pull_snapshot(Recovery *r, id<XLogPuller> puller)
 				return;
 			default:
 				raise("unexpected tag %i/%s",
-				      row_v12(row)->tag, xlog_tag_to_a(row_v12(row)->tag));
+				      row->tag, xlog_tag_to_a(row->tag));
 			}
 
 		}
@@ -537,9 +538,9 @@ pull_snapshot(Recovery *r, id<XLogPuller> puller)
 }
 
 static void
-pull_wal(Recovery *r, XLogPuller *puller, int exit_on_eof)
+pull_wal(Recovery *r, id<XLogPuller> puller, int exit_on_eof)
 {
-	struct tbuf *row, *special_row = NULL, *rows[WAL_PACK_MAX];
+	const struct row_v12 *row, *special_row = NULL, *rows[WAL_PACK_MAX];
 	struct wal_pack *pack;
 	/* TODO: use designated palloc_pool */
 	say_debug("%s: scn:%"PRIi64, __func__, [r scn]);
@@ -547,24 +548,25 @@ pull_wal(Recovery *r, XLogPuller *puller, int exit_on_eof)
 	for (;;) {
 		int pack_rows = 0;
 		while ((row = [puller fetch_row])) {
-			if (row_v12(row)->tag == wal_final_tag) {
+			if (row->tag == wal_final_tag) {
 				special_row = row;
 				break;
 			}
 
-			if (row_v12(row)->tag != wal_tag &&
-			    row_v12(row)->tag != run_crc &&
-			    row_v12(row)->tag != nop)
+			if (row->tag != wal_tag &&
+			    row->tag != run_crc &&
+			    row->tag != nop)
 				continue;
 
-			if (cfg.io12_hack && row_v12(row)->lsn > 0)
-				row_v12(row)->scn = row_v12(row)->lsn;
+			if (cfg.io12_hack)
+				row = fix_scn(row);
 
-			if (row_v12(row)->scn <= [r scn])
+
+			if (row->scn <= [r scn])
 				continue;
 
 			if (cfg.io_compat) {
-				if (row_v12(row)->tag == run_crc)
+				if (row->tag == run_crc)
 					continue;
 			}
 
@@ -575,19 +577,17 @@ pull_wal(Recovery *r, XLogPuller *puller, int exit_on_eof)
 
 		if (pack_rows > 0) {
 #ifndef NDEBUG
-			i64 pack_min_scn = row_v12(rows[0])->scn,
-			    pack_max_scn = row_v12(rows[pack_rows - 1])->scn;
+			i64 pack_min_scn = rows[0]->scn,
+			    pack_max_scn = rows[pack_rows - 1]->scn;
 #endif
 			assert([r scn] == pack_min_scn - 1);
 			@try {
-				for (int j = 0; j < pack_rows; j++) {
-					row = rows[j];
-					[r recover_row:tbuf_clone(fiber->pool, row)];
-				}
+				for (int j = 0; j < pack_rows; j++)
+					[r recover_row:rows[j]];
 			}
 			@catch (id e) {
 				panic("Replication failure: remote row LSN:%"PRIi64 " SCN:%"PRIi64,
-				      row_v12(row)->lsn, row_v12(row)->scn);
+				      row->lsn, row->scn);
 			}
 
 			int confirmed = 0;
@@ -596,11 +596,11 @@ pull_wal(Recovery *r, XLogPuller *puller, int exit_on_eof)
 				for (int i = confirmed; i < pack_rows; i++) {
 					row = rows[i];
 					[r wal_pack_append:pack
-						      data:row_v12(row)->data
-						       len:row_v12(row)->len
-						       scn:row_v12(row)->scn
-						       tag:row_v12(row)->tag
-						    cookie:row_v12(row)->cookie];
+						      data:row->data
+						       len:row->len
+						       scn:row->scn
+						       tag:row->tag
+						    cookie:row->cookie];
 				}
 				confirmed += [r wal_pack_submit];
 				if (confirmed != pack_rows) {

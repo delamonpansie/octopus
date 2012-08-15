@@ -180,7 +180,7 @@ contains_full_row_v11(const struct tbuf *b)
 		tbuf_len(b) >= sizeof(struct _row_v11) + _row_v11(b)->len;
 }
 
-- (struct tbuf *)
+- (const struct row_v12 *)
 fetch_row
 {
 	struct tbuf *row = NULL;
@@ -234,14 +234,14 @@ fetch_row
 		  row_v12(row)->scn, xlog_tag_to_a(row_v12(row)->tag));
 
 	pack++;
-	return row;
+	return row->ptr;
 }
 
 
-- (void)
+- (int)
 close
 {
-	conn_close(&c);
+	return conn_close(&c);
 }
 
 - (void)

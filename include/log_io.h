@@ -65,10 +65,10 @@ const char *xlog_tag_to_a(u16 tag);
 struct tbuf;
 
 @protocol XLogPuller
-- (struct tbuf *) fetch_row;
+- (const struct row_v12 *) fetch_row;
 - (u32) version;
 - (bool) eof;
-- (void) close;
+- (int) close;
 - (struct palloc_pool *) pool;
 @end
 
@@ -145,12 +145,8 @@ typedef void (follow_cb)(ev_stat *w, int events);
 - (int) inprogress_unlink;
 - (int) read_header;
 - (int) write_header;
-- (struct tbuf *)fetch_row;
 - (int) flush;
-- (int) close;
 - (size_t) rows;
-- (bool) eof;
-- (u32) version;
 - (size_t)wet_rows_offset_available;
 - (i64) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie;
 - (i64) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag;
@@ -218,9 +214,6 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (i64) handshake:(i64)scn err:(const char **)err_ptr;
 - (i64) handshake:(struct sockaddr_in *)addr_ scn:(i64)scn;
 - (i64) handshake:(struct sockaddr_in *)addr_ scn:(i64)scn err:(const char **)err_ptr;
-- (struct tbuf *) fetch_row;
-- (u32) version;
-- (void) close;
 @end
 
 @interface Recovery: XLogWriter {
@@ -244,7 +237,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (const char *) run_crc_status;
 
 - (void) apply_row:(struct tbuf *)row tag:(u16)tag;
-- (void) recover_row:(struct tbuf *)row;
+- (void) recover_row:(const struct row_v12 *)row;
 - (void) recover_finalize;
 - (i64) recover_start;
 - (void) recover_follow:(ev_tstamp)delay;
@@ -255,7 +248,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (struct fiber *) recover_follow_remote_async:(struct sockaddr_in *)addr;
 - (void) enable_local_writes;
 
-- (struct tbuf *)dummy_row_lsn:(i64)lsn_ scn:(i64)scn_ tag:(u16)tag;
+- (const struct row_v12 *)dummy_row_lsn:(i64)lsn_ scn:(i64)scn_ tag:(u16)tag;
 
 - (id) init_snap_dir:(const char *)snap_dir
              wal_dir:(const char *)wal_dir;

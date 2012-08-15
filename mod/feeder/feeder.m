@@ -73,29 +73,28 @@ writef(int fd, const char *b, size_t len)
 }
 
 
-static void
-update_row(struct tbuf *row, u16 tag, const char *data, size_t len)
+static struct row_v12 *
+construct_row(const struct row_v12 *old, u16 tag, const char *data, size_t len)
 {
-	tbuf_ensure(row, len);
-	struct row_v12 *row12 = row_v12(row);
+	struct row_v12 *new = palloc(fiber->pool, sizeof(*new) + len);;
+	memcpy(new, old, sizeof(*new));
 	if (tag)
-		row12->tag = tag;
-	memcpy(row12->data, data, len);
-	if (row12->len > len)
-		tbuf_rtrim(row, row12->len - len);
-	row12->len = len;
-	row12->data_crc32c = crc32c(0, row12->data, row12->len);
-	row12->header_crc32c = crc32c(0, (u8 *)row12 + sizeof(row12->header_crc32c),
-				      sizeof(row12) - sizeof(row12->header_crc32c));
+		new->tag = tag;
+
+	memcpy(new->data, data, len);
+	new->len = len;
+	new->data_crc32c = crc32c(0, new->data, new->len);
+	new->header_crc32c = crc32c(0, (u8 *)new + sizeof(new->header_crc32c),
+				    sizeof(new) - sizeof(new->header_crc32c));
+	return new;
 }
 
 - (void)
-recover_row:(struct tbuf *)row
+recover_row:(const struct row_v12 *)r
 {
-	i64 row_lsn = row_v12(row)->lsn;
 	if (filtering) {
 		lua_pushvalue(fiber->L, 1);
-		lua_pushlstring(fiber->L, row->ptr, tbuf_len(row));
+		lua_pushlstring(fiber->L, (const char *)r, sizeof(*r) + r->len);
 
 		if (lua_pcall(fiber->L, 1, 2, 0) != 0) {
 			say_error("lua filter error: %s", lua_tostring(fiber->L, -1));
@@ -106,11 +105,11 @@ recover_row:(struct tbuf *)row
 			size_t len;
 			const char *new_data = lua_tolstring(fiber->L, -2, &len);
 
-			update_row(row, tag, new_data, len);
+			r = construct_row(r, tag, new_data, len);
 		} else if (lua_isstring(fiber->L, -2)) {
 			size_t len;
 			const char *new_data = lua_tolstring(fiber->L, -2, &len);
-			update_row(row, 0, new_data, len);
+			r = construct_row(r, 0, new_data, len);
 		} else if (lua_isnil(fiber->L, -2)) {
 			;
 		} else {
@@ -118,14 +117,13 @@ recover_row:(struct tbuf *)row
 		}
 		lua_pop(fiber->L, 2);
 	}
-	u16 tag = row_v12(row)->tag;
 
 	say_debug("%s: lsn:%"PRIi64" scn:%"PRIi64" tag:%s", __func__,
-		  row_lsn, row_v12(row)->scn, xlog_tag_to_a(tag));
-	writef(fd, row->ptr, tbuf_len(row));
+		  r->lsn, r->scn, xlog_tag_to_a(r->tag));
+	writef(fd, (const char *)r, sizeof(*r) + r->len);
 
-	if (!dummy_tag(tag))
-		lsn = row_lsn;
+	if (!dummy_tag(r->tag))
+		lsn = r->lsn;
 }
 
 - (void)

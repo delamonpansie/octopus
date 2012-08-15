@@ -774,28 +774,27 @@ loop:
 			}
 
 			for (;;) {
-				struct tbuf *row;
+				const struct row_v12 *row;
 				while ((row = [puller fetch_row])) {
-					struct row_v12 *v = row_v12(row);
 					say_debug("%s: row scn:%"PRIi64 " tag:%s", __func__,
-						  v->scn, xlog_tag_to_a(v->tag));
+						  row->scn, xlog_tag_to_a(row->tag));
 
-					if (v->tag == wal_final_tag) {
+					if (row->tag == wal_final_tag) {
 						[puller close];
 						say_debug("FOLLOW done");
 						goto loop;
 					}
-					if (v->scn < *scn)
+					if (row->scn < *scn)
 						continue;
 
-					if (v->tag == wal_tag) {
-						struct proposal *p = find_proposal(r, v->scn);
+					if (row->tag == wal_tag) {
+						struct proposal *p = find_proposal(r, row->scn);
 						if (!p)
-							create_proposal(r, v->scn, 0);
+							create_proposal(r, row->scn, 0);
 						update_proposal_ballot(p, ULLONG_MAX);
-						update_proposal_value(p, v->len, (char *)v->data);
+						update_proposal_value(p, row->len, (char *)row->data);
 						p->flags |= DECIDED;
-						learn(r, v->scn);
+						learn(r, row->scn);
 					}
 				}
 			}
@@ -963,39 +962,36 @@ submit:(void *)data len:(u32)len
 }
 
 - (void)
-recover_row:(struct tbuf *)row
+recover_row:(const struct row_v12 *)r
 {
-	i64 row_scn = row_v12(row)->scn;
-	i64 row_lsn = row_v12(row)->lsn;
-	u16 tag = row_v12(row)->tag;
 	say_debug("%s: lsn:%"PRIi64" scn:%"PRIi64" tag:%s", __func__,
-		  row_lsn, row_scn, xlog_tag_to_a(tag));
+		  r->lsn, r->scn, xlog_tag_to_a(r->tag));
 
-	switch (tag) {
+	switch (r->tag) {
 	case paxos_prepare:
 	case paxos_promise:
 	case paxos_nop:
-		lsn = row_lsn;
-		tbuf_ltrim(row, sizeof(struct row_v12));
-		u64 ballot = read_u64(row);
-		struct proposal *p = find_proposal(self, row_scn);
+		lsn = r->lsn;
+		struct tbuf buf = TBUF(r->data, r->len, NULL);
+		u64 ballot = read_u64(&buf);
+		struct proposal *p = find_proposal(self, r->scn);
 		if (!p)
-			p = create_proposal(self, row_scn, 0);
+			p = create_proposal(self, r->scn, 0);
 		update_proposal_ballot(p, ballot);
 		break;
 
 	case paxos_accept:
 	case paxos_propose:
-		lsn = row_lsn;
-		tbuf_ltrim(row, sizeof(struct row_v12));
-		ballot = read_u64(row);
-		u32 value_len = read_u32(row);
-		void *value = read_bytes(row, value_len);
-		update_proposal_value(find_proposal(self, row_scn), value_len, value);
+		lsn = r->lsn;
+		struct tbuf buf2 = TBUF(r->data, r->len, NULL);
+		ballot = read_u64(&buf2);
+		u32 value_len = read_u32(&buf2);
+		void *value = read_bytes(&buf2, value_len);
+		update_proposal_value(find_proposal(self, r->scn), value_len, value);
 		break;
 
 	default:
-		[super recover_row:row];
+		[super recover_row:r];
 		break;
 	}
 }
@@ -1009,10 +1005,10 @@ recover_row:(struct tbuf *)row
 void
 paxos_print(struct tbuf *out,
 	    void (*handler)(struct tbuf *out, u16 tag, struct tbuf *row),
-	    struct tbuf *row)
+	    const struct row_v12 *row)
 {
-	u16 tag = row_v12(row)->tag;
-	struct tbuf b = TBUF(row_v12(row)->data, row_v12(row)->len, fiber->pool);
+	u16 tag = row->tag;
+	struct tbuf b = TBUF(row->data, row->len, fiber->pool);
 	u64 ballot, value_len;
 
 	switch (tag) {

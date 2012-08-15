@@ -111,7 +111,7 @@ void netmsg_verify_ownership(struct netmsg_head *h);
 
 struct conn *conn_init(struct conn *c, struct palloc_pool *pool, int fd,
 		       struct fiber *in, struct fiber *out, int ref);
-void conn_close(struct conn *c);
+int conn_close(struct conn *c);
 void conn_gc(struct palloc_pool *pool, void *ptr);
 ssize_t conn_recv(struct conn *c);
 ssize_t conn_read(struct conn *c, void *buf, size_t count);

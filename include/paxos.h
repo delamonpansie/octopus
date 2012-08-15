@@ -48,4 +48,4 @@ struct paxos_peer;
 
 void paxos_print(struct tbuf *out,
 		 void (*handler)(struct tbuf *out, u16 tag, struct tbuf *row),
-		 struct tbuf *row);
+		 const struct row_v12 *row);

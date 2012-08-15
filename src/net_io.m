@@ -398,16 +398,17 @@ again:
 }
 
 
-void
+int
 conn_close(struct conn *c)
 {
+	int r = 0;
 	tbuf_reset(c->rbuf);
 	if (c->fd > 0) {
 		ev_io_stop(&c->out);
 		ev_io_stop(&c->in);
 		c->in.cb = c->out.cb = NULL;
 
-		close(c->fd);
+		r = close(c->fd);
 		c->fd = -1;
 		c->peer_name[0] = 0;
 
@@ -426,10 +427,10 @@ conn_close(struct conn *c)
 
 	switch (c->ref) {
 	case REF_STATIC:
-		return;
+		return r;
 	case REF_MALLOC:
 		free(c);
-		return;
+		return r;
 	case 0:
 		if (c->service)
 			LIST_REMOVE(c, link);
@@ -437,7 +438,9 @@ conn_close(struct conn *c)
 		SLIST_INSERT_HEAD(&conn_pool, c, pool_link);
 		c->service = NULL;
 		c->pool = NULL;
-		return;
+		return r;
+	default:
+		abort(); /* not reached */
 	}
 }
 

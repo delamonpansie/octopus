@@ -633,7 +633,7 @@ read_row
 	return NULL;
 }
 
-- (struct tbuf *)
+- (const struct row_v12 *)
 fetch_row
 {
 	struct tbuf *row;
@@ -675,7 +675,7 @@ restart:
 	}
 
 	++rows;
-	return row;
+	return row->ptr;
 eof:
 	if (ftello(fd) == good_offset + sizeof(eof_marker)) {
 		fseeko(fd, good_offset, SEEK_SET);
