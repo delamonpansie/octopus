@@ -234,7 +234,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (ev_tstamp) run_crc_lag;
 - (const char *) run_crc_status;
 
-- (void) apply_row:(struct tbuf *)row tag:(u16)tag;
+- (void) apply:(struct tbuf *)op tag:(u16)tag;
 - (void) recover_row:(const struct row_v12 *)row;
 - (void) recover_finalize;
 - (i64) recover_start;

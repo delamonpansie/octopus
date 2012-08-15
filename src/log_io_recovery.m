@@ -76,9 +76,9 @@ dummy_row_lsn:(i64)lsn_ scn:(i64)scn_ tag:(u16)tag
 }
 
 - (void)
-apply_row:(struct tbuf *)row tag:(u16)tag
+apply:(struct tbuf *)op tag:(u16)tag
 {
-	(void)row;
+	(void)op;
 	(void)tag;
 	panic("%s must be specilized in subclass", __func__);
 }
@@ -117,7 +117,7 @@ recover_row:(const struct row_v12 *)r
 			}
 		}
 
-		[self apply_row:&TBUF(r->data, r->len, NULL) tag:r->tag];
+		[self apply:&TBUF(r->data, r->len, NULL) tag:r->tag];
 
 		switch (r->tag) {
 		case wal_tag:

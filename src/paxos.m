@@ -433,7 +433,7 @@ learn(PaxosRecovery *r, i64 scn)
 	}
 	p->flags |= DECIDED;
 
-	[r apply_row:&TBUF(p->value, p->value_len, NULL) tag:wal_tag]; /* FIXME: what to do if this fails ? */
+	[r apply:&TBUF(p->value, p->value_len, NULL) tag:wal_tag]; /* FIXME: what to do if this fails ? */
 	[r set_scn:p->scn];
 	say_debug("%s: scn:%"PRIi64" value_len:%i %s", __func__, p->scn,
 		  p->value_len, tbuf_to_hex(&TBUF(p->value, p->value_len, fiber->pool)));
