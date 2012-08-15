@@ -35,6 +35,7 @@
 #import <pickle.h>
 #import <assoc.h>
 #import <net_io.h>
+#import <object.h>
 
 #include <third_party/queue.h>
 
@@ -192,6 +193,9 @@ fiber_loop(void *data __attribute__((unused)))
 		assert(fiber != NULL && fiber->f != NULL && fiber->fid != 0);
 		@try {
 			fiber->f(fiber->ap);
+		}
+		@catch (Error *e) {
+			panic_exc(e);
 		}
 		@catch (id e) {
 			panic("uncaught exception in fiber %s, exiting", fiber->name);
