@@ -218,6 +218,10 @@ wal_pack_submit
 	if (r->lsn == 0) {
 		say_warn("wal writer returned error status");
 	} else {
+		if (cfg.sync_scn_with_lsn && r->lsn != r->scn)
+			raise("out ouf sync SCN:%"PRIi64 " != LSN:%"PRIi64,
+			      r->scn, r->lsn);
+
 		/* update local vars */
 		lsn = r->lsn;
 		scn = r->scn;

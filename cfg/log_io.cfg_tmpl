@@ -54,5 +54,6 @@ replication_compat = 0, ro
 # if enabled, server will panic on LSN gap
 # beware: very old code may produce xlog with gaps
 panic_on_lsn_gap = 1, ro
-# same as above
-panic_on_scn_gap = 1, ro
+
+# require than scn === lsn
+sync_scn_with_lsn = 1, ro
