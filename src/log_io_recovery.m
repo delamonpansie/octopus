@@ -122,6 +122,7 @@ recover_row:(const struct row_v12 *)r
 		switch (r->tag) {
 		case wal_tag:
 			run_crc_log = crc32c(run_crc_log, r->data, r->len);
+			say_debug("%s: computed run_crc_log: 0x%x", __func__, run_crc_log);
 			break;
 		case snap_initial_tag:
 			if (r->len == sizeof(u32) * 3) { /* not a dummy row */
@@ -519,13 +520,14 @@ pull_wal(Recovery *r, id<XLogPuller> puller, int exit_on_eof)
 						       tag:row->tag
 						    cookie:row->cookie];
 				}
-				confirmed += [r wal_pack_submit];
+				confirmed += [r wal_pack_submit_x];
 				if (confirmed != pack_rows) {
 					say_warn("WAL write failed confirmed:%i != sent:%i",
 						 confirmed, pack_rows);
 					fiber_sleep(0.05);
 				}
 			}
+
 			assert([r scn] == pack_max_scn);
 		}
 

@@ -232,6 +232,24 @@ wal_pack_submit
 	return r->row_count;
 }
 
+- (int)
+wal_pack_submit_x
+{
+	ev_io_start(&wal_writer->c->out);
+	struct wal_reply *r = yield();
+	if (r->lsn == 0)
+		say_warn("wal writer returned error status");
+
+	if (cfg.sync_scn_with_lsn && r->lsn != r->scn)
+		raise("out ouf sync SCN:%"PRIi64 " != LSN:%"PRIi64,
+		      r->scn, r->lsn);
+
+	assert(lsn >= r->lsn);
+	assert(scn >= r->scn);
+
+	return r->row_count;
+}
+
 - (i64)
 append_row:(const void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag cookie:(u64)cookie
 {
@@ -324,6 +342,8 @@ wal_disk_writer(int fd, void *state)
 	[writer set_lsn:wal_conf.lsn];
 	next_scn = wal_conf.scn;
 	crc = wal_conf.run_crc;
+	say_debug("%s: configured LSN:%"PRIi64 " SCN:%"PRIi64" run_crc_log:0x%x",
+		  __func__, wal_conf.lsn, wal_conf.scn, wal_conf.run_crc);
 
 	for (;;) {
 		if (!have_unwritten_rows) {
@@ -386,15 +406,14 @@ wal_disk_writer(int fd, void *state)
 					continue;
 				}
 
-				if (h->tag == wal_tag) {
-					crc = crc32c(run_crc, data, h->data_len);
-					request[requests_processed].run_crc = run_crc;
-				}
+				if (h->tag == wal_tag)
+					crc = crc32c(crc, data, h->data_len);
 
-				if (h->tag == wal_tag || h->tag == run_crc || h->tag == nop) {
-					request[requests_processed].scn = h->scn;
+				if (h->tag == wal_tag || h->tag == run_crc || h->tag == nop)
 					next_scn = h->scn;
-				}
+
+				request[requests_processed].run_crc = crc;
+				request[requests_processed].scn = next_scn;
 			}
 			requests_processed++;
 		}

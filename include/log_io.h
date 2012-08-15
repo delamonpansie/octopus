@@ -192,7 +192,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 		    tag:(u16)tag
 		 cookie:(u64)cookie;
 - (int) wal_pack_submit;
-
+- (int) wal_pack_submit_x; // FIXME: hack
 - (int) submit:(const void *)data len:(u32)len;
 - (int) submit:(const void *)data len:(u32)len scn:(i64)scn tag:(u16)tag;
 - (int) submit_run_crc;
