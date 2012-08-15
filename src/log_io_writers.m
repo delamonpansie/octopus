@@ -300,7 +300,7 @@ wal_disk_writer(int fd, void *state)
 	struct tbuf *wbuf, rbuf = TBUF(NULL, 0, fiber->pool);
 	int result = EXIT_FAILURE;
 	i64 start_lsn, next_scn = 0;
-	u32 run_crc, requests_processed;
+	u32 crc, requests_processed;
 	bool io_failure = false, have_unwritten_rows = false;
 	ssize_t r;
 	struct {
@@ -323,7 +323,7 @@ wal_disk_writer(int fd, void *state)
 	}
 	[writer set_lsn:wal_conf.lsn];
 	next_scn = wal_conf.scn;
-	run_crc = wal_conf.run_crc;
+	crc = wal_conf.run_crc;
 
 	for (;;) {
 		/* we're not running inside ev_loop, so update ev_now manually */
@@ -387,7 +387,7 @@ wal_disk_writer(int fd, void *state)
 				}
 
 				if (h->tag == wal_tag) {
-					run_crc = crc32c(run_crc, data, h->data_len);
+					crc = crc32c(run_crc, data, h->data_len);
 					request[requests_processed].run_crc = run_crc;
 				}
 
