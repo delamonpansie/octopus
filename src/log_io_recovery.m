@@ -149,7 +149,6 @@ recover_row:(const struct row_v12 *)r
 				say_crit("run_crc_mod mismatch: saved:0x%08x computed:0x%08x",
 					 mod, run_crc_mod);
 			}
-			say_debug("%s: verified run_crc_log:0x%08x run_crc_mod:0x%08x", __func__, log, mod);
 
 			run_crc_verify_tstamp = ev_now();
 			break;
