@@ -181,20 +181,6 @@ recover_row:(const struct row_v12 *)r
 		say_debug("%s: LSN:%"PRIi64" SCN:%"PRIi64" tag:%s",
 			  __func__, r->lsn, r->scn, xlog_tag_to_a(r->tag));
 
-		if (r->lsn > 0 &&
-		    r->tag != snap_final_tag &&
-		    r->tag != snap_initial_tag &&
-		    r->tag != snap_tag &&
-		    r->lsn != lsn + 1)
-		{
-			if (!cfg.io_compat)
-				raise("lsn sequence has gap after %"PRIi64 " -> %"PRIi64,
-				      lsn, r->lsn);
-			else
-				say_warn("lsn sequence has gap after %"PRIi64 " -> %"PRIi64,
-					 lsn, r->lsn);
-		}
-
 		if (++processed_rows % 100000 == 0) {
 			if (estimated_snap_rows && processed_rows <= estimated_snap_rows) {
 				float pct = 100. * processed_rows / estimated_snap_rows;
@@ -219,6 +205,9 @@ recover_row:(const struct row_v12 *)r
 				run_crc_log = read_u32(&buf);
 				run_crc_mod = read_u32(&buf);
 			}
+			/* set initial lsn & scn, otherwise gap check below will fail */
+			lsn = r->lsn;
+			scn = r->scn;
 			say_debug("%s: run_crc_log/mod: 0x%x/0x%x", __func__, run_crc_log, run_crc_mod);
 			break;
 		case run_crc: {
@@ -243,11 +232,15 @@ recover_row:(const struct row_v12 *)r
 		}
 
 
-		if (r->lsn > 0) {
-			// assert(r->tag == wal_tag && r->lsn == lsn + 1);
-			lsn = r->lsn;
-		}
+		if (unlikely(r->lsn - lsn > 1 && cfg.panic_on_lsn_gap))
+			raise("LSN sequence has gap after %"PRIi64 " -> %"PRIi64,
+			      lsn, r->lsn);
 
+		if (unlikely(r->scn - scn > 1 && cfg.panic_on_scn_gap))
+			raise("SCN sequence has gap after %"PRIi64 " -> %"PRIi64,
+			      scn, r->scn);
+
+		lsn = r->lsn;
 		if (r->tag == snap_final_tag || r->tag == wal_tag || r->tag == nop || r->tag == run_crc)
 			scn = r->scn;
 

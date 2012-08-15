@@ -58,3 +58,7 @@ env.with_server do
 
   puts `./octopus --cat 00000000000000001001.snap | sed 's/tm:[^ ]* //' | egrep 't:snap_(initial|final)_tag'`
 end
+
+env.with_server do
+  select 1, 2
+end
