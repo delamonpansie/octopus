@@ -49,6 +49,12 @@ struct netmsg_head {
 	size_t bytes;
 };
 
+#ifdef IOV_MAX
+#  define NETMSG_MAX IOV_MAX
+#else
+#  define NETMSG_MAX 1024
+#endif
+
 struct netmsg {
 	struct netmsg_head *head;
 
@@ -56,10 +62,10 @@ struct netmsg {
 
 	TAILQ_ENTRY(netmsg) link;
 
-	struct iovec iov[1024]; // TODO: use IOV_MAX
-	struct tnt_object *ref[1024];
+	struct iovec iov[NETMSG_MAX];
+	struct tnt_object *ref[NETMSG_MAX];
 #ifdef NET_IO_TIMESTAMPS
-	ev_tstamp tstamp[1024];
+	ev_tstamp tstamp[NETMSG_MAX];
 #endif
 };
 
