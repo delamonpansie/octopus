@@ -180,8 +180,6 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 
 - (i64) scn;
 - (i64) lsn;
-- (void) set_lsn:(i64)lsn_;
-- (void) set_scn:(i64)scn_;
 
 - (struct child *) wal_writer;
 - (void) configure_wal_writer;

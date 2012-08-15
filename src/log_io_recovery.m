@@ -55,8 +55,7 @@
 - (void)
 initial
 {
-	[self set_lsn:1];
-	[self set_scn:1];
+	lsn = scn = 1;
 }
 
 /* this little hole shouldn't be used too much */
