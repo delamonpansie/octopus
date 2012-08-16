@@ -82,6 +82,7 @@ struct box_txn {
 	u32 obj_affected;
 
 	struct tbuf *wal_record;
+	bool snap;
 };
 
 #define BOX_RETURN_TUPLE 1

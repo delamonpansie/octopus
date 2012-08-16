@@ -703,8 +703,10 @@ txn_commit(struct box_txn *txn)
 	else
 		commit_replace(txn);
 
-	update_crc(txn->old_obj, &recovery->run_crc_mod);
-	update_crc(txn->obj, &recovery->run_crc_mod);
+	if (unlikely(!txn->snap)) {
+		update_crc(txn->old_obj, &recovery->run_crc_mod);
+		update_crc(txn->obj, &recovery->run_crc_mod);
+	}
 
 	say_debug("txn_commit(op:%s) scn:%"PRIi64 " run_crc_mod:0x%x",
 		  messages_strs[txn->op], [recovery scn], recovery->run_crc_mod);
@@ -1216,6 +1218,7 @@ snap_apply(struct box_txn *txn, struct tbuf *t)
 	txn->index = txn->object_space->index[0];
 	assert(txn->index != nil);
 
+	txn->snap = true;
 	prepare_replace(txn, row->tuple_size, &TBUF(row->data, row->data_size, NULL));
 	txn->op = INSERT;
 }
