@@ -66,7 +66,7 @@ MasterEnv.clean do
       r = YAML.load(s.read)
       info = r["info"]
 
-      %w/lsn recovery_lag recovery_run_crc_status/.each do |p|
+      %w/recovery_lag recovery_run_crc_status/.each do |p|
         puts "#{p}: #{info[p]}"
       end
     end

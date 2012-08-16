@@ -4,6 +4,5 @@
 # box.insert([1, 2, 3])
 1
 
-lsn: 50
 recovery_lag: 0.0
 recovery_run_crc_status: ok
