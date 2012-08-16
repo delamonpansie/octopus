@@ -18,8 +18,11 @@ rows_per_wal=500000, ro
 # WARNING: actually, several last requsts may stall for much longer
 wal_fsync_delay=0.0, ro
 
-# how often run_crc is submited to wal
+# how often run_crc is submited to wal (if running as master)
 run_crc_delay=5.0, ro
+
+# completly ignore run_crc
+ignore_run_crc=0, ro
 
 # how often nop heartbeat is submited to wal
 nop_hb_delay=60.0, ro
@@ -57,3 +60,4 @@ panic_on_lsn_gap = 1, ro
 
 # require than scn === lsn
 sync_scn_with_lsn = 1, ro
+

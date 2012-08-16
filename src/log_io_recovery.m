@@ -137,6 +137,9 @@ recover_row:(const struct row_v12 *)r
 			say_debug("%s: run_crc_log/mod: 0x%x/0x%x", __func__, run_crc_log, run_crc_mod);
 			break;
 		case run_crc: {
+			if (cfg.ignore_run_crc)
+				break;
+
 			struct tbuf buf = TBUF(r->data, r->len, NULL);
 			u32 log = read_u32(&buf);
 			u32 mod = read_u32(&buf);
