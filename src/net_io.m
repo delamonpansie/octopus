@@ -543,7 +543,7 @@ service_output_flusher(va_list ap __attribute__((unused)))
 int
 tcp_connect(struct sockaddr_in *dst, struct sockaddr_in *src, ev_tstamp timeout)
 {
-	int fd, optval = 1;
+	int fd = -1, optval = 1;
 	socklen_t optlen = sizeof(optval);
 	ev_io io = { .coro = 1 };
 	ev_timer timer = { .coro = 1 };
@@ -604,8 +604,7 @@ tcp_connect(struct sockaddr_in *dst, struct sockaddr_in *src, ev_tstamp timeout)
 
 	return fd;
       error:
-	if (fd)
-		close(fd);
+	close(fd);
 	return -1;
 }
 
