@@ -716,9 +716,11 @@ run_crc_writer(va_list ap)
 		if (ev_now() - submit_tstamp < delay)
 			continue;
 
+		while ([recovery submit_run_crc] < 0)
+			fiber_sleep(0.02);
+
 		submit_tstamp = ev_now();
 		lsn = [recovery lsn];
-		[recovery submit_run_crc];
 	}
 }
 

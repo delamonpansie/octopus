@@ -166,6 +166,8 @@ submit:(const void *)data len:(u32)len
 submit_run_crc
 {
 	u32 crc[2] = { run_crc_log, run_crc_mod };
+	if (inprogress_packs)
+		return -1;
 	return [self submit:crc len:sizeof(u32)*2 scn:0 tag:run_crc];
 }
 
@@ -214,7 +216,9 @@ wal_pack_submit
 	}
 
 	ev_io_start(&wal_writer->c->out);
+	inprogress_packs++;
 	struct wal_reply *r = yield();
+	inprogress_packs--;
 	if (r->lsn == 0) {
 		say_warn("wal writer returned error status");
 	} else {
