@@ -249,7 +249,7 @@ recover_feed_slave(int sock)
 				       wal_dir:cfg.wal_dir
 					    fd:sock];
 	i64 initial_scn = handshake(sock, filter_name);
-	say_info("intiail scn:%"PRIi64" filter: '%s'", initial_scn, filter_name);
+	say_info("initial scn:%"PRIi64" filter: '%s'", initial_scn, filter_name);
 	[feeder recover_start_from_scn:initial_scn filter:filter_name];
 
 	ev_io_init(&io, (void *)eof_monitor, sock, EV_READ);
