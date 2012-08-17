@@ -92,6 +92,9 @@ handshake:(i64)scn err:(const char **)err_ptr
 	int keepidle = 20;
 	if (setsockopt(fd, SOL_TCP, TCP_KEEPIDLE, &keepidle, sizeof(keepidle)) < 0)
 		say_syserror("setsockopt");
+	int keepcnt = 3;
+	if (setsockopt(fd, SOL_TCP, TCP_KEEPCNT, &keepcnt, sizeof(keepcnt)) < 0)
+		say_syserror("setsockopt");
 #endif
 
 	assert(c.fd < 0);
