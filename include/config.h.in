@@ -135,6 +135,9 @@
 /* Define to 1 if you have the <sys/types.h> header file. */
 #undef HAVE_SYS_TYPES_H
 
+/* Define to 1 if setsockopt(fd, SOL_TCP, TCP_KEEPIDLE) available */
+#undef HAVE_TCP_KEEPIDLE
+
 /* Define to 1 if you have the <ucontext.h> header file. */
 #undef HAVE_UCONTEXT_H
 

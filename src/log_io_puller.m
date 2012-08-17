@@ -33,6 +33,11 @@
 
 #include <third_party/crc32.h>
 
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+
 @implementation XLogPuller
 - (u32) version { return version; }
 - (bool) eof { return false; }
@@ -78,6 +83,16 @@ handshake:(i64)scn err:(const char **)err_ptr
 		err = "can't connect to feeder";
 		goto err;
 	}
+
+	int one = 1;
+	if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &one, sizeof(one)) < 0)
+		say_syserror("setsockopt");
+
+#ifdef HAVE_TCP_KEEPIDLE
+	int keepidle = 20;
+	if (setsockopt(fd, SOL_TCP, TCP_KEEPIDLE, &keepidle, sizeof(keepidle)) < 0)
+		say_syserror("setsockopt");
+#endif
 
 	assert(c.fd < 0);
 	conn_init(&c, fiber->pool, fd, fiber, fiber, REF_STATIC);

@@ -130,6 +130,10 @@ AS_IF([test $ac_cv_sizeof_off_t -ne 8 -a $ac_cv_sizeof_off_t -ne 4],
 AC_FUNC_ALLOCA
 AC_CHECK_FUNCS([setproctitle sigaltstack prctl fdatasync  posix_fadvise])
 AC_CHECK_DECL(strdupa, [AC_DEFINE(HAVE_STRDUPA, 1, [Define to 1 if strdupa provided])], [])
+AC_CHECK_DECL(TCP_KEEPIDLE, AC_DEFINE(HAVE_TCP_KEEPIDLE, 1, [Define to 1 if setsockopt(fd, SOL_TCP, TCP_KEEPIDLE) available]),
+          [], [[#include <sys/socket.h>]
+[#include <netinet/in.h>]
+[#include <netinet/tcp.h>]])
 
 # checks for compiler characteristics
 
