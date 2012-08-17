@@ -141,3 +141,12 @@ def pnetmsg
     set $netmsg_offt = $netmsg_offt + 1
   end
 end
+
+def pfibers
+  set $fiber = fibers.slh_first
+  while $fiber != 0
+    printf "%30s  ", $fiber->name
+    p $fiber
+    set $fiber = $fiber.link.sle_next
+  end
+end
