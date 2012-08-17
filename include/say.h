@@ -63,9 +63,9 @@ void say_register_source(const char *file);
 	}
 
 int say_filter(int, const char *);
-#define say(level, ...) ({ if(max_level >= level && say_filter(level, __FILE__)) \
+#define say(level, ...) ({ if(unlikely(max_level >= level))		\
 				_say(level, __FILE__, __LINE__, __VA_ARGS__); })
-#define say_syserror(...)	say(S_ERROR, strerror(errno), __VA_ARGS__)
+#define say_syserror(...)	say(S_ERROR, (void *)1, __VA_ARGS__)
 #define say_error(...)		say(S_ERROR, NULL, __VA_ARGS__)
 #define say_crit(...)		say(S_CRIT, NULL, __VA_ARGS__)
 #define say_warn(...)		say(S_WARN, NULL, __VA_ARGS__)

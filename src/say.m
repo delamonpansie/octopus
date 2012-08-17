@@ -188,6 +188,12 @@ vsay(int level, const char *filename, unsigned line,
 	const char *f;
 	static char buf[PIPE_BUF];
 
+	if (!say_filter(level, filename))
+		return;
+
+	if (error == (void *)1)
+		error = strerror(errno);
+
 	if (booting) {
 		fprintf(stderr, "%s: ", binary_filename);
 		vfprintf(stderr, format, ap);
