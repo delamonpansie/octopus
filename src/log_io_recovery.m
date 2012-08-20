@@ -140,6 +140,9 @@ recover_row:(const struct row_v12 *)r
 			if (cfg.ignore_run_crc)
 				break;
 
+			if (r->len != sizeof(u32) * 2)
+				break;
+
 			struct tbuf buf = TBUF(r->data, r->len, NULL);
 			u32 log = read_u32(&buf);
 			u32 mod = read_u32(&buf);
