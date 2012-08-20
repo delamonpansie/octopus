@@ -692,12 +692,7 @@ update_crc(struct tnt_object *obj, u32 *crc)
 
 	struct box_tuple *tuple = box_tuple(obj);
 	u32 len = tuple->bsize + sizeof(tuple->bsize) + sizeof(tuple->cardinality);
-	u32 old_crc = *crc;
 	*crc = crc32c(*crc, (void *)obj, len);
-	say_debug("%s: obj:%p tuple:%p, tuple->bsize:%i len:%i bytes:%s old_crc:0x%x crc:0x%x", __func__,
-		  obj, tuple, tuple->bsize,
-		  len, tbuf_to_hex(&TBUF(obj, len, fiber->pool)),
-		  old_crc, *crc);
 }
 
 void
@@ -713,9 +708,10 @@ txn_commit(struct box_txn *txn)
 		update_crc(txn->obj, &recovery->run_crc_mod);
 	}
 
-	say_info("txn_commit(op:%s) scn:%"PRIi64 " run_crc_mod:0x%x",
-		  messages_strs[txn->op], [recovery scn], recovery->run_crc_mod);
 	stat_collect(stat_base, txn->op, 1);
+
+	say_debug("txn_commit(op:%s) run_crc_mod:0x%x",
+		  messages_strs[txn->op], recovery->run_crc_mod);
 
 	say_debug("%s: old_obj:refs=%i,%p obj:ref=%i,%p", __func__,
 		 txn->old_obj ? txn->old_obj->refs : 0, txn->old_obj,
