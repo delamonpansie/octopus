@@ -406,6 +406,7 @@ conn_close(struct conn *c)
 	if (c->fd > 0) {
 		ev_io_stop(&c->out);
 		ev_io_stop(&c->in);
+		c->in.fd = c->out.fd = -1;
 		c->in.cb = c->out.cb = NULL;
 
 		r = close(c->fd);
