@@ -692,7 +692,12 @@ update_crc(struct tnt_object *obj, u32 *crc)
 
 	struct box_tuple *tuple = box_tuple(obj);
 	u32 len = tuple->bsize + sizeof(tuple->bsize) + sizeof(tuple->cardinality);
+	u32 old_crc = *crc;
 	*crc = crc32c(*crc, (void *)obj, len);
+	say_debug("%s: obj:%p tuple:%p, tuple->bsize:%i len:%i bytes:%s old_crc:0x%x crc:0x%x", __func__,
+		  obj, tuple, tuple->bsize,
+		  len, tbuf_to_hex(&TBUF(obj, len, fiber->pool)),
+		  old_crc, *crc);
 }
 
 void
