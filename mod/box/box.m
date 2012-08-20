@@ -691,8 +691,7 @@ update_crc(struct tnt_object *obj, u32 *crc)
 		return;
 
 	struct box_tuple *tuple = box_tuple(obj);
-	u32 len = tuple->bsize + sizeof(tuple->bsize) + sizeof(tuple->cardinality);
-	*crc = crc32c(*crc, (void *)obj, len);
+	*crc = crc32c(*crc, (void *)tuple, sizeof(*tuple) + tuple->bsize);
 }
 
 void

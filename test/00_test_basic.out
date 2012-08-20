@@ -3146,7 +3146,7 @@ lsn:599 scn:599 t:wal_tag 0.0.0.0:0 INSERT n:0 <597:"U\x02\x00\x00", 598:"V\x02\
 lsn:1002 scn:1002 t:wal_tag 0.0.0.0:0 INSERT n:0 <1:"\x01\x00\x00\x00">
 lsn:1003 scn:1003 t:wal_tag 0.0.0.0:0 INSERT n:0 <2:"\x02\x00\x00\x00">
 
-lsn:1001 scn:1001 t:snap_initial_tag 0.0.0.0:0 count:1000 run_crc_log:0xc31bee7b run_crc_mod:0xd4be9365
+lsn:1001 scn:1001 t:snap_initial_tag 0.0.0.0:0 count:1000 run_crc_log:0xc31bee7b run_crc_mod:0x8090aaa7
 lsn:1001 scn:1001 t:snap_final_tag 0.0.0.0:0 UNKNOWN
 # box.select(1, 2)
 [["\x01\x00\x00\x00"], ["\x02\x00\x00\x00"]]
