@@ -536,7 +536,8 @@ service_output_flusher(va_list ap __attribute__((unused)))
 		}
 
 		if ((tbuf_len(c->rbuf) < cfg.input_low_watermark || c->state == READING) &&
-		    c->out_messages.bytes < cfg.output_low_watermark)
+		    c->out_messages.bytes < cfg.output_low_watermark &&
+		    c->fd >= 0)
 			ev_io_start(&c->in);
 	}
 }
