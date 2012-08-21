@@ -216,7 +216,7 @@ recover_snap
 		fiber->pool = [snap pool];
 
 		if ([snap isKindOf:[XLog11 class]]) {
-			r = [self dummy_row_lsn:0 scn:0 tag:snap_initial_tag];
+			r = [self dummy_row_lsn:snap_lsn scn:snap_lsn tag:snap_initial_tag];
 			[self recover_row:r];
 		}
 
