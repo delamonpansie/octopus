@@ -387,8 +387,8 @@ follow_file(ev_stat *w, int events __attribute__((unused)))
 	Recovery *r = w->data;
 	[r recover_wal:r->current_wal];
 	if ([r->current_wal eof]) {
-		say_info("done `%s' lsn:%"PRIi64" scn:%"PRIi64,
-			 r->current_wal->filename, r->lsn, [r scn]);
+		say_info("done `%s' LSN:%"PRIi64" SCN:%"PRIi64,
+			 r->current_wal->filename, [r lsn], [r scn]);
 		[r->current_wal close];
 		r->current_wal = nil;
 		follow_dir((ev_timer *)w, 0);
