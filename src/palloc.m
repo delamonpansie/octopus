@@ -310,6 +310,8 @@ release_chunks(struct chunk_list_head *chunks)
 			SLIST_INSERT_HEAD(&chunk->class->chunks, chunk, free_link);
 			poison_chunk(chunk);
 		} else {
+			assert(chunk->class->chunks_count > 0);
+			chunk->class->chunks_count--;
 			free(chunk);
 		}
 	}
