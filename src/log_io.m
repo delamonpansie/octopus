@@ -633,7 +633,7 @@ read_row
 	return NULL;
 }
 
-- (const struct row_v12 *)
+- (struct row_v12 *)
 fetch_row
 {
 	struct tbuf *row;

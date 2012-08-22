@@ -83,24 +83,21 @@ apply:(struct tbuf *)op tag:(u16)tag
 	panic("%s must be specilized in subclass", __func__);
 }
 
-const struct row_v12 *
-fix_scn(const struct row_v12 *row)
+void
+fix_scn(struct row_v12 *row)
 {
 	if (row->lsn <= 0)
-		return row;
+		return;
 
-	struct row_v12 *new = palloc(fiber->pool, sizeof(*row) + row->len);
-	memcpy(new, row, sizeof(*row) + row->len);
-	new->scn = row->lsn;
-	return new;
+	row->scn = row->lsn;
 }
 
 - (void)
-recover_row:(const struct row_v12 *)r
+recover_row:(struct row_v12 *)r
 {
 	/* FIXME: temporary hack */
 	if (cfg.io12_hack)
-		r = fix_scn(r);
+		fix_scn(r);
 
 	@try {
 		say_debug("%s: LSN:%"PRIi64" SCN:%"PRIi64" tag:%s",
@@ -464,7 +461,7 @@ pull_snapshot(Recovery *r, id<XLogPuller> puller)
 static void
 pull_wal(Recovery *r, id<XLogPuller> puller, int exit_on_eof)
 {
-	const struct row_v12 *row, *special_row = NULL, *rows[WAL_PACK_MAX];
+	struct row_v12 *row, *special_row = NULL, *rows[WAL_PACK_MAX];
 	struct wal_pack *pack;
 	/* TODO: use designated palloc_pool */
 	say_debug("%s: scn:%"PRIi64, __func__, [r scn]);
@@ -483,8 +480,7 @@ pull_wal(Recovery *r, id<XLogPuller> puller, int exit_on_eof)
 				continue;
 
 			if (cfg.io12_hack)
-				row = fix_scn(row);
-
+				fix_scn(row);
 
 			if (row->scn <= [r scn])
 				continue;

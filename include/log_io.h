@@ -65,7 +65,7 @@ const char *xlog_tag_to_a(u16 tag);
 struct tbuf;
 
 @protocol XLogPuller
-- (const struct row_v12 *) fetch_row;
+- (struct row_v12 *) fetch_row;
 - (u32) version;
 - (bool) eof;
 - (int) close;

@@ -198,7 +198,7 @@ contains_full_row_v11(const struct tbuf *b)
 		tbuf_len(b) >= sizeof(struct _row_v11) + _row_v11(b)->len;
 }
 
-- (const struct row_v12 *)
+- (struct row_v12 *)
 fetch_row
 {
 	struct tbuf *row = NULL;
