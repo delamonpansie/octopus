@@ -35,6 +35,11 @@ tag = { snap_initial = 1,
         snap_final = 4,
         wal_final = 5 }
 
+pass_tag = { [tag.snap_initial] = 1,
+             [tag.snap] = 1,
+             [tag.snap_final] = 1,
+             [tag.wal_final] = 1 }
+
 function crow(obj)
         if obj ~= nil then
                 return ffi.cast(row_v12, obj)

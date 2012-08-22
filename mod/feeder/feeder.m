@@ -43,7 +43,7 @@
 
 @interface Feeder: Recovery {
 	int fd;
-	bool filtering;
+	const struct row_v12 *(*filter)(const struct row_v12 *r);
 }
 @end
 
@@ -89,38 +89,52 @@ construct_row(const struct row_v12 *old, u16 tag, const char *data, size_t len)
 	return new;
 }
 
+const struct row_v12 *
+id_filter(const struct row_v12 *r)
+{
+	return r;
+}
+
+const struct row_v12 *
+lua_filter(const struct row_v12 *r)
+{
+	struct lua_State *L = fiber->L;
+
+	lua_pushvalue(L, 1);
+	lua_pushlstring(L, (const char *)r, sizeof(*r) + r->len);
+
+	if (lua_pcall(L, 1, 2, 0) != 0) {
+		say_error("lua filter error: %s", lua_tostring(L, -1));
+		_exit(EXIT_FAILURE);
+	}
+	if (lua_isnumber(L, -2)) {
+		u16 tag = lua_tointeger(L, -1);
+		size_t len;
+		const char *new_data = lua_tolstring(L, -2, &len);
+
+		r = construct_row(r, tag, new_data, len);
+	} else if (lua_isstring(L, -2)) {
+		size_t len;
+		const char *new_data = lua_tolstring(L, -2, &len);
+		r = construct_row(r, 0, new_data, len);
+	} else if (lua_isboolean(L, -2) || lua_isnil(L, -2)) {
+		if (!lua_toboolean(L, -2))
+			r = NULL;
+	} else {
+		say_warn("bad replication_filter return type");
+	}
+	lua_pop(L, 2);
+
+	return r;
+}
+
 - (void)
 recover_row:(const struct row_v12 *)r
 {
-	if (filtering) {
-		lua_pushvalue(fiber->L, 1);
-		lua_pushlstring(fiber->L, (const char *)r, sizeof(*r) + r->len);
+	const struct row_v12 *n = filter(r);
 
-		if (lua_pcall(fiber->L, 1, 2, 0) != 0) {
-			say_error("lua filter error: %s", lua_tostring(fiber->L, -1));
-			_exit(EXIT_FAILURE);
-		}
-		if (lua_isnumber(fiber->L, -2)) {
-			u16 tag = lua_tointeger(fiber->L, -1);
-			size_t len;
-			const char *new_data = lua_tolstring(fiber->L, -2, &len);
-
-			r = construct_row(r, tag, new_data, len);
-		} else if (lua_isstring(fiber->L, -2)) {
-			size_t len;
-			const char *new_data = lua_tolstring(fiber->L, -2, &len);
-			r = construct_row(r, 0, new_data, len);
-		} else if (lua_isnil(fiber->L, -2)) {
-			;
-		} else {
-			say_warn("bad replication_filter return type");
-		}
-		lua_pop(fiber->L, 2);
-	}
-
-	say_debug("%s: lsn:%"PRIi64" scn:%"PRIi64" tag:%s", __func__,
-		  r->lsn, r->scn, xlog_tag_to_a(r->tag));
-	writef(fd, (const char *)r, sizeof(*r) + r->len);
+	if (n)
+		writef(fd, (const char *)n, sizeof(*n) + n->len);
 
 	if (!dummy_tag(r->tag))
 		lsn = r->lsn;
@@ -145,7 +159,9 @@ recover_start_from_scn:(i64)initial_scn filter:(const char *)filter_name
 			say_error("nonexistent filter: %s", filter_name);
 			_exit(EXIT_FAILURE);
 		}
-		filtering = true;
+		filter = lua_filter;
+	} else {
+		filter = id_filter;
 	}
 
 	if (initial_scn == 0) {

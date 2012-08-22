@@ -32,15 +32,12 @@ EOD
               " cookie:" .. tostring(row.cookie) ..
               " tm:" .. row.tm)
 
-        if row.tag ~= feeder.tag.wal then
-                return nil
-        end
         local box_nop = "\01\00\00\00\00\00"
 
         if row.scn == 2198 or row.scn == 2199 then
                 return box_nop
         end
-        return nil
+        return true
       end
     EOD
     f.close

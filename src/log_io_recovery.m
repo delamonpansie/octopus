@@ -496,12 +496,18 @@ pull_wal(Recovery *r, id<XLogPuller> puller, int exit_on_eof)
 		}
 
 		if (pack_rows > 0) {
+			/* we'r use our own lsn numbering */
+			for (int j = 0; j < pack_rows; j++)
+				rows[j]->lsn = [r lsn] + 1 + j;
+
 #ifndef NDEBUG
 			i64 pack_min_scn = rows[0]->scn,
-			    pack_max_scn = rows[pack_rows - 1]->scn;
+			    pack_max_scn = rows[pack_rows - 1]->scn,
+			    pack_max_lsn = rows[pack_rows - 1]->lsn;
 #endif
-			assert([r scn] == pack_min_scn - 1);
+			assert(cfg.sync_scn_with_lsn ? [r scn] == pack_min_scn - 1 : 1);
 			@try {
+
 				for (int j = 0; j < pack_rows; j++)
 					[r recover_row:rows[j]];
 			}
@@ -531,6 +537,7 @@ pull_wal(Recovery *r, id<XLogPuller> puller, int exit_on_eof)
 			}
 
 			assert([r scn] == pack_max_scn);
+			assert([r lsn] == pack_max_lsn);
 		}
 
 		if (special_row) {
