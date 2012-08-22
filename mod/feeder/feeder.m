@@ -76,7 +76,7 @@ writef(int fd, const char *b, size_t len)
 static struct row_v12 *
 construct_row(const struct row_v12 *old, u16 tag, const char *data, size_t len)
 {
-	struct row_v12 *new = palloc(fiber->pool, sizeof(*new) + len);;
+	struct row_v12 *new = palloc(fiber->pool, sizeof(*new) + len);
 	memcpy(new, old, sizeof(*new));
 	if (tag)
 		new->tag = tag;
