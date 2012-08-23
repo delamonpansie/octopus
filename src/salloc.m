@@ -329,7 +329,7 @@ void
 slab_stat(struct tbuf *t)
 {
 	struct slab *slab;
-	int slabs;
+	int slabs, free_slabs_count = 0;
 	i64 items, used, free, total_used = 0;
 	tbuf_printf(t, "slab statistics:\n  classes:" CRLF);
 	for (int i = 0; i < slab_active_classes; i++) {
@@ -351,6 +351,11 @@ slab_stat(struct tbuf *t)
 			    (int)slab_classes[i].item_size, slabs, items, used, free);
 
 	}
+
+	SLIST_FOREACH(slab, &free_slabs, free_link)
+		free_slabs_count++;
+
+	tbuf_printf(t, "  free_slabs: %i" CRLF, free_slabs_count);
 	tbuf_printf(t, "  items_used: %.2f" CRLF, (double)total_used / arena.size * 100);
 	tbuf_printf(t, "  arena_used: %.2f" CRLF, (double)arena.used / arena.size * 100);
 }
