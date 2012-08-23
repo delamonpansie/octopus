@@ -220,7 +220,7 @@ admin_dispatch(struct conn *c)
 			}
 		}
 
-		eol = "\n" | "\r\n";
+		eol = space* "\n" | space* "\r\n";
 		show = "sh"("o"("w")?)?;
 		info = "in"("f"("o")?)?;
 		check = "ch"("e"("c"("k")?)?)?;
