@@ -107,8 +107,12 @@ slab_classes_init(size_t minimal, double factor)
 	int i, size;
 	const size_t ptr_size = sizeof(void *);
 
-	for (i = 0, size = minimal; i < nelem(slab_classes) - 1 && size <= MAX_SLAB_ITEM; i++) {
+	for (i = 0, size = minimal & ~(ptr_size - 1);
+	     i < nelem(slab_classes) - 1 && size <= MAX_SLAB_ITEM;
+	     i++)
+	{
 		slab_classes[i].item_size = size - sizeof(red_zone);
+		assert((slab_classes[i].item_size & 1) == 0);
 		TAILQ_INIT(&slab_classes[i].free_slabs);
 
 		size = MAX((size_t)(size * factor) & ~(ptr_size - 1),
