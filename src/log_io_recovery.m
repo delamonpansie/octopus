@@ -850,9 +850,12 @@ read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, struct
 			handler(out, row->tag, &row_data);
 			break;
 		case run_crc: {
+			i64 scn = -1;
+			if (tbuf_len(&row_data) == sizeof(i64) + 2 * sizeof(u32))
+				scn = read_u64(&row_data);
 			u32 log = read_u32(&row_data);
 			u32 mod = read_u32(&row_data);
-			tbuf_printf(out, "log:0x%08x mod:0x%08x", log, mod);
+			tbuf_printf(out, "SCN:%"PRIi64 " log:0x%08x mod:0x%08x", scn, log, mod);
 			break;
 		}
 		case nop:

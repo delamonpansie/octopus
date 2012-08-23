@@ -142,7 +142,7 @@
 # box.insert([31, 32])
 1
 
-lsn:50 scn:50 t:run_crc 0.0.0.0:0 log:0xb2e3af90 mod:0x11284adb
+lsn:50 scn:50 t:run_crc 0.0.0.0:0 SCN:-1 log:0xb2e3af90 mod:0x11284adb
 # box.insert([0, 0])
 2
 
@@ -287,5 +287,5 @@ lsn:50 scn:50 t:run_crc 0.0.0.0:0 log:0xb2e3af90 mod:0x11284adb
 # box.insert([31, 32])
 2
 
-lsn:99 scn:99 t:run_crc 0.0.0.0:0 log:0x3390e58a mod:0xc7b98cf6
+lsn:99 scn:99 t:run_crc 0.0.0.0:0 SCN:-1 log:0x3390e58a mod:0xc7b98cf6
 
