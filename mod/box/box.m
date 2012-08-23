@@ -1288,6 +1288,8 @@ init(void)
 			panic("in memcached mode secondary_port must be 0");
 		if (cfg.wal_feeder_addr)
 			panic("remote replication is not supported in memcached mode.");
+		if (cfg.paxos_enabled)
+			panic("paxos failover is not supported in memcached mode");
 	}
 
 	title("loading");
@@ -1304,8 +1306,8 @@ init(void)
 			      rows_per_wal:cfg.rows_per_wal
 			       feeder_addr:cfg.wal_feeder_addr
 			       fsync_delay:cfg.wal_fsync_delay
-			     run_crc_delay:cfg.run_crc_delay
-			      nop_hb_delay:cfg.nop_hb_delay
+			     run_crc_delay:cfg.memcached ? 0 : cfg.run_crc_delay
+			      nop_hb_delay:cfg.memcached ? 0 : cfg.nop_hb_delay
 				     flags:init_storage ? RECOVER_READONLY : 0
 			snap_io_rate_limit:cfg.snap_io_rate_limit * 1024 * 1024];
 
