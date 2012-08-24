@@ -935,11 +935,15 @@ out:
 - (void)
 leader_redirect_raise
 {
-	if (leader_id >= 0)
+	if (leader_id >= 0) {
+		if (leader_id == self_id)
+			return;
+
 		iproto_raise_fmt(ERR_CODE_REDIRECT,
 				 "%s", sintoa(&paxos_peer(self, leader_id)->primary_addr));
-	else
+	} else {
 		iproto_raise(ERR_CODE_LEADER_UNKNOW, "leader unknown");
+	}
 }
 
 - (int)
