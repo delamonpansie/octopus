@@ -28,6 +28,7 @@
 #import <util.h>
 #import <fiber.h>
 #import <say.h>
+#import <object.h>
 
 #include <errno.h>
 #include <stdarg.h>
@@ -129,7 +130,7 @@ say_list_sources(void)
 int
 say_filter(int level, const char *file)
 {
-	int k = mh_cstr_get(filter, file);
+	int k = file ? mh_cstr_get(filter, file) : mh_end(filter);
 	return mh_end(filter) == k || mh_cstr_value(filter, k) >= level;
 }
 
@@ -247,3 +248,46 @@ _say(int level, const char *filename, unsigned line, const char *error, const ch
 	vsay(level, filename, line, error, format, ap);
 	va_end(ap);
 }
+
+void __attribute__((format(FORMAT_PRINTF, 6, 0), noreturn))
+vpanic(int status, const char *file, unsigned line,
+       const char *error, const char *backtrace, const char *format, va_list ap)
+{
+	vsay(S_FATAL, file, line, error, format, ap);
+	va_end(ap);
+	if (backtrace)
+		_say(S_FATAL, NULL, 0, NULL, "backtrace:\n%s", backtrace);
+
+	_exit(status);
+}
+
+void __attribute__((format(FORMAT_PRINTF, 3, 4), noreturn))
+_panic(const char *file, unsigned line, const char *format, ...)
+{
+	va_list ap;
+	va_start(ap, format);
+	vpanic(EXIT_FAILURE, file, line, NULL, tnt_backtrace(), format, ap);
+}
+
+void __attribute__((format(FORMAT_PRINTF, 3, 4), noreturn))
+_panic_syserror(const char *file, unsigned line, const char *format, ...)
+{
+	va_list ap;
+	const char *err = strerror(errno);
+	va_start(ap, format);
+	vpanic(EXIT_FAILURE, file, line, err, tnt_backtrace(), format, ap);
+}
+
+void __attribute__((noreturn))
+panic_exc(Error *exc)
+{
+	void __attribute__((noreturn)) panic_exc_aux(const char *format, ...)
+	{
+		va_list ap;
+		va_start(ap, format);
+		vpanic(EXIT_FAILURE, exc->file, exc->line, NULL, exc->backtrace, format, ap);
+	}
+
+	panic_exc_aux("exception: %s", exc->reason);
+}
+

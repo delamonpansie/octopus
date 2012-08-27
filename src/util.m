@@ -240,20 +240,6 @@ tnt_backtrace(void)
         return backtrace_buf;
 }
 
-void __attribute__((format(FORMAT_PRINTF, 6, 7), noreturn))
-_panic(int status, const char *filename, unsigned line,
-       const char *error, const char *backtrace, const char *format, ...)
-{
-	va_list ap;
-	va_start(ap, format);
-	vsay(S_FATAL, filename, line, error, format, ap);
-	va_end(ap);
-	if (backtrace)
-		_say(S_FATAL, NULL, 0, NULL, "backtrace:\n%s", backtrace);
-
-	_exit(status);
-}
-
 void __attribute__ ((noreturn))
 assert_fail(const char *assertion, const char *file, unsigned line, const char *backtrace, const char *function)
 {

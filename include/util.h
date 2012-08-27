@@ -163,23 +163,6 @@ struct symbol *addr2symbol(void *addr);
 void load_symbols(const char *name);
 #endif
 
-void _panic(int status, const char *filename, unsigned line,
-	    const char *error, const char *backtrace, const char *format, ...)
-	__attribute__((format(FORMAT_PRINTF, 6, 7), noreturn));
-
-#define panic(...)					\
-	_panic(EXIT_FAILURE, __FILE__, __LINE__,	\
-	       NULL, tnt_backtrace(), __VA_ARGS__)
-#define panic_exc(exc)							\
-	_panic(EXIT_FAILURE, (exc)->file, (exc)->line,			\
-	       NULL, (exc)->backtrace, "exception: %s", (exc)->reason)
-#define panic_status(status, ...)			\
-	_panic(status, __FILE__, __LINE__,		\
-	       NULL, tnt_backtrace(), __VA_ARGS__)
-#define panic_syserror(...)						\
-	_panic(EXIT_FAILURE, __FILE__, __LINE__,			\
-	       strerror(errno), tnt_backtrace(), __VA_ARGS__)
-
 #ifdef NDEBUG
 #  define assert(pred) (void)(0)
 #else

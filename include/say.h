@@ -71,3 +71,22 @@ int say_filter(int, const char *);
 #define say_warn(...)		say(S_WARN, NULL, __VA_ARGS__)
 #define say_info(...)		say(S_INFO, NULL, __VA_ARGS__)
 #define say_debug(...)		say(S_DEBUG, NULL, __VA_ARGS__)
+
+
+
+void
+vpanic(int status, const char *file, unsigned line,
+       const char *error, const char *backtrace, const char *format, va_list ap)
+	__attribute__((format(FORMAT_PRINTF, 6, 0), noreturn));
+
+void _panic(const char *file, unsigned line, const char *format, ...)
+	__attribute__((format(FORMAT_PRINTF, 3, 4), noreturn));
+
+void _panic_syserror(const char *file, unsigned line, const char *format, ...)
+	__attribute__((format(FORMAT_PRINTF, 3, 4), noreturn));
+
+@class Error;
+void panic_exc(Error *exc) __attribute__((noreturn));
+
+#define panic(...) _panic(__FILE__, __LINE__, __VA_ARGS__)
+#define panic_syserror(...) _panic_syserror(__FILE__, __LINE__, __VA_ARGS__)

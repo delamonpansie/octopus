@@ -4,6 +4,7 @@ set -e
 
 cat <<EOF
 #import <octopus.h>
+#import <say.h>
 #include <stdlib.h>
 
 EOF
