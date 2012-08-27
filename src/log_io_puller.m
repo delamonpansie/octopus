@@ -47,7 +47,8 @@
 init
 {
 	say_debug("%s", __func__);
-	c.fd = -2;
+	conn_init(&c, fiber->pool, -2, NULL, NULL, REF_STATIC);
+	palloc_register_gc_root(fiber->pool, &c, conn_gc);
 	return [super init];
 }
 
@@ -98,8 +99,7 @@ handshake:(i64)scn err:(const char **)err_ptr
 #endif
 
 	assert(c.fd < 0);
-	conn_init(&c, fiber->pool, fd, fiber, fiber, REF_STATIC);
-	palloc_register_gc_root(fiber->pool, &c, conn_gc);
+	conn_set(&c, fd, fiber, fiber);
 
 	if (cfg.replication_compat) {
 		say_debug("%s: compat send scn", __func__);
