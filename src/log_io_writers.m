@@ -101,7 +101,7 @@ wal_disk_writer_input_dispatch(va_list ap __attribute__((unused)))
 			tbuf_ltrim(c->rbuf, sizeof(*r));
 		}
 
-		if (palloc_allocated(fiber->pool) > 4 * 1024 * 1024)
+		if (palloc_allocated(c->rbuf->pool) > 4 * 1024 * 1024)
 			palloc_gc(c->pool);
 	}
 }
