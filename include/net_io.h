@@ -58,7 +58,7 @@ struct netmsg_head {
 struct netmsg {
 	struct netmsg_head *head;
 
-	int offset, count;
+	unsigned offset, count;
 
 	TAILQ_ENTRY(netmsg) link;
 

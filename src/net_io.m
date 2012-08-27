@@ -102,7 +102,7 @@ netmsg_release(struct netmsg *m)
 static void
 netmsg_gc(struct palloc_pool *pool, struct netmsg *m)
 {
-	for (int i = 0; i < m->count; i++) {
+	for (unsigned i = 0; i < m->count; i++) {
 		if (m->ref[i] != 0 || m->iov[i].iov_len == 0)
 			continue;
 
@@ -216,6 +216,7 @@ net_add_ref_iov(struct netmsg **m, struct tnt_object *obj, const void *buf, size
 
 	(*m)->head->bytes += len;
 	*ref = obj;
+	object_incr_ref(obj);
 
 #ifdef NET_IO_TIMESTAMPS
 	(*m)->tstamp[(*m)->count] = ev_now();
@@ -223,8 +224,6 @@ net_add_ref_iov(struct netmsg **m, struct tnt_object *obj, const void *buf, size
 
 	if (unlikely(++(*m)->count == nelem((*m)->iov)))
 		enlarge(m);
-
-	object_incr_ref(obj);
 }
 
 extern const char *netmsglib_name;
@@ -272,10 +271,10 @@ restart:
 		return NULL;
 
 	struct iovec *iov = m->iov + m->offset;
-	int iov_cnt = m->count - m->offset;
+	unsigned iov_cnt = m->count - m->offset;
 	ssize_t r = 0;
 	while (iov_cnt > 0) {
-		r = writev(c->fd, iov, MIN(iov_cnt, IOV_MAX));
+		r = writev(c->fd, iov, iov_cnt);
 		if (unlikely(r < 0)) {
 			if (errno == EINTR)
 				continue;
@@ -302,7 +301,7 @@ restart:
 	};
 
 #ifdef NET_IO_TIMESTAMPS
-	for (int i = m->offset; i < m->count - iov_cnt; i++)
+	for (unsigned i = m->offset; i < m->count - iov_cnt; i++)
 		if (ev_now() - m->tstamp[i] > NET_IO_TIMESTAMPS)
 			say_warn("net_io c:%p out:%i delay: %.5f",
 				 c, ev_is_active(&c->out),
