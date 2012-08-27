@@ -331,6 +331,18 @@ conn_flush(struct conn *c)
 	return TAILQ_EMPTY(&(c->out_messages.q))  ? 0 : -1;
 }
 
+void
+conn_set(struct conn *c, int fd, struct fiber *in, struct fiber *out)
+{
+	assert(c->out.cb == NULL && c->in.cb == NULL);
+
+	c->fd = fd;
+	c->out.coro = c->in.coro = 1;
+	c->out.data = c->in.data = c;
+	ev_io_init(&c->in, (void *)in, c->fd, EV_READ);
+	ev_io_init(&c->out, (void *)out, c->fd, EV_WRITE);
+}
+
 struct conn *
 conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, struct fiber *out, int ref)
 {
@@ -355,12 +367,8 @@ conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, st
 	c->state = -1;
 	c->peer_name[0] = 0;
 	c->rbuf = tbuf_alloc(c->pool);
-
-	assert(c->out.cb == NULL && c->in.cb == NULL);
-	c->out.coro = c->in.coro = 1;
-	c->out.data = c->in.data = c;
-	ev_io_init(&c->in, (void *)in, c->fd, EV_READ);
-	ev_io_init(&c->out, (void *)out, c->fd, EV_WRITE);
+	if (fd >= 0)
+		conn_set(c, fd, in, out);
 	return c;
 }
 
