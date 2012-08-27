@@ -923,6 +923,7 @@ enable_local_writes
 				if (scn > 0)
 					goto out;
 			}
+			fiber_sleep(1);
 		}
 	} else {
 		[self configure_wal_writer];
