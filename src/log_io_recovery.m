@@ -137,18 +137,32 @@ recover_row:(struct row_v12 *)r
 			if (cfg.ignore_run_crc)
 				break;
 
-			if (r->len != sizeof(u32) * 2)
+			if (r->len != sizeof(i64) + sizeof(u32) * 2)
 				break;
 
 			struct tbuf buf = TBUF(r->data, r->len, NULL);
+			i64 scn_of_crc = read_u64(&buf);
 			u32 log = read_u32(&buf);
 			u32 mod = read_u32(&buf);
-			if (run_crc_log != log) {
+			struct crc_hist *h = NULL;
+			for (unsigned i = crc_hist_i, j = 0; j < nelem(crc_hist); j++, i--) {
+				if (crc_hist[i % nelem(crc_hist)].scn == scn_of_crc) {
+					h = &crc_hist[i % nelem(crc_hist)];
+					break;
+				}
+			}
+
+			if (!h) {
+				say_warn("unable to track run_crc: crc history too short");
+				break;
+			}
+
+			if (h->log != log) {
 				run_crc_log_mismatch |= 1;
 				say_crit("run_crc_log mismatch: saved:0x%08x computed:0x%08x",
 					 log, run_crc_log);
 			}
-			if (run_crc_mod != mod) {
+			if (h->mod != mod) {
 				run_crc_mod_mismatch |= 1;
 				say_crit("run_crc_mod mismatch: saved:0x%08x computed:0x%08x",
 					 mod, run_crc_mod);
@@ -171,6 +185,8 @@ recover_row:(struct row_v12 *)r
 		lsn = r->lsn;
 		if (r->tag == snap_final_tag || r->tag == wal_tag || r->tag == nop || r->tag == run_crc)
 			scn = r->scn;
+
+		crc_hist[++crc_hist_i % nelem(crc_hist)] = (struct crc_hist){ scn, run_crc_log, run_crc_mod };
 
 		last_update_tstamp = ev_now();
 		lag = last_update_tstamp - r->tm;
@@ -723,7 +739,7 @@ run_crc_writer(va_list ap)
 			continue;
 
 		while ([recovery submit_run_crc] < 0)
-			fiber_sleep(0.02);
+			fiber_sleep(0.1);
 
 		submit_tstamp = ev_now();
 		lsn = [recovery lsn];

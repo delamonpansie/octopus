@@ -388,5 +388,5 @@
 # box.insert([128, 129, 130])
 1
 
-lsn:131 scn:131 t:run_crc 0.0.0.0:0 SCN:-1 log:0xee3743f9 mod:0xc951f20e
+lsn:131 scn:131 t:run_crc 0.0.0.0:0 SCN:130 log:0xee3743f9 mod:0xc951f20e
 

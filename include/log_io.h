@@ -226,6 +226,9 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 	const char *feeder_addr;
 	bool run_crc_log_mismatch, run_crc_mod_mismatch;
 	u32 processed_rows, estimated_snap_rows;
+
+	struct crc_hist { i64 scn; u32 log; u32 mod; } crc_hist[256];
+	unsigned crc_hist_i;
 }
 
 - (void) initial;
