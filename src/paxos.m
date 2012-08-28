@@ -131,7 +131,6 @@ static const int leader_lease_interval = 5;
 
 static i64 gap = 0;
 
-// 
 static struct service *input_service;
 
 struct service *mesh_service;
@@ -156,9 +155,9 @@ paxos_broadcast(PaxosRecovery *r, enum paxos_msg_code code, ev_tstamp delay,
 				 .value_len = value_len };
 
 	int quorum = r->quorum;
-	delay = delay ? : paxos_delay;
+	delay = delay ?: paxos_delay;
 	if (unlikely(delay < 0)) {
-		delay = 1;
+		delay = -delay;
 		quorum = 0;
 	}
 	say_debug("%s: > %s sync:bcast ballot:%"PRIu64" scn:%"PRIi64, __func__,
