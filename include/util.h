@@ -167,9 +167,9 @@ void load_symbols(const char *name);
 #  define assert(pred) (void)(0)
 #else
 #  define assert(pred) ((pred) ? (void)(0) :				\
-			assert_fail(#pred, __FILE__, __LINE__, tnt_backtrace(), __FUNCTION__))
+			assert_fail(#pred, __FILE__, __LINE__, __FUNCTION__))
 void assert_fail(const char *assertion, const char *file,
-		 unsigned int line, const char *backtrace, const char *function)
+		 unsigned int line, const char *function)
 	__attribute__ ((noreturn));
 #endif
 

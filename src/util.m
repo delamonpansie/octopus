@@ -241,9 +241,9 @@ tnt_backtrace(void)
 }
 
 void __attribute__ ((noreturn))
-assert_fail(const char *assertion, const char *file, unsigned line, const char *backtrace, const char *function)
+assert_fail(const char *assertion, const char *file, unsigned line, const char *function)
 {
-	_say(S_FATAL, file, line, NULL, "%s: assertion %s failed.\n%s", function, assertion, backtrace);
+	_say(S_FATAL, file, line, NULL, "%s: assertion %s failed.\n%s", function, assertion, tnt_backtrace());
 	if (getpid() == master_pid) /* try to close all accept()ing sockets */
 		close_all_xcpt(0);
 	abort();
