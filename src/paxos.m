@@ -137,6 +137,8 @@ struct service *mesh_service;
 
 static const ev_tstamp paxos_delay = 0.02;
 
+extern void title(const char *fmt, ...); /* FIXME: hack */
+
 static bool
 paxos_leader()
 {
@@ -195,12 +197,15 @@ notify_leadership_change(PaxosRecovery *r)
 	if (leader_id < 0) {
 		if (prev_leader != leader_id)
 			say_info("leader unknown");
+		title("paxos_slave");
 	} else if (!paxos_leader()) {
 		if (prev_leader != leader_id)
 			say_info("leader is %s", paxos_peer(r, leader_id)->name);
+		title("paxos_slave");
 	} else if (paxos_leader()) {
 		if (prev_leader != leader_id)
 			say_debug("I am leader");
+		title("paxos_leader");
 	}
 	prev_leader = leader_id;
 }

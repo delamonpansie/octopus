@@ -1068,7 +1068,7 @@ configure(void)
 	}
 }
 
-static void
+void
 title(const char *fmt, ...)
 {
 	va_list ap;
