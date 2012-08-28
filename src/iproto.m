@@ -389,6 +389,9 @@ iproto_rendevouz(va_list ap)
 {
 	struct sockaddr_in *self_addr = va_arg(ap, struct sockaddr_in *);
 	struct iproto_group *group = va_arg(ap, struct iproto_group *);
+	struct palloc_pool *pool = va_arg(ap, struct palloc_pool *);
+	struct fiber *in = va_arg(ap, struct fiber *);
+	struct fiber *out = va_arg(ap, struct fiber *);
 	struct iproto_peer *p;
 
 loop:
@@ -401,7 +404,7 @@ loop:
 		assert(p->c.fd < 0);
 
 		if (fd > 0) {
-			conn_set(&p->c, fd);
+			conn_init(&p->c, pool, fd, in, out, REF_STATIC);
 			ev_io_start(&p->c.in);
 			say_info("connect with %s %s", p->name, sintoa(&p->addr));
 			p->connect_err_said = false;

@@ -885,6 +885,9 @@ snap_io_rate_limit:(int)snap_io_rate_limit_
 	output_flusher = fiber_create("paxos/output_flusher", service_output_flusher);
 	reply_reader = fiber_create("paxos/reply_reader", iproto_reply_reader);
 
+	/* FIXME: this connections may become unusable after conn_close()
+	   fix it by calling conn_init() in iproto_rendevouz()
+	*/
 	SLIST_FOREACH (ipeer, &remotes, link) {
 		say_debug("init_conn: p:%p c:%p", ipeer, &ipeer->c);
 		conn_init(&ipeer->c, pool, -1, reply_reader, output_flusher, REF_STATIC);
@@ -894,7 +897,7 @@ snap_io_rate_limit:(int)snap_io_rate_limit_
 	accept_port = ntohs(paxos_peer(self, self_id)->iproto->addr.sin_port);
 	input_service = tcp_service(accept_port, NULL);
 	fiber_create("paxos/worker", iproto_interact, input_service, reply_msg, self);
-	fiber_create("paxos/rendevouz", iproto_rendevouz, NULL, &remotes);
+	fiber_create("paxos/rendevouz", iproto_rendevouz, NULL, &remotes, pool, reply_reader, output_flusher);
 	// fiber_create("mesh/ping", iproto_pinger, mesh_peers);
 	proposer_fiber = fiber_create("paxos/propose", proposer, self);
 	fiber_create("paxos/elect", propose_leadership, self);
