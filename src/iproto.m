@@ -406,11 +406,11 @@ loop:
 		if (fd > 0) {
 			conn_init(&p->c, pool, fd, in, out, REF_STATIC);
 			ev_io_start(&p->c.in);
-			say_info("connect with %s %s", p->name, sintoa(&p->addr));
+			say_info("connect with %s/%s", p->name, sintoa(&p->addr));
 			p->connect_err_said = false;
 		} else {
 			if (!p->connect_err_said)
-				say_syserror("connect to %s:", sintoa(&p->addr));
+				say_syserror("connect to %s/%s", p->name, sintoa(&p->addr));
 			p->connect_err_said = true;
 		}
 	}
