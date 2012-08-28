@@ -401,9 +401,7 @@ loop:
 		assert(p->c.fd < 0);
 
 		if (fd > 0) {
-			p->c.fd = fd;
-			ev_io_set(&p->c.out, fd, EV_WRITE);
-			ev_io_set(&p->c.in, fd, EV_READ);
+			conn_set(&p->c, fd);
 			ev_io_start(&p->c.in);
 			say_info("connect with %s %s", p->name, sintoa(&p->addr));
 			p->connect_err_said = false;

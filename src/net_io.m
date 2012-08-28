@@ -331,21 +331,21 @@ conn_flush(struct conn *c)
 }
 
 void
-conn_set(struct conn *c, int fd, struct fiber *in, struct fiber *out)
+conn_set(struct conn *c, int fd)
 {
-	assert(c->out.cb == NULL && c->in.cb == NULL);
+	assert(c->out.cb != NULL && c->in.cb != NULL);
+	assert(fd >= 0);
 
 	c->fd = fd;
-	c->out.coro = c->in.coro = 1;
-	c->out.data = c->in.data = c;
-	ev_io_init(&c->in, (void *)in, c->fd, EV_READ);
-	ev_io_init(&c->out, (void *)out, c->fd, EV_WRITE);
+	ev_io_set(&c->in, c->fd, EV_READ);
+	ev_io_set(&c->out, c->fd, EV_WRITE);
 }
 
 struct conn *
 conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, struct fiber *out, int ref)
 {
 	assert(ref >= -2 && ref <= 0);
+	assert(in != NULL && out != NULL);
 
 	say_debug("%s: c:%p fd:%i", __func__, c, fd);
 	if (!c) {
@@ -366,8 +366,14 @@ conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, st
 	c->state = -1;
 	c->peer_name[0] = 0;
 	c->rbuf = tbuf_alloc(c->pool);
+
+	ev_init(&c->in, (void *)in);
+	ev_init(&c->out, (void *)out);
+	c->out.coro = c->in.coro = 1;
+	c->out.data = c->in.data = c;
+
 	if (fd >= 0)
-		conn_set(c, fd, in, out);
+		conn_set(c, fd);
 	return c;
 }
 
