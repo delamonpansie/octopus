@@ -410,7 +410,7 @@ loop:
 			p->connect_err_said = false;
 		} else {
 			if (!p->connect_err_said)
-				say_syserror("connect!");
+				say_syserror("connect to %s:", sintoa(&p->addr));
 			p->connect_err_said = true;
 		}
 	}
