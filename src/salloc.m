@@ -64,10 +64,10 @@ struct slab {
 	struct slab_item *free;
 	struct slab_class *class;
 	void *brk;
-	 SLIST_ENTRY(slab) link;
-	 SLIST_ENTRY(slab) free_link;
-	 TAILQ_ENTRY(slab) class_free_link;
-	 TAILQ_ENTRY(slab) class_link;
+	SLIST_ENTRY(slab) link;
+	SLIST_ENTRY(slab) free_link;
+	TAILQ_ENTRY(slab) class_partial_link;
+	TAILQ_ENTRY(slab) class_link;
 };
 
 SLIST_HEAD(slab_slist_head, slab);
