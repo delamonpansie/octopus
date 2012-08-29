@@ -102,6 +102,7 @@ slab_of_ptr(void *ptr)
 void
 slab_cache_init(struct slab_cache *cache, size_t item_size, const char *name)
 {
+	assert(item_size <= MAX_SLAB_ITEM);
 	assert((item_size & 1) == 0);
 	cache->item_size = item_size;
 	cache->name = name;
@@ -197,8 +198,6 @@ salloc_destroy(void)
 static void
 format_slab(struct slab_cache *cache, struct slab *slab)
 {
-	assert(cache->item_size <= MAX_SLAB_ITEM);
-
 	slab->magic = SLAB_MAGIC;
 	slab->free = NULL;
 	slab->cache = cache;
