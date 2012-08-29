@@ -79,9 +79,6 @@ struct slab_cache {
 };
 
 struct arena {
-	void *mmap_base;
-	size_t mmap_size;
-
 	void *base;
 	size_t size;
 	size_t used;
@@ -137,18 +134,24 @@ slab_caches_init(size_t minimal, double factor)
 static bool
 arena_init(struct arena *arena, size_t size)
 {
+	size -= size % SLAB_SIZE; /* round to size of max slab */
 	arena->used = 0;
-	arena->size = size - size % SLAB_SIZE;
-	arena->mmap_size = size - size % SLAB_SIZE + SLAB_SIZE;	/* spend SLAB_SIZE bytes on align :-( */
+	arena->size = size;
 
-	arena->mmap_base = mmap(NULL, arena->mmap_size,
-				PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-	if (arena->mmap_base == MAP_FAILED) {
+	arena->base = mmap(NULL, arena->size + SLAB_SIZE, /* add padding for later rounding */
+			   PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	if (arena->base == MAP_FAILED) {
 		say_syserror("mmap");
 		return false;
 	}
 
-	arena->base = (char *)SLAB_ALIGN_PTR(arena->mmap_base) + SLAB_SIZE;
+	void *aptr = SLAB_ALIGN_PTR(arena->base) + SLAB_SIZE;
+	size_t pad_begin = aptr - arena->base,
+		 pad_end = SLAB_SIZE - pad_begin;
+
+	munmap(arena->base, pad_begin);
+	arena->base += pad_begin;
+	munmap(arena->base + arena->size, pad_end);
 	return true;
 }
 
@@ -182,8 +185,8 @@ salloc_init(size_t size, size_t minimal, double factor)
 void
 salloc_destroy(void)
 {
-	if (arena.mmap_base != NULL)
-		munmap(arena.mmap_base, arena.mmap_size);
+	if (arena.base != NULL)
+		munmap(arena.base, arena.size);
 
 	memset(&arena, 0, sizeof(struct arena));
 }
