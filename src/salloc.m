@@ -75,7 +75,7 @@ TAILQ_HEAD(slab_tailq_head, slab);
 
 struct slab_class {
 	size_t item_size;
-	struct slab_tailq_head slabs, free_slabs;
+	struct slab_tailq_head slabs, partial_populated_slabs;
 };
 
 struct arena {
@@ -94,11 +94,21 @@ struct arena arena;
 struct slab_slist_head slabs, free_slabs;
 
 static struct slab *
-slab_header(void *ptr)
+slab_of_ptr(void *ptr)
 {
-	struct slab *slab = (struct slab *)SLAB_ALIGN_PTR(ptr);
+	struct slab *slab = SLAB_ALIGN_PTR(ptr);
 	assert(slab->magic == SLAB_MAGIC);
 	return slab;
+}
+
+void
+slab_class_init(struct slab_class *class, size_t item_size)
+{
+	class->item_size = item_size;
+	assert((class->item_size & 1) == 0);
+
+	TAILQ_INIT(&class->slabs);
+	TAILQ_INIT(&class->partial_populated_slabs);
 }
 
 static void
@@ -111,15 +121,12 @@ slab_classes_init(size_t minimal, double factor)
 	     i < nelem(slab_classes) - 1 && size <= MAX_SLAB_ITEM;
 	     i++)
 	{
-		slab_classes[i].item_size = size - sizeof(red_zone);
-		assert((slab_classes[i].item_size & 1) == 0);
-		TAILQ_INIT(&slab_classes[i].free_slabs);
+		slab_class_init(&slab_classes[i], size - sizeof(red_zone));
 
 		size = MAX((size_t)(size * factor) & ~(ptr_size - 1),
 			   (size + ptr_size) & ~(ptr_size - 1));
 	}
-	slab_classes[i].item_size = MAX_SLAB_ITEM - sizeof(red_zone);
-	TAILQ_INIT(&slab_classes[i].free_slabs);
+	slab_class_init(&slab_classes[i], MAX_SLAB_ITEM - sizeof(red_zone));
 	i++;
 
 	SLIST_INIT(&slabs);
@@ -194,13 +201,14 @@ format_slab(struct slab_class *class, struct slab *slab)
 	slab->brk = (void *)CACHEALIGN((void *)slab + sizeof(struct slab));
 
 	TAILQ_INSERT_HEAD(&class->slabs, slab, class_link);
-	TAILQ_INSERT_HEAD(&class->free_slabs, slab, class_free_link);
+	TAILQ_INSERT_HEAD(&class->partial_populated_slabs, slab, class_partial_link);
 }
 
 static bool
-full_formated(struct slab *slab)
+fully_populated(const struct slab *slab)
 {
-	return slab->brk + slab->class->item_size >= (void *)slab + SLAB_SIZE;
+	return slab->brk + slab->class->item_size >= (void *)slab + SLAB_SIZE &&
+	       slab->free == NULL;
 }
 
 void
@@ -232,8 +240,8 @@ slab_of(struct slab_class *class)
 {
 	struct slab *slab;
 
-	if (!TAILQ_EMPTY(&class->free_slabs)) {
-		slab = TAILQ_FIRST(&class->free_slabs);
+	if (!TAILQ_EMPTY(&class->partial_populated_slabs)) {
+		slab = TAILQ_FIRST(&class->partial_populated_slabs);
 		assert(slab->magic == SLAB_MAGIC);
 		return slab;
 	}
@@ -291,8 +299,8 @@ salloc(size_t size)
 		(void)VALGRIND_MAKE_MEM_UNDEFINED(item, sizeof(void *));
 	}
 
-	if (full_formated(slab) && slab->free == NULL)
-		TAILQ_REMOVE(&class->free_slabs, slab, class_free_link);
+	if (fully_populated(slab))
+		TAILQ_REMOVE(&class->partial_populated_slabs, slab, class_partial_link);
 
 	slab->used += class->item_size + sizeof(red_zone);
 	slab->items += 1;
@@ -305,12 +313,12 @@ void
 sfree(void *ptr)
 {
 	assert(ptr != NULL);
-	struct slab *slab = slab_header(ptr);
+	struct slab *slab = slab_of_ptr(ptr);
 	struct slab_class *class = slab->class;
 	struct slab_item *item = ptr;
 
-	if (full_formated(slab) && slab->free == NULL)
-		TAILQ_INSERT_TAIL(&class->free_slabs, slab, class_free_link);
+	if (fully_populated(slab))
+		TAILQ_INSERT_TAIL(&class->partial_populated_slabs, slab, class_partial_link);
 
 	assert(valid_item(slab, item));
 	assert(slab->free == NULL || valid_item(slab, slab->free));
@@ -321,7 +329,7 @@ sfree(void *ptr)
 	slab->items -= 1;
 
 	if (slab->items == 0) {
-		TAILQ_REMOVE(&class->free_slabs, slab, class_free_link);
+		TAILQ_REMOVE(&class->partial_populated_slabs, slab, class_partial_link);
 		TAILQ_REMOVE(&class->slabs, slab, class_link);
 		SLIST_INSERT_HEAD(&free_slabs, slab, free_link);
 	}
