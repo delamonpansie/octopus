@@ -48,9 +48,9 @@ u8 red_zone[4] = { 0xfa, 0xfa, 0xfa, 0xfa };
 u8 red_zone[0] = { };
 #endif
 
-const u32 SLAB_MAGIC = 0x51abface;
-const size_t SLAB_SIZE = 1 << 22;
-const size_t MAX_SLAB_ITEM = 1 << 20;
+static const u32 SLAB_MAGIC = 0x51abface;
+static const size_t SLAB_SIZE = 1 << 22;
+static const size_t MAX_SLAB_ITEM = 1 << 20;
 
 struct slab_item {
 	struct slab_item *next;
@@ -77,11 +77,10 @@ struct arena {
 	size_t used;
 };
 
-size_t slab_active_caches;
-struct slab_cache slab_caches[256];
-struct arena arena;
-
-struct slab_slist_head slabs, free_slabs;
+static size_t slab_active_caches;
+static struct slab_cache slab_caches[256];
+static struct arena arena;
+static struct slab_slist_head slabs, free_slabs;
 
 static struct slab *
 slab_of_ptr(void *ptr)
