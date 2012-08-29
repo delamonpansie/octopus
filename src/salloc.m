@@ -101,8 +101,8 @@ slab_of_ptr(void *ptr)
 void
 slab_cache_init(struct slab_cache *cache, size_t item_size)
 {
+	assert((item_size & 1) == 0);
 	cache->item_size = item_size;
-	assert((cache->item_size & 1) == 0);
 
 	TAILQ_INIT(&cache->slabs);
 	TAILQ_INIT(&cache->partial_populated_slabs);
