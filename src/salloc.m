@@ -62,18 +62,18 @@ struct slab {
 	size_t used;
 	size_t items;
 	struct slab_item *free;
-	struct slab_class *class;
+	struct slab_cache *cache;
 	void *brk;
 	SLIST_ENTRY(slab) link;
 	SLIST_ENTRY(slab) free_link;
-	TAILQ_ENTRY(slab) class_partial_link;
-	TAILQ_ENTRY(slab) class_link;
+	TAILQ_ENTRY(slab) cache_partial_link;
+	TAILQ_ENTRY(slab) cache_link;
 };
 
 SLIST_HEAD(slab_slist_head, slab);
 TAILQ_HEAD(slab_tailq_head, slab);
 
-struct slab_class {
+struct slab_cache {
 	size_t item_size;
 	struct slab_tailq_head slabs, partial_populated_slabs;
 };
@@ -87,8 +87,8 @@ struct arena {
 	size_t used;
 };
 
-size_t slab_active_classes;
-struct slab_class slab_classes[256];
+size_t slab_active_caches;
+struct slab_cache slab_caches[256];
 struct arena arena;
 
 struct slab_slist_head slabs, free_slabs;
@@ -102,36 +102,36 @@ slab_of_ptr(void *ptr)
 }
 
 void
-slab_class_init(struct slab_class *class, size_t item_size)
+slab_cache_init(struct slab_cache *cache, size_t item_size)
 {
-	class->item_size = item_size;
-	assert((class->item_size & 1) == 0);
+	cache->item_size = item_size;
+	assert((cache->item_size & 1) == 0);
 
-	TAILQ_INIT(&class->slabs);
-	TAILQ_INIT(&class->partial_populated_slabs);
+	TAILQ_INIT(&cache->slabs);
+	TAILQ_INIT(&cache->partial_populated_slabs);
 }
 
 static void
-slab_classes_init(size_t minimal, double factor)
+slab_caches_init(size_t minimal, double factor)
 {
 	int i, size;
 	const size_t ptr_size = sizeof(void *);
 
 	for (i = 0, size = minimal & ~(ptr_size - 1);
-	     i < nelem(slab_classes) - 1 && size <= MAX_SLAB_ITEM;
+	     i < nelem(slab_caches) - 1 && size <= MAX_SLAB_ITEM;
 	     i++)
 	{
-		slab_class_init(&slab_classes[i], size - sizeof(red_zone));
+		slab_cache_init(&slab_caches[i], size - sizeof(red_zone));
 
 		size = MAX((size_t)(size * factor) & ~(ptr_size - 1),
 			   (size + ptr_size) & ~(ptr_size - 1));
 	}
-	slab_class_init(&slab_classes[i], MAX_SLAB_ITEM - sizeof(red_zone));
+	slab_cache_init(&slab_caches[i], MAX_SLAB_ITEM - sizeof(red_zone));
 	i++;
 
 	SLIST_INIT(&slabs);
 	SLIST_INIT(&free_slabs);
-	slab_active_classes = i;
+	slab_active_caches = i;
 }
 
 static bool
@@ -176,7 +176,7 @@ salloc_init(size_t size, size_t minimal, double factor)
 	if (!arena_init(&arena, size))
 		panic_syserror("salloc_init: can't initialize arena");
 
-	slab_classes_init(MAX(sizeof(void *), minimal), factor);
+	slab_caches_init(MAX(sizeof(void *), minimal), factor);
 }
 
 void
@@ -189,25 +189,25 @@ salloc_destroy(void)
 }
 
 static void
-format_slab(struct slab_class *class, struct slab *slab)
+format_slab(struct slab_cache *cache, struct slab *slab)
 {
-	assert(class->item_size <= MAX_SLAB_ITEM);
+	assert(cache->item_size <= MAX_SLAB_ITEM);
 
 	slab->magic = SLAB_MAGIC;
 	slab->free = NULL;
-	slab->class = class;
+	slab->cache = cache;
 	slab->items = 0;
 	slab->used = 0;
 	slab->brk = (void *)CACHEALIGN((void *)slab + sizeof(struct slab));
 
-	TAILQ_INSERT_HEAD(&class->slabs, slab, class_link);
-	TAILQ_INSERT_HEAD(&class->partial_populated_slabs, slab, class_partial_link);
+	TAILQ_INSERT_HEAD(&cache->slabs, slab, cache_link);
+	TAILQ_INSERT_HEAD(&cache->partial_populated_slabs, slab, cache_partial_link);
 }
 
 static bool
 fully_populated(const struct slab *slab)
 {
-	return slab->brk + slab->class->item_size >= (void *)slab + SLAB_SIZE &&
+	return slab->brk + slab->cache->item_size >= (void *)slab + SLAB_SIZE &&
 	       slab->free == NULL;
 }
 
@@ -218,30 +218,30 @@ slab_validate(void)
 
 	SLIST_FOREACH(slab, &slabs, link) {
 		for (char *p = (char *)slab + sizeof(struct slab);
-		     p + slab->class->item_size < (char *)slab + SLAB_SIZE;
-		     p += slab->class->item_size + sizeof(red_zone)) {
-			assert(memcmp(p + slab->class->item_size, red_zone, sizeof(red_zone)) == 0);
+		     p + slab->cache->item_size < (char *)slab + SLAB_SIZE;
+		     p += slab->cache->item_size + sizeof(red_zone)) {
+			assert(memcmp(p + slab->cache->item_size, red_zone, sizeof(red_zone)) == 0);
 		}
 	}
 }
 
-static struct slab_class *
-class_for(size_t size)
+static struct slab_cache *
+cache_for(size_t size)
 {
-	for (int i = 0; i < slab_active_classes; i++)
-		if (slab_classes[i].item_size >= size)
-			return &slab_classes[i];
+	for (int i = 0; i < slab_active_caches; i++)
+		if (slab_caches[i].item_size >= size)
+			return &slab_caches[i];
 
 	return NULL;
 }
 
 static struct slab *
-slab_of(struct slab_class *class)
+slab_of(struct slab_cache *cache)
 {
 	struct slab *slab;
 
-	if (!TAILQ_EMPTY(&class->partial_populated_slabs)) {
-		slab = TAILQ_FIRST(&class->partial_populated_slabs);
+	if (!TAILQ_EMPTY(&cache->partial_populated_slabs)) {
+		slab = TAILQ_FIRST(&cache->partial_populated_slabs);
 		assert(slab->magic == SLAB_MAGIC);
 		return slab;
 	}
@@ -250,12 +250,12 @@ slab_of(struct slab_class *class)
 		slab = SLIST_FIRST(&free_slabs);
 		assert(slab->magic == SLAB_MAGIC);
 		SLIST_REMOVE_HEAD(&free_slabs, free_link);
-		format_slab(class, slab);
+		format_slab(cache, slab);
 		return slab;
 	}
 
 	if ((slab = arena_alloc(&arena)) != NULL) {
-		format_slab(class, slab);
+		format_slab(cache, slab);
 		SLIST_INSERT_HEAD(&slabs, slab, link);
 		return slab;
 	}
@@ -275,21 +275,21 @@ valid_item(struct slab *slab, void *item)
 void *
 salloc(size_t size)
 {
-	struct slab_class *class;
+	struct slab_cache *cache;
 	struct slab *slab;
 	struct slab_item *item;
 
-	if ((class = class_for(size)) == NULL)
+	if ((cache = cache_for(size)) == NULL)
 		return NULL;
 
-	if ((slab = slab_of(class)) == NULL)
+	if ((slab = slab_of(cache)) == NULL)
 		return NULL;
 
 	if (slab->free == NULL) {
 		assert(valid_item(slab, slab->brk));
 		item = slab->brk;
-		memcpy((void *)item + class->item_size, red_zone, sizeof(red_zone));
-		slab->brk += class->item_size + sizeof(red_zone);
+		memcpy((void *)item + cache->item_size, red_zone, sizeof(red_zone));
+		slab->brk += cache->item_size + sizeof(red_zone);
 	} else {
 		assert(valid_item(slab, slab->free));
 		item = slab->free;
@@ -300,12 +300,12 @@ salloc(size_t size)
 	}
 
 	if (fully_populated(slab))
-		TAILQ_REMOVE(&class->partial_populated_slabs, slab, class_partial_link);
+		TAILQ_REMOVE(&cache->partial_populated_slabs, slab, cache_partial_link);
 
-	slab->used += class->item_size + sizeof(red_zone);
+	slab->used += cache->item_size + sizeof(red_zone);
 	slab->items += 1;
 
-	VALGRIND_MALLOCLIKE_BLOCK(item, class->item_size, sizeof(red_zone), 0);
+	VALGRIND_MALLOCLIKE_BLOCK(item, cache->item_size, sizeof(red_zone), 0);
 	return (void *)item;
 }
 
@@ -314,23 +314,23 @@ sfree(void *ptr)
 {
 	assert(ptr != NULL);
 	struct slab *slab = slab_of_ptr(ptr);
-	struct slab_class *class = slab->class;
+	struct slab_cache *cache = slab->cache;
 	struct slab_item *item = ptr;
 
 	if (fully_populated(slab))
-		TAILQ_INSERT_TAIL(&class->partial_populated_slabs, slab, class_partial_link);
+		TAILQ_INSERT_TAIL(&cache->partial_populated_slabs, slab, cache_partial_link);
 
 	assert(valid_item(slab, item));
 	assert(slab->free == NULL || valid_item(slab, slab->free));
 
 	item->next = slab->free;
 	slab->free = item;
-	slab->used -= class->item_size + sizeof(red_zone);
+	slab->used -= cache->item_size + sizeof(red_zone);
 	slab->items -= 1;
 
 	if (slab->items == 0) {
-		TAILQ_REMOVE(&class->partial_populated_slabs, slab, class_partial_link);
-		TAILQ_REMOVE(&class->slabs, slab, class_link);
+		TAILQ_REMOVE(&cache->partial_populated_slabs, slab, cache_partial_link);
+		TAILQ_REMOVE(&cache->slabs, slab, cache_link);
 		SLIST_INSERT_HEAD(&free_slabs, slab, free_link);
 	}
 
@@ -343,10 +343,10 @@ slab_stat(struct tbuf *t)
 	struct slab *slab;
 	int slabs, free_slabs_count = 0;
 	i64 items, used, free, total_used = 0;
-	tbuf_printf(t, "slab statistics:\n  classes:" CRLF);
-	for (int i = 0; i < slab_active_classes; i++) {
+	tbuf_printf(t, "slab statistics:\n  caches:" CRLF);
+	for (int i = 0; i < slab_active_caches; i++) {
 		slabs = items = used = free = 0;
-		TAILQ_FOREACH(slab, &slab_classes[i].slabs, class_link) {
+		TAILQ_FOREACH(slab, &slab_caches[i].slabs, cache_link) {
 			free += SLAB_SIZE - slab->used - sizeof(struct slab);
 			items += slab->items;
 			used += sizeof(struct slab) + slab->used;
@@ -360,7 +360,7 @@ slab_stat(struct tbuf *t)
 		tbuf_printf(t,
 			    "     - { item_size: %- 5i, slabs: %- 3i, items: %- 11" PRIi64
 			    ", bytes_used: %- 12" PRIi64 ", bytes_free: %- 12" PRIi64 " }" CRLF,
-			    (int)slab_classes[i].item_size, slabs, items, used, free);
+			    (int)slab_caches[i].item_size, slabs, items, used, free);
 
 	}
 
