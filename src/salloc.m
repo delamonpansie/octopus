@@ -76,6 +76,7 @@ TAILQ_HEAD(slab_tailq_head, slab);
 struct slab_cache {
 	size_t item_size;
 	struct slab_tailq_head slabs, partial_populated_slabs;
+	const char *name;
 };
 
 struct arena {
@@ -99,10 +100,11 @@ slab_of_ptr(void *ptr)
 }
 
 void
-slab_cache_init(struct slab_cache *cache, size_t item_size)
+slab_cache_init(struct slab_cache *cache, size_t item_size, const char *name)
 {
 	assert((item_size & 1) == 0);
 	cache->item_size = item_size;
+	cache->name = name;
 
 	TAILQ_INIT(&cache->slabs);
 	TAILQ_INIT(&cache->partial_populated_slabs);
@@ -113,17 +115,18 @@ slab_caches_init(size_t minimal, double factor)
 {
 	int i, size;
 	const size_t ptr_size = sizeof(void *);
+	const char *name = "obj";
 
 	for (i = 0, size = minimal & ~(ptr_size - 1);
 	     i < nelem(slab_caches) - 1 && size <= MAX_SLAB_ITEM;
 	     i++)
 	{
-		slab_cache_init(&slab_caches[i], size - sizeof(red_zone));
+		slab_cache_init(&slab_caches[i], size - sizeof(red_zone), name);
 
 		size = MAX((size_t)(size * factor) & ~(ptr_size - 1),
 			   (size + ptr_size) & ~(ptr_size - 1));
 	}
-	slab_cache_init(&slab_caches[i], MAX_SLAB_ITEM - sizeof(red_zone));
+	slab_cache_init(&slab_caches[i], MAX_SLAB_ITEM - sizeof(red_zone), name);
 	i++;
 
 	SLIST_INIT(&slabs);
@@ -361,9 +364,9 @@ slab_stat(struct tbuf *t)
 			continue;
 
 		tbuf_printf(t,
-			    "     - { item_size: %- 5i, slabs: %- 3i, items: %- 11" PRIi64
+			    "     - { name: %-16s, item_size: %- 5i, slabs: %- 3i, items: %- 11" PRIi64
 			    ", bytes_used: %- 12" PRIi64 ", bytes_free: %- 12" PRIi64 " }" CRLF,
-			    (int)slab_caches[i].item_size, slabs, items, used, free);
+			    slab_caches[i].name, (int)slab_caches[i].item_size, slabs, items, used, free);
 
 	}
 
