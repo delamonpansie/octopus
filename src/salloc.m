@@ -31,7 +31,6 @@
 
 #include <third_party/valgrind/valgrind.h>
 #include <third_party/valgrind/memcheck.h>
-#include <third_party/queue.h>
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -71,13 +70,6 @@ struct slab {
 };
 
 SLIST_HEAD(slab_slist_head, slab);
-TAILQ_HEAD(slab_tailq_head, slab);
-
-struct slab_cache {
-	size_t item_size;
-	struct slab_tailq_head slabs, partial_populated_slabs;
-	const char *name;
-};
 
 struct arena {
 	void *base;

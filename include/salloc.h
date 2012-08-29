@@ -30,7 +30,14 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-struct slab_cache;
+#include <third_party/queue.h>
+
+TAILQ_HEAD(slab_tailq_head, slab);
+struct slab_cache {
+	size_t item_size;
+	struct slab_tailq_head slabs, partial_populated_slabs;
+	const char *name;
+};
 
 void salloc_init(size_t size, size_t minimal, double factor);
 void salloc_destroy(void);
