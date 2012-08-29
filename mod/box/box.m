@@ -883,7 +883,7 @@ box_process(struct conn *c, struct tbuf *request, void *arg __attribute__((unuse
 		}
 	}
 	@catch (Error *e) {
-		say_warn("aboring txn, [%s reason:\"%s\"] at %s:%d peer:%s",
+		say_warn("aborting txn, [%s reason:\"%s\"] at %s:%d peer:%s",
 			 [[e class] name], e->reason, e->file, e->line, conn_peer_name(c));
 		if (e->backtrace)
 			say_debug("backtrace:\n%s", e->backtrace);
