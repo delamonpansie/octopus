@@ -716,6 +716,8 @@ run_crc_lag
 - (const char *)
 run_crc_status
 {
+	if (run_crc_log_mismatch && run_crc_mod_mismatch)
+		return "ALL_CRC_MISMATCH";
 	if (run_crc_log_mismatch)
 		return "LOG_CRC_MISMATCH";
 	if (run_crc_mod_mismatch)
