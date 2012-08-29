@@ -55,7 +55,7 @@ const size_t MAX_SLAB_ITEM = 1 << 20;
 
 struct slab_item {
 	struct slab_item *next;
-} __packed;
+};
 
 struct slab {
 	u32 magic;
