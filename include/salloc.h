@@ -30,9 +30,13 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+struct slab_cache;
 
 void salloc_init(size_t size, size_t minimal, double factor);
 void salloc_destroy(void);
+void slab_cache_init(struct slab_cache *cache, size_t item_size, const char *name);
+void *slab_cache_alloc(struct slab_cache *cache);
+void slab_cache_free(struct slab_cache *cache, void *ptr);
 void *salloc(size_t size);
 void sfree(void *ptr);
 void slab_validate();

@@ -278,14 +278,10 @@ valid_item(struct slab *slab, void *item)
 #endif
 
 void *
-salloc(size_t size)
+slab_cache_alloc(struct slab_cache *cache)
 {
-	struct slab_cache *cache;
 	struct slab *slab;
 	struct slab_item *item;
-
-	if ((cache = cache_for(size)) == NULL)
-		return NULL;
 
 	if ((slab = slab_of(cache)) == NULL)
 		return NULL;
@@ -312,6 +308,17 @@ salloc(size_t size)
 
 	VALGRIND_MALLOCLIKE_BLOCK(item, cache->item_size, sizeof(red_zone), 0);
 	return (void *)item;
+}
+
+void *
+salloc(size_t size)
+{
+	struct slab_cache *cache;
+
+	if ((cache = cache_for(size)) == NULL)
+		return NULL;
+
+	return slab_cache_alloc(cache);
 }
 
 void
@@ -341,6 +348,13 @@ sfree(void *ptr)
 
 	VALGRIND_FREELIKE_BLOCK(item, sizeof(red_zone));
 }
+
+void
+slab_cache_free(struct slab_cache *cache __attribute__((unused)), void *ptr)
+{
+	sfree(ptr);
+}
+
 
 void
 slab_stat(struct tbuf *t)
