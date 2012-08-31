@@ -456,7 +456,8 @@ conn_close(struct conn *c)
 		c->pool = NULL;
 		return r;
 	default:
-		abort(); /* not reached */
+		/* c->ref > 0 => some fiber still holding ref to connection */
+		return 0;
 	}
 }
 
