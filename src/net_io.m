@@ -415,8 +415,9 @@ int
 conn_close(struct conn *c)
 {
 	int r = 0;
-	tbuf_reset(c->rbuf);
+
 	if (c->fd > 0) {
+		tbuf_reset(c->rbuf);
 		ev_io_stop(&c->out);
 		ev_io_stop(&c->in);
 		c->in.fd = c->out.fd = -1;
