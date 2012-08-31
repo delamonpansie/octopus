@@ -86,7 +86,6 @@ struct conn {
 	enum { READING, PROCESSING, CLOSE_AFTER_WRITE, CLOSED } state;
 	LIST_ENTRY(conn) link;
 	TAILQ_ENTRY(conn) processing_link;
-	SLIST_ENTRY(conn) pool_link;
 	ev_io in, out;
 	struct service *service;
 	char peer_name[22]; /* aaa.bbb.ccc.ddd:xxxxx */

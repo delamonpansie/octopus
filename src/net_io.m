@@ -26,6 +26,7 @@
 
 #import <net_io.h>
 #import <palloc.h>
+#import <salloc.h>
 #import <fiber.h>
 #import <util.h>
 #import <say.h>
@@ -45,8 +46,9 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-SLIST_HEAD(, conn) conn_pool;
 struct netmsg_tailq netmsg_pool;
+
+struct slab_cache conn_cache;
 
 static struct netmsg *
 netmsg_alloc(struct netmsg_head *h)
@@ -353,11 +355,7 @@ conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, st
 	say_debug("%s: c:%p fd:%i", __func__, c, fd);
 	if (!c) {
 		assert(ref == 0);
-		c = SLIST_FIRST(&conn_pool);
-		if (c)
-			SLIST_REMOVE_HEAD(&conn_pool, pool_link);
-		else
-			c = calloc(1, sizeof(*c));
+		c = slab_cache_alloc(&conn_cache);
 	}
 
 	TAILQ_INIT(&c->out_messages.q);
@@ -458,7 +456,7 @@ conn_close(struct conn *c)
 		if (c->service)
 			LIST_REMOVE(c, link);
 
-		SLIST_INSERT_HEAD(&conn_pool, c, pool_link);
+		slab_cache_free(&conn_cache, c);
 		c->service = NULL;
 		c->pool = NULL;
 		return r;
@@ -962,6 +960,12 @@ sintoa(const struct sockaddr_in *addr)
 	snprintf(buf, sizeof(buf), "%s:%i",
 		 inet_ntoa(addr->sin_addr), ntohs(addr->sin_port));
 	return buf;
+}
+
+void __attribute__((constructor))
+init_slab_cache(void)
+{
+	slab_cache_init(&conn_cache, sizeof(struct conn), SLAB_GROW, "net_io/conn");
 }
 
 register_source();
