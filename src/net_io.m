@@ -71,7 +71,7 @@ netmsg_tail(struct netmsg_head *h)
 	if (!TAILQ_EMPTY(&h->q))
 		return TAILQ_LAST(&h->q, netmsg_tailq);
 	else
-		return  netmsg_alloc(h);
+		return netmsg_alloc(h);
 }
 
 
