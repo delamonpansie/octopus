@@ -109,6 +109,11 @@ tbuf_reader(lua_State *L __attribute__((unused)), void *data, size_t *size)
 void
 exec_lua(lua_State *L, struct tbuf *code, struct tbuf *out)
 {
+	if (!cfg.admin_exec_lua) {
+		tbuf_printf(out, "error: command is disabled" CRLF);
+		return;
+	}
+
 	int r = lua_load(L, tbuf_reader, code, "network_input");
 	if (r != 0) {
 		if (r == LUA_ERRSYNTAX)

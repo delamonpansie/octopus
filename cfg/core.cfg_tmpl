@@ -51,5 +51,7 @@ input_low_watermark = 4096
 # path for search scripts
 lua_path = "src-lua/?.lua;?.lua", ro
 
+admin_exec_lua = 0, rw
+
 # custom proc title is appended after normal
 custom_proc_title=NULL, ro
