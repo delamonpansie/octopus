@@ -794,7 +794,7 @@ input_reader(va_list ap)
 	ev_watcher *w;
 	ssize_t r;
 
-	say_info("input reader for service %p started", service);
+	say_info("input reader for service %s started", service->name);
 	yield();
 loop:
 	w = yield();
