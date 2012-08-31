@@ -108,8 +108,8 @@ next:
 		c->ref++;
 		callback(c, request, arg);
 		c->ref--;
-		if (c->fd < 0) {
-			/* connection is already closed. decr ref counter */
+		if (c->state == CLOSED) {
+			/* connection is already closed by other fiber */
 			conn_close(c);
 			goto next;
 		}

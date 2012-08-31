@@ -438,6 +438,7 @@ conn_close(struct conn *c)
 			TAILQ_REMOVE(&c->service->processing, c, processing_link);
 			c->state = -1;
 		}
+		c->state = CLOSED;
 	}
 
 	switch (c->ref) {
@@ -551,7 +552,7 @@ service_output_flusher(va_list ap __attribute__((unused)))
 
 		if ((tbuf_len(c->rbuf) < cfg.input_low_watermark || c->state == READING) &&
 		    c->out_messages.bytes < cfg.output_low_watermark &&
-		    c->fd >= 0)
+		    c->state != CLOSED)
 			ev_io_start(&c->in);
 	}
 }
