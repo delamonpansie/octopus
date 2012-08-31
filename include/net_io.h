@@ -123,7 +123,7 @@ void conn_gc(struct palloc_pool *pool, void *ptr);
 ssize_t conn_recv(struct conn *c);
 ssize_t conn_read(struct conn *c, void *buf, size_t count);
 ssize_t conn_write(struct conn *c, const void *buf, size_t count);
-struct netmsg *conn_write_netmsg(struct conn *c);
+ssize_t conn_write_netmsg(struct conn *c);
 ssize_t conn_flush(struct conn *c);
 char *conn_peer_name(struct conn *c);
 

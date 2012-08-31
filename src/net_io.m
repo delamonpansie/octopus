@@ -261,14 +261,15 @@ netmsg_verify_ownership(struct netmsg_head *h)
 }
 
 
-struct netmsg *
+ssize_t
 conn_write_netmsg(struct conn *c)
 {
 	struct netmsg *m;
+	ssize_t ret = 0;
 restart:
 	m = TAILQ_FIRST(&c->out_messages.q);
 	if (m == NULL)
-		return NULL;
+		return ret;
 
 	struct iovec *iov = m->iov + m->offset;
 	unsigned iov_cnt = m->count - m->offset;
@@ -282,10 +283,12 @@ restart:
 				break;
 
 			say_syserror("%s: writev", __func__);
-			conn_close(c);
+			if (ret == 0)
+				ret = r;
 			break;
 		};
 		m->head->bytes -= r;
+		ret += r;
 
 		while (iov_cnt > 0) {
 			if (iov->iov_len > r) {
@@ -310,7 +313,7 @@ restart:
 
 	if (iov_cnt > 0) {
 		m->offset = m->count - iov_cnt;
-		return m;
+		return ret;
 	} else {
 		netmsg_release(m);
 		goto restart;
@@ -324,7 +327,7 @@ conn_flush(struct conn *c)
 	ev_io_start(&c->out);
 	do {
 		yield();
-	} while (conn_write_netmsg(c) && c->fd > 0);
+	} while (conn_write_netmsg(c) > 0);
 	ev_io_stop(&c->out);
 
 	return TAILQ_EMPTY(&(c->out_messages.q))  ? 0 : -1;
@@ -549,10 +552,12 @@ service_output_flusher(va_list ap __attribute__((unused)))
 {
 	for (;;) {
 		struct conn *c = ((struct ev_watcher *)yield())->data;
-		if (conn_write_netmsg(c) == NULL) {
-			ev_io_stop(&c->out);
-			if (unlikely(c->state == CLOSE_AFTER_WRITE))
+		ssize_t r = conn_write_netmsg(c);
+		if (r <= 0) {
+			if (r < 0)
 				conn_close(c);
+			else
+				ev_io_stop(&c->out);
 		}
 
 		if ((tbuf_len(c->rbuf) < cfg.input_low_watermark || c->state == READING) &&
