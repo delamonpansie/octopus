@@ -421,7 +421,11 @@ conn_close(struct conn *c)
 		ev_io_stop(&c->out);
 		ev_io_stop(&c->in);
 		c->in.fd = c->out.fd = -1;
-		c->in.cb = c->out.cb = NULL;
+
+		/* the conn will either free'd or put back to pool,
+		   so next time it get used it will be configure by conn_init */
+		if (c->ref != REF_STATIC)
+			c->in.cb = c->out.cb = NULL;
 
 		r = close(c->fd);
 		c->fd = -1;
