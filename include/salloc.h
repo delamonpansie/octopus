@@ -33,15 +33,23 @@
 #include <third_party/queue.h>
 
 TAILQ_HEAD(slab_tailq_head, slab);
+struct arena;
 struct slab_cache {
 	size_t item_size;
 	struct slab_tailq_head slabs, partial_populated_slabs;
+	struct arena *arena;
 	const char *name;
+	SLIST_ENTRY(slab_cache) link;
+};
+
+enum arena_type {
+	SLAB_FIXED,
+	SLAB_GROW
 };
 
 void salloc_init(size_t size, size_t minimal, double factor);
 void salloc_destroy(void);
-void slab_cache_init(struct slab_cache *cache, size_t item_size, const char *name);
+void slab_cache_init(struct slab_cache *cache, size_t item_size, enum arena_type type, const char *name);
 void *slab_cache_alloc(struct slab_cache *cache);
 void slab_cache_free(struct slab_cache *cache, void *ptr);
 void *salloc(size_t size);

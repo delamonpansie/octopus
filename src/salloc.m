@@ -51,6 +51,7 @@ u8 red_zone[0] = { };
 static const u32 SLAB_MAGIC = 0x51abface;
 static const size_t SLAB_SIZE = 1 << 22;
 static const size_t MAX_SLAB_ITEM = 1 << 20;
+static const size_t GROW_ARENA_SIZE = 1 << 22;
 
 struct slab_item {
 	struct slab_item *next;
@@ -70,17 +71,20 @@ struct slab {
 };
 
 SLIST_HEAD(slab_slist_head, slab);
+SLIST_HEAD(slab_cache_head, slab_cache) slab_cache = SLIST_HEAD_INITIALIZER(&slab_cache);
 
 struct arena {
 	void *base;
 	size_t size;
 	size_t used;
+	struct slab_slist_head slabs, free_slabs;
+	struct { void *base; size_t size; } mmaps[64];
+	int i;
 };
 
 static size_t slab_active_caches;
 static struct slab_cache slab_caches[256];
-static struct arena arena;
-static struct slab_slist_head slabs, free_slabs;
+static struct arena arena[2], *fixed_arena = &arena[0], *grow_arena = &arena[1];
 
 static struct slab *
 slab_of_ptr(void *ptr)
@@ -91,15 +95,24 @@ slab_of_ptr(void *ptr)
 }
 
 void
-slab_cache_init(struct slab_cache *cache, size_t item_size, const char *name)
+slab_cache_init(struct slab_cache *cache, size_t item_size, enum arena_type type, const char *name)
 {
 	assert(item_size <= MAX_SLAB_ITEM);
 	assert((item_size & 1) == 0);
 	cache->item_size = item_size;
 	cache->name = name;
 
+	switch (type) {
+	case SLAB_FIXED:
+		cache->arena = fixed_arena; break;
+	case SLAB_GROW:
+		cache->arena = grow_arena; break;
+	}
+
 	TAILQ_INIT(&cache->slabs);
 	TAILQ_INIT(&cache->partial_populated_slabs);
+	if (name)
+		SLIST_INSERT_HEAD(&slab_cache, cache, link);
 }
 
 static void
@@ -107,46 +120,72 @@ slab_caches_init(size_t minimal, double factor)
 {
 	int i, size;
 	const size_t ptr_size = sizeof(void *);
-	const char *name = "obj";
 
 	for (i = 0, size = minimal & ~(ptr_size - 1);
 	     i < nelem(slab_caches) - 1 && size <= MAX_SLAB_ITEM;
 	     i++)
 	{
-		slab_cache_init(&slab_caches[i], size - sizeof(red_zone), name);
+		slab_cache_init(&slab_caches[i], size - sizeof(red_zone), SLAB_FIXED, NULL);
 
 		size = MAX((size_t)(size * factor) & ~(ptr_size - 1),
 			   (size + ptr_size) & ~(ptr_size - 1));
 	}
-	slab_cache_init(&slab_caches[i], MAX_SLAB_ITEM - sizeof(red_zone), name);
+	slab_cache_init(&slab_caches[i], MAX_SLAB_ITEM - sizeof(red_zone), SLAB_FIXED, NULL);
 	i++;
 
-	SLIST_INIT(&slabs);
-	SLIST_INIT(&free_slabs);
 	slab_active_caches = i;
+}
+
+static void *
+mmapa(size_t size, size_t align)
+{
+	void *ptr, *aptr;
+	assert (size % align == 0);
+
+	ptr = mmap(NULL, size + align, /* add padding for later rounding */
+		   PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	if (ptr == MAP_FAILED) {
+		say_syserror("mmap");
+		return NULL;
+	}
+
+	aptr = (void *)(((uintptr_t)(ptr) & ~(align - 1)) + align);
+	size_t pad_begin = aptr - ptr,
+		 pad_end = align - pad_begin;
+
+	munmap(ptr, pad_begin);
+	ptr += pad_begin;
+	munmap(ptr + size, pad_end);
+	return ptr;
+}
+
+static bool
+arena_add_mmap(struct arena *arena, size_t size)
+{
+	if (arena->i == nelem(arena->mmaps))
+		return false;
+
+	void *ptr = mmapa(size, SLAB_SIZE);
+	if (!ptr)
+		return false;
+
+	arena->used = 0;
+	arena->size = arena->mmaps[arena->i].size = size;
+	arena->base = arena->mmaps[arena->i].base = ptr;
+	arena->i++;
+	return true;
 }
 
 static bool
 arena_init(struct arena *arena, size_t size)
 {
-	size -= size % SLAB_SIZE; /* round to size of max slab */
-	arena->used = 0;
-	arena->size = size;
+	memset(arena, 0, sizeof(*arena));
 
-	arena->base = mmap(NULL, arena->size + SLAB_SIZE, /* add padding for later rounding */
-			   PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-	if (arena->base == MAP_FAILED) {
-		say_syserror("mmap");
+	if (!arena_add_mmap(arena, size))
 		return false;
-	}
 
-	void *aptr = SLAB_ALIGN_PTR(arena->base) + SLAB_SIZE;
-	size_t pad_begin = aptr - arena->base,
-		 pad_end = SLAB_SIZE - pad_begin;
-
-	munmap(arena->base, pad_begin);
-	arena->base += pad_begin;
-	munmap(arena->base + arena->size, pad_end);
+	SLIST_INIT(&arena->slabs);
+	SLIST_INIT(&arena->free_slabs);
 	return true;
 }
 
@@ -156,8 +195,15 @@ arena_alloc(struct arena *arena)
 	void *ptr;
 	const size_t size = SLAB_SIZE;
 
-	if (arena->size - arena->used < size)
-		return NULL;
+	if (arena->size - arena->used < size) {
+		if (arena == fixed_arena)
+			return NULL;
+
+		if (!arena_add_mmap(grow_arena, GROW_ARENA_SIZE))
+			panic("arena_alloc: can't enlarge grow_arena");
+
+		return arena_alloc(grow_arena);
+	}
 
 	ptr = (char *)arena->base + arena->used;
 	arena->used += size;
@@ -168,10 +214,15 @@ arena_alloc(struct arena *arena)
 void
 salloc_init(size_t size, size_t minimal, double factor)
 {
+	size -= size % SLAB_SIZE; /* round to size of max slab */
 	if (size < SLAB_SIZE * 2)
-		panic("salloc_init: arena size is too small");
+		size = SLAB_SIZE * 2;
 
-	if (!arena_init(&arena, size))
+
+	if (!arena_init(fixed_arena, size))
+		panic_syserror("salloc_init: can't initialize arena");
+
+	if (!arena_init(grow_arena, GROW_ARENA_SIZE))
 		panic_syserror("salloc_init: can't initialize arena");
 
 	slab_caches_init(MAX(sizeof(void *), minimal), factor);
@@ -180,10 +231,14 @@ salloc_init(size_t size, size_t minimal, double factor)
 void
 salloc_destroy(void)
 {
-	if (arena.base != NULL)
-		munmap(arena.base, arena.size);
-
-	memset(&arena, 0, sizeof(struct arena));
+	for (int i = 0; i < nelem(arena); i++) {
+		for (int j = 0; j < nelem(arena->mmaps); j++) {
+			if (arena[i].mmaps[j].base == NULL)
+				break;
+			munmap(arena[i].mmaps[j].base, arena[i].mmaps[j].size);
+		}
+		memset(&arena[i], 0, sizeof(struct arena));
+	}
 }
 
 static void
@@ -212,11 +267,14 @@ slab_validate(void)
 {
 	struct slab *slab;
 
-	SLIST_FOREACH(slab, &slabs, link) {
-		for (char *p = (char *)slab + sizeof(struct slab);
-		     p + slab->cache->item_size < (char *)slab + SLAB_SIZE;
-		     p += slab->cache->item_size + sizeof(red_zone)) {
-			assert(memcmp(p + slab->cache->item_size, red_zone, sizeof(red_zone)) == 0);
+	for (int i = 0; i < nelem(arena); i++) {
+		SLIST_FOREACH(slab, &arena[i].slabs, link) {
+			for (char *p = (char *)slab + sizeof(struct slab);
+			     p + slab->cache->item_size < (char *)slab + SLAB_SIZE;
+			     p += slab->cache->item_size + sizeof(red_zone))
+			{
+				assert(memcmp(p + slab->cache->item_size, red_zone, sizeof(red_zone)) == 0);
+			}
 		}
 	}
 }
@@ -242,17 +300,17 @@ slab_of(struct slab_cache *cache)
 		return slab;
 	}
 
-	if (!SLIST_EMPTY(&free_slabs)) {
-		slab = SLIST_FIRST(&free_slabs);
+	if (!SLIST_EMPTY(&cache->arena->free_slabs)) {
+		slab = SLIST_FIRST(&cache->arena->free_slabs);
 		assert(slab->magic == SLAB_MAGIC);
-		SLIST_REMOVE_HEAD(&free_slabs, free_link);
+		SLIST_REMOVE_HEAD(&cache->arena->free_slabs, free_link);
 		format_slab(cache, slab);
 		return slab;
 	}
 
-	if ((slab = arena_alloc(&arena)) != NULL) {
+	if ((slab = arena_alloc(cache->arena)) != NULL) {
+		SLIST_INSERT_HEAD(&cache->arena->slabs, slab, link);
 		format_slab(cache, slab);
-		SLIST_INSERT_HEAD(&slabs, slab, link);
 		return slab;
 	}
 
@@ -334,7 +392,7 @@ sfree(void *ptr)
 	if (slab->items == 0) {
 		TAILQ_REMOVE(&cache->partial_populated_slabs, slab, cache_partial_link);
 		TAILQ_REMOVE(&cache->slabs, slab, cache_link);
-		SLIST_INSERT_HEAD(&free_slabs, slab, free_link);
+		SLIST_INSERT_HEAD(&cache->arena->free_slabs, slab, free_link);
 	}
 
 	VALGRIND_FREELIKE_BLOCK(item, sizeof(red_zone));
@@ -347,39 +405,72 @@ slab_cache_free(struct slab_cache *cache __attribute__((unused)), void *ptr)
 }
 
 
+static i64
+cache_stat(struct slab_cache *cache, struct tbuf *out)
+{
+	struct slab *slab;
+	int slabs = 0;
+	i64 items = 0, used = 0, free = 0;
+
+	TAILQ_FOREACH(slab, &cache->slabs, cache_link) {
+		free += SLAB_SIZE - slab->used - sizeof(struct slab);
+		items += slab->items;
+		used += sizeof(struct slab) + slab->used;
+		slabs++;
+	}
+
+	if (slabs == 0 && cache->name == NULL)
+		return 0;
+
+	tbuf_printf(out,
+		    "     - { name: %-16s, item_size: %- 5i, slabs: %- 3i, items: %- 11" PRIi64
+		    ", bytes_used: %- 12" PRIi64 ", bytes_free: %- 12" PRIi64 " }" CRLF,
+		    cache->name, (int)cache->item_size, slabs, items, used, free);
+
+	return used;
+}
+
 void
 slab_stat(struct tbuf *t)
 {
 	struct slab *slab;
-	int slabs, free_slabs_count = 0;
-	i64 items, used, free, total_used = 0;
-	tbuf_printf(t, "slab statistics:\n  caches:" CRLF);
-	for (int i = 0; i < slab_active_caches; i++) {
-		slabs = items = used = free = 0;
-		TAILQ_FOREACH(slab, &slab_caches[i].slabs, cache_link) {
-			free += SLAB_SIZE - slab->used - sizeof(struct slab);
-			items += slab->items;
-			used += sizeof(struct slab) + slab->used;
-			total_used += sizeof(struct slab) + slab->used;
-			slabs++;
-		}
+	struct slab_cache *cache;
 
-		if (slabs == 0)
-			continue;
+	i64 total_used = 0;
+	tbuf_printf(t, "slab statistics:" CRLF);
 
-		tbuf_printf(t,
-			    "     - { name: %-16s, item_size: %- 5i, slabs: %- 3i, items: %- 11" PRIi64
-			    ", bytes_used: %- 12" PRIi64 ", bytes_free: %- 12" PRIi64 " }" CRLF,
-			    slab_caches[i].name, (int)slab_caches[i].item_size, slabs, items, used, free);
+	tbuf_printf(t, "  arenas:" CRLF);
+	for (int i = 0; i < nelem(arena); i++) {
+		if (arena[i].size == 0)
+			break;
+		int free_slabs = 0;
+		SLIST_FOREACH(slab, &arena[i].free_slabs, free_link)
+			free_slabs++;
 
+		i64 arena_size = 0;
+		for (int j = 0; j < nelem(arena[i].mmaps); j++)
+			arena_size += arena[i].mmaps[j].size;
+
+		tbuf_printf(t, "    - { used: %.2f, size: %"PRIi64", free_slabs: %i }" CRLF,
+			    (double)arena[i].used / arena_size * 100,
+			    arena_size, free_slabs);
 	}
 
-	SLIST_FOREACH(slab, &free_slabs, free_link)
-		free_slabs_count++;
+	tbuf_printf(t, "  caches:" CRLF);
+	for (int i = 0; i < slab_active_caches; i++)
+		total_used += cache_stat(&slab_caches[i], t);
 
-	tbuf_printf(t, "  free_slabs: %i" CRLF, free_slabs_count);
-	tbuf_printf(t, "  items_used: %.2f" CRLF, (double)total_used / arena.size * 100);
-	tbuf_printf(t, "  arena_used: %.2f" CRLF, (double)arena.used / arena.size * 100);
+	SLIST_FOREACH(cache, &slab_cache, link)
+		cache_stat(cache, t);
+
+
+	int fixed_free_slabs = 0;
+	SLIST_FOREACH(slab, &fixed_arena->free_slabs, free_link)
+			fixed_free_slabs++;
+
+	tbuf_printf(t, "  free_slabs: %i" CRLF, fixed_free_slabs);
+	tbuf_printf(t, "  items_used: %.2f" CRLF, (double)total_used / fixed_arena->size * 100);
+	tbuf_printf(t, "  arena_used: %.2f" CRLF, (double)fixed_arena->used / fixed_arena->size * 100);
 }
 
 void
@@ -388,9 +479,11 @@ slab_stat2(u64 *bytes_used, u64 *items)
 	struct slab *slab;
 
 	*bytes_used = *items = 0;
-	SLIST_FOREACH(slab, &slabs, link) {
-		*bytes_used += slab->used;
-		*items += slab->items;
+	for (int i = 0; i < nelem(arena); i++) {
+		SLIST_FOREACH(slab, &arena[i].slabs, link) {
+			*bytes_used += slab->used;
+			*items += slab->items;
+		}
 	}
 }
 
