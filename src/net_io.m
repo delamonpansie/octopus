@@ -46,24 +46,16 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-struct netmsg_tailq netmsg_pool;
-
-struct slab_cache conn_cache;
+struct slab_cache conn_cache, netmsg_cache;
 
 static struct netmsg *
 netmsg_alloc(struct netmsg_head *h)
 {
-	struct netmsg *n = TAILQ_FIRST(&netmsg_pool);
-	if (!n)
-		n = calloc(1, sizeof(*n));
-	else
-		TAILQ_REMOVE(&netmsg_pool, n, link);
-
+	struct netmsg *n = slab_cache_alloc(&netmsg_cache);
 	n->count = n->offset = 0;
 	n->head = h;
 
 	TAILQ_INSERT_TAIL(&h->q, n, link);
-
 	return n;
 }
 
@@ -98,7 +90,7 @@ netmsg_release(struct netmsg *m)
 {
 	netmsg_unref(m, 0);
 	TAILQ_REMOVE(&m->head->q, m, link);
-	TAILQ_INSERT_HEAD(&netmsg_pool, m, link);
+	slab_cache_free(&netmsg_cache, m);
 }
 
 static void
@@ -133,7 +125,7 @@ netmsg_concat(struct netmsg_head *dst, struct netmsg_head *src)
 			memcpy(tail->ref + tail->count, m->ref, sizeof(m->ref[0]) * m->count);
 			tail->count += m->count;
 
-			TAILQ_INSERT_HEAD(&netmsg_pool, m, link);
+			slab_cache_free(&netmsg_cache, m);
 		} else {
 			m->head = dst;
 			TAILQ_INSERT_TAIL(&dst->q, m, link);
@@ -966,6 +958,7 @@ void __attribute__((constructor))
 init_slab_cache(void)
 {
 	slab_cache_init(&conn_cache, sizeof(struct conn), SLAB_GROW, "net_io/conn");
+	slab_cache_init(&netmsg_cache, sizeof(struct netmsg), SLAB_GROW, "net_io/netmsg");
 }
 
 register_source();
