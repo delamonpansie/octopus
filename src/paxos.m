@@ -548,7 +548,7 @@ start:
 			}
 			break;
 		case DECIDED:
-			abort();
+			panic("decided");
 		default:
 			assert(false);
 		}
@@ -569,7 +569,7 @@ start:
 	say_debug(">>> phase 2");
 	if (p->scn != [r scn]) {
 		p = NULL; // FIXME: nop_proposal();
-		abort();
+		panic("nop proposal");
 	}
 
 	assert(p->ballot == ballot);
