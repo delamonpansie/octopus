@@ -691,7 +691,13 @@ update_crc(struct tnt_object *obj, u32 *crc)
 		return;
 
 	struct box_tuple *tuple = box_tuple(obj);
-	*crc = crc32c(*crc, (void *)tuple, sizeof(*tuple) + tuple->bsize);
+	u32 new_crc= crc32c(*crc, (void *)tuple, sizeof(*tuple) + tuple->bsize);
+#ifdef LOGCRC
+	say_info("SCN: %"PRIi64" crc: 0x%08x -> 0x%08x %s",
+		 [recovery scn], *crc, new_crc,
+		 tbuf_to_hex(&TBUF(tuple, sizeof(*tuple) + tuple->bsize, fiber->pool)));
+#endif
+	*crc = new_crc;
 }
 
 void
