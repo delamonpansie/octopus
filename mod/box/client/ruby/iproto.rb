@@ -124,7 +124,7 @@ class IProto
       reply = send message
       result = pre_process_reply message, reply
     rescue IProtoError => exc
-      if exc.to_s =~ /code: 0x4100, message: '([\d.]+):(\d+)/
+      if exc.to_s =~ /code: 0x4102, message: '([\d.]+):(\d+)/
       then
         @end_point = [$1, $2]
         reconnect
