@@ -226,6 +226,8 @@ salloc_init(size_t size, size_t minimal, double factor)
 		panic_syserror("salloc_init: can't initialize arena");
 
 	slab_caches_init(MAX(sizeof(void *), minimal), factor);
+	say_info("slab allocator configured, fixed_arena:%.1fGB",
+		 size / (1024. * 1024 * 1024));
 }
 
 void
