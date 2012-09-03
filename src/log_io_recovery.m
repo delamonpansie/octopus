@@ -179,7 +179,7 @@ recover_row:(struct row_v12 *)r
 			      lsn, r->lsn);
 
 		if (cfg.sync_scn_with_lsn && r->lsn != r->scn)
-			raise("out ouf sync SCN:%"PRIi64 " != LSN:%"PRIi64,
+			raise("out of sync SCN:%"PRIi64 " != LSN:%"PRIi64,
 			      r->scn, r->lsn);
 
 		lsn = r->lsn;
