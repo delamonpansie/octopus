@@ -1369,7 +1369,8 @@ init_second_stage(va_list ap __attribute__((unused)))
 		} else {
 			if (local_lsn == 0) {
 				if (!cfg.wal_feeder_addr) {
-					say_crit("don't you forget to initialize "
+					say_error("unable to find initial snapshot");
+					say_info("don't you forget to initialize "
 						 "storage with --init-storage switch?");
 					exit(EX_USAGE);
 				}
@@ -1429,7 +1430,7 @@ snapshot_rows(XLog *l)
 
 			if (++rows % 100000 == 0) {
 				float pct = (float)rows / total_rows * 100.;
-				say_crit("%.1fM/%.2f%% rows written", rows / 1000000., pct);
+				say_info("%.1fM/%.2f%% rows written", rows / 1000000., pct);
 				set_proc_title("dumper %.2f%% (%" PRIu32 ")", pct, getppid());
 			}
 			if (rows % 10000 == 0)

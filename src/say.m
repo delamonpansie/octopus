@@ -70,17 +70,15 @@ static char
 level_to_char(int level)
 {
 	switch (level) {
-	case S_FATAL:
+	case FATAL:
 		return 'F';
-	case S_ERROR:
+	case ERROR:
 		return 'E';
-	case S_CRIT:
-		return 'C';
-	case S_WARN:
+	case WARN:
 		return 'W';
-	case S_INFO:
+	case INFO:
 		return 'I';
-	case S_DEBUG:
+	case DEBUG:
 		return 'D';
 	default:
 		return '_';
@@ -192,9 +190,6 @@ vsay(int level, const char *filename, unsigned line,
 	if (!say_filter(level, filename))
 		return;
 
-	if (error == (void *)1)
-		error = strerror(errno);
-
 	if (booting) {
 		fprintf(stderr, "%s: ", binary_filename);
 		vfprintf(stderr, format, ap);
@@ -214,7 +209,7 @@ vsay(int level, const char *filename, unsigned line,
 			if (*f == '/' && *(f + 1) != '\0')
 				filename = f + 1;
 
-	if (level <= S_ERROR && filename != NULL)
+	if (level <= ERROR && filename != NULL)
 		p += snprintf(buf + p, len - p, " %s:%i", filename, line);
 
 	p += snprintf(buf + p, len - p, " %c> ", level_to_char(level));
@@ -228,35 +223,52 @@ vsay(int level, const char *filename, unsigned line,
 	*(buf + p) = '\n';
 
 	int r, one = 1, zero = 0;
-	if (level <= S_CRIT)
+	if (level <= ERROR)
 		ioctl(sayfd, FIONBIO, &zero);
 	r = write(sayfd, buf, p + 1);
 	(void)r;
-	if (nonblocking && level <= S_CRIT)
+	if (nonblocking && level <= ERROR)
 		ioctl(sayfd, FIONBIO, &one);
 
-	if (sayfd != STDERR_FILENO && (dup_to_stderr || level == S_FATAL)) {
+	if (sayfd != STDERR_FILENO && (dup_to_stderr || level == FATAL)) {
 		r = write(stderrfd, buf, p + 1);
 	}
 }
 
 void
-_say(int level, const char *filename, unsigned line, const char *error, const char *format, ...)
+_say(int level, const char *filename, unsigned line, const char *format, ...)
 {
 	va_list ap;
 	va_start(ap, format);
-	vsay(level, filename, line, error, format, ap);
+	vsay(level, filename, line, NULL, format, ap);
 	va_end(ap);
 }
+
+#define say_f(level, suffix, err)		\
+void \
+say_##level##suffix(const char *filename, unsigned line, const char *format, ...) \
+{ \
+	va_list ap; \
+	va_start(ap, format); \
+	vsay(level, filename, line, NULL, format, ap); \
+	va_end(ap); \
+}
+
+say_f(DEBUG, , NULL)
+say_f(WARN, , NULL)
+say_f(INFO, , NULL)
+say_f(ERROR, , NULL)
+say_f(ERROR, no, strerror(errno))
+say_f(FATAL, , NULL)
 
 void __attribute__((format(FORMAT_PRINTF, 6, 0), noreturn))
 vpanic(int status, const char *file, unsigned line,
        const char *error, const char *backtrace, const char *format, va_list ap)
 {
-	vsay(S_FATAL, file, line, error, format, ap);
+	vsay(FATAL, file, line, error, format, ap);
 	va_end(ap);
 	if (backtrace)
-		_say(S_FATAL, NULL, 0, NULL, "backtrace:\n%s", backtrace);
+		_say(FATAL, NULL, 0, "backtrace:\n%s", backtrace);
 
 	_exit(status);
 }

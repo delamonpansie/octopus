@@ -33,12 +33,11 @@
 
 
 enum say_level {
-	S_FATAL,		/* do not this value use directly */
-	S_ERROR,
-	S_CRIT,
-	S_WARN,
-	S_INFO,
-	S_DEBUG
+	FATAL,		/* do not this value use directly */
+	ERROR,
+	WARN,
+	INFO,
+	DEBUG
 };
 
 extern int stderrfd, sayfd, max_level;
@@ -48,9 +47,25 @@ void say_logger_init(int nonblock);
 void vsay(int level, const char *filename, unsigned line, const char *error,
 	  const char *format, va_list ap)
 	__attribute__ ((format(FORMAT_PRINTF, 5, 0)));
-void _say(int level, const char *filename, unsigned line, const char *error,
-	  const char *format, ...)
-    __attribute__ ((format(FORMAT_PRINTF, 5, 6)));
+void _say(int level, const char *filename, unsigned line, const char *format, ...)
+    __attribute__ ((format(FORMAT_PRINTF, 4, 5)));
+void _say_err(int level, const char *filename, unsigned line, const char *format, ...)
+    __attribute__ ((format(FORMAT_PRINTF, 4, 5)));
+
+void say_ERROR(const char *filename, unsigned line, const char *format, ...)
+	__attribute__ ((format(FORMAT_PRINTF, 3, 4)));
+void say_ERRORno(const char *filename, unsigned line, const char *format, ...) /* appends strerror(errno) */
+    __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
+void say_WARN(const char *filename, unsigned line, const char *format, ...)
+    __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
+void say_DEBUG(const char *filename, unsigned line, const char *format, ...)
+    __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
+void say_INFO(const char *filename, unsigned line, const char *format, ...)
+    __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
+void say_CRIT(const char *filename, unsigned line, const char *format, ...)
+    __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
+void say_FATAL(const char *filename, unsigned line, const char *format, ...)
+    __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
 
 
 void say_level_source(const char *file, int diff);
@@ -63,14 +78,14 @@ void say_register_source(const char *file);
 	}
 
 int say_filter(int, const char *);
-#define say(level, ...) ({ if(unlikely(max_level >= level))		\
-				_say(level, __FILE__, __LINE__, __VA_ARGS__); })
-#define say_syserror(...)	say(S_ERROR, (void *)1, __VA_ARGS__)
-#define say_error(...)		say(S_ERROR, NULL, __VA_ARGS__)
-#define say_crit(...)		say(S_CRIT, NULL, __VA_ARGS__)
-#define say_warn(...)		say(S_WARN, NULL, __VA_ARGS__)
-#define say_info(...)		say(S_INFO, NULL, __VA_ARGS__)
-#define say_debug(...)		say(S_DEBUG, NULL, __VA_ARGS__)
+
+#define say(suffix, level, ...) ({ if(unlikely(max_level >= level))	\
+				say_##level##suffix(__FILE__, __LINE__, __VA_ARGS__); })
+#define say_syserror(...)	say(no, ERROR, __VA_ARGS__)
+#define say_error(...)		say(, ERROR, __VA_ARGS__)
+#define say_warn(...)		say(, WARN, __VA_ARGS__)
+#define say_info(...)		say(, INFO, __VA_ARGS__)
+#define say_debug(...)		say(, DEBUG, __VA_ARGS__)
 
 
 

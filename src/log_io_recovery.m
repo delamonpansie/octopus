@@ -159,13 +159,13 @@ recover_row:(struct row_v12 *)r
 
 			if (h->log != log) {
 				run_crc_log_mismatch |= 1;
-				say_crit("run_crc_log mismatch: saved:0x%08x computed:0x%08x",
-					 log, run_crc_log);
+				say_error("run_crc_log mismatch: saved:0x%08x computed:0x%08x",
+					  log, run_crc_log);
 			}
 			if (h->mod != mod) {
 				run_crc_mod_mismatch |= 1;
-				say_crit("run_crc_mod mismatch: saved:0x%08x computed:0x%08x",
-					 mod, run_crc_mod);
+				say_error("run_crc_mod mismatch: saved:0x%08x computed:0x%08x",
+					  mod, run_crc_mod);
 			}
 
 			run_crc_verify_tstamp = ev_now();
@@ -813,7 +813,7 @@ nop_hb_writer(va_list ap)
 
 	if (feeder_addr_ != NULL) {
 		feeder_addr = feeder_addr_;
-		say_crit("configuring remote hot standby, WAL feeder %s", feeder_addr);
+		say_info("configuring remote hot standby, WAL feeder %s", feeder_addr);
 	}
 
 	return self;

@@ -475,7 +475,7 @@ main(int argc, char **argv)
 #endif
 	const char *cfg_paramname = NULL;
 
-	cfg.log_level = S_INFO;
+	cfg.log_level = INFO;
 	master_pid = getpid();
 	srand(master_pid);
 	palloc_init();
@@ -700,7 +700,7 @@ main(int argc, char **argv)
 	signal_init();
 	module(NULL)->init();
 #elif defined(STORAGE)
-	say_crit("octopus version: %s", octopus_version());
+	say_info("octopus version: %s", octopus_version());
 	signal_init();
 	ev_set_syserr_cb(ev_panic);
 	ev_default_loop(ev_recommended_backends() | EVFLAG_SIGNALFD);
@@ -740,7 +740,7 @@ main(int argc, char **argv)
 	}
 	@catch (id e) {
 		if ([e respondsTo:@selector(code)] && [e code] == ERR_CODE_MEMORY_ISSUE) {
-			say(S_FATAL, NULL, "Can't allocate memory. Is slab_arena too small?");
+			say(, FATAL, "Can't allocate memory. Is slab_arena too small?");
 			exit(EX_OSFILE);
 		}
 		@throw e;
@@ -749,13 +749,13 @@ main(int argc, char **argv)
 	luaT_dofile("init.lua"); /* run Lua init _after_ module init */
 
 	prelease(fiber->pool);
-	say_crit("entering event loop");
+	say_debug("entering event loop");
 	if (cfg.io_collect_interval > 0)
 		ev_set_io_collect_interval(cfg.io_collect_interval);
 
 	ev_run(0);
 	ev_loop_destroy();
-	say_crit("exiting loop");
+	say_debug("exiting loop");
 #else
 #error UTILITY or STORAGE must be defined
 #endif

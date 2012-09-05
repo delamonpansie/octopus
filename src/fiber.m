@@ -306,7 +306,7 @@ spawn_child(const char *name, struct fiber *in, struct fiber *out,
 		snprintf(child_name, 64, "%s/child", name);
 		sched.name = child_name;
 		set_proc_title("%s%s", name, custom_proc_title);
-		say_crit("%s initialized", name);
+		say_info("%s initialized", name);
 		_exit(handler(socks[0], state));
 	}
 }
