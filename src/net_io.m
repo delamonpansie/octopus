@@ -678,37 +678,34 @@ server_socket(int type, struct in_addr *src, int port, void (*on_bind)(int fd))
 		memcpy(&sin.sin_addr.s_addr, src, sizeof(*src));
 
 
-	for (;;) {
-		if (bind(fd, (struct sockaddr *)&sin, sizeof(sin)) == -1) {
-			if (on_bind != NULL)
-				on_bind(-1);
+retry_bind:
+	if (bind(fd, (struct sockaddr *)&sin, sizeof(sin)) == -1) {
+		if (on_bind != NULL)
+			on_bind(-1);
 
-			if (errno == EADDRINUSE)
-				goto sleep_and_retry;
-			say_syserror("bind(%s)", sintoa(&sin));
+		if (errno == EADDRINUSE) {
+			if (!warning_said) {
+				say_syserror("bind(%s)", sintoa(&sin));
+				say_info("will retry binding after 0.1 seconds.");
+				warning_said = true;
+			}
+			fiber_sleep(0.1);
+			goto retry_bind;
+		}
+		say_syserror("bind(%s)", sintoa(&sin));
+		return -1;
+	}
+
+	if (on_bind != NULL)
+		on_bind(fd);
+
+	if (type == SOCK_STREAM)
+		if (listen(fd, cfg.backlog) == -1) {
+			say_syserror("listen");
 			return -1;
 		}
 
-		if (on_bind != NULL)
-			on_bind(fd);
-
-		if (type == SOCK_STREAM)
-			if (listen(fd, cfg.backlog) == -1) {
-				say_syserror("listen");
-				return -1;
-			}
-
-		say_info("bound to %s port %i", type == SOCK_STREAM ? "TCP" : "UDP", port);
-		break;
-
-	      sleep_and_retry:
-		if (!warning_said) {
-			say_warn("port %i is already in use, "
-				 "will retry binding after 0.1 seconds.", port);
-			warning_said = true;
-		}
-		fiber_sleep(0.1);
-	}
+	say_info("bound to %s/%s", type == SOCK_STREAM ? "TCP" : "UDP", sintoa(&sin));
 	return fd;
 }
 
