@@ -752,7 +752,7 @@ static void
 nop_hb_writer(va_list ap)
 {
 	Recovery *recovery = va_arg(ap, Recovery *);
-	ev_tstamp submit_tstamp = ev_now(), delay = va_arg(ap, ev_tstamp);
+	ev_tstamp delay = va_arg(ap, ev_tstamp);
 	char body[2] = {0};
 
 	for (;;) {
@@ -760,7 +760,6 @@ nop_hb_writer(va_list ap)
 		if ([recovery is_replica])
 			continue;
 
-		submit_tstamp = ev_now();
 		[recovery submit:body len:nelem(body) scn:0 tag:nop];
 	}
 }
