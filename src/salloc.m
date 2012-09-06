@@ -296,8 +296,8 @@ slab_of(struct slab_cache *cache)
 {
 	struct slab *slab;
 
-	if (!TAILQ_EMPTY(&cache->partial_populated_slabs)) {
-		slab = TAILQ_FIRST(&cache->partial_populated_slabs);
+	slab = TAILQ_LAST(&cache->partial_populated_slabs, slab_tailq_head);
+	if (slab != NULL) {
 		assert(slab->magic == SLAB_MAGIC);
 		return slab;
 	}
