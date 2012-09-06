@@ -277,12 +277,19 @@ recover_feed_slave(int sock)
 	ev_run(0);
 }
 
+void fsleep(ev_tstamp t)
+{
+	struct timeval tv;
+	tv.tv_sec = (long)t;
+	tv.tv_usec = (long)((t - tv.tv_sec) * 1e6);
+	select(0, NULL, NULL, NULL, &tv);
+}
+
 static void
 init(void)
 {
 	int server, client;
 	struct sockaddr_in server_addr;
-	int one = 1;
 
 	if (cfg.wal_feeder_bind_addr == NULL) {
 		say_info("WAL feeder is disabled");
@@ -309,26 +316,14 @@ init(void)
 	set_proc_title("feeder:acceptor%s %s",
 		       custom_proc_title, cfg.wal_feeder_bind_addr);
 
-	server = socket(AF_INET, SOCK_STREAM, 0);
-	if (server < 0) {
-		say_syserror("socket");
-		goto exit;
-	}
-
 	if (atosin(cfg.wal_feeder_bind_addr, &server_addr) == -1)
 		panic("bad wal_feeder_bind_addr: '%s'", cfg.wal_feeder_bind_addr);
 
-	if (setsockopt(server, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one)) < 0) {
-		say_syserror("setsockopt");
+	server = server_socket(SOCK_STREAM, &server_addr, 0, NULL, fsleep);
+	if (server == -1) {
+		say_error("unable to create server socket");
 		goto exit;
 	}
-
-	if (bind(server, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-		say_syserror("bind");
-		goto exit;
-	}
-
-	listen(server, 5);
 
 	struct timeval tm = { .tv_sec = 0, .tv_usec = 100000};
 	setsockopt(server, SOL_SOCKET, SO_RCVTIMEO, &tm,sizeof(tm));

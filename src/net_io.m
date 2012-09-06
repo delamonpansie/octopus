@@ -635,13 +635,24 @@ tcp_connect(struct sockaddr_in *dst, struct sockaddr_in *src, ev_tstamp timeout)
 	return -1;
 }
 
-static int
-server_socket(int type, struct in_addr *src, int port, void (*on_bind)(int fd))
+
+struct sockaddr_in *
+sinany(struct sockaddr_in *sin, int port)
+{
+	memset(sin, 0, sizeof(struct sockaddr_in));
+	sin->sin_family = AF_INET;
+	sin->sin_port = htons(port);
+	sin->sin_addr.s_addr = INADDR_ANY;
+	return sin;
+}
+
+int
+server_socket(int type, struct sockaddr_in *sin, int nonblock,
+	      void (*on_bind)(int fd), void (*sleep)(ev_tstamp tm))
 {
 	int fd;
 	bool warning_said = false;
 	int one = 1;
-	struct sockaddr_in sin;
 	struct linger ling = { 0, 0 };
 
 	if ((fd = socket(AF_INET, type, 0)) == -1) {
@@ -663,36 +674,27 @@ server_socket(int type, struct in_addr *src, int port, void (*on_bind)(int fd))
 			return -1;
 		}
 
-	if (ioctl(fd, FIONBIO, &one) < 0) {
+	if (nonblock && ioctl(fd, FIONBIO, &one) < 0) {
 		say_syserror("ioctl");
 		return -1;
 	}
 
-	memset(&sin, 0, sizeof(struct sockaddr_in));
-	sin.sin_family = AF_INET;
-	sin.sin_port = htons(port);
-
-	if (src == NULL)
-		sin.sin_addr.s_addr = INADDR_ANY;
-	else
-		memcpy(&sin.sin_addr.s_addr, src, sizeof(*src));
-
 
 retry_bind:
-	if (bind(fd, (struct sockaddr *)&sin, sizeof(sin)) == -1) {
+	if (bind(fd, (struct sockaddr *)sin, sizeof(*sin)) == -1) {
 		if (on_bind != NULL)
 			on_bind(-1);
 
-		if (errno == EADDRINUSE) {
+		if (errno == EADDRINUSE && sleep != NULL) {
 			if (!warning_said) {
-				say_syserror("bind(%s)", sintoa(&sin));
+				say_syserror("bind(%s)", sintoa(sin));
 				say_info("will retry binding after 0.1 seconds.");
 				warning_said = true;
 			}
-			fiber_sleep(0.1);
+			sleep(0.1);
 			goto retry_bind;
 		}
-		say_syserror("bind(%s)", sintoa(&sin));
+		say_syserror("bind(%s)", sintoa(sin));
 		return -1;
 	}
 
@@ -705,7 +707,7 @@ retry_bind:
 			return -1;
 		}
 
-	say_info("bound to %s/%s", type == SOCK_STREAM ? "TCP" : "UDP", sintoa(&sin));
+	say_info("bound to %s/%s", type == SOCK_STREAM ? "TCP" : "UDP", sintoa(sin));
 	return fd;
 }
 
@@ -719,8 +721,10 @@ tcp_server(va_list ap)
 	void *data = va_arg(ap, void *);
 
 	int cfd, fd, one = 1;
+	struct sockaddr_in addr;
 
-	if ((fd = server_socket(SOCK_STREAM, NULL, port, on_bind)) < 0)
+	sinany(&addr, port);
+	if ((fd = server_socket(SOCK_STREAM, &addr, 1, on_bind, fiber_sleep)) < 0)
 		exit(EX_OSERR); /* TODO: better error handling */
 
 	ev_io io = { .coro = 1 };
@@ -769,8 +773,10 @@ udp_server(va_list ap)
 	void (*on_bind)(int fd) = va_arg(ap, void (*)(int fd));
 	void *data = va_arg(ap, void *);
 	int fd;
+	struct sockaddr_in addr;
 
-	if ((fd = server_socket(SOCK_DGRAM, NULL, port, on_bind)) < 0)
+	sinany(&addr, port);
+	if ((fd = server_socket(SOCK_DGRAM, &addr, 1, on_bind, NULL)) < 0)
 		exit(EX_OSERR); /* TODO: better error handling */
 
 	const unsigned MAXUDPPACKETLEN = 128;

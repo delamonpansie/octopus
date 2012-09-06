@@ -131,6 +131,8 @@ void service_output_flusher(va_list ap __attribute__((unused)));
 int tcp_connect(struct sockaddr_in *dst, struct sockaddr_in *src, ev_tstamp timeout);
 void tcp_server(va_list ap);
 void udp_server(va_list ap);
+int server_socket(int type, struct sockaddr_in *src, int nonblock,
+		  void (*on_bind)(int fd), void (*sleep)(ev_tstamp tm));
 
 struct service *tcp_service(u16 port, void (*on_bind)(int fd));
 
