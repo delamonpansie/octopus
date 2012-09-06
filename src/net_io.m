@@ -654,6 +654,7 @@ server_socket(int type, struct sockaddr_in *sin, int nonblock,
 	bool warning_said = false;
 	int one = 1;
 	struct linger ling = { 0, 0 };
+	nonblock = !!nonblock;
 
 	if ((fd = socket(AF_INET, type, 0)) == -1) {
 		say_syserror("socket");
@@ -674,7 +675,7 @@ server_socket(int type, struct sockaddr_in *sin, int nonblock,
 			return -1;
 		}
 
-	if (nonblock && ioctl(fd, FIONBIO, &one) < 0) {
+	if (ioctl(fd, FIONBIO, &nonblock) < 0) {
 		say_syserror("ioctl");
 		return -1;
 	}
