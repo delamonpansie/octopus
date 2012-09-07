@@ -773,7 +773,8 @@ loop:
 
 			say_debug("FOLLOW scn:%"PRIi64 " feeder:%s", *scn, sintoa(&leader->feeder_addr));
 
-			while ([puller handshake:&leader->feeder_addr scn:*scn - 1024] <= 0) {
+			i64 initial_scn = *scn <= 1024 ? 1 : *scn - 1024;
+			while ([puller handshake:&leader->feeder_addr scn:initial_scn] <= 0) {
 				fiber_sleep(0.1);
 			}
 
