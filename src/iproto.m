@@ -259,6 +259,35 @@ response_make(const char *name, int quorum, ev_tstamp timeout)
 }
 
 
+static void
+response_collect_reply(struct conn *c, u32 k, struct iproto *msg)
+{
+	size_t msg_len = sizeof(struct iproto) + msg->data_len;
+	struct iproto_response *r = mh_i32_value(response_registry, k);
+	struct iproto_peer *p = (void *)c - offsetof(struct iproto_peer, c);
+
+	if (r->closed) {
+		if (ev_now() - r->closed > r->delay * 1.01)
+			say_warn("stale reply: p:%i/%s op:0x%x sync:%i q:%i/c:%i late_after_close:%.4f",
+				 p->id, p->name, msg->msg_code, msg->sync, r->quorum, r->count,
+				 ev_now() - r->closed);
+		return;
+	}
+	if (r->pool) {
+		r->reply[r->count] = palloc(r->pool, msg_len);
+		memcpy(r->reply[r->count], msg, msg_len);
+	}
+	if (++r->count == r->quorum) {
+		assert(!r->closed);
+		ev_timer_stop(&r->timeout);
+		r->closed = ev_now();
+		response_dump(r, __func__);
+		if (r->waiter)
+			fiber_wake(r->waiter, r);
+	}
+}
+
+
 void
 broadcast(struct iproto_group *group, struct iproto_response *r,
 	  const struct iproto *msg, const void *data, size_t len)
@@ -322,33 +351,6 @@ iproto_pinger(va_list ap)
 	}
 }
 
-static void
-collect_response(struct conn *c, u32 k, struct iproto *msg, size_t msg_len)
-{
-	struct iproto_response *r = mh_i32_value(response_registry, k);
-	struct iproto_peer *p = (void *)c - offsetof(struct iproto_peer, c);
-
-	if (r->closed) {
-		if (ev_now() - r->closed > r->delay * 1.01)
-			say_warn("stale reply: p:%i/%s op:0x%x sync:%i q:%i/c:%i late_after_close:%.4f",
-				 p->id, p->name, msg->msg_code, msg->sync, r->quorum, r->count,
-				 ev_now() - r->closed);
-		return;
-	}
-	if (r->pool) {
-		r->reply[r->count] = palloc(r->pool, msg_len);
-		memcpy(r->reply[r->count], msg, msg_len);
-	}
-	if (++r->count == r->quorum) {
-		assert(!r->closed);
-		ev_timer_stop(&r->timeout);
-		r->closed = ev_now();
-		response_dump(r, __func__);
-		if (r->waiter)
-			fiber_wake(r->waiter, r);
-	}
-}
-
 void
 iproto_reply_reader(va_list ap __attribute__((unused)))
 {
@@ -378,7 +380,7 @@ iproto_reply_reader(va_list ap __attribute__((unused)))
 
 			u32 k = mh_i32_get(response_registry, msg->sync);
 			if (k != mh_end(response_registry)) {
-				collect_response(c, k, msg, msg_len);
+				response_collect_reply(c, k, msg); // FIXME: drop msg_len
 			} else {
 				say_warn("peer:%s op:0x%x sync:%i STALE", p->name, msg->msg_code, msg->sync);
 			}
