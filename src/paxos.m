@@ -720,14 +720,14 @@ reply_msg(struct conn *c, struct tbuf *req, void *arg)
 	case LEADER_PROPOSE: {
 		struct msg_leader *pmsg = (struct msg_leader *)msg;
 		if (ev_now() > leadership_expire || leader_id == pmsg->leader_id) {
-			say_debug("   LEADER_PROPOSE accept, expired:%.2f leader/proposed:%i/%i",
+			say_debug("|   LEADER_PROPOSE accept, expired:%.2f leader/proposed:%i/%i",
 				  leadership_expire - ev_now(), leader_id, pmsg->leader_id);
 			msg->msg_code = LEADER_ACK;
 			leader_id = pmsg->leader_id;
 			leadership_expire = pmsg->expire;
 			notify_leadership_change(pr);
 		} else {
-			say_debug("   LEADER_PROPOSE nack, expired:%.2f leader/propos:%i/%i",
+			say_debug("|   LEADER_PROPOSE nack, expired:%.2f leader/propos:%i/%i",
 				  leadership_expire - ev_now(), leader_id, pmsg->leader_id);
 			msg->msg_code = LEADER_NACK;
 			pmsg->leader_id = leader_id;

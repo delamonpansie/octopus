@@ -198,10 +198,11 @@ make_iproto_peer(int id, const char *name, const char *addr)
 static void
 response_dump(struct iproto_response *r, const char *prefix)
 {
-	say_debug("%s: response:%p/%s %s", prefix, r, r->name,
-		  r->closed ? "closed" : "");
-	for (int i = 0; i < nelem(r->sync) && r->sync[i]; i++)
-		say_debug("   sync:%i", r->sync[i]);
+	say_debug("%s: response:%s q/c:%i/%i %s", prefix, r->name, r->quorum, r->count,
+		  r->closed ? "[CLOSED]" : "");
+	for (int i = 0; i < nelem(r->reply) && r->reply[i]; i++)
+		say_debug("|   reply: sync:%i op:0x%02x len:%i",
+			  r->reply[i]->sync, r->reply[i]->msg_code, r->reply[i]->data_len);
 }
 
 static void
@@ -287,7 +288,7 @@ broadcast(struct iproto_group *group, struct iproto_response *r,
 			clone->data_len += len;
 			net_add_iov_dup(&m, data, len);
 		}
-		say_debug("  peer:%s c:%p op:%x sync:%i len:%i data_len:%i", p->name, &p->c,
+		say_debug("|   peer:%i/%s op:0x%x sync:%i len:%i data_len:%i", p->id, p->name,
 			  clone->msg_code, clone->sync,
 			  (int)sizeof(struct iproto) + clone->data_len, clone->data_len);
 		ev_io_start(&p->c.out);
@@ -313,9 +314,9 @@ iproto_pinger(va_list ap)
 		broadcast(group, response_make("ping", q, 2.0), &ping, NULL, 0);
 		r = yield();
 
-		say_info("ping r:%p q:%i/c:%i %.4f%s", r,
+		say_info("ping r:%p q/c:%i:%i %.4f%s", r,
 			 r->quorum, r->count,
-			 ev_now() - sent, r->count == 0 ? " TIMEOUT" : "");
+			 ev_now() - sent, r->count == 0 ? " [TIMEOUT]" : "");
 
 		response_release(r);
 	}
@@ -326,11 +327,11 @@ collect_response(struct conn *c, u32 k, struct iproto *msg, size_t msg_len)
 {
 	struct iproto_response *r = mh_i32_value(response_registry, k);
 	struct iproto_peer *p = (void *)c - offsetof(struct iproto_peer, c);
-	response_dump(r, __func__);
+
 	if (r->closed) {
 		if (ev_now() - r->closed > r->delay * 1.01)
-			say_warn("stale reply: p:%s op:%x sync:%i q:%i/c:%i delayed:%.4f",
-				 p->name, msg->msg_code, msg->sync, r->quorum, r->count,
+			say_warn("stale reply: p:%i/%s op:0x%x sync:%i q:%i/c:%i late_after_close:%.4f",
+				 p->id, p->name, msg->msg_code, msg->sync, r->quorum, r->count,
 				 ev_now() - r->closed);
 		return;
 	}
@@ -342,6 +343,7 @@ collect_response(struct conn *c, u32 k, struct iproto *msg, size_t msg_len)
 		assert(!r->closed);
 		ev_timer_stop(&r->timeout);
 		r->closed = ev_now();
+		response_dump(r, __func__);
 		if (r->waiter)
 			fiber_wake(r->waiter, r);
 	}
@@ -378,7 +380,7 @@ iproto_reply_reader(va_list ap __attribute__((unused)))
 			if (k != mh_end(response_registry)) {
 				collect_response(c, k, msg, msg_len);
 			} else {
-				say_warn("peer:%s op:%x sync:%i STALE", p->name, msg->msg_code, msg->sync);
+				say_warn("peer:%s op:0x%x sync:%i STALE", p->name, msg->msg_code, msg->sync);
 			}
 		}
 	}
@@ -399,18 +401,17 @@ loop:
 		if (p->c.fd > 0)
 			continue;
 
-		say_debug("%s: p:%p p->c:%p", __func__, p, &p->c);
 		int fd = tcp_connect(&p->addr, self_addr, 5);
 		assert(p->c.fd < 0);
 
 		if (fd > 0) {
 			conn_init(&p->c, pool, fd, in, out, REF_STATIC);
 			ev_io_start(&p->c.in);
-			say_info("connect with %s/%s", p->name, sintoa(&p->addr));
+			say_info("connected to %s/%s", p->name, sintoa(&p->addr));
 			p->connect_err_said = false;
 		} else {
 			if (!p->connect_err_said)
-				say_syserror("connect to %s/%s", p->name, sintoa(&p->addr));
+				say_syserror("connect to %s/%s failed", p->name, sintoa(&p->addr));
 			p->connect_err_said = true;
 		}
 	}
