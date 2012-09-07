@@ -172,7 +172,7 @@ handshake:(i64)scn err:(const char **)err_ptr
 		goto err;
 	}
 
-	say_info("succefully connected to feeder, version:%i", version);
+	say_info("succefully connected to feeder/%s, version:%i", sintoa(&addr), version);
 	say_info("starting remote recovery from scn:%" PRIi64, scn);
 	return scn;
 err:
