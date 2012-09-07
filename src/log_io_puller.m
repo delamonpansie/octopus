@@ -79,6 +79,7 @@ handshake:(i64)scn err:(const char **)err_ptr
 	struct tbuf *rep;
 	int fd;
 
+	assert(scn >= 0);
 	say_debug("%s: connect", __func__);
 	if ((fd = tcp_connect(&addr, NULL, 5)) < 0) {
 		err = "can't connect to feeder";
