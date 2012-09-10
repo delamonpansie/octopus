@@ -103,7 +103,7 @@ void iproto_pinger(va_list ap);
 struct iproto_response {
 	const char *name;
 	struct palloc_pool *pool;
-	uint32_t sync[MAX_IPROTO_PEERS];
+	uint32_t sync;
 	int count, quorum;
 	ev_timer timeout;
 	struct fiber *waiter;

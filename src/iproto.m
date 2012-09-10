@@ -213,11 +213,9 @@ response_delete(ev_timer *w, int events __attribute__((unused)))
 {
 	struct iproto_response *r = (void *)w - offsetof(struct iproto_response, timeout);
 	ev_timer_stop(&r->timeout);
-	for (int i = 0; i < nelem(r->sync) && r->sync[i]; i++) {
-		u32 k = mh_i32_get(response_registry, r->sync[i]);
-		assert(k != mh_end(response_registry));
-		mh_i32_del(response_registry, k);
-	}
+	u32 k = mh_i32_get(response_registry, r->sync);
+	assert(k != mh_end(response_registry));
+	mh_i32_del(response_registry, k);
 	palloc_destroy_pool(r->pool);
 	slab_cache_free(&response_cache, r);
 }
@@ -249,6 +247,8 @@ response_make(const char *name, int quorum, ev_tstamp timeout)
 	memset(r, 0, sizeof(*r));
 	r->name = name;
 	r->sent = ev_now();
+	r->sync = iproto_next_sync();
+	mh_i32_put(response_registry, r->sync, r, NULL);
 	r->quorum = quorum;
 	r->delay = timeout;
 	r->pool = pool;
@@ -260,6 +260,7 @@ response_make(const char *name, int quorum, ev_tstamp timeout)
 	} else {
 		response_release(r);
 	}
+
 	return r;
 }
 
@@ -298,6 +299,7 @@ broadcast(struct iproto_group *group, struct iproto_response *r,
 	  const struct iproto *msg, const void *data, size_t len)
 {
 	assert(msg->msg_code != 0);
+	assert(r != NULL);
 	struct iproto_peer *p;
 	SLIST_FOREACH(p, group, link) {
 		if (p->c.fd < 0)
@@ -306,16 +308,7 @@ broadcast(struct iproto_group *group, struct iproto_response *r,
 		int msg_len = sizeof(*msg) + msg->data_len;
 		struct iproto *clone = palloc(p->c.pool, msg_len);
 		memcpy(clone, msg, msg_len);
-		if (r) {
-			clone->sync = iproto_next_sync();
-			for (int i = 0; i < nelem(r->sync); i++) {
-				if (r->sync[i] == 0) {
-					r->sync[i] = clone->sync;
-					mh_i32_put(response_registry, clone->sync, r, NULL);
-					break;
-				}
-			}
-		}
+		clone->sync = r->sync;
 		struct netmsg *m = netmsg_tail(&p->c.out_messages);
 		net_add_iov(&m, clone, msg_len);
 		if (data) {
