@@ -380,7 +380,7 @@ iproto_reply_reader(va_list ap __attribute__((unused)))
 			if (k != mh_end(response_registry)) {
 				response_collect_reply(c, k, msg); // FIXME: drop msg_len
 			} else {
-				say_warn("peer:%s op:0x%x sync:%i STALE", p->name, msg->msg_code, msg->sync);
+				say_warn("peer:%s op:0x%x sync:%i [STALE]", p->name, msg->msg_code, msg->sync);
 			}
 		}
 	}
