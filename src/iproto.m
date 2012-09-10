@@ -31,6 +31,7 @@
 #import <tbuf.h>
 #import <say.h>
 #import <assoc.h>
+#import <salloc.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -46,6 +47,8 @@ STRS(error_codes, ERROR_CODES);
 DESC_STRS(error_codes, ERROR_CODES);
 
 static struct mhash_t *response_registry;
+
+static struct slab_cache response_cache;
 
 u32
 iproto_next_sync()
@@ -216,6 +219,7 @@ response_delete(ev_timer *w, int events __attribute__((unused)))
 		mh_i32_del(response_registry, k);
 	}
 	palloc_destroy_pool(r->pool);
+	slab_cache_free(&response_cache, r);
 }
 
 void
@@ -241,7 +245,8 @@ struct iproto_response *
 response_make(const char *name, int quorum, ev_tstamp timeout)
 {
 	struct palloc_pool *pool = palloc_create_pool(name);
-	struct iproto_response *r = p0alloc(pool, sizeof(*r));
+	struct iproto_response *r = slab_cache_alloc(&response_cache);
+	memset(r, 0, sizeof(*r));
 	r->name = name;
 	r->sent = ev_now();
 	r->quorum = quorum;
@@ -457,5 +462,11 @@ code
 	return code;
 }
 @end
+
+void __attribute__((constructor))
+iproto_init(void)
+{
+	slab_cache_init(&response_cache, sizeof(struct iproto_response), SLAB_GROW, "iproto/response");
+}
 
 register_source();
