@@ -165,7 +165,7 @@ paxos_broadcast(PaxosRecovery *r, enum paxos_msg_code code, ev_tstamp delay,
 	say_debug("%s: > %s sync:bcast ballot:%"PRIu64" scn:%"PRIi64, __func__,
 		  paxos_msg_code_strs[code], ballot, scn);
 
-	broadcast(&r->remotes, response_make(paxos_msg_code_strs[code], quorum, delay),
+	broadcast(&r->remotes, req_make(paxos_msg_code_strs[code], quorum, delay),
 		  &msg.header, value, value_len);
 }
 
@@ -239,9 +239,9 @@ propose_leadership(va_list ap)
 		say_debug("%s: ELECTIONS expired:%.2f leader:%i", __func__,
 			  leadership_expire - ev_now(), leader_id);
 		leader_propose.expire = ev_now() + leader_lease_interval;
-		broadcast(&pr->remotes, response_make("leader_propose", 1, 1.0),
+		broadcast(&pr->remotes, req_make("leader_propose", 1, 1.0),
 			  &leader_propose.msg, NULL, 0);
-		struct iproto_response *r = yield();
+		struct iproto_req *r = yield();
 
 		int votes = 0;
 		ev_tstamp nack_leadership_expire = 0;
@@ -269,7 +269,7 @@ propose_leadership(va_list ap)
 				say_debug("%s: no quorum", __func__);
 			}
 		}
-		response_release(r);
+		req_release(r);
 
 		notify_leadership_change(pr);
 	}
@@ -365,7 +365,7 @@ accepted(PaxosRecovery *r, struct proposal *p, struct conn *c, struct msg_paxos 
 	paxos_reply(c, req, ACCEPTED, 0, NULL, 0);
 }
 
-static struct iproto_response *
+static struct iproto_req *
 prepare(PaxosRecovery *r, struct proposal *p, u64 ballot)
 {
 	if ([r submit:&ballot len:sizeof(ballot) scn:p->scn tag:paxos_prepare] == 0)
@@ -375,7 +375,7 @@ prepare(PaxosRecovery *r, struct proposal *p, u64 ballot)
 	return yield();
 }
 
-static struct iproto_response *
+static struct iproto_req *
 propose(PaxosRecovery *r, struct proposal *p)
 {
 	assert(p->value_len > 0);
@@ -497,7 +497,7 @@ acceptor(PaxosRecovery *r, struct conn *c, struct iproto *msg)
 static void
 run_protocol(PaxosRecovery *r, struct proposal *p)
 {
-	struct iproto_response *rsp;
+	struct iproto_req *rsp;
 	int i, votes;
 
 	/* phase 1 */
@@ -555,7 +555,7 @@ start:
 	}
 
 	if (votes < quorum) {
-		response_release(rsp);
+		req_release(rsp);
 		goto retry;
 	}
 	assert(recover_i >= 0);
@@ -563,7 +563,7 @@ start:
 	struct msg_paxos *mp = (struct msg_paxos *)rsp->reply[recover_i];
 	if (mp->value_len > 0)
 		update_proposal_value(p, mp->value_len, mp->value);
-	response_release(rsp);
+	req_release(rsp);
 
 	/* phase 2 */
 	say_debug(">>> phase 2");
@@ -591,7 +591,7 @@ start:
 	for (i = 0, votes = 0; i < rsp->count; i++)
 		if (rsp->reply[i]->msg_code == ACCEPTED)
 			votes++;
-	response_release(rsp);
+	req_release(rsp);
 
 	if (votes < quorum)
 		goto retry;

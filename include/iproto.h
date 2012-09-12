@@ -100,7 +100,7 @@ void iproto_reply_reader(va_list ap);
 void iproto_pinger(va_list ap);
 
 #define MAX_IPROTO_PEERS 7
-struct iproto_response {
+struct iproto_req {
 	const char *name;
 	uint32_t sync;
 	int count, quorum;
@@ -110,10 +110,10 @@ struct iproto_response {
 	struct iproto **reply;
 };
 
-void broadcast(struct iproto_group *group, struct iproto_response *r,
+void broadcast(struct iproto_group *group, struct iproto_req *r,
 	       const struct iproto *req, const void *data, size_t len);
-struct iproto_response *response_make(const char *name, int quorum, ev_tstamp timeout);
-void response_release(struct iproto_response *r);
+struct iproto_req *req_make(const char *name, int quorum, ev_tstamp timeout);
+void req_release(struct iproto_req *r);
 
 
 @interface IProtoError : Error {

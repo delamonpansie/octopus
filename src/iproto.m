@@ -199,7 +199,7 @@ make_iproto_peer(int id, const char *name, const char *addr)
 }
 
 static void
-response_dump(struct iproto_response *r, const char *prefix)
+req_dump(struct iproto_req *r, const char *prefix)
 {
 	say_debug("%s: response:%s q/c:%i/%i %s", prefix, r->name, r->quorum, r->count,
 		  r->closed ? "[CLOSED]" : "");
@@ -209,9 +209,9 @@ response_dump(struct iproto_response *r, const char *prefix)
 }
 
 static void
-response_delete(ev_timer *w, int events __attribute__((unused)))
+req_delete(ev_timer *w, int events __attribute__((unused)))
 {
-	struct iproto_response *r = (void *)w - offsetof(struct iproto_response, timeout);
+	struct iproto_req *r = (void *)w - offsetof(struct iproto_req, timeout);
 	ev_timer_stop(&r->timeout);
 	u32 k = mh_i32_get(response_registry, r->sync);
 	assert(k != mh_end(response_registry));
@@ -220,28 +220,28 @@ response_delete(ev_timer *w, int events __attribute__((unused)))
 }
 
 void
-response_release(struct iproto_response *r)
+req_release(struct iproto_req *r)
 {
 	ev_timer_stop(&r->timeout);
-	ev_timer_init(&r->timeout, response_delete, 15., 0.);
+	ev_timer_init(&r->timeout, req_delete, 15., 0.);
 	ev_timer_start(&r->timeout);
 }
 
 static void
-response_timeout(ev_timer *w, int events __attribute__((unused)))
+req_timeout(ev_timer *w, int events __attribute__((unused)))
 {
-	struct iproto_response *r = (void *)w - offsetof(struct iproto_response, timeout);
+	struct iproto_req *r = (void *)w - offsetof(struct iproto_req, timeout);
 	r->closed = ev_now();
 	if (r->waiter) {
-		response_dump(r, __func__);
+		req_dump(r, __func__);
 		fiber_wake(r->waiter, r);
 	}
 }
 
-struct iproto_response *
-response_make(const char *name, int quorum, ev_tstamp timeout)
+struct iproto_req *
+req_make(const char *name, int quorum, ev_tstamp timeout)
 {
-	struct iproto_response *r = slab_cache_alloc(&response_cache);
+	struct iproto_req *r = slab_cache_alloc(&response_cache);
 	memset(r, 0, sizeof(*r));
 	r->name = name;
 	r->sent = ev_now();
@@ -250,11 +250,11 @@ response_make(const char *name, int quorum, ev_tstamp timeout)
 	r->quorum = quorum;
 	r->delay = timeout;
 	if (r->delay > 0) {
-		ev_timer_init(&r->timeout, response_timeout, timeout, 0.);
+		ev_timer_init(&r->timeout, req_timeout, timeout, 0.);
 		ev_timer_start(&r->timeout);
 		r->waiter = fiber;
 	} else {
-		response_release(r);
+		req_release(r);
 	}
 
 	return r;
@@ -265,7 +265,7 @@ static void
 response_collect_reply(struct conn *c, u32 k, struct iproto *msg)
 {
 	size_t msg_len = sizeof(struct iproto) + msg->data_len;
-	struct iproto_response *r = mh_i32_value(response_registry, k);
+	struct iproto_req *r = mh_i32_value(response_registry, k);
 	struct iproto_peer *p = (void *)c - offsetof(struct iproto_peer, c);
 
 	if (r->closed) {
@@ -285,7 +285,7 @@ response_collect_reply(struct conn *c, u32 k, struct iproto *msg)
 		assert(!r->closed);
 		ev_timer_stop(&r->timeout);
 		r->closed = ev_now();
-		response_dump(r, __func__);
+		req_dump(r, __func__);
 		if (r->waiter)
 			fiber_wake(r->waiter, r);
 	}
@@ -293,7 +293,7 @@ response_collect_reply(struct conn *c, u32 k, struct iproto *msg)
 
 
 void
-broadcast(struct iproto_group *group, struct iproto_response *r,
+broadcast(struct iproto_group *group, struct iproto_req *r,
 	  const struct iproto *msg, const void *data, size_t len)
 {
 	assert(msg->msg_code != 0);
@@ -326,7 +326,7 @@ iproto_pinger(va_list ap)
 {
 	struct iproto_group *group = va_arg(ap, struct iproto_group *);
 	struct iproto ping = { .data_len = 0, .msg_code = msg_ping };
-	struct iproto_response *r;
+	struct iproto_req *r;
 
 	for (;;) {
 		fiber_sleep(1);
@@ -336,14 +336,14 @@ iproto_pinger(va_list ap)
 			q++;
 		ev_tstamp sent = ev_now();
 
-		broadcast(group, response_make("ping", q, 2.0), &ping, NULL, 0);
+		broadcast(group, req_make("ping", q, 2.0), &ping, NULL, 0);
 		r = yield();
 
 		say_info("ping r:%p q/c:%i:%i %.4f%s", r,
 			 r->quorum, r->count,
 			 ev_now() - sent, r->count == 0 ? " [TIMEOUT]" : "");
 
-		response_release(r);
+		req_release(r);
 	}
 }
 
@@ -457,7 +457,7 @@ code
 void __attribute__((constructor))
 iproto_init(void)
 {
-	slab_cache_init(&response_cache, sizeof(struct iproto_response), SLAB_GROW, "iproto/response");
+	slab_cache_init(&response_cache, sizeof(struct iproto_req), SLAB_GROW, "iproto/req");
 }
 
 register_source();
