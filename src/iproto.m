@@ -268,7 +268,7 @@ req_make(const char *name, int quorum, ev_tstamp timeout,
 
 
 static void
-response_collect_reply(struct conn *c, u32 k, struct iproto *msg)
+req_collect_reply(struct conn *c, u32 k, struct iproto *msg)
 {
 	size_t msg_len = sizeof(struct iproto) + msg->data_len;
 	struct iproto_req *r = mh_i32_value(req_registry, k);
@@ -378,7 +378,7 @@ iproto_reply_reader(va_list ap __attribute__((unused)))
 
 			u32 k = mh_i32_get(req_registry, msg->sync);
 			if (k != mh_end(req_registry)) {
-				response_collect_reply(c, k, msg);
+				req_collect_reply(c, k, msg);
 			} else {
 				say_warn("peer:%s op:0x%x sync:%i [STALE]", p->name, msg->msg_code, msg->sync);
 			}
