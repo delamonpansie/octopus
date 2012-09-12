@@ -102,13 +102,12 @@ void iproto_pinger(va_list ap);
 #define MAX_IPROTO_PEERS 7
 struct iproto_response {
 	const char *name;
-	struct palloc_pool *pool;
 	uint32_t sync;
 	int count, quorum;
 	ev_timer timeout;
 	struct fiber *waiter;
 	ev_tstamp sent, delay, closed;
-	struct iproto *reply[MAX_IPROTO_PEERS];
+	struct iproto **reply;
 };
 
 void broadcast(struct iproto_group *group, struct iproto_response *r,

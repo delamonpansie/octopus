@@ -216,7 +216,6 @@ response_delete(ev_timer *w, int events __attribute__((unused)))
 	u32 k = mh_i32_get(response_registry, r->sync);
 	assert(k != mh_end(response_registry));
 	mh_i32_del(response_registry, k);
-	palloc_destroy_pool(r->pool);
 	slab_cache_free(&response_cache, r);
 }
 
@@ -242,7 +241,6 @@ response_timeout(ev_timer *w, int events __attribute__((unused)))
 struct iproto_response *
 response_make(const char *name, int quorum, ev_tstamp timeout)
 {
-	struct palloc_pool *pool = palloc_create_pool(name);
 	struct iproto_response *r = slab_cache_alloc(&response_cache);
 	memset(r, 0, sizeof(*r));
 	r->name = name;
@@ -251,12 +249,10 @@ response_make(const char *name, int quorum, ev_tstamp timeout)
 	mh_i32_put(response_registry, r->sync, r, NULL);
 	r->quorum = quorum;
 	r->delay = timeout;
-	r->pool = pool;
 	if (r->delay > 0) {
 		ev_timer_init(&r->timeout, response_timeout, timeout, 0.);
 		ev_timer_start(&r->timeout);
-		if (quorum > 0)
-			r->waiter = fiber;
+		r->waiter = fiber;
 	} else {
 		response_release(r);
 	}
@@ -279,8 +275,10 @@ response_collect_reply(struct conn *c, u32 k, struct iproto *msg)
 				 ev_now() - r->closed);
 		return;
 	}
-	if (r->pool) {
-		r->reply[r->count] = palloc(r->pool, msg_len);
+	if (r->waiter) {
+		if (!r->reply)
+			r->reply = palloc(r->waiter->pool, sizeof(struct iproto *) * MAX_IPROTO_PEERS);
+		r->reply[r->count] = palloc(r->waiter->pool, msg_len);
 		memcpy(r->reply[r->count], msg, msg_len);
 	}
 	if (++r->count == r->quorum) {
