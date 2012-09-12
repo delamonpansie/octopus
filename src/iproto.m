@@ -363,9 +363,8 @@ iproto_reply_reader(va_list ap __attribute__((unused)))
 		if (r == 0 || (r < 0 && errno != EAGAIN && errno != EWOULDBLOCK)) {
 			if (r < 0)
 				say_info("closing conn r:%i errno:%i", (int)r, errno);
-			else {
+			else
 				say_info("peer %s disconnected, fd:%i", p->name, c->fd);
-			}
 			conn_close(c);
 			continue;
 		}
