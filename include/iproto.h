@@ -104,7 +104,7 @@ struct iproto_req {
 	const char *name;
 	uint32_t sync;
 	int count, quorum;
-	ev_timer timeout;
+	ev_timer timer;
 	struct fiber *waiter;
 	ev_tstamp sent, delay, closed;
 	struct iproto **reply;

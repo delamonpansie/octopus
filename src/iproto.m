@@ -211,8 +211,8 @@ req_dump(struct iproto_req *r, const char *prefix)
 static void
 req_delete(ev_timer *w, int events __attribute__((unused)))
 {
-	struct iproto_req *r = (void *)w - offsetof(struct iproto_req, timeout);
-	ev_timer_stop(&r->timeout);
+	struct iproto_req *r = (void *)w - offsetof(struct iproto_req, timer);
+	ev_timer_stop(&r->timer);
 	u32 k = mh_i32_get(response_registry, r->sync);
 	assert(k != mh_end(response_registry));
 	mh_i32_del(response_registry, k);
@@ -222,15 +222,15 @@ req_delete(ev_timer *w, int events __attribute__((unused)))
 void
 req_release(struct iproto_req *r)
 {
-	ev_timer_stop(&r->timeout);
-	ev_timer_init(&r->timeout, req_delete, 15., 0.);
-	ev_timer_start(&r->timeout);
+	ev_timer_stop(&r->timer);
+	ev_timer_init(&r->timer, req_delete, 15., 0.);
+	ev_timer_start(&r->timer);
 }
 
 static void
 req_timeout(ev_timer *w, int events __attribute__((unused)))
 {
-	struct iproto_req *r = (void *)w - offsetof(struct iproto_req, timeout);
+	struct iproto_req *r = (void *)w - offsetof(struct iproto_req, timer);
 	r->closed = ev_now();
 	if (r->waiter) {
 		req_dump(r, __func__);
@@ -250,8 +250,8 @@ req_make(const char *name, int quorum, ev_tstamp timeout)
 	r->quorum = quorum;
 	r->delay = timeout;
 	if (r->delay > 0) {
-		ev_timer_init(&r->timeout, req_timeout, timeout, 0.);
-		ev_timer_start(&r->timeout);
+		ev_timer_init(&r->timer, req_timeout, timeout, 0.);
+		ev_timer_start(&r->timer);
 		r->waiter = fiber;
 	} else {
 		req_release(r);
@@ -283,7 +283,7 @@ response_collect_reply(struct conn *c, u32 k, struct iproto *msg)
 	}
 	if (++r->count == r->quorum) {
 		assert(!r->closed);
-		ev_timer_stop(&r->timeout);
+		ev_timer_stop(&r->timer);
 		r->closed = ev_now();
 		req_dump(r, __func__);
 		if (r->waiter)
