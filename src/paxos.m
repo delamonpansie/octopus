@@ -165,8 +165,8 @@ paxos_broadcast(PaxosRecovery *r, enum paxos_msg_code code, ev_tstamp delay,
 	say_debug("%s: > %s sync:bcast ballot:%"PRIu64" scn:%"PRIi64, __func__,
 		  paxos_msg_code_strs[code], ballot, scn);
 
-	broadcast(&r->remotes, req_make(paxos_msg_code_strs[code], quorum, delay),
-		  &msg.header, value, value_len);
+	broadcast(&r->remotes, req_make(paxos_msg_code_strs[code], quorum, delay,
+					&msg.header, value, value_len));
 }
 
 static void
@@ -239,8 +239,8 @@ propose_leadership(va_list ap)
 		say_debug("%s: ELECTIONS expired:%.2f leader:%i", __func__,
 			  leadership_expire - ev_now(), leader_id);
 		leader_propose.expire = ev_now() + leader_lease_interval;
-		broadcast(&pr->remotes, req_make("leader_propose", 1, 1.0),
-			  &leader_propose.msg, NULL, 0);
+		broadcast(&pr->remotes, req_make("leader_propose", 1, 1.0,
+						 &leader_propose.msg, NULL, 0));
 		struct iproto_req *r = yield();
 
 		int votes = 0;
