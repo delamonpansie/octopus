@@ -248,9 +248,9 @@ req_make(const char *name, int quorum, ev_tstamp timeout)
 	r->sync = iproto_next_sync();
 	mh_i32_put(response_registry, r->sync, r, NULL);
 	r->quorum = quorum;
-	r->delay = timeout;
-	if (r->delay > 0) {
-		ev_timer_init(&r->timer, req_timeout, timeout, 0.);
+	r->timeout = timeout;
+	if (r->timeout > 0) {
+		ev_timer_init(&r->timer, req_timeout, r->timeout, 0.);
 		ev_timer_start(&r->timer);
 		r->waiter = fiber;
 	} else {
@@ -269,7 +269,7 @@ response_collect_reply(struct conn *c, u32 k, struct iproto *msg)
 	struct iproto_peer *p = (void *)c - offsetof(struct iproto_peer, c);
 
 	if (r->closed) {
-		if (ev_now() - r->closed > r->delay * 1.01)
+		if (ev_now() - r->closed > r->timeout * 1.01)
 			say_warn("stale reply: p:%i/%s op:0x%x sync:%i q:%i/c:%i late_after_close:%.4f",
 				 p->id, p->name, msg->msg_code, msg->sync, r->quorum, r->count,
 				 ev_now() - r->closed);

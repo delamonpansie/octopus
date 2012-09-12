@@ -106,7 +106,7 @@ struct iproto_req {
 	int count, quorum;
 	ev_timer timer;
 	struct fiber *waiter;
-	ev_tstamp sent, delay, closed;
+	ev_tstamp sent, timeout, closed;
 	struct iproto **reply;
 };
 
