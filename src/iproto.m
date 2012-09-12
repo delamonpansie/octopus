@@ -46,7 +46,7 @@ const uint32_t msg_replica = 0xff01;
 STRS(error_codes, ERROR_CODES);
 DESC_STRS(error_codes, ERROR_CODES);
 
-static struct mhash_t *response_registry;
+static struct mhash_t *req_registry;
 
 static struct slab_cache response_cache;
 
@@ -182,8 +182,8 @@ make_iproto_peer(int id, const char *name, const char *addr)
 {
 	struct iproto_peer *p;
 
-	if (response_registry == NULL)
-		response_registry = mh_i32_init();
+	if (req_registry == NULL)
+		req_registry = mh_i32_init();
 
 	p = calloc(1, sizeof(*p));
 	if (atosin(addr, &p->addr) == -1) {
@@ -213,9 +213,9 @@ req_delete(ev_timer *w, int events __attribute__((unused)))
 {
 	struct iproto_req *r = (void *)w - offsetof(struct iproto_req, timer);
 	ev_timer_stop(&r->timer);
-	u32 k = mh_i32_get(response_registry, r->header->sync);
-	assert(k != mh_end(response_registry));
-	mh_i32_del(response_registry, k);
+	u32 k = mh_i32_get(req_registry, r->header->sync);
+	assert(k != mh_end(req_registry));
+	mh_i32_del(req_registry, k);
 	slab_cache_free(&response_cache, r);
 }
 
@@ -253,7 +253,7 @@ req_make(const char *name, int quorum, ev_tstamp timeout,
 				   .data_len = data_len };
 	memset(&r->timer, 0, sizeof(r->timer));
 	r->header->sync = iproto_next_sync();
-	mh_i32_put(response_registry, r->header->sync, r, NULL);
+	mh_i32_put(req_registry, r->header->sync, r, NULL);
 
 	if (r->timeout > 0) {
 		ev_timer_init(&r->timer, req_timeout, r->timeout, 0.);
@@ -271,7 +271,7 @@ static void
 response_collect_reply(struct conn *c, u32 k, struct iproto *msg)
 {
 	size_t msg_len = sizeof(struct iproto) + msg->data_len;
-	struct iproto_req *r = mh_i32_value(response_registry, k);
+	struct iproto_req *r = mh_i32_value(req_registry, k);
 	struct iproto_peer *p = (void *)c - offsetof(struct iproto_peer, c);
 
 	if (r->closed) {
@@ -377,8 +377,8 @@ iproto_reply_reader(va_list ap __attribute__((unused)))
 			size_t msg_len = sizeof(struct iproto) + msg->data_len;
 			tbuf_ltrim(c->rbuf, msg_len);
 
-			u32 k = mh_i32_get(response_registry, msg->sync);
-			if (k != mh_end(response_registry)) {
+			u32 k = mh_i32_get(req_registry, msg->sync);
+			if (k != mh_end(req_registry)) {
 				response_collect_reply(c, k, msg); // FIXME: drop msg_len
 			} else {
 				say_warn("peer:%s op:0x%x sync:%i [STALE]", p->name, msg->msg_code, msg->sync);
