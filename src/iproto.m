@@ -374,12 +374,11 @@ iproto_reply_reader(va_list ap __attribute__((unused)))
 		       tbuf_len(c->rbuf) >= sizeof(struct iproto) + iproto(c->rbuf)->data_len)
 		{
 			struct iproto *msg = c->rbuf->ptr;
-			size_t msg_len = sizeof(struct iproto) + msg->data_len;
-			tbuf_ltrim(c->rbuf, msg_len);
+			tbuf_ltrim(c->rbuf, sizeof(struct iproto) + msg->data_len);
 
 			u32 k = mh_i32_get(req_registry, msg->sync);
 			if (k != mh_end(req_registry)) {
-				response_collect_reply(c, k, msg); // FIXME: drop msg_len
+				response_collect_reply(c, k, msg);
 			} else {
 				say_warn("peer:%s op:0x%x sync:%i [STALE]", p->name, msg->msg_code, msg->sync);
 			}
