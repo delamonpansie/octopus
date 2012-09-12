@@ -268,11 +268,16 @@ req_make(const char *name, int quorum, ev_tstamp timeout,
 
 
 static void
-req_collect_reply(struct conn *c, u32 k, struct iproto *msg)
+req_collect_reply(struct conn *c, struct iproto *msg)
 {
-	size_t msg_len = sizeof(struct iproto) + msg->data_len;
-	struct iproto_req *r = mh_i32_value(req_registry, k);
 	struct iproto_peer *p = (void *)c - offsetof(struct iproto_peer, c);
+	u32 k = mh_i32_get(req_registry, msg->sync);
+	if (k == mh_end(req_registry)) {
+		say_warn("peer:%s op:0x%x sync:%i [STALE]", p->name, msg->msg_code, msg->sync);
+		return;
+	}
+
+	struct iproto_req *r = mh_i32_value(req_registry, k);
 
 	if (r->closed) {
 		if (ev_now() - r->closed > r->timeout * 1.01)
@@ -282,6 +287,7 @@ req_collect_reply(struct conn *c, u32 k, struct iproto *msg)
 		return;
 	}
 	if (r->waiter) {
+		size_t msg_len = sizeof(struct iproto) + msg->data_len;
 		r->reply[r->count] = palloc(r->waiter->pool, msg_len);
 		memcpy(r->reply[r->count], msg, msg_len);
 	}
@@ -375,12 +381,7 @@ iproto_reply_reader(va_list ap __attribute__((unused)))
 			struct iproto *msg = c->rbuf->ptr;
 			tbuf_ltrim(c->rbuf, sizeof(struct iproto) + msg->data_len);
 
-			u32 k = mh_i32_get(req_registry, msg->sync);
-			if (k != mh_end(req_registry)) {
-				req_collect_reply(c, k, msg);
-			} else {
-				say_warn("peer:%s op:0x%x sync:%i [STALE]", p->name, msg->msg_code, msg->sync);
-			}
+			req_collect_reply(c, msg);
 		}
 	}
 }
