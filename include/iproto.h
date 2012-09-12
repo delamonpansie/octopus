@@ -115,7 +115,8 @@ void broadcast(struct iproto_group *group, struct iproto_req *req);
 struct iproto_req *req_make(const char *name, int quorum, ev_tstamp timeout,
 			    struct iproto *header, const void *date, size_t data_len);
 void req_release(struct iproto_req *r);
-
+#define FOREACH_REPLY(req, var) for (struct iproto **var##p = (req)->reply, *var = *var##p; \
+				     var; var  = *++var##p)
 
 @interface IProtoError : Error {
 @public

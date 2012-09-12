@@ -310,7 +310,7 @@ broadcast(struct iproto_group *group, struct iproto_req *r)
 	struct iproto_peer *p;
 
 	if (r->waiter)
-		r->reply = palloc(r->waiter->pool, sizeof(struct iproto *) * MAX_IPROTO_PEERS);
+		r->reply = p0alloc(r->waiter->pool, sizeof(struct iproto *) * MAX_IPROTO_PEERS);
 	SLIST_FOREACH(p, group, link) {
 		if (p->c.fd < 0)
 			continue;

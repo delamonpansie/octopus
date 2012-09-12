@@ -246,12 +246,12 @@ propose_leadership(va_list ap)
 		int votes = 0;
 		ev_tstamp nack_leadership_expire = 0;
 		int nack_leader_id = -1;
-		for (int i = 0; i < r->count; i++) {
-			if (r->reply[i]->msg_code == LEADER_ACK) {
+		FOREACH_REPLY(r, reply) {
+			if (reply->msg_code == LEADER_ACK) {
 				votes++;
 			} else {
-				assert(r->reply[i]->msg_code == LEADER_NACK);
-				struct msg_leader *msg = (struct msg_leader *)r->reply[i];
+				assert(reply->msg_code == LEADER_NACK);
+				struct msg_leader *msg = (struct msg_leader *)reply;
 				nack_leadership_expire = msg->expire;
 				nack_leader_id = msg->leader_id;
 			}
@@ -498,12 +498,11 @@ static void
 run_protocol(PaxosRecovery *r, struct proposal *p)
 {
 	struct iproto_req *rsp;
-	int i, votes;
+	int votes;
 
 	/* phase 1 */
 	const int quorum = 1; /* not counting myself */
-	u64 ballot = 0, min_ballot = p->ballot, recover_ballot = 0;
-	int recover_i = -1;
+	u64 ballot = 0, min_ballot = p->ballot;
 
 	goto start;
 retry:
@@ -533,19 +532,19 @@ start:
 	if (rsp == NULL)
 		goto retry;
 
-	for (i = 0, votes = 0; i < rsp->count; i++) {
-		struct msg_paxos *mp = (struct msg_paxos *)rsp->reply[i];
-		switch(rsp->reply[i]->msg_code) {
+	struct msg_paxos *max = NULL;
+	votes = 0;
+	FOREACH_REPLY(rsp, reply) {
+		struct msg_paxos *mp = (struct msg_paxos *)reply;
+		switch(reply->msg_code) {
 		case NACK:
 			assert(mp->ballot > ballot);
 			min_ballot = mp->ballot;
 			break;
 		case PROMISE:
 			votes++;
-			if (mp->ballot > recover_ballot) {
-				recover_ballot = mp->ballot;
-				recover_i = i;
-			}
+			if (max == NULL || mp->ballot > max->ballot)
+				max = mp;
 			break;
 		case DECIDED:
 			panic("decided");
@@ -560,9 +559,8 @@ start:
 	}
 	assert(recover_i >= 0);
 
-	struct msg_paxos *mp = (struct msg_paxos *)rsp->reply[recover_i];
-	if (mp->value_len > 0)
-		update_proposal_value(p, mp->value_len, mp->value);
+	if (max->value_len > 0)
+		update_proposal_value(p, max->value_len, max->value);
 	req_release(rsp);
 
 	/* phase 2 */
@@ -588,8 +586,8 @@ start:
 	if (rsp == NULL)
 		goto retry;
 
-	for (i = 0, votes = 0; i < rsp->count; i++)
-		if (rsp->reply[i]->msg_code == ACCEPTED)
+	FOREACH_REPLY(rsp, reply)
+		if (reply->msg_code == ACCEPTED)
 			votes++;
 	req_release(rsp);
 
