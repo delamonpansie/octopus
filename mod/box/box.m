@@ -847,7 +847,7 @@ box_process(struct conn *c, struct tbuf *request, void *arg __attribute__((unuse
 	struct box_txn txn = { .op = 0 };
 	u32 msg_code = iproto(request)->msg_code;
 	struct tbuf request_data = TBUF(iproto(request)->data, iproto(request)->data_len, fiber->pool);
-	say_debug("%s: c:%p", __func__, c);
+	say_debug("%s: c:%p op:0x%02x sync:%u", __func__, c, msg_code, iproto(request)->sync);
 	@try {
 		if (op_is_select(msg_code)) {
 			txn_init(iproto(request), &txn, netmsg_tail(&c->out_messages));
