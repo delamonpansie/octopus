@@ -195,9 +195,6 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (int) wal_pack_submit;
 - (int) wal_pack_submit_x; // FIXME: hack
 - (int) wal_row_submit:(const void *)data len:(u32)len scn:(i64)scn tag:(u16)tag;
-- (int) submit:(const void *)data len:(u32)len;
-- (int) submit:(const void *)data len:(u32)len tag:(u16)tag;
-- (int) submit_run_crc;
 
 - (void) snapshot_save:(u32 (*)(XLog *))callback;
 @end
@@ -251,6 +248,10 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (struct fiber *) recover_follow_remote_async:(struct sockaddr_in *)addr;
 - (void) enable_local_writes;
 - (bool) is_replica;
+
+- (int) submit:(const void *)data len:(u32)len;
+- (int) submit:(const void *)data len:(u32)len tag:(u16)tag;
+- (int) submit_run_crc;
 
 - (const struct row_v12 *)dummy_row_lsn:(i64)lsn_ scn:(i64)scn_ tag:(u16)tag;
 

@@ -156,29 +156,6 @@ wal_row_submit:(const void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag
 	return [self wal_pack_submit];
 }
 
-- (int)
-submit:(const void *)data len:(u32)len tag:(u16)tag
-{
-	return [self wal_row_submit:data len:len scn:0 tag:tag];
-}
-
-- (int)
-submit:(const void *)data len:(u32)len
-{
-	return [self submit:data len:len tag:wal_tag];
-}
-
-- (int)
-submit_run_crc
-{
-	struct tbuf *b = tbuf_alloc(fiber->pool);
-	tbuf_append(b, &scn, sizeof(scn));
-	tbuf_append(b, &run_crc_log, sizeof(run_crc_log));
-	tbuf_append(b, &run_crc_mod, sizeof(run_crc_mod));
-
-	return [self submit:b->ptr len:tbuf_len(b) tag:run_crc];
-}
-
 - (struct wal_pack *)
 wal_pack_prepare
 {
