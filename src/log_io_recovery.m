@@ -691,7 +691,7 @@ submit:(void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag
 	if ([self is_replica])
 		raise("replica is readonly");
 
-	return [super submit:data len:data_len scn:scn_ tag:tag];
+	return [super wal_row_submit:data len:data_len scn:scn_ tag:tag];
 }
 
 - (id) init_snap_dir:(const char *)snap_dirname
@@ -761,7 +761,7 @@ nop_hb_writer(va_list ap)
 		if ([recovery is_replica])
 			continue;
 
-		[recovery submit:body len:nelem(body) scn:0 tag:nop];
+		[recovery submit:body len:nelem(body) tag:nop];
 	}
 }
 

@@ -339,7 +339,7 @@ delete_proposal(PaxosRecovery *r, struct proposal *p)
 static void
 promise(PaxosRecovery *r, struct proposal *p, struct conn *c, struct msg_paxos *req)
 {
-	if ([r submit:&req->ballot len:sizeof(req->ballot) scn:req->scn tag:paxos_promise] == 0)
+	if ([r wal_row_submit:&req->ballot len:sizeof(req->ballot) scn:req->scn tag:paxos_promise] == 0)
 		return;
 
 	u64 old_ballot = p->ballot;
@@ -359,7 +359,7 @@ accepted(PaxosRecovery *r, struct proposal *p, struct conn *c, struct msg_paxos 
 	tbuf_append(x, &req->value_len, sizeof(req->value_len));
 	tbuf_append(x, req->value, req->value_len);
 
-	if ([r submit:x->ptr len:tbuf_len(x) scn:req->scn tag:paxos_accept] == 0)
+	if ([r wal_row_submit:x->ptr len:tbuf_len(x) scn:req->scn tag:paxos_accept] == 0)
 		return;
 	update_proposal_value(p, req->value_len, req->value);
 	paxos_reply(c, req, ACCEPTED, 0, NULL, 0);
@@ -368,7 +368,7 @@ accepted(PaxosRecovery *r, struct proposal *p, struct conn *c, struct msg_paxos 
 static struct iproto_req *
 prepare(PaxosRecovery *r, struct proposal *p, u64 ballot)
 {
-	if ([r submit:&ballot len:sizeof(ballot) scn:p->scn tag:paxos_prepare] == 0)
+	if ([r wal_row_submit:&ballot len:sizeof(ballot) scn:p->scn tag:paxos_prepare] == 0)
 		return NULL;
 	update_proposal_ballot(p, ballot);
 	paxos_broadcast(r, PREPARE, p->delay, p->scn, p->ballot, NULL, 0);
@@ -383,7 +383,7 @@ propose(PaxosRecovery *r, struct proposal *p)
 	tbuf_append(m, &p->ballot, sizeof(p->ballot));
 	tbuf_append(m, &p->value_len, sizeof(p->value_len));
 	tbuf_append(m, p->value, p->value_len);
-	if ([r submit:m->ptr len:tbuf_len(m) scn:p->scn tag:paxos_propose] == 0)
+	if ([r wal_row_submit:m->ptr len:tbuf_len(m) scn:p->scn tag:paxos_propose] == 0)
 		return NULL;
 
 	paxos_broadcast(r, ACCEPT, p->delay, p->scn, p->ballot, p->value, p->value_len);
@@ -395,7 +395,7 @@ decide(PaxosRecovery *r, struct proposal *p)
 {
 	paxos_broadcast(r, DECIDE, -1, p->scn, p->ballot, p->value, p->value_len);
 
-	if ([r submit:p->value len:p->value_len scn:p->scn tag:wal_tag] == 0) {
+	if ([r wal_row_submit:p->value len:p->value_len scn:p->scn tag:wal_tag] == 0) {
 		/* FIXME: trigger some flag to retry later */
 		return -1;
 	}
@@ -431,7 +431,7 @@ learn(PaxosRecovery *r, i64 scn)
 	if (!p)
 		return;
 
-	if ([r submit:p->value len:p->value_len scn:p->scn tag:wal_tag] == 0) {
+	if ([r wal_row_submit:p->value len:p->value_len scn:p->scn tag:wal_tag] == 0) {
 		/* trigger some flag to retry later */
 		return;
 	}
@@ -598,7 +598,7 @@ start:
 	tbuf_append(x, &ballot, sizeof(ballot));
 	tbuf_append(x, &p->value_len, sizeof(p->value_len));
 	tbuf_append(x, p->value, p->value_len);
-	if ([r submit:x->ptr len:tbuf_len(x) scn:p->scn tag:paxos_accept] == 0) {
+	if ([r wal_row_submit:x->ptr len:tbuf_len(x) scn:p->scn tag:paxos_accept] == 0) {
 		/* we'r unable to write into WAL, give up leadership */
 		panic("giving up");
 	}
@@ -954,7 +954,7 @@ leader_redirect_raise
 }
 
 - (int)
-submit:(void *)data len:(u32)len
+submit:(void *)data len:(u32)len tag:(u16)tag
 {
 	if (!paxos_leader())
 		[self leader_redirect_raise];

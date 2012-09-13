@@ -129,7 +129,7 @@ configure_wal_writer
 }
 
 - (int)
-submit:(const void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag
+wal_row_submit:(const void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag
 {
 	say_debug("%s: len:%i scn:%"PRIi64" tag:%s", __func__, data_len, scn_, xlog_tag_to_a(tag));
 
@@ -157,9 +157,15 @@ submit:(const void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag
 }
 
 - (int)
+submit:(const void *)data len:(u32)len tag:(u16)tag
+{
+	return [self wal_row_submit:data len:len scn:0 tag:tag];
+}
+
+- (int)
 submit:(const void *)data len:(u32)len
 {
-	return [self submit:data len:len scn:0 tag:wal_tag];
+	return [self submit:data len:len tag:wal_tag];
 }
 
 - (int)
@@ -170,7 +176,7 @@ submit_run_crc
 	tbuf_append(b, &run_crc_log, sizeof(run_crc_log));
 	tbuf_append(b, &run_crc_mod, sizeof(run_crc_mod));
 
-	return [self submit:b->ptr len:tbuf_len(b) scn:0 tag:run_crc];
+	return [self submit:b->ptr len:tbuf_len(b) tag:run_crc];
 }
 
 - (struct wal_pack *)
