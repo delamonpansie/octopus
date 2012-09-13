@@ -372,4 +372,36 @@ out:
 
 #endif
 
+void *__real_calloc(size_t nmemb, size_t size);
+void *__real_malloc(size_t size);
+void *__real_realloc(void *ptr, size_t size);
+
+void *
+__wrap_malloc(size_t size)
+{
+	void *ptr = __real_malloc(size);
+	if (ptr == NULL)
+		panic("Out of memory");
+	return ptr;
+}
+
+void *
+__wrap_calloc(size_t nmemb, size_t size)
+{
+	void *ptr = __real_calloc(nmemb, size);
+	if (ptr == NULL)
+		panic("Out of memory");
+	return ptr;
+}
+
+void *
+__wrap_realloc(void *ptr, size_t size)
+{
+	ptr = __real_realloc(ptr, size);
+	if (size > 0 && ptr == NULL)
+		panic("Out of memory");
+	return ptr;
+}
+
+
 register_source();
