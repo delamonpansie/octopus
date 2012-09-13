@@ -712,7 +712,7 @@ query(struct PaxosRecovery *r, struct iproto_peer *p, struct iproto_msg *msg)
 #endif
 
 static void
-reply_msg(struct conn *c, struct tbuf *req, void *arg)
+recv_msg(struct conn *c, struct tbuf *req, void *arg)
 {
 	struct iproto *msg = iproto(req);
 	PaxosRecovery *pr = arg;
@@ -906,7 +906,7 @@ snap_io_rate_limit:(int)snap_io_rate_limit_
 	short accept_port;
 	accept_port = ntohs(paxos_peer(self, self_id)->iproto->addr.sin_port);
 	input_service = tcp_service(accept_port, NULL);
-	fiber_create("paxos/worker", iproto_interact, input_service, reply_msg, self);
+	fiber_create("paxos/worker", iproto_interact, input_service, recv_msg, self);
 	fiber_create("paxos/rendevouz", iproto_rendevouz, NULL, &remotes, pool, reply_reader, output_flusher);
 	// fiber_create("mesh/ping", iproto_pinger, mesh_peers);
 	proposer_fiber = fiber_create("paxos/propose", proposer, self);
