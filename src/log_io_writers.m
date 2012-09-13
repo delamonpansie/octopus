@@ -398,6 +398,9 @@ wal_disk_writer(int fd, void *state)
 				if (h->tag == wal_tag)
 					crc = crc32c(crc, data, h->data_len);
 
+				/* next_scn is used for writing XLog header, which is turn used to
+				   find correct file for replication reply.
+				   so, next_scn should be updated only when data modification occurs */
 				if (h->tag == wal_tag || h->tag == run_crc || h->tag == nop)
 					next_scn = h->scn;
 
