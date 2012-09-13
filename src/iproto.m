@@ -322,9 +322,9 @@ broadcast(struct iproto_group *group, struct iproto_req *r)
 			r->header->data_len += r->data_len;
 			net_add_iov_dup(&m, r->data, r->data_len);
 		}
-		say_debug("|   peer:%i/%s op:0x%x sync:%i len:%i data_len:%i", p->id, p->name,
-			  r->header->msg_code, r->header->sync,
-			  (int)sizeof(struct iproto) + r->header->data_len, r->header->data_len);
+		say_debug("|   peer:%i/%s op:0x%x len:%zu data_len:%i", p->id, p->name,
+			  r->header->msg_code, sizeof(struct iproto) + r->header->data_len,
+			  r->header->data_len);
 		ev_io_start(&p->c.out);
 	}
 }

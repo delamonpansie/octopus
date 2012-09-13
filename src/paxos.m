@@ -162,11 +162,12 @@ paxos_broadcast(PaxosRecovery *r, enum paxos_msg_code code, ev_tstamp delay,
 		delay = -delay;
 		quorum = 0;
 	}
-	say_debug("%s: > %s sync:bcast ballot:%"PRIu64" scn:%"PRIi64, __func__,
-		  paxos_msg_code_strs[code], ballot, scn);
+	struct iproto_req *req = req_make(paxos_msg_code_strs[code], quorum, delay,
+					  &msg.header, value, value_len);
+	say_debug("%s: > %s sync:%u ballot:%"PRIu64" scn:%"PRIi64, __func__,
+		  paxos_msg_code_strs[code], req->header->sync, ballot, scn);
 
-	broadcast(&r->remotes, req_make(paxos_msg_code_strs[code], quorum, delay,
-					&msg.header, value, value_len));
+	broadcast(&r->remotes, req);
 }
 
 static void
