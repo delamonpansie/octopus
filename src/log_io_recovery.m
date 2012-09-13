@@ -745,6 +745,7 @@ run_crc_writer(va_list ap)
 
 		submit_tstamp = ev_now();
 		lsn = [recovery lsn];
+		fiber_gc();
 	}
 }
 
