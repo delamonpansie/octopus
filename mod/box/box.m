@@ -1387,7 +1387,8 @@ init_second_stage(va_list ap __attribute__((unused)))
 static int
 cat(const char *filename)
 {
-	return read_log(filename, print_row);
+	read_log(filename, print_row);
+	return 0; /* ignore return status of read_log */
 }
 
 static u32
