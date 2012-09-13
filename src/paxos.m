@@ -99,6 +99,7 @@ struct msg_paxos {
 	struct iproto header;
 	i64 scn;
 	u64 ballot;
+	u16 tag;
 	u32 value_len;
 	char value[];
 } __attribute__((packed));
@@ -112,6 +113,7 @@ struct proposal {
 	u32 flags;
 	u32 value_len; /* must be same type with msg_paxos->value_len */
 	char *value;
+	u16 tag;
 	struct fiber *waiter;
 	ev_tstamp delay;
 	TAILQ_ENTRY(proposal) link;
@@ -121,6 +123,7 @@ struct pending_value {
 	STAILQ_ENTRY(pending_value) link;
 	int value_len;
 	char *value;
+	u16 tag;
 	struct fiber *waiter;
 };
 
@@ -146,33 +149,29 @@ paxos_leader()
 }
 
 static void
-paxos_broadcast(PaxosRecovery *r, enum paxos_msg_code code, ev_tstamp delay,
-		i64 scn, u64 ballot, const char *value, u32 value_len)
+paxos_broadcast(PaxosRecovery *r, enum paxos_msg_code code, ev_tstamp timeout,
+		i64 scn, u64 ballot, const char *value, u32 value_len, u16 tag)
 {
 	struct msg_paxos msg = { .header = { .data_len = sizeof(msg) - sizeof(struct iproto),
 					     .sync = 0,
 					     .msg_code = code },
 				 .scn = scn,
 				 .ballot = ballot,
+				 .tag = tag,
 				 .value_len = value_len };
 
 	int quorum = r->quorum;
-	delay = delay ?: paxos_delay;
-	if (unlikely(delay < 0)) {
-		delay = -delay;
-		quorum = 0;
-	}
-	struct iproto_req *req = req_make(paxos_msg_code_strs[code], quorum, delay,
+	struct iproto_req *req = req_make(paxos_msg_code_strs[code], quorum, timeout,
 					  &msg.header, value, value_len);
-	say_debug("%s: > %s sync:%u ballot:%"PRIu64" scn:%"PRIi64, __func__,
-		  paxos_msg_code_strs[code], req->header->sync, ballot, scn);
+	say_debug("%s: > %s sync:%u ballot:%"PRIu64" SCN:%"PRIi64" timeout:%.2f", __func__,
+		  paxos_msg_code_strs[code], req->header->sync, ballot, scn, timeout);
 
 	broadcast(&r->remotes, req);
 }
 
 static void
 paxos_reply(struct conn *c, struct msg_paxos *req, enum paxos_msg_code code,
-	    u64 ballot, const char *value, u32 value_len)
+	    u64 ballot, const char *value, u32 value_len, u16 tag)
 {
 	struct msg_paxos *msg = palloc(c->pool, sizeof(*msg));
 	memcpy(msg, req, sizeof(*msg));
@@ -181,6 +180,7 @@ paxos_reply(struct conn *c, struct msg_paxos *req, enum paxos_msg_code code,
 	if (ballot)
 		msg->ballot = ballot;
 	msg->value_len = value_len;
+	msg->tag = tag;
 
 	struct netmsg *m = netmsg_tail(&c->out_messages);
 	net_add_iov(&m, msg, sizeof(*msg));
@@ -296,15 +296,17 @@ update_proposal_ballot(struct proposal *p, u64 ballot)
 }
 
 static void
-update_proposal_value(struct proposal *p, u32 value_len, const char *value)
+update_proposal_value(struct proposal *p, u32 value_len, const char *value, u16 tag)
 {
 	say_debug("%s: scn:%"PRIi64" value_len:%i", __func__, p->scn, value_len);
 
 	if (p->value_len != value_len) {
 		assert(p->value_len == 0 && value_len > 0); /* value never goes empty */
 		assert((p->flags & DECIDED) == 0); /* DECIDED is immutable */
+		assert(p->tag == 0 || p->tag == tag);
 		p->value_len = value_len;
 		p->value = realloc(p->value, value_len);
+		p->tag = tag;
 	}
 	memcpy(p->value, value, value_len);
 }
@@ -323,7 +325,7 @@ create_proposal(PaxosRecovery *r, i64 scn, u64 ballot)
 	}
 	TAILQ_INSERT_TAIL(&r->proposals, p, link);
 done:
-	p->delay = paxos_delay;
+	p->delay = paxos_default_timeout;
 	p->scn = scn;
 	update_proposal_ballot(p, ballot);
 	return p;
@@ -345,7 +347,7 @@ promise(PaxosRecovery *r, struct proposal *p, struct conn *c, struct msg_paxos *
 
 	u64 old_ballot = p->ballot;
 	update_proposal_ballot(p, req->ballot);
-	paxos_reply(c, req, PROMISE, old_ballot, p->value, p->value_len);
+	paxos_reply(c, req, PROMISE, old_ballot, p->value, p->value_len, p->tag);
 }
 
 static void
@@ -357,13 +359,14 @@ accepted(PaxosRecovery *r, struct proposal *p, struct conn *c, struct msg_paxos 
 
 	struct tbuf *x = tbuf_alloc(fiber->pool);
 	tbuf_append(x, &req->ballot, sizeof(req->ballot));
+	tbuf_append(x, &req->tag, sizeof(req->tag));
 	tbuf_append(x, &req->value_len, sizeof(req->value_len));
 	tbuf_append(x, req->value, req->value_len);
 
 	if ([r wal_row_submit:x->ptr len:tbuf_len(x) scn:req->scn tag:paxos_accept] == 0)
 		return;
-	update_proposal_value(p, req->value_len, req->value);
-	paxos_reply(c, req, ACCEPTED, 0, NULL, 0);
+	update_proposal_value(p, req->value_len, req->value, req->tag);
+	paxos_reply(c, req, ACCEPTED, 0, NULL, 0, 0);
 }
 
 static struct iproto_req *
@@ -372,7 +375,7 @@ prepare(PaxosRecovery *r, struct proposal *p, u64 ballot)
 	if ([r wal_row_submit:&ballot len:sizeof(ballot) scn:p->scn tag:paxos_prepare] == 0)
 		return NULL;
 	update_proposal_ballot(p, ballot);
-	paxos_broadcast(r, PREPARE, p->delay, p->scn, p->ballot, NULL, 0);
+	paxos_broadcast(r, PREPARE, p->delay, p->scn, p->ballot, NULL, 0, 0);
 	return yield();
 }
 
@@ -382,21 +385,22 @@ propose(PaxosRecovery *r, struct proposal *p)
 	assert(p->value_len > 0);
 	struct tbuf *m = tbuf_alloc(fiber->pool);
 	tbuf_append(m, &p->ballot, sizeof(p->ballot));
+	tbuf_append(m, &p->tag, sizeof(p->tag));
 	tbuf_append(m, &p->value_len, sizeof(p->value_len));
 	tbuf_append(m, p->value, p->value_len);
 	if ([r wal_row_submit:m->ptr len:tbuf_len(m) scn:p->scn tag:paxos_propose] == 0)
 		return NULL;
 
-	paxos_broadcast(r, ACCEPT, p->delay, p->scn, p->ballot, p->value, p->value_len);
+	paxos_broadcast(r, ACCEPT, p->delay, p->scn, p->ballot, p->value, p->value_len, p->tag);
 	return yield();
 }
 
 static int
 decide(PaxosRecovery *r, struct proposal *p)
 {
-	paxos_broadcast(r, DECIDE, -1, p->scn, p->ballot, p->value, p->value_len);
+	paxos_broadcast(r, DECIDE, 0, p->scn, p->ballot, p->value, p->value_len, p->tag);
 
-	if ([r wal_row_submit:p->value len:p->value_len scn:p->scn tag:wal_tag] == 0) {
+	if ([r wal_row_submit:p->value len:p->value_len scn:p->scn tag:p->tag] == 0) {
 		/* FIXME: trigger some flag to retry later */
 		return -1;
 	}
@@ -407,13 +411,13 @@ decide(PaxosRecovery *r, struct proposal *p)
 static void
 nack(struct conn *c, struct msg_paxos *req, u64 ballot)
 {
-	paxos_reply(c, req, NACK, ballot, NULL, 0);
+	paxos_reply(c, req, NACK, ballot, NULL, 0, 0);
 }
 
 static void
 decided(struct conn *c, struct msg_paxos *req, struct proposal *p)
 {
-	paxos_reply(c, req, DECIDE, p->ballot, p->value, p->value_len);
+	paxos_reply(c, req, DECIDE, p->ballot, p->value, p->value_len, p->tag);
 }
 
 static void
@@ -432,13 +436,13 @@ learn(PaxosRecovery *r, i64 scn)
 	if (!p)
 		return;
 
-	if ([r wal_row_submit:p->value len:p->value_len scn:p->scn tag:wal_tag] == 0) {
+	if ([r wal_row_submit:p->value len:p->value_len scn:p->scn tag:p->tag] == 0) {
 		/* trigger some flag to retry later */
 		return;
 	}
 	p->flags |= DECIDED;
 
-	[r apply:&TBUF(p->value, p->value_len, NULL) tag:wal_tag]; /* FIXME: what to do if this fails ? */
+	[r apply:&TBUF(p->value, p->value_len, NULL) tag:p->tag]; /* FIXME: what to do if this fails ? */
 	[r set_scn:p->scn];
 	say_debug("%s: scn:%"PRIi64" value_len:%i %s", __func__, p->scn,
 		  p->value_len, tbuf_to_hex(&TBUF(p->value, p->value_len, fiber->pool)));
@@ -455,10 +459,10 @@ learner(PaxosRecovery *r, struct iproto *msg)
 		create_proposal(r, mp->scn, 0);
 
 	update_proposal_ballot(p, mp->ballot);
-	update_proposal_value(p, mp->value_len, mp->value);
+	update_proposal_value(p, mp->value_len, mp->value, mp->tag);
 
-	say_debug("%s: < sync:%i type:DECIDE scn:%"PRIi64" ballot:%"PRIu64" value_len:%i %s", __func__,
-		  msg->sync, mp->scn, mp->ballot, mp->value_len,
+	say_debug("%s: < sync:%i type:DECIDE scn:%"PRIi64" ballot:%"PRIu64" tag:%s value_len:%i %s", __func__,
+		  msg->sync, mp->scn, mp->ballot, xlog_tag_to_a(mp->tag), mp->value_len,
 		  tbuf_to_hex(&TBUF(mp->value, mp->value_len, fiber->pool)));
 
 	learn(r, p->scn);
@@ -561,14 +565,13 @@ start:
 	assert(recover_i >= 0);
 
 	if (max->value_len > 0)
-		update_proposal_value(p, max->value_len, max->value);
+		update_proposal_value(p, max->value_len, max->value, max->tag);
 	req_release(rsp);
 
 	/* phase 2 */
 	say_debug(">>> phase 2");
-	if (p->scn != [r scn]) {
-		p = NULL; // FIXME: nop_proposal();
-		panic("nop proposal");
+	if (p->scn != [r scn] + 1) {
+		panic("nop proposal p->scn=%"PRIi64" [r scn]=%"PRIi64, p->scn, [r scn]);
 	}
 
 	assert(p->ballot == ballot);
@@ -578,6 +581,7 @@ start:
 		STAILQ_REMOVE_HEAD(&r->pending_values, link);
 		p->value_len = v->value_len;
 		p->value = v->value;
+		p->tag = v->tag;
 		p->waiter = v->waiter;
 		free(v);
 	}
@@ -597,6 +601,7 @@ start:
 
 	struct tbuf *x = tbuf_alloc(fiber->pool);
 	tbuf_append(x, &ballot, sizeof(ballot));
+	tbuf_append(x, &p->tag, sizeof(p->tag));
 	tbuf_append(x, &p->value_len, sizeof(p->value_len));
 	tbuf_append(x, p->value, p->value_len);
 	if ([r wal_row_submit:x->ptr len:tbuf_len(x) scn:p->scn tag:paxos_accept] == 0) {
@@ -752,7 +757,7 @@ reply_msg(struct conn *c, struct tbuf *req, void *arg)
 		break;
 #endif
 	default:
-		say_warn("unable to reply unknown op: %i", msg->msg_code);
+		say_warn("unable to reply unknown op:0x%02x peer:%s", msg->msg_code, conn_peer_name(c));
 	}
 }
 
@@ -796,7 +801,7 @@ loop:
 						if (!p)
 							create_proposal(r, row->scn, 0);
 						update_proposal_ballot(p, ULLONG_MAX);
-						update_proposal_value(p, row->len, (char *)row->data);
+						update_proposal_value(p, row->len, (char *)row->data, wal_tag);
 						p->flags |= DECIDED;
 						learn(r, row->scn);
 					}
@@ -940,6 +945,12 @@ out:
 	strcpy(status, "active");
 }
 
+- (bool)
+is_replica
+{
+	return leader_id < 0 || leader_id != self_id;
+}
+
 - (void)
 leader_redirect_raise
 {
@@ -963,6 +974,7 @@ submit:(void *)data len:(u32)len tag:(u16)tag
 	struct pending_value *p = calloc(1, sizeof(*p));
 	p->value_len = len;
 	p->value = malloc(p->value_len);
+	p->tag = tag;
 	p->waiter = fiber;
 	memcpy(p->value, data, p->value_len);
 	STAILQ_INSERT_TAIL(&pending_values, p, link);
@@ -997,9 +1009,10 @@ recover_row:(const struct row_v12 *)r
 		lsn = r->lsn;
 		struct tbuf buf2 = TBUF(r->data, r->len, NULL);
 		ballot = read_u64(&buf2);
+		u16 tag = read_u16(&buf2);
 		u32 value_len = read_u32(&buf2);
 		void *value = read_bytes(&buf2, value_len);
-		update_proposal_value(find_proposal(self, r->scn), value_len, value);
+		update_proposal_value(find_proposal(self, r->scn), value_len, value, tag);
 		break;
 
 	default:
@@ -1019,7 +1032,7 @@ paxos_print(struct tbuf *out,
 	    void (*handler)(struct tbuf *out, u16 tag, struct tbuf *row),
 	    const struct row_v12 *row)
 {
-	u16 tag = row->tag;
+	u16 tag = row->tag, inner_tag;
 	struct tbuf b = TBUF(row->data, row->len, fiber->pool);
 	u64 ballot, value_len;
 
@@ -1033,10 +1046,11 @@ paxos_print(struct tbuf *out,
 	case paxos_propose:
 	case paxos_accept:
 		ballot = read_u64(&b);
+		inner_tag = read_u16(&b);
 		value_len = read_u32(&b);
 		(void)value_len;
-		tbuf_printf(out, "ballot:%"PRIi64" ", ballot);
-		handler(out, wal_tag, &b);
+		tbuf_printf(out, "ballot:%"PRIi64" it:%s ", ballot, xlog_tag_to_a(inner_tag));
+		handler(out, inner_tag, &b);
 		break;
 	}
 }
