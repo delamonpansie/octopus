@@ -456,7 +456,7 @@ learner(PaxosRecovery *r, struct iproto *msg)
 	struct msg_paxos *mp = (struct msg_paxos *)msg;
 	struct proposal *p = find_proposal(r, mp->scn);
 	if (!p)
-		create_proposal(r, mp->scn, 0);
+		p = create_proposal(r, mp->scn, 0);
 
 	update_proposal_ballot(p, mp->ballot);
 	update_proposal_value(p, mp->value_len, mp->value, mp->tag);
@@ -802,7 +802,7 @@ loop:
 					if (row->tag == wal_tag) {
 						struct proposal *p = find_proposal(r, row->scn);
 						if (!p)
-							create_proposal(r, row->scn, 0);
+							p = create_proposal(r, row->scn, 0);
 						update_proposal_ballot(p, ULLONG_MAX);
 						update_proposal_value(p, row->len, (char *)row->data, wal_tag);
 						p->flags |= DECIDED;
