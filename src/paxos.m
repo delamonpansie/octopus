@@ -815,12 +815,12 @@ loop:
 					if (row->scn < *scn)
 						continue;
 
-					if (row->tag == wal_tag) {
+					if (row->tag == wal_tag || row->tag == run_crc || row->tag == nop) {
 						struct proposal *p = find_proposal(r, row->scn);
 						if (!p)
 							p = create_proposal(r, row->scn, 0);
 						update_proposal_ballot(p, ULLONG_MAX);
-						update_proposal_value(p, row->len, (char *)row->data, wal_tag);
+						update_proposal_value(p, row->len, (char *)row->data, row->tag);
 						p->flags |= DECIDED;
 						learn(r, row->scn);
 					}
