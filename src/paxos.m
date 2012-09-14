@@ -525,6 +525,8 @@ start:
 	if (!paxos_leader()) /* FIXME: leadership is required only for leading SCN */
 		return;
 
+	assert((p->flags & DECIDED) == 0);
+
 	do {
 		ballot >>= 8;
 		ballot++;
@@ -566,7 +568,7 @@ start:
 		req_release(rsp);
 		goto retry;
 	}
-	assert(recover_i >= 0);
+	assert(max != NULL);
 
 	if (max->value_len > 0)
 		update_proposal_value(p, max->value_len, max->value, max->tag);
