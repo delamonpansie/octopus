@@ -380,7 +380,6 @@ iproto_reply_reader(va_list ap __attribute__((unused)))
 		{
 			struct iproto *msg = c->rbuf->ptr;
 			tbuf_ltrim(c->rbuf, sizeof(struct iproto) + msg->data_len);
-
 			req_collect_reply(c, msg);
 		}
 	}

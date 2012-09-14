@@ -130,15 +130,15 @@ struct pending_value {
 
 static int leader_id, self_id;
 static ev_tstamp leadership_expire;
-static const int leader_lease_interval = 5;
+static const ev_tstamp leader_lease_interval = 5;
+static const ev_tstamp paxos_default_timeout = 0.02;
 
 static i64 gap = 0;
 
-static struct service *input_service;
 
 struct service *mesh_service;
 
-static const ev_tstamp paxos_delay = 0.02;
+static struct service *input_service;
 
 extern void title(const char *fmt, ...); /* FIXME: hack */
 
