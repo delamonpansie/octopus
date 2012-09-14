@@ -623,12 +623,15 @@ start:
 	}
 }
 
+static int proposer_idle;
 static void
 proposer(va_list ap)
 {
 	PaxosRecovery *r = va_arg(ap, PaxosRecovery *);
 loop:
+	proposer_idle = 1;
 	yield();
+	proposer_idle = 0;
 
 	if (!paxos_leader()) {
 		/* discard outstanging req's */
@@ -978,7 +981,8 @@ submit:(void *)data len:(u32)len tag:(u16)tag
 	p->waiter = fiber;
 	memcpy(p->value, data, p->value_len);
 	STAILQ_INSERT_TAIL(&pending_values, p, link);
-	fiber_wake(proposer_fiber, NULL);
+	if (proposer_idle)
+		fiber_wake(proposer_fiber, NULL);
 	void *r = yield();
 	if (!r)
 		iproto_raise(ERR_CODE_NONMASTER, "unable to achieve consensus");
