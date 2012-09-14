@@ -96,10 +96,8 @@ yield(void)
 void
 fiber_wake(struct fiber *f, void *arg)
 {
-	if (f->wake)
+	if (STAILQ_NEXT(f, wake_link))
 		return;
-	if (arg == NULL)
-		arg = (void *)1;
 	f->wake = arg;
 	STAILQ_INSERT_TAIL(&wake_list, f, wake_link);
 }
@@ -330,10 +328,10 @@ void
 fiber_wakeup_pending(void)
 {
 	assert(fiber == &sched);
-	struct fiber *f;
-	STAILQ_FOREACH(f, &wake_list, wake_link) {
+	struct fiber *f, *tvar;
+	STAILQ_FOREACH_SAFE(f, &wake_list, wake_link, tvar) {
 		void *arg = f->wake;
-		f->wake = NULL;
+		STAILQ_NEXT(f, wake_link) = NULL;
 		resume(f, arg);
 	}
 	STAILQ_INIT(&wake_list);
