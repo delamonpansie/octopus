@@ -557,7 +557,7 @@ start:
 			if (max == NULL || mp->ballot > max->ballot)
 				max = mp;
 			break;
-		case DECIDED:
+		case DECIDE:
 			panic("decided");
 		default:
 			assert(false);
