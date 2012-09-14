@@ -170,22 +170,27 @@ paxos_broadcast(PaxosRecovery *r, enum paxos_msg_code code, ev_tstamp timeout,
 }
 
 static void
-paxos_reply(struct conn *c, struct msg_paxos *req, enum paxos_msg_code code,
-	    u64 ballot, const char *value, u32 value_len, u16 tag)
+paxos_reply(struct conn *c, const struct msg_paxos *req, enum paxos_msg_code code,
+	    u64 ballot, const struct proposal *p)
 {
-	struct msg_paxos *msg = palloc(c->pool, sizeof(*msg));
-	memcpy(msg, req, sizeof(*msg));
-	msg->header.data_len = sizeof(*msg) - sizeof(struct iproto) + value_len;
-	msg->header.msg_code = code;
-	if (ballot)
-		msg->ballot = ballot;
-	msg->value_len = value_len;
-	msg->tag = tag;
-
+	struct msg_paxos *msg = p0alloc(c->pool, sizeof(*msg));
+	msg->header = (struct iproto){ code,
+				       sizeof(*msg) - sizeof(struct iproto) + (p ? p->value_len : 0),
+				       req->header.sync };
+	msg->scn = req->scn;
+	msg->ballot = ballot ?: req->ballot;
 	struct netmsg *m = netmsg_tail(&c->out_messages);
-	net_add_iov(&m, msg, sizeof(*msg));
-	if (value_len)
-		net_add_iov_dup(&m, value, value_len);
+
+	if (p) {
+		msg->value_len = p->value_len;
+		msg->tag = p->tag;
+
+		net_add_iov(&m, msg, sizeof(*msg));
+		if (p->value_len)
+			net_add_iov_dup(&m, p->value, p->value_len);
+	} else {
+		net_add_iov(&m, msg, sizeof(*msg));
+	}
 
 	say_debug("%s: > %s sync:%i scn:%"PRIi64" ballot:%"PRIu64, __func__, paxos_msg_code_strs[code],
 		  msg->header.sync, msg->scn, msg->ballot);
@@ -347,7 +352,7 @@ promise(PaxosRecovery *r, struct proposal *p, struct conn *c, struct msg_paxos *
 
 	u64 old_ballot = p->ballot;
 	update_proposal_ballot(p, req->ballot);
-	paxos_reply(c, req, PROMISE, old_ballot, p->value, p->value_len, p->tag);
+	paxos_reply(c, req, PROMISE, old_ballot, p);
 }
 
 static void
@@ -366,7 +371,7 @@ accepted(PaxosRecovery *r, struct proposal *p, struct conn *c, struct msg_paxos 
 	if ([r wal_row_submit:x->ptr len:tbuf_len(x) scn:req->scn tag:paxos_accept] == 0)
 		return;
 	update_proposal_value(p, req->value_len, req->value, req->tag);
-	paxos_reply(c, req, ACCEPTED, 0, NULL, 0, 0);
+	paxos_reply(c, req, ACCEPTED, 0, NULL);
 }
 
 static struct iproto_req *
@@ -411,13 +416,13 @@ decide(PaxosRecovery *r, struct proposal *p)
 static void
 nack(struct conn *c, struct msg_paxos *req, u64 ballot)
 {
-	paxos_reply(c, req, NACK, ballot, NULL, 0, 0);
+	paxos_reply(c, req, NACK, ballot, NULL);
 }
 
 static void
 decided(struct conn *c, struct msg_paxos *req, struct proposal *p)
 {
-	paxos_reply(c, req, DECIDE, p->ballot, p->value, p->value_len, p->tag);
+	paxos_reply(c, req, DECIDE, p->ballot, p);
 }
 
 static void
