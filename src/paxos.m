@@ -798,7 +798,7 @@ loop:
 			i64 *scn = yield();
 
 			while (!(leader = paxos_peer(r, leader_id)))
-				sleep(1);
+				fiber_sleep(1);
 
 			say_debug("FOLLOW scn:%"PRIi64 " feeder:%s", *scn, sintoa(&leader->feeder_addr));
 
