@@ -720,6 +720,22 @@ recv_msg(struct conn *c, struct tbuf *req, void *arg)
 	struct iproto *msg = iproto(req);
 	PaxosRecovery *pr = arg;
 
+#ifdef RANDOM_DROP
+	double drop = rand() / (double)RAND_MAX;
+	static double drop_p;
+
+	if (!drop_p) {
+		char *drop_pstr = getenv("RANDOM_DROP");
+		drop_p = drop_pstr ? atof(drop_pstr) : 0.01;
+	}
+
+	if (drop < drop_p) {
+		say_debug("%s: op:0x%02x/%s sync:%i DROP", __func__,
+			  msg->msg_code, paxos_msg_code_strs[msg->msg_code], msg->sync);
+		return;
+	}
+#endif
+
 	say_debug("%s: op:0x%02x/%s sync:%i", __func__,
 		  msg->msg_code, paxos_msg_code_strs[msg->msg_code], msg->sync);
 
