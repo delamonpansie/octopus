@@ -160,8 +160,7 @@ paxos_broadcast(PaxosRecovery *r, enum paxos_msg_code code, ev_tstamp timeout,
 				 .tag = tag,
 				 .value_len = value_len };
 
-	int quorum = r->quorum;
-	struct iproto_req *req = req_make(paxos_msg_code_strs[code], quorum, timeout,
+	struct iproto_req *req = req_make(paxos_msg_code_strs[code], r->quorum, timeout,
 					  &msg.header, value, value_len);
 	say_debug("%s: > %s sync:%u ballot:%"PRIu64" SCN:%"PRIi64" timeout:%.2f", __func__,
 		  paxos_msg_code_strs[code], req->header->sync, ballot, scn, timeout);
