@@ -102,6 +102,7 @@ void iproto_pinger(va_list ap);
 #define MAX_IPROTO_PEERS 7
 struct iproto_req {
 	const char *name;
+	u32 sync;
 	int count, quorum;
 	ev_timer timer;
 	struct fiber *waiter;
