@@ -1032,7 +1032,11 @@ recover_row:(const struct row_v12 *)r
 		u16 tag = read_u16(&buf2);
 		u32 value_len = read_u32(&buf2);
 		void *value = read_bytes(&buf2, value_len);
-		update_proposal_value(find_proposal(self, r->scn), value_len, value, tag);
+		p = find_proposal(self, r->scn);
+		if (!p)
+			p = create_proposal(self, r->scn, 0);
+
+		update_proposal_value(p, value_len, value, tag);
 		break;
 
 	default:
