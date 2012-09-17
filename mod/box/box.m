@@ -675,10 +675,6 @@ txn_cleanup(struct box_txn *txn)
 		object_decr_ref(txn->ref[i]);
 	}
 
-	say_debug("%s: old_obj:refs=%i,%p obj:ref=%i,%p", __func__,
-		 txn->old_obj ? txn->old_obj->refs : 0, txn->old_obj,
-		 txn->obj ? txn->obj->refs : 0, txn->obj);
-
 	/* mark txn as clean */
 	memset(txn, 0, sizeof(*txn));
 }
