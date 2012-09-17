@@ -745,6 +745,9 @@ recv_msg(struct conn *c, struct tbuf *req, void *arg)
 	say_debug("%s: op:0x%02x/%s sync:%i", __func__,
 		  msg->msg_code, paxos_msg_code_strs[msg->msg_code], msg->sync);
 
+	if (c->state == CLOSED)
+		return;
+
 	switch (msg->msg_code) {
 	case LEADER_PROPOSE: {
 		struct msg_leader *pmsg = (struct msg_leader *)msg;
