@@ -358,7 +358,7 @@ static void
 accepted(PaxosRecovery *r, struct proposal *p, struct conn *c, struct msg_paxos *req)
 {
 	assert(req->scn == p->scn);
-	assert(p->ballot == req->ballot);
+	assert(p->ballot <= req->ballot);
 	assert(req->value_len > 0);
 
 	struct tbuf *x = tbuf_alloc(fiber->pool);
