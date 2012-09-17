@@ -763,8 +763,14 @@ run_crc_writer(va_list ap)
 		if (ev_now() - submit_tstamp < delay)
 			continue;
 
-		while ([recovery submit_run_crc] < 0)
-			fiber_sleep(0.1);
+		@try {
+			while ([recovery submit_run_crc] < 0)
+				fiber_sleep(0.1);
+		}
+		@catch (Error *e) {
+			say_warn("run_crc submit failed, [%s reason:\"%s\"] at %s:%d",
+				 [[e class] name], e->reason, e->file, e->line);
+		}
 
 		submit_tstamp = ev_now();
 		lsn = [recovery lsn];
