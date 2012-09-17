@@ -250,7 +250,7 @@ say_##level##suffix(const char *filename, unsigned line, const char *format, ...
 { \
 	va_list ap; \
 	va_start(ap, format); \
-	vsay(level, filename, line, NULL, format, ap); \
+	vsay(level, filename, line, err, format, ap); \
 	va_end(ap); \
 }
 
