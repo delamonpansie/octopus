@@ -131,7 +131,7 @@ configure_wal_writer
 - (int)
 wal_row_submit:(const void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag
 {
-	say_debug("%s: len:%i scn:%"PRIi64" tag:%s", __func__, data_len, scn_, xlog_tag_to_a(tag));
+	say_debug("%s: data_len:%i SCN:%"PRIi64" tag:%s", __func__, data_len, scn_, xlog_tag_to_a(tag));
 
 	void *buf = palloc(fiber->pool, sizeof(struct wal_pack) + sizeof(struct wal_row_meta));
 
@@ -384,6 +384,8 @@ wal_disk_writer(int fd, void *state)
 				if (io_failure)
 					continue;
 
+				say_debug("%s: SCN:%"PRIi64" tag:%s data_len:%u", __func__,
+					  h->scn, xlog_tag_to_a(h->tag), h->data_len);
 				i64 ret = [writer append_row:data
 							 len:h->data_len
 							 scn:h->scn
