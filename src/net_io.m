@@ -448,9 +448,9 @@ conn_close(struct conn *c)
 		if (c->service)
 			LIST_REMOVE(c, link);
 
-		slab_cache_free(&conn_cache, c);
 		c->service = NULL;
 		c->pool = NULL;
+		slab_cache_free(&conn_cache, c);
 		return r;
 	default:
 		/* c->ref > 0 => some fiber still holding ref to connection */
