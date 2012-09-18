@@ -86,7 +86,7 @@ struct iproto_peer {
 	struct conn c;
 	SLIST_ENTRY(iproto_peer) link;
 	int id;
-	char *name;
+	const char *name;
 	struct sockaddr_in addr;
 	bool connect_err_said;
 };
