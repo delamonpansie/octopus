@@ -790,7 +790,12 @@ nop_hb_writer(va_list ap)
 		if ([recovery is_replica])
 			continue;
 
-		[recovery submit:body len:nelem(body) tag:nop];
+		@try {
+			[recovery submit:body len:nelem(body) tag:nop];
+		}
+		@catch (id exc) {
+			; /* missing nop is not fatal */
+		}
 	}
 }
 
