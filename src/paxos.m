@@ -55,7 +55,7 @@ ENUM(paxos_msg_code, PAXOS_CODE);
 STRS(paxos_msg_code, PAXOS_CODE);
 
 struct paxos_peer {
-	struct iproto_peer *iproto;
+	struct iproto_peer iproto;
 	int id;
 	const char *name;
 	struct sockaddr_in primary_addr, feeder_addr;
@@ -63,19 +63,21 @@ struct paxos_peer {
 };
 
 struct paxos_peer *
-make_paxos_peer(int id, const char *name, struct iproto_peer *iproto,
+make_paxos_peer(int id, const char *name, const char *addr,
 		short primary_port, short feeder_port)
 {
 	struct paxos_peer *p = calloc(1, sizeof(*p));
 
 	p->id = id;
 	p->name = name;
-	p->iproto = iproto;
-	p->primary_addr = iproto->addr;
+	if (init_iproto_peer(&p->iproto, id, name, addr) == -1) {
+		free(p);
+		return NULL;
+	}
+	p->primary_addr = p->iproto.addr;
 	p->primary_addr.sin_port = htons(primary_port);
-	p->feeder_addr = iproto->addr;
+	p->feeder_addr = p->iproto.addr;
 	p->feeder_addr.sin_port = htons(feeder_port);
-	p->iproto->c.fd = -1;
 	return p;
 }
 
@@ -862,7 +864,6 @@ run_crc_delay:(double)run_crc_delay
 snap_io_rate_limit:(int)snap_io_rate_limit_
 {
 	struct octopus_cfg_paxos_peer *c;
-	struct iproto_peer *ipeer;
 	struct paxos_peer *ppeer;
 
 
@@ -900,11 +901,9 @@ snap_io_rate_limit:(int)snap_io_rate_limit_
 		if (paxos_peer(self, c->id) != NULL)
 			panic("paxos peer %s already exists", c->name);
 
-		ipeer = make_iproto_peer(c->id, c->name, c->addr);
-		if (!ipeer)
-			panic("bad peer addr");
-
-		ppeer = make_paxos_peer(c->id, c->name, ipeer, c->primary_port, c->feeder_port);
+		ppeer = make_paxos_peer(c->id, c->name, c->addr, c->primary_port, c->feeder_port);
+		if (!ppeer)
+			panic("bad addr %s", c->addr);
 		SLIST_INSERT_HEAD(&group, ppeer, link);
 		say_info("  %s -> %s", c->name, c->addr);
 	}
@@ -915,7 +914,7 @@ snap_io_rate_limit:(int)snap_io_rate_limit_
 	SLIST_FOREACH(ppeer, &group, link) {
 		if (ppeer->id == self_id)
 			continue;
-		SLIST_INSERT_HEAD(&remotes, ppeer->iproto, link);
+		SLIST_INSERT_HEAD(&remotes, &ppeer->iproto, link);
 	}
 
 	quorum = 2; /* FIXME: hardcoded */
@@ -925,7 +924,7 @@ snap_io_rate_limit:(int)snap_io_rate_limit_
 	reply_reader = fiber_create("paxos/reply_reader", iproto_reply_reader);
 
 	short accept_port;
-	accept_port = ntohs(paxos_peer(self, self_id)->iproto->addr.sin_port);
+	accept_port = ntohs(paxos_peer(self, self_id)->iproto.addr.sin_port);
 	input_service = tcp_service(accept_port, NULL);
 	fiber_create("paxos/worker", iproto_interact, input_service, recv_msg, self);
 	fiber_create("paxos/rendevouz", iproto_rendevouz, NULL, &remotes, pool, reply_reader, output_flusher);
