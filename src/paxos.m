@@ -495,10 +495,11 @@ acceptor(PaxosRecovery *r, struct conn *c, struct iproto *msg)
 	if (!p)
 		p = create_proposal(r, mp->scn, 0);
 
-	if (p->ballot > mp->ballot) {
-		nack(c, mp, p->ballot);
-	} else if (p->flags & DECIDED) {
+	if (p->flags & DECIDED) {
+		/* if we already knew the value, notify current leader immediately */
 		decided(c, mp, p);
+	} else if (p->ballot > mp->ballot) {
+		nack(c, mp, p->ballot);
 	} else {
 		say_debug("%s: < c:%p type:%s sync:%i scn:%"PRIi64" ballot:%"PRIu64" value_len: %i", __func__,
 			  c, paxos_msg_code_strs[msg->msg_code], msg->sync, mp->scn, mp->ballot, mp->value_len);
