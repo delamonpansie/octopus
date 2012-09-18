@@ -347,6 +347,18 @@ delete_proposal(PaxosRecovery *r, struct proposal *p)
 }
 
 static void
+expire_proposal(PaxosRecovery *r)
+{
+	struct proposal *first = TAILQ_FIRST(&r->proposals);
+	for (;;) {
+		struct proposal *last = TAILQ_LAST(&r->proposals, proposal_tailq);
+		if (!first || !last || first->scn - last->scn < 1024)
+			break;
+		delete_proposal(r, last);
+	}
+}
+
+static void
 promise(PaxosRecovery *r, struct proposal *p, struct conn *c, struct msg_paxos *req)
 {
 	if ([r wal_row_submit:&req->ballot len:sizeof(req->ballot) scn:req->scn tag:paxos_promise] == 0)
@@ -690,13 +702,7 @@ loop:
 		goto loop;
 	}
 
-	struct proposal *first = TAILQ_FIRST(&r->proposals);
-	for (;;) {
-		struct proposal *last = TAILQ_LAST(&r->proposals, proposal_tailq);
-		if (!first || !last || first->scn - last->scn < 1024)
-			break;
-		delete_proposal(r, last);
-	}
+	expire_proposal(r);
 	goto loop;
 }
 
