@@ -928,7 +928,6 @@ snap_io_rate_limit:(int)snap_io_rate_limit_
 	input_service = tcp_service(accept_port, NULL);
 	fiber_create("paxos/worker", iproto_interact, input_service, recv_msg, self);
 	fiber_create("paxos/rendevouz", iproto_rendevouz, NULL, &remotes, pool, reply_reader, output_flusher);
-	// fiber_create("mesh/ping", iproto_pinger, mesh_peers);
 	proposer_fiber = fiber_create("paxos/propose", proposer, self);
 	fiber_create("paxos/elect", propose_leadership, self);
 	follower = fiber_create("paxos/follower", follow, self);
