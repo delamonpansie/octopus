@@ -177,24 +177,31 @@ iproto_error(struct netmsg **m, struct netmsg_mark *header_mark, u32 ret_code, c
 }
 
 
-struct iproto_peer *
-make_iproto_peer(int id, const char *name, const char *addr)
+int
+init_iproto_peer(struct iproto_peer *p, int id, const char *name, const char *addr)
 {
-	struct iproto_peer *p;
-
 	if (req_registry == NULL)
 		req_registry = mh_i32_init();
 
-	p = calloc(1, sizeof(*p));
-	if (atosin(addr, &p->addr) == -1) {
+	memset(p, 0, sizeof(*p));
+
+	p->id = id;
+	p->name = name;
+	if (atosin(addr, &p->addr) == -1)
+		return -1;
+
+	p->c.fd = -1;
+	return 0;
+}
+
+struct iproto_peer *
+make_iproto_peer(int id, const char *name, const char *addr)
+{
+	struct iproto_peer *p = malloc(sizeof(*p));
+	if (init_iproto_peer(p, id, name, addr) == -1) {
 		free(p);
 		return NULL;
 	}
-
-	p->id = id;
-	p->name = strdup(name);
-
-	say_debug("%s: %p/%s", __func__, p, p->name);
 	return p;
 }
 
