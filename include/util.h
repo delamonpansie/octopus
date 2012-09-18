@@ -70,7 +70,6 @@ void *alloca (size_t);
 #  define PRIofft PRIi32
 #endif
 
-#define nelem(x)     (sizeof((x))/sizeof((x)[0]))
 #if HAVE__BUILTIN_EXPECT
 #  define likely(x)    __builtin_expect((x),1)
 #  define unlikely(x)  __builtin_expect((x),0)
@@ -89,9 +88,7 @@ void *alloca (size_t);
 #define __offsetof offsetof
 #endif
 
-#ifndef lengthof
-#define lengthof(array) (sizeof (array) / sizeof ((array)[0]))
-#endif
+#define nelem(x)     (sizeof((x))/sizeof((x)[0]))
 
 #ifndef TYPEALIGN
 #define TYPEALIGN(ALIGNVAL,LEN)  \
