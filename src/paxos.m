@@ -108,7 +108,7 @@ struct msg_paxos {
 } __attribute__((packed));
 
 #define DECIDED 1
-#define NOP 2
+#define LEARNED 2
 
 struct proposal {
 	i64 scn;
@@ -455,14 +455,18 @@ learn(PaxosRecovery *r, i64 scn)
 	if (!p)
 		return;
 
-	if ([r wal_row_submit:p->value len:p->value_len scn:p->scn tag:p->tag] == 0) {
-		/* trigger some flag to retry later */
+	if ((p->flags & DECIDED) == 0)
 		return;
-	}
-	p->flags |= DECIDED;
+
+	if (p->flags & LEARNED)
+		return;
+
+	assert(!p->waiter);
 
 	[r apply:&TBUF(p->value, p->value_len, NULL) tag:p->tag]; /* FIXME: what to do if this fails ? */
 	[r set_scn:p->scn];
+	p->flags |= LEARNED;
+
 	say_debug("%s: scn:%"PRIi64" value_len:%i %s", __func__, p->scn,
 		  p->value_len, tbuf_to_hex(&TBUF(p->value, p->value_len, fiber->pool)));
 
@@ -477,12 +481,28 @@ learner(PaxosRecovery *r, struct iproto *msg)
 	if (!p)
 		p = create_proposal(r, mp->scn, 0);
 
-	update_proposal_ballot(p, mp->ballot);
-	update_proposal_value(p, mp->value_len, mp->value, mp->tag);
-
 	say_debug("%s: < sync:%i type:DECIDE scn:%"PRIi64" ballot:%"PRIu64" tag:%s value_len:%i %s", __func__,
 		  msg->sync, mp->scn, mp->ballot, xlog_tag_to_a(mp->tag), mp->value_len,
 		  tbuf_to_hex(&TBUF(mp->value, mp->value_len, fiber->pool)));
+
+	assert(p->ballot <= mp->ballot); /* FIXME: this should be a warning */
+
+	if (p->flags & DECIDED) {
+		assert(memcmp(mp->value, p->value, MIN(mp->value_len, p->value_len)) == 0);
+		assert(p->tag == mp->tag);
+		return;
+	}
+
+	update_proposal_ballot(p, mp->ballot);
+	update_proposal_value(p, mp->value_len, mp->value, mp->tag);
+	p->flags |= DECIDED;
+
+	while ([r wal_row_submit:p->value len:p->value_len scn:p->scn tag:p->tag] != 1) {
+		panic("give up leadership");
+		ev_tstamp delay = 0.1;
+		say_warn("%s: wal_row_submit failed, will retry after %.2fs", __func__, delay);
+		fiber_sleep(delay);
+	}
 
 	learn(r, p->scn);
 }
@@ -527,7 +547,7 @@ run_protocol(PaxosRecovery *r, struct proposal *p)
 
 	/* phase 1 */
 	const int quorum = 1; /* not counting myself */
-	u64 ballot = 0, min_ballot = p->ballot;
+	u64 ballot = 0, min_ballot = 0;
 
 	goto start;
 retry:
@@ -541,8 +561,10 @@ start:
 	if (!paxos_leader()) /* FIXME: leadership is required only for leading SCN */
 		return;
 
-	assert((p->flags & DECIDED) == 0);
+	if (p->flags & DECIDED)
+		goto decide;
 
+	min_ballot = MAX(min_ballot, p->ballot);
 	do {
 		ballot >>= 8;
 		ballot++;
@@ -574,7 +596,12 @@ start:
 				max = mp;
 			break;
 		case DECIDE:
-			panic("decided");
+			/* some other leader already decided on value */
+			update_proposal_ballot(p, ULLONG_MAX);
+			update_proposal_value(p, mp->value_len, mp->value, mp->tag);
+			p->flags |= DECIDED;
+			req_release(rsp);
+			goto decide;
 		default:
 			assert(false);
 		}
@@ -588,6 +615,7 @@ start:
 
 	if (max->value_len > 0)
 		update_proposal_value(p, max->value_len, max->value, max->tag);
+
 	req_release(rsp);
 
 	/* phase 2 */
@@ -633,15 +661,14 @@ start:
 
 	/* notify others */
 	assert(p->ballot == ballot);
-	if (decide(r, p) < 0)
-		panic("giving up");
-	p->flags |= DECIDED;
+decide:
+	decide(r, p);
 
-	if (p->waiter != NULL) {
-		say_debug("wakeup %s", p->waiter->name);
+	if (p->waiter) {
+		p->flags |= LEARNED;
 		fiber_wake(p->waiter, p);
 	} else {
-		say_debug("NO WAITER!");
+		learn(r, p->scn);
 	}
 }
 
@@ -650,11 +677,12 @@ static void
 proposer(va_list ap)
 {
 	PaxosRecovery *r = va_arg(ap, PaxosRecovery *);
-loop:
+idle:
 	proposer_idle = 1;
 	yield();
 	proposer_idle = 0;
 
+loop:
 	if (!paxos_leader()) {
 		/* discard outstanging req's */
 		struct pending_value *p, *tmp;
@@ -672,7 +700,8 @@ loop:
 			struct proposal *p = find_proposal(r, gap_scn);
 			if (!p)
 				p = create_proposal(r, gap_scn, 0);
-			run_protocol(r, p);
+			if ((p->flags & DECIDED) == 0)
+				run_protocol(r, p);
 		}
 		@catch (id e) {
 			say_warn("Ooops");
@@ -681,7 +710,7 @@ loop:
 	}
 
 	if (STAILQ_EMPTY(&r->pending_values))
-		goto loop;
+		goto idle;
 
 	@try {
 		i64 next_scn = [r next_scn];
@@ -696,11 +725,9 @@ loop:
 			  [[e class] name], e->reason, e->file, e->line);
 		if (e->backtrace)
 			say_debug("backtrace:\n%s", e->backtrace);
-		goto loop;
 	}
 	@catch (id e) {
 		say_warn("Ooops2");
-		goto loop;
 	}
 
 	expire_proposal(r);
