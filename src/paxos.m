@@ -433,9 +433,9 @@ learn(PaxosRecovery *r, i64 scn)
 	if (scn <= [r scn])
 		return;
 	if (scn > [r scn] + 1) {
-		gap = [r scn] + 1;
-		fiber_wake(r->follower, &gap);
-		say_warn("gap");
+		i64 *gap_scn = palloc(r->follower->pool, sizeof(*gap_scn));
+		*gap_scn = [r scn] + 1;
+		fiber_wake(r->follower, gap_scn);
 		return;
 	}
 
