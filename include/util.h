@@ -90,6 +90,13 @@ void *alloca (size_t);
 
 #define nelem(x)     (sizeof((x))/sizeof((x)[0]))
 
+#ifndef containter_of
+#define container_of(ptr, type, member) ({			\
+	const typeof( ((type *)0)->member ) *__mptr = (ptr);	\
+	(type *)( (char *)__mptr - offsetof(type, member) );	\
+})
+#endif
+
 #ifndef TYPEALIGN
 #define TYPEALIGN(ALIGNVAL,LEN)  \
         (((uintptr_t) (LEN) + ((ALIGNVAL) - 1)) & ~((uintptr_t) ((ALIGNVAL) - 1)))
