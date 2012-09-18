@@ -361,7 +361,7 @@ expire_proposal(PaxosRecovery *r)
 static void
 promise(PaxosRecovery *r, struct proposal *p, struct conn *c, struct msg_paxos *req)
 {
-	if ([r wal_row_submit:&req->ballot len:sizeof(req->ballot) scn:req->scn tag:paxos_promise] == 0)
+	if ([r wal_row_submit:&req->ballot len:sizeof(req->ballot) scn:req->scn tag:paxos_promise] != 1)
 		return;
 
 	u64 old_ballot = p->ballot;
@@ -382,7 +382,7 @@ accepted(PaxosRecovery *r, struct proposal *p, struct conn *c, struct msg_paxos 
 	tbuf_append(x, &req->value_len, sizeof(req->value_len));
 	tbuf_append(x, req->value, req->value_len);
 
-	if ([r wal_row_submit:x->ptr len:tbuf_len(x) scn:req->scn tag:paxos_accept] == 0)
+	if ([r wal_row_submit:x->ptr len:tbuf_len(x) scn:req->scn tag:paxos_accept] != 1)
 		return;
 	update_proposal_value(p, req->value_len, req->value, req->tag);
 	paxos_reply(c, req, ACCEPTED, 0, NULL);
@@ -391,8 +391,8 @@ accepted(PaxosRecovery *r, struct proposal *p, struct conn *c, struct msg_paxos 
 static struct iproto_req *
 prepare(PaxosRecovery *r, struct proposal *p, u64 ballot)
 {
-	if ([r wal_row_submit:&ballot len:sizeof(ballot) scn:p->scn tag:paxos_prepare] == 0)
-		return NULL;
+	if ([r wal_row_submit:&ballot len:sizeof(ballot) scn:p->scn tag:paxos_prepare] != 1)
+		panic("give up");
 	update_proposal_ballot(p, ballot);
 	paxos_broadcast(r, PREPARE, p->delay, p->scn, p->ballot, NULL, 0, 0);
 	return yield();
@@ -407,8 +407,8 @@ propose(PaxosRecovery *r, struct proposal *p)
 	tbuf_append(m, &p->tag, sizeof(p->tag));
 	tbuf_append(m, &p->value_len, sizeof(p->value_len));
 	tbuf_append(m, p->value, p->value_len);
-	if ([r wal_row_submit:m->ptr len:tbuf_len(m) scn:p->scn tag:paxos_propose] == 0)
-		return NULL;
+	if ([r wal_row_submit:m->ptr len:tbuf_len(m) scn:p->scn tag:paxos_propose] != 1)
+		panic("give up");
 
 	paxos_broadcast(r, ACCEPT, p->delay, p->scn, p->ballot, p->value, p->value_len, p->tag);
 	return yield();
@@ -419,10 +419,8 @@ decide(PaxosRecovery *r, struct proposal *p)
 {
 	paxos_broadcast(r, DECIDE, 0, p->scn, p->ballot, p->value, p->value_len, p->tag);
 
-	if ([r wal_row_submit:p->value len:p->value_len scn:p->scn tag:p->tag] == 0) {
-		/* FIXME: trigger some flag to retry later */
-		return -1;
-	}
+	if ([r wal_row_submit:p->value len:p->value_len scn:p->scn tag:p->tag] != 1)
+		panic("give up");
 
 	return 0;
 }
@@ -497,12 +495,8 @@ learner(PaxosRecovery *r, struct iproto *msg)
 	update_proposal_value(p, mp->value_len, mp->value, mp->tag);
 	p->flags |= DECIDED;
 
-	while ([r wal_row_submit:p->value len:p->value_len scn:p->scn tag:p->tag] != 1) {
-		panic("give up leadership");
-		ev_tstamp delay = 0.1;
-		say_warn("%s: wal_row_submit failed, will retry after %.2fs", __func__, delay);
-		fiber_sleep(delay);
-	}
+	if ([r wal_row_submit:p->value len:p->value_len scn:p->scn tag:p->tag] != 1)
+		panic("give up");
 
 	learn(r, p->scn);
 }
@@ -577,7 +571,6 @@ start:
 	say_debug(">>> phase 1 scn:%"PRIi64 " ballot:%"PRIu64" delay:%.2f", p->scn, ballot, p->delay);
 
 	rsp = prepare(r, p, ballot);
-
 	if (rsp == NULL)
 		goto retry;
 
@@ -654,10 +647,8 @@ start:
 	tbuf_append(x, &p->tag, sizeof(p->tag));
 	tbuf_append(x, &p->value_len, sizeof(p->value_len));
 	tbuf_append(x, p->value, p->value_len);
-	if ([r wal_row_submit:x->ptr len:tbuf_len(x) scn:p->scn tag:paxos_accept] == 0) {
-		/* we'r unable to write into WAL, give up leadership */
-		panic("giving up");
-	}
+	if ([r wal_row_submit:x->ptr len:tbuf_len(x) scn:p->scn tag:paxos_accept] != 1)
+		panic("give up");
 
 	/* notify others */
 	assert(p->ballot == ballot);
