@@ -384,6 +384,8 @@ accepted(PaxosRecovery *r, struct proposal *p, struct conn *c, struct msg_paxos 
 
 	if ([r wal_row_submit:x->ptr len:tbuf_len(x) scn:req->scn tag:paxos_accept] != 1)
 		return;
+
+	update_proposal_ballot(p, req->ballot);
 	update_proposal_value(p, req->value_len, req->value, req->tag);
 	paxos_reply(c, req, ACCEPTED, 0, NULL);
 }
