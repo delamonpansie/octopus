@@ -75,6 +75,7 @@ make_paxos_peer(int id, const char *name, struct iproto_peer *iproto,
 	p->primary_addr.sin_port = htons(primary_port);
 	p->feeder_addr = iproto->addr;
 	p->feeder_addr.sin_port = htons(feeder_port);
+	p->iproto->c.fd = -1;
 	return p;
 }
 
@@ -922,14 +923,6 @@ snap_io_rate_limit:(int)snap_io_rate_limit_
 	pool = palloc_create_pool("paxos");
 	output_flusher = fiber_create("paxos/output_flusher", service_output_flusher);
 	reply_reader = fiber_create("paxos/reply_reader", iproto_reply_reader);
-
-	/* FIXME: this connections may become unusable after conn_close()
-	   fix it by calling conn_init() in iproto_rendevouz()
-	*/
-	SLIST_FOREACH (ipeer, &remotes, link) {
-		say_debug("init_conn: p:%p c:%p", ipeer, &ipeer->c);
-		conn_init(&ipeer->c, pool, -1, reply_reader, output_flusher, REF_STATIC);
-	}
 
 	short accept_port;
 	accept_port = ntohs(paxos_peer(self, self_id)->iproto->addr.sin_port);
