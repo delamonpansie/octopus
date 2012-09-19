@@ -5,7 +5,7 @@ extern int cfg_err_len, cfg_err_offt;
 
 #include <octopus.h>
 #include <util.h>
-#include <third_party/confetti/prscfg.h>
+#include <cfg/prscfg.h>
 
 void
 out_warning(ConfettyError v __attribute__((unused)), char *format, ...)

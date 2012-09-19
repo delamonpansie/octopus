@@ -2,9 +2,6 @@ obj += third_party/crc32.o
 obj += third_party/daemon.o
 obj += third_party/libcoro/coro.o
 obj += third_party/proctitle.o
-obj += third_party/confetti/prscfg.o
 obj += third_party/gopt/gopt.o
-
-disable-warns-obj += third_party/confetti/prscfg.o
 
 CFLAGS += -DCORO_$(CORO_IMPL)

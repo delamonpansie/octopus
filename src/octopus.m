@@ -96,7 +96,7 @@ static i32
 load_cfg(struct octopus_cfg *conf, i32 check_rdonly)
 {
 	FILE *f;
-	i32 n_accepted, n_skipped;
+	i32 n_accepted, n_skipped, n_optional;
 
 	reset_cfg_err();
 	if (cfg_filename_fullpath != NULL)
@@ -110,7 +110,7 @@ load_cfg(struct octopus_cfg *conf, i32 check_rdonly)
 		return -1;
 	}
 
-	parse_cfg_file_octopus_cfg(conf, f, check_rdonly, &n_accepted, &n_skipped);
+	parse_cfg_file_octopus_cfg(conf, f, check_rdonly, &n_accepted, &n_skipped, &n_optional);
 	fclose(f);
 
 	if (check_cfg_octopus_cfg(conf) != 0)
