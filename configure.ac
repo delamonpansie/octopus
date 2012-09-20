@@ -45,7 +45,10 @@ AS_IF([test -z "$CONFETTI"],
   AS_IF([test -f "${srcdir}/cfg/octopus.c"], [confetti_needed=no], [confetti_needed=yes])
   AC_MSG_RESULT([$confetti_needed])
   AS_IF([test $confetti_needed = yes],
-        [AC_MSG_ERROR([You need Confetti to build from DARCS/GIT checkouts.])])
+        [AC_MSG_ERROR([dnl
+You need Confetti to build from DARCS/GIT checkouts.
+You can find Confetti at http://github.com/mailru/confetti/dnl
+])])
  ],
  [AC_SUBST([HAVE_CONFETTI], 1)])
 
