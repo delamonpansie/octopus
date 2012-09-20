@@ -821,8 +821,18 @@ recv_msg(struct conn *c, struct tbuf *req, void *arg)
 	}
 }
 
+
+static i64 follow_scn;
+void
+follow_from(PaxosRecovery *r, i64 scn)
+{
+	assert(follow_scn == 0);
+	follow_scn = scn;
+	fiber_wake(r->follower, NULL);
+}
+
 static void
-follow(va_list ap)
+followerf(va_list ap)
 {
 	PaxosRecovery *r = va_arg(ap, PaxosRecovery *);
 	XLogPuller *puller = [[XLogPuller alloc] init];
@@ -830,14 +840,15 @@ follow(va_list ap)
 loop:
 	for (;;) {
 		@try {
-			i64 *scn = yield();
+			follow_scn = 0;
+			yield();
 
 			while (!(leader = paxos_peer(r, leader_id)))
 				fiber_sleep(1);
 
-			say_debug("FOLLOW scn:%"PRIi64 " feeder:%s", *scn, sintoa(&leader->feeder_addr));
+			say_debug("FOLLOW scn:%"PRIi64 " feeder:%s", follow_scn, sintoa(&leader->feeder_addr));
 
-			i64 initial_scn = *scn <= 1024 ? 1 : *scn - 1024;
+			i64 initial_scn = follow_scn <= 1024 ? 1 : follow_scn - 1024;
 			while ([puller handshake:&leader->feeder_addr scn:initial_scn] <= 0) {
 				fiber_sleep(0.1);
 			}
@@ -853,7 +864,7 @@ loop:
 						say_debug("FOLLOW done");
 						goto loop;
 					}
-					if (row->scn < *scn)
+					if (row->scn < follow_scn)
 						continue;
 
 					if (row->tag == wal_tag || row->tag == run_crc || row->tag == nop) {
@@ -959,7 +970,7 @@ snap_io_rate_limit:(int)snap_io_rate_limit_
 	fiber_create("paxos/rendevouz", iproto_rendevouz, NULL, &remotes, pool, reply_reader, output_flusher);
 	proposer_fiber = fiber_create("paxos/propose", proposer, self);
 	fiber_create("paxos/elect", propose_leadership, self);
-	follower = fiber_create("paxos/follower", follow, self);
+	follower = fiber_create("paxos/follower", followerf, self);
 
 	return self;
 }
