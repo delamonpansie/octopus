@@ -115,17 +115,17 @@ endif
 ifeq (1,$(HAVE_CONFETTI))
 %.cfg: %.cfg_tmpl
 	@mkdir -p $(dir $@)
-	$(E) "CNFTY	$@"
+	$(E) "CNFTI	$@"
 	$(Q)$(CONFETTI) -i $< -n octopus_cfg -f $@
 
 cfg/%.h: cfg/%.cfg_tmpl
 	@mkdir -p $(dir $@)
-	$(E) "CNFTY	$@"
+	$(E) "CNFTI	$@"
 	$(Q)$(CONFETTI) -i $< -n octopus_cfg -h $@
 
 cfg/%.c: cfg/%.cfg_tmpl
 	@mkdir -p $(dir $@)
-	$(E) "CNFTY	$@"
+	$(E) "CNFTI	$@"
 	$(Q)$(CONFETTI) -i $< -n octopus_cfg -c $@
 endif
 

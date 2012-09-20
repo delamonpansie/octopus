@@ -34,10 +34,10 @@ ifeq (1, $(HAVE_CONFETTI))
 	$(Q)$(CAT) $(filter-out Makefile,$^) >> $@
 
     cfg/prscfg.c: cfg/octopus.cfg_tmpl
-	$(E) "CFTY	$@"
+	$(E) "CNFTI	$@"
 	$(Q)$(CONFETTI) -i $< -p $@
 
     cfg/prscfg.h: cfg/octopus.cfg_tmpl
-	$(E) "CFTY	$@"
+	$(E) "CNFTI	$@"
 	$(Q)$(CONFETTI) -i $< -H $@
 endif
