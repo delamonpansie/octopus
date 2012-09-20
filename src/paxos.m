@@ -175,6 +175,9 @@ static void
 paxos_reply(struct conn *c, const struct msg_paxos *req, enum paxos_msg_code code,
 	    u64 ballot, const struct proposal *p)
 {
+	if (c->state == CLOSED)
+		return;
+
 	struct msg_paxos *msg = p0alloc(c->pool, sizeof(*msg));
 	msg->header = (struct iproto){ code,
 				       sizeof(*msg) - sizeof(struct iproto) + (p ? p->value_len : 0),
@@ -197,6 +200,7 @@ paxos_reply(struct conn *c, const struct msg_paxos *req, enum paxos_msg_code cod
 	say_debug("%s: > %s sync:%i scn:%"PRIi64" ballot:%"PRIu64, __func__, paxos_msg_code_strs[code],
 		  msg->header.sync, msg->scn, msg->ballot);
 
+	ev_io_start(&c->out);
 }
 static void
 notify_leadership_change(PaxosRecovery *r)
@@ -531,8 +535,6 @@ acceptor(PaxosRecovery *r, struct conn *c, struct iproto *msg)
 			break;
 		}
 	}
-
-	ev_io_start(&c->out);
 }
 
 static void
@@ -775,9 +777,6 @@ recv_msg(struct conn *c, struct tbuf *req, void *arg)
 	say_debug("%s: op:0x%02x/%s sync:%i", __func__,
 		  msg->msg_code, paxos_msg_code_strs[msg->msg_code], msg->sync);
 
-	if (c->state == CLOSED)
-		return;
-
 	switch (msg->msg_code) {
 	case LEADER_PROPOSE: {
 		struct msg_leader *pmsg = (struct msg_leader *)msg;
@@ -795,6 +794,9 @@ recv_msg(struct conn *c, struct tbuf *req, void *arg)
 			pmsg->leader_id = leader_id;
 			pmsg->expire = leadership_expire;
 		}
+		if (c->state == CLOSED)
+			return;
+
 		struct netmsg *m = netmsg_tail(&c->out_messages);
 		net_add_iov_dup(&m, pmsg, sizeof(*pmsg));
 		ev_io_start(&c->out);
