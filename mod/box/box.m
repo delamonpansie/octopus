@@ -1172,7 +1172,7 @@ box_bound_to_primary(int fd)
 {
 	if (fd < 0) {
 		if (!cfg.local_hot_standby)
-			panic("unable bind server socket");
+			panic("unable bind to primary port %i", cfg.primary_port);
 		return;
 	}
 
