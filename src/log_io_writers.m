@@ -201,9 +201,7 @@ wal_pack_submit
 	}
 
 	ev_io_start(&wal_writer->c->out);
-	inprogress_packs++;
 	struct wal_reply *r = yield();
-	inprogress_packs--;
 	if (r->lsn == 0) {
 		say_warn("wal writer returned error status");
 	} else {

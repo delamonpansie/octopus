@@ -172,7 +172,6 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 	bool local_writes;
 	XLog *wal_to_close;
 	ev_timer wal_timer;
-	int inprogress_packs;
 @public
 	XLog *current_wal;	/* the WAL we'r currently reading/writing from/to */
 	int snap_io_rate_limit;
