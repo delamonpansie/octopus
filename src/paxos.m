@@ -167,6 +167,8 @@ paxos_broadcast(PaxosRecovery *r, enum paxos_msg_code code, ev_tstamp timeout,
 					  &msg.header, value, value_len);
 	say_debug("%s: > %s sync:%u ballot:%"PRIu64" SCN:%"PRIi64" timeout:%.2f", __func__,
 		  paxos_msg_code_strs[code], req->header->sync, ballot, scn, timeout);
+	say_debug("|    value_len:%i value:%s",
+		  value_len, tbuf_to_hex(&TBUF(value, value_len, fiber->pool)));
 
 	broadcast(&r->remotes, req);
 }
@@ -197,7 +199,7 @@ paxos_reply(struct conn *c, const struct msg_paxos *req, enum paxos_msg_code cod
 		net_add_iov(&m, msg, sizeof(*msg));
 	}
 
-	say_debug("%s: > %s sync:%i scn:%"PRIi64" ballot:%"PRIu64, __func__, paxos_msg_code_strs[code],
+	say_debug("%s: > %s sync:%i SCN:%"PRIi64" ballot:%"PRIu64, __func__, paxos_msg_code_strs[code],
 		  msg->header.sync, msg->scn, msg->ballot);
 
 	ev_io_start(&c->out);
@@ -301,7 +303,7 @@ find_proposal(PaxosRecovery *r, i64 scn)
 static void
 update_proposal_ballot(struct proposal *p, u64 ballot)
 {
-	say_debug("%s: scn:%"PRIi64" ballot:%"PRIu64, __func__, p->scn, ballot);
+	say_debug("%s: SCN:%"PRIi64" ballot:%"PRIu64, __func__, p->scn, ballot);
 	assert(p->ballot <= ballot);
 	p->ballot = ballot;
 }
@@ -309,7 +311,7 @@ update_proposal_ballot(struct proposal *p, u64 ballot)
 static void
 update_proposal_value(struct proposal *p, u32 value_len, const char *value, u16 tag)
 {
-	say_debug("%s: scn:%"PRIi64" value_len:%i", __func__, p->scn, value_len);
+	say_debug("%s: SCN:%"PRIi64" value_len:%i", __func__, p->scn, value_len);
 
 	if (p->value_len != value_len) {
 		assert(p->value_len == 0 && value_len > 0); /* value never goes empty */
@@ -325,7 +327,7 @@ update_proposal_value(struct proposal *p, u32 value_len, const char *value, u16 
 static struct proposal *
 create_proposal(PaxosRecovery *r, i64 scn, u64 ballot)
 {
-	say_debug("%s: scn:%"PRIi64" ballot:%"PRIu64, __func__, scn, ballot);
+	say_debug("%s: SCN:%"PRIi64, __func__, scn);
 
 	struct proposal *n, *p = calloc(1, sizeof(*p));
 	TAILQ_FOREACH(n, &r->proposals, link) {
@@ -485,7 +487,7 @@ learner(PaxosRecovery *r, struct iproto *msg)
 	if (!p)
 		p = create_proposal(r, mp->scn, 0);
 
-	say_debug("%s: < sync:%i type:DECIDE scn:%"PRIi64" ballot:%"PRIu64" tag:%s value_len:%i %s", __func__,
+	say_debug("%s: < sync:%i type:DECIDE SCN:%"PRIi64" ballot:%"PRIu64" tag:%s value_len:%i %s", __func__,
 		  msg->sync, mp->scn, mp->ballot, xlog_tag_to_a(mp->tag), mp->value_len,
 		  tbuf_to_hex(&TBUF(mp->value, mp->value_len, fiber->pool)));
 
@@ -521,8 +523,10 @@ acceptor(PaxosRecovery *r, struct conn *c, struct iproto *msg)
 	} else if (p->ballot > mp->ballot) {
 		nack(c, mp, p->ballot);
 	} else {
-		say_debug("%s: < c:%p type:%s sync:%i scn:%"PRIi64" ballot:%"PRIu64" value_len: %i", __func__,
-			  c, paxos_msg_code_strs[msg->msg_code], msg->sync, mp->scn, mp->ballot, mp->value_len);
+		say_debug("%s: < c:%p type:%s sync:%i SCN:%"PRIi64" ballot:%"PRIu64" value_len:%i value:%s",
+			  __func__,
+			  c, paxos_msg_code_strs[msg->msg_code], msg->sync, mp->scn, mp->ballot,
+			  mp->value_len, tbuf_to_hex(&TBUF(mp->value, mp->value_len, fiber->pool)));
 		switch (msg->msg_code) {
 		case PREPARE:
 			promise(r, p, c, mp);
@@ -572,7 +576,7 @@ start:
 
 	assert(p);
 
-	say_debug(">>> phase 1 scn:%"PRIi64 " ballot:%"PRIu64" delay:%.2f", p->scn, ballot, p->delay);
+	say_debug(">>> phase 1 SCN:%"PRIi64 " ballot:%"PRIu64" delay:%.2f", p->scn, ballot, p->delay);
 
 	rsp = prepare(r, p, ballot);
 	if (rsp == NULL)
@@ -738,15 +742,15 @@ query(struct PaxosRecovery *r, struct iproto_peer *p, struct iproto_msg *msg)
 	struct msg_paxos reply = PREPLY(ACCEPTED, req);
 	struct proposal *p = find_proposal(req->scn);
 	if (!paxos_leader()) {
-		say_warn("%s: not paxos leader, ignoring query scn:%"PRIi64, __func__, req->scn);
+		say_warn("%s: not paxos leader, ignoring query SCN:%"PRIi64, __func__, req->scn);
 		return;
 	}
 	if (p == NULL || (p->flags & DECIDED) == 0) {
-		say_warn("%s: not decided, ignoring query scn:%"PRIi64, __func__, req->scn);
+		say_warn("%s: not decided, ignoring query SCN:%"PRIi64, __func__, req->scn);
 
 	}
 	net_add_iov_dup(&m, &reply, sizeof(reply));
-	say_debug("%s: sync:%i scn:%"PRIi64" value_len:%i %s", __func__,
+	say_debug("%s: sync:%i SCN:%"PRIi64" value_len:%i %s", __func__,
 		  req->header.sync, req->scn, req->value_len,
 		  tbuf_to_hex(&TBUF(req->value, req->value_len, fiber->pool)));
 }
@@ -846,7 +850,7 @@ loop:
 			while (!(leader = paxos_peer(r, leader_id)))
 				fiber_sleep(1);
 
-			say_debug("FOLLOW scn:%"PRIi64 " feeder:%s", follow_scn, sintoa(&leader->feeder_addr));
+			say_debug("FOLLOW SCN:%"PRIi64 " feeder:%s", follow_scn, sintoa(&leader->feeder_addr));
 
 			i64 initial_scn = follow_scn <= 1024 ? 1 : follow_scn - 1024;
 			while ([puller handshake:&leader->feeder_addr scn:initial_scn] <= 0) {
@@ -856,7 +860,7 @@ loop:
 			for (;;) {
 				const struct row_v12 *row;
 				while ((row = [puller fetch_row])) {
-					say_debug("%s: row scn:%"PRIi64 " tag:%s", __func__,
+					say_debug("%s: row SCN:%"PRIi64 " tag:%s", __func__,
 						  row->scn, xlog_tag_to_a(row->tag));
 
 					if (row->tag == wal_final_tag) {
@@ -1048,7 +1052,7 @@ submit:(void *)data len:(u32)len tag:(u16)tag
 - (void)
 recover_row:(const struct row_v12 *)r
 {
-	say_debug("%s: lsn:%"PRIi64" scn:%"PRIi64" tag:%s", __func__,
+	say_debug("%s: lsn:%"PRIi64" SCN:%"PRIi64" tag:%s", __func__,
 		  r->lsn, r->scn, xlog_tag_to_a(r->tag));
 
 	switch (r->tag) {
