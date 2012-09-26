@@ -212,6 +212,7 @@ configure: $(srcdir)/configure.ac $(srcdir)/third_party/libev/libev.m4
 	cd $(srcdir) && autoconf
 
 ifeq (1,$(HAVE_DARCS))
+dist += darcs.context
 .PHONY: darcs.context
 darcs.context:
 	$E "DARCS	$@"
@@ -219,7 +220,7 @@ darcs.context:
 endif
 
 .PHONY:
-dist: configure $(dist) octopus_version.h darcs.context
+dist: configure $(dist) octopus_version.h
 	@rm -rf $(configure-byproducts)
 
 $(eval $(defered))
