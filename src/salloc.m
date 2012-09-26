@@ -453,7 +453,9 @@ slab_stat(struct tbuf *t)
 		for (int j = 0; j < nelem(arena[i].mmaps); j++)
 			arena_size += arena[i].mmaps[j].size;
 
-		tbuf_printf(t, "    - { used: %.2f, size: %"PRIi64", free_slabs: %i }" CRLF,
+		tbuf_printf(t, "    - { type: %s, used: %.2f, size: %"PRIi64", free_slabs: %i }" CRLF,
+			    &arena[i] == fixed_arena ? "fixed" :
+			    &arena[i] == grow_arena ? "grow" : "unknown",
 			    (double)arena[i].used / arena_size * 100,
 			    arena_size, free_slabs);
 	}
