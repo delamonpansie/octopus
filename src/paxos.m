@@ -143,7 +143,9 @@ proposal_cmp(const struct proposal *a, const struct proposal *b)
 {
 	return (a->scn < b->scn) ? -1 : (a->scn > b->scn);
 }
-#define __unused
+#ifndef __unused
+#define __unused    __attribute__((__unused__))
+#endif
 RB_GENERATE_STATIC(ptree, proposal, link, proposal_cmp)
 
 static int leader_id, self_id;
@@ -942,7 +944,6 @@ snap_io_rate_limit:(int)snap_io_rate_limit_
 
 	SLIST_INIT(&group);
 	RB_INIT(&proposals);
-	RB_NFIND(ptree, &proposals, &(struct proposal){ .scn = 0 }); /* silence warning about RB_NFIND being unused */
 
 	if (flags & RECOVER_READONLY)
 		return self;

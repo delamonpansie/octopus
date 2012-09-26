@@ -18,9 +18,8 @@ Cons:
 
 
 How to run:
-
 1) compile (note GNU make is required)
-	./configure && make
+	make
 2) customize config
 	cp cfg/octopus_box.cfg custom.cfg && emacs custom.cfg
 3) initialize storage

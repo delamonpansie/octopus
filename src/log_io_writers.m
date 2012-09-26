@@ -38,6 +38,7 @@
 
 #include <stdio.h>
 #include <sysexits.h>
+#include <sys/socket.h>
 
 /* Wal pack is :
    Header:     packet_len: u32
