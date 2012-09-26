@@ -949,7 +949,7 @@ snap_io_rate_limit:(int)snap_io_rate_limit_
 		return self;
 
 	if (cfg.paxos_peer == NULL)
-		panic("no paxos_peer givev");
+		panic("no paxos_peer given");
 
 	self_id = cfg.paxos_self_id;
 	say_info("configuring paxos peers");
