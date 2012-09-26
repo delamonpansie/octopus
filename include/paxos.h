@@ -25,9 +25,11 @@
  */
 
 #import <iproto.h>
-#include <third_party/queue.h>
+#include <third_party/tree.h>
 
 struct paxos_peer;
+struct proposal;
+RB_HEAD(ptree, proposal);
 
 @interface PaxosRecovery: Recovery {
 @public
@@ -35,14 +37,13 @@ struct paxos_peer;
 	struct iproto_group remotes;
 	int quorum;
 	struct fiber *proposer_fiber;
-	struct fiber *output_flusher, *reply_reader, *follower;
+	struct fiber *output_flusher, *reply_reader, *follower, *wal_dumper;
 	struct palloc_pool *pool;
-
-	TAILQ_HEAD(proposal_tailq, proposal) proposals;
-	STAILQ_HEAD(, pending_value) pending_values;
+	i64 max_scn;
+	bool wal_dumper_busy;
+	struct ptree proposals;
 }
 
-- (void) set_scn:(i64)scn_;
 - (i64) next_scn;
 @end
 
