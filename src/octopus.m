@@ -495,6 +495,8 @@ main(int argc, char **argv)
 #ifdef STORAGE
 			   gopt_option('C', GOPT_ARG, gopt_shorts(0), gopt_longs("cat"),
 				       "=FILE", "cat snapshot file to stdout in readable format and exit"),
+			   gopt_option('F', GOPT_ARG, gopt_shorts(0), gopt_longs("fold"),
+				       "=SCN", "save snapshot at given SCN and exit"),
 			   gopt_option('I', 0, gopt_shorts(0),
 				       gopt_longs("init-storage"),
 				       NULL, "initialize storage (an empty snapshot file) and exit"),
@@ -550,6 +552,10 @@ main(int argc, char **argv)
 
 		panic("no --cat action defined");
 	}
+
+	const char *opt_text;
+	if (gopt_arg(opt, 'F', &opt_text))
+		fold_scn = atol(opt_text);
 #endif
 
 	/* If config filename given in command line it will override the default */

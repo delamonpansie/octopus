@@ -45,6 +45,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sysexits.h>
 
 @implementation Recovery
 
@@ -857,6 +858,37 @@ nop_hb_writer(va_list ap)
 	}
 
 	return self;
+}
+
+@end
+
+@implementation FoldRecovery
+
+- (i64)
+snap_lsn
+{
+	return [snap_dir containg_scn:fold_scn];
+}
+
+- (void)
+recover_row:(struct row_v12 *)r
+{
+	[super recover_row:r];
+
+	if (r->scn == fold_scn) {
+		foreach_module(mod)
+			if (mod->snapshot)
+				mod->snapshot(false);
+
+		exit(EX_OK);
+	}
+}
+
+- (void)
+wal_final_row
+{
+	say_error("unable to find record with SCN:%"PRIi64, fold_scn);
+	exit(EX_OSFILE);
 }
 
 @end

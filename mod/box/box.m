@@ -1302,7 +1302,10 @@ init(void)
 			panic("wal_hot_standby is incompatible with paxos");
 	}
 
-	recovery = cfg.paxos_enabled ? [PaxosRecovery alloc] : [Recovery alloc];
+	recovery = cfg.paxos_enabled ? [PaxosRecovery alloc] :
+		   fold_scn > 0 ? [FoldRecovery alloc] :
+		   [Recovery alloc];
+
 	recovery = [recovery init_snap_dir:cfg.snap_dir
 				   wal_dir:cfg.wal_dir
 			      rows_per_wal:cfg.rows_per_wal

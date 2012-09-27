@@ -269,6 +269,12 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
   snap_io_rate_limit:(int)snap_io_rate_limit;
 @end
 
+
+i64 fold_scn;
+@interface FoldRecovery: Recovery
+@end
+
+
 int wal_disk_writer(int fd, void *state);
 void wal_disk_writer_input_dispatch(va_list ap __attribute__((unused)));
 void snapshot_write_row(XLog *l, u16 tag, struct tbuf *row);
