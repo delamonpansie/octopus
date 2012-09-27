@@ -170,8 +170,6 @@ reload_cfg()
 	return 0;
 }
 
-#define foreach_module(m) for (struct tnt_module *m = modules_head; m != NULL; m = m->next)
-
 struct tnt_module *
 module(const char *name)
 {

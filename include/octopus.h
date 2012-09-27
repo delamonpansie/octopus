@@ -56,6 +56,7 @@ void register_module_(struct tnt_module *);
 	register_module##name(void) {			\
 		register_module_(&name);		\
 	}
+#define foreach_module(m) for (struct tnt_module *m = modules_head; m != NULL; m = m->next)
 
 extern lua_State *root_L;
 struct lua_src {
