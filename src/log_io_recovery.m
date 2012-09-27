@@ -206,6 +206,12 @@ wal_final_row
 }
 
 - (i64)
+snap_lsn
+{
+	return [snap_dir greatest_lsn];
+}
+
+- (i64)
 recover_snap
 {
 	XLog *snap = nil;
@@ -213,7 +219,7 @@ recover_snap
 
 	struct palloc_pool *saved_pool = fiber->pool;
 	@try {
-		i64 snap_lsn = [snap_dir greatest_lsn];
+		i64 snap_lsn = [self snap_lsn];
 		if (snap_lsn == -1)
 			raise("snap_dir reading failed");
 
