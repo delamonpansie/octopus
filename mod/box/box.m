@@ -1001,7 +1001,7 @@ static void
 snap_print(struct tbuf *out, struct tbuf *row)
 {
 	struct box_snap_row *snap = box_snap_row(row);
-	tbuf_printf(out, "m:%i ", snap->object_space);
+	tbuf_printf(out, "n:%i ", snap->object_space);
 	tuple_print(out, snap->tuple_size, snap->data);
 }
 
