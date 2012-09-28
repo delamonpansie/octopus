@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 
-AC_PREREQ([2.67])
+AC_PREREQ([2.63])
 AC_INIT([octopus],[2.0],[mon@unformed.ru])
 AC_CONFIG_SRCDIR([src/octopus.m])
 AC_CONFIG_HEADERS([include/config.h])
