@@ -657,27 +657,31 @@ main(int argc, char **argv)
 #endif
 	}
 
-	if (cfg.custom_proc_title == NULL)
-		custom_proc_title = "";
-	else {
-		custom_proc_title = calloc(strlen(cfg.custom_proc_title) + 2, 1);
-		strcat(custom_proc_title, "@");
-		strcat(custom_proc_title, cfg.custom_proc_title);
-	}
+	if (fold_scn) {
+		custom_proc_title = "fold";
+	} else {
+		if (cfg.custom_proc_title == NULL)
+			custom_proc_title = "";
+		else {
+			custom_proc_title = calloc(strlen(cfg.custom_proc_title) + 2, 1);
+			strcat(custom_proc_title, "@");
+			strcat(custom_proc_title, cfg.custom_proc_title);
+		}
 
-	if (gopt(opt, 'D')) {
-		if (daemonize(1, 0) < 0)
-			panic("unable to daemonize");
-		master_pid = getpid();
-	}
+		if (gopt(opt, 'D')) {
+			if (daemonize(1, 0) < 0)
+				panic("unable to daemonize");
+			master_pid = getpid();
+		}
 
-	if (cfg.pid_file != NULL) {
-		create_pid();
-		atexit(remove_pid);
-	}
+		if (cfg.pid_file != NULL) {
+			create_pid();
+			atexit(remove_pid);
+		}
 
-	say_logger_init(cfg.logger_nonblock);
-	booting = false;
+		say_logger_init(cfg.logger_nonblock);
+		booting = false;
+	}
 
 	@try {
 #ifdef STORAGE
