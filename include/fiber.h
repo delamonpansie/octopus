@@ -44,7 +44,7 @@ struct fiber {
 	uint32_t fid;
 
 	SLIST_ENTRY(fiber) link, zombie_link, worker_link;
-	STAILQ_ENTRY(fiber) wake_link;
+	TAILQ_ENTRY(fiber) wake_link;
 	void *wake;
 
 	lua_State *L;
@@ -70,7 +70,7 @@ int wait_for_child(pid_t pid);
 
 void resume(struct fiber *callee, void *w);
 void *yield(void);
-void fiber_wake(struct fiber *f, void *arg);
+int fiber_wake(struct fiber *f, void *arg);
 
 struct msg *read_inbox(void);
 struct tbuf;

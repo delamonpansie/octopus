@@ -69,7 +69,7 @@ ev_prepare wake_prep;
 
 static struct mhash_t *fibers_registry;
 
-STAILQ_HEAD(, fiber) wake_list;
+TAILQ_HEAD(, fiber) wake_list;
 
 void
 resume(struct fiber *callee, void *w)
@@ -93,13 +93,15 @@ yield(void)
 	return fiber->coro.w;
 }
 
-void
+int
 fiber_wake(struct fiber *f, void *arg)
 {
-	if (STAILQ_NEXT(f, wake_link))
-		return;
+	if (TAILQ_NEXT(f, wake_link))
+		return 0;
+
 	f->wake = arg;
-	STAILQ_INSERT_TAIL(&wake_list, f, wake_link);
+	TAILQ_INSERT_TAIL(&wake_list, f, wake_link);
+	return 1;
 }
 
 void
@@ -329,12 +331,13 @@ fiber_wakeup_pending(void)
 {
 	assert(fiber == &sched);
 	struct fiber *f, *tvar;
-	STAILQ_FOREACH_SAFE(f, &wake_list, wake_link, tvar) {
+
+	TAILQ_FOREACH_SAFE(f, &wake_list, wake_link, tvar) {
 		void *arg = f->wake;
-		STAILQ_NEXT(f, wake_link) = NULL;
+		TAILQ_REMOVE(&wake_list, f, wake_link);
+		TAILQ_NEXT(f, wake_link) = NULL;
 		resume(f, arg);
 	}
-	STAILQ_INIT(&wake_list);
 }
 
 void
@@ -342,7 +345,7 @@ fiber_init(void)
 {
 	SLIST_INIT(&fibers);
 	SLIST_INIT(&zombie_fibers);
-	STAILQ_INIT(&wake_list);
+	TAILQ_INIT(&wake_list);
 
 	fibers_registry = mh_i32_init();
 
