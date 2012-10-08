@@ -96,7 +96,7 @@ yield(void)
 int
 fiber_wake(struct fiber *f, void *arg)
 {
-	if (TAILQ_NEXT(f, wake_link))
+	if (f->wake_link.tqe_prev)
 		return 0;
 
 	f->wake = arg;
@@ -335,7 +335,7 @@ fiber_wakeup_pending(void)
 	TAILQ_FOREACH_SAFE(f, &wake_list, wake_link, tvar) {
 		void *arg = f->wake;
 		TAILQ_REMOVE(&wake_list, f, wake_link);
-		TAILQ_NEXT(f, wake_link) = NULL;
+		f->wake_link.tqe_prev = NULL;
 		resume(f, arg);
 	}
 }
