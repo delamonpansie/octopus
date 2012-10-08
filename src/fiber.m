@@ -80,6 +80,10 @@ resume(struct fiber *callee, void *w)
 	assert(callee->name);
 	fiber = callee;
 	callee->coro.w = w;
+#ifdef FIBER_DEBUG
+	say_debug("%s: %i/%s -> %i/%s arg:%p", __func__,
+		  caller->fid, caller->name, callee->fid, callee->name, w);
+#endif
 	coro_transfer(&caller->coro.ctx, &callee->coro.ctx);
 	callee->caller = &sched;
 }
@@ -98,7 +102,9 @@ fiber_wake(struct fiber *f, void *arg)
 {
 	if (f->wake_link.tqe_prev)
 		return 0;
-
+#ifdef FIBER_DEBUG
+	say_debug("%s: %i/%s arg:%p", __func__, f->fid, f->name, arg);
+#endif
 	f->wake = arg;
 	TAILQ_INSERT_TAIL(&wake_list, f, wake_link);
 	return 1;
