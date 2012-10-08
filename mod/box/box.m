@@ -195,16 +195,10 @@ txn_acquire(struct box_txn *txn, struct tnt_object *obj)
 	int i;
 	for (i = 0; i < nelem(txn->ref); i++)
 		if (txn->ref[i] == NULL) {
-			@try {
-				object_incr_ref(obj);
-				object_lock(obj);
-				txn->ref[i] = obj;
-				return obj;
-			}
-			@catch (id e) {
-				object_decr_ref(obj);
-				@throw;
-			}
+			object_lock(obj); /* throws exception on lock failure */
+			txn->ref[i] = obj;
+			object_incr_ref(obj);
+			return obj;
 		}
 	panic("txn->ref[] to small i:%i", i);
 }
