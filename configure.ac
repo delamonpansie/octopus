@@ -203,7 +203,7 @@ AC_ARG_ENABLE([valgrind],
 AS_IF([test "x$valgrind" != xyes],
       [CFLAGS="-DNVALGRIND $CFLAGS"])
 
-AC_ARG_ENABLE([module],
+AC_ARG_ENABLE([modules],
               [AS_HELP_STRING([--enable-modules[[="box feeder"]]],
                               [select module to build, silver(box) and feeder by default])],
               [octopus_modules=$enableval],
