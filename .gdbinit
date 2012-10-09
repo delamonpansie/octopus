@@ -145,8 +145,21 @@ end
 def pfibers
   set $fiber = fibers.slh_first
   while $fiber != 0
-    printf "%30s  ", $fiber->name
+    printf "%30s/%i  ", $fiber->name, $fiber->fid
     p $fiber
     set $fiber = $fiber.link.sle_next
+  end
+end
+
+def btfiber
+  set $fib_coro = $arg0->coro
+  set $fib_stack_top = $fib_coro->stack + $fib_coro->stack_size
+  set $fib_sp = (void *)$fib_coro->ctx->sp
+  set $fib_stack_len = $fib_stack_top - $fib_sp
+
+  while $fib_stack_len > 0
+    x/a $fib_sp
+    set $fib_sp = $fib_sp + sizeof(void *)
+    set $fib_stack_len = $fib_stack_len - sizeof(void *)
   end
 end
