@@ -37,7 +37,9 @@ enum say_level {
 	ERROR,
 	WARN,
 	INFO,
-	DEBUG
+	DEBUG,
+	DEBUG2,
+	DEBUG3
 };
 
 extern int stderrfd, sayfd, max_level;
@@ -59,6 +61,10 @@ void say_ERRORno(const char *filename, unsigned line, const char *format, ...) /
 void say_WARN(const char *filename, unsigned line, const char *format, ...)
     __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
 void say_DEBUG(const char *filename, unsigned line, const char *format, ...)
+    __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
+void say_DEBUG2(const char *filename, unsigned line, const char *format, ...)
+    __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
+void say_DEBUG3(const char *filename, unsigned line, const char *format, ...)
     __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
 void say_INFO(const char *filename, unsigned line, const char *format, ...)
     __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
@@ -86,6 +92,8 @@ int say_filter(int, const char *);
 #define say_warn(...)		say(, WARN, __VA_ARGS__)
 #define say_info(...)		say(, INFO, __VA_ARGS__)
 #define say_debug(...)		say(, DEBUG, __VA_ARGS__)
+#define say_debug2(...)		say(, DEBUG2, __VA_ARGS__)
+#define say_debug3(...)		say(, DEBUG3, __VA_ARGS__)
 
 
 

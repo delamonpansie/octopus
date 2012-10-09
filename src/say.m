@@ -255,6 +255,8 @@ say_##level##suffix(const char *filename, unsigned line, const char *format, ...
 }
 
 say_f(DEBUG, , NULL)
+say_f(DEBUG2, , NULL)
+say_f(DEBUG3, , NULL)
 say_f(WARN, , NULL)
 say_f(INFO, , NULL)
 say_f(ERROR, , NULL)
