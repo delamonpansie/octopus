@@ -261,7 +261,6 @@ say_f(WARN, , NULL)
 say_f(INFO, , NULL)
 say_f(ERROR, , NULL)
 say_f(ERROR, no, strerror(errno))
-say_f(FATAL, , NULL)
 
 void __attribute__((format(FORMAT_PRINTF, 6, 0), noreturn))
 vpanic(int status, const char *file, unsigned line,

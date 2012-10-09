@@ -748,7 +748,7 @@ main(int argc, char **argv)
 	}
 	@catch (id e) {
 		if ([e respondsTo:@selector(code)] && [e code] == ERR_CODE_MEMORY_ISSUE) {
-			say(, FATAL, "Can't allocate memory. Is slab_arena too small?");
+			say_error("Can't allocate memory. Is slab_arena too small?");
 			exit(EX_OSFILE);
 		}
 		@throw e;

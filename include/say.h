@@ -70,8 +70,6 @@ void say_INFO(const char *filename, unsigned line, const char *format, ...)
     __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
 void say_CRIT(const char *filename, unsigned line, const char *format, ...)
     __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
-void say_FATAL(const char *filename, unsigned line, const char *format, ...)
-    __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
 
 
 void say_level_source(const char *file, int diff);
