@@ -1,6 +1,7 @@
 src/octopus.o: CFLAGS += -DSTORAGE
 
 obj += src/admin.o
+obj += src/paxos.o
 obj += mod/box/box.o
 obj += mod/box/moonbox.o
 obj += mod/box/tuple_index.o

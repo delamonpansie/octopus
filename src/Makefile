@@ -19,7 +19,6 @@ obj += src/octopus_ev.o
 obj += src/tbuf.o
 obj += src/util.o
 obj += src/assoc.o
-obj += src/paxos.o
 obj += src/octopus.o
 
 ifeq (1,$(HAVE_RAGEL))
