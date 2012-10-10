@@ -37,6 +37,8 @@
 #include <unistd.h>
 #include <sys/uio.h>
 
+struct tbuf; /* forward declaration */
+
 struct fiber {
 	struct octopus_coro coro;
 	struct fiber *caller;
@@ -52,8 +54,6 @@ struct fiber {
 	const char *name;
 	void (*f)(va_list ap);
 	va_list ap;
-
-	bool reading_inbox;
 };
 
 SLIST_HEAD(, fiber) fibers, zombie_fibers;
@@ -71,11 +71,6 @@ int wait_for_child(pid_t pid);
 void resume(struct fiber *callee, void *w);
 void *yield(void);
 int fiber_wake(struct fiber *f, void *arg);
-
-struct msg *read_inbox(void);
-struct tbuf;
-bool write_inbox(struct fiber *recipient, struct tbuf *msg);
-int inbox_size(struct fiber *recipient);
 
 void fiber_gc(void);
 void fiber_sleep(ev_tstamp s);
