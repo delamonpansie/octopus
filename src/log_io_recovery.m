@@ -34,8 +34,9 @@
 #import <tbuf.h>
 #import <net_io.h>
 #import <assoc.h>
+#ifdef PAXOS
 #import <paxos.h>
-
+#endif
 #include <third_party/crc32.h>
 
 #include <dirent.h>
@@ -950,12 +951,14 @@ read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, struct
 		}
 		case nop:
 			break;
+#ifdef PAXOS
 		case paxos_prepare:
 		case paxos_promise:
 		case paxos_propose:
 		case paxos_accept:
 			paxos_print(out, handler, row);
 			break;
+#endif
 		default:
 			tbuf_printf(out, "UNKNOWN");
 		}
