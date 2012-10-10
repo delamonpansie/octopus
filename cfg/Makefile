@@ -23,7 +23,8 @@ ifeq (1, $(HAVE_CONFETTI))
 
     defered += $$(obj): cfg/octopus.h cfg/octopus.cfg
 
-    cfg/octopus.cfg_tmpl: cfg/core.cfg_tmpl $(cfg_tmpl) Makefile
+    cfg/octopus.cfg_tmpl: Makefile $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
+    cfg/octopus.cfg_tmpl: cfg/core.cfg_tmpl $(cfg_tmpl)
 	@mkdir -p $(dir $@)
 	@echo '%{ ' > $@
 	@echo "#include <cfg/prscfg.h>" >> $@
@@ -31,7 +32,7 @@ ifeq (1, $(HAVE_CONFETTI))
 	@echo "void out_warning(ConfettyError r, char *format, ...);" >> $@
 	@echo '%}' >> $@
 	$(E) "GEN	$@"
-	$(Q)$(CAT) $(filter-out Makefile,$^) >> $@
+	$(Q)$(CAT) $(filter-out %Makefile,$^) >> $@
 
     cfg/prscfg.c: cfg/octopus.cfg_tmpl
 	$(E) "CNFTI	$@"
