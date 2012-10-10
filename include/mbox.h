@@ -33,18 +33,18 @@
 #define MBOX_MAGICK_COOKIE	((void*)(uintptr_t)0xBADC0DEF)
 
 struct mbox_consumer {
-	struct	fiber				*fiber;
+	struct	fiber			*fiber;
 	TAILQ_ENTRY(mbox_consumer)	conslink;
 };
 
 struct mbox_msg {
-	void						*msg;
+	void				*msg;
 	STAILQ_ENTRY(mbox_msg)		msglink;
 };
 
 struct mbox {
-	STAILQ_HEAD(mbox_msg_list, mbox_msg)			msg_list;
-	u32												msg_list_len;
+	STAILQ_HEAD(mbox_msg_list, mbox_msg)		msg_list;
+	u32						msg_list_len;
 	TAILQ_HEAD(mbox_consumer_list, mbox_consumer)	consumer_list;
 };
 
@@ -63,7 +63,7 @@ mbox_put(struct mbox *mbox, struct mbox_msg *msg) {
 	mbox->msg_list_len++;
 
 	TAILQ_FOREACH(consumer, &mbox->consumer_list, conslink)
-		fiber_wake(consumer->fiber, MBOX_MAGICK_COOKIE);
+	fiber_wake(consumer->fiber, MBOX_MAGICK_COOKIE);
 }
 
 static inline void *
@@ -71,14 +71,14 @@ mbox_get(struct mbox *mbox) {
 	void *msg = NULL;
 
 	if (mbox->msg_list_len > 0) {
-			struct mbox_msg *mbox_msg = STAILQ_FIRST(&mbox->msg_list);
+		struct mbox_msg *mbox_msg = STAILQ_FIRST(&mbox->msg_list);
 			
-			assert(mbox_msg != NULL);
+		assert(mbox_msg != NULL);
 
-			STAILQ_REMOVE_HEAD(&mbox->msg_list, msglink);
-			mbox->msg_list_len--;
+		STAILQ_REMOVE_HEAD(&mbox->msg_list, msglink);
+		mbox->msg_list_len--;
 
-			msg = mbox_msg->msg;
+		msg = mbox_msg->msg;
 	} else {
 		assert(STAILQ_FIRST(&mbox->msg_list) == NULL);
 	}
@@ -103,8 +103,8 @@ mbox_wait(struct mbox *mbox) {
 static inline bool
 mbox_timedwait(struct mbox *mbox, ev_tstamp delay) {
 	struct mbox_consumer	mbox_consumer = { .fiber = fiber };
-	ev_timer 				w = { .coro = 1 };
-	bool					res = true;
+	ev_timer 		w = { .coro = 1 };
+	bool			res = true;
 
 	ev_timer_init(&w, (void *)fiber, delay, 0.);
 
