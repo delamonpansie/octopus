@@ -267,7 +267,7 @@ admin_dispatch(struct conn *c)
 			    check " "+ slab		%{slab_validate(); ok(out);}			|
 			    reload " "+ configuration	%reload_configuration);
 
-	        main := commands eol;
+	        main := commands <: eol;
 		write init;
 		write exec;
 	}%%
