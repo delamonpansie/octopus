@@ -144,6 +144,8 @@ ifeq (1,$(HAVE_GIT))
 octopus_version.h: FORCE
 	@echo -n 'const char octopus_version_string[] = "' > $@_
 	@$(GIT) describe --always HEAD | tr -d \\n >> $@_
+	@echo -n - >> $@_
+	@$(GIT) branch | grep  '\*' | cut -f2 -d' ' | sed 's/^master$$/experimental/' | tr -d \\n >> $@_
 	@echo '";' >> $@_
 	@diff -q $@ $@_ 2>/dev/null >/dev/null || (echo "GEN	$(notdir $@)"; cp $@_ $@)
 	@rm $@_
