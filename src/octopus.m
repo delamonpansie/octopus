@@ -408,7 +408,7 @@ luaT_init()
         lua_getglobal(L, "package");
         lua_pushstring(L, cfg.lua_path);
         lua_setfield(L, -2, "path");
-        lua_pop(L, 2);
+        lua_pop(L, 1);
 
 	lua_getglobal(L, "os");
 	lua_pushcfunction(L, luaT_os_ctime);
