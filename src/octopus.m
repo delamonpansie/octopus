@@ -413,6 +413,7 @@ luaT_init()
 	lua_getglobal(L, "os");
 	lua_pushcfunction(L, luaT_os_ctime);
 	lua_setfield(L, -2, "ctime");
+	lua_pop(L, 1);
 
 	luaT_objinit(L);
 	luaT_indexinit(L);
