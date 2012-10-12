@@ -460,7 +460,7 @@ exit:
 	return result;
 }
 
-void
+int
 snapshot_write_row(XLog *l, u16 tag, struct tbuf *row)
 {
 	static int bytes;
@@ -470,7 +470,7 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *row)
 
 	if ([l append_row:row->ptr len:tbuf_len(row) scn:0 tag:tag] < 0) {
 		say_error("unable write row");
-		_exit(EXIT_FAILURE);
+		return -1;
 	}
 
 	prelease_after(fiber->pool, 128 * 1024);
@@ -484,7 +484,10 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *row)
 		bytes += tbuf_len(row) + sizeof(struct row_v12);
 
 		while (bytes >= io_rate_limit) {
-			[l flush];
+			if ([l flush] < 0) {
+				say_error("unable to flush");
+				return -1;
+			}
 
 			ev_now_update();
 			elapsed = ev_now() - last;
@@ -496,10 +499,25 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *row)
 			bytes -= io_rate_limit;
 		}
 	}
+	return 0;
 }
 
-- (void)
-snapshot_save:(u32 (*)(XLog *))callback
+
+- (u32)
+snapshot_estimate
+{
+	return 0;
+}
+
+- (int)
+snapshot_write_rows:(XLog *)snap
+{
+	(void)snap;
+	return 0;
+}
+
+- (int)
+snapshot_write
 {
         XLog *snap;
 	const char *final_filename, *filename;
@@ -507,8 +525,8 @@ snapshot_save:(u32 (*)(XLog *))callback
 	say_debug("%s: lsn:%"PRIi64" scn:%"PRIi64, __func__, lsn, scn);
 	snap = [snap_dir open_for_write:lsn scn:scn];
 	if (snap == nil) {
-		say_error("can't open snap for writing");
-		_exit(EXIT_FAILURE);
+		say_syserror("can't open snap for writing");
+		return -1;
 	}
 	snap->inprogress = false; /* we do .inprogress rename ourself */
 	snap->no_wet = true; /* disable wet row tracking */;
@@ -525,44 +543,82 @@ snapshot_save:(u32 (*)(XLog *))callback
 	say_info("saving snapshot `%s'", final_filename);
 
 	struct tbuf *snap_ini = tbuf_alloc(fiber->pool);
-	u32 rows = callback(NULL);
+	u32 rows = [self snapshot_estimate];
 	tbuf_append(snap_ini, &rows, sizeof(rows));
 	tbuf_append(snap_ini, &run_crc_log, sizeof(run_crc_log));
 	tbuf_append(snap_ini, &run_crc_mod, sizeof(run_crc_mod));
 
 	if ([snap append_row:snap_ini->ptr len:tbuf_len(snap_ini) scn:scn tag:snap_initial_tag] < 0) {
 		say_error("unable write initial row");
-		_exit(EXIT_FAILURE);
+		return -1;
 	}
 
-	callback(snap);
+	if ([self snapshot_write_rows:snap] < 0)
+		return -1;
 
 	const char end[] = "END";
 	if ([snap append_row:end len:strlen(end) scn:scn tag:snap_final_tag] < 0) {
 		say_error("unable write final row");
-		_exit(EXIT_FAILURE);
+		return -1;
 	}
 	if ([snap flush] == -1) {
 		say_syserror("snap flush failed");
-		_exit(EXIT_FAILURE);
+		return -1;
 	}
 	if ([snap close] == -1) {
 		say_syserror("snap close failed");
-		_exit(EXIT_FAILURE);
+		return -1;
 	}
 	snap = nil;
 
 	if (link(filename, final_filename) == -1) {
 		say_syserror("can't create hard link to snapshot");
-		_exit(EXIT_FAILURE);
+		return -1;
 	}
 
 	if (unlink(filename) == -1) {
 		say_syserror("can't unlink 'inprogress' snapshot");
-		_exit(EXIT_FAILURE);
+		return -1;
 	}
 
 	say_info("done");
+	return 0;
+}
+
+- (int)
+snapshot:(bool)sync
+{
+	pid_t p;
+
+	switch ((p = tnt_fork())) {
+	case -1:
+		say_syserror("fork");
+		return -1;
+
+	case 0: /* child, the dumper */
+		fiber->name = "dumper";
+		set_proc_title("dumper (%" PRIu32 ")", getppid());
+		fiber_destroy_all();
+		palloc_unmap_unused();
+		close_all_xcpt(2, stderrfd, sayfd);
+
+		int r = [self snapshot_write];
+
+#ifdef COVERAGE
+		__gcov_flush();
+#endif
+		_exit(r != 0 ? errno : 0);
+
+	default: /* parent, may wait for child */
+		return sync ? wait_for_child(p) : 0;
+	}
+}
+
+- (int)
+snapshot_initial
+{
+	lsn = scn = 1;
+	return [self snapshot_write];
 }
 
 @end

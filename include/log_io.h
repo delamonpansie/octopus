@@ -196,7 +196,11 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (int) wal_pack_submit_x; // FIXME: hack
 - (int) wal_row_submit:(const void *)data len:(u32)len scn:(i64)scn tag:(u16)tag;
 
-- (void) snapshot_save:(u32 (*)(XLog *))callback;
+- (int) snapshot:(bool)sync;
+- (int) snapshot_write;
+- (int) snapshot_initial;
+- (u32) snapshot_estimate;
+- (int) snapshot_write_rows:(XLog *)snap;
 @end
 
 @interface XLogPuller: Object <XLogPuller> {
@@ -229,7 +233,6 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 	unsigned crc_hist_i;
 }
 
-- (void) initial;
 - (const char *) status;
 - (ev_tstamp) lag;
 - (ev_tstamp) last_update_tstamp;
@@ -277,7 +280,7 @@ i64 fold_scn;
 
 int wal_disk_writer(int fd, void *state);
 void wal_disk_writer_input_dispatch(va_list ap __attribute__((unused)));
-void snapshot_write_row(XLog *l, u16 tag, struct tbuf *row);
+int snapshot_write_row(XLog *l, u16 tag, struct tbuf *row);
 
 struct replication_handshake {
 		u32 ver;

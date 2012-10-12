@@ -904,6 +904,7 @@ append_row:(void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)
 		return 0;
 	} else {
 		say_error("unknown tag %i", (int)tag);
+		errno = EINVAL;
 		return -1;
 	}
 
@@ -917,6 +918,7 @@ append_row:(void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)
 
 	if (scn != 0 && scn != row.lsn) {
 		say_error("io_compat mode doesn't support SCN tagged rows");
+		errno = EINVAL;
 		return -1;
 	}
 

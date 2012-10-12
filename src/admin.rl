@@ -30,6 +30,7 @@
 #import <salloc.h>
 #import <say.h>
 #import <stat.h>
+#import <log_io.h>
 #import <octopus.h>
 #import <tbuf.h>
 #import <net_io.h>
@@ -213,7 +214,7 @@ admin_dispatch(struct conn *c)
 		}
 
 		action save_snapshot {
-			int ret = save_snapshot(NULL, 0);
+			int ret = [recovery snapshot:true];
 
 			if (ret == 0)
 				ok(out);

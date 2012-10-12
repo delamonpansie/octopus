@@ -44,7 +44,6 @@ struct tnt_module {
 	i32  (*check_config)(struct octopus_cfg *conf);
 	void (*reload_config)(struct octopus_cfg *old_conf, struct octopus_cfg *new_conf);
 	int  (*cat)(const char *filename);
-	void (*snapshot)(bool);
 	void (*info)(struct tbuf *out);
 	void (*exec)(char *str, int len, struct tbuf *out);
 };
@@ -72,8 +71,9 @@ extern const char *cfg_filename;
 extern char *custom_proc_title;
 extern bool init_storage, booting;
 extern char *binary_filename;
+@class Recovery;
+extern Recovery *recovery;
 i32 reload_cfg();
-int save_snapshot(void *ev __attribute__((unused)), int events __attribute__((unused)));
 const char *octopus_version(void);
 void octopus_info(struct tbuf *out);
 unsigned tnt_uptime(void);

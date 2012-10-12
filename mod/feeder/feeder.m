@@ -360,7 +360,6 @@ static struct tnt_module feeder = {
         .check_config = NULL,
         .reload_config = NULL,
         .cat = NULL,
-        .snapshot = NULL,
         .info = NULL,
         .exec = NULL
 };

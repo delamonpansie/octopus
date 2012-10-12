@@ -77,7 +77,7 @@ char *custom_proc_title;
 
 
 ev_io keepalive_ev = { .coro = 0 };
-Recovery *recovery_state;
+Recovery *recovery;
 int keepalive_pipe[2];
 
 extern int daemonize(int nochdir, int noclose);
@@ -206,37 +206,10 @@ tnt_uptime(void)
 }
 
 #ifdef STORAGE
-int
-save_snapshot(void *ev, int events __attribute__((unused)))
+static void
+save_snapshot(void *ev __attribute__((unused)), int events __attribute__((unused)))
 {
-	pid_t p;
-	switch ((p = tnt_fork())) {
-	case -1:
-		say_syserror("fork");
-		return -1;
-
-	case 0: /* child, the dumper */
-		fiber->name = "dumper";
-		set_proc_title("dumper (%" PRIu32 ")", getppid());
-		fiber_destroy_all();
-		palloc_unmap_unused();
-		close_all_xcpt(2, stderrfd, sayfd);
-
-		foreach_module(m)
-			if (m->snapshot != NULL)
-				m->snapshot(false);
-
-#ifdef COVERAGE
-		__gcov_flush();
-#endif
-		_exit(EXIT_SUCCESS);
-
-	default: /* parent, may wait for child */
-		if (ev != NULL) /* dump on sigusr1 is async, don't wait */
-			return 0;
-
-		return wait_for_child(p);
-	}
+	[recovery snapshot:false];
 }
 #endif
 
@@ -697,8 +670,7 @@ main(int argc, char **argv)
 		}
 
 		module(NULL)->init();
-		module(NULL)->snapshot(true);
-		exit(EXIT_SUCCESS);
+		exit([recovery snapshot_initial]);
 	}
 #endif
 

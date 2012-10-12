@@ -64,7 +64,7 @@ const int MEMCACHED_OBJECT_SPACE = 23;
 struct object_space *object_space_registry;
 const int object_space_count = 256;
 
-static Recovery *recovery;
+extern Recovery *recovery;
 
 struct box_snap_row {
 	u32 object_space;
@@ -1265,6 +1265,58 @@ wal_final_row
 	}
 }
 
+- (u32)
+snapshot_estimate
+{
+	size_t total_rows = 0;
+	for (int n = 0; n < object_space_count; n++)
+		if (object_space_registry[n].enabled)
+			total_rows += [object_space_registry[n].index[0] size];
+	return total_rows;
+}
+
+- (int)
+snapshot_write_rows:(XLog *)l
+{
+	struct box_snap_row header;
+	struct tnt_object *obj;
+	struct box_tuple *tuple;
+	struct tbuf *row;
+	size_t rows = 0, total_rows = [self snapshot_estimate];
+
+	for (int n = 0; n < object_space_count; n++) {
+		if (!object_space_registry[n].enabled)
+			continue;
+
+		id pk = object_space_registry[n].index[0];
+		[pk iterator_init];
+		while ((obj = [pk iterator_next])) {
+			tuple = box_tuple(obj);
+
+			header.object_space = n;
+			header.tuple_size = tuple->cardinality;
+			header.data_size = tuple->bsize;
+
+			/* snapshot_write_row will release fiber->pool time to time */
+			row = tbuf_alloc(fiber->pool);
+			tbuf_append(row, &header, sizeof(header));
+			tbuf_append(row, tuple->data, tuple->bsize);
+
+			if (snapshot_write_row(l, snap_tag, row) < 0)
+				return -1;
+
+			if (++rows % 100000 == 0) {
+				float pct = (float)rows / total_rows * 100.;
+				say_info("%.1fM/%.2f%% rows written", rows / 1000000., pct);
+				set_proc_title("dumper %.2f%% (%" PRIu32 ")", pct, getppid());
+			}
+			if (rows % 10000 == 0)
+				[l confirm_write];
+		}
+	}
+	return 0;
+}
+
 @end
 
 
@@ -1385,66 +1437,6 @@ cat(const char *filename)
 	return 0; /* ignore return status of read_log */
 }
 
-static u32
-snapshot_rows(XLog *l)
-{
-	struct box_snap_row header;
-	struct tnt_object *obj;
-	struct box_tuple *tuple;
-	struct tbuf *row;
-	size_t rows = 0, total_rows = 0;
-
-	for (int n = 0; n < object_space_count; n++)
-		if (object_space_registry[n].enabled)
-			total_rows += [object_space_registry[n].index[0] size];
-
-	if (!l)
-		return total_rows;
-
-	for (int n = 0; n < object_space_count; n++) {
-		if (!object_space_registry[n].enabled)
-			continue;
-
-		id pk = object_space_registry[n].index[0];
-		[pk iterator_init];
-		while ((obj = [pk iterator_next])) {
-			tuple = box_tuple(obj);
-
-			header.object_space = n;
-			header.tuple_size = tuple->cardinality;
-			header.data_size = tuple->bsize;
-
-			/* snapshot_write_row will release fiber->pool time to time */
-			row = tbuf_alloc(fiber->pool);
-			tbuf_append(row, &header, sizeof(header));
-			tbuf_append(row, tuple->data, tuple->bsize);
-
-			snapshot_write_row(l, snap_tag, row);
-
-			if (++rows % 100000 == 0) {
-				float pct = (float)rows / total_rows * 100.;
-				say_info("%.1fM/%.2f%% rows written", rows / 1000000., pct);
-				set_proc_title("dumper %.2f%% (%" PRIu32 ")", pct, getppid());
-			}
-			if (rows % 10000 == 0)
-				[l confirm_write];
-		}
-	}
-	return total_rows;
-}
-
-static void
-snapshot(bool initial)
-{
-	if (initial)
-		[recovery initial];
-
-	if ([recovery lsn] == 0) {
-		say_warn("lsn == 0");
-		_exit(EXIT_FAILURE);
-	}
-	[recovery snapshot_save:snapshot_rows];
-}
 
 static void
 info(struct tbuf *out)
@@ -1493,7 +1485,6 @@ static struct tnt_module box = {
         .check_config = NULL,
         .reload_config = NULL,
         .cat = cat,
-        .snapshot = snapshot,
         .info = info,
         .exec = NULL
 };

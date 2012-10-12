@@ -54,12 +54,6 @@
 - (ev_tstamp) lag { return lag; }
 - (ev_tstamp) last_update_tstamp { return last_update_tstamp; }
 
-- (void)
-initial
-{
-	lsn = scn = 1;
-}
-
 - (const struct row_v12 *)
 dummy_row_lsn:(i64)lsn_ scn:(i64)scn_ tag:(u16)tag
 {
@@ -609,8 +603,7 @@ recover_follow_remote:(struct sockaddr_in *)addr exit_on_eof:(int)exit_on_eof
 			if (lsn == 0) {
 				pull_snapshot(self, puller);
 				[self configure_wal_writer];
-				say_debug("saving snapshot");
-				if (save_snapshot(NULL, 0) != 0)
+				if ([self snapshot_write] != 0)
 					raise("replication failure: failed save snapshot");
 			}
 
@@ -876,13 +869,8 @@ recover_row:(struct row_v12 *)r
 {
 	[super recover_row:r];
 
-	if (r->scn == fold_scn) {
-		foreach_module(mod)
-			if (mod->snapshot)
-				mod->snapshot(false);
-
-		exit(EX_OK);
-	}
+	if (r->scn == fold_scn)
+		exit([self snapshot_write]);
 }
 
 - (void)
