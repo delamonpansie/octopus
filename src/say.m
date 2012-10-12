@@ -249,9 +249,11 @@ void \
 say_##level##suffix(const char *filename, unsigned line, const char *format, ...) \
 { \
 	va_list ap; \
+	int errno_saved = errno; \
 	va_start(ap, format); \
 	vsay(level, filename, line, err, format, ap); \
 	va_end(ap); \
+	errno = errno_saved; \
 }
 
 say_f(DEBUG, , NULL)
