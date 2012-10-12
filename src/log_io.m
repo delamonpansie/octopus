@@ -343,6 +343,7 @@ open_for_write:(i64)lsn scn:(i64)scn
 
 	const char *final_filename = [self format_filename:lsn];
 	if (access(final_filename, F_OK) == 0) {
+		errno = EEXIST;
 		say_error("failed to create '%s': file already exists", final_filename);
 		goto error;
 	}
@@ -350,6 +351,7 @@ open_for_write:(i64)lsn scn:(i64)scn
 	const char *filename = [self format_filename:lsn suffix:inprogress_suffix];
 	say_debug("[open_for_write `%s']", filename);
 	if (access(filename, F_OK) == 0) {
+		errno = EEXIST;
 		say_error("failed to open `%s': file already exists", filename);
 		goto error;
 	}
