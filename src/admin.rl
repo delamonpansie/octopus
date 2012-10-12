@@ -225,7 +225,7 @@ admin_dispatch(struct conn *c)
 			}
 		}
 
-		eol = space* "\n" | space* "\r\n";
+		eol = "\n" | "\r\n";
 		show = "sh"("o"("w")?)?;
 		info = "in"("f"("o")?)?;
 		check = "ch"("e"("c"("k")?)?)?;
@@ -267,7 +267,7 @@ admin_dispatch(struct conn *c)
 			    check " "+ slab		%{slab_validate(); ok(out);}			|
 			    reload " "+ configuration	%reload_configuration);
 
-	        main := commands <: eol;
+	        main := space* commands <: space* eol;
 		write init;
 		write exec;
 	}%%
