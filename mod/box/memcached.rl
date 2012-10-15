@@ -180,8 +180,13 @@ obj_meta(struct tnt_object *obj)
 static bool
 expired(struct tnt_object *obj)
 {
+#ifdef MEMCACHE_NO_EXPIRE
+	(void)obj;
+	return 0;
+#else
 	struct meta *m = obj_meta(obj);
  	return m->exptime == 0 ? 0 : m->exptime < ev_now();
+#endif
 }
 
 static bool
@@ -627,7 +632,7 @@ memcached_dispatch(struct conn *c)
 	return 1;
 }
 
-
+#ifndef MEMCACHE_NO_EXPIRE
 static void
 memcached_expire(va_list va __attribute__((unused)))
 {
@@ -668,14 +673,16 @@ memcached_expire(va_list va __attribute__((unused)))
 		fiber_sleep(delay);
 	}
 }
+#endif
 
 static void
 memcached_bound_to_primary(int fd)
 {
 	box_bound_to_primary(fd);
-
+#ifndef MEMCACHE_NO_EXPIRE
 	if (fd > 0 && fiber_create("memecached_expire", memcached_expire) == NULL)
 		panic("can't start the expire fiber");
+#endif
 }
 
 static void
