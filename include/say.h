@@ -33,7 +33,7 @@
 
 
 enum say_level {
-	FATAL,		/* do not this value use directly */
+	FATAL = 1,		/* do not this value use directly */
 	ERROR,
 	WARN,
 	INFO,

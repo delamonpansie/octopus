@@ -10,6 +10,7 @@ pid_file = "octopus.pid"
 
 slab_alloc_arena = 1
 logger = "exec cat - >> octopus.log"
+log_level = 5
 primary_port = 33013
 wal_fsync_delay = 10
 
