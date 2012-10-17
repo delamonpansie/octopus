@@ -179,10 +179,10 @@ recover_row:(struct row_v12 *)r
 			      r->scn, r->lsn);
 
 		lsn = r->lsn;
-		if (r->tag == snap_final_tag || r->tag == wal_tag || r->tag == nop || r->tag == run_crc)
+		if (r->tag == snap_final_tag || r->tag == wal_tag || r->tag == nop || r->tag == run_crc) {
 			scn = r->scn;
-
-		crc_hist[++crc_hist_i % nelem(crc_hist)] = (struct crc_hist){ scn, run_crc_log, run_crc_mod };
+			crc_hist[++crc_hist_i % nelem(crc_hist)] = (struct crc_hist){ scn, run_crc_log, run_crc_mod };
+		}
 
 		last_update_tstamp = ev_now();
 		lag = last_update_tstamp - r->tm;
