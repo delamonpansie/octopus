@@ -58,3 +58,12 @@ cardinality
 	return 1;
 }
 @end
+
+void __attribute__((noreturn, cold))
+index_raise_(const char *file, int line, const char *msg)
+{
+	@throw [[IndexError palloc] init_line:line
+					 file:file
+				    backtrace:NULL
+				       reason:msg];
+}

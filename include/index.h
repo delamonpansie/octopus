@@ -196,7 +196,6 @@ struct tbuf *luaT_i32_ctor(struct lua_State *L, int i);
 struct tbuf *luaT_i64_ctor(struct lua_State *L, int i);
 struct tbuf *luaT_lstr_ctor(struct lua_State *L, int i);
 
-#define index_raise(msg) @throw [[IndexError palloc] init_line: __LINE__ \
-							  file: __FILE__ \
-						     backtrace: NULL	 \
-							reason: (msg)]
+void index_raise_(const char *file, int line, const char *msg)
+	__attribute__((noreturn,cold));
+#define index_raise(msg) index_raise_(__FILE__, __LINE__, (msg))
