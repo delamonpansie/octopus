@@ -1348,19 +1348,15 @@ init(void)
 			panic("wal_hot_standby is incompatible with paxos");
 	}
 
-	recovery = cfg.paxos_enabled ? [PaxosRecovery alloc] :
-		   fold_scn > 0 ? [FoldRecovery alloc] :
-		   [Recovery alloc];
-
-	recovery = [recovery init_snap_dir:cfg.snap_dir
-				   wal_dir:cfg.wal_dir
-			      rows_per_wal:cfg.rows_per_wal
-			       feeder_addr:cfg.wal_feeder_addr
-			       fsync_delay:cfg.wal_fsync_delay
-			     run_crc_delay:cfg.memcached ? 0 : cfg.run_crc_delay
-			      nop_hb_delay:cfg.memcached ? 0 : cfg.nop_hb_delay
-				     flags:init_storage ? RECOVER_READONLY : 0
-			snap_io_rate_limit:cfg.snap_io_rate_limit * 1024 * 1024];
+	recovery = [[Recovery alloc] init_snap_dir:cfg.snap_dir
+					   wal_dir:cfg.wal_dir
+				      rows_per_wal:cfg.rows_per_wal
+				       feeder_addr:cfg.wal_feeder_addr
+				       fsync_delay:cfg.wal_fsync_delay
+				     run_crc_delay:cfg.memcached ? 0 : cfg.run_crc_delay
+				      nop_hb_delay:cfg.memcached ? 0 : cfg.nop_hb_delay
+					     flags:init_storage ? RECOVER_READONLY : 0
+				snap_io_rate_limit:cfg.snap_io_rate_limit * 1024 * 1024];
 
 	/* initialize hashes _after_ starting wal writer */
 

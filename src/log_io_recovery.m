@@ -49,6 +49,23 @@
 #include <sysexits.h>
 
 @implementation Recovery
++ (id)
+alloc
+{
+	if (strcmp([[self class] name], "Recovery") != 0) /* break recursion */
+	    goto ours;
+
+	if (fold_scn > 0)
+		return [FoldRecovery alloc];
+
+#ifdef PAXOS
+	if (cfg.paxos_enabled)
+		return [PaxosRecovery alloc];
+#endif
+
+ours:
+	return [super alloc];
+}
 
 - (const char *) status { return status; }
 - (ev_tstamp) lag { return lag; }
