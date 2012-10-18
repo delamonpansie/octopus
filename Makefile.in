@@ -65,6 +65,10 @@ all: octopus
 subdirs += third_party $(foreach module,$(modules),mod/$(module)) cfg src src-lua
 include $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
 
+ifneq ($(findstring src/paxos.o,$(obj)),)
+  CFLAGS += -DPAXOS
+endif
+
 octopus: $(obj)
 	$E "CC	$@"
 	$Q$(CC) $(LDFLAGS) $^ $(LIBS) -o $@
