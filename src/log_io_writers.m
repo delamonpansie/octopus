@@ -202,40 +202,40 @@ wal_pack_submit
 	}
 
 	ev_io_start(&wal_writer->c->out);
-	struct wal_reply *r = yield();
-	if (r->lsn == 0) {
+	struct wal_reply *reply = yield();
+	if (reply->lsn == 0) {
 		say_warn("wal writer returned error status");
 	} else {
-		if (cfg.sync_scn_with_lsn && r->lsn != r->scn)
+		if (cfg.sync_scn_with_lsn && reply->lsn != reply->scn)
 			raise("out ouf sync SCN:%"PRIi64 " != LSN:%"PRIi64,
-			      r->scn, r->lsn);
+			      reply->scn, reply->lsn);
 
 		/* update local vars */
-		lsn = r->lsn;
-		scn = r->scn;
-		run_crc_log = r->run_crc;
+		lsn = reply->lsn;
+		scn = reply->scn;
+		run_crc_log = reply->run_crc;
 	}
 	say_debug("%s: => LSN:%"PRIi64" SCN:%"PRIi64" rows:%i run_crc:0x%x", __func__,
-		  r->lsn, r->scn, r->row_count, r->run_crc);
-	return r->row_count;
+		  reply->lsn, reply->scn, reply->row_count, reply->run_crc);
+	return reply->row_count;
 }
 
 - (int)
 wal_pack_submit_x
 {
 	ev_io_start(&wal_writer->c->out);
-	struct wal_reply *r = yield();
-	if (r->lsn == 0)
+	struct wal_reply *reply = yield();
+	if (reply->lsn == 0)
 		say_warn("wal writer returned error status");
 
-	if (cfg.sync_scn_with_lsn && r->lsn != r->scn)
+	if (cfg.sync_scn_with_lsn && reply->lsn != reply->scn)
 		raise("out ouf sync SCN:%"PRIi64 " != LSN:%"PRIi64,
-		      r->scn, r->lsn);
+		      reply->scn, reply->lsn);
 
-	assert(lsn >= r->lsn);
-	assert(scn >= r->scn);
+	assert(lsn >= reply->lsn);
+	assert(scn >= reply->scn);
 
-	return r->row_count;
+	return reply->row_count;
 }
 
 - (i64)
