@@ -562,9 +562,7 @@ close
 	} else {
 		/* file may be already unlink()'ed if it was broken */
 		if (rows == 0 && access(filename, F_OK) == 0) {
-			bool legacy_snap = cfg.io_compat &&
-					   [dir isMemberOf:[SnapDir class]] &&
-					   [writer lsn] == 1; /* FIXME: is this correct? TODO: check file lsn */
+			bool legacy_snap = cfg.io_compat && [dir isMemberOf:[SnapDir class]];
 			if (!legacy_snap)
 				panic("no valid rows were read");
 		}
