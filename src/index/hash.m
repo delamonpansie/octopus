@@ -92,6 +92,7 @@ init									\
 {									\
 	[super init];							\
 	h = mh_##type##_init();						\
+	node_size = sizeof(struct index_node) + sizeof(type);		\
 	lua_ctor = luaT_##type##_ctor;					\
 	return self;							\
 }									\

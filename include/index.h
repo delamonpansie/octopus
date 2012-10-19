@@ -98,6 +98,7 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 	bool unique;
 	enum { HASH, TREE } type;
 
+	size_t node_size;
 	index_dtor *dtor;
 	void *dtor_arg;
 	index_lua_ctor *lua_ctor;
@@ -149,7 +150,6 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 @public
         struct sptree_t *tree;
 	void *nodes;
-	size_t node_size;
 
 	int (*compare)(const void *a, const void *b, void *);
 	int (*ucompare)(const void *a, const void *b, void *);
