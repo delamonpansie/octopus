@@ -32,8 +32,8 @@ Env.clean do |env|
   sleep 0.05
   c4.select 1
 
-  Process.kill "CONT", wal_writer_pid
   puts "# wal_writer cont"
+  Process.kill "CONT", wal_writer_pid
   t1.join
   t2.join
   c4.select 1

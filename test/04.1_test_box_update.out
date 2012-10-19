@@ -8,9 +8,9 @@ Failed with: {code: 0x401, message: 'object is locked'}
 # box.select(1)
 []
 
+# wal_writer cont
 1
 
-# wal_writer cont
 # box.select(1)
 [["\x01\x00\x00\x00", "foo"]]
 
