@@ -187,7 +187,7 @@ vsay(int level, const char *filename, unsigned line,
 	const char *f;
 	static char buf[PIPE_BUF];
 
-	if (!say_filter(level, filename))
+	if (level > FATAL && !say_filter(level, filename))
 		return;
 
 	if (booting) {
