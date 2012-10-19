@@ -84,27 +84,22 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 - (u32)cardinality;
 @end
 
-#define INDEX_NODE_CACHE 11 /* FIXME: better hashing scheme */
-#define GET_NODE(x) ({							\
-	struct index_node *__node = node_cache[(uintptr_t)(x) % INDEX_NODE_CACHE]; \
-	(1 || __node->obj != (x)) ?					\
-		dtor(x, __node, dtor_arg) :				\
-		__node;							\
-})
-
+#define GET_NODE(obj, node) ({ dtor(obj, &node, dtor_arg); &node; })
 @interface Index: Object {
 @public
 	unsigned n;
 	bool unique;
 	enum { HASH, TREE } type;
 
+	size_t node_size;
 	index_dtor *dtor;
 	void *dtor_arg;
 	index_lua_ctor *lua_ctor;
 
-	struct index_node *node_cache[INDEX_NODE_CACHE];
-	struct index_node node;
-	char __padding[512]; /* FIXME: check for overflow */
+	struct index_node node_a;
+	char __padding_a[512]; /* FIXME: check for overflow */
+	struct index_node node_b;
+	char __padding_b[512];
 }
 
 - (void) valid_object:(struct tnt_object*)obj;
@@ -149,7 +144,6 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 @public
         struct sptree_t *tree;
 	void *nodes;
-	size_t node_size;
 
 	int (*compare)(const void *a, const void *b, void *);
 	int (*ucompare)(const void *a, const void *b, void *);
