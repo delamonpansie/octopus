@@ -37,19 +37,11 @@
 @end
 
 @implementation Index
-- (id)
-init
-{
-	[super init];
-	for (int i = 0; i < INDEX_NODE_CACHE; i++)
-		node_cache[i] = calloc(1, 512);
-	return self;
-}
 
 - (void)
 valid_object:(struct tnt_object*)obj
 {
-	GET_NODE(obj);
+	dtor(obj, &node_a, dtor_arg);
 }
 
 - (u32)
@@ -57,4 +49,13 @@ cardinality
 {
 	return 1;
 }
+
+- (int)
+eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
+{
+	dtor(obj_a, &node_a, dtor_arg);
+	dtor(obj_b, &node_b, dtor_arg);
+	return memcmp(node_a.key, node_b.key, node_size) == 0;
+}
+
 @end

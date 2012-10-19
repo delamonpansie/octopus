@@ -104,7 +104,7 @@ resize:(u32)buckets							\
 - (struct tnt_object *)							\
 find_by_obj:(struct tnt_object *)obj					\
 {									\
-	struct index_node *node_ = GET_NODE(obj);			\
+	struct index_node *node_ = GET_NODE(obj, node_a);		\
 	u32 k = mh_##type##_get_node(h, (void *)node_);			\
 	if (k != mh_end(h)) 						\
 		return mh_##type##_value(h, k);				\
@@ -113,13 +113,13 @@ find_by_obj:(struct tnt_object *)obj					\
 - (void)								\
 replace:(struct tnt_object *)obj					\
 {									\
-	struct index_node *node_ = GET_NODE(obj);			\
+	struct index_node *node_ = GET_NODE(obj, node_a);		\
         mh_##type##_put_node(h, (void *)node_);				\
 }									\
 - (void)								\
 remove:(struct tnt_object *)obj						\
 {									\
-	struct index_node *node_ = GET_NODE(obj);			\
+	struct index_node *node_ = GET_NODE(obj, node_a);		\
         u32 k = mh_##type##_get_node(h, (void *)node_);			\
 	node_->obj = NULL;						\
         mh_##type##_del(h, k);						\
@@ -132,8 +132,8 @@ DEFINE_METHODS(i32)
 - (int)
 eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 {
-	struct index_node *na = GET_NODE(obj_a),
-			  *nb = GET_NODE(obj_b);
+	struct index_node *na = GET_NODE(obj_a, node_a),
+			  *nb = GET_NODE(obj_b, node_b);
 	return *(i32 *)na->key == *(i32 *)nb->key;
 }
 
@@ -176,9 +176,9 @@ DEFINE_METHODS(i64)
 - (int)
 eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 {
-	struct index_node *na = GET_NODE(obj_a),
-			  *nb = GET_NODE(obj_b);
-	return *(i32 *)na->key == *(i32 *)nb->key;
+	struct index_node *na = GET_NODE(obj_a, node_a),
+			  *nb = GET_NODE(obj_b, node_b);
+	return *(i64 *)na->key == *(i64 *)nb->key;
 }
 
 - (struct tnt_object *)
@@ -220,8 +220,8 @@ DEFINE_METHODS(lstr)
 - (int)
 eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 {
-	struct index_node *na = GET_NODE(obj_a),
-			  *nb = GET_NODE(obj_b);
+	struct index_node *na = GET_NODE(obj_a, node_a),
+			  *nb = GET_NODE(obj_b, node_b);
 	return lstrcmp(*(void **)na->key, *(void **)nb->key) == 0;
 }
 

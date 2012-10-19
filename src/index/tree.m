@@ -62,24 +62,24 @@ init_with_unique:(bool)_unique
 - (int)
 eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 {
-	struct index_node *na = GET_NODE(obj_a),
-			  *nb = GET_NODE(obj_b);
+	struct index_node *na = GET_NODE(obj_a, node_a),
+			  *nb = GET_NODE(obj_b, node_b);
 	return compare(na, nb, NULL) == 0;
 }
 
 - (struct tnt_object *)
 find_key:(struct tbuf *)key_data with_cardinalty:(u32)cardinality
 {
-        init_pattern(key_data, cardinality, &node, dtor_arg);
- 	struct index_node *r = sptree_find(tree, &node);
+	init_pattern(key_data, cardinality, &node_a, dtor_arg);
+	struct index_node *r = sptree_find(tree, &node_a);
 	return r != NULL ? r->obj : NULL;
 }
 
 - (struct tnt_object *)
 find_by_obj:(struct tnt_object *)obj
 {
-	dtor(obj, &node, dtor_arg);
-	struct index_node *r = sptree_find(tree, &node);
+	dtor(obj, &node_a, dtor_arg);
+	struct index_node *r = sptree_find(tree, &node_a);
 	return r != NULL ? r->obj : NULL;
 }
 
@@ -104,15 +104,15 @@ bytes
 - (void)
 replace:(struct tnt_object *)obj
 {
-	dtor(obj, &node, dtor_arg);
-	sptree_insert(tree, &node);
+	dtor(obj, &node_a, dtor_arg);
+	sptree_insert(tree, &node_a);
 }
 
 - (void)
 remove:(struct tnt_object *)obj
 {
-        dtor(obj, &node, dtor_arg);
-	sptree_delete(tree, &node);
+	dtor(obj, &node_a, dtor_arg);
+	sptree_delete(tree, &node_a);
 }
 
 - (void)
