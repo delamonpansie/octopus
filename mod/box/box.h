@@ -53,7 +53,7 @@ enum object_type {
 };
 
 struct box_tuple {
-	u32 bsize;
+	u32 bsize; /* byte size of data[] */
 	u32 cardinality;
 	u8 data[0];
 } __attribute__((packed));
