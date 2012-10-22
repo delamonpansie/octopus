@@ -208,7 +208,7 @@ next_chunk_for(struct palloc_pool *pool, size_t size)
 			return NULL;
 	} else {
 		chunk_size = class->size;
-		chunk = mmap(NULL, sizeof(struct chunk) + chunk_size,
+		chunk = mmap(MMAP_HINT_ADDR, sizeof(struct chunk) + chunk_size,
 			     PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 		if (chunk == MAP_FAILED)
 			return NULL;

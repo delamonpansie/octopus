@@ -70,6 +70,14 @@ void *alloca (size_t);
 #  define PRIofft PRIi32
 #endif
 
+/* Lua wants to allocate in lower 2GB, so our allocation
+   should prefer addreses above */
+#if SIZEOF_VOID_P == 8
+#define MMAP_HINT_ADDR	((void*)((uintptr_t)0x100000000ULL))
+#else
+#define	MMAP_HINT_ADDR	NULL
+#endif
+
 #if HAVE__BUILTIN_EXPECT
 #  define likely(x)    __builtin_expect((x),1)
 #  define unlikely(x)  __builtin_expect((x),0)

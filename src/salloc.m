@@ -142,7 +142,7 @@ mmapa(size_t size, size_t align)
 	void *ptr, *aptr;
 	assert (size % align == 0);
 
-	ptr = mmap(NULL, size + align, /* add padding for later rounding */
+	ptr = mmap(MMAP_HINT_ADDR, size + align, /* add padding for later rounding */
 		   PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	if (ptr == MAP_FAILED) {
 		say_syserror("mmap");

@@ -50,7 +50,7 @@ octopus_coro_create(struct octopus_coro *coro, void (*f) (void *), void *data)
 
 	/* TODO: guard pages */
 	coro->stack_size = page * 16;
-	coro->stack = mmap(0, coro->stack_size, PROT_READ | PROT_WRITE | PROT_EXEC,
+	coro->stack = mmap(MMAP_HINT_ADDR, coro->stack_size, PROT_READ | PROT_WRITE | PROT_EXEC,
 			   MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
 
 	if (coro->stack == MAP_FAILED)
