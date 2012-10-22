@@ -128,6 +128,7 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 - (void) resize:(u32)buckets;
 - (struct tnt_object *) get:(u32)i;
 - (struct tnt_object *) find:(void *)key;
+- (void) ordered_iterator_init; /* WARNING! after this the index become corrupt! */
 @end
 
 @interface Hash: Index {

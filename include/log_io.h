@@ -203,6 +203,10 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (int) snapshot_write_rows:(XLog *)snap;
 @end
 
+@interface XLogWriter (Fold)
+- (int) snapshot_fold;
+@end
+
 @interface XLogPuller: Object <XLogPuller> {
 	struct conn c;
 	struct sockaddr_in addr;

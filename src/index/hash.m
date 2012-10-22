@@ -31,6 +31,7 @@
 #import <assoc.h>
 #import <index.h>
 #import <pickle.h>
+#include <third_party/qsort_arg.h>
 
 @implementation Hash
 - (Hash *)init
@@ -82,6 +83,31 @@ iterator_next
 		return *(struct tnt_object **)mh_slot(h, iter++);
 	}
 	return NULL;
+}
+
+- (void)
+ordered_iterator_init
+{
+	int j = 0;
+	for (int i = 1; i < mh_end(h); i++) {
+		if (!mh_exist(h, i))
+		    continue;
+
+		while (mh_exist(h, j) && j < i)
+			j++;
+
+		if (j == i)
+			continue;
+
+		assert(!mh_exist(h, j));
+		memcpy(mh_slot(h, j), mh_slot(h, i), node_size);
+		mh_setfree(h, i);
+		mh_setexist(h, j);
+		j++;
+	}
+	assert(j == mh_size(h));
+	qsort_arg(h->nodes, mh_size(h), node_size, compare, self);
+	[self iterator_init];
 }
 
 @end

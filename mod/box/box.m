@@ -1276,6 +1276,38 @@ snapshot_estimate
 }
 
 - (int)
+snapshot_fold
+{
+	struct tnt_object *obj;
+	struct box_tuple *tuple;
+
+	u32 crc = 0;
+
+	for (int n = 0; n < object_space_count; n++) {
+		if (!object_space_registry[n].enabled)
+			continue;
+
+		id pk = object_space_registry[n].index[0];
+
+		if ([pk respondsTo:@selector(ordered_iterator_init)])
+			[pk ordered_iterator_init];
+		else
+
+			[pk iterator_init];
+
+		while ((obj = [pk iterator_next])) {
+			tuple = box_tuple(obj);
+
+			crc = crc32c(crc, (unsigned char *)&tuple->bsize,
+				     tuple->bsize + sizeof(tuple->bsize) +
+				     sizeof(tuple->cardinality));
+		}
+	}
+	say_info("CRC: 0x%08x", crc);
+	return 0;
+}
+
+- (int)
 snapshot_write_rows:(XLog *)l
 {
 	struct box_snap_row header;
