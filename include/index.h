@@ -97,6 +97,9 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 	void *dtor_arg;
 	index_lua_ctor *lua_ctor;
 
+	int (*compare)(const void *a, const void *b, void *);
+	int (*ucompare)(const void *a, const void *b, void *);
+
 	struct index_node node_a;
 	char __padding_a[512]; /* FIXME: check for overflow */
 	struct index_node node_b;
@@ -146,8 +149,6 @@ typedef int (*index_cmp)(const void *, const void *, void *);
         struct sptree_t *tree;
 	void *nodes;
 
-	int (*compare)(const void *a, const void *b, void *);
-	int (*ucompare)(const void *a, const void *b, void *);
 	void (*init_pattern)(struct tbuf *key, int cardinality,
 			     struct index_node *pattern, void *);
 
@@ -194,3 +195,11 @@ struct tbuf *luaT_lstr_ctor(struct lua_State *L, int i);
 void index_raise_(const char *file, int line, const char *msg)
 	__attribute__((noreturn,cold));
 #define index_raise(msg) index_raise_(__FILE__, __LINE__, (msg))
+
+
+int i32_compare(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)));
+int i32_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)));
+int i64_compare(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)));
+int i64_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)));
+int lstr_compare(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)));
+int lstr_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)));

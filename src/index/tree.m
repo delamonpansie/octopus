@@ -157,34 +157,6 @@ iterator_next_verify_pattern
 @end
 
 @implementation Int32Tree
-static int
-i32_compare(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)))
-{
-	i32 *a = (void *)na->key, *b = (void *)nb->key;
-	if (*a > *b)
-		return 1;
-	else if (*a < *b)
-		return -1;
-	else
-		return 0;
-}
-
-static int
-i32_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)))
-{
-	i32 *a = (void *)na->key, *b = (void *)nb->key;
-	if (*a > *b)
-		return 1;
-	else if (*a < *b)
-		return -1;
-
-	if (na->obj > nb->obj)
-		return 1;
-	else if (na->obj < nb->obj)
-		return -1;
-	else
-		return 0;
-}
 
 static void
 i32_init_pattern(struct tbuf *key, int cardinality,
@@ -221,34 +193,6 @@ init_with_unique:(bool)_unique
 @end
 
 @implementation Int64Tree
-static int
-i64_compare(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)))
-{
-	i64 *a = (void *)na->key, *b = (void *)nb->key;
-	if (*a > *b)
-		return 1;
-	else if (*a < *b)
-		return -1;
-	else
-		return 0;
-}
-
-static int
-i64_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)))
-{
-	i64 *a = (void *)na->key, *b = (void *)nb->key;
-	if (*a > *b)
-		return 1;
-	else if (*a < *b)
-		return -1;
-
-	if (na->obj > nb->obj)
-		return 1;
-	else if (na->obj < nb->obj)
-		return -1;
-	else
-		return 0;
-}
 
 static void
 i64_init_pattern(struct tbuf *key, int cardinality,
@@ -285,27 +229,6 @@ init_with_unique:(bool)_unique
 @end
 
 @implementation StringTree
-static int
-lstr_compare(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)))
-{
-	return lstrcmp(*(void **)na->key, *(void **)nb->key);
-}
-
-static int
-lstr_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)))
-{
-
-	int r = lstrcmp(*(void **)na->key, *(void **)nb->key);
-	if (r != 0)
-		return r;
-
-	if (na->obj > nb->obj)
-		return 1;
-	else if (na->obj < nb->obj)
-		return -1;
-	else
-		return 0;
-}
 
 static void
 lstr_init_pattern(struct tbuf *key, int cardinality,
