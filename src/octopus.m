@@ -468,7 +468,7 @@ main(int argc, char **argv)
 				       "=FILE", "path to configuration file (default: " DEFAULT_CFG_FILENAME ")"),
 #ifdef STORAGE
 			   gopt_option('C', GOPT_ARG, gopt_shorts(0), gopt_longs("cat"),
-				       "=FILE", "cat snapshot file to stdout in readable format and exit"),
+				       "=FILE|SCN", "cat xlog to stdout in readable format and exit"),
 			   gopt_option('F', GOPT_ARG, gopt_shorts(0), gopt_longs("fold"),
 				       "=SCN", "save snapshot at given SCN and exit"),
 			   gopt_option('I', 0, gopt_shorts(0),
@@ -513,18 +513,35 @@ main(int argc, char **argv)
 	if (gopt_arg(opt, 'C', &cat_filename)) {
 		initialize_minimal();
 		fiber_init();
-		if (access(cat_filename, R_OK) == -1) {
-			say_syserror("access(\"%s\")", cat_filename);
-			exit(EX_OSFILE);
-		}
-
 		set_proc_title("cat %s", cat_filename);
-		/* TODO: sane module selection */
-		foreach_module (m)
-			if (m->cat != NULL)
-				return m->cat(cat_filename);
 
-		panic("no --cat action defined");
+		if (strchr(cat_filename, '.') || strchr(cat_filename, '/')) {
+			if (access(cat_filename, R_OK) == -1) {
+				say_syserror("access(\"%s\")", cat_filename);
+				exit(EX_OSFILE);
+			}
+			/* TODO: sane module selection */
+			foreach_module (m)
+				if (m->cat != NULL)
+					return m->cat(cat_filename);
+			panic("no --cat actions defined");
+		} else {
+			i64 stop_scn = atol(cat_filename);
+			if (!stop_scn) {
+				say_error("invalid SCN: `%s'", cat_filename);
+				exit(EX_USAGE);
+			}
+
+			gopt_arg(opt, 'c', &cfg_filename);
+			if (fill_default_octopus_cfg(&cfg) != 0 || load_cfg(&cfg, 0) != 0)
+				panic("can't load config: %s", cfg_err);
+			if (cfg.work_dir != NULL && chdir(cfg.work_dir) == -1)
+				say_syserror("can't chdir to `%s'", cfg.work_dir);
+
+			foreach_module (m)
+				if (m->cat_scn != NULL)
+					return m->cat_scn(stop_scn);
+		}
 	}
 
 	const char *opt_text;

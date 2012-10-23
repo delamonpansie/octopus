@@ -1458,6 +1458,56 @@ init_second_stage(va_list ap __attribute__((unused)))
 	title("%s", [recovery status]);
 }
 
+@interface CatRecovery: FoldRecovery {
+	i64 stop_scn;
+}
+@end
+
+@implementation CatRecovery
+- (id)
+init_snap_dir:(const char *)snap_dirname
+      wal_dir:(const char *)wal_dirname
+     stop_scn:(i64)scn_
+{
+	[super init_snap_dir:snap_dirname
+		     wal_dir:wal_dirname];
+	stop_scn = scn_;
+	return self;
+}
+- (i64)
+snap_lsn
+{
+	return [snap_dir containg_scn:stop_scn];
+}
+
+- (void)
+apply_row:(struct row_v12 *)r
+{
+	struct tbuf *out = tbuf_alloc(fiber->pool);
+	print_gen_row(out, r, print_row);
+	puts(out->ptr);
+	if (r->scn == stop_scn && r->tag == wal_tag)
+		exit(0);
+}
+
+- (void)
+wal_final_row
+{
+	say_error("unable to find record with SCN:%"PRIi64, stop_scn);
+	exit(EX_OSFILE);
+}
+
+@end
+
+
+static int
+cat_scn(i64 stop_scn)
+{
+	[[[CatRecovery alloc] init_snap_dir:cfg.snap_dir
+				    wal_dir:cfg.wal_dir
+				   stop_scn:stop_scn] recover_start];
+	return 0;
+}
 static int
 cat(const char *filename)
 {
@@ -1513,6 +1563,7 @@ static struct tnt_module box = {
         .check_config = NULL,
         .reload_config = NULL,
         .cat = cat,
+	.cat_scn = cat_scn,
         .info = info,
         .exec = NULL
 };
