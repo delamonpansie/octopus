@@ -706,7 +706,7 @@ main(int argc, char **argv)
 	fiber_init(); /* must be initialized before Lua */
 	luaT_init();
 
-	if (module("WAL feeder"))
+	if (module("WAL feeder") && fold_scn == 0)
 		module("WAL feeder")->init();
 
 	ev_signal ev_sig = { .coro = 0 };
