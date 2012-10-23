@@ -106,6 +106,12 @@ fix_scn(struct row_v12 *row)
 }
 
 - (void)
+apply_row:(struct row_v12 *)r
+{
+	[self apply:&TBUF(r->data, r->len, NULL) tag:r->tag];
+}
+
+- (void)
 recover_row:(struct row_v12 *)r
 {
 	/* FIXME: temporary hack */
@@ -127,7 +133,7 @@ recover_row:(struct row_v12 *)r
 			}
 		}
 
-		[self apply:&TBUF(r->data, r->len, NULL) tag:r->tag];
+		[self apply_row:r];
 
 		switch (r->tag) {
 		case wal_tag:
