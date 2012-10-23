@@ -328,3 +328,6 @@ static inline struct row_v12 *row_v12(const struct tbuf *t)
 
 
 int read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, struct tbuf *row));
+
+void print_gen_row(struct tbuf *out, const struct row_v12 *row,
+		   void (*handler)(struct tbuf *out, u16 tag, struct tbuf *row));

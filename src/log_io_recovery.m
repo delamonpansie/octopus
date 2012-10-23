@@ -945,6 +945,55 @@ wal_final_row
 
 @end
 
+
+void
+print_gen_row(struct tbuf *out, const struct row_v12 *row,
+	      void (*handler)(struct tbuf *out, u16 tag, struct tbuf *row))
+{
+	tbuf_printf(out, "lsn:%" PRIi64 " scn:%" PRIi64 " tm:%.3f t:%s %s ",
+		    row->lsn, row->scn, row->tm, xlog_tag_to_a(row->tag),
+		    sintoa((void *)&row->cookie));
+
+	struct tbuf row_data = TBUF(row->data, row->len, NULL);
+
+	switch (row->tag) {
+	case snap_initial_tag:
+		if (tbuf_len(&row_data) == sizeof(u32) * 3) {
+			u32 count = read_u32(&row_data);
+			u32 log = read_u32(&row_data);
+			u32 mod = read_u32(&row_data);
+			tbuf_printf(out, "count:%u run_crc_log:0x%08x run_crc_mod:0x%08x",
+				    count, log, mod);
+		}
+		break;
+	case snap_tag:
+	case wal_tag:
+		handler(out, row->tag, &row_data);
+		break;
+	case run_crc: {
+		i64 scn = -1;
+		if (tbuf_len(&row_data) == sizeof(i64) + 2 * sizeof(u32))
+			scn = read_u64(&row_data);
+		u32 log = read_u32(&row_data);
+		u32 mod = read_u32(&row_data);
+		tbuf_printf(out, "SCN:%"PRIi64 " log:0x%08x mod:0x%08x", scn, log, mod);
+		break;
+	}
+	case nop:
+		break;
+#ifdef PAXOS
+	case paxos_prepare:
+	case paxos_promise:
+	case paxos_propose:
+	case paxos_accept:
+		paxos_print(out, handler, row);
+		break;
+#endif
+	default:
+		tbuf_printf(out, "UNKNOWN");
+	}
+}
+
 /* this little hole shouldn't be used too much */
 int
 read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, struct tbuf *row))
@@ -970,49 +1019,7 @@ read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, struct
 	fiber->pool = l->pool;
 	while ((row = [l fetch_row])) {
 		struct tbuf *out = tbuf_alloc(l->pool);
-
-		tbuf_printf(out, "lsn:%" PRIi64 " scn:%" PRIi64 " tm:%.3f t:%s %s ",
-			    row->lsn, row->scn, row->tm, xlog_tag_to_a(row->tag),
-			    sintoa((void *)&row->cookie));
-
-		struct tbuf row_data = TBUF(row->data, row->len, NULL);
-
-		switch (row->tag) {
-		case snap_initial_tag:
-			if (tbuf_len(&row_data) == sizeof(u32) * 3) {
-				u32 count = read_u32(&row_data);
-				u32 log = read_u32(&row_data);
-				u32 mod = read_u32(&row_data);
-				tbuf_printf(out, "count:%u run_crc_log:0x%08x run_crc_mod:0x%08x",
-					    count, log, mod);
-			}
-			break;
-		case snap_tag:
-		case wal_tag:
-			handler(out, row->tag, &row_data);
-			break;
-		case run_crc: {
-			i64 scn = -1;
-			if (tbuf_len(&row_data) == sizeof(i64) + 2 * sizeof(u32))
-				scn = read_u64(&row_data);
-			u32 log = read_u32(&row_data);
-			u32 mod = read_u32(&row_data);
-			tbuf_printf(out, "SCN:%"PRIi64 " log:0x%08x mod:0x%08x", scn, log, mod);
-			break;
-		}
-		case nop:
-			break;
-#ifdef PAXOS
-		case paxos_prepare:
-		case paxos_promise:
-		case paxos_propose:
-		case paxos_accept:
-			paxos_print(out, handler, row);
-			break;
-#endif
-		default:
-			tbuf_printf(out, "UNKNOWN");
-		}
+		print_gen_row(out, row, handler);
 		printf("%.*s\n", tbuf_len(out), (char *)out->ptr);
 		prelease_after(l->pool, 128 * 1024);
 	}
