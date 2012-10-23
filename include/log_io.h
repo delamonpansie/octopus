@@ -280,6 +280,8 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 
 i64 fold_scn;
 @interface FoldRecovery: Recovery
+- (id) init_snap_dir:(const char *)snap_dirname
+	     wal_dir:(const char *)wal_dirname;
 @end
 
 

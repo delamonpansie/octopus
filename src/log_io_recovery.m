@@ -881,6 +881,16 @@ nop_hb_writer(va_list ap)
 
 @implementation FoldRecovery
 
+- (id)
+init_snap_dir:(const char *)snap_dirname
+      wal_dir:(const char *)wal_dirname
+{
+	[super init];
+        snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
+        wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
+	return self;
+}
+
 - (id) init_snap_dir:(const char *)snap_dirname
              wal_dir:(const char *)wal_dirname
         rows_per_wal:(int)wal_rows_per_file
@@ -891,11 +901,6 @@ nop_hb_writer(va_list ap)
                flags:(int)flags
   snap_io_rate_limit:(int)snap_io_rate_limit_
 {
-	/* Recovery object is never released */
-	[super init];
-        snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
-        wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
-
 	(void)wal_rows_per_file;
 	(void)feeder_addr_;
 	(void)wal_fsync_delay;
@@ -904,7 +909,8 @@ nop_hb_writer(va_list ap)
 	(void)flags;
 	(void)snap_io_rate_limit_;
 
-	return self;
+
+	return [self init_snap_dir:snap_dirname wal_dir:wal_dirname];
 }
 
 - (void)
