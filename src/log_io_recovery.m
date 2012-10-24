@@ -173,14 +173,15 @@ recover_row:(struct row_v12 *)r
 			}
 
 			if (!h) {
-				say_warn("unable to track run_crc: crc history too short");
+				say_warn("unable to track run_crc: crc history too short"
+					 " SCN:%"PRIi64" CRC_SCN:%"PRIi64, scn, scn_of_crc);
 				break;
 			}
 
 			if (h->log != log) {
 				run_crc_log_mismatch |= 1;
-				say_error("run_crc_log mismatch: saved:0x%08x computed:0x%08x",
-					  log, run_crc_log);
+				say_error("run_crc_log mismatch: SCN:%"PRIi64" saved:0x%08x computed:0x%08x",
+					  scn_of_crc, log, h->log);
 			}
 			if (h->mod != mod) {
 				run_crc_mod_mismatch |= 1;
