@@ -549,11 +549,15 @@ pull_wal(Recovery *r, id<XLogPuller> puller, int exit_on_eof)
 			assert(cfg.sync_scn_with_lsn ? [r scn] == pack_min_scn - 1 : 1);
 			@try {
 
-				for (int j = 0; j < pack_rows; j++)
-					[r recover_row:rows[j]];
+				for (int j = 0; j < pack_rows; j++) {
+					row = rows[j]; /* this pointer required for catch below */
+					[r recover_row:row];
+				}
 			}
-			@catch (id e) {
-				panic("Replication failure: remote row LSN:%"PRIi64 " SCN:%"PRIi64,
+			@catch (Error *e) {
+				panic("Replication failure: %s at %s:%i"
+				      " remote row LSN:%"PRIi64 " SCN:%"PRIi64,
+				      e->reason, e->file, e->line,
 				      row->lsn, row->scn);
 			}
 
