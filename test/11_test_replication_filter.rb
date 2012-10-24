@@ -60,6 +60,7 @@ object_space[0].index[0].unique = 1
 object_space[0].index[0].key_field[0].fieldno = 0
 object_space[0].index[0].key_field[0].type = "NUM"
 sync_scn_with_lsn = 0
+panic_on_scn_gap = 0
 EOD
   end
   def connect_string

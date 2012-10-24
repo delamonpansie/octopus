@@ -203,6 +203,9 @@ recover_row:(struct row_v12 *)r
 
 		lsn = r->lsn;
 		if (r->tag == snap_final_tag || r->tag == wal_tag || r->tag == nop || r->tag == run_crc) {
+			if (unlikely(r->tag != snap_final_tag && r->scn - scn != 1 && cfg.panic_on_scn_gap))
+				raise("non consecutive SCN %"PRIi64 " -> %"PRIi64, scn, r->scn);
+
 			scn = r->scn;
 			crc_hist[++crc_hist_i % nelem(crc_hist)] = (struct crc_hist){ scn, run_crc_log, run_crc_mod };
 		}
