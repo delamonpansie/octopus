@@ -165,8 +165,9 @@ recover_row:(struct row_v12 *)r
 			u32 mod = read_u32(&buf);
 			struct crc_hist *h = NULL;
 			for (unsigned i = crc_hist_i, j = 0; j < nelem(crc_hist); j++, i--) {
-				if (crc_hist[i % nelem(crc_hist)].scn == scn_of_crc) {
-					h = &crc_hist[i % nelem(crc_hist)];
+				struct crc_hist *p = &crc_hist[i % nelem(crc_hist)];
+				if (p->scn == scn_of_crc) {
+					h = p;
 					break;
 				}
 			}
