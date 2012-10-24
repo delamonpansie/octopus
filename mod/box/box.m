@@ -1228,31 +1228,35 @@ wal_apply(struct box_txn *txn, struct tbuf *t)
 
 @implementation Recovery (Box)
 
-- (void)
-apply:(struct tbuf *)op tag:(u16)tag
+static void
+apply(struct tbuf *op, u16 tag)
 {
 	struct box_txn txn;
 	memset(&txn, 0, sizeof(txn));
-
 	switch (tag) {
 	case wal_tag:
 		wal_apply(&txn, op);
-		txn_commit(&txn);
-		txn_cleanup(&txn);
 		break;
 	case snap_tag:
 		snap_apply(&txn, op);
-		txn_commit(&txn);
-		txn_cleanup(&txn);
-		break;
-	case snap_initial_tag:
-	case snap_final_tag:
-	case run_crc:
-	case nop:
 		break;
 	default:
-		raise("unknown row tag: %u/%s", tag, xlog_tag_to_a(tag));
+		return;
 	}
+	txn_commit(&txn);
+	txn_cleanup(&txn);
+}
+
+- (void)
+apply:(struct tbuf *)op tag:(u16)tag
+{
+	apply(op, tag);
+}
+
+- (void)
+apply_row:(const struct row_v12 *)r
+{
+	apply(&TBUF(r->data, r->len, NULL), r->tag);
 }
 
 - (void)
