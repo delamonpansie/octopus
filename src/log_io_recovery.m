@@ -196,12 +196,10 @@ recover_row:(struct row_v12 *)r
 
 
 		if (unlikely(r->lsn - lsn > 1 && cfg.panic_on_lsn_gap))
-			raise("LSN sequence has gap after %"PRIi64 " -> %"PRIi64,
-			      lsn, r->lsn);
+			raise("LSN sequence has gap after %"PRIi64 " -> %"PRIi64, lsn, r->lsn);
 
 		if (cfg.sync_scn_with_lsn && r->lsn != r->scn)
-			raise("out of sync SCN:%"PRIi64 " != LSN:%"PRIi64,
-			      r->scn, r->lsn);
+			raise("out of sync SCN:%"PRIi64 " != LSN:%"PRIi64, r->scn, r->lsn);
 
 		lsn = r->lsn;
 		if (r->tag == snap_final_tag || r->tag == wal_tag || r->tag == nop || r->tag == run_crc) {
