@@ -439,8 +439,8 @@ ev_panic(const char *msg)
 }
 #endif
 
-int
-main(int argc, char **argv)
+static int
+octopus(int argc, char **argv)
 {
 #ifdef STORAGE
 	const char *cat_filename = NULL;
@@ -674,7 +674,6 @@ main(int argc, char **argv)
 		booting = false;
 	}
 
-	@try {
 #ifdef STORAGE
 	if (gopt(opt, 'I')) {
 		init_storage = true;
@@ -757,15 +756,19 @@ main(int argc, char **argv)
 #else
 #error UTILITY or STORAGE must be defined
 #endif
+	return 0;
+}
+
+int main(int argc, char **argv)
+{
+	@try {
+		return octopus(argc, argv);
 	}
 	@catch (Error *e) {
 		panic_exc(e);
 	}
 	@catch (id e) {
-		panic("unknown exception");
+		panic("unknown exception %s", [[e class] name]);
 	}
-
-	return 0;
 }
-
 register_source();
