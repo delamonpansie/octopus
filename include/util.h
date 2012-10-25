@@ -78,6 +78,12 @@ void *alloca (size_t);
 #define	MMAP_HINT_ADDR	NULL
 #endif
 
+#if HAVE__ATTRIBUTE_COLD
+#  define oct_cold __attribute__((cold))
+#else
+#  define oct_cold
+#endif
+
 #if HAVE__BUILTIN_EXPECT
 #  define likely(x)    __builtin_expect((x),1)
 #  define unlikely(x)  __builtin_expect((x),0)

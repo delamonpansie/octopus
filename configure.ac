@@ -164,6 +164,17 @@ AC_COMPILE_IFELSE(
    AC_DEFINE([HAVE__BUILTIN_EXPECT], [1], [Define to 1 if the C compiler supports __builtin_expect])])
 AC_MSG_RESULT($ac_cv__builtin_expect)
 
+AC_MSG_CHECKING([whether the compiler supports __attribute__((cold))])
+ac_cv__attribute_cold=no
+CFLAGS_saved="$CFLAGS"
+CFLAGS="$CFLAGS -Werror"
+AC_COMPILE_IFELSE(
+  [AC_LANG_SOURCE([int __attribute__((cold)) x() { return 0;}])],
+  [ac_cv__attribute_cold=yes
+   AC_DEFINE([HAVE__ATTRIBUTE_COLD], [1], [Define to 1 if the C compiler supports __attribute__((cold))])])
+AC_MSG_RESULT($ac_cv__attribute_cold)
+CFLAGS="$CFLAGS_saved"
+
 AC_CC_FLAG_CHECK([-fno-stack-protector])
 AS_IF([test "x$ac_cv_no_stack_protector" == xyes]
       CFLAGS="$CFLAGS -fno-stack-protector")
