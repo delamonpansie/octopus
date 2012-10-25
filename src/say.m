@@ -273,7 +273,7 @@ vpanic(int status, const char *file, unsigned line,
 	if (backtrace)
 		_say(FATAL, NULL, 0, "backtrace:\n%s", backtrace);
 
-	_exit(status);
+	exit(status); /* fflush all stream, in order not to lose logs prior failure */
 }
 
 void __attribute__((format(FORMAT_PRINTF, 3, 4), noreturn))
