@@ -564,7 +564,7 @@ close
 	} else {
 		/* file may be already unlink()'ed if it was broken */
 		if (rows == 0 && access(filename, F_OK) == 0) {
-			bool legacy_snap = cfg.io_compat && [dir isMemberOf:[SnapDir class]];
+			bool legacy_snap = [self isMemberOf:[XLog11 class]] && [dir isMemberOf:[SnapDir class]];
 			if (!legacy_snap)
 				panic("no valid rows were read");
 		}
