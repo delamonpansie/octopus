@@ -82,7 +82,7 @@ class StandAloneEnv < RunEnv
                      "--suppressions=#{Root + '/scripts/valgrind.supp'}",
                      "--suppressions=#{Root + '/third_party/luajit/src/lj.supp'}")
       end
-      exec *argv
+      exec *argv, param
     end
   end
 
