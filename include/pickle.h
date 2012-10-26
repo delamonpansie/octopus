@@ -26,8 +26,6 @@
 
 #import <util.h>
 
-#include <third_party/luajit/src/luajit.h>
-
 struct tbuf;
 u8 *save_varint32(u8 *target, u32 value);
 void write_varint32(struct tbuf *b, u32 value);
@@ -39,7 +37,8 @@ u64 read_u64(struct tbuf *b);
 
 u32 read_varint32(struct tbuf *buf);
 void *read_field(struct tbuf *buf);
-void read_push_field(lua_State *L, struct tbuf *buf);
+struct lua_State;
+void read_push_field(struct lua_State *L, struct tbuf *buf);
 void *read_bytes(struct tbuf *buf, u32 data_len);
 
 u32 pick_u32(void *data, void **rest);
