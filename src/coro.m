@@ -48,19 +48,27 @@ octopus_coro_create(struct octopus_coro *coro, void (*f) (void *), void *data)
 
 	memset(coro, 0, sizeof(*coro));
 
-	/* TODO: guard pages */
 	coro->stack_size = page * 16;
 	coro->stack = mmap(MMAP_HINT_ADDR, coro->stack_size, PROT_READ | PROT_WRITE | PROT_EXEC,
 			   MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
 
 	if (coro->stack == MAP_FAILED)
-		return NULL;
+		goto fail;
+
+	if (mprotect(coro->stack, page, PROT_NONE) < 0)
+		goto fail;
 
 	(void)VALGRIND_STACK_REGISTER(coro->stack, coro->stack + coro->stack_size);
 
-	coro_create(&coro->ctx, f, data, coro->stack, coro->stack_size);
+	coro_create(&coro->ctx, f, data, coro->stack + page, coro->stack_size - page);
 
 	return coro;
+
+fail:
+	if (coro && coro->stack != MAP_FAILED)
+		munmap(coro->stack, coro->stack_size);
+	free(coro);
+	return NULL;
 }
 
 void
