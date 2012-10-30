@@ -62,7 +62,7 @@ struct node {
 static struct mhash_t *filter;
 
 int stderrfd, sayfd = STDERR_FILENO;
-bool dup_to_stderr = false;
+int dup_to_stderr = 0;
 int max_level;
 int nonblocking;
 
@@ -230,7 +230,7 @@ vsay(int level, const char *filename, unsigned line,
 	if (nonblocking && level <= ERROR)
 		ioctl(sayfd, FIONBIO, &one);
 
-	if (sayfd != STDERR_FILENO && (dup_to_stderr || level == FATAL)) {
+	if (sayfd != STDERR_FILENO && (level <= dup_to_stderr || level == FATAL)) {
 		r = write(stderrfd, buf, p + 1);
 	}
 }

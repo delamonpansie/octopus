@@ -479,7 +479,7 @@ octopus(int argc, char **argv)
 				       "=LEVEL", "increase verbosity level of particular source or ALL; where LEVEL is n|ALL[=n]|filename[=n] , n = 1..6"),
 			   gopt_option('H', 0, gopt_shorts(0), gopt_longs("list-sources"),
 				       NULL, "list known sources"),
-			   gopt_option('e', 0, gopt_shorts('e'), gopt_longs("stderr"),
+			   gopt_option('e', GOPT_REPEAT, gopt_shorts('e'), gopt_longs("stderr"),
 				       NULL, "Duplicate log output to stderr"),
 			   gopt_option('D', 0, gopt_shorts('D'), gopt_longs("daemonize"),
 				       NULL, "redirect input/output streams to a log file and run as daemon"),
@@ -581,7 +581,8 @@ octopus(int argc, char **argv)
 	if (fill_default_octopus_cfg(&cfg) != 0 || load_cfg(&cfg, 0) != 0)
 		panic("can't load config: %s", cfg_err);
 
-	dup_to_stderr = gopt(opt, 'e');
+	if (gopt(opt, 'e'))
+		dup_to_stderr = gopt(opt, 'e') + INFO - 1;
 
 	const char *filename;
 	int i = 0;

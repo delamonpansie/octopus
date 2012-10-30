@@ -42,8 +42,7 @@ enum say_level {
 	DEBUG3
 };
 
-extern int stderrfd, sayfd, max_level;
-extern bool dup_to_stderr;
+extern int stderrfd, sayfd, max_level, dup_to_stderr;
 
 void say_logger_init(int nonblock);
 void vsay(int level, const char *filename, unsigned line, const char *error,
