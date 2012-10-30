@@ -30,6 +30,7 @@
 
 #include <third_party/libcoro/coro.h>
 #include <third_party/valgrind/valgrind.h>
+#include <third_party/valgrind/memcheck.h>
 
 #include <unistd.h>
 #include <string.h>
@@ -48,19 +49,22 @@ octopus_coro_create(struct octopus_coro *coro, void (*f) (void *), void *data)
 
 	memset(coro, 0, sizeof(*coro));
 
-	coro->stack_size = page * 16;
-	coro->stack = mmap(MMAP_HINT_ADDR, coro->stack_size, PROT_READ | PROT_WRITE | PROT_EXEC,
-			   MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+	coro->mmap_size = page * 16;
+	coro->mmap = mmap(MMAP_HINT_ADDR, coro->mmap_size, PROT_READ | PROT_WRITE | PROT_EXEC,
+			  MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
 
-	if (coro->stack == MAP_FAILED)
+	if (coro->mmap == MAP_FAILED)
 		goto fail;
 
-	if (mprotect(coro->stack, page, PROT_NONE) < 0)
+	if (mprotect(coro->mmap, page, PROT_NONE) < 0)
 		goto fail;
 
+	(void)VALGRIND_MAKE_MEM_NOACCESS(coro->mmap, coro->mmap + page);
+
+	coro->stack = coro->mmap + page;
+	coro->stack_size = coro->mmap_size - page;
 	(void)VALGRIND_STACK_REGISTER(coro->stack, coro->stack + coro->stack_size);
-
-	coro_create(&coro->ctx, f, data, coro->stack + page, coro->stack_size - page);
+	coro_create(&coro->ctx, f, data, coro->stack, coro->stack_size);
 
 	return coro;
 
@@ -74,6 +78,5 @@ fail:
 void
 octopus_coro_destroy(struct octopus_coro *coro)
 {
-	if (coro->stack != NULL && coro->stack != MAP_FAILED)
-		munmap(coro->stack, coro->stack_size);
+	munmap(coro->mmap, coro->mmap_size);
 }

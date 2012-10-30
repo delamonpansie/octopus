@@ -29,8 +29,8 @@
 
 struct octopus_coro {
 	coro_context ctx;
-	void *stack;
-	size_t stack_size;
+	void *stack, *mmap;
+	size_t stack_size, mmap_size;
 	void *w;
 };
 
