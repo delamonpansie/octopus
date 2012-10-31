@@ -35,6 +35,7 @@
 #include <unistd.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <inttypes.h>
 
 /************************************************************************************/
 /*-
@@ -145,7 +146,10 @@ static bool		ignoreFatal = false;
 static bool		printRequest = false;
 
 #define		OCTO_PING	(0xff00) /* XXX src/iproto.m:const uint32_t msg_ping = 0xff00; */
+#define		BOX_INSERT	(13)
 static u_int16_t	messageType = OCTO_PING;
+static u_int32_t	minId = 0,
+			maxId = 1000;
 
 static u_int32_t	errstat[ 256 ];
 
@@ -230,9 +234,23 @@ generateRequestBody(AllocatedRequestBody **stack, int workerId, unsigned int *se
 	switch(messageType) {
 		case OCTO_PING:
 			break;
-		/*
-		   	void * body = popAllocatedRequestBody(stack, 12);
-		 */
+		case BOX_INSERT:
+			{
+				struct {
+					u_int32_t	object_space;
+					u_int32_t	flags;
+					u_int32_t	n;
+					u_int8_t	len;
+					u_int32_t	id;
+				} __attribute__((packed)) *ps, s = { 0, 0, 1, 4, 0 };
+
+				ps = popAllocatedRequestBody(stack, sizeof(*ps));
+				memcpy(ps, &s, sizeof(*ps));
+				ps->id = GEN_RND_BETWEEN(minId, maxId);
+				ptr = ps;
+				*size = sizeof(*ps);
+			}
+			break;
 		default:
 			abort();
 	}
@@ -359,8 +377,12 @@ usage() {
 	/*    ################################################################################ */
 	puts("octobench -s HOST -p PORT"); 
 	puts("   [-n NPACKETS] [-m NREQUESTS_IN_PACKETS] [-c NCONNECTION]"); 
-	puts("   [-t ping]"); 
-	puts("   [-F]               -- ignore fatal error from db");
+	puts("   [-t (ping|box_insert)]");
+	puts("   [-i MINID] [-I MAXID] -- min/max random id");
+	puts("   [-F]                  -- ignore fatal error from db");
+	puts("Defaults:");
+	printf("    -n %"PRIu64" -m %"PRIu64" -c %"PRIu64"\n", nPackets, nReqInPacket, nConnections); 
+	printf("    -i %u -I %u\n", minId, maxId); 
 	exit(1);
 }
 
@@ -383,7 +405,7 @@ main(int argc, char* argv[]) {
 
 	nConnections = nActiveConnections;
 
-	while((i=getopt(argc,argv,"s:p:n:m:c:t:Fh")) != EOF) {
+	while((i=getopt(argc,argv,"s:p:n:m:c:t:Fi:I:h")) != EOF) {
 		switch(i) {
 			case 's':
 				server = strdup(optarg);
@@ -403,8 +425,16 @@ main(int argc, char* argv[]) {
 			case 't':
 				if (strcmp("ping", optarg) == 0)
 					messageType = OCTO_PING;
+				else if (strcmp("box_insert", optarg) == 0)
+					messageType = BOX_INSERT;
 				else
 					usage();
+				break;
+			case 'i':
+				minId = strtoul(optarg, NULL, 0);
+				break;
+			case  'I':
+				maxId = strtoul(optarg, NULL, 0);
 				break;
 			case 'F':
 				ignoreFatal = true;
@@ -414,6 +444,8 @@ main(int argc, char* argv[]) {
 				usage();
 		}
 	}
+
+	OPT_ERR(minId < maxId);
 
 	if (server==NULL || port <= 0)
 		usage();
