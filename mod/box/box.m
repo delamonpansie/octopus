@@ -132,7 +132,7 @@ field_print(struct tbuf *buf, void *f)
 }
 
 static void
-tuple_print(struct tbuf *buf, uint8_t cardinality, void *f)
+tuple_print(struct tbuf *buf, u32 cardinality, void *f)
 {
 	tbuf_printf(buf, "<");
 
