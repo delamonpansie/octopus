@@ -147,6 +147,8 @@ static bool		printRequest = false;
 
 #define		OCTO_PING	(0xff00) /* XXX src/iproto.m:const uint32_t msg_ping = 0xff00; */
 #define		BOX_INSERT	(13)
+#define		BOX_SELECT	(17)
+
 static u_int16_t	messageType = OCTO_PING;
 static u_int32_t	minId = 0,
 			maxId = 1000;
@@ -242,7 +244,27 @@ generateRequestBody(AllocatedRequestBody **stack, int workerId, unsigned int *se
 					u_int32_t	n;
 					u_int8_t	len;
 					u_int32_t	id;
-				} __attribute__((packed)) *ps, s = { 0, 0, 1, 4, 0 };
+				} __attribute__((packed)) *ps, s = {0, 0, 1, 4, 0};
+
+				ps = popAllocatedRequestBody(stack, sizeof(*ps));
+				memcpy(ps, &s, sizeof(*ps));
+				ps->id = GEN_RND_BETWEEN(minId, maxId);
+				ptr = ps;
+				*size = sizeof(*ps);
+			}
+			break;
+		case BOX_SELECT:
+			{
+				struct {
+					u_int32_t	object_space;
+					u_int32_t	index;
+					u_int32_t	offset;
+					u_int32_t 	limit;
+					u_int32_t	n;
+					u_int32_t	cardinality;
+					u_int8_t	len;
+					u_int32_t	id;
+				} __attribute__((packed)) *ps, s = {0, 0, 0, 0xffffffff, 1, 1, 4, 0}; 
 
 				ps = popAllocatedRequestBody(stack, sizeof(*ps));
 				memcpy(ps, &s, sizeof(*ps));
@@ -377,11 +399,11 @@ usage() {
 	/*    ################################################################################ */
 	puts("octobench -s HOST -p PORT"); 
 	puts("   [-n NPACKETS] [-m NREQUESTS_IN_PACKETS] [-c NCONNECTION]"); 
-	puts("   [-t (ping|box_insert)]");
+	puts("   [-t (ping|box_insert|box_select)]");
 	puts("   [-i MINID] [-I MAXID] -- min/max random id");
 	puts("   [-F]                  -- ignore fatal error from db");
 	puts("Defaults:");
-	printf("    -n %"PRIu64" -m %"PRIu64" -c %"PRIu64"\n", nPackets, nReqInPacket, nConnections); 
+	printf("    -n %"PRIu64" -m %"PRIu64" -c %"PRIu64"\n    -t ping", nPackets, nReqInPacket, nConnections); 
 	printf("    -i %u -I %u\n", minId, maxId); 
 	exit(1);
 }
@@ -427,6 +449,8 @@ main(int argc, char* argv[]) {
 					messageType = OCTO_PING;
 				else if (strcmp("box_insert", optarg) == 0)
 					messageType = BOX_INSERT;
+				else if (strcmp("box_select", optarg) == 0)
+					messageType = BOX_SELECT;
 				else
 					usage();
 				break;
