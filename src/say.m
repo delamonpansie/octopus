@@ -89,7 +89,7 @@ void
 say_register_source(const char *file)
 {
 	if (unlikely(filter == NULL)) {
-		filter = mh_cstr_init();
+		filter = mh_cstr_init(NULL);
 		max_level = 0;
 	}
 

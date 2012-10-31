@@ -181,7 +181,7 @@ int
 init_iproto_peer(struct iproto_peer *p, int id, const char *name, const char *addr)
 {
 	if (req_registry == NULL)
-		req_registry = mh_i32_init();
+		req_registry = mh_i32_init(NULL);
 
 	memset(p, 0, sizeof(*p));
 

@@ -115,6 +115,7 @@ struct mhash_t {
 	uint32_t resize_cnt;
 	uint32_t resizing, batch;
 	struct mhash_t *shadow;
+	void *(*realloc)(void *, size_t);
 };
 #endif
 
@@ -124,7 +125,7 @@ struct mhash_t {
 #endif
 
 /* public api */
-MH_DECL struct mhash_t * _mh(init)();
+MH_DECL struct mhash_t * _mh(init)(void *(*custom_realloc)(void *, size_t));
 static inline mh_key_t _mh(key)(struct mhash_t *h, uint32_t i);
 static inline mh_val_t _mh(value)(struct mhash_t *h, uint32_t i);
 static inline uint32_t _mh(get)(struct mhash_t *h, mh_key_t key);
@@ -144,6 +145,9 @@ MH_DECL void _mh(start_resize)(struct mhash_t *h, uint32_t buckets, uint32_t bat
 MH_DECL void _mh(put_resize)(struct mhash_t *h, mh_key_t key, mh_val_t val);
 MH_DECL void _mh(put_node_resize)(struct mhash_t *h, struct index_node *node);
 MH_DECL void _mh(del_resize)(struct mhash_t *h, uint32_t x);
+MH_DECL void *mh_malloc(struct mhash_t *h, size_t size);
+MH_DECL void *mh_calloc(struct mhash_t *h, size_t nmemb, size_t size);
+MH_DECL void mh_free(struct mhash_t *h, void *ptr);
 #ifdef MH_DEBUG
 MH_DECL void _mh(dump)(struct mhash_t *h);
 #endif
@@ -373,14 +377,17 @@ _mh(del_resize)(struct mhash_t *h, uint32_t x)
 }
 
 MH_DECL struct mhash_t *
-_mh(init)()
+_mh(init)(void *(*custom_realloc)(void *, size_t))
 {
-	struct mhash_t *h = calloc(1, sizeof(*h));
+	custom_realloc = custom_realloc ?: realloc;
+	struct mhash_t *h = custom_realloc(NULL, sizeof(*h));
+	memset(h, 0, sizeof(*h));
+	h->realloc = custom_realloc;
 	h->node_size = mh_node_size;
-	h->shadow = calloc(1, sizeof(*h));
+	h->shadow = mh_calloc(h, 1, sizeof(*h));
 	h->n_buckets = 3;
-	h->nodes = calloc(h->n_buckets, h->node_size);
-	h->bitmap = calloc(h->n_buckets / 16 + 1, sizeof(uint32_t));
+	h->nodes = mh_calloc(h, h->n_buckets, h->node_size);
+	h->bitmap = mh_calloc(h, h->n_buckets / 16 + 1, sizeof(uint32_t));
 	h->upper_bound = h->n_buckets * 0.7;
 	return h;
 }
@@ -436,8 +443,8 @@ _mh(start_resize)(struct mhash_t *h, uint32_t buckets, uint32_t batch)
 	s->n_buckets = __ac_prime_list[h->prime];
 	s->upper_bound = s->n_buckets * 0.7;
 	s->n_occupied = 0;
-	s->nodes = malloc((size_t)s->n_buckets * h->node_size);
-	s->bitmap = calloc(s->n_buckets / 16 + 1, sizeof(uint32_t));
+	s->nodes = mh_malloc(h, (size_t)s->n_buckets * h->node_size);
+	s->bitmap = mh_calloc(h, s->n_buckets / 16 + 1, sizeof(uint32_t));
 	_mh(resize)(h);
 }
 
@@ -482,17 +489,17 @@ mh_clear(struct mhash_t *h)
 	h->n_buckets = 3;
 	h->prime = 0;
 	h->upper_bound = h->n_buckets * 0.7;
-	h->nodes = malloc((size_t)h->n_buckets * h->node_size);
-	h->bitmap = calloc(h->n_buckets / 16 + 1, sizeof(uint32_t));
+	h->nodes = mh_malloc(h, (size_t)h->n_buckets * h->node_size);
+	h->bitmap = mh_calloc(h, h->n_buckets / 16 + 1, sizeof(uint32_t));
 }
 
 MH_DECL void
 mh_destroy(struct mhash_t *h)
 {
-	free(h->shadow);
-	free(h->bitmap);
-	free(h->nodes);
-	free(h);
+	mh_free(h, h->shadow);
+	mh_free(h, h->bitmap);
+	mh_free(h, h->nodes);
+	mh_free(h, h);
 }
 
 MH_DECL size_t
@@ -503,6 +510,27 @@ mh_bytes(struct mhash_t *h)
 		(size_t)h->n_buckets * h->node_size +
 		((size_t)h->n_buckets / 16 + 1) *  sizeof(uint32_t);
 
+}
+
+MH_DECL void *
+mh_malloc(struct mhash_t *h, size_t size)
+{
+	return h->realloc(NULL, size);
+}
+
+MH_DECL void *
+mh_calloc(struct mhash_t *h, size_t nmemb, size_t size)
+{
+	size *= nmemb;
+	void *ptr = h->realloc(NULL, size);
+	memset(ptr, 0, size);
+	return ptr;
+}
+
+MH_DECL void
+mh_free(struct mhash_t *h, void *ptr)
+{
+	h->realloc(ptr, 0);
 }
 
 #endif

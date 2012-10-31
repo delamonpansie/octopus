@@ -356,7 +356,7 @@ fiber_init(void)
 	SLIST_INIT(&zombie_fibers);
 	TAILQ_INIT(&wake_list);
 
-	fibers_registry = mh_i32_init();
+	fibers_registry = mh_i32_init(NULL);
 
 	memset(&sched, 0, sizeof(sched));
 	sched.fid = 1;
