@@ -85,7 +85,10 @@ e * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
 #define mh_node_key(node) 	*(mh_key_t *)((void *)node + sizeof(mh_val_t))
 
 #define mh_size(h)		({ (h)->size; 		})
+#define mh_begin(h)		({ 0;	})
 #define mh_end(h)		({ (h)->n_buckets;	})
+
+#define mh_foreach(h, i)	for(uint32_t (i) = mh_begin(h); (i) < mh_end(h); (i)++) if (mh_exist((h), (i)))
 #endif
 
 #ifndef __ac_HASH_PRIME_SIZE
