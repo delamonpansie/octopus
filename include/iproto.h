@@ -55,7 +55,7 @@ void iproto_reply(struct netmsg **m, u32 msg_code, u32 sync);
 void iproto_commit(struct netmsg_mark *header_mark, u32 ret_code);
 void iproto_error(struct netmsg **m, struct netmsg_mark *header_mark, u32 ret_code, const char *err);
 
-
+typedef void (iproto_callback)(struct conn *c, struct iproto *request, void *arg);
 void iproto_interact(va_list ap);
 
 

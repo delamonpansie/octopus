@@ -832,21 +832,21 @@ box_prepare_update(struct box_txn *txn, struct tbuf *data)
 }
 
 static void
-box_process(struct conn *c, struct tbuf *request, void *arg __attribute__((unused)))
+box_process(struct conn *c, struct iproto *request, void *arg __attribute__((unused)))
 {
 	struct box_txn txn = { .op = 0 };
-	u32 msg_code = iproto(request)->msg_code;
-	struct tbuf request_data = TBUF(iproto(request)->data, iproto(request)->data_len, fiber->pool);
-	say_debug("%s: c:%p op:0x%02x sync:%u", __func__, c, msg_code, iproto(request)->sync);
+	u32 msg_code = request->msg_code;
+	struct tbuf request_data = TBUF(request->data, request->data_len, fiber->pool);
+	say_debug("%s: c:%p op:0x%02x sync:%u", __func__, c, msg_code, request->sync);
 	@try {
 		if (op_is_select(msg_code)) {
-			txn_init(iproto(request), &txn, netmsg_tail(&c->out_messages));
+			txn_init(request, &txn, netmsg_tail(&c->out_messages));
 			box_dispach_select(&txn, &request_data);
 			iproto_commit(&txn.header_mark, ERR_CODE_OK);
 		} else {
 			ev_tstamp start = ev_now(), stop;
 			struct netmsg_head h = { TAILQ_HEAD_INITIALIZER(h.q), fiber->pool, 0 };
-			txn_init(iproto(request), &txn, netmsg_tail(&h));
+			txn_init(request, &txn, netmsg_tail(&h));
 
 			if (unlikely(c->service != box_primary))
 				iproto_raise(ERR_CODE_NONMASTER, "updates forbiden on secondary port");

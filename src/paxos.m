@@ -747,9 +747,8 @@ query(struct PaxosRecovery *r, struct iproto_peer *p, struct iproto_msg *msg)
 #endif
 
 static void
-recv_msg(struct conn *c, struct tbuf *req, void *arg)
+recv_msg(struct conn *c, struct iproto *msg, void *arg)
 {
-	struct iproto *msg = iproto(req);
 	PaxosRecovery *pr = arg;
 
 #ifdef RANDOM_DROP

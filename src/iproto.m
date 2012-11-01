@@ -76,10 +76,8 @@ void
 iproto_interact(va_list ap)
 {
 	struct service *service = va_arg(ap, struct service *);
-	void (*callback)(struct conn *c, struct tbuf *request, void *arg) =
-		va_arg(ap, void (*)(struct conn *c, struct tbuf *request, void *arg));
+	iproto_callback *callback = va_arg(ap, iproto_callback *);
 	void *arg = va_arg(ap, void *);
-	struct tbuf *request;
 	struct conn *c;
 
 next:
@@ -91,9 +89,10 @@ next:
 	}
 
 	TAILQ_REMOVE(&service->processing, c, processing_link);
+	bool has_req = tbuf_len(c->rbuf) >= sizeof(struct iproto) &&
+		       tbuf_len(c->rbuf) >= sizeof(struct iproto) + iproto(c->rbuf)->data_len;
 
-	request = iproto_parse(c->rbuf);
-	if (request == NULL) {
+	if (!has_req) {
 		c->state = READING;
 		if (c->out_messages.bytes < cfg.output_low_watermark)
 			ev_io_start(&c->in);
@@ -102,11 +101,12 @@ next:
 		TAILQ_INSERT_TAIL(&service->processing, c, processing_link);
 	}
 
-	u32 msg_code = iproto(request)->msg_code;
-	if (unlikely(msg_code == msg_ping)) {
+	struct iproto *request = iproto(c->rbuf);
+	tbuf_ltrim(c->rbuf, sizeof(struct iproto) + request->data_len);
+
+	if (unlikely(request->msg_code == msg_ping)) {
 		struct netmsg *m = netmsg_tail(&c->out_messages);
-		iproto(request)->data_len = 0;
-		net_add_iov_dup(&m, request->ptr, sizeof(struct iproto));
+		net_add_iov_dup(&m, request, sizeof(struct iproto));
 	} else {
 		c->ref++;
 		callback(c, request, arg);
