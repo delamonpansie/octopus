@@ -176,7 +176,6 @@ my_alloc(void *ptr, size_t size) {
 		free(ptr);
 		return NULL;
 	}
-		printf("re_alloc %d\n", (int)size);
 	return realloc(ptr, size);
 }
 
