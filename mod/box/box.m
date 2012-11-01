@@ -645,7 +645,7 @@ commit_delete(struct box_txn *txn)
 }
 
 void
-txn_init(struct iproto *req, struct box_txn *txn, struct netmsg *m)
+txn_init(const struct iproto *req, struct box_txn *txn, struct netmsg *m)
 {
 	memset(txn, 0, sizeof(*txn));
 	txn->op = req->msg_code;
