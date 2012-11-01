@@ -461,17 +461,7 @@ li_req_init(struct iproto_connection_t* c, u_int32_t msg_code, void *data, size_
 	r->headerSend.msg_code = msg_code;
 	r->dataSend = data;
 
-	do {
-		u_int32_t	k;
-		int		ret;
-
-		k = mh_sp_request_put(c->requestHash, r->headerSend.sync, r, &ret);
-		if (!ret) {
-			mh_sp_request_del(c->requestHash, k);
-			c->sp_alloc(r, 0);
-			return NULL;
-		}
-	}  while(0);
+	mh_sp_request_put(c->requestHash, r->headerSend.sync, r, NULL);
 
 	r->readArena = NULL;
 	r->dataRecv = NULL;
