@@ -83,10 +83,10 @@
  */
 typedef void* (*memalloc)(void*, size_t);
 
-struct read_arena_pool_t;
+struct memory_arena_pool_t;
 
-struct read_arena_pool_t* 	rap_alloc(memalloc sp_alloc, u_int32_t maxArenas, size_t readArenaSize);
-void   				rap_free(struct read_arena_pool_t *rap);
+struct memory_arena_pool_t* 	map_alloc(memalloc sp_alloc, u_int32_t maxArenas, size_t memoryArenaSize);
+void   				map_free(struct memory_arena_pool_t *rap);
 
 #define LIBIPROTO_ERR_CODE_FLAG		(0x04)	
 
@@ -118,7 +118,8 @@ LIBIPROTOENUM(libIPROTO_error_codes, LIBIPROTO_ERROR_CODES);
 struct iproto_connection_t;
 struct iproto_request_t;
 
-struct iproto_connection_t*	li_conn_init(memalloc sp_alloc, struct read_arena_pool_t *rap);
+struct iproto_connection_t*	li_conn_init(memalloc sp_alloc, struct memory_arena_pool_t *rap,
+					     struct memory_arena_pool_t *reqap /* optional, request arena */ );
 u_int32_t			li_connect(struct iproto_connection_t *c, char *server, int port, u_int32_t opt);
 int				li_get_fd(struct iproto_connection_t *c);
 void				li_close(struct iproto_connection_t *c);

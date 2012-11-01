@@ -60,31 +60,31 @@
 #include <mhash.h>
 
 
-struct read_arena_t {
+struct memory_arena_t {
 	u_int32_t			refCounter;
-	struct	read_arena_pool_t	*rap;
-	TAILQ_ENTRY(read_arena_t)	link;
+	struct	memory_arena_pool_t	*rap;
+	TAILQ_ENTRY(memory_arena_t)	link;
 	size_t				arenaSize;
 	size_t				arenaEnd;
 	size_t				arenaBegin;
 	char				data[0];
 };
 
-#define READARENAHDRZ	(offsetof(struct read_arena_t, data))
+#define MEMORYARENAHDRZ	(offsetof(struct memory_arena_t, data))
 
-struct read_arena_pool_t {
+struct memory_arena_pool_t {
 	u_int32_t				maxArenas;
 	u_int32_t				nArenas;
-	size_t					readArenaSize;
+	size_t					memoryArenaSize;
 	memalloc				sp_alloc;
 
-	TAILQ_HEAD(freelist, read_arena_t) 	freelist;
-	TAILQ_HEAD(lockedlist, read_arena_t)	lockedlist;
+	TAILQ_HEAD(freelist, memory_arena_t) 	freelist;
+	TAILQ_HEAD(lockedlist, memory_arena_t)	lockedlist;
 };
 
-struct read_arena_pool_t*
-rap_alloc(memalloc sp_alloc, u_int32_t maxArenas, size_t readArenaSize) {
-	struct read_arena_pool_t	*rap = sp_alloc(NULL, sizeof(*rap));
+struct memory_arena_pool_t*
+map_alloc(memalloc sp_alloc, u_int32_t maxArenas, size_t memoryArenaSize) {
+	struct memory_arena_pool_t	*rap = sp_alloc(NULL, sizeof(*rap));
 
 	if (!rap)
 		return NULL;
@@ -92,7 +92,7 @@ rap_alloc(memalloc sp_alloc, u_int32_t maxArenas, size_t readArenaSize) {
 
 	rap->sp_alloc = sp_alloc;
 	rap->maxArenas = maxArenas;
-	rap->readArenaSize = readArenaSize;
+	rap->memoryArenaSize = memoryArenaSize;
 
 	TAILQ_INIT(&rap->freelist);
 	TAILQ_INIT(&rap->lockedlist);
@@ -101,15 +101,15 @@ rap_alloc(memalloc sp_alloc, u_int32_t maxArenas, size_t readArenaSize) {
 }
 
 static inline void
-read_arena_incr_refcount(struct read_arena_t *arena) {
+memory_arena_incr_refcount(struct memory_arena_t *arena) {
 	arena->refCounter++;
 }
 
-static struct read_arena_t*
-rap_get_arena(struct read_arena_pool_t* rap, size_t size) {
-	struct read_arena_t *arena = NULL;
+static struct memory_arena_t*
+map_get_arena(struct memory_arena_pool_t* rap, size_t size) {
+	struct memory_arena_t *arena = NULL;
 
-	size = MAX(rap->readArenaSize, size);
+	size = MAX(rap->memoryArenaSize, size);
 
 	if (!TAILQ_EMPTY(&rap->freelist)) {
 		TAILQ_FOREACH(arena, &rap->freelist, link) {
@@ -124,7 +124,7 @@ rap_get_arena(struct read_arena_pool_t* rap, size_t size) {
 	
 	if (!arena) {
 		rap->nArenas++;
-		arena = rap->sp_alloc(NULL, size + READARENAHDRZ);
+		arena = rap->sp_alloc(NULL, size + MEMORYARENAHDRZ);
 		arena->arenaSize = size;
 		arena->rap = rap;
 		arena->refCounter = 1;
@@ -137,8 +137,8 @@ rap_get_arena(struct read_arena_pool_t* rap, size_t size) {
 }
 
 static void
-read_arena_decr_refcount(struct read_arena_t *arena) {
-	struct read_arena_pool_t* rap = arena->rap;
+memory_arena_decr_refcount(struct memory_arena_t *arena) {
+	struct memory_arena_pool_t* rap = arena->rap;
 
 	assert(arena->refCounter > 0);
 	arena->refCounter--;
@@ -158,8 +158,8 @@ read_arena_decr_refcount(struct read_arena_t *arena) {
 }
 
 void
-rap_free(struct read_arena_pool_t *rap) {
-	struct read_arena_t	*arena, *tmp;
+map_free(struct memory_arena_pool_t *rap) {
+	struct memory_arena_t	*arena, *tmp;
 
 	TAILQ_FOREACH_SAFE(arena, &rap->freelist, link, tmp) {
 		assert(arena->refCounter == 1);
@@ -189,7 +189,6 @@ struct iproto_connection_t {
 	struct sockaddr_in  			serv_addr;
 	int					port;
 	memalloc				sp_alloc;
-	struct read_arena_pool_t		*rap;
 	struct mhash_t				*requestHash;
 	u_int32_t				mirrorCnt;
 	u_int32_t				nReqInProgress;
@@ -197,7 +196,11 @@ struct iproto_connection_t {
 	TAILQ_HEAD(sendlist, iproto_request_t) 	sendList;
 	TAILQ_HEAD(recvlist, iproto_request_t) 	recvList;
 
-	struct read_arena_t			*readArena;
+	struct memory_arena_pool_t		*reqap;
+	struct memory_arena_t			*reqArena;
+
+	struct memory_arena_pool_t		*rap;
+	struct memory_arena_t			*readArena;
 #define	MINNEEDEDSIZE		(8 * sizeof(struct iproto_retcode))
 	size_t					neededSize;
 
@@ -210,12 +213,12 @@ struct iproto_connection_t {
 struct iproto_request_t {
 	struct iproto_connection_t	*c;
 	u_int32_t			state;
-
+	struct memory_arena_t		*reqArena;
 
 	union iproto_any_header		*headerRecv;
 	char				*dataRecv;
 
-	struct read_arena_t		*readArena;
+	struct memory_arena_t		*readArena;
 
 	TAILQ_ENTRY(iproto_request_t)   link;
 
@@ -225,7 +228,7 @@ struct iproto_request_t {
 };
 
 struct iproto_connection_t*
-li_conn_init(memalloc sp_alloc, struct read_arena_pool_t *rap) {
+li_conn_init(memalloc sp_alloc, struct memory_arena_pool_t *rap, struct memory_arena_pool_t *reqap) {
 	struct iproto_connection_t*	c;
 
 	c = sp_alloc(NULL, sizeof(*c));
@@ -235,6 +238,7 @@ li_conn_init(memalloc sp_alloc, struct read_arena_pool_t *rap) {
 	c->fd = -1;
 	c->sp_alloc = sp_alloc;
 	c->rap = rap;
+	c->reqap = reqap;
 	c->requestHash = mh_sp_request_init(sp_alloc);
 	c->readArena = NULL;
 	c->neededSize = MINNEEDEDSIZE;
@@ -366,9 +370,12 @@ li_get_fd(struct iproto_connection_t *c) {
 static void                 
 freeData(struct iproto_request_t *r) {
 	if (r->readArena)
-		read_arena_decr_refcount(r->readArena);
+		memory_arena_decr_refcount(r->readArena);
 
-	r->c->sp_alloc(r, 0);
+	if (r->reqArena)
+		memory_arena_decr_refcount(r->reqArena);
+	else
+		r->c->sp_alloc(r, 0);
 }
 
 void
@@ -406,7 +413,7 @@ li_free(struct iproto_connection_t *c) {
 		c->sp_alloc(c->iovSend, 0);
 
 	if (c->readArena)
-		read_arena_decr_refcount(c->readArena);
+		memory_arena_decr_refcount(c->readArena);
 	c->sp_alloc(c, 0);
 }
 
@@ -425,9 +432,24 @@ struct iproto_request_t*
 li_req_init(struct iproto_connection_t* c, u_int32_t msg_code, void *data, size_t size) {
 	struct iproto_request_t*	r;
 
-	r = c->sp_alloc(NULL, sizeof(*r));
-	if (!r)
-		return NULL;
+	if (c->reqap) {
+		if (c->reqArena == NULL || (c->reqArena->arenaSize - c->reqArena->arenaEnd) < sizeof(*r)) {
+			if (c->reqArena)
+				memory_arena_decr_refcount(c->reqArena);
+			c->reqArena = map_get_arena(c->reqap, sizeof(*r));
+			memory_arena_incr_refcount(c->reqArena);
+		}
+
+		r = (struct iproto_request_t*)(c->reqArena->data + c->reqArena->arenaEnd);
+		c->reqArena->arenaEnd += sizeof(*r);
+		r->reqArena = c->reqArena;
+		memory_arena_incr_refcount(r->reqArena);
+	} else {	
+		r = c->sp_alloc(NULL, sizeof(*r));
+		if (!r)
+			return NULL;
+		r->reqArena = NULL;
+	}
 
 	r->c = c;
 	r->state = ERR_CODE_REQUEST_IN_PROGRESS;
@@ -596,7 +618,7 @@ begin:
 
 		if (li_n_requests_in_progress(c) == 0) {
 			if (c->readArena) {
-				read_arena_decr_refcount(c->readArena);
+				memory_arena_decr_refcount(c->readArena);
 				c->readArena = NULL;
 			}
 
@@ -604,14 +626,14 @@ begin:
 		}
 
 		if (c->readArena == NULL) {
-			c->readArena = rap_get_arena(c->rap, c->neededSize);
-			read_arena_incr_refcount(c->readArena);
+			c->readArena = map_get_arena(c->rap, c->neededSize);
+			memory_arena_incr_refcount(c->readArena);
 		} else if ((c->readArena->arenaSize - c->readArena->arenaEnd) < c->neededSize) {
-			struct read_arena_t	*oldarena = c->readArena;
+			struct memory_arena_t	*oldarena = c->readArena;
 			size_t			newsize = c->neededSize + (oldarena->arenaEnd - oldarena->arenaBegin);
 
-			c->readArena = rap_get_arena(c->rap, newsize);
-			read_arena_incr_refcount(c->readArena);
+			c->readArena = map_get_arena(c->rap, newsize);
+			memory_arena_incr_refcount(c->readArena);
 
 			if (oldarena->arenaEnd - oldarena->arenaBegin > 0) {
 				memcpy(c->readArena->data, oldarena->data + oldarena->arenaBegin, 
@@ -619,7 +641,7 @@ begin:
 				c->readArena->arenaEnd = oldarena->arenaEnd - oldarena->arenaBegin;
 			}
 
-			read_arena_decr_refcount(oldarena);
+			memory_arena_decr_refcount(oldarena);
 		}
 
 		r = read(c->fd, c->readArena->data + c->readArena->arenaEnd, 
@@ -628,7 +650,7 @@ begin:
 		if (r <= 0) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK) {
 				if (c->readArena->arenaEnd == c->readArena->arenaBegin) {
-					read_arena_decr_refcount(c->readArena);
+					memory_arena_decr_refcount(c->readArena);
 					c->readArena = NULL;
 				}
 
@@ -672,7 +694,7 @@ begin:
 				c->readArena->arenaBegin += header->data_len;
 			}
 			
-			read_arena_incr_refcount(c->readArena);
+			memory_arena_incr_refcount(c->readArena);
 			request->readArena = c->readArena;
 			request->state = ERR_CODE_REQUEST_READY;
 			TAILQ_INSERT_TAIL(&c->recvList, request, link);

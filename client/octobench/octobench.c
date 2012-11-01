@@ -176,6 +176,7 @@ my_alloc(void *ptr, size_t size) {
 		free(ptr);
 		return NULL;
 	}
+		printf("re_alloc %d\n", (int)size);
 	return realloc(ptr, size);
 }
 
@@ -284,8 +285,9 @@ void*
 worker(void *arg) {
 	int				idWorker = (int)(uintptr_t)arg;
 	unsigned int			rndseed = idWorker;
-	struct read_arena_pool_t*	rap = rap_alloc(my_alloc, 2, 65536);
-	struct iproto_connection_t*	conn = li_conn_init(my_alloc, rap);
+	struct memory_arena_pool_t*	rap = map_alloc(my_alloc, 2, 64*1024);
+	struct memory_arena_pool_t*	reqap = map_alloc(my_alloc, 64, 64*1024);
+	struct iproto_connection_t*	conn = li_conn_init(my_alloc, rap, reqap);
 	u_int32_t			errcode;
 	int				fd;
 	u_int32_t			nSended = 0, nOk = 0, nGet = 0;
@@ -353,7 +355,7 @@ worker(void *arg) {
 		}
 
 		if (state & POLLOUT) {
-			if (nOk < nRequests && (nGet + 10 * nReqInPacket) > nSended) {
+			if (nOk < nRequests && (nGet + 4 * nReqInPacket) > nSended) {
 				int i;
 
 				for(i=0; i<nReqInPacket; i++) {
@@ -386,7 +388,7 @@ worker(void *arg) {
 	signalMain(nOk, nGet);
 	li_close(conn);
 	li_free(conn);
-	rap_free(rap);
+	map_free(rap);
 
 	return NULL;
 }
