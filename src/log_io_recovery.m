@@ -209,7 +209,7 @@ wal_final_row
 recover_snap
 {
 	XLog *snap = nil;
-	const struct row_v12 *r;
+	struct row_v12 *r;
 
 	struct palloc_pool *saved_pool = fiber->pool;
 	@try {
@@ -228,21 +228,28 @@ recover_snap
 
 		fiber->pool = [snap pool];
 
-		if ([snap isKindOf:[XLog11 class]]) {
-			r = [self dummy_row_lsn:snap_lsn scn:snap_lsn tag:snap_initial_tag];
-			[self recover_row:r];
-		}
+		bool legacy_snap = [snap isKindOf:[XLog11 class]];
+
+		if (legacy_snap && !cfg.sync_scn_with_lsn)
+			panic("sync_scn_with_lsn is required when loading from v11 snapshots");
+
+		if (legacy_snap)
+			[self recover_row:[self dummy_row_lsn:snap_lsn scn:snap_lsn tag:snap_initial_tag]];
 
 		while ((r = [snap fetch_row])) {
+			/* some of old tarantool snapshots has all rows with lsn == 0,
+			   so using lsn from record will reset recovery lsn set by snap_initial_tag to 0,
+			   also v11 snapshots imply that SCN === LSN */
+			if (unlikely(legacy_snap && r->lsn == 0))
+				r->scn = r->lsn = lsn;
+
 			[self recover_row:r];
 			prelease_after(fiber->pool, 128 * 1024);
 		}
 
 		/* old v11 snapshot, scn == lsn from filename */
-		if ([snap isKindOf:[XLog11 class]]) {
-			r = [self dummy_row_lsn:snap_lsn scn:snap_lsn tag:snap_final_tag];
-			[self recover_row:r];
-		}
+		if (legacy_snap)
+			[self recover_row:[self dummy_row_lsn:snap_lsn scn:snap_lsn tag:snap_final_tag]];
 
 		if (![snap eof])
 			raise("unable to fully read snapshot");
