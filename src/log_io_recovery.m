@@ -549,7 +549,7 @@ pull_wal(Recovery *r, id<XLogPuller> puller, int exit_on_eof)
 			    pack_max_scn = rows[pack_rows - 1]->scn,
 			    pack_max_lsn = rows[pack_rows - 1]->lsn;
 #endif
-			assert(cfg.sync_scn_with_lsn ? [r scn] == pack_min_scn - 1 : 1);
+			assert(!cfg.sync_scn_with_lsn || [r scn] == pack_min_scn - 1);
 			@try {
 
 				for (int j = 0; j < pack_rows; j++) {
