@@ -63,7 +63,7 @@ endif
 all: octopus
 
 subdirs += third_party $(foreach module,$(modules),mod/$(module)) cfg src src-lua client/libiproto client/octobench
-include $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
+-include $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
 
 ifneq ($(findstring src/paxos.o,$(obj)),)
   CFLAGS += -DPAXOS
