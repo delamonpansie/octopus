@@ -219,8 +219,10 @@ AC_ARG_ENABLE([modules],
                               [select module to build, silver(box) and feeder by default])],
               [octopus_modules=$enableval],
               [octopus_modules="box feeder"])
-
 AC_SUBST(modules, [$octopus_modules])
+for module in $octopus_modules; do
+    AS_IF([test -r mod/$module/Makefile], [], AC_MSG_ERROR([No such module: $module]))
+done
 
 AC_OUTPUT
 
