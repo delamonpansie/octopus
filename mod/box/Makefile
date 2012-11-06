@@ -1,4 +1,4 @@
-src/octopus.o: CFLAGS += -DSTORAGE
+binary_type = STORAGE
 
 obj += src/admin.o
 obj += mod/box/box.o

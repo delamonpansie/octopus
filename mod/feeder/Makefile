@@ -1,4 +1,4 @@
-# src/octopus.o: CFLAGS += -DUTILITY
+binary_type ?= UTILITY
 
 obj += mod/feeder/feeder.o
 cfg_tmpl += mod/feeder/feeder_cfg.cfg_tmpl

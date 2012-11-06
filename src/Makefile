@@ -27,7 +27,10 @@ ifeq (1,$(HAVE_RAGEL))
 endif
 
 src/octopus.o: octopus_version.h
-src/octopus.o: CFLAGS += -DPRIMARY_MOD='"$(firstword $(modules))"'
+src/octopus.o: CFLAGS += -DPRIMARY_MOD='"$(firstword $(modules))"' -D$(binary_type)
+ifeq ($(binary_type),)
+  $(error binary_type must be defined)
+endif
 
 src/palloc.o: CFLAGS += -DPALLOC_STAT_INFO -DHAVE_THIRD_PARTY_VALGRIND_H=1 -DHAVE_THIRD_PARTY_QUEUE_H=1
 disable-warns-obj += src/octopus_ev.o
