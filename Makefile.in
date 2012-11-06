@@ -63,7 +63,8 @@ endif
 all: octopus
 
 subdirs += third_party $(foreach module,$(modules),mod/$(module)) cfg src src-lua client/libiproto client/octobench
--include $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
+sub-Makefile = $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
+-include $(sub-Makefile)
 
 ifneq ($(findstring src/paxos.o,$(obj)),)
   CFLAGS += -DPAXOS
@@ -82,8 +83,7 @@ third_party/luajit/src/libluajit.a:
 	@$(MAKE) -C third_party/luajit/src CC="$(CC)" E="$(E)" Q="$(Q)" \
 		TARGET_CFLAGS='-funwind-tables -DLUAJIT_UNWIND_EXTERNAL' libluajit.a
 
-$(obj): $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
-$(obj): Makefile
+$(obj): Makefile $(sub-Makefile)
 
 dep = $(patsubst %.o,%.d,$(obj) $(libobj) $(benchobj))
 -include $(dep)

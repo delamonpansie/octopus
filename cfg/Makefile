@@ -23,7 +23,7 @@ ifeq (1, $(HAVE_CONFETTI))
 
     defered += $$(obj): cfg/octopus.h cfg/octopus.cfg
 
-    cfg/octopus.cfg_tmpl: Makefile $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
+    cfg/octopus.cfg_tmpl: Makefile $(sub-Makefile)
     cfg/octopus.cfg_tmpl: cfg/core.cfg_tmpl $(cfg_tmpl)
 	@mkdir -p $(dir $@)
 	@echo '%{ ' > $@
