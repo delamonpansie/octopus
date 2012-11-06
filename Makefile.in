@@ -15,6 +15,9 @@ CFLAGS := @CFLAGS@
 CFLAGS_WARNS := @CFLAGS_WARNS@
 CPPFLAGS := @CPPFLAGS@
 LDFLAGS := @LDFLAGS@
+RANLIB := @RANLIB@
+AR := ar
+ARFLAGS := rc
 RAGEL := @RAGEL@
 RAGELFLAGS := @RAGELFLAGS@
 DOT := @DOT@
@@ -159,7 +162,7 @@ endif
 
 .PHONY: distclean clean
 clean:
-	@echo "CLEAN octopus"
+	@echo "CLEAN	octopus"
 	@rm -rf $(obj) $(patsubst %.o,%.gcno,$(obj))
 	@rm -rf $(dep) octopus lcov test/var
 

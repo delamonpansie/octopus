@@ -21,6 +21,7 @@ m4_include([third_party/libev/libev.m4])
 AC_PROG_CC
 AC_PROG_MAKE_SET
 AC_PROG_SED
+AC_PROG_RANLIB
 
 AC_ARG_VAR([RAGEL], [Ragel generator command])
 AC_ARG_VAR([RAGELFLAGS], [Ragel generator flags])

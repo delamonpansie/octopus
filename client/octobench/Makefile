@@ -1,17 +1,15 @@
-CLDIR?=client/libiproto
-OBDIR?=client/octobench
+OBDIR=client/octobench
 
 benchobj += $(OBDIR)/octobench.o
 $(OBDIR)/octobench.o: CFLAGS += -pthread
 
 all: $(OBDIR)/octobench
+$(OBDIR)/octobench: $(benchobj) client/libiproto/libiproto.a
+	$(E) "CC	$@"
+	$(Q)$(CC) -pthread $(LDFLAGS) $^ $(LIBS) -o $@
 
 clean: clean_bench
-
-$(OBDIR)/octobench: $(benchobj) $(CLDIR)/libiproto.a
-	    $E "CC  $@"
-		    $Q$(CC) -pthread $(LDFLAGS) $^ $(LIBS) -o $@
-
 clean_bench:
-	rm -f $(benchobj)
-	rm -f $(OBDIR)/octobench
+	$(E) "CLEAN	client/octobench"
+	$(Q)rm -f $(benchobj)
+	$(Q)rm -f $(OBDIR)/octobench
