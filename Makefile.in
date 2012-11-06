@@ -209,7 +209,7 @@ clean-coverage:
 endif
 
 
-Makefile: $(srcdir)/config.status $(srcdir)/include/config.h.in $(srcdir)/Makefile.in
+Makefile: $(srcdir)/config.status $(srcdir)/include/config.h.in $(srcdir)/Makefile.in $(sub-Makefile)
 	./config.status
 
 config.status: $(srcdir)/configure
