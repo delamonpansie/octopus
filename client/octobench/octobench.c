@@ -107,31 +107,6 @@ blrand_r(unsigned int *ctx)
 
 /************************************************************************************/
 
-void *__real_malloc(size_t size);
-void *__real_realloc(void *ptr, size_t size);
-
-void * __wrap_malloc(size_t size);
-void *
-__wrap_malloc(size_t size)
-{
-	void *ptr = __real_malloc(size);
-	if (ptr == NULL)
-		abort();
-	return ptr;
-}
-
-void * __wrap_realloc(void *ptr, size_t size);
-void *
-__wrap_realloc(void *ptr, size_t size)
-{
-	ptr = __real_realloc(ptr, size);
-	if (size > 0 && ptr == NULL)
-		abort();
-	return ptr;
-}
-  
-/************************************************************************************/
-
 #include <client/libiproto/libiproto.h>
 
 static u_int64_t	nReqInPacket = 10;
