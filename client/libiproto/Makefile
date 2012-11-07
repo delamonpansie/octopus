@@ -1,10 +1,10 @@
 CLDIR=client/libiproto
-libobj += $(CLDIR)/iproto.o
+libobj += $(CLDIR)/iproto.o $(CLDIR)/errcode.o
 
 all: $(CLDIR)/libiproto.a
-$(CLDIR)/libiproto.a: $(libobj)
+$(CLDIR)/libiproto.a: $(libobj) third_party/qsort_arg.o
 	$(E) "AR	$@"
-	$(Q)$(AR) $(ARFLAGS) $@ $<
+	$(Q)$(AR) $(ARFLAGS) $@ $^
 	$(E) "RANLIB	$@"
 	$(Q)$(RANLIB) $@
 

@@ -108,6 +108,7 @@ blrand_r(unsigned int *ctx)
 /************************************************************************************/
 
 #include <client/libiproto/libiproto.h>
+#include <iproto_def.h>
 
 static u_int64_t	nReqInPacket = 10;
 static u_int64_t	nPackets = 1000;
@@ -278,7 +279,7 @@ worker(void *arg) {
 		octopoll(li_get_fd(conn), POLLOUT);
 
 	if (errcode != ERR_CODE_OK) {
-		fprintf(stderr,"li_connect fails: %08x\n", errcode);
+		fprintf(stderr,"li_connect fails: %s (%08x)\n", errcode_desc(errcode), errcode);
 		exit(1);
 	}
 
@@ -299,7 +300,7 @@ worker(void *arg) {
 			errcode = li_read(conn);
 
 			if (!(errcode == ERR_CODE_NOTHING_TO_DO || errcode == ERR_CODE_OK)) {
-				fprintf(stderr,"li_read fails: %08x\n", errcode);
+				fprintf(stderr,"li_read fails: %s (%08x)\n", errcode_desc(errcode), errcode);
 				exit(1);
 			}
 
@@ -308,7 +309,7 @@ worker(void *arg) {
 				errcode = li_req_state(request);
 
 				if (errcode != ERR_CODE_REQUEST_READY && (errcode & LIBIPROTO_ERR_CODE_FLAG)) {
-					fprintf(stderr,"request fails: %08x\n", errcode);
+					fprintf(stderr,"request fails: %s (%08x)\n", errcode_desc(errcode), errcode);
 					exit(1);
 				}
 
@@ -316,8 +317,9 @@ worker(void *arg) {
 					nOk++;
 				nGet++;
 
-				if (ignoreFatal == false && errcode & 0x02) {
-					fprintf(stderr,"octopus returns fatal error: %08x\n", errcode);
+				if (ignoreFatal == false && ERR_CODE_IS_FATAL(errcode)) {
+					fprintf(stderr,"octopus returns fatal error: %s (%08x)\n", 
+						errcode_desc(errcode), errcode);
 					exit(1);
 				}
 
@@ -352,7 +354,8 @@ worker(void *arg) {
 					case ERR_CODE_OK:
 						break;
 					default:
-						fprintf(stderr,"li_write fails: %08x\n", errcode);
+						fprintf(stderr,"li_write fails: %s (%08x)\n", 
+							errcode_desc(errcode), errcode);
 						exit(1);
 				}
 			}
@@ -450,6 +453,8 @@ main(int argc, char* argv[]) {
 	if (server==NULL || port <= 0)
 		usage();
 
+	LIBIPROTO_ADD_DESCRIPTION(ERROR_CODES);
+
 	gettimeofday(&begin,NULL);
 	pthread_mutex_lock(&mutex);
 	for(i=0; i<nConnections; i++) {
@@ -476,7 +481,7 @@ main(int argc, char* argv[]) {
 
 	for(i=0; i<256; i++)
 		if (errstat[i] > 0)
-			printf("N number of %08x: %d\n", i, errstat[i]);
+			printf("N number of %02x: %d (%s)\n", i, errstat[i]);
 
 	return 0;
 }

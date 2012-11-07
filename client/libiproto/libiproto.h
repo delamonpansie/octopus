@@ -88,22 +88,50 @@ struct memory_arena_pool_t;
 struct memory_arena_pool_t* 	map_alloc(memalloc sp_alloc, u_int32_t maxArenas, size_t memoryArenaSize);
 void   				map_free(struct memory_arena_pool_t *rap);
 
-#define LIBIPROTO_ERR_CODE_FLAG		(0x04)	
 
-#define LIBIPROTO_ERROR_CODES(_)                                           \
-    _(ERR_CODE_HOST_UNKNOWN,             ((0x01) << 16) | (LIBIPROTO_ERR_CODE_FLAG | 0x02), "hosk unknown")	\
-    _(ERR_CODE_CONNECT_ERR,              ((0x02) << 16) | (LIBIPROTO_ERR_CODE_FLAG | 0x02), "connection error")    \
-    _(ERR_CODE_PROTO_ERR,                ((0x03) << 16) | (LIBIPROTO_ERR_CODE_FLAG | 0x02), "protocol error")    \
-    _(ERR_CODE_NOTHING_TO_DO,            ((0x04) << 16) | (LIBIPROTO_ERR_CODE_FLAG | 0x01), "nothing to do")    \
-    _(ERR_CODE_ALREADY_CONNECTED,        ((0x05) << 16) | (LIBIPROTO_ERR_CODE_FLAG | 0x01), "already connected")    \
-    _(ERR_CODE_CONNECT_IN_PROGRESS,      ((0x06) << 16) | (LIBIPROTO_ERR_CODE_FLAG | 0x01), "connect is in progress")    \
-    _(ERR_CODE_REQUEST_IN_PROGRESS,      ((0x07) << 16) | (LIBIPROTO_ERR_CODE_FLAG | 0x01), "request is in progress")    \
-    _(ERR_CODE_REQUEST_IN_SEND,          ((0x08) << 16) | (LIBIPROTO_ERR_CODE_FLAG | 0x01), "request is in sending")    \
-    _(ERR_CODE_REQUEST_IN_RECV,          ((0x09) << 16) | (LIBIPROTO_ERR_CODE_FLAG | 0x01), "request is on recieving")    \
-    _(ERR_CODE_REQUEST_READY,            ((0x0a) << 16) | (LIBIPROTO_ERR_CODE_FLAG | 0x00), "request is ready")
+/* errcode demistification */
+
+#define TEMPORARY_ERR_CODE_FLAG		(0x01)
+#define FATAL_ERR_CODE_FLAG		(0x02)
+#define LIBIPROTO_ERR_CODE_FLAG		(0x04)
+
+#define	ERR_CODE_IS_TEMPORARY(x)	((x) & FATAL_ERR_CODE_FLAG)
+#define	ERR_CODE_IS_FATAL(x)		((x) & FATAL_ERR_CODE_FLAG)
+#define ERR_CODE_IS_CLIENT(x)		((x) & LIBIPROTO_ERR_CODE_FLAG)
+
+void errcode_add_desc(u_int32_t errcode, char *desc);
+char* errcode_desc(u_int32_t errcode);
+
+/* client's error codes */
+
+#define LIBIPROTO_ERROR_CODES(_)                                           					\
+    _(ERR_CODE_HOST_UNKNOWN,		((0x01) << 16) | (LIBIPROTO_ERR_CODE_FLAG | FATAL_ERR_CODE_FLAG), 	\
+      					"host unknown")								\
+    _(ERR_CODE_CONNECT_ERR,		((0x02) << 16) | (LIBIPROTO_ERR_CODE_FLAG | FATAL_ERR_CODE_FLAG), 	\
+      					"connection error")    							\
+    _(ERR_CODE_PROTO_ERR,		((0x03) << 16) | (LIBIPROTO_ERR_CODE_FLAG | FATAL_ERR_CODE_FLAG), 	\
+      					"protocol error")    							\
+    _(ERR_CODE_NOTHING_TO_DO,		((0x04) << 16) | (LIBIPROTO_ERR_CODE_FLAG | LIBIPROTO_ERR_CODE_FLAG), 	\
+      					"nothing to do")    							\
+    _(ERR_CODE_ALREADY_CONNECTED,	((0x05) << 16) | (LIBIPROTO_ERR_CODE_FLAG | LIBIPROTO_ERR_CODE_FLAG), 	\
+      					"already connected")    						\
+    _(ERR_CODE_CONNECT_IN_PROGRESS,	((0x06) << 16) | (LIBIPROTO_ERR_CODE_FLAG | LIBIPROTO_ERR_CODE_FLAG), 	\
+      					"connect is in progress")    						\
+    _(ERR_CODE_REQUEST_IN_PROGRESS,	((0x07) << 16) | (LIBIPROTO_ERR_CODE_FLAG | LIBIPROTO_ERR_CODE_FLAG), 	\
+      					"request is in progress")    						\
+    _(ERR_CODE_REQUEST_IN_SEND,		((0x08) << 16) | (LIBIPROTO_ERR_CODE_FLAG | LIBIPROTO_ERR_CODE_FLAG), 	\
+      					"request is in sending")    						\
+    _(ERR_CODE_REQUEST_IN_RECV,		((0x09) << 16) | (LIBIPROTO_ERR_CODE_FLAG | LIBIPROTO_ERR_CODE_FLAG), 	\
+      					"request is on recieving")    						\
+    _(ERR_CODE_REQUEST_READY,		((0x0a) << 16) | (LIBIPROTO_ERR_CODE_FLAG | 0x00), 			\
+      					"request is ready")
 
 #define LIBIPROTOENUM_MEMBER(s, v, d...) s = v,
 #define LIBIPROTOENUM(enum_name, enum_members) enum enum_name {enum_members(LIBIPROTOENUM_MEMBER) enum_name##_MAX}
+#define LIBIPROTOENUM_DESCRIPTION(s, v, d...) errcode_add_desc((v), (d));
+#define LIBIPROTO_ADD_DESCRIPTION(enum_members) do { enum_members(LIBIPROTOENUM_DESCRIPTION) } while(0)
+#define LIBIPROTOENUM_DEFAULT_DESCRIPTION(s, v) errcode_add_desc((v), #s);
+#define LIBIPROTO_ADD_DEFAULT_DESCRIPTION(enum_members) do { enum_members(LIBIPROTOENUM_DEFAULT_DESCRIPTION) } while(0)
 
 LIBIPROTOENUM(libIPROTO_error_codes, LIBIPROTO_ERROR_CODES);
 
