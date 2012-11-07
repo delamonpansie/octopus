@@ -42,11 +42,6 @@ ifeq (1,$(HAVE_CC_FLAG_W_NO_UNUSED_VALUE))
   src/octopus_ev.o: CFLAGS += -Wno-unused-value
 endif
 
-ifeq (1,$(RESOLVE_SYMBOLS))
-	LDFLAGS += -rdynamic -lbfd
-	CFLAGS += -DRESOLVE_SYMBOLS
-endif
-
 ifneq (,$(TRACE))
 	obj += src/trace.o
 	$(TRACE): CFLAGS += -finstrument-functions
