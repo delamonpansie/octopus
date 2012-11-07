@@ -383,6 +383,7 @@ li_close(struct iproto_connection_t *c) {
 	if (c->fd >= 0)
 		close(c->fd);
 
+	c->fd = -1;
 	c->connectState = NotConnected;
 
 	if (c->server)
@@ -415,6 +416,33 @@ li_free(struct iproto_connection_t *c) {
 	if (c->readArena)
 		memory_arena_decr_refcount(c->readArena);
 	c->sp_alloc(c, 0);
+}
+
+LiConnectionState
+li_io_state(struct iproto_connection_t *c) {
+	LiConnectionState	state;
+
+	switch(c->connectState) {
+		case Connected:
+			state = LI_CONNECTED;
+			if (c->iovSendLength > 0 || !TAILQ_EMPTY(&c->sendList))
+				state |= LI_WANT_WRITE;
+			if (li_n_requests_in_progress(c) > 0)
+				state |= LI_WANT_READ;
+			break;
+
+		case 	ConnectInProgress:
+			state = LI_CONNECT_IN_PROGRESS | LI_WANT_WRITE;
+			break;
+		case 	ConnectionError:
+			state = LI_CONNECT_ERROR;
+			break;
+		default:
+			assert(NotConnected == c->connectState);
+			state = LI_NOT_CONNECTED;
+	}
+
+	return state;
 }
 
 u_int32_t

@@ -95,7 +95,7 @@ void   				map_free(struct memory_arena_pool_t *rap);
 #define FATAL_ERR_CODE_FLAG		(0x02)
 #define LIBIPROTO_ERR_CODE_FLAG		(0x04)
 
-#define	ERR_CODE_IS_TEMPORARY(x)	((x) & FATAL_ERR_CODE_FLAG)
+#define	ERR_CODE_IS_TEMPORARY(x)	((x) & TEMPORARY_ERR_CODE_FLAG)
 #define	ERR_CODE_IS_FATAL(x)		((x) & FATAL_ERR_CODE_FLAG)
 #define ERR_CODE_IS_CLIENT(x)		((x) & LIBIPROTO_ERR_CODE_FLAG)
 
@@ -155,6 +155,18 @@ void				li_free(struct iproto_connection_t *c);
 
 u_int32_t			li_n_requests(struct iproto_connection_t *c);
 u_int32_t			li_n_requests_in_progress(struct iproto_connection_t *c);
+
+typedef enum LiConnectionState {
+	LI_NOT_CONNECTED 	= 0x00,
+	LI_CONNECTED 		= 0x01,
+	LI_CONNECT_IN_PROGRESS	= 0x02,
+	LI_CONNECT_ERROR	= 0x03,
+	/* LI_WANT_* are OR'ed with previous states */
+	LI_WANT_READ		= 0x04, 
+	LI_WANT_WRITE		= 0x08
+} LiConnectionState;
+LiConnectionState		li_io_state(struct iproto_connection_t *c);
+
 
 u_int32_t			li_write(struct iproto_connection_t *c);
 u_int32_t			li_read(struct iproto_connection_t *c);
