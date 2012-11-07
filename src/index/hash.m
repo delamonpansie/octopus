@@ -103,9 +103,8 @@ ordered_iterator_init
 		memcpy(mh_slot(h, j), mh_slot(h, i), node_size);
 		mh_setfree(h, i);
 		mh_setexist(h, j);
-		j++;
 	}
-	assert(j == mh_size(h));
+	assert(j + 1 == mh_size(h));
 	qsort_arg(h->nodes, mh_size(h), node_size, compare, self);
 	[self iterator_init];
 }
