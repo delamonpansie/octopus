@@ -66,7 +66,7 @@
 #ifndef nelem
 # define nelem(x)     (sizeof((x))/sizeof((x)[0]))
 #endif
-#ifdef OCTOPUS
+#ifndef OCTOPUS
 # define panic(x) abort()
 # define panic_syserror(x) abort()
 #endif
