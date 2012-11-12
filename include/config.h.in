@@ -150,6 +150,9 @@
 /* Define to 1 if setsockopt(fd, SOL_TCP, TCP_KEEPIDLE) available */
 #undef HAVE_TCP_KEEPIDLE
 
+/* x */
+#undef HAVE_THIRD_PARTY_QUEUE_H
+
 /* Define to 1 if you have the <ucontext.h> header file. */
 #undef HAVE_UCONTEXT_H
 

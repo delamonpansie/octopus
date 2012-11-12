@@ -51,6 +51,12 @@
 # define VALGRIND_FREELIKE_BLOCK(addr, rzB)
 #endif
 
+#if HAVE_THIRD_PARTY_QUEUE_H
+# include <third_party/queue.h>
+#else
+# include "queue.h"
+#endif
+
 #ifndef MMAP_HINT_ADDR
 #  define MMAP_HINT_ADDR NULL
 #endif
