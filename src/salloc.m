@@ -60,6 +60,13 @@
 #ifndef MMAP_HINT_ADDR
 #  define MMAP_HINT_ADDR NULL
 #endif
+#ifndef MAX
+# define MAX(a,b) (((a)>(b))?(a):(b))
+#endif
+#ifndef nelem
+# define nelem(x)     (sizeof((x))/sizeof((x)[0]))
+#endif
+
 
 #define SLAB_ALIGN_PTR(ptr) (void *)((uintptr_t)(ptr) & ~(SLAB_SIZE - 1))
 
