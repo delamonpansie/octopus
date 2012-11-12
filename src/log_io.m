@@ -239,6 +239,11 @@ containg_scn:(i64)target_scn
 		[l fetch_row];
 		[l close];
 
+		/* handly buggy headers where "SCN: 0" :
+		   assume they were written with cfg.sync_scn_with_lsn=1 */
+		if (scn == 0)
+			scn = lsn[i];
+
 		if (scn >= target_scn)
 			return i > 0 ? lsn[i - 1] : initial_lsn;
 	}
