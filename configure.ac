@@ -74,7 +74,7 @@ AC_SEARCH_LIBS(setproctitle, util)
 # Checks for header files.
 AC_HEADER_ASSERT
 AC_HEADER_STDBOOL
-AC_CHECK_HEADERS([ucontext.h sys/prctl.h sys/pstat.h])
+AC_CHECK_HEADERS([ucontext.h sys/prctl.h sys/pstat.h sys/param.h])
 
 
 OBJCFLAGS=$CFLAGS
@@ -132,7 +132,8 @@ AS_IF([test $ac_cv_sizeof_off_t -ne 8 -a $ac_cv_sizeof_off_t -ne 4],
 
 # Checks for required library functions.
 AC_FUNC_ALLOCA
-AC_CHECK_FUNCS([setproctitle sigaltstack prctl fdatasync  posix_fadvise])
+AC_CHECK_FUNCS([setproctitle sigaltstack prctl fdatasync  posix_fadvise madvise sysconf])
+AC_CHECK_DECL(PAGE_SIZE, [AC_DEFINE(HAVE_PAGE_SIZE, 1, [Define to 1 if PAGE_SIZE provided])], [], [[#include <sys/param.h>]])
 AC_CHECK_DECL(strdupa, [AC_DEFINE(HAVE_STRDUPA, 1, [Define to 1 if strdupa provided])], [])
 AC_CHECK_DECL(TCP_KEEPIDLE, AC_DEFINE(HAVE_TCP_KEEPIDLE, 1, [Define to 1 if setsockopt(fd, SOL_TCP, TCP_KEEPIDLE) available]),
           [], [[#include <sys/socket.h>]

@@ -24,13 +24,15 @@
  * SUCH DAMAGE.
  */
 
-#import <util.h>
-#import <salloc.h>
-#import <tbuf.h>
-#import <say.h>
+#ifdef OCTOPUS
+# import <util.h>
+# import <salloc.h>
+# import <tbuf.h>
+# import <say.h>
 
-#include <third_party/valgrind/valgrind.h>
-#include <third_party/valgrind/memcheck.h>
+# include <third_party/valgrind/valgrind.h>
+# include <third_party/valgrind/memcheck.h>
+#endif
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -38,27 +40,35 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/mman.h>
+#ifdef HAVE_SYS_PARAM_H
+# include <sys/param.h>
+#endif
+
+#ifndef MMAP_HINT_ADDR
+#  define MMAP_HINT_ADDR NULL
+#endif
 
 #define SLAB_ALIGN_PTR(ptr) (void *)((uintptr_t)(ptr) & ~(SLAB_SIZE - 1))
 
 #ifdef SLAB_DEBUG
 #undef NDEBUG
-u8 red_zone[4] = { 0xfa, 0xfa, 0xfa, 0xfa };
+uint8_t red_zone[4] = { 0xfa, 0xfa, 0xfa, 0xfa };
 #else
-u8 red_zone[0] = { };
+uint8_t red_zone[0] = { };
 #endif
 
-static const u32 SLAB_MAGIC = 0x51abface;
+static const uint32_t SLAB_MAGIC = 0x51abface;
 static const size_t SLAB_SIZE = 1 << 22;
 static const size_t MAX_SLAB_ITEM = 1 << 20;
 static const size_t GROW_ARENA_SIZE = 1 << 22;
+static size_t page_size;
 
 struct slab_item {
 	struct slab_item *next;
 };
 
 struct slab {
-	u32 magic;
+	uint32_t magic;
 	size_t used;
 	size_t items;
 	struct slab_item *free;
@@ -214,6 +224,15 @@ arena_alloc(struct arena *arena)
 void
 salloc_init(size_t size, size_t minimal, double factor)
 {
+#if HAVE_PAGE_SIZE
+	page_size = PAGE_SIZE;
+#elif HAVE_SYSCONF
+	page_size = sysconf(_SC_PAGESIZE);
+#else
+	page_size = 0x1000;
+#endif
+	assert(sizeof(struct slab) <= page_size);
+
 	size -= size % SLAB_SIZE; /* round to size of max slab */
 	if (size < SLAB_SIZE * 2)
 		size = SLAB_SIZE * 2;
@@ -395,6 +414,12 @@ sfree(void *ptr)
 		TAILQ_REMOVE(&cache->partial_populated_slabs, slab, cache_partial_link);
 		TAILQ_REMOVE(&cache->slabs, slab, cache_link);
 		SLIST_INSERT_HEAD(&cache->arena->free_slabs, slab, free_link);
+
+#ifdef HAVE_MADVISE
+		int r;
+		r = madvise((void *)slab + page_size, SLAB_SIZE - page_size, MADV_DONTNEED);
+		assert(r == 0);
+#endif
 	}
 
 	VALGRIND_FREELIKE_BLOCK(item, sizeof(red_zone));
@@ -406,7 +431,7 @@ slab_cache_free(struct slab_cache *cache __attribute__((unused)), void *ptr)
 	sfree(ptr);
 }
 
-
+#ifdef OCTOPUS
 static i64
 cache_stat(struct slab_cache *cache, struct tbuf *out)
 {
@@ -492,3 +517,4 @@ slab_stat2(u64 *bytes_used, u64 *items)
 }
 
 register_source();
+#endif
