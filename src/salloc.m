@@ -66,7 +66,10 @@
 #ifndef nelem
 # define nelem(x)     (sizeof((x))/sizeof((x)[0]))
 #endif
-
+#ifdef OCTOPUS
+# define panic(x) abort()
+# define panic_syserror(x) abort()
+#endif
 
 #define SLAB_ALIGN_PTR(ptr) (void *)((uintptr_t)(ptr) & ~(SLAB_SIZE - 1))
 
@@ -265,8 +268,10 @@ salloc_init(size_t size, size_t minimal, double factor)
 		panic_syserror("salloc_init: can't initialize arena");
 
 	slab_caches_init(MAX(sizeof(void *), minimal), factor);
+#ifdef OCTOPUS
 	say_info("slab allocator configured, fixed_arena:%.1fGB",
 		 size / (1024. * 1024 * 1024));
+#endif
 }
 
 void
@@ -522,6 +527,9 @@ slab_stat(struct tbuf *t)
 	tbuf_printf(t, "  arena_used: %.2f" CRLF, (double)fixed_arena->used / fixed_arena->size * 100);
 }
 
+register_source();
+#endif
+
 void
 slab_stat2(u64 *bytes_used, u64 *items)
 {
@@ -535,6 +543,3 @@ slab_stat2(u64 *bytes_used, u64 *items)
 		}
 	}
 }
-
-register_source();
-#endif
