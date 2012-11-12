@@ -39,6 +39,7 @@ LIBS := @LIBS@
 HAVE_CC_FLAG_W_NO_COMMENT := @HAVE_CC_FLAG_W_NO_COMMENT@
 HAVE_CC_FLAG_W_NO_UNUSED_VALUE := @HAVE_CC_FLAG_W_NO_UNUSED_VALUE@
 modules := @modules@
+clients := @clients@
 srcdir := @srcdir@
 VPATH := @srcdir@
 
@@ -62,10 +63,14 @@ else
   Q:=
 endif
 
+depend = $(patsubst %.o,%.d,$(1))
 
 all: octopus
 
-subdirs += third_party $(foreach module,$(modules),mod/$(module)) cfg src src-lua client/libiproto client/octobench
+subdirs += $(foreach module,$(modules),mod/$(module))
+subdirs += $(foreach client,$(clients),client/$(client))
+subdirs += third_party cfg src src-lua
+
 sub-Makefile = $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
 -include $(sub-Makefile)
 
@@ -88,7 +93,7 @@ third_party/luajit/src/libluajit.a:
 
 $(obj): Makefile $(sub-Makefile)
 
-dep = $(patsubst %.o,%.d,$(obj) $(libobj) $(benchobj))
+dep += $(call depend,$(obj))
 -include $(dep)
 
 $(filter-out $(disable-warns-obj),$(obj)): CFLAGS += $(CFLAGS_WARNS)

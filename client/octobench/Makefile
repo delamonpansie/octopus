@@ -1,6 +1,8 @@
 OBDIR=client/octobench
 
 benchobj += $(OBDIR)/octobench.o
+dep += $(call depend,$(benchobj))
+
 $(OBDIR)/octobench.o: CFLAGS += -pthread
 
 all: $(OBDIR)/octobench

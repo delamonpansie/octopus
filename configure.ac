@@ -227,6 +227,16 @@ for module in $octopus_modules; do
     AS_IF([test -r mod/$module/Makefile], [], AC_MSG_ERROR([No such module: $module]))
 done
 
+AC_ARG_ENABLE([clients],
+              [AS_HELP_STRING([--enable-clients[[=libiproto]]],
+                              [select clients to build, libiproto by default])],
+              [octopus_clients=$enableval],
+              [octopus_clients="libiproto"])
+AC_SUBST(clients, [$octopus_clients])
+for client in $octopus_clients; do
+    AS_IF([test -r client/$client/Makefile], [], AC_MSG_ERROR([No such client: $client]))
+done
+
 AC_OUTPUT
 
 AC_MSG_RESULT([
