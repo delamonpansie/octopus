@@ -45,16 +45,10 @@
 # include <valgrind/valgrind.h>
 # include <valgrind/memcheck.h>
 #else
-# define VALGRIND_MAKE_MEM_DEFINED(_qzz_addr, _qzz_len)
-# define VALGRIND_MAKE_MEM_UNDEFINED(_qzz_addr, _qzz_len)
-# define VALGRIND_MALLOCLIKE_BLOCK(addr, sizeB, rzB, is_zeroed)
-# define VALGRIND_FREELIKE_BLOCK(addr, rzB)
-#endif
-
-#if HAVE_THIRD_PARTY_QUEUE_H
-# include <third_party/queue.h>
-#else
-# include "queue.h"
+# define VALGRIND_MAKE_MEM_DEFINED(_qzz_addr, _qzz_len) (void)0
+# define VALGRIND_MAKE_MEM_UNDEFINED(_qzz_addr, _qzz_len) (void)0
+# define VALGRIND_MALLOCLIKE_BLOCK(addr, sizeB, rzB, is_zeroed) (void)0
+# define VALGRIND_FREELIKE_BLOCK(addr, rzB) (void)0
 #endif
 
 #ifndef MMAP_HINT_ADDR
