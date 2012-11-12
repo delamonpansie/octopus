@@ -29,8 +29,16 @@
 #import <palloc.h>
 
 #include <third_party/libcoro/coro.h>
-#include <third_party/valgrind/valgrind.h>
-#include <third_party/valgrind/memcheck.h>
+
+#if HAVE_VALGRIND_VALGRIND_H
+# include <valgrind/valgrind.h>
+# include <valgrind/memcheck.h>
+#else
+# define VALGRIND_MAKE_MEM_DEFINED(_qzz_addr, _qzz_len)
+# define VALGRIND_MAKE_MEM_UNDEFINED(_qzz_addr, _qzz_len)
+# define VALGRIND_MALLOCLIKE_BLOCK(addr, sizeB, rzB, is_zeroed)
+# define VALGRIND_FREELIKE_BLOCK(addr, rzB)
+#endif
 
 #include <unistd.h>
 #include <string.h>

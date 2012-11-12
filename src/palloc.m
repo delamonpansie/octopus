@@ -32,20 +32,14 @@
 # import <stat.h>
 #endif
 
-#if HAVE_VALGRIND_H
+#if HAVE_VALGRIND_VALGRIND_H
 # include <valgrind/valgrind.h>
 # include <valgrind/memcheck.h>
-#elif HAVE_THIRD_PARTY_VALGRIND_H
-# include <third_party/valgrind/valgrind.h>
-# include <third_party/valgrind/memcheck.h>
 #else
-# define VALGRIND_MAKE_MEM_DEFINED(_qzz_addr,_qzz_len) 0
-# define VALGRIND_MAKE_MEM_NOACCESS(_qzz_addr,_qzz_len) 0
-# define VALGRIND_MAKE_MEM_UNDEFINED(_qzz_addr,_qzz_len) 0
-# define VALGRIND_CREATE_MEMPOOL(pool, rzB, is_zeroed)
-# define VALGRIND_DESTROY_MEMPOOL(pool)
-# define VALGRIND_MEMPOOL_ALLOC(pool, addr, size)
-# define VALGRIND_MEMPOOL_TRIM(pool, addr, size)
+# define VALGRIND_MAKE_MEM_DEFINED(_qzz_addr, _qzz_len)
+# define VALGRIND_MAKE_MEM_UNDEFINED(_qzz_addr, _qzz_len)
+# define VALGRIND_MALLOCLIKE_BLOCK(addr, sizeB, rzB, is_zeroed)
+# define VALGRIND_FREELIKE_BLOCK(addr, rzB)
 #endif
 
 #if HAVE_THIRD_PARTY_QUEUE_H

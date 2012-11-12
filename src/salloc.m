@@ -29,9 +29,6 @@
 # import <salloc.h>
 # import <tbuf.h>
 # import <say.h>
-
-# include <third_party/valgrind/valgrind.h>
-# include <third_party/valgrind/memcheck.h>
 #endif
 
 #include <stdbool.h>
@@ -42,6 +39,16 @@
 #include <sys/mman.h>
 #ifdef HAVE_SYS_PARAM_H
 # include <sys/param.h>
+#endif
+
+#if HAVE_VALGRIND_VALGRIND_H
+# include <valgrind/valgrind.h>
+# include <valgrind/memcheck.h>
+#else
+# define VALGRIND_MAKE_MEM_DEFINED(_qzz_addr, _qzz_len)
+# define VALGRIND_MAKE_MEM_UNDEFINED(_qzz_addr, _qzz_len)
+# define VALGRIND_MALLOCLIKE_BLOCK(addr, sizeB, rzB, is_zeroed)
+# define VALGRIND_FREELIKE_BLOCK(addr, rzB)
 #endif
 
 #ifndef MMAP_HINT_ADDR

@@ -74,8 +74,7 @@ AC_SEARCH_LIBS(setproctitle, util)
 # Checks for header files.
 AC_HEADER_ASSERT
 AC_HEADER_STDBOOL
-AC_CHECK_HEADERS([ucontext.h sys/prctl.h sys/pstat.h sys/param.h])
-
+AC_CHECK_HEADERS([ucontext.h sys/prctl.h sys/pstat.h sys/param.h valgrind/valgrind.h])
 
 OBJCFLAGS=$CFLAGS
 OBJC=$CC
@@ -213,7 +212,8 @@ AC_ARG_ENABLE([valgrind],
               [AS_HELP_STRING([--enable-valgrind],
                               [compile with Valgring support])],
             [valgrind=$enableval])
-AS_IF([test "x$valgrind" != xyes],
+AS_IF([test "x$valgrind" == xyes],
+      [AS_IF([test -z "$ac_cv_header_valgrind_valgrind_h"], AC_MSG_ERROR([unable to find valgrind headers]))],
       [CFLAGS="-DNVALGRIND $CFLAGS"])
 
 AC_ARG_ENABLE([modules],
