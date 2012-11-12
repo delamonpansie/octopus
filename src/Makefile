@@ -26,7 +26,7 @@ ifeq (1,$(HAVE_RAGEL))
 	dist += src/admin.m
 endif
 
-src/salloc.o: CFLAGS += -DOCTOPUS
+CFLAGS += -DOCTOPUS
 
 src/octopus.o: octopus_version.h
 src/octopus.o: CFLAGS += -DPRIMARY_MOD='"$(firstword $(modules))"' -D$(binary_type)

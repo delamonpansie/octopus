@@ -26,15 +26,18 @@
 
 #ifdef OCTOPUS
 # import <util.h>
-# import <salloc.h>
 # import <tbuf.h>
 # import <say.h>
+# import <salloc.h>
+#else
+# include "salloc.h"
 #endif
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #ifdef HAVE_SYS_PARAM_H
@@ -52,17 +55,19 @@
 #endif
 
 #ifndef MMAP_HINT_ADDR
-#  define MMAP_HINT_ADDR NULL
+# define MMAP_HINT_ADDR NULL
 #endif
 #ifndef MAX
 # define MAX(a,b) (((a)>(b))?(a):(b))
 #endif
 #ifndef nelem
-# define nelem(x)     (sizeof((x))/sizeof((x)[0]))
+# define nelem(x) (sizeof((x))/sizeof((x)[0]))
 #endif
 #ifndef OCTOPUS
 # define panic(x) abort()
 # define panic_syserror(x) abort()
+# define say_syserror(...) (void)0;
+# define say_info(...) (void)0;
 #endif
 
 #define SLAB_ALIGN_PTR(ptr) (void *)((uintptr_t)(ptr) & ~(SLAB_SIZE - 1))
@@ -109,7 +114,7 @@ struct arena {
 	int i;
 };
 
-static size_t slab_active_caches;
+static uint32_t slab_active_caches;
 static struct slab_cache slab_caches[256];
 static struct arena arena[2], *fixed_arena = &arena[0], *grow_arena = &arena[1];
 
@@ -145,7 +150,8 @@ slab_cache_init(struct slab_cache *cache, size_t item_size, enum arena_type type
 static void
 slab_caches_init(size_t minimal, double factor)
 {
-	int i, size;
+	uint32_t i;
+	size_t size;
 	const size_t ptr_size = sizeof(void *);
 
 	for (i = 0, size = minimal & ~(ptr_size - 1);
@@ -262,17 +268,15 @@ salloc_init(size_t size, size_t minimal, double factor)
 		panic_syserror("salloc_init: can't initialize arena");
 
 	slab_caches_init(MAX(sizeof(void *), minimal), factor);
-#ifdef OCTOPUS
 	say_info("slab allocator configured, fixed_arena:%.1fGB",
 		 size / (1024. * 1024 * 1024));
-#endif
 }
 
 void
 salloc_destroy(void)
 {
-	for (int i = 0; i < nelem(arena); i++) {
-		for (int j = 0; j < nelem(arena->mmaps); j++) {
+	for (uint32_t i = 0; i < nelem(arena); i++) {
+		for (uint32_t j = 0; j < nelem(arena->mmaps); j++) {
 			if (arena[i].mmaps[j].base == NULL)
 				break;
 			munmap(arena[i].mmaps[j].base, arena[i].mmaps[j].size);
@@ -307,7 +311,7 @@ slab_validate(void)
 {
 	struct slab *slab;
 
-	for (int i = 0; i < nelem(arena); i++) {
+	for (uint32_t i = 0; i < nelem(arena); i++) {
 		SLIST_FOREACH(slab, &arena[i].slabs, link) {
 			for (char *p = (char *)slab + sizeof(struct slab);
 			     p + slab->cache->item_size < (char *)slab + SLAB_SIZE;
@@ -322,7 +326,7 @@ slab_validate(void)
 static struct slab_cache *
 cache_for(size_t size)
 {
-	for (int i = 0; i < slab_active_caches; i++)
+	for (uint32_t i = 0; i < slab_active_caches; i++)
 		if (slab_caches[i].item_size >= size)
 			return &slab_caches[i];
 
@@ -451,12 +455,12 @@ slab_cache_free(struct slab_cache *cache __attribute__((unused)), void *ptr)
 }
 
 #ifdef OCTOPUS
-static i64
+static int64_t
 cache_stat(struct slab_cache *cache, struct tbuf *out)
 {
 	struct slab *slab;
 	int slabs = 0;
-	i64 items = 0, used = 0, free = 0;
+	int64_t items = 0, used = 0, free = 0;
 
 	TAILQ_FOREACH(slab, &cache->slabs, cache_link) {
 		free += SLAB_SIZE - slab->used - sizeof(struct slab);
@@ -482,7 +486,7 @@ slab_stat(struct tbuf *t)
 	struct slab *slab;
 	struct slab_cache *cache;
 
-	i64 total_used = 0;
+	int64_t total_used = 0;
 	tbuf_printf(t, "slab statistics:" CRLF);
 
 	tbuf_printf(t, "  arenas:" CRLF);
@@ -493,8 +497,8 @@ slab_stat(struct tbuf *t)
 		SLIST_FOREACH(slab, &arena[i].free_slabs, free_link)
 			free_slabs++;
 
-		i64 arena_size = 0;
-		for (int j = 0; j < nelem(arena[i].mmaps); j++)
+		int64_t arena_size = 0;
+		for (uint32_t j = 0; j < nelem(arena[i].mmaps); j++)
 			arena_size += arena[i].mmaps[j].size;
 
 		tbuf_printf(t, "    - { type: %s, used: %.2f, size: %"PRIi64", free_slabs: %i }" CRLF,
@@ -505,7 +509,7 @@ slab_stat(struct tbuf *t)
 	}
 
 	tbuf_printf(t, "  caches:" CRLF);
-	for (int i = 0; i < slab_active_caches; i++)
+	for (uint32_t i = 0; i < slab_active_caches; i++)
 		total_used += cache_stat(&slab_caches[i], t);
 
 	SLIST_FOREACH(cache, &slab_cache, link)
@@ -525,12 +529,12 @@ register_source();
 #endif
 
 void
-slab_stat2(u64 *bytes_used, u64 *items)
+slab_stat2(uint64_t *bytes_used, uint64_t *items)
 {
 	struct slab *slab;
 
 	*bytes_used = *items = 0;
-	for (int i = 0; i < nelem(arena); i++) {
+	for (uint32_t i = 0; i < nelem(arena); i++) {
 		SLIST_FOREACH(slab, &arena[i].slabs, link) {
 			*bytes_used += slab->used;
 			*items += slab->items;

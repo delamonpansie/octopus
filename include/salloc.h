@@ -24,13 +24,22 @@
  * SUCH DAMAGE.
  */
 
-#import <util.h>
-#import <tbuf.h>
+#ifndef _SALLOC_H_
+#define _SALLOC_H_
+
+#ifdef OCTOPUS
+# import <util.h>
+# import <tbuf.h>
+#endif
 
 #include <stddef.h>
-#include <stdbool.h>
+#include <stdint.h>
 
-#include <third_party/queue.h>
+#if HAVE_THIRD_PARTY_QUEUE_H
+# include <third_party/queue.h>
+#else
+# include "queue.h"
+#endif
 
 TAILQ_HEAD(slab_tailq_head, slab);
 struct arena;
@@ -55,5 +64,9 @@ void slab_cache_free(struct slab_cache *cache, void *ptr);
 void *salloc(size_t size);
 void sfree(void *ptr);
 void slab_validate();
+#ifdef OCTOPUS
 void slab_stat(struct tbuf *buf);
-void slab_stat2(u64 *bytes_used, u64 *items);
+#endif
+void slab_stat2(uint64_t *bytes_used, uint64_t *items);
+
+#endif // _SALLOC_H_
