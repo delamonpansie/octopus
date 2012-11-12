@@ -63,6 +63,12 @@
 #ifndef nelem
 # define nelem(x) (sizeof((x))/sizeof((x)[0]))
 #endif
+#ifndef TYPEALIGN
+#define TYPEALIGN(ALIGNVAL,LEN)  \
+        (((uintptr_t) (LEN) + ((ALIGNVAL) - 1)) & ~((uintptr_t) ((ALIGNVAL) - 1)))
+#define CACHEALIGN(LEN)			TYPEALIGN(32, (LEN))
+#endif
+
 #ifndef OCTOPUS
 # define panic(x) abort()
 # define panic_syserror(x) abort()
