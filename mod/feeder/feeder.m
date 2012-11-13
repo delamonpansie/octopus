@@ -133,6 +133,7 @@ recover_row:(const struct row_v12 *)r
 {
 	const struct row_v12 *n = filter(r);
 
+	/* FIXME: we should buffer writes */
 	if (n)
 		writef(fd, (const char *)n, sizeof(*n) + n->len);
 
