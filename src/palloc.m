@@ -118,12 +118,20 @@ struct gc_root {
 };
 SLIST_HEAD(gc_list, gc_root);
 
+struct cut_root {
+	struct chunk *chunk;
+	uint32_t chunk_free;
+	SLIST_ENTRY(cut_root) link;
+};
+SLIST_HEAD(cut_list, cut_root);
+
 struct palloc_pool {
 	struct chunk_list_head chunks;
 	SLIST_ENTRY(palloc_pool) link;
 	size_t allocated;
 	const char *name;
 	struct gc_list gc_list;
+	struct cut_list cut_list;
 };
 
 SLIST_HEAD(palloc_pool_head, palloc_pool) pools;
@@ -447,6 +455,52 @@ palloc_gc(struct palloc_pool *pool)
 		root->copy(pool, root->ptr);
 
 	release_chunks(&old_chunks);
+}
+
+void
+palloc_register_cut_point(struct palloc_pool *pool)
+{
+	struct chunk *chunk = TAILQ_FIRST(&pool->chunks);
+	uint32_t chunk_free;
+	struct cut_root *root;
+
+	if (chunk == NULL)
+		return;
+
+	chunk_free = chunk->free;
+	root = palloc(pool, sizeof(*root));
+	root->chunk = chunk;
+	root->chunk_free = chunk_free;
+	SLIST_INSERT_HEAD(&pool->cut_list, root, link);
+}
+
+void
+palloc_cutoff(struct palloc_pool *pool)
+{
+	struct cut_root *root = SLIST_FIRST(&pool->cut_list);
+	struct chunk *chunk, *next_chunk;
+
+	if (root == NULL) {
+		prelease(pool);
+
+		return;
+	}
+
+	TAILQ_FOREACH_SAFE(chunk, &pool->chunks, busy_link, next_chunk) {
+		if (chunk == root->chunk)
+			break;
+
+		release_chunk(chunk);
+		TAILQ_REMOVE(&pool->chunks, chunk, busy_link);
+	}
+	assert(chunk == TAILQ_FIRST(&pool->chunks));
+
+	assert(root->chunk_free >= chunk->free);
+	chunk->brk -= root->chunk_free - chunk->free;
+	(void)VALGRIND_MAKE_MEM_UNDEFINED(chunk->brk, root->chunk_free - chunk->free);
+	chunk->free = root->chunk_free;
+
+	SLIST_REMOVE_HEAD(&pool->cut_list, link);
 }
 
 #ifdef PALLOC_STAT_INFO
