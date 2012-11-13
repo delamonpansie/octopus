@@ -149,6 +149,8 @@ SLIST_HEAD(palloc_pool_head, palloc_pool) pools;
 
 #define CHUNK_CLASS(i, kb) [(i)] = { .size = (kb) * 1024 - sizeof(struct chunk), \
 				     .chunks = TAILQ_HEAD_INITIALIZER(classes[(i)].chunks) }
+
+#define malloc_fallback (uint32_t)-1
 static struct chunk_class classes[] = {
 	CHUNK_CLASS(0, 32),
 	CHUNK_CLASS(1, 64),
@@ -159,7 +161,7 @@ static struct chunk_class classes[] = {
 	CHUNK_CLASS(6, 2048),
 	CHUNK_CLASS(7, 4096),
 
-	{ .size = -1 } /* malloc fallback */
+	{ .size = malloc_fallback }
 };
 
 const uint32_t chunk_magic = 0xbb84fcf6;
@@ -210,7 +212,7 @@ next_chunk_for(struct palloc_pool *pool, size_t size)
 	else
 		class = &classes[0];
 
-	if (class->size == (uint32_t)-1)
+	if (class->size == malloc_fallback) /* move to prev to malloc_fallback class */
 		class--;
 
 	while (class->size < size)
@@ -222,7 +224,7 @@ next_chunk_for(struct palloc_pool *pool, size_t size)
 		goto found;
 	}
 
-	if (class->size == (uint32_t)-1) {
+	if (class->size == malloc_fallback) {
 		chunk_size = size;
 		chunk = malloc(sizeof(struct chunk) + chunk_size);
 		if (chunk == NULL)
@@ -320,7 +322,7 @@ static void
 release_chunk(struct chunk *chunk)
 {
 	(void)VALGRIND_MAKE_MEM_UNDEFINED((void *)chunk + sizeof(struct chunk), chunk->data_size);
-	if (chunk->class->size != (uint32_t)-1) {
+	if (chunk->class->size != malloc_fallback) {
 		chunk->free = chunk->data_size;
 		chunk->brk = (void *)chunk + sizeof(struct chunk);
 		TAILQ_INSERT_HEAD(&chunk->class->chunks, chunk, free_link);
@@ -348,7 +350,7 @@ release_chunks(struct chunk_list_head *chunks)
 		struct chunk_class *class = &classes[i];
 		struct chunk *chunk, *tvar;
 
-		if (class->size == -1)
+		if (class->size == malloc_fallback)
 			continue;
 
 		TAILQ_FOREACH_REVERSE_SAFE(chunk, &class->chunks, chunk_list_head, free_link, tvar) {
