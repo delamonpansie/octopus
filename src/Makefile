@@ -34,7 +34,6 @@ ifeq ($(binary_type),)
   $(error binary_type must be defined)
 endif
 
-src/palloc.o: CFLAGS += -DPALLOC_STAT_INFO
 disable-warns-obj += src/octopus_ev.o
 src/octopus_ev.o: CFLAGS += -U_FORTIFY_SOURCE
 ifeq (1,$(HAVE_CC_FLAG_W_NO_COMMENT))

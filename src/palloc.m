@@ -25,7 +25,7 @@
  * SUCH DAMAGE.
  */
 
-#ifdef PALLOC_STAT_INFO
+#ifdef OCTOPUS
 # import <util.h>
 # import <palloc.h>
 # import <say.h>
@@ -60,6 +60,14 @@
 
 #ifndef PALLOC_CHUNK_TTL
 # define PALLOC_CHUNK_TTL 4096
+#endif
+
+#ifndef __regparam
+# define __regparam
+#endif
+
+#ifndef MMAP_HINT_ADDR
+# define MMAP_HINT_ADDR NULL
 #endif
 
 #ifndef likely
@@ -239,7 +247,7 @@ found:
 	return chunk;
 }
 
-void * __attribute__((regparm(2),noinline))
+void * __regparam
 palloc_slow_path(struct palloc_pool *pool, size_t size)
 {
 	struct chunk *chunk;
@@ -254,7 +262,7 @@ palloc_slow_path(struct palloc_pool *pool, size_t size)
 	return ptr;
 }
 
-void * __attribute__((regparm(2),malloc))
+void * __regparam
 palloc(struct palloc_pool *pool, size_t size)
 {
 	const size_t rz_size = size + PALLOC_REDZONE * 2;
@@ -503,7 +511,7 @@ palloc_cutoff(struct palloc_pool *pool)
 	SLIST_REMOVE_HEAD(&pool->cut_list, link);
 }
 
-#ifdef PALLOC_STAT_INFO
+#ifdef OCTOPUS
 void
 palloc_stat_info(struct tbuf *buf)
 {
@@ -584,5 +592,6 @@ palloc_owner(struct palloc_pool *pool, void *ptr)
 	}
 	return false;
 }
-
+#ifdef OCTOPUS
 register_source();
+#endif
