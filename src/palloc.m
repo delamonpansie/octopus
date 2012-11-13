@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2010, 2011, 2012 Mail.RU
  * Copyright (C) 2010, 2011, 2012 Yuriy Vostrikov
+ * Copyright (C) 2012 Roman Tokarev
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -57,6 +58,10 @@
 #include <stdio.h>
 #include <sys/mman.h>
 
+#ifndef PALLOC_CHUNK_TTL
+# define PALLOC_CHUNK_TTL 4096
+#endif
+
 #ifndef likely
 # if HAVE__BUILTIN_EXPECT
 #  define likely(x)	__builtin_expect((x),1)
@@ -90,13 +95,14 @@ struct chunk {
 	void *brk;
 	size_t free;
 	size_t data_size;
+	uint64_t last_use;
 
 	struct chunk_class *class;
-	SLIST_ENTRY(chunk) busy_link;
-	SLIST_ENTRY(chunk) free_link;
+	TAILQ_ENTRY(chunk) busy_link;
+	TAILQ_ENTRY(chunk) free_link;
 };
 
-SLIST_HEAD(chunk_list_head, chunk);
+TAILQ_HEAD(chunk_list_head, chunk);
 
 struct chunk_class {
 	uint32_t size;
@@ -122,23 +128,25 @@ struct palloc_pool {
 
 SLIST_HEAD(palloc_pool_head, palloc_pool) pools;
 
-#define CHUNK_SIZE(kb) (kb * 1024 - sizeof(struct chunk))
-#define CHUNK_CLASS(kb) { .size = CHUNK_SIZE(kb) }
+#define CHUNK_CLASS(i, kb) [(i)] = { .size = (kb) * 1024 - sizeof(struct chunk), \
+				     .chunks = TAILQ_HEAD_INITIALIZER(classes[(i)].chunks) }
 static struct chunk_class classes[] = {
-	CHUNK_CLASS(32),
-	CHUNK_CLASS(64),
-	CHUNK_CLASS(128),
-	CHUNK_CLASS(256),
-	CHUNK_CLASS(512),
-	CHUNK_CLASS(1024),
-	CHUNK_CLASS(2048),
-	CHUNK_CLASS(4096),
+	CHUNK_CLASS(0, 32),
+	CHUNK_CLASS(1, 64),
+	CHUNK_CLASS(2, 128),
+	CHUNK_CLASS(3, 256),
+	CHUNK_CLASS(4, 512),
+	CHUNK_CLASS(5, 1024),
+	CHUNK_CLASS(6, 2048),
+	CHUNK_CLASS(7, 4096),
 
 	{ .size = -1 } /* malloc fallback */
 };
 
 const uint32_t chunk_magic = 0xbb84fcf6;
 static const char poison_char = 'P';
+
+static uint64_t release_count = 0;
 
 #ifdef REDZONE
 #define PALLOC_REDZONE 4
@@ -174,7 +182,7 @@ poison_chunk(struct chunk *chunk)
 static struct chunk *
 next_chunk_for(struct palloc_pool *pool, size_t size)
 {
-	struct chunk * chunk = SLIST_FIRST(&pool->chunks);
+	struct chunk * chunk = TAILQ_FIRST(&pool->chunks);
 	struct chunk_class *class;
 	size_t chunk_size;
 
@@ -189,9 +197,9 @@ next_chunk_for(struct palloc_pool *pool, size_t size)
 	while (class->size < size)
 		class++;
 
-	chunk = SLIST_FIRST(&class->chunks);
+	chunk = TAILQ_FIRST(&class->chunks);
 	if (chunk != NULL) {
-		SLIST_REMOVE_HEAD(&class->chunks, free_link);
+		TAILQ_REMOVE(&class->chunks, chunk, free_link);
 		goto found;
 	}
 
@@ -218,7 +226,7 @@ next_chunk_for(struct palloc_pool *pool, size_t size)
 	poison_chunk(chunk);
 found:
 	assert(chunk != NULL && chunk->magic == chunk_magic);
-	SLIST_INSERT_HEAD(&pool->chunks, chunk, busy_link);
+	TAILQ_INSERT_HEAD(&pool->chunks, chunk, busy_link);
 	pool->allocated += chunk->data_size;
 	return chunk;
 }
@@ -242,7 +250,7 @@ void * __attribute__((regparm(2),malloc))
 palloc(struct palloc_pool *pool, size_t size)
 {
 	const size_t rz_size = size + PALLOC_REDZONE * 2;
-	struct chunk *chunk = SLIST_FIRST(&pool->chunks);
+	struct chunk *chunk = TAILQ_FIRST(&pool->chunks);
 	void *ptr;
 
 #ifdef PALLOC_STAT
@@ -290,23 +298,48 @@ palloca(struct palloc_pool *pool, size_t size, size_t align)
 }
 
 static void
+release_chunk(struct chunk *chunk)
+{
+	(void)VALGRIND_MAKE_MEM_UNDEFINED((void *)chunk + sizeof(struct chunk), chunk->data_size);
+	if (chunk->class->size != (uint32_t)-1) {
+		chunk->free = chunk->data_size;
+		chunk->brk = (void *)chunk + sizeof(struct chunk);
+		TAILQ_INSERT_HEAD(&chunk->class->chunks, chunk, free_link);
+		poison_chunk(chunk);
+		chunk->last_use = release_count;
+	} else {
+		assert(chunk->class->chunks_count > 0);
+		chunk->class->chunks_count--;
+		free(chunk);
+	}
+}
+
+static void
 release_chunks(struct chunk_list_head *chunks)
 {
-	struct chunk *chunk, *next_chunk;
+	struct chunk *chunk, *tvar;
 
-	for (chunk = SLIST_FIRST(chunks); chunk != NULL; chunk = next_chunk) {
-		next_chunk = SLIST_NEXT(chunk, busy_link);
+	TAILQ_FOREACH_SAFE(chunk, chunks, busy_link, tvar)
+		release_chunk(chunk);
 
-		(void)VALGRIND_MAKE_MEM_UNDEFINED((void *)chunk + sizeof(struct chunk),  chunk->data_size);
-		if (chunk->class->size != (uint32_t)-1) {
-			chunk->free = chunk->data_size;
-			chunk->brk = (void *)chunk + sizeof(struct chunk);
-			SLIST_INSERT_HEAD(&chunk->class->chunks, chunk, free_link);
-			poison_chunk(chunk);
-		} else {
-			assert(chunk->class->chunks_count > 0);
-			chunk->class->chunks_count--;
-			free(chunk);
+	if (release_count++ % 256 == 0)
+		return;
+
+	for (uint32_t i = 0; i < nelem(classes); i++) {
+		struct chunk_class *class = &classes[i];
+		struct chunk *chunk, *tvar;
+
+		if (class->size == -1)
+			continue;
+
+		TAILQ_FOREACH_REVERSE_SAFE(chunk, &class->chunks, chunk_list_head, free_link, tvar) {
+			assert(release_count >= chunk->last_use);
+			if (release_count - chunk->last_use < PALLOC_CHUNK_TTL)
+				continue;
+
+			TAILQ_REMOVE(&class->chunks, chunk, free_link);
+			munmap(chunk, class->size + sizeof(struct chunk));
+			class->chunks_count--;
 		}
 	}
 }
@@ -315,7 +348,7 @@ void
 prelease(struct palloc_pool *pool)
 {
 	release_chunks(&pool->chunks);
-	SLIST_INIT(&pool->chunks);
+	TAILQ_INIT(&pool->chunks);
 	VALGRIND_MEMPOOL_TRIM(pool, NULL, 0);
 	pool->allocated = 0;
 }
@@ -334,7 +367,7 @@ palloc_create_pool(const char *name)
 	assert(pool != NULL);
 	memset(pool, 0, sizeof(*pool));
 	pool->name = name;
-	SLIST_INIT(&pool->chunks);
+	TAILQ_INIT(&pool->chunks);
 	SLIST_INSERT_HEAD(&pools, pool, link);
 	VALGRIND_CREATE_MEMPOOL(pool, PALLOC_REDZONE, 0);
 	return pool;
@@ -354,11 +387,13 @@ palloc_unmap_unused(void)
 {
 	for (uint32_t i = 0; i < nelem(classes); i++) {
 		struct chunk_class *class = &classes[i];
-		struct chunk *chunk, *next_chunk;
+		struct chunk *chunk, *tvar;
 
-		SLIST_FOREACH_SAFE(chunk, &class->chunks, free_link, next_chunk)
+		TAILQ_FOREACH_SAFE(chunk, &class->chunks, free_link, tvar) {
 			munmap(chunk, class->size + sizeof(struct chunk));
-		SLIST_INIT(&class->chunks);
+			class->chunks_count--;
+		}
+		TAILQ_INIT(&class->chunks);
 	}
 }
 
@@ -388,13 +423,13 @@ palloc_gc(struct palloc_pool *pool)
 {
 	struct chunk_list_head old_chunks = pool->chunks;
 
-	SLIST_INIT(&pool->chunks);
+	TAILQ_INIT(&pool->chunks);
 	pool->allocated = 0;
 	VALGRIND_MEMPOOL_TRIM(pool, NULL, 0);
 
 #ifndef NVALGRIND
 	struct chunk *chunk;
-	SLIST_FOREACH(chunk, &old_chunks, busy_link)
+	TAILQ_FOREACH(chunk, &old_chunks, busy_link)
 		(void)VALGRIND_MAKE_MEM_DEFINED((void *)chunk + sizeof(struct chunk),  chunk->data_size);
 #endif
 
@@ -429,7 +464,7 @@ palloc_stat_info(struct tbuf *buf)
 		class = &classes[i];
 
 		int free_chunks = 0;
-		SLIST_FOREACH(chunk, &class->chunks, free_link)
+		TAILQ_FOREACH(chunk, &class->chunks, free_link)
 		    free_chunks++;
 
 		tbuf_printf(buf,
@@ -449,7 +484,7 @@ palloc_stat_info(struct tbuf *buf)
 		if (pool->allocated > 0) {
 			tbuf_printf(buf, "      busy chunks:" CRLF);
 
-			SLIST_FOREACH(chunk, &pool->chunks, busy_link)
+			TAILQ_FOREACH(chunk, &pool->chunks, busy_link)
 				chunks[chunk->class - &classes[0]]++;
 
 			int indent = 0;
@@ -485,11 +520,9 @@ palloc_allocated(struct palloc_pool *pool)
 bool
 palloc_owner(struct palloc_pool *pool, void *ptr)
 {
-	struct chunk *chunk, *next_chunk;
+	struct chunk *chunk;
 
-	for (chunk = SLIST_FIRST(&pool->chunks); chunk != NULL; chunk = next_chunk) {
-		next_chunk = SLIST_NEXT(chunk, busy_link);
-
+	TAILQ_FOREACH(chunk, &pool->chunks, busy_link) {
 		void *data_start = (void *)chunk + sizeof(struct chunk);
 		void *data_end = data_start + chunk->data_size;
 		if (data_start <= ptr && ptr < data_end)
