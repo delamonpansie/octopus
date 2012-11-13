@@ -139,6 +139,7 @@ slab_cache_init(struct slab_cache *cache, size_t item_size, enum arena_type type
 
 	switch (type) {
 	case SLAB_FIXED:
+		assert(fixed_arena->brk != NULL);
 		cache->arena = fixed_arena; break;
 	case SLAB_GROW:
 		cache->arena = grow_arena; break;
@@ -151,7 +152,7 @@ slab_cache_init(struct slab_cache *cache, size_t item_size, enum arena_type type
 }
 
 static void
-slab_caches_init(size_t minimal, double factor)
+slab_cache_series_init(enum arena_type arena_type, size_t minimal, double factor)
 {
 	uint32_t i;
 	size_t size;
@@ -161,12 +162,12 @@ slab_caches_init(size_t minimal, double factor)
 	     i < nelem(slab_caches) - 1 && size <= MAX_SLAB_ITEM;
 	     i++)
 	{
-		slab_cache_init(&slab_caches[i], size - sizeof(red_zone), SLAB_FIXED, NULL);
+		slab_cache_init(&slab_caches[i], size - sizeof(red_zone), arena_type, NULL);
 
 		size = MAX((size_t)(size * factor) & ~(ptr_size - 1),
 			   (size + ptr_size) & ~(ptr_size - 1));
 	}
-	slab_cache_init(&slab_caches[i], MAX_SLAB_ITEM - sizeof(red_zone), SLAB_FIXED, NULL);
+	slab_cache_init(&slab_caches[i], MAX_SLAB_ITEM - sizeof(red_zone), arena_type, NULL);
 	i++;
 
 	slab_active_caches = i;
@@ -243,6 +244,7 @@ arena_alloc(struct arena *arena)
 	return ptr;
 }
 
+/* if size > 0 then fixed_arena is configured and used for slab_cache series  */
 void
 salloc_init(size_t size, size_t minimal, double factor)
 {
@@ -255,17 +257,20 @@ salloc_init(size_t size, size_t minimal, double factor)
 #endif
 	assert(sizeof(struct slab) <= page_size);
 
-	size -= size % SLAB_SIZE; /* round to size of max slab */
-	if (size < SLAB_SIZE * 2)
-		size = SLAB_SIZE * 2;
+	if (size > 0) {
+		size -= size % SLAB_SIZE; /* round to size of max slab */
+		if (size < SLAB_SIZE * 2)
+			size = SLAB_SIZE * 2;
 
-	if (!arena_init(fixed_arena, size))
-		panic_syserror("salloc_init: can't initialize arena");
+		if (!arena_init(fixed_arena, size))
+			panic_syserror("salloc_init: can't initialize arena");
+	}
 
 	if (!arena_init(grow_arena, 0))
 		panic_syserror("salloc_init: can't initialize arena");
 
-	slab_caches_init(MAX(sizeof(void *), minimal), factor);
+	slab_cache_series_init(size > 0 ? SLAB_FIXED : SLAB_GROW,
+			       MAX(sizeof(void *), minimal), factor);
 	say_info("slab allocator configured, fixed_arena:%.1fGB",
 		 size / (1024. * 1024 * 1024));
 }
