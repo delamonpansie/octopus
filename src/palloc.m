@@ -37,10 +37,13 @@
 # include <valgrind/valgrind.h>
 # include <valgrind/memcheck.h>
 #else
-# define VALGRIND_MAKE_MEM_DEFINED(_qzz_addr, _qzz_len) (void)0
-# define VALGRIND_MAKE_MEM_UNDEFINED(_qzz_addr, _qzz_len) (void)0
-# define VALGRIND_MALLOCLIKE_BLOCK(addr, sizeB, rzB, is_zeroed) (void)0
-# define VALGRIND_FREELIKE_BLOCK(addr, rzB) (void)0
+# define VALGRIND_MAKE_MEM_DEFINED(_qzz_addr,_qzz_len) (void)0
+# define VALGRIND_MAKE_MEM_NOACCESS(_qzz_addr,_qzz_len) (void)0
+# define VALGRIND_MAKE_MEM_UNDEFINED(_qzz_addr,_qzz_len) (void)0
+# define VALGRIND_CREATE_MEMPOOL(pool, rzB, is_zeroed) (void)0
+# define VALGRIND_DESTROY_MEMPOOL(pool) (void)0
+# define VALGRIND_MEMPOOL_ALLOC(pool, addr, size) (void)0
+# define VALGRIND_MEMPOOL_TRIM(pool, addr, size) (void)0
 #endif
 
 #if HAVE_THIRD_PARTY_QUEUE_H
@@ -290,7 +293,7 @@ palloc(struct palloc_pool *pool, size_t size)
 	(void)VALGRIND_MAKE_MEM_UNDEFINED(data_byte, size);
 #endif
 
-	VALGRIND_MEMPOOL_ALLOC(pool, ptr + PALLOC_REDZONE, size);
+	(void)VALGRIND_MEMPOOL_ALLOC(pool, ptr + PALLOC_REDZONE, size);
 	return ptr + PALLOC_REDZONE;
 }
 
@@ -365,7 +368,7 @@ prelease(struct palloc_pool *pool)
 {
 	release_chunks(&pool->chunks);
 	TAILQ_INIT(&pool->chunks);
-	VALGRIND_MEMPOOL_TRIM(pool, NULL, 0);
+	(void)VALGRIND_MEMPOOL_TRIM(pool, NULL, 0);
 	pool->allocated = 0;
 }
 
@@ -385,7 +388,7 @@ palloc_create_pool(const char *name)
 	pool->name = name;
 	TAILQ_INIT(&pool->chunks);
 	SLIST_INSERT_HEAD(&pools, pool, link);
-	VALGRIND_CREATE_MEMPOOL(pool, PALLOC_REDZONE, 0);
+	(void)VALGRIND_CREATE_MEMPOOL(pool, PALLOC_REDZONE, 0);
 	return pool;
 }
 
@@ -394,7 +397,7 @@ palloc_destroy_pool(struct palloc_pool *pool)
 {
 	SLIST_REMOVE(&pools, pool, palloc_pool, link);
 	prelease(pool);
-	VALGRIND_DESTROY_MEMPOOL(pool);
+	(void)VALGRIND_DESTROY_MEMPOOL(pool);
 	free(pool);
 }
 
@@ -441,7 +444,7 @@ palloc_gc(struct palloc_pool *pool)
 
 	TAILQ_INIT(&pool->chunks);
 	pool->allocated = 0;
-	VALGRIND_MEMPOOL_TRIM(pool, NULL, 0);
+	(void)VALGRIND_MEMPOOL_TRIM(pool, NULL, 0);
 
 #ifndef NVALGRIND
 	struct chunk *chunk;
