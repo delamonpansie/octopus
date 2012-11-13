@@ -293,7 +293,7 @@ palloc(struct palloc_pool *pool, size_t size)
 	(void)VALGRIND_MAKE_MEM_UNDEFINED(data_byte, size);
 #endif
 
-	(void)VALGRIND_MEMPOOL_ALLOC(pool, ptr + PALLOC_REDZONE, size);
+	VALGRIND_MEMPOOL_ALLOC(pool, ptr + PALLOC_REDZONE, size);
 	return ptr + PALLOC_REDZONE;
 }
 
@@ -368,7 +368,7 @@ prelease(struct palloc_pool *pool)
 {
 	release_chunks(&pool->chunks);
 	TAILQ_INIT(&pool->chunks);
-	(void)VALGRIND_MEMPOOL_TRIM(pool, NULL, 0);
+	VALGRIND_MEMPOOL_TRIM(pool, NULL, 0);
 	pool->allocated = 0;
 }
 
@@ -388,7 +388,7 @@ palloc_create_pool(const char *name)
 	pool->name = name;
 	TAILQ_INIT(&pool->chunks);
 	SLIST_INSERT_HEAD(&pools, pool, link);
-	(void)VALGRIND_CREATE_MEMPOOL(pool, PALLOC_REDZONE, 0);
+	VALGRIND_CREATE_MEMPOOL(pool, PALLOC_REDZONE, 0);
 	return pool;
 }
 
@@ -397,7 +397,7 @@ palloc_destroy_pool(struct palloc_pool *pool)
 {
 	SLIST_REMOVE(&pools, pool, palloc_pool, link);
 	prelease(pool);
-	(void)VALGRIND_DESTROY_MEMPOOL(pool);
+	VALGRIND_DESTROY_MEMPOOL(pool);
 	free(pool);
 }
 
@@ -444,7 +444,7 @@ palloc_gc(struct palloc_pool *pool)
 
 	TAILQ_INIT(&pool->chunks);
 	pool->allocated = 0;
-	(void)VALGRIND_MEMPOOL_TRIM(pool, NULL, 0);
+	VALGRIND_MEMPOOL_TRIM(pool, NULL, 0);
 
 #ifndef NVALGRIND
 	struct chunk *chunk;
