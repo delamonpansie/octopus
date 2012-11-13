@@ -109,7 +109,7 @@ struct slab {
 };
 
 SLIST_HEAD(slab_slist_head, slab);
-SLIST_HEAD(slab_cache_head, slab_cache) slab_cache = SLIST_HEAD_INITIALIZER(&slab_cache);
+static SLIST_HEAD(slab_cache_head, slab_cache) slab_cache = SLIST_HEAD_INITIALIZER(&slab_cache);
 
 struct arena {
 	void *base;
@@ -289,6 +289,13 @@ salloc_destroy(void)
 		}
 		memset(&arena[i], 0, sizeof(struct arena));
 	}
+
+	/* all slab caches are no longer valid. taint them. */
+	struct slab_cache *cache, *tmp;
+	SLIST_FOREACH_SAFE(cache, &slab_cache, link, tmp)
+		memset(cache, 'a', sizeof(*cache));
+
+	SLIST_INIT(&slab_cache);
 }
 
 static void
