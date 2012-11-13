@@ -88,7 +88,6 @@ uint8_t red_zone[0] = { };
 static const uint32_t SLAB_MAGIC = 0x51abface;
 static const size_t SLAB_SIZE = 1 << 22;
 static const size_t MAX_SLAB_ITEM = 1 << 20;
-static const size_t GROW_ARENA_SIZE = 1 << 22;
 static size_t page_size;
 
 struct slab_item {
@@ -112,12 +111,11 @@ SLIST_HEAD(slab_slist_head, slab);
 static SLIST_HEAD(slab_cache_head, slab_cache) slab_cache = SLIST_HEAD_INITIALIZER(&slab_cache);
 
 struct arena {
+	char *brk;
 	void *base;
 	size_t size;
 	size_t used;
 	struct slab_slist_head slabs, free_slabs;
-	struct { void *base; size_t size; } mmaps[64];
-	int i;
 };
 
 static uint32_t slab_active_caches;
@@ -200,17 +198,12 @@ mmapa(size_t size, size_t align)
 static bool
 arena_add_mmap(struct arena *arena, size_t size)
 {
-	if (arena->i == nelem(arena->mmaps))
-		return false;
-
 	void *ptr = mmapa(size, SLAB_SIZE);
 	if (!ptr)
 		return false;
 
-	arena->used = 0;
-	arena->size = arena->mmaps[arena->i].size = size;
-	arena->base = arena->mmaps[arena->i].base = ptr;
-	arena->i++;
+	arena->size += size;
+	arena->brk = arena->base = ptr;
 	return true;
 }
 
@@ -219,7 +212,7 @@ arena_init(struct arena *arena, size_t size)
 {
 	memset(arena, 0, sizeof(*arena));
 
-	if (!arena_add_mmap(arena, size))
+	if (size > 0 && !arena_add_mmap(arena, size))
 		return false;
 
 	SLIST_INIT(&arena->slabs);
@@ -237,13 +230,14 @@ arena_alloc(struct arena *arena)
 		if (arena == fixed_arena)
 			return NULL;
 
-		if (!arena_add_mmap(grow_arena, GROW_ARENA_SIZE))
+		if (!arena_add_mmap(grow_arena, SLAB_SIZE)) /* NB: see salloc_destroy comment */
 			panic("arena_alloc: can't enlarge grow_arena");
 
 		return arena_alloc(grow_arena);
 	}
 
-	ptr = (char *)arena->base + arena->used;
+	ptr = arena->brk;
+	arena->brk += size;
 	arena->used += size;
 
 	return ptr;
@@ -265,11 +259,10 @@ salloc_init(size_t size, size_t minimal, double factor)
 	if (size < SLAB_SIZE * 2)
 		size = SLAB_SIZE * 2;
 
-
 	if (!arena_init(fixed_arena, size))
 		panic_syserror("salloc_init: can't initialize arena");
 
-	if (!arena_init(grow_arena, GROW_ARENA_SIZE))
+	if (!arena_init(grow_arena, 0))
 		panic_syserror("salloc_init: can't initialize arena");
 
 	slab_caches_init(MAX(sizeof(void *), minimal), factor);
@@ -280,17 +273,20 @@ salloc_init(size_t size, size_t minimal, double factor)
 void
 salloc_destroy(void)
 {
-	for (uint32_t i = 0; i < nelem(arena); i++) {
-		for (uint32_t j = 0; j < nelem(arena->mmaps); j++) {
-			if (arena[i].mmaps[j].base == NULL)
-				break;
-			munmap(arena[i].mmaps[j].base, arena[i].mmaps[j].size);
-		}
-		memset(&arena[i], 0, sizeof(struct arena));
-	}
+	struct slab *slab, *next_slab;
+	struct slab_cache *cache, *tmp;
+
+	if (fixed_arena->base != NULL)
+		munmap(fixed_arena->base, fixed_arena->size);
+	memset(fixed_arena, 0, sizeof(*fixed_arena));
+
+	/* grow arena is increased in SLAB_SIZE chunks,
+	   so there is one-to-one relation between slabs and mmaps */
+	SLIST_FOREACH_SAFE(slab, &grow_arena->slabs, link, next_slab)
+		munmap(slab, SLAB_SIZE);
+	memset(grow_arena, 0, sizeof(*grow_arena));
 
 	/* all slab caches are no longer valid. taint them. */
-	struct slab_cache *cache, *tmp;
 	SLIST_FOREACH_SAFE(cache, &slab_cache, link, tmp)
 		memset(cache, 'a', sizeof(*cache));
 
@@ -505,19 +501,17 @@ slab_stat(struct tbuf *t)
 	for (int i = 0; i < nelem(arena); i++) {
 		if (arena[i].size == 0)
 			break;
+
 		int free_slabs = 0;
 		SLIST_FOREACH(slab, &arena[i].free_slabs, free_link)
 			free_slabs++;
 
-		int64_t arena_size = 0;
-		for (uint32_t j = 0; j < nelem(arena[i].mmaps); j++)
-			arena_size += arena[i].mmaps[j].size;
 
 		tbuf_printf(t, "    - { type: %s, used: %.2f, size: %"PRIi64", free_slabs: %i }" CRLF,
 			    &arena[i] == fixed_arena ? "fixed" :
 			    &arena[i] == grow_arena ? "grow" : "unknown",
-			    (double)arena[i].used / arena_size * 100,
-			    arena_size, free_slabs);
+			    (double)arena[i].used / arena[i].size * 100,
+			    arena[i].size, free_slabs);
 	}
 
 	tbuf_printf(t, "  caches:" CRLF);
