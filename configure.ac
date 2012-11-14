@@ -243,6 +243,7 @@ AC_MSG_RESULT([
 Configuration:
 
 Modules enabled........$octopus_modules
+Clients enabled........$octopus_clients
 
 Objective C compiler...$CC
 CPPFLAGS...............$CPPFLAGS
