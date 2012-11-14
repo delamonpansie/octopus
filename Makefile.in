@@ -65,10 +65,10 @@ endif
 
 depend = $(patsubst %.o,%.d,$(1))
 
-all: octopus
+all: octopus $(foreach client,$(clients),$(client)_all)
 
 subdirs += $(foreach module,$(modules),mod/$(module))
-subdirs += $(foreach client,$(clients),client/$(client))
+subdirs += $(wildcard client/*)
 subdirs += third_party cfg src src-lua
 
 sub-Makefile = $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)

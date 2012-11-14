@@ -5,7 +5,7 @@ dep += $(call depend,$(benchobj))
 
 $(OBDIR)/octobench.o: CFLAGS += -pthread
 
-all: $(OBDIR)/octobench
+octobench_all: $(OBDIR)/octobench
 $(OBDIR)/octobench: $(benchobj) client/libiproto/libiproto.a
 	$(E) "CC	$@"
 	$(Q)$(CC) -pthread $(LDFLAGS) $^ $(LIBS) -o $@
