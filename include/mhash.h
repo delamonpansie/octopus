@@ -173,6 +173,15 @@ _mh(pvalue)(struct mhash_t *h, uint32_t i)
 	return (mh_val_t *)mh_slot(h, i);
 }
 
+static inline int
+_mh(exist)(struct mhash_t *h, mh_key_t key)
+{
+	u_int32_t k;
+
+	k = _mh(get)(h, key);
+	return (k != mh_end(h));
+}
+
 static inline uint32_t
 _mh(get_slot)(struct mhash_t *h, mh_key_t key)
 {
