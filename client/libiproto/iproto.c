@@ -666,7 +666,7 @@ begin:
 			 	c->readArena->arenaSize - c->readArena->arenaEnd);
 
 		if (r <= 0) {
-			if (errno == EAGAIN || errno == EWOULDBLOCK) {
+			if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
 				if (c->readArena->arenaEnd == c->readArena->arenaBegin) {
 					memory_arena_decr_refcount(c->readArena);
 					c->readArena = NULL;
