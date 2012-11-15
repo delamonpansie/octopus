@@ -371,10 +371,10 @@ worker(void *arg) {
 }
 
 extern char *optarg;
-extern int opterr;
+extern int opterr, optind;
 
 static void
-usage() {
+usage(const char *errmsg) {
 	/*    ################################################################################ */
 	puts("octobench -s HOST -p PORT"); 
 	puts("   [-n NPACKETS] [-m NREQUESTS_IN_PACKETS] [-c NCONNECTION]"); 
@@ -383,7 +383,11 @@ usage() {
 	puts("   [-F]                  -- ignore fatal error from db");
 	puts("Defaults:");
 	printf("    -n %"PRIu64" -m %"PRIu64" -c %"PRIu64"\n    -t ping", nPackets, nReqInPacket, nConnections); 
-	printf("    -i %u -I %u\n", minId, maxId); 
+	printf("    -i %u -I %u\n", minId, maxId);
+	if (errmsg) {
+		puts("");
+		puts(errmsg);
+	}
 	exit(1);
 }
 
@@ -431,7 +435,7 @@ main(int argc, char* argv[]) {
 				else if (strcmp("box_select", optarg) == 0)
 					messageType = BOX_SELECT;
 				else
-					usage();
+					usage("error: unknown type");
 				break;
 			case 'i':
 				minId = strtoul(optarg, NULL, 0);
@@ -444,14 +448,15 @@ main(int argc, char* argv[]) {
 				break;
 			case 'h':
 			default:
-				usage();
+				usage(NULL);
 		}
 	}
 
+	OPT_ERR(optind == argc);
 	OPT_ERR(minId < maxId);
 
 	if (server==NULL || port <= 0)
-		usage();
+		usage("error: bad server address/port");
 
 	LIBIPROTO_ADD_DESCRIPTION(ERROR_CODES);
 
