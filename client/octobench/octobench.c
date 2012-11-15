@@ -240,7 +240,7 @@ generateRequestBody(AllocatedRequestBody **stack, int workerId, unsigned int *se
 					u_int32_t	cardinality;
 					u_int8_t	len;
 					u_int32_t	id;
-				} __attribute__((packed)) *ps, s = {0, 0, 0, 0xffffffff, 1, 1, 4, 0}; 
+				} __attribute__((packed)) *ps, s = {0, 0, 0, 0xffffffff, 1, 1, 4, 0};
 
 				ps = popAllocatedRequestBody(stack, sizeof(*ps));
 				memcpy(ps, &s, sizeof(*ps));
@@ -273,7 +273,7 @@ worker(void *arg) {
 	u_int32_t			flags = LIBIPROTO_OPT_NONBLOCK;
 
 	if (messageType != OCTO_PING)
-		flags |= LIBIPROTO_OPT_HAS_4BYTE_ERRCODE;	
+		flags |= LIBIPROTO_OPT_HAS_4BYTE_ERRCODE;
 
 	while((errcode = li_connect(conn, server, port, flags)) == ERR_CODE_CONNECT_IN_PROGRESS)
 		octopoll(li_get_fd(conn), POLLOUT);
@@ -295,7 +295,7 @@ worker(void *arg) {
 		}
 
 		if (state & POLLIN) {
-			struct iproto_request_t	*request;	
+			struct iproto_request_t	*request;
 
 			errcode = li_read(conn);
 
@@ -318,13 +318,13 @@ worker(void *arg) {
 				nGet++;
 
 				if (ignoreFatal == false && ERR_CODE_IS_FATAL(errcode)) {
-					fprintf(stderr,"octopus returns fatal error: %s (%08x)\n", 
+					fprintf(stderr,"octopus returns fatal error: %s (%08x)\n",
 						errcode_desc(errcode), errcode);
 					exit(1);
 				}
 
-				__sync_fetch_and_add(errstat + ((errcode >> 8) & 0xff), 1);		
-		
+				__sync_fetch_and_add(errstat + ((errcode >> 8) & 0xff), 1);
+
 				pushAllocatedRequestBody(&stack, li_req_request_data(request, &size));
 				li_req_free(request);
 			}
@@ -338,14 +338,14 @@ worker(void *arg) {
 					void	*body;
 					size_t	size;
 
-					body = generateRequestBody(&stack, idWorker, &rndseed, &size); 
+					body = generateRequestBody(&stack, idWorker, &rndseed, &size);
 					li_req_init(conn, messageType, body, size);
 				}
-				
+
 				nSended += nReqInPacket;
 
 				needToSend = true;
-			} 
+			}
 
 			if (needToSend) {
 				switch((errcode = li_write(conn))) {
@@ -354,7 +354,7 @@ worker(void *arg) {
 					case ERR_CODE_OK:
 						break;
 					default:
-						fprintf(stderr,"li_write fails: %s (%08x)\n", 
+						fprintf(stderr,"li_write fails: %s (%08x)\n",
 							errcode_desc(errcode), errcode);
 						exit(1);
 				}
@@ -376,13 +376,13 @@ extern int opterr, optind;
 static void
 usage(const char *errmsg) {
 	/*    ################################################################################ */
-	puts("octobench -s HOST -p PORT"); 
-	puts("   [-n NPACKETS] [-m NREQUESTS_IN_PACKETS] [-c NCONNECTION]"); 
+	puts("octobench -s HOST -p PORT");
+	puts("   [-n NPACKETS] [-m NREQUESTS_IN_PACKETS] [-c NCONNECTION]");
 	puts("   [-t (ping|box_insert|box_select)]");
 	puts("   [-i MINID] [-I MAXID] -- min/max random id");
 	puts("   [-F]                  -- ignore fatal error from db");
 	puts("Defaults:");
-	printf("    -n %"PRIu64" -m %"PRIu64" -c %"PRIu64"\n    -t ping", nPackets, nReqInPacket, nConnections); 
+	printf("    -n %"PRIu64" -m %"PRIu64" -c %"PRIu64"\n    -t ping", nPackets, nReqInPacket, nConnections);
 	printf("    -i %u -I %u\n", minId, maxId);
 	if (errmsg) {
 		puts("");
@@ -479,9 +479,9 @@ main(int argc, char* argv[]) {
 	elapsed = timediff(&begin, &end);
 
 	printf("Elapsed time: %.3f secs\n", elapsed);
-	printf("Number of OK requests: %.3f\n", ((double)nSuccess)); 
+	printf("Number of OK requests: %.3f\n", ((double)nSuccess));
 	printf("RPS: %.3f\n", ((double)nSuccess) / elapsed );
-	printf("Number of ALL requests: %.3f\n", ((double)nTotal)); 
+	printf("Number of ALL requests: %.3f\n", ((double)nTotal));
 	printf("RPS: %.3f\n", ((double)nTotal) / elapsed );
 
 	for(i=0; i<256; i++)
