@@ -120,8 +120,8 @@ map_get_arena(struct memory_arena_pool_t* rap, size_t size) {
 				break;
 			}
 		}
-	} 
-	
+	}
+
 	if (!arena) {
 		rap->nArenas++;
 		arena = rap->sp_alloc(NULL, size + MEMORYARENAHDRZ);
@@ -287,7 +287,7 @@ li_connect(struct iproto_connection_t *c, char *server, int port, u_int32_t opt)
 				if (r & POLLOUT) {
 					c->connectState = Connected;
 
-					return ERR_CODE_OK; 
+					return ERR_CODE_OK;
 				}
 
 				return ERR_CODE_CONNECT_IN_PROGRESS;
@@ -367,7 +367,7 @@ li_get_fd(struct iproto_connection_t *c) {
 	return -1;
 }
 
-static void                 
+static void
 freeData(struct iproto_request_t *r) {
 	if (r->readArena)
 		memory_arena_decr_refcount(r->readArena);
@@ -472,7 +472,7 @@ li_req_init(struct iproto_connection_t* c, u_int32_t msg_code, void *data, size_
 		c->reqArena->arenaEnd += sizeof(*r);
 		r->reqArena = c->reqArena;
 		memory_arena_incr_refcount(r->reqArena);
-	} else {	
+	} else {
 		r = c->sp_alloc(NULL, sizeof(*r));
 		if (!r)
 			return NULL;
@@ -654,15 +654,15 @@ begin:
 			memory_arena_incr_refcount(c->readArena);
 
 			if (oldarena->arenaEnd - oldarena->arenaBegin > 0) {
-				memcpy(c->readArena->data, oldarena->data + oldarena->arenaBegin, 
-						oldarena->arenaEnd - oldarena->arenaBegin); 
+				memcpy(c->readArena->data, oldarena->data + oldarena->arenaBegin,
+						oldarena->arenaEnd - oldarena->arenaBegin);
 				c->readArena->arenaEnd = oldarena->arenaEnd - oldarena->arenaBegin;
 			}
 
 			memory_arena_decr_refcount(oldarena);
 		}
 
-		r = read(c->fd, c->readArena->data + c->readArena->arenaEnd, 
+		r = read(c->fd, c->readArena->data + c->readArena->arenaEnd,
 			 	c->readArena->arenaSize - c->readArena->arenaEnd);
 
 		if (r <= 0) {
@@ -686,9 +686,9 @@ begin:
 								(c->readArena->data + c->readArena->arenaBegin);
 			struct iproto_request_t	*request;
 
-			if (c->readArena->arenaEnd - c->readArena->arenaBegin < 
+			if (c->readArena->arenaEnd - c->readArena->arenaBegin <
 			    		sizeof(struct iproto) + header->data_len) {
-				c->neededSize = MAX(MINNEEDEDSIZE, (sizeof(struct iproto) + header->data_len) - 
+				c->neededSize = MAX(MINNEEDEDSIZE, (sizeof(struct iproto) + header->data_len) -
 								(c->readArena->arenaEnd - c->readArena->arenaBegin));
 
 				goto begin;
@@ -711,7 +711,7 @@ begin:
 				request->dataRecv = c->readArena->data + c->readArena->arenaBegin;
 				c->readArena->arenaBegin += header->data_len;
 			}
-			
+
 			memory_arena_incr_refcount(c->readArena);
 			request->readArena = c->readArena;
 			request->state = ERR_CODE_REQUEST_READY;

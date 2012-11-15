@@ -34,7 +34,7 @@
  **********************************************************************************
  *
  * struct iproto_connection_t* conn = li_conn_init(realloc, ...);
- *  
+ *
  * if ((err = li_connect(conn, "127.0.0.1", 98876, LIBIPROTO_OPT_HAS_4BYTE_ERRCODE)) != ERR_CODE_OK)
  * 		exit(1);
  *
@@ -50,7 +50,7 @@
  **********************************************************************************
  * int fd = li_get_fd(conn);
  *
- * while(42) { 
+ * while(42) {
  * 	state = poll(fd);
  *
  *	if (state & POLLIN) {
@@ -69,7 +69,7 @@
  *		}
  *		errcode = li_write(conn);
  *	}
- * } 
+ * }
  **********************************************************************************/
 
 
@@ -162,7 +162,7 @@ typedef enum LiConnectionState {
 	LI_CONNECT_IN_PROGRESS	= 0x02,
 	LI_CONNECT_ERROR	= 0x03,
 	/* LI_WANT_* are OR'ed with previous states */
-	LI_WANT_READ		= 0x04, 
+	LI_WANT_READ		= 0x04,
 	LI_WANT_WRITE		= 0x08
 } LiConnectionState;
 LiConnectionState		li_io_state(struct iproto_connection_t *c);
@@ -173,7 +173,7 @@ u_int32_t			li_read(struct iproto_connection_t *c);
 
 struct iproto_request_t*	li_get_ready_reqs(struct iproto_connection_t *c);
 
-struct iproto_request_t*	li_req_init(struct iproto_connection_t* c, 
+struct iproto_request_t*	li_req_init(struct iproto_connection_t* c,
 					    u_int32_t msg_code, void *data, size_t size);
 u_int32_t			li_req_state(struct iproto_request_t* r);
 void*				li_req_response_data(struct iproto_request_t* r, size_t *size);

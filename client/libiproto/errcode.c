@@ -47,8 +47,8 @@ errStorageCmp(const void *a, const void *b, void *arg  __attribute__((unused))) 
 	if (as->errcode == bs->errcode)
 		return 0;
 
-	return (as->errcode > bs->errcode) ? 1 : -1; 
-}	
+	return (as->errcode > bs->errcode) ? 1 : -1;
+}
 
 static void
 _errcode_add_desc(u_int32_t errcode, char *desc) {
@@ -60,10 +60,10 @@ _errcode_add_desc(u_int32_t errcode, char *desc) {
 	nErr++;
 
 	if (nErr > 1)
-		qsort_arg(errStorage, nErr, sizeof(*errStorage), errStorageCmp, NULL); 
+		qsort_arg(errStorage, nErr, sizeof(*errStorage), errStorageCmp, NULL);
 }
 
-static inline struct storage* 
+static inline struct storage *
 _errcode_desc(u_int32_t errcode) {
 	struct storage	*StopLow = errStorage,
 			*StopHigh = errStorage + nErr,
@@ -86,7 +86,7 @@ _errcode_desc(u_int32_t errcode) {
 
 static inline void
 errcode_init() {
-	if (errStorage == NULL) { 
+	if (errStorage == NULL) {
 #define	errcode_add_desc	_errcode_add_desc
 		LIBIPROTO_ADD_DESCRIPTION(LIBIPROTO_ERROR_CODES);
 #undef errcode_add_desc
@@ -107,7 +107,7 @@ errcode_add_desc(u_int32_t errcode, char *desc) {
 	}
 }
 
-char*
+char *
 errcode_desc(u_int32_t errcode) {
 	static char *unknown = "Unknown error";
 	struct storage  *e;
