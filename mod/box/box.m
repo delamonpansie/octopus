@@ -674,6 +674,7 @@ txn_cleanup(struct box_txn *txn)
 }
 
 
+#ifndef PAXOS
 static void
 update_crc(struct tnt_object *obj, u32 *crc)
 {
@@ -689,6 +690,7 @@ update_crc(struct tnt_object *obj, u32 *crc)
 #endif
 	*crc = new_crc;
 }
+#endif
 
 void
 txn_commit(struct box_txn *txn)
@@ -698,10 +700,12 @@ txn_commit(struct box_txn *txn)
 	else
 		commit_replace(txn);
 
+#ifndef PAXOS
 	if (unlikely(!txn->snap)) {
 		update_crc(txn->old_obj, &recovery->run_crc_mod);
 		update_crc(txn->obj, &recovery->run_crc_mod);
 	}
+#endif
 
 	stat_collect(stat_base, txn->op, 1);
 
@@ -879,10 +883,12 @@ box_process(struct conn *c, struct iproto *request, void *arg __attribute__((unu
 		}
 	}
 	@catch (Error *e) {
-		say_warn("aborting txn, [%s reason:\"%s\"] at %s:%d peer:%s",
-			 [[e class] name], e->reason, e->file, e->line, conn_peer_name(c));
-		if (e->backtrace)
-			say_debug("backtrace:\n%s", e->backtrace);
+		if (strcmp(e->file, "src/paxos.m") != 0) {
+			say_warn("aborting txn, [%s reason:\"%s\"] at %s:%d peer:%s",
+				 [[e class] name], e->reason, e->file, e->line, conn_peer_name(c));
+			if (e->backtrace)
+				say_debug("backtrace:\n%s", e->backtrace);
+		}
 		txn_abort(&txn);
 		u32 rc = ERR_CODE_UNKNOWN_ERROR;
 		if ([e respondsTo:@selector(code)])
@@ -1286,7 +1292,9 @@ snapshot_fold
 	struct box_tuple *tuple;
 
 	u32 crc = 0;
-
+#ifdef FOLD_DEBUG
+	int count = 0;
+#endif
 	for (int n = 0; n < object_space_count; n++) {
 		if (!object_space_registry[n].enabled)
 			continue;
@@ -1301,7 +1309,11 @@ snapshot_fold
 
 		while ((obj = [pk iterator_next])) {
 			tuple = box_tuple(obj);
-
+#ifdef FOLD_DEBUG
+			struct tbuf *b = tbuf_alloc(fiber->pool);
+			tuple_print(b, tuple->cardinality, tuple->data);
+			say_info("row %i: %.*s", count++, tbuf_len(b), (char *)b->ptr);
+#endif
 			crc = crc32c(crc, (unsigned char *)&tuple->bsize,
 				     tuple->bsize + sizeof(tuple->bsize) +
 				     sizeof(tuple->cardinality));
@@ -1490,7 +1502,7 @@ apply_row:(struct row_v12 *)r
 	struct tbuf *out = tbuf_alloc(fiber->pool);
 	print_gen_row(out, r, print_row);
 	puts(out->ptr);
-	if (r->scn == stop_scn && r->tag == wal_tag)
+	if (r->scn >= stop_scn && r->tag == wal_tag)
 		exit(0);
 }
 
@@ -1512,6 +1524,7 @@ cat_scn(i64 stop_scn)
 				   stop_scn:stop_scn] recover_start];
 	return 0;
 }
+
 static int
 cat(const char *filename)
 {

@@ -43,6 +43,7 @@ enum { snap_initial_tag = 1,
        wal_final_tag,
        run_crc,
        nop,
+       snap_skip_scn,
        paxos_prepare,
        paxos_promise,
        paxos_propose,
@@ -166,7 +167,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 
 
 @interface XLogWriter: Object {
-	i64 lsn, scn;
+	i64 lsn, scn, last_scn;
 	struct child *wal_writer;
 	XLogDir *wal_dir, *snap_dir;
 	bool local_writes;
@@ -233,8 +234,11 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 	bool run_crc_log_mismatch, run_crc_mod_mismatch;
 	u32 processed_rows, estimated_snap_rows;
 
-	struct crc_hist { i64 scn; u32 log; u32 mod; } crc_hist[256];
+	struct crc_hist { i64 scn; u32 log; u32 mod; } crc_hist[512]; /* should be larger then cfg.wal_writer_inbox_size */
 	unsigned crc_hist_i;
+
+	i64 next_skip_scn;
+	struct tbuf skip_scn;
 }
 
 - (const char *) status;

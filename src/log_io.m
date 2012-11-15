@@ -70,6 +70,7 @@ xlog_tag_to_a(u16 tag)
 	case paxos_promise:	return "paxos_promise";
 	case paxos_propose:	return "paxos_propose";
 	case paxos_accept:	return "paxos_accept";
+	case snap_skip_scn:	return "snap_skip_scn";
 	}
 	snprintf(buf, sizeof(buf), "unknown_%i", tag);
 	return buf;
@@ -322,6 +323,7 @@ error:
 	say_warn("[open_for_read_filename `%s']: %s", filename, error);
 	[l free];
 	l = [[XLog alloc] init_filename:filename fd:fd dir:self];
+	/* FIXME: race here: we can see file with yet to be written header */
 	l->valid = false;
 	return l;
 }
