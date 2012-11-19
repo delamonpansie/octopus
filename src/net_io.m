@@ -82,6 +82,7 @@ netmsg_unref(struct netmsg *m, int from)
 			luaL_unref(root_L, LUA_REGISTRYINDEX, (uintptr_t)obj[i] >> 1);
 		else
 			object_decr_ref(obj[i]);
+		obj[i] = 0;
 	}
 }
 
@@ -169,13 +170,12 @@ enlarge(struct netmsg **m)
 void
 net_add_iov(struct netmsg **m, const void *buf, size_t len)
 {
-	struct tnt_object **ref = (*m)->ref + (*m)->count;
 	struct iovec *v = (*m)->iov + (*m)->count;
 	v->iov_base = (char *)buf;
 	v->iov_len = len;
 
 	(*m)->head->bytes += len;
-	*ref = NULL;
+	/* *((*m)->ref + (*m)->count) is NULL here. see netmsg_unref() */
 
 #ifdef NET_IO_TIMESTAMPS
 	(*m)->tstamp[(*m)->count] = ev_now();
