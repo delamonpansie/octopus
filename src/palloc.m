@@ -33,7 +33,7 @@
 # import <stat.h>
 #endif
 
-#if HAVE_VALGRIND_VALGRIND_H
+#if HAVE_VALGRIND_VALGRIND_H && !defined(NVALGRIND)
 # include <valgrind/valgrind.h>
 # include <valgrind/memcheck.h>
 #else
