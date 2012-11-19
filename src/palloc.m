@@ -354,9 +354,8 @@ release_chunks(struct chunk_list_head *chunks)
 			continue;
 
 		TAILQ_FOREACH_REVERSE_SAFE(chunk, &class->chunks, chunk_list_head, free_link, tvar) {
-			assert(release_count >= chunk->last_use);
 			if (release_count - chunk->last_use < PALLOC_CHUNK_TTL)
-				continue;
+				break;
 
 			TAILQ_REMOVE(&class->chunks, chunk, free_link);
 			munmap(chunk, class->size + sizeof(struct chunk));
