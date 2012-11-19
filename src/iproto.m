@@ -274,7 +274,7 @@ req_make(const char *name, int quorum, ev_tstamp timeout,
 }
 
 
-static void
+void
 req_collect_reply(struct conn *c, struct iproto *msg)
 {
 	struct iproto_peer *p = (void *)c - offsetof(struct iproto_peer, c);
@@ -366,8 +366,10 @@ iproto_pinger(va_list ap)
 }
 
 void
-iproto_reply_reader(va_list ap __attribute__((unused)))
+iproto_reply_reader(va_list ap)
 {
+	void (*collect)(struct conn *c, struct iproto *msg) = va_arg(ap, typeof(collect));
+
 	for (;;) {
 		struct ev_watcher *w = yield();
 		struct conn *c = w->data;
@@ -389,7 +391,7 @@ iproto_reply_reader(va_list ap __attribute__((unused)))
 		{
 			struct iproto *msg = c->rbuf->ptr;
 			tbuf_ltrim(c->rbuf, sizeof(struct iproto) + msg->data_len);
-			req_collect_reply(c, msg);
+			collect(c, msg);
 		}
 	}
 }
