@@ -264,7 +264,8 @@ commit_replace(struct box_txn *txn)
 	}
 
 	if (txn->m) {
-		net_add_iov_dup(&txn->m, &txn->obj_affected, sizeof(u32));
+		/* safe, because it will be copied by netmsg_concat */
+		net_add_iov(&txn->m, &txn->obj_affected, sizeof(u32));
 
 		if (txn->obj && txn->flags & BOX_RETURN_TUPLE)
 			tuple_add_iov(&txn->m, txn->obj);
@@ -641,7 +642,8 @@ commit_delete(struct box_txn *txn)
 		object_ref(txn->old_obj, -1);
 	}
 	if (txn->m)
-		net_add_iov_dup(&txn->m, &txn->obj_affected, sizeof(u32));
+		/* safe, because it will be copied by netmsg_concat */
+		net_add_iov(&txn->m, &txn->obj_affected, sizeof(u32));
 }
 
 void
