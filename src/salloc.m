@@ -412,7 +412,7 @@ slab_cache_alloc(struct slab_cache *cache)
 
 	if (fully_populated(slab)) {
 		TAILQ_REMOVE(&cache->partial_populated_slabs, slab, cache_partial_link);
-#if NEED_MADVISE
+#if HAVE_MADVISE
 		slab->need_madvise = true;
 #endif
 	}
