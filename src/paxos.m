@@ -984,7 +984,7 @@ snap_io_rate_limit:(int)snap_io_rate_limit_
 
 	pool = palloc_create_pool("paxos");
 	output_flusher = fiber_create("paxos/output_flusher", service_output_flusher);
-	reply_reader = fiber_create("paxos/reply_reader", iproto_reply_reader);
+	reply_reader = fiber_create("paxos/reply_reader", iproto_reply_reader, req_collect_reply);
 
 	short accept_port;
 	accept_port = ntohs(paxos_peer(self, self_id)->iproto.addr.sin_port);
