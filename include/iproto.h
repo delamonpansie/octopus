@@ -75,6 +75,7 @@ struct iproto_peer *make_iproto_peer(int id, const char *name, const char *addr)
 u32 iproto_next_sync();
 void iproto_rendevouz(va_list ap);
 void iproto_reply_reader(va_list ap);
+void req_collect_reply(struct conn *c, struct iproto *msg);
 void iproto_pinger(va_list ap);
 
 #define MAX_IPROTO_PEERS 7

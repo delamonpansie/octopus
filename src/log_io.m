@@ -757,21 +757,28 @@ confirm_write
 {
 	assert(next_lsn != 0);
 	assert(mode == LOG_WRITE);
+	off_t tail;
 
-	if (fflush(fd) < 0)
-		say_syserror("can't flush wal");
+	if (fflush(fd) < 0) {
+		tail = ftello(fd);
 
-	off_t tail = ftello(fd);
-	say_debug("initial offset:%llu tail:%lli", (long long)offset, (long long)tail);
-	for (int i = 0; i < wet_rows; i++) {
-		if (wet_rows_offset[i] > tail) {
-			say_error("failed to sync %lli rows", (long long)(wet_rows - i));
-			break;
+		say_debug("%s offset:%llu tail:%lli", __func__, (long long)offset, (long long)tail);
+
+		for (int i = 0; i < wet_rows; i++) {
+			if (wet_rows_offset[i] > tail) {
+				say_error("failed to sync %lli rows", (long long)(wet_rows - i));
+				break;
+			}
+			say_debug("confirm offset %lli", (long long)wet_rows_offset[i]);
+			next_lsn++;
+			rows++;
 		}
-		say_debug("confirm offset %lli", (long long)wet_rows_offset[i]);
-		next_lsn++;
-		rows++;
+	} else {
+		tail = wet_rows_offset[wet_rows - 1];
+		next_lsn += wet_rows;
+		rows += wet_rows;
 	}
+
 #if HAVE_POSIX_FADVISE
 	fadvise_bytes += tail - offset;
 	if (unlikely(fadvise_bytes > 32 * 4096)) {

@@ -598,7 +598,7 @@ li_write(struct iproto_connection_t *c) {
 
 		while(c->iovSendLength > 0) {
 			if ((r = writev(c->fd, c->iovptr, (c->iovSendLength < IOV_MAX) ? c->iovSendLength : IOV_MAX)) <= 0) {
-				if (errno == EAGAIN || errno == EWOULDBLOCK) {
+				if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
 					return ERR_CODE_OK;
 				} else {
 					c->connectState = ConnectionError;
@@ -666,7 +666,7 @@ begin:
 			 	c->readArena->arenaSize - c->readArena->arenaEnd);
 
 		if (r <= 0) {
-			if (errno == EAGAIN || errno == EWOULDBLOCK) {
+			if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
 				if (c->readArena->arenaEnd == c->readArena->arenaBegin) {
 					memory_arena_decr_refcount(c->readArena);
 					c->readArena = NULL;

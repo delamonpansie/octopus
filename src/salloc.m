@@ -45,7 +45,7 @@
 # include <sys/param.h>
 #endif
 
-#if HAVE_VALGRIND_VALGRIND_H
+#if HAVE_VALGRIND_VALGRIND_H && !defined(NVALGRIND)
 # include <valgrind/valgrind.h>
 # include <valgrind/memcheck.h>
 #else
@@ -102,6 +102,9 @@ struct slab {
 	struct slab_item *free;
 	struct slab_cache *cache;
 	void *brk;
+#if HAVE_MADVISE
+	bool need_madvise;
+#endif
 	SLIST_ENTRY(slab) link;
 	SLIST_ENTRY(slab) free_link;
 	TAILQ_ENTRY(slab) cache_partial_link;
@@ -407,8 +410,12 @@ slab_cache_alloc(struct slab_cache *cache)
 		(void)VALGRIND_MAKE_MEM_UNDEFINED(item, sizeof(void *));
 	}
 
-	if (fully_populated(slab))
+	if (fully_populated(slab)) {
 		TAILQ_REMOVE(&cache->partial_populated_slabs, slab, cache_partial_link);
+#if HAVE_MADVISE
+		slab->need_madvise = true;
+#endif
+	}
 
 	slab->used += cache->item_size + sizeof(red_zone);
 	slab->items += 1;
@@ -452,10 +459,14 @@ sfree(void *ptr)
 		TAILQ_REMOVE(&cache->slabs, slab, cache_link);
 		SLIST_INSERT_HEAD(&cache->arena->free_slabs, slab, free_link);
 
-#ifdef HAVE_MADVISE
-		int r;
-		r = madvise((void *)slab + page_size, SLAB_SIZE - page_size, MADV_DONTNEED);
-		assert(r == 0);
+#if HAVE_MADVISE
+		if (slab->need_madvise) {
+			slab->need_madvise = false;
+			int r;
+			r = madvise((void *)slab + page_size, SLAB_SIZE - page_size, MADV_DONTNEED);
+			(void)r;
+			assert(r == 0);
+		}
 #endif
 	}
 
