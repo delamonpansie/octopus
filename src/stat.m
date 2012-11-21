@@ -42,7 +42,7 @@ static int stats_max = 0;
 static int base = 0;
 
 int
-stat_register(const char **name, size_t count)
+stat_register(char * const * name, size_t count)
 {
 	int initial_base = base;
 
