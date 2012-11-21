@@ -314,14 +314,13 @@ broadcast(struct iproto_group *group, struct iproto_req *r)
 	assert(r->header->msg_code != 0);
 	struct iproto_peer *p;
 	int header_len = sizeof(*r->header) + r->header->data_len;
-
-	if (r->waiter)
-		r->reply = p0alloc(r->waiter->pool, sizeof(struct iproto *) * MAX_IPROTO_PEERS);
+	int peers_count = 0;
 
 	if (r->data)
 		r->header->data_len += r->data_len;
 
 	SLIST_FOREACH(p, group, link) {
+		peers_count++;
 		if (p->c.fd < 0)
 			continue;
 
@@ -334,6 +333,9 @@ broadcast(struct iproto_group *group, struct iproto_req *r)
 			  r->header->data_len);
 		ev_io_start(&p->c.out);
 	}
+
+	if (r->waiter)
+		r->reply = p0alloc(r->waiter->pool, sizeof(struct iproto *) * peers_count);
 }
 
 

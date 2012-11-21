@@ -958,9 +958,6 @@ snap_io_rate_limit:(int)snap_io_rate_limit_
 		if ((c = cfg.paxos_peer[i]) == NULL)
 			break;
 
-		if (c->id >= MAX_IPROTO_PEERS)
-			panic("too large peer id");
-
 		if (paxos_peer(self, c->id) != NULL)
 			panic("paxos peer %s already exists", c->name);
 

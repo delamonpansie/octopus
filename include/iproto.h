@@ -78,7 +78,6 @@ void iproto_reply_reader(va_list ap);
 void req_collect_reply(struct conn *c, struct iproto *msg);
 void iproto_pinger(va_list ap);
 
-#define MAX_IPROTO_PEERS 7
 struct iproto_req {
 	const char *name;
 	u32 sync;
