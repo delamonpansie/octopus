@@ -459,7 +459,7 @@ main(int argc, char* argv[]) {
 	if (server==NULL || port <= 0)
 		usage("error: bad server address/port");
 
-	ERRCODE_ADD(ERRCODE_DESCRIPTION, SUM_ERROR_CODES);
+	ERRCODE_ADD(ERRCODE_DESCRIPTION, ERROR_CODES);
 
 	gettimeofday(&begin,NULL);
 	pthread_mutex_lock(&mutex);

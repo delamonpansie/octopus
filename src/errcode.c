@@ -29,7 +29,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef LIBIPROTO
 #include <client/libiproto/libiproto.h>
+#else
+#include <iproto_def.h>
+#endif
 #include <third_party/qsort_arg.h>
 
 static struct storage {
@@ -88,7 +92,11 @@ static inline void
 errcode_init() {
 	if (errStorage == NULL) {
 #define	errcode_add_desc	_errcode_add_desc
+#ifdef LIBIPROTO
 		ERRCODE_ADD(ERRCODE_DESCRIPTION, LIBIPROTO_ERROR_CODES);
+#else
+		ERRCODE_ADD(ERRCODE_DESCRIPTION, ERROR_CODES);
+#endif
 #undef errcode_add_desc
 	}
 }
