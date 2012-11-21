@@ -50,7 +50,7 @@
 	_(MEMC_EXPIRED_KEYS, 4)
 
 enum memcached_stat ENUM_INITIALIZER(STAT);
-const char *memcached_stat[] = ENUM_STR_INITIALISER(STAT);
+char * const memcached_stat[] = ENUM_STR_INITIALISER(STAT);
 int stat_base;
 
 
