@@ -53,14 +53,12 @@ void *alloca (size_t);
 #endif
 
 /* Macros to define enum and corresponding strings. */
-#define ENUM_MEMBER(s, v, d...) s = v,
-#define ENUM_STRS_MEMBER(s, v, d...) [s] = #s,
-#define ENUM_DESC_STRS_MEMBER(s, v, d...) [s] = d,
-#define ENUM(enum_name, enum_members) enum enum_name {enum_members(ENUM_MEMBER) enum_name##_MAX}
-#define STRS(enum_name, enum_members) \
-	char *enum_name##_strs[enum_name##_MAX + 1] = {enum_members(ENUM_STRS_MEMBER) '\0'}
-#define DESC_STRS(enum_name, enum_members) \
-	char *enum_name##_desc_strs[enum_name##_MAX + 1] = {enum_members(ENUM_DESC_STRS_MEMBER) '\0'}
+#define ENUM_DEF(s, v, d...) s = v,
+#define ENUM_STR_DEF(s, v, d...) [s] = #s,
+#define ENUM_DESCR_DEF(s, v, d...) [s] = d,
+#define ENUM_INITIALIZER(define) { define(ENUM_DEF) }
+#define ENUM_STR_INITIALISER(define) { define(ENUM_STR_DEF) }
+#define ENUM_DESCR_INITIALISER(define) { define(ENUM_DESCR_DEF) }
 
 /* Macros for printf functions */
 #include <inttypes.h>

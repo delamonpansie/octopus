@@ -49,8 +49,8 @@
 	_(MEMC_GET_HIT, 3)			\
 	_(MEMC_EXPIRED_KEYS, 4)
 
-ENUM(memcached_stat, STAT);
-STRS(memcached_stat, STAT);
+enum memcached_stat ENUM_INITIALIZER(STAT);
+const char *memcached_stat[] = ENUM_STR_INITIALISER(STAT);
 int stat_base;
 
 
@@ -758,7 +758,7 @@ memcached_accept(int fd, void *data __attribute__((unused)))
 void
 memcached_init()
 {
-	stat_base = stat_register(memcached_stat_strs, memcached_stat_MAX);
+	stat_base = stat_register(memcached_stat, nelem(memcached_stat));
 	fiber_create("memcached/acceptor", tcp_server,
 		     cfg.primary_port, memcached_accept, memcached_bound_to_primary, NULL);
 

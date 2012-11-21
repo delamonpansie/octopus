@@ -52,8 +52,8 @@
 	_(QUERY, 0xf9)				\
 	_(STALE, 0xfa)
 
-ENUM(paxos_msg_code, PAXOS_CODE);
-STRS(paxos_msg_code, PAXOS_CODE);
+enum paxos_msg_code ENUM_INITIALIZER(PAXOS_CODE);
+const char *paxos_msg_code[] = ENUM_STR_INITIALISER(PAXOS_CODE);
 
 struct paxos_peer {
 	struct iproto_peer iproto;
@@ -177,11 +177,11 @@ paxos_broadcast(PaxosRecovery *r, enum paxos_msg_code code, ev_tstamp timeout,
 				 .tag = tag,
 				 .value_len = value_len };
 
-	struct iproto_req *req = req_make(paxos_msg_code_strs[code], r->quorum, timeout,
+	struct iproto_req *req = req_make(paxos_msg_code[code], r->quorum, timeout,
 					  &msg.header, value, value_len);
 	say_debug("%s: > %s sync:%u ballot:%"PRIu64" SCN:%"PRIi64" timeout:%.2f"
 		  " value_len:%i value:%s",
-		  __func__, paxos_msg_code_strs[code], req->header->sync, ballot, scn, timeout,
+		  __func__, paxos_msg_code[code], req->header->sync, ballot, scn, timeout,
 		  value_len, tbuf_to_hex(&TBUF(value, value_len, fiber->pool)));
 
 	broadcast(&r->remotes, req);
@@ -214,7 +214,7 @@ paxos_reply(struct conn *c, const struct msg_paxos *req, enum paxos_msg_code cod
 	}
 
 	say_debug("%s: > %s sync:%i SCN:%"PRIi64" ballot:%"PRIu64, __func__,
-		  paxos_msg_code_strs[code], msg->header.sync, msg->scn, msg->ballot);
+		  paxos_msg_code[code], msg->header.sync, msg->scn, msg->ballot);
 
 	assert(c->state != CLOSED);
 	ev_io_start(&c->out);
@@ -555,7 +555,7 @@ acceptor(PaxosRecovery *r, struct conn *c, struct iproto *msg)
 		assert(p->ballot <= mp->ballot);
 		say_debug("%s: < type:%s sync:%i SCN:%"PRIi64" ballot:%"PRIu64" value_len:%i value:%s",
 			  __func__,
-			  paxos_msg_code_strs[msg->msg_code], msg->sync, mp->scn, mp->ballot,
+			  paxos_msg_code[msg->msg_code], msg->sync, mp->scn, mp->ballot,
 			  mp->value_len, tbuf_to_hex(&TBUF(mp->value, mp->value_len, fiber->pool)));
 		switch (msg->msg_code) {
 		case PREPARE:
@@ -566,7 +566,7 @@ acceptor(PaxosRecovery *r, struct conn *c, struct iproto *msg)
 			accepted(r, p, c, mp);
 			break;
 		default:
-			say_error("%s: < unexpected msg type: %s", __func__, paxos_msg_code_strs[msg->msg_code]);
+			say_error("%s: < unexpected msg type: %s", __func__, paxos_msg_code[msg->msg_code]);
 			break;
 		}
 	}
@@ -768,7 +768,7 @@ recv_msg(struct conn *c, struct iproto *msg, void *arg)
 #endif
 
 	say_debug("%s: op:0x%02x/%s sync:%i", __func__,
-		  msg->msg_code, paxos_msg_code_strs[msg->msg_code], msg->sync);
+		  msg->msg_code, paxos_msg_code[msg->msg_code], msg->sync);
 
 	switch (msg->msg_code) {
 	case LEADER_PROPOSE: {

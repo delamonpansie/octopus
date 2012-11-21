@@ -119,7 +119,7 @@ struct box_txn {
 	_(PAXOS_LEADER, 90)			\
 	_(SELECT_KEYS, 99)
 
-ENUM(messages, MESSAGES);
+enum messages ENUM_INITIALIZER(MESSAGES);
 
 @class Recovery;
 void txn_init(const struct iproto *req, struct box_txn *txn, struct netmsg *m);

@@ -43,8 +43,6 @@
 
 const uint32_t msg_ping = 0xff00;
 const uint32_t msg_replica = 0xff01;
-STRS(error_codes, ERROR_CODES);
-DESC_STRS(error_codes, ERROR_CODES);
 
 static struct mhash_t *req_registry;
 

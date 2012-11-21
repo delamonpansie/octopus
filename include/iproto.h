@@ -128,6 +128,4 @@ void req_release(struct iproto_req *r);
 				     backtrace:NULL			\
 					format:(fmt), __VA_ARGS__]
 
-ENUM(error_codes, ERROR_CODES);
-extern char *error_codes_strs[];
-extern char *error_codes_desc_strs[];
+enum error_codes ENUM_INITIALIZER(ERROR_CODES);
