@@ -53,7 +53,7 @@
 	_(STALE, 0xfa)
 
 enum paxos_msg_code ENUM_INITIALIZER(PAXOS_CODE);
-const char *paxos_msg_code[] = ENUM_STR_INITIALISER(PAXOS_CODE);
+const char *paxos_msg_code[] = ENUM_STR_INITIALIZER(PAXOS_CODE);
 
 struct paxos_peer {
 	struct iproto_peer iproto;

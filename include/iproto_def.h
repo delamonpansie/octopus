@@ -100,9 +100,9 @@ union iproto_any_header {
 #  define ENUM_DEF(s, v, d...) s = v,
 #  define ENUM_INITIALIZER(define) { define(ENUM_DEF) }
 #endif
-#ifndef ENUM_STR_INITIALISER
+#ifndef ENUM_STR_INITIALIZER
 #  define ENUM_STR_DEF(s, v, d...) [s] = #s,
-#  define ENUM_STR_INITIALISER(define) { define(ENUM_STR_DEF) }
+#  define ENUM_STR_INITIALIZER(define) { define(ENUM_STR_DEF) }
 #endif
 
 extern void errcode_add_desc(u_int32_t errcode, char *desc);
