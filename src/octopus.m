@@ -471,7 +471,7 @@ octopus(int argc, char **argv)
 				       "=FILE|SCN", "cat xlog to stdout in readable format and exit"),
 			   gopt_option('F', GOPT_ARG, gopt_shorts(0), gopt_longs("fold"),
 				       "=SCN", "save snapshot at given SCN and exit"),
-			   gopt_option('I', 0, gopt_shorts(0),
+			   gopt_option('i', 0, gopt_shorts('i'),
 				       gopt_longs("init-storage"),
 				       NULL, "initialize storage (an empty snapshot file) and exit"),
 #endif
@@ -676,7 +676,7 @@ octopus(int argc, char **argv)
 	}
 
 #ifdef STORAGE
-	if (gopt(opt, 'I')) {
+	if (gopt(opt, 'i')) {
 		init_storage = true;
 		initialize_minimal();
 		fiber_init();
