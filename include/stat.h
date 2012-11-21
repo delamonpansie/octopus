@@ -30,6 +30,6 @@
 #include <third_party/luajit/src/lua.h>
 
 void stat_init(void);
-int stat_register(char **name, size_t count);
+int stat_register(const char **name, size_t count);
 void stat_collect(int base, int name, i64 value);
 void stat_print(struct lua_State *L, struct tbuf *buf);
