@@ -99,8 +99,6 @@ void   				map_free(struct memory_arena_pool_t *rap);
 #define	ERR_CODE_IS_FATAL(x)		((x) & FATAL_ERR_CODE_FLAG)
 #define ERR_CODE_IS_CLIENT(x)		((x) & LIBIPROTO_ERR_CODE_FLAG)
 
-void errcode_add_desc(u_int32_t errcode, char *desc);
-char* errcode_desc(u_int32_t errcode);
 
 /* client's error codes */
 
@@ -126,17 +124,13 @@ char* errcode_desc(u_int32_t errcode);
     _(ERR_CODE_REQUEST_READY,		((0x0a) << 16) | (LIBIPROTO_ERR_CODE_FLAG | 0x00), 			\
       					"request is ready")
 
-#define LIBIPROTOENUM_MEMBER(s, v, d...) s = v,
-#define LIBIPROTOENUM(enum_name, enum_members) enum enum_name {enum_members(LIBIPROTOENUM_MEMBER) enum_name##_MAX}
-#define LIBIPROTOENUM_DESCRIPTION(s, v, d...) errcode_add_desc((v), (d));
-#define LIBIPROTO_ADD_DESCRIPTION(enum_members) do { enum_members(LIBIPROTOENUM_DESCRIPTION) } while(0)
-#define LIBIPROTOENUM_DEFAULT_DESCRIPTION(s, v) errcode_add_desc((v), #s);
-#define LIBIPROTO_ADD_DEFAULT_DESCRIPTION(enum_members) do { enum_members(LIBIPROTOENUM_DEFAULT_DESCRIPTION) } while(0)
 
-LIBIPROTOENUM(libIPROTO_error_codes, LIBIPROTO_ERROR_CODES);
-
-#ifndef ERR_CODE_OK
-#define ERR_CODE_OK 0x00000000
+extern void errcode_add_desc(u_int32_t errcode, char *desc);
+extern char* errcode_desc(u_int32_t errcode);
+#ifndef ERRCODE_ADD
+#  define ERRCODE_DESCRIPTION(s, v, d ...) errcode_add_desc((v), (d));
+#  define ERRCODE_STRINGIFY(s, v) errcode_add_desc((v), #s);
+#  define ERRCODE_ADD(how, define) do { define(how) } while(0)
 #endif
 
 #define LIBIPROTO_OPT_NONE		0x00

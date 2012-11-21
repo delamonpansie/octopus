@@ -94,4 +94,23 @@ union iproto_any_header {
 	_(ERR_CODE_REDIRECT,              0x00004102, "redirect")	\
 	_(ERR_CODE_LEADER_UNKNOW,	  0x00004202, "leader unknown")
 
+
+/* Macros to define enum and corresponding strings. */
+#ifndef ENUM_INITIALIZER
+#  define ENUM_DEF(s, v, d...) s = v,
+#  define ENUM_INITIALIZER(define) { define(ENUM_DEF) }
+#endif
+#ifndef ENUM_STR_INITIALISER
+#  define ENUM_STR_DEF(s, v, d...) [s] = #s,
+#  define ENUM_STR_INITIALISER(define) { define(ENUM_STR_DEF) }
+#endif
+
+extern void errcode_add_desc(u_int32_t errcode, char *desc);
+extern char* errcode_desc(u_int32_t errcode);
+#ifndef ERRCODE_ADD
+#  define ERRCODE_DESCRIPTION(s, v, d ...) errcode_add_desc((v), (d));
+#  define ERRCODE_STRINGIFY(s, v) errcode_add_desc((v), #s);
+#  define ERRCODE_ADD(how, define) do { define(how) } while(0)
+#endif
+
 #endif

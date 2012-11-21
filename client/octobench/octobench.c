@@ -109,6 +109,8 @@ blrand_r(unsigned int *ctx)
 
 #include <client/libiproto/libiproto.h>
 #include <iproto_def.h>
+#define SUM_ERROR_CODES(x) LIBIPROTO_ERROR_CODES(x) ERROR_CODES(x)
+enum li_error_codes ENUM_INITIALIZER(SUM_ERROR_CODES);
 
 static u_int64_t	nWriteAhead = 10;
 static u_int64_t	nRequests = 1000;
@@ -457,7 +459,7 @@ main(int argc, char* argv[]) {
 	if (server==NULL || port <= 0)
 		usage("error: bad server address/port");
 
-	LIBIPROTO_ADD_DESCRIPTION(ERROR_CODES);
+	ERRCODE_ADD(ERRCODE_DESCRIPTION, ERROR_CODES);
 
 	gettimeofday(&begin,NULL);
 	pthread_mutex_lock(&mutex);

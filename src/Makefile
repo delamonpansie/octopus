@@ -20,6 +20,7 @@ obj += src/tbuf.o
 obj += src/util.o
 obj += src/assoc.o
 obj += src/octopus.o
+obj += src/errcode.o
 
 ifeq (1,$(HAVE_RAGEL))
 	dist-clean += src/admin.m
