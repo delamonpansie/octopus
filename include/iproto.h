@@ -78,7 +78,6 @@ void iproto_reply_reader(va_list ap);
 void req_collect_reply(struct conn *c, struct iproto *msg);
 void iproto_pinger(va_list ap);
 
-#define MAX_IPROTO_PEERS 7
 struct iproto_req {
 	const char *name;
 	u32 sync;
@@ -128,6 +127,4 @@ void req_release(struct iproto_req *r);
 				     backtrace:NULL			\
 					format:(fmt), __VA_ARGS__]
 
-ENUM(error_codes, ERROR_CODES);
-extern char *error_codes_strs[];
-extern char *error_codes_desc_strs[];
+enum error_codes ENUM_INITIALIZER(ERROR_CODES);

@@ -41,6 +41,9 @@ third_party/luajit/src/lj_folddef.h
 third_party/luajit/src/lj_libdef.h
 third_party/luajit/src/lj_recdef.h
 third_party/luajit/src/lj_vm.s
+third_party/luajit/src/host/buildvm
+third_party/luajit/src/host/buildvm_arch.h
+third_party/luajit/src/host/minilua
 
 # test
 test/var*/

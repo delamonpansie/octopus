@@ -57,7 +57,7 @@
 static struct service *box_primary, *box_secondary;
 
 static int stat_base;
-STRS(messages, MESSAGES);
+char * const ops[] = ENUM_STR_INITIALIZER(MESSAGES);
 
 const int MEMCACHED_OBJECT_SPACE = 23;
 
@@ -712,7 +712,7 @@ txn_commit(struct box_txn *txn)
 	stat_collect(stat_base, txn->op, 1);
 
 	say_debug("txn_commit(op:%s) run_crc_mod:0x%x",
-		  messages_strs[txn->op], recovery->run_crc_mod);
+		  ops[txn->op], recovery->run_crc_mod);
 
 	say_debug("%s: old_obj:refs=%i,%p obj:ref=%i,%p", __func__,
 		 txn->old_obj ? txn->old_obj->refs : 0, txn->old_obj,
@@ -722,7 +722,7 @@ txn_commit(struct box_txn *txn)
 void
 txn_abort(struct box_txn *txn)
 {
-	say_debug("box_rollback(op:%s)", messages_strs[txn->op]);
+	say_debug("box_rollback(op:%s)", ops[txn->op]);
 
 	if (txn->op == DELETE)
 		return;
@@ -881,7 +881,7 @@ box_process(struct conn *c, struct iproto *request, void *arg __attribute__((unu
 
 			stop = ev_now();
 			if (stop - start > cfg.too_long_threshold)
-				say_warn("too long %s: %.3f sec", messages_strs[txn.op], stop - start);
+				say_warn("too long %s: %.3f sec", ops[txn.op], stop - start);
 		}
 	}
 	@catch (Error *e) {
@@ -925,7 +925,7 @@ xlog_print(struct tbuf *out, struct tbuf *b)
 	switch (op) {
 	case INSERT:
 		n = read_u32(b);
-		tbuf_printf(out, "%s n:%i ", messages_strs[op], n);
+		tbuf_printf(out, "%s n:%i ", ops[op], n);
 		flags = read_u32(b);
 		cardinality = read_u32(b);
 		if (!valid_tuple(b, cardinality))
@@ -935,7 +935,7 @@ xlog_print(struct tbuf *out, struct tbuf *b)
 
 	case DELETE:
 		n = read_u32(b);
-		tbuf_printf(out, "%s n:%i ", messages_strs[op], n);
+		tbuf_printf(out, "%s n:%i ", ops[op], n);
 		key_len = read_u32(b);
 		key = read_field(b);
 		if (tbuf_len(b) != 0)
@@ -945,7 +945,7 @@ xlog_print(struct tbuf *out, struct tbuf *b)
 
 	case UPDATE_FIELDS:
 		n = read_u32(b);
-		tbuf_printf(out, "%s n:%i ", messages_strs[op], n);
+		tbuf_printf(out, "%s n:%i ", ops[op], n);
 		flags = read_u32(b);
 		key_len = read_u32(b);
 		key = read_field(b);
@@ -1375,7 +1375,7 @@ static void init_second_stage(va_list ap __attribute__((unused)));
 static void
 init(void)
 {
-	stat_base = stat_register(messages_strs, messages_MAX);
+	stat_base = stat_register(ops, nelem(ops));
 
 	object_space_registry = calloc(object_space_count, sizeof(struct object_space));
 	for (int i = 0; i < object_space_count; i++)

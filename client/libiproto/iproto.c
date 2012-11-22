@@ -47,6 +47,9 @@
 #include <third_party/queue.h>
 #include <iproto_def.h>
 
+#define SUM_ERROR_CODES(x) LIBIPROTO_ERROR_CODES(x) ERROR_CODES(x)
+enum li_error_codes ENUM_INITIALIZER(SUM_ERROR_CODES);
+
 #ifndef offsetof
 #define offsetof(type, field)   ((int) (uintptr_t)&((type *)0)->field)
 #endif   /* offsetof */

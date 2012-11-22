@@ -109,9 +109,11 @@ blrand_r(unsigned int *ctx)
 
 #include <client/libiproto/libiproto.h>
 #include <iproto_def.h>
+#define SUM_ERROR_CODES(x) LIBIPROTO_ERROR_CODES(x) ERROR_CODES(x)
+enum li_error_codes ENUM_INITIALIZER(SUM_ERROR_CODES);
 
-static u_int64_t	nReqInPacket = 10;
-static u_int64_t	nPackets = 1000;
+static u_int64_t	nWriteAhead = 10;
+static u_int64_t	nRequests = 1000;
 static u_int64_t	nActiveConnections = 10;
 static u_int64_t	nConnections = 10;
 static u_int64_t	nSuccess = 0;
@@ -267,7 +269,6 @@ worker(void *arg) {
 	int				fd;
 	u_int32_t			nSended = 0, nOk = 0, nGet = 0;
 	bool				needToSend = false;
-	int				nRequests = nReqInPacket * nPackets;
 	AllocatedRequestBody		*stack = NULL;
 	size_t				size;
 	u_int32_t			flags = LIBIPROTO_OPT_NONBLOCK;
@@ -331,10 +332,10 @@ worker(void *arg) {
 		}
 
 		if (state & POLLOUT) {
-			if (nOk < nRequests && (nGet + 4 * nReqInPacket) > nSended) {
+			while (nOk < nRequests && (nGet + nWriteAhead) > nSended) {
 				int i;
 
-				for(i=0; i<nReqInPacket; i++) {
+				for(i=0; i<nWriteAhead >> 2; i++) {
 					void	*body;
 					size_t	size;
 
@@ -342,7 +343,7 @@ worker(void *arg) {
 					li_req_init(conn, messageType, body, size);
 				}
 
-				nSended += nReqInPacket;
+				nSended += nWriteAhead >> 2;
 
 				needToSend = true;
 			}
@@ -377,12 +378,12 @@ static void
 usage(const char *errmsg) {
 	/*    ################################################################################ */
 	puts("octobench -s HOST -p PORT");
-	puts("   [-n NPACKETS] [-m NREQUESTS_IN_PACKETS] [-c NCONNECTION]");
+	puts("   [-n NREQUESTS] [-w NWRITE_AHEAD_REQUESTS] [-c NCONNECTION]");
 	puts("   [-t (ping|box_insert|box_select)]");
 	puts("   [-i MINID] [-I MAXID] -- min/max random id");
 	puts("   [-F]                  -- ignore fatal error from db");
 	puts("Defaults:");
-	printf("    -n %"PRIu64" -m %"PRIu64" -c %"PRIu64"\n    -t ping", nPackets, nReqInPacket, nConnections);
+	printf("    -n %"PRIu64" -w %"PRIu64" -c %"PRIu64"\n    -t ping", nRequests, nWriteAhead, nConnections);
 	printf("    -i %u -I %u\n", minId, maxId);
 	if (errmsg) {
 		puts("");
@@ -410,7 +411,7 @@ main(int argc, char* argv[]) {
 
 	nConnections = nActiveConnections;
 
-	while((i=getopt(argc,argv,"s:p:n:m:c:t:Fi:I:h")) != EOF) {
+	while((i=getopt(argc,argv,"s:p:n:w:c:t:Fi:I:h")) != EOF) {
 		switch(i) {
 			case 's':
 				server = strdup(optarg);
@@ -418,11 +419,11 @@ main(int argc, char* argv[]) {
 			case 'p':
 				port = atoi(optarg);
 				break;
-			case 'm':
-				nReqInPacket = atoi(optarg);
+			case 'w':
+				nWriteAhead = atoi(optarg);
 				break;
 			case 'n':
-				nPackets = atoi(optarg);
+				nRequests = atoi(optarg);
 				break;
 			case 'c':
 				nActiveConnections = nConnections = atoi(optarg);
@@ -458,7 +459,7 @@ main(int argc, char* argv[]) {
 	if (server==NULL || port <= 0)
 		usage("error: bad server address/port");
 
-	LIBIPROTO_ADD_DESCRIPTION(ERROR_CODES);
+	ERRCODE_ADD(ERRCODE_DESCRIPTION, ERROR_CODES);
 
 	gettimeofday(&begin,NULL);
 	pthread_mutex_lock(&mutex);
