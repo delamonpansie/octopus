@@ -89,6 +89,8 @@ struct conn {
 	ev_io in, out;
 	struct service *service;
 	char peer_name[22]; /* aaa.bbb.ccc.ddd:xxxxx */
+
+	ev_timer 	timer;
 };
 
 struct service {
@@ -127,6 +129,17 @@ ssize_t conn_flush(struct conn *c);
 char *conn_peer_name(struct conn *c);
 
 void service_output_flusher(va_list ap __attribute__((unused)));
+
+enum tac_state {
+	tac_ok = 0,
+	tac_error,
+	tac_wait
+};
+enum tac_state  tcp_async_connect(struct conn *c, ev_watcher *w,
+				struct sockaddr_in 	*dst,
+				struct sockaddr_in 	*src,
+				ev_tstamp		timeout);
+
 int tcp_connect(struct sockaddr_in *dst, struct sockaddr_in *src, ev_tstamp timeout);
 void tcp_server(va_list ap);
 void udp_server(va_list ap);
