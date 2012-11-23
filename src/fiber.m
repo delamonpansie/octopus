@@ -71,19 +71,26 @@ static struct mhash_t *fibers_registry;
 
 TAILQ_HEAD(, fiber) wake_list;
 
+#ifdef FIBER_DEBUG
+void
+fiber_ev_cb(void *arg)
+{
+	say_debug("%s: =<< arg:%p", __func__, arg);
+}
+#endif
+
 void
 resume(struct fiber *callee, void *w)
 {
 	assert(callee != &sched);
 	struct fiber *caller = fiber;
-	callee->caller = caller;
-	assert(callee->name);
-	fiber = callee;
-	callee->coro.w = w;
 #ifdef FIBER_DEBUG
 	say_debug("%s: %i/%s -> %i/%s arg:%p", __func__,
 		  caller->fid, caller->name, callee->fid, callee->name, w);
 #endif
+	callee->caller = caller;
+	fiber = callee;
+	callee->coro.w = w;
 	coro_transfer(&caller->coro.ctx, &callee->coro.ctx);
 	callee->caller = &sched;
 }
@@ -92,8 +99,17 @@ void *
 yield(void)
 {
 	struct fiber *callee = fiber;
+#ifdef FIBER_DEBUG
+	say_debug("%s: %i/%s -> %i/%s", __func__,
+		  callee->fid, callee->name,
+		  callee->caller->fid, callee->caller->name);
+#endif
 	fiber = callee->caller;
 	coro_transfer(&callee->coro.ctx, &callee->caller->coro.ctx);
+#ifdef FIBER_DEBUG
+	say_debug("%s: return arg:%p", __func__, fiber->coro.w);
+#endif
+
 	return fiber->coro.w;
 }
 
