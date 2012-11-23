@@ -545,12 +545,11 @@ service_output_flusher(va_list ap __attribute__((unused)))
 	for (;;) {
 		struct conn *c = ((struct ev_watcher *)yield())->data;
 		ssize_t r = conn_write_netmsg(c);
-		if (r <= 0) {
-			if (r < 0)
-				conn_close(c);
-			else
-				ev_io_stop(&c->out);
-		}
+		if (r < 0)
+			conn_close(c);
+
+		if (TAILQ_EMPTY(&c->out_messages.q))
+			ev_io_stop(&c->out);
 
 		if ((tbuf_len(c->rbuf) < cfg.input_low_watermark || c->state == READING) &&
 		    c->out_messages.bytes < cfg.output_low_watermark &&
