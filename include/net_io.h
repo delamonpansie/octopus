@@ -133,7 +133,8 @@ void service_output_flusher(va_list ap __attribute__((unused)));
 enum tac_state {
 	tac_ok = 0,
 	tac_error,
-	tac_wait
+	tac_wait,
+	tac_alien_event
 };
 enum tac_state  tcp_async_connect(struct conn *c, ev_watcher *w,
 				struct sockaddr_in 	*dst,

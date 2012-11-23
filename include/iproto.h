@@ -66,6 +66,10 @@ struct iproto_peer {
 	const char *name;
 	struct sockaddr_in addr;
 	bool connect_err_said;
+
+	/* support tcp_async_connect in iproto_rendevouz */
+	bool in_connect;
+	ev_tstamp last_connect_try;	
 };
 SLIST_HEAD(iproto_group, iproto_peer);
 

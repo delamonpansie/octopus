@@ -561,7 +561,8 @@ enum tac_state
 tcp_async_connect(struct conn *c, ev_watcher *w /* result of yield() */,
 		  struct sockaddr_in      *dst,
 		  struct sockaddr_in      *src,
-		  ev_tstamp               timeout) {
+		  ev_tstamp               timeout)
+{
 	if (w == NULL) {
 		/* init */
 		int	optval = 1;
@@ -619,11 +620,8 @@ tcp_async_connect(struct conn *c, ev_watcher *w /* result of yield() */,
 			goto error;
 		}
 
-		assert(w == (ev_watcher *)&c->out);
-		//
-		//if (w != (ev_watcher *)&c->out)
-		//	/* not our event */
-		//	break;
+		if (w != (ev_watcher *)&c->out)
+			return tac_alien_event;
 
 		ev_timer_stop(&c->timer);
 		ev_io_stop(&c->out);
@@ -660,6 +658,7 @@ tcp_connect(struct sockaddr_in *dst, struct sockaddr_in *src, ev_tstamp timeout)
 				break;
 			case tac_error:
 				return -1;
+			case tac_alien_event:
 			default:
 				abort();
 		}

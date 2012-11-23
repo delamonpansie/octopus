@@ -399,34 +399,80 @@ iproto_reply_reader(va_list ap)
 void
 iproto_rendevouz(va_list ap)
 {
-	struct sockaddr_in *self_addr = va_arg(ap, struct sockaddr_in *);
-	struct iproto_group *group = va_arg(ap, struct iproto_group *);
-	struct palloc_pool *pool = va_arg(ap, struct palloc_pool *);
-	struct fiber *in = va_arg(ap, struct fiber *);
-	struct fiber *out = va_arg(ap, struct fiber *);
-	struct iproto_peer *p;
+	struct sockaddr_in 	*self_addr = va_arg(ap, struct sockaddr_in *);
+	struct iproto_group 	*group = va_arg(ap, struct iproto_group *);
+	struct palloc_pool 	*pool = va_arg(ap, struct palloc_pool *);
+	struct fiber 		*in = va_arg(ap, struct fiber *);
+	struct fiber 		*out = va_arg(ap, struct fiber *);
+	struct iproto_peer 	*p;
+	ev_watcher		*w = NULL;
+	ev_timer		timer = { .coro=1 };
+	int			ev_own_counter = 1;
+
+	/* some warranty to be correctly initialized */
+	SLIST_FOREACH(p, group, link) {
+		p->in_connect = false;
+		p->last_connect_try = 0;
+		p->c.fd = -1;
+	}
+
+	ev_timer_init(&timer, (void *)fiber, 1.0, 0.);
 
 loop:
 	SLIST_FOREACH(p, group, link) {
-		if (p->c.fd > 0)
+		enum tac_state	r;
+
+		if (p->c.fd >= 0 && p->in_connect == false)
 			continue;
 
-		int fd = tcp_connect(&p->addr, self_addr, 5);
-		assert(p->c.fd < 0);
+		if (p->in_connect == false) {
+			assert(p->c.fd < 0);
+			if (ev_now() - p->last_connect_try <= 1.0 /* no more then one reconnect in second */)
+				continue;
+			p->last_connect_try = ev_now();
+		}
 
-		if (fd > 0) {
-			conn_init(&p->c, pool, fd, in, out, REF_STATIC);
-			ev_io_start(&p->c.in);
-			say_info("connected to %s/%s", p->name, sintoa(&p->addr));
-			p->connect_err_said = false;
-		} else {
-			if (!p->connect_err_said)
-				say_syserror("connect to %s/%s failed", p->name, sintoa(&p->addr));
-			p->connect_err_said = true;
+		r = tcp_async_connect(&p->c, 
+				      (p->in_connect) ? w : NULL, /* NULL means initial state for tcp_async_connect */
+				      &p->addr, self_addr, 5);
+
+		switch(r) {
+			case tac_wait:
+				ev_own_counter++;
+				p->in_connect = true;
+				break; /* wait for event */
+			case tac_error:
+				ev_own_counter++;
+				p->in_connect = false;
+				p->c.fd = -1;
+				if (!p->connect_err_said)
+					say_syserror("connect to %s/%s failed", p->name, sintoa(&p->addr));
+				p->connect_err_said = true;
+				break;
+			case tac_ok:
+				ev_own_counter++;
+				p->in_connect = false;
+				conn_init(&p->c, pool, p->c.fd, in, out, REF_STATIC);
+				ev_io_start(&p->c.in);
+				say_info("connected to %s/%s", p->name, sintoa(&p->addr));
+				p->connect_err_said = false;
+				break;
+			case tac_alien_event:
+				break;
+			default:
+				abort();
 		}
 	}
 
-	fiber_sleep(1); /* no more then one reconnect in second */
+	assert(ev_own_counter > 0);
+	ev_timer_stop(&timer);
+	ev_timer_init(&timer, (void *)fiber, 1.0, 0.);
+	ev_timer_start(&timer);
+	w = yield();
+	ev_timer_stop(&timer);
+
+	ev_own_counter = (w == (ev_watcher*)&timer) ? 1 : 0;
+
 	goto loop;
 }
 
