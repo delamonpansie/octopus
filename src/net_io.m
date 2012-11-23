@@ -800,7 +800,6 @@ input_reader(va_list ap)
 	ssize_t r;
 
 	say_info("input reader for service %s started", service->name);
-	yield();
 loop:
 	w = yield();
 	c = w->data;
