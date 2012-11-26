@@ -109,19 +109,19 @@ void   				map_free(struct memory_arena_pool_t *rap);
       					"connection error")    							\
     _(ERR_CODE_PROTO_ERR,		((0x03) << 16) | (LIBIPROTO_ERR_CODE_FLAG | FATAL_ERR_CODE_FLAG), 	\
       					"protocol error")    							\
-    _(ERR_CODE_NOTHING_TO_DO,		((0x04) << 16) | (LIBIPROTO_ERR_CODE_FLAG | LIBIPROTO_ERR_CODE_FLAG), 	\
+    _(ERR_CODE_NOTHING_TO_DO,		((0x04) << 16) | LIBIPROTO_ERR_CODE_FLAG, 				\
       					"nothing to do")    							\
-    _(ERR_CODE_ALREADY_CONNECTED,	((0x05) << 16) | (LIBIPROTO_ERR_CODE_FLAG | LIBIPROTO_ERR_CODE_FLAG), 	\
+    _(ERR_CODE_ALREADY_CONNECTED,	((0x05) << 16) | LIBIPROTO_ERR_CODE_FLAG, 				\
       					"already connected")    						\
-    _(ERR_CODE_CONNECT_IN_PROGRESS,	((0x06) << 16) | (LIBIPROTO_ERR_CODE_FLAG | LIBIPROTO_ERR_CODE_FLAG), 	\
+    _(ERR_CODE_CONNECT_IN_PROGRESS,	((0x06) << 16) | LIBIPROTO_ERR_CODE_FLAG, 				\
       					"connect is in progress")    						\
-    _(ERR_CODE_REQUEST_IN_PROGRESS,	((0x07) << 16) | (LIBIPROTO_ERR_CODE_FLAG | LIBIPROTO_ERR_CODE_FLAG), 	\
+    _(ERR_CODE_REQUEST_IN_PROGRESS,	((0x07) << 16) | LIBIPROTO_ERR_CODE_FLAG, 				\
       					"request is in progress")    						\
-    _(ERR_CODE_REQUEST_IN_SEND,		((0x08) << 16) | (LIBIPROTO_ERR_CODE_FLAG | LIBIPROTO_ERR_CODE_FLAG), 	\
+    _(ERR_CODE_REQUEST_IN_SEND,		((0x08) << 16) | LIBIPROTO_ERR_CODE_FLAG, 				\
       					"request is in sending")    						\
-    _(ERR_CODE_REQUEST_IN_RECV,		((0x09) << 16) | (LIBIPROTO_ERR_CODE_FLAG | LIBIPROTO_ERR_CODE_FLAG), 	\
+    _(ERR_CODE_REQUEST_IN_RECV,		((0x09) << 16) | LIBIPROTO_ERR_CODE_FLAG, 				\
       					"request is on recieving")    						\
-    _(ERR_CODE_REQUEST_READY,		((0x0a) << 16) | (LIBIPROTO_ERR_CODE_FLAG | 0x00), 			\
+    _(ERR_CODE_REQUEST_READY,		((0x0a) << 16) | LIBIPROTO_ERR_CODE_FLAG, 				\
       					"request is ready")
 
 
