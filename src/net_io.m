@@ -558,74 +558,115 @@ service_output_flusher(va_list ap __attribute__((unused)))
 	}
 }
 
-int
-tcp_connect(struct sockaddr_in *dst, struct sockaddr_in *src, ev_tstamp timeout)
+enum tac_state
+tcp_async_connect(struct conn *c, ev_watcher *w /* result of yield() */,
+		  struct sockaddr_in      *dst,
+		  struct sockaddr_in      *src,
+		  ev_tstamp               timeout)
 {
-	int fd = -1, optval = 1;
-	socklen_t optlen = sizeof(optval);
-	ev_io io = { .coro = 1 };
-	ev_timer timer = { .coro = 1 };
-	ev_watcher *w;
+	if (w == NULL) {
+		/* init */
+		int	optval = 1;
 
-	fd = socket(AF_INET, SOCK_STREAM, 0);
-	if (fd < 0) {
-		say_syserror("socket");
-		goto error;
-	}
+		c->fd = -1;
+		c->out.coro = 1;
+		c->timer.coro = 1;
 
-	if (ioctl(fd, FIONBIO, &optval) < 0) {
-		say_syserror("ioctl");
-		goto error;
-	}
+		c->fd = socket(AF_INET, SOCK_STREAM, 0);
+		if (c->fd < 0) {
+			say_syserror("socket");
+			goto error;
+		}
 
-	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) == -1 ||
-	    setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval)) == -1) {
-		say_syserror("setsockopt");
-		goto error;
-	}
+		if (ioctl(c->fd, FIONBIO, &optval) < 0) {
+			say_syserror("ioctl");
+			goto error;
+		}
 
-	if (src) {
-		if (bind(fd, (struct sockaddr *)src, sizeof(*src)) < 0) {
-			say_syserror("bind(%s)", sintoa(src));
+		if (setsockopt(c->fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) == -1 ||
+		    setsockopt(c->fd, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval)) == -1) {
+			say_syserror("setsockopt");
+			goto error;
+		}
+
+		if (src) {
+			if (bind(c->fd, (struct sockaddr *)src, sizeof(*src)) < 0) {
+				say_syserror("bind(%s)", sintoa(src));
+				goto error;
+			}
+		}
+
+		if (setsockopt(c->fd, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval)) < 0)
+			say_syserror("setsockopt(SO_KEEPALIVE)");
+
+		if (connect(c->fd, (struct sockaddr *)dst, sizeof(*dst)) < 0) {
+			if (errno != EINPROGRESS)
+				goto error;
+		}
+
+		ev_io_init(&c->out, (void *)fiber, c->fd, EV_WRITE);
+		ev_timer_init(&c->timer, (void *)fiber, timeout, 0.);
+		if (timeout > 0)
+			ev_timer_start(&c->timer);
+		ev_io_start(&c->out);
+
+		return tac_wait;
+	} else {
+		int		optval = 1;
+		socklen_t 	optlen = sizeof(optval);
+
+		if (w == (ev_watcher *)&c->timer) {
+			ev_timer_stop(&c->timer);
+			ev_io_stop(&c->out);
+			goto error;
+		}
+
+		if (w != (ev_watcher *)&c->out)
+			return tac_alien_event;
+
+		ev_timer_stop(&c->timer);
+		ev_io_stop(&c->out);
+
+		if (getsockopt(c->fd, SOL_SOCKET, SO_ERROR, &optval, &optlen) < 0)
+			goto error;
+
+		if (optval != 0) {
+			errno = optval;
 			goto error;
 		}
 	}
 
-	if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval)) < 0)
-		say_syserror("setsockopt(SO_KEEPALIVE)");
-
-	if (connect(fd, (struct sockaddr *)dst, sizeof(*dst)) < 0) {
-		if (errno != EINPROGRESS)
-			goto error;
-	}
-
-	ev_io_init(&io, (void *)fiber, fd, EV_WRITE);
-	ev_timer_init(&timer, (void *)fiber, timeout, 0.);
-	if (timeout > 0)
-		ev_timer_start(&timer);
-
-	ev_io_start(&io);
-	w = yield();
-	ev_timer_stop(&timer);
-	ev_io_stop(&io);
-
-	if (w == (ev_watcher *)&timer)
-		goto error;
-
-	if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &optval, &optlen) < 0)
-		goto error;
-
-	if (optval != 0) {
-		errno = optval;
-		goto error;
-	}
-
-	return fd;
+	return tac_ok;
       error:
-	close(fd);
-	return -1;
+	close(c->fd);
+	c->fd = -1;
+
+	return tac_error;
 }
 
+int
+tcp_connect(struct sockaddr_in *dst, struct sockaddr_in *src, ev_tstamp timeout) {
+	struct 		conn			c;
+	ev_watcher 				*w = NULL;
+	int					fd;
+
+	for(;;) {
+		switch(tcp_async_connect(&c, w, dst, src, timeout)) {
+			case tac_ok:
+				return c.fd;
+			case tac_wait:
+				w = yield();
+				break;
+			case tac_error:
+				return -1;
+			case tac_alien_event:
+			default:
+				abort();
+		}
+	}
+
+	return fd;	
+}
 
 struct sockaddr_in *
 sinany(struct sockaddr_in *sin, int port)
