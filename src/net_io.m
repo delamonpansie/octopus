@@ -258,16 +258,18 @@ netmsg_verify_ownership(struct netmsg_head *h)
 ssize_t
 conn_write_netmsg(struct conn *c)
 {
+	struct netmsg_head *head = &c->out_messages;
 	struct netmsg *m;
 	ssize_t ret = 0;
 restart:
-	m = TAILQ_FIRST(&c->out_messages.q);
+	m = TAILQ_FIRST(&head->q);
 	if (m == NULL)
 		return ret;
 
 	struct iovec *iov = m->iov + m->offset;
 	unsigned iov_cnt = m->count - m->offset;
 	ssize_t r = 0;
+
 	while (iov_cnt > 0) {
 		r = writev(c->fd, iov, iov_cnt);
 		if (unlikely(r < 0)) {
@@ -281,10 +283,10 @@ restart:
 				ret = r;
 			break;
 		};
-		m->head->bytes -= r;
+		head->bytes -= r;
 		ret += r;
 
-		while (iov_cnt > 0) {
+		do {
 			if (iov->iov_len > r) {
 				iov->iov_base += r;
 				iov->iov_len -= r;
@@ -294,7 +296,7 @@ restart:
 				iov++;
 				iov_cnt--;
 			}
-		}
+		} while (iov_cnt > 0);
 	};
 
 #ifdef NET_IO_TIMESTAMPS
@@ -324,7 +326,7 @@ conn_flush(struct conn *c)
 	} while (conn_write_netmsg(c) > 0);
 	ev_io_stop(&c->out);
 
-	return TAILQ_EMPTY(&(c->out_messages.q))  ? 0 : -1;
+	return TAILQ_EMPTY(&c->out_messages.q) ? 0 : -1;
 }
 
 void
@@ -543,12 +545,11 @@ service_output_flusher(va_list ap __attribute__((unused)))
 	for (;;) {
 		struct conn *c = ((struct ev_watcher *)yield())->data;
 		ssize_t r = conn_write_netmsg(c);
-		if (r <= 0) {
-			if (r < 0)
-				conn_close(c);
-			else
-				ev_io_stop(&c->out);
-		}
+		if (r < 0)
+			conn_close(c);
+
+		if (TAILQ_EMPTY(&c->out_messages.q))
+			ev_io_stop(&c->out);
 
 		if ((tbuf_len(c->rbuf) < cfg.input_low_watermark || c->state == READING) &&
 		    c->out_messages.bytes < cfg.output_low_watermark &&
@@ -841,7 +842,6 @@ input_reader(va_list ap)
 	ssize_t r;
 
 	say_info("input reader for service %s started", service->name);
-	yield();
 loop:
 	w = yield();
 	c = w->data;
