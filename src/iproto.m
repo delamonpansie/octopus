@@ -69,6 +69,142 @@ iproto_parse(struct tbuf *in)
 	return tbuf_split(in, sizeof(struct iproto) + iproto(in)->data_len);
 }
 
+struct worker_arg {
+	void (*cb)(struct conn *c, struct iproto *);
+	struct iproto *r;
+	struct conn *c;
+};
+
+void
+iproto_worker(va_list ap)
+{
+	struct service *service = va_arg(ap, typeof(service));
+	struct worker_arg a;
+
+	for (;;) {
+		SLIST_INSERT_HEAD(&service->workers, fiber, worker_link);
+		memcpy(&a, yield(), sizeof(a));
+
+		a.c->ref++;
+		a.cb(a.c, a.r);
+		a.c->ref--;
+
+		if (a.c->state == CLOSED)
+			/* connection is already closed by other fiber */
+			conn_close(a.c);
+
+		if (!TAILQ_EMPTY(&a.c->out_messages.q))
+			ev_io_start(&a.c->out);
+	}
+}
+
+
+static void
+err(struct conn *c, struct iproto *r)
+{
+	(void)c;
+	iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "unknown iproto command %i", r->msg_code);
+}
+
+static void
+iproto_ping(struct conn *c, struct iproto *r)
+{
+	if (r->msg_code != msg_ping)
+		err(c, r);
+
+	struct netmsg *m = netmsg_tail(&c->out_messages);
+	net_add_iov_dup(&m, r, sizeof(struct iproto));
+}
+
+void
+service_register_iproto(struct service *s, u32 cmd,
+			void (*cb)(struct conn *, struct iproto *), int flags)
+{
+	s->ih[cmd & 0xff].cb = cb;
+	s->ih[cmd & 0xff].flags = flags;
+}
+
+void
+service_iproto(struct service *s)
+{
+	for (int i = 0; i < 256; i++) {
+		s->ih->cb = err;
+		s->ih->flags = 0;
+	}
+	service_register_iproto(s, msg_ping, iproto_ping, IPROTO_NONBLOCK);
+}
+
+void box_cb(struct conn *c, struct iproto *request);
+
+void
+iproto_wakeup_workers(ev_prepare *ev)
+{
+	struct service *service = (void *)ev - offsetof(struct service, wakeup);
+	struct conn *c = TAILQ_FIRST(&service->processing),
+		 *last = TAILQ_LAST(&service->processing, conn_tailq);
+
+loop:
+	if (c == NULL)
+		return;
+
+next_req:
+
+	if (tbuf_len(c->rbuf) >= sizeof(struct iproto) &&
+	    tbuf_len(c->rbuf) >= sizeof(struct iproto) + iproto(c->rbuf)->data_len)
+	{
+		struct iproto *request = iproto(c->rbuf);
+		struct iproto_handler *ih = &service->ih[request->msg_code & 0xff];
+
+		if (ih->flags & IPROTO_NONBLOCK) {
+			tbuf_ltrim(c->rbuf, sizeof(struct iproto) + request->data_len);
+			ih->cb(c, request);
+			goto next_req; /* unfair but fast */
+		}
+		struct fiber *w = SLIST_FIRST(&service->workers);
+		if (w) {
+			tbuf_ltrim(c->rbuf, sizeof(struct iproto) + request->data_len);
+			SLIST_REMOVE_HEAD(&service->workers, worker_link);
+			TAILQ_REMOVE(&service->processing, c, processing_link);
+			c->ref++;
+			resume(w, &(struct worker_arg){ih->cb, request, c});
+			c->ref--;
+			if (c->state == CLOSED) {
+				struct conn *next = TAILQ_NEXT(c, processing_link);
+				conn_close(c);
+				c = next;
+				goto loop;
+			}
+			TAILQ_INSERT_TAIL(&service->processing, c, processing_link);
+		}
+	} else {
+		TAILQ_REMOVE(&service->processing, c, processing_link);
+		c->state = READING;
+	}
+
+	/* Prevent output owerflow by start reading if
+	   output size is below output_low_watermark.
+	   Otherwise output flusher will start reading,
+	   when size of output is small enougth  */
+	if (c->out_messages.bytes < cfg.output_low_watermark)
+		ev_io_start(&c->in);
+
+	if (!TAILQ_EMPTY(&c->out_messages.q)) {
+		ev_io_start(&c->out);
+		if (c->out_messages.bytes >= cfg.output_high_watermark)
+			ev_io_stop(&c->in);
+	}
+
+	if (palloc_allocated(service->pool) > 64 * 1024 * 1024) /* FIXME: do it after change of that size */
+		palloc_gc(service->pool);
+
+	if (c == last) {
+		return;
+	} else {
+		c = TAILQ_NEXT(c, processing_link);
+		goto loop;
+	}
+}
+
 
 void
 iproto_interact(va_list ap)

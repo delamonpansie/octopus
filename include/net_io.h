@@ -93,14 +93,22 @@ struct conn {
 	ev_timer 	timer;
 };
 
+enum { IPROTO_NONBLOCK = 1 };
+struct iproto;
+struct iproto_handler {
+	void (*cb)(struct conn *, struct iproto *);
+	int flags;
+};
+
 struct service {
 	struct palloc_pool *pool;
 	const char *name;
-	TAILQ_HEAD(, conn) processing;
+	TAILQ_HEAD(conn_tailq, conn) processing;
 	LIST_HEAD(, conn) conn;
 	struct fiber *acceptor, *input_reader, *output_flusher;
 	SLIST_HEAD(, fiber) workers; /* <- handlers */
 	ev_prepare wakeup;
+	struct iproto_handler ih[256];
 };
 
 struct netmsg *netmsg_tail(struct netmsg_head *h);
@@ -147,7 +155,9 @@ void udp_server(va_list ap);
 int server_socket(int type, struct sockaddr_in *src, int nonblock,
 		  void (*on_bind)(int fd), void (*sleep)(ev_tstamp tm));
 
-struct service *tcp_service(u16 port, void (*on_bind)(int fd));
+struct service *tcp_service(u16 port, void (*on_bind)(int fd), void (*wakeup)(ev_prepare *));
+void wakeup_workers(ev_prepare *ev);
+void iproto_wakeup_workers(ev_prepare *ev);
 
 int atosin(const char *orig, struct sockaddr_in *addr);
 const char *sintoa(const struct sockaddr_in *addr);

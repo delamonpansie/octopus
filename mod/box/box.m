@@ -904,6 +904,12 @@ box_process(struct conn *c, struct iproto *request, void *arg __attribute__((unu
 	}
 }
 
+void
+box_cb(struct conn *c, struct iproto *request)
+{
+	box_process(c, request, NULL);
+}
+
 static void
 xlog_print(struct tbuf *out, struct tbuf *b)
 {
@@ -1183,21 +1189,41 @@ box_bound_to_primary(int fd)
 	}
 }
 
+void
+service_iproto(struct service *s);
+
+static void
+box_service_register(struct service *s)
+{
+	service_iproto(s);
+
+	service_register_iproto(s, NOP, box_cb, IPROTO_NONBLOCK);
+	service_register_iproto(s, SELECT, box_cb, IPROTO_NONBLOCK);
+	service_register_iproto(s, SELECT_LIMIT, box_cb, IPROTO_NONBLOCK);
+	service_register_iproto(s, SELECT_LIMIT, box_cb, IPROTO_NONBLOCK);
+	service_register_iproto(s, INSERT, box_cb, 0);
+	service_register_iproto(s, UPDATE_FIELDS, box_cb, 0);
+	service_register_iproto(s, DELETE, box_cb, 0);
+	service_register_iproto(s, EXEC_LUA, box_cb, 0);
+}
+
 static void
 initialize_service()
 {
 	if (cfg.memcached != 0) {
 		memcached_init();
 	} else {
-		box_primary = tcp_service(cfg.primary_port, box_bound_to_primary);
-		for (int i = 0; i < cfg.wal_writer_inbox_size - 2; i++)
-			fiber_create("box_worker", iproto_interact, box_primary, box_process, NULL);
+		box_primary = tcp_service(cfg.primary_port, box_bound_to_primary, iproto_wakeup_workers);
+		box_service_register(box_primary);
+
+		for (int i = 0; i < cfg.wal_writer_inbox_size; i++)
+			fiber_create("box_worker", iproto_worker, box_primary);
 
 		if (cfg.secondary_port > 0) {
-			box_secondary = tcp_service(cfg.secondary_port, NULL);
-			fiber_create("box_secondary_worker", iproto_interact, box_secondary, box_process);
+			box_secondary = tcp_service(cfg.secondary_port, NULL, wakeup_workers);
+			box_service_register(box_secondary);
+			fiber_create("box_secondary_worker", iproto_worker, box_secondary);
 		}
-
 		say_info("(silver)box initialized (%i workers)", cfg.wal_writer_inbox_size);
 	}
 }

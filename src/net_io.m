@@ -869,7 +869,7 @@ loop:
 	goto loop;
 }
 
-static void
+void
 wakeup_workers(ev_prepare *ev)
 {
 	struct service *service = (void *)ev - offsetof(struct service, wakeup);
@@ -908,7 +908,7 @@ accept_client(int fd, void *data)
 }
 
 struct service *
-tcp_service(u16 port, void (*on_bind)(int fd))
+tcp_service(u16 port, void (*on_bind)(int fd), void (*wakeup_workers)(ev_prepare *))
 {
 	struct service *service = calloc(1, sizeof(*service));
 	char *name = malloc(13);  /* strlen("iproto:xxxxx") */

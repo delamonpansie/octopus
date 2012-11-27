@@ -985,7 +985,7 @@ snap_io_rate_limit:(int)snap_io_rate_limit_
 
 	short accept_port;
 	accept_port = ntohs(paxos_peer(self, self_id)->iproto.addr.sin_port);
-	input_service = tcp_service(accept_port, NULL);
+	input_service = tcp_service(accept_port, NULL, wakeup_workers);
 	fiber_create("paxos/worker", iproto_interact, input_service, recv_msg, self);
 	fiber_create("paxos/rendevouz", iproto_rendevouz, NULL, &remotes, pool, reply_reader, output_flusher);
 	fiber_create("paxos/elect", propose_leadership, self);
