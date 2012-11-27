@@ -32,6 +32,7 @@
 #import <say.h>
 #import <assoc.h>
 #import <salloc.h>
+#import <index.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -70,7 +71,7 @@ iproto_parse(struct tbuf *in)
 }
 
 struct worker_arg {
-	void (*cb)(struct conn *c, struct iproto *);
+	struct netmsg_head * (*cb)(struct conn *c, struct iproto *);
 	struct iproto *r;
 	struct conn *c;
 };
@@ -86,7 +87,25 @@ iproto_worker(va_list ap)
 		memcpy(&a, yield(), sizeof(a));
 
 		a.c->ref++;
-		a.cb(a.c, a.r);
+
+		@try {
+			struct netmsg_head *reply = a.cb(a.c, a.r);
+			netmsg_concat(&a.c->out_messages, reply);
+		}
+		@catch (Error *e) {
+			u32 rc = ERR_CODE_UNKNOWN_ERROR;
+			if ([e respondsTo:@selector(code)])
+				rc = [(id)e code];
+			else if ([e isMemberOf:[IndexError class]])
+				rc = ERR_CODE_ILLEGAL_PARAMS;
+
+			struct netmsg *m = netmsg_tail(&a.c->out_messages);
+			struct netmsg_mark header_mark;
+			netmsg_getmark(m, &header_mark);
+			iproto_reply(&m, a.r->msg_code, a.r->sync);
+			iproto_error(&m, &header_mark, rc, e->reason);
+		}
+
 		a.c->ref--;
 
 		if (a.c->state == CLOSED)
@@ -102,7 +121,8 @@ iproto_worker(va_list ap)
 static void
 err(struct conn *c, struct iproto *r)
 {
-	(void)c;
+	struct netmsg *m = netmsg_tail(&c->out_messages);
+	iproto_reply(&m, r->msg_code, r->sync);
 	iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "unknown iproto command %i", r->msg_code);
 }
 
@@ -117,24 +137,32 @@ iproto_ping(struct conn *c, struct iproto *r)
 }
 
 void
-service_register_iproto(struct service *s, u32 cmd,
-			void (*cb)(struct conn *, struct iproto *), int flags)
+service_register_iproto_stream(struct service *s, u32 cmd,
+			       void (*cb)(struct conn *, struct iproto *),
+			       int flags)
 {
-	s->ih[cmd & 0xff].cb = cb;
-	s->ih[cmd & 0xff].flags = flags;
+	s->ih[cmd & 0xff].cb.stream = cb;
+	s->ih[cmd & 0xff].flags = flags | IPROTO_NONBLOCK;
+}
+
+void
+service_register_iproto_block(struct service *s, u32 cmd,
+			      struct netmsg_head *(*cb)(struct conn *, struct iproto *),
+			      int flags)
+{
+	s->ih[cmd & 0xff].cb.block = cb;
+	s->ih[cmd & 0xff].flags = flags & ~IPROTO_NONBLOCK;
 }
 
 void
 service_iproto(struct service *s)
 {
-	for (int i = 0; i < 256; i++) {
-		s->ih->cb = err;
-		s->ih->flags = 0;
-	}
-	service_register_iproto(s, msg_ping, iproto_ping, IPROTO_NONBLOCK);
+	for (int i = 0; i < 256; i++)
+		service_register_iproto_stream(s, i, err, 0);
+	service_register_iproto_stream(s, msg_ping, iproto_ping, IPROTO_NONBLOCK);
 }
 
-void box_cb(struct conn *c, struct iproto *request);
+struct netmsg_head * box_cb(struct conn *c, struct iproto *request);
 
 void
 iproto_wakeup_workers(ev_prepare *ev)
@@ -157,7 +185,22 @@ next_req:
 
 		if (ih->flags & IPROTO_NONBLOCK) {
 			tbuf_ltrim(c->rbuf, sizeof(struct iproto) + request->data_len);
-			ih->cb(c, request);
+			struct netmsg_mark header_mark;
+			struct netmsg *m = netmsg_tail(&c->out_messages);
+			netmsg_getmark(m, &header_mark);
+			@try {
+				ih->cb.stream(c, request);
+			}
+			@catch (Error *e) {
+				u32 rc = ERR_CODE_UNKNOWN_ERROR;
+				if ([e respondsTo:@selector(code)])
+					rc = [(id)e code];
+				else if ([e isMemberOf:[IndexError class]])
+					rc = ERR_CODE_ILLEGAL_PARAMS;
+
+				/* FIXME: SEGV if cb.stream() fails before iproto_reply() */
+				iproto_error(&m, &header_mark, rc, e->reason);
+			}
 			goto next_req; /* unfair but fast */
 		}
 		struct fiber *w = SLIST_FIRST(&service->workers);
@@ -166,7 +209,7 @@ next_req:
 			SLIST_REMOVE_HEAD(&service->workers, worker_link);
 			TAILQ_REMOVE(&service->processing, c, processing_link);
 			c->ref++;
-			resume(w, &(struct worker_arg){ih->cb, request, c});
+			resume(w, &(struct worker_arg){ih->cb.block, request, c});
 			c->ref--;
 			if (c->state == CLOSED) {
 				struct conn *next = TAILQ_NEXT(c, processing_link);

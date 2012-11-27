@@ -75,8 +75,15 @@ SLIST_HEAD(iproto_group, iproto_peer);
 
 int init_iproto_peer(struct iproto_peer *p, int id, const char *name, const char *addr);
 struct iproto_peer *make_iproto_peer(int id, const char *name, const char *addr);
-void service_register_iproto(struct service *s, u32 cmd,
-			     void (*cb)(struct conn *, struct iproto *), int flags);
+
+void
+service_register_iproto_stream(struct service *s, u32 cmd,
+			       void (*cb)(struct conn *, struct iproto *),
+			       int flags);
+void
+service_register_iproto_block(struct service *s, u32 cmd,
+			      struct netmsg_head *(*cb)(struct conn *, struct iproto *),
+			      int flags);
 
 u32 iproto_next_sync();
 void iproto_rendevouz(va_list ap);

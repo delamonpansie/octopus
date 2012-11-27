@@ -264,8 +264,7 @@ commit_replace(struct box_txn *txn)
 	}
 
 	if (txn->m) {
-		/* safe, because it will be copied by netmsg_concat */
-		net_add_iov(&txn->m, &txn->obj_affected, sizeof(u32));
+		net_add_iov_dup(&txn->m, &txn->obj_affected, sizeof(u32));
 
 		if (txn->obj && txn->flags & BOX_RETURN_TUPLE)
 			tuple_add_iov(&txn->m, txn->obj);
@@ -642,8 +641,7 @@ commit_delete(struct box_txn *txn)
 		object_ref(txn->old_obj, -1);
 	}
 	if (txn->m)
-		/* safe, because it will be copied by netmsg_concat */
-		net_add_iov(&txn->m, &txn->obj_affected, sizeof(u32));
+		net_add_iov_dup(&txn->m, &txn->obj_affected, sizeof(u32));
 }
 
 void
@@ -756,31 +754,6 @@ txn_common_parser(struct box_txn *txn, struct tbuf *data)
 	txn->index = txn->object_space->index[0];
 }
 
-static bool __attribute__((pure))
-op_is_select(u32 op)
-{
-	return op == SELECT || op == SELECT_LIMIT;
-}
-
-static void
-box_dispach_select(struct box_txn *txn, struct tbuf *data)
-{
-	txn_common_parser(txn, data);
-	say_debug("box_dispach(%i)", txn->op);
-
-	u32 i = read_u32(data);
-	u32 offset = read_u32(data);
-	u32 limit = read_u32(data);
-
-	if (i > MAX_IDX)
-		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index too big");
-
-	if ((txn->index = txn->object_space->index[i]) == NULL)
-		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index is invalid");
-
-	process_select(txn, limit, offset, data);
-}
-
 
 void
 box_prepare_update(struct box_txn *txn, struct tbuf *data)
@@ -833,52 +806,48 @@ box_prepare_update(struct box_txn *txn, struct tbuf *data)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
 }
 
-static void
-box_process(struct conn *c, struct iproto *request, void *arg __attribute__((unused)))
+static struct netmsg_head *
+box_cb(struct conn *c, struct iproto *request)
 {
 	struct box_txn txn = { .op = 0 };
 	u32 msg_code = request->msg_code;
 	struct tbuf request_data = TBUF(request->data, request->data_len, fiber->pool);
 	say_debug("%s: c:%p op:0x%02x sync:%u", __func__, c, msg_code, request->sync);
+	struct netmsg_head *h = p0alloc(fiber->pool, sizeof(*h));
+	TAILQ_INIT(&h->q);
+	h->pool = fiber->pool;
+
 	@try {
-		if (op_is_select(msg_code)) {
-			txn_init(request, &txn, netmsg_tail(&c->out_messages));
-			box_dispach_select(&txn, &request_data);
-			iproto_commit(&txn.header_mark, ERR_CODE_OK);
-		} else {
-			ev_tstamp start = ev_now(), stop;
-			struct netmsg_head h = { TAILQ_HEAD_INITIALIZER(h.q), fiber->pool, 0 };
-			txn_init(request, &txn, netmsg_tail(&h));
+		ev_tstamp start = ev_now(), stop;
+		txn_init(request, &txn, netmsg_tail(h));
 
-			if (unlikely(c->service != box_primary))
-				iproto_raise(ERR_CODE_NONMASTER, "updates forbiden on secondary port");
+		if (unlikely(c->service != box_primary))
+			iproto_raise(ERR_CODE_NONMASTER, "updates forbiden on secondary port");
 
-			u32 rc = ERR_CODE_OK;
-			switch (msg_code) {
-			case EXEC_LUA:
-				rc = box_dispach_lua(&txn, &request_data);
-				stat_collect(stat_base, EXEC_LUA, 1);
-				break;
-			case PAXOS_LEADER:
-				if ([recovery respondsTo:@selector(leader_redirect_raise)])
-					[recovery perform:@selector(leader_redirect_raise)];
-				else
-					iproto_raise(ERR_CODE_UNSUPPORTED_COMMAND,
-						     "PAXOS_LEADER unsupported in non cluster configuration");
-				break;
-			default:
-				box_prepare_update(&txn, &request_data);
-				/* we'r potentially block here */
-				txn_submit_to_storage(&txn);
-				txn_commit(&txn);
-			}
-			iproto_commit(&txn.header_mark, rc);
-			netmsg_concat(&c->out_messages, &h);
-
-			stop = ev_now();
-			if (stop - start > cfg.too_long_threshold)
-				say_warn("too long %s: %.3f sec", ops[txn.op], stop - start);
+		u32 rc = ERR_CODE_OK;
+		switch (msg_code) {
+		case EXEC_LUA:
+			rc = box_dispach_lua(&txn, &request_data);
+			stat_collect(stat_base, EXEC_LUA, 1);
+			break;
+		case PAXOS_LEADER:
+			if ([recovery respondsTo:@selector(leader_redirect_raise)])
+				[recovery perform:@selector(leader_redirect_raise)];
+			else
+				iproto_raise(ERR_CODE_UNSUPPORTED_COMMAND,
+					     "PAXOS_LEADER unsupported in non cluster configuration");
+			break;
+		default:
+			box_prepare_update(&txn, &request_data);
+			/* we'r potentially block here */
+			txn_submit_to_storage(&txn);
+			txn_commit(&txn);
 		}
+		iproto_commit(&txn.header_mark, rc);
+
+		stop = ev_now();
+		if (stop - start > cfg.too_long_threshold)
+			say_warn("too long %s: %.3f sec", ops[txn.op], stop - start);
 	}
 	@catch (Error *e) {
 		say_warn("aborting txn, [%s reason:\"%s\"] at %s:%d peer:%s",
@@ -886,14 +855,7 @@ box_process(struct conn *c, struct iproto *request, void *arg __attribute__((unu
 		if (e->backtrace)
 			say_debug("backtrace:\n%s", e->backtrace);
 		txn_abort(&txn);
-		u32 rc = ERR_CODE_UNKNOWN_ERROR;
-		if ([e respondsTo:@selector(code)])
-			rc = [(id)e code];
-		else if ([e isMemberOf:[IndexError class]])
-			rc = ERR_CODE_ILLEGAL_PARAMS;
-		iproto_error(&txn.m, &txn.header_mark, rc, e->reason);
-		if (&c->out_messages != txn.m->head)
-			netmsg_concat(&c->out_messages, txn.m->head);
+		@throw;
 	}
 	@finally {
 		say_debug("%s: @finally c:%p", __func__, c);
@@ -902,12 +864,31 @@ box_process(struct conn *c, struct iproto *request, void *arg __attribute__((unu
 		netmsg_verify_ownership(&c->out_messages);
 #endif
 	}
+	return h;
 }
 
-void
-box_cb(struct conn *c, struct iproto *request)
+static void
+box_select_cb(struct conn *c, struct iproto *request)
 {
-	box_process(c, request, NULL);
+	struct box_txn txn = { .op = 0 };
+	struct tbuf data = TBUF(request->data, request->data_len, fiber->pool);
+	struct netmsg *m = netmsg_tail(&c->out_messages);
+
+	txn_init(request, &txn, m);
+	txn_common_parser(&txn, &data);
+
+	u32 i = read_u32(&data);
+	u32 offset = read_u32(&data);
+	u32 limit = read_u32(&data);
+
+	if (i > MAX_IDX)
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index too big");
+
+	if ((txn.index = txn.object_space->index[i]) == NULL)
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index is invalid");
+
+	process_select(&txn, limit, offset, &data);
+	iproto_commit(&txn.header_mark, ERR_CODE_OK);
 }
 
 static void
@@ -1197,14 +1178,14 @@ box_service_register(struct service *s)
 {
 	service_iproto(s);
 
-	service_register_iproto(s, NOP, box_cb, IPROTO_NONBLOCK);
-	service_register_iproto(s, SELECT, box_cb, IPROTO_NONBLOCK);
-	service_register_iproto(s, SELECT_LIMIT, box_cb, IPROTO_NONBLOCK);
-	service_register_iproto(s, SELECT_LIMIT, box_cb, IPROTO_NONBLOCK);
-	service_register_iproto(s, INSERT, box_cb, 0);
-	service_register_iproto(s, UPDATE_FIELDS, box_cb, 0);
-	service_register_iproto(s, DELETE, box_cb, 0);
-	service_register_iproto(s, EXEC_LUA, box_cb, 0);
+	service_register_iproto_stream(s, NOP, box_select_cb, 0);
+	service_register_iproto_stream(s, SELECT, box_select_cb, 0);
+	service_register_iproto_stream(s, SELECT_LIMIT, box_select_cb, 0);
+	service_register_iproto_stream(s, SELECT_LIMIT, box_select_cb, 0);
+	service_register_iproto_block(s, INSERT, box_cb, 0);
+	service_register_iproto_block(s, UPDATE_FIELDS, box_cb, 0);
+	service_register_iproto_block(s, DELETE, box_cb, 0);
+	service_register_iproto_block(s, EXEC_LUA, box_cb, 0);
 }
 
 static void
