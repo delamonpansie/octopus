@@ -426,19 +426,18 @@ conn_close(struct conn *c)
 		c->fd = -1;
 		c->peer_name[0] = 0;
 
-		if (!TAILQ_EMPTY(&c->out_messages.q)) {
-			say_error("client unexpectedly gone, some data unwritten");
-			struct netmsg *m, *tmp;
-			TAILQ_FOREACH_SAFE(m, &c->out_messages.q, link, tmp)
-				netmsg_release(m);
-		}
-
 		if (c->service && c->state == PROCESSING) {
 			TAILQ_REMOVE(&c->service->processing, c, processing_link);
 			c->state = -1;
 		}
 		c->state = CLOSED;
 	}
+
+	/*  as long as struct conn *C is alive, c->out_messages may be populated
+	    by callbacks even if c->fd == -1, so drop all this data */
+	struct netmsg *m, *tmp;
+	TAILQ_FOREACH_SAFE(m, &c->out_messages.q, link, tmp)
+		netmsg_release(m);
 
 	switch (c->ref) {
 	case REF_STATIC:
