@@ -560,21 +560,21 @@ tuple_add_iov(struct netmsg **m, struct tnt_object *obj)
 }
 
 static void __attribute__((noinline))
-process_select(struct box_txn *txn, u32 limit, u32 offset, struct tbuf *data)
+process_select(struct netmsg **m, Index<BasicIndex> *index, u32 limit, u32 offset, struct tbuf *data)
 {
 	struct tnt_object *obj;
 	uint32_t *found;
 	u32 count = read_u32(data);
 
 	say_debug("SELECT");
-	found = palloc(txn->m->head->pool, sizeof(*found));
-	net_add_iov(&txn->m, found, sizeof(*found));
+	found = palloc((*m)->head->pool, sizeof(*found));
+	net_add_iov(m, found, sizeof(*found));
 	*found = 0;
 
-	if (txn->index->unique) {
+	if (index->unique) {
 		for (u32 i = 0; i < count; i++) {
 			u32 c = read_u32(data);
-			obj = [txn->index find_key:data with_cardinalty:c];
+			obj = [index find_key:data with_cardinalty:c];
 			if (obj == NULL)
 				continue;
 			if (unlikely(ghost(obj)))
@@ -587,12 +587,12 @@ process_select(struct box_txn *txn, u32 limit, u32 offset, struct tbuf *data)
 			}
 
 			(*found)++;
-			tuple_add_iov(&txn->m, obj);
+			tuple_add_iov(m, obj);
 			limit--;
 		}
 	} else {
 		/* The only non unique index type is Tree */
-		Tree *tree = (Tree *)txn->index;
+		Tree *tree = (Tree *)index;
 		for (u32 i = 0; i < count; i++) {
 			u32 c = read_u32(data);
 			[tree iterator_init:data with_cardinalty:c];
@@ -611,7 +611,7 @@ process_select(struct box_txn *txn, u32 limit, u32 offset, struct tbuf *data)
 				}
 
 				(*found)++;
-				tuple_add_iov(&txn->m, obj);
+				tuple_add_iov(m, obj);
 				--limit;
 			}
 		}
@@ -621,7 +621,6 @@ process_select(struct box_txn *txn, u32 limit, u32 offset, struct tbuf *data)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
 
 	stat_collect(stat_base, SELECT_KEYS, count);
-	stat_collect(stat_base, txn->op, 1);
 }
 
 static void __attribute__((noinline))
@@ -868,13 +867,13 @@ box_cb(struct conn *c, struct iproto *request)
 }
 
 static void
-box_select_cb(struct conn *c, struct iproto *request)
+box_select_cb(struct netmsg **m, struct iproto *request)
 {
 	struct box_txn txn = { .op = 0 };
 	struct tbuf data = TBUF(request->data, request->data_len, fiber->pool);
-	struct netmsg *m = netmsg_tail(&c->out_messages);
 
-	txn_init(request, &txn, m);
+	iproto_reply(m, request->msg_code, request->sync);
+
 	txn_common_parser(&txn, &data);
 
 	u32 i = read_u32(&data);
@@ -887,8 +886,8 @@ box_select_cb(struct conn *c, struct iproto *request)
 	if ((txn.index = txn.object_space->index[i]) == NULL)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index is invalid");
 
-	process_select(&txn, limit, offset, &data);
-	iproto_commit(&txn.header_mark, ERR_CODE_OK);
+	process_select(m, txn.index, limit, offset, &data);
+	stat_collect(stat_base, txn.op, 1);
 }
 
 static void

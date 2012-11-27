@@ -96,7 +96,7 @@ struct conn {
 enum { IPROTO_NONBLOCK = 1 };
 struct iproto;
 typedef union {
-	void (*stream)(struct conn *, struct iproto *);
+	void (*stream)(struct netmsg **, struct iproto *);
 	struct netmsg_head *(*block)(struct conn *, struct iproto *);
 } iproto_cb;
 

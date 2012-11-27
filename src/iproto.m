@@ -119,26 +119,24 @@ iproto_worker(va_list ap)
 
 
 static void
-err(struct conn *c, struct iproto *r)
+err(struct netmsg **m, struct iproto *r)
 {
-	struct netmsg *m = netmsg_tail(&c->out_messages);
-	iproto_reply(&m, r->msg_code, r->sync);
+	iproto_reply(m, r->msg_code, r->sync);
 	iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "unknown iproto command %i", r->msg_code);
 }
 
 static void
-iproto_ping(struct conn *c, struct iproto *r)
+iproto_ping(struct netmsg **m, struct iproto *r)
 {
 	if (r->msg_code != msg_ping)
-		err(c, r);
+		err(m, r);
 
-	struct netmsg *m = netmsg_tail(&c->out_messages);
-	net_add_iov_dup(&m, r, sizeof(struct iproto));
+	net_add_iov_dup(m, r, sizeof(struct iproto));
 }
 
 void
 service_register_iproto_stream(struct service *s, u32 cmd,
-			       void (*cb)(struct conn *, struct iproto *),
+			       void (*cb)(struct netmsg **, struct iproto *),
 			       int flags)
 {
 	s->ih[cmd & 0xff].cb.stream = cb;
@@ -175,8 +173,8 @@ loop:
 	if (c == NULL)
 		return;
 
+	struct netmsg *m = netmsg_tail(&c->out_messages);
 next_req:
-
 	if (tbuf_len(c->rbuf) >= sizeof(struct iproto) &&
 	    tbuf_len(c->rbuf) >= sizeof(struct iproto) + iproto(c->rbuf)->data_len)
 	{
@@ -186,10 +184,11 @@ next_req:
 		if (ih->flags & IPROTO_NONBLOCK) {
 			tbuf_ltrim(c->rbuf, sizeof(struct iproto) + request->data_len);
 			struct netmsg_mark header_mark;
-			struct netmsg *m = netmsg_tail(&c->out_messages);
 			netmsg_getmark(m, &header_mark);
 			@try {
-				ih->cb.stream(c, request);
+				ih->cb.stream(&m, request);
+				if (request->msg_code != msg_ping)
+					iproto_commit(&header_mark, ERR_CODE_OK);
 			}
 			@catch (Error *e) {
 				u32 rc = ERR_CODE_UNKNOWN_ERROR;
