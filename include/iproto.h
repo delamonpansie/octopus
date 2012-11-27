@@ -69,7 +69,7 @@ struct iproto_peer {
 
 	/* support tcp_async_connect in iproto_rendevouz */
 	bool in_connect;
-	ev_tstamp last_connect_try;	
+	ev_tstamp last_connect_try;
 };
 SLIST_HEAD(iproto_group, iproto_peer);
 
