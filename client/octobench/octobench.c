@@ -121,7 +121,6 @@ static u_int64_t	nTotal = 0;
 static pthread_mutex_t	mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t	cond  = PTHREAD_COND_INITIALIZER;
 static bool		ignoreFatal = false;
-static bool		printRequest = false;
 
 #define		OCTO_PING	(0xff00) /* XXX src/iproto.m:const uint32_t msg_ping = 0xff00; */
 #define		BOX_INSERT	(13)
@@ -204,7 +203,7 @@ pushAllocatedRequestBody(AllocatedRequestBody **stack, char *ptr) {
 }
 
 static inline void*
-generateRequestBody(AllocatedRequestBody **stack, int workerId, unsigned int *seed, size_t *size) {
+generateRequestBody(AllocatedRequestBody **stack, unsigned int *seed, size_t *size) {
 	void *ptr = NULL;
 
 	*size = 0;
@@ -339,7 +338,7 @@ worker(void *arg) {
 					void	*body;
 					size_t	size;
 
-					body = generateRequestBody(&stack, idWorker, &rndseed, &size);
+					body = generateRequestBody(&stack, &rndseed, &size);
 					li_req_init(conn, messageType, body, size);
 				}
 
@@ -487,7 +486,7 @@ main(int argc, char* argv[]) {
 
 	for(i=0; i<256; i++)
 		if (errstat[i] > 0)
-			printf("N number of %02x: %d (%s)\n", i, errstat[i]);
+			printf("N number of %02x: %d (%s)\n", i, errstat[i], errcode_desc(i));
 
 	return 0;
 }

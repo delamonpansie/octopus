@@ -3,7 +3,7 @@ OBDIR=client/octobench
 benchobj += $(OBDIR)/octobench.o
 dep += $(call depend,$(benchobj))
 
-$(OBDIR)/octobench.o: CFLAGS += -pthread
+$(benchobj): CFLAGS += -pthread $(CFLAGS_WARNS)
 
 octobench_all: $(OBDIR)/octobench
 $(OBDIR)/octobench: $(benchobj) client/libiproto/libiproto.a
