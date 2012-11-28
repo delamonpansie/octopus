@@ -114,6 +114,8 @@ iproto_worker(va_list ap)
 
 		if (!TAILQ_EMPTY(&a.c->out_messages.q))
 			ev_io_start(&a.c->out);
+
+		fiber_gc();
 	}
 }
 
