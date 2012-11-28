@@ -162,6 +162,7 @@ int server_socket(int type, struct sockaddr_in *src, int nonblock,
 
 struct service *tcp_service(u16 port, void (*on_bind)(int fd), void (*wakeup)(ev_prepare *));
 void wakeup_workers(ev_prepare *ev);
+void service_iproto(struct service *s);
 void iproto_wakeup_workers(ev_prepare *ev);
 
 int atosin(const char *orig, struct sockaddr_in *addr);

@@ -1169,9 +1169,6 @@ box_bound_to_primary(int fd)
 	}
 }
 
-void
-service_iproto(struct service *s);
-
 static void
 box_service_register(struct service *s)
 {
