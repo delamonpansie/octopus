@@ -702,7 +702,19 @@ octopus(int argc, char **argv)
 	signal_init();
 	ev_set_syserr_cb(ev_panic);
 	ev_default_loop(ev_recommended_backends() | EVFLAG_SIGNALFD);
-	say_debug("ev_loop initialized");
+	char *evb = NULL;
+	switch(ev_backend()) {
+		case    EVBACKEND_SELECT:   evb = "select"; break;
+		case    EVBACKEND_POLL:     evb = "poll"; break;
+		case    EVBACKEND_EPOLL:    evb = "epoll"; break;
+		case    EVBACKEND_KQUEUE:   evb = "kqueue"; break;
+		case    EVBACKEND_DEVPOLL:  evb = "dev/poll"; break;
+		case    EVBACKEND_PORT:     evb = "port"; break;
+		default:                    evb = "unknown";
+	}
+
+	say_info("ev_loop initialized using '%s' backend, libev version is %d.%d", 
+		 evb, ev_version_major(), ev_version_minor());
 
 	ev_timer coredump_timer = { .coro = 0 };
 	if (cfg.coredump > 0) {
