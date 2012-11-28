@@ -486,7 +486,8 @@ main(int argc, char* argv[]) {
 
 	for(i=0; i<256; i++)
 		if (errstat[i] > 0)
-			printf("N number of %02x: %d (%s)\n", i, errstat[i], errcode_desc(i));
+			printf("N number of %02x: %d\n", i, errstat[i]
+			       /* errcode_desc(i): i is only one byte from error code */);
 
 	return 0;
 }
