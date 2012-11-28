@@ -254,6 +254,8 @@ generateRequestBody(AllocatedRequestBody **stack, unsigned int *seed, size_t *si
 
 	switch(messageType) {
 		case OCTO_PING:
+			ptr = popAllocatedRequestBody(stack, 0, begin);
+			*size = 0;
 			break;
 		case BOX_INSERT:
 			{
@@ -539,13 +541,10 @@ main(int argc, char* argv[]) {
 	printf("RPS: %.3f\n", ((double)SumResults.nOk) / elapsed );
 	printf("Number of ALL requests: %.3f\n", ((double)SumResults.nProceed));
 	printf("RPS: %.3f\n", ((double)SumResults.nProceed) / elapsed );
-
-	if (messageType != OCTO_PING) {
-		printf("MIN/AVG/MAX time per request: %.03f / %.03f / %.03f millisecs\n", 
-		       SumResults.minTime * 1e3, 
-		       SumResults.totalTime * 1e3/ (double)SumResults.nProceed, 
-		       SumResults.maxTime * 1e3);  
-	}
+	printf("MIN/AVG/MAX time per request: %.03f / %.03f / %.03f millisecs\n", 
+	       SumResults.minTime * 1e3, 
+	       SumResults.totalTime * 1e3/ (double)SumResults.nProceed, 
+	       SumResults.maxTime * 1e3);  
 
 	for(i=0; i<256; i++)
 		if (SumResults.errstat[i] > 0)
