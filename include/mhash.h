@@ -422,8 +422,8 @@ _mh(resize)(struct mhash_t *h)
 		mh_setexist(s, n);
 		s->n_occupied++;
 	}
-	free(h->nodes);
-	free(h->bitmap);
+	mh_free(h, h->nodes);
+	mh_free(h, h->bitmap);
 	s->size = h->size;
 	memcpy(h, s, sizeof(*h));
 	h->resize_cnt++;
@@ -493,8 +493,8 @@ _mh(dump)(struct mhash_t *h)
 MH_DECL void
 mh_clear(struct mhash_t *h)
 {
-	free(h->nodes);
-	free(h->bitmap);
+	mh_free(h, h->nodes);
+	mh_free(h, h->bitmap);
 	h->n_buckets = 3;
 	h->prime = 0;
 	h->upper_bound = h->n_buckets * 0.7;
