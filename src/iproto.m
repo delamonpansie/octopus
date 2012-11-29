@@ -166,84 +166,74 @@ void
 iproto_wakeup_workers(ev_prepare *ev)
 {
 	struct service *service = (void *)ev - offsetof(struct service, wakeup);
-	struct conn *c = TAILQ_FIRST(&service->processing),
-		 *last = TAILQ_LAST(&service->processing, conn_tailq);
+	struct conn *c, *last = NULL, *next;
 
-loop:
-	if (c == NULL)
-		return;
+	for (c = TAILQ_FIRST(&service->processing); c != last && c != NULL; c = next) {
+		next = TAILQ_NEXT(c, processing_link);
+		struct netmsg *m = netmsg_tail(&c->out_messages);
+	next_req:
+		if (tbuf_len(c->rbuf) >= sizeof(struct iproto) &&
+		    tbuf_len(c->rbuf) >= sizeof(struct iproto) + iproto(c->rbuf)->data_len)
+		{
+			struct iproto *request = iproto(c->rbuf);
+			struct iproto_handler *ih = &service->ih[request->msg_code & 0xff];
 
-	struct netmsg *m = netmsg_tail(&c->out_messages);
-next_req:
-	if (tbuf_len(c->rbuf) >= sizeof(struct iproto) &&
-	    tbuf_len(c->rbuf) >= sizeof(struct iproto) + iproto(c->rbuf)->data_len)
-	{
-		struct iproto *request = iproto(c->rbuf);
-		struct iproto_handler *ih = &service->ih[request->msg_code & 0xff];
+			if (ih->flags & IPROTO_NONBLOCK) {
+				tbuf_ltrim(c->rbuf, sizeof(struct iproto) + request->data_len);
+				struct netmsg_mark header_mark;
+				netmsg_getmark(m, &header_mark);
+				@try {
+					ih->cb.stream(&m, request);
+					if (request->msg_code != msg_ping)
+						iproto_commit(&header_mark, ERR_CODE_OK);
+				}
+				@catch (Error *e) {
+					u32 rc = ERR_CODE_UNKNOWN_ERROR;
+					if ([e respondsTo:@selector(code)])
+						rc = [(id)e code];
+					else if ([e isMemberOf:[IndexError class]])
+						rc = ERR_CODE_ILLEGAL_PARAMS;
 
-		if (ih->flags & IPROTO_NONBLOCK) {
-			tbuf_ltrim(c->rbuf, sizeof(struct iproto) + request->data_len);
-			struct netmsg_mark header_mark;
-			netmsg_getmark(m, &header_mark);
-			@try {
-				ih->cb.stream(&m, request);
-				if (request->msg_code != msg_ping)
-					iproto_commit(&header_mark, ERR_CODE_OK);
+					/* FIXME: SEGV if cb.stream() fails before iproto_reply() */
+					iproto_error(&m, &header_mark, rc, e->reason);
+				}
+				goto next_req; /* unfair but fast */
 			}
-			@catch (Error *e) {
-				u32 rc = ERR_CODE_UNKNOWN_ERROR;
-				if ([e respondsTo:@selector(code)])
-					rc = [(id)e code];
-				else if ([e isMemberOf:[IndexError class]])
-					rc = ERR_CODE_ILLEGAL_PARAMS;
-
-				/* FIXME: SEGV if cb.stream() fails before iproto_reply() */
-				iproto_error(&m, &header_mark, rc, e->reason);
+			struct fiber *w = SLIST_FIRST(&service->workers);
+			if (w) {
+				tbuf_ltrim(c->rbuf, sizeof(struct iproto) + request->data_len);
+				SLIST_REMOVE_HEAD(&service->workers, worker_link);
+				TAILQ_REMOVE(&service->processing, c, processing_link);
+				c->ref++;
+				resume(w, &(struct worker_arg){ih->cb.block, request, c});
+				c->ref--;
+				if (c->state == CLOSED)
+					continue;
+				TAILQ_INSERT_TAIL(&service->processing, c, processing_link);
+			} else {
+				/* no workers => try handling stream requests from  remaining connection for and exit */
+				last = TAILQ_LAST(&service->processing, conn_tailq);
 			}
-			goto next_req; /* unfair but fast */
-		}
-		struct fiber *w = SLIST_FIRST(&service->workers);
-		if (w) {
-			tbuf_ltrim(c->rbuf, sizeof(struct iproto) + request->data_len);
-			SLIST_REMOVE_HEAD(&service->workers, worker_link);
+		} else {
 			TAILQ_REMOVE(&service->processing, c, processing_link);
-			c->ref++;
-			resume(w, &(struct worker_arg){ih->cb.block, request, c});
-			c->ref--;
-			if (c->state == CLOSED) {
-				struct conn *next = TAILQ_NEXT(c, processing_link);
-				conn_close(c);
-				c = next;
-				goto loop;
-			}
-			TAILQ_INSERT_TAIL(&service->processing, c, processing_link);
+			c->state = READING;
 		}
-	} else {
-		TAILQ_REMOVE(&service->processing, c, processing_link);
-		c->state = READING;
-	}
 
-	/* Prevent output owerflow by start reading if
-	   output size is below output_low_watermark.
-	   Otherwise output flusher will start reading,
-	   when size of output is small enougth  */
-	if (c->out_messages.bytes < cfg.output_low_watermark)
-		ev_io_start(&c->in);
+		/* Prevent output owerflow by start reading if
+		   output size is below output_low_watermark.
+		   Otherwise output flusher will start reading,
+		   when size of output is small enought  */
+		if (c->out_messages.bytes < cfg.output_low_watermark)
+			ev_io_start(&c->in);
 
-	if (!TAILQ_EMPTY(&c->out_messages.q)) {
-		ev_io_start(&c->out);
-		if (c->out_messages.bytes >= cfg.output_high_watermark)
-			ev_io_stop(&c->in);
-	}
+		if (!TAILQ_EMPTY(&c->out_messages.q)) {
+			ev_io_start(&c->out);
+			if (c->out_messages.bytes >= cfg.output_high_watermark)
+				ev_io_stop(&c->in);
+		}
 
-	if (palloc_allocated(service->pool) > 64 * 1024 * 1024) /* FIXME: do it after change of that size */
-		palloc_gc(service->pool);
-
-	if (c == last) {
-		return;
-	} else {
-		c = TAILQ_NEXT(c, processing_link);
-		goto loop;
+		if (palloc_allocated(service->pool) > 64 * 1024 * 1024) /* FIXME: do it after change of that size */
+			palloc_gc(service->pool);
 	}
 }
 
