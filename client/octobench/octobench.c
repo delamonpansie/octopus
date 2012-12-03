@@ -508,6 +508,8 @@ main(int argc, char* argv[]) {
 		}
 	}
 
+	OPT_ERR(nWriteAhead <= nRequests);
+	OPT_ERR(nWriteAhead >= 4);
 	OPT_ERR(optind == argc);
 	OPT_ERR(minId < maxId);
 
