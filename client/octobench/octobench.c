@@ -194,9 +194,22 @@ octopoll(int fd, int event) {
 	pfd.events = event;
 	pfd.revents = 0;
 
-	ret = poll(&pfd, 1, -1);
-	if (ret < 0 || (pfd.revents & (POLLHUP | POLLNVAL | POLLERR)) != 0)
-		return (pfd.revents | POLLERR);
+	do {
+		ret = poll(&pfd, 1, -1);
+
+		if (ret < 0) {
+			if (errno == EINTR || errno == EINPROGRESS || errno == EAGAIN)
+				continue;
+
+			pfd.revents |= POLLERR;
+			break;
+		}
+ 
+		if (pfd.revents & (POLLHUP | POLLNVAL | POLLERR)) {
+			pfd.revents |= POLLERR;
+			break;
+		}
+	} while(ret == 0);
 
 	return pfd.revents;
 }
