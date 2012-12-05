@@ -112,7 +112,7 @@ iproto_worker(va_list ap)
 			/* connection is already closed by other fiber */
 			conn_close(a.c);
 
-		if (!TAILQ_EMPTY(&a.c->out_messages.q))
+		if (a.c->out_messages.bytes > 0)
 			ev_io_start(&a.c->out);
 
 		fiber_gc();
@@ -286,7 +286,7 @@ next:
 		}
 	}
 
-	if (!TAILQ_EMPTY(&c->out_messages.q)) {
+	if (c->out_messages.bytes > 0) {
 		ev_io_start(&c->out);
 		if (c->out_messages.bytes > cfg.output_high_watermark)
 			ev_io_stop(&c->in);
