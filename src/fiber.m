@@ -71,7 +71,7 @@ static struct mhash_t *fibers_registry;
 
 TAILQ_HEAD(, fiber) wake_list;
 
-#ifdef FIBER_DEBUG
+#if defined(FIBER_DEBUG) || defined(FIBER_EV_DEBUG)
 void
 fiber_ev_cb(void *arg)
 {

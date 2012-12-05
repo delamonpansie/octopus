@@ -38,7 +38,7 @@ extern struct fiber *fiber;
 #define ev_set_cb(ev,cb_) ev_cb (ev) = (cb_); (ev)->cb_src = __FILE__ ":" EV_STRINGIFY(__LINE__);
 #define EV_CB_DECLARE(type) void (*cb)(struct type *w, int revents);
 
-#ifdef FIBER_DEBUG
+#if defined(FIBER_DEBUG) || defined(FIBER_EV_DEBUG)
 extern void fiber_ev_cb(void *);
 #define EV_CB_LOG(arg) fiber_ev_cb((arg))
 #else
