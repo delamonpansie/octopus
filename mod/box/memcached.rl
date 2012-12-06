@@ -695,7 +695,7 @@ memcached_handler(va_list ap)
 	int r, p;
 	int batch_count;
 
-	c = conn_init(NULL, fiber->pool, fd, fiber, fiber, 0);
+	c = conn_init(NULL, fiber->pool, fd, fiber, fiber, MO_SLAB);
 	palloc_register_gc_root(fiber->pool, c, conn_gc);
 
 	@try {

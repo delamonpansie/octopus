@@ -596,6 +596,8 @@ iproto_reply_reader(va_list ap)
 			tbuf_ltrim(c->rbuf, sizeof(struct iproto) + msg->data_len);
 			collect(c, msg);
 		}
+
+		conn_gc(NULL, c);
 	}
 }
 
@@ -604,7 +606,6 @@ iproto_rendevouz(va_list ap)
 {
 	struct sockaddr_in 	*self_addr = va_arg(ap, struct sockaddr_in *);
 	struct iproto_group 	*group = va_arg(ap, struct iproto_group *);
-	struct palloc_pool 	*pool = va_arg(ap, struct palloc_pool *);
 	struct fiber 		*in = va_arg(ap, struct fiber *);
 	struct fiber 		*out = va_arg(ap, struct fiber *);
 	struct iproto_peer 	*p;
@@ -655,7 +656,7 @@ loop:
 			case tac_ok:
 				ev_own_counter++;
 				p->in_connect = false;
-				conn_init(&p->c, pool, p->c.fd, in, out, REF_STATIC);
+				conn_init(&p->c, NULL, p->c.fd, in, out, MO_STATIC | MO_MY_OWN_POOL);
 				ev_io_start(&p->c.in);
 				say_info("connected to %s/%s", p->name, sintoa(&p->addr));
 				p->connect_err_said = false;

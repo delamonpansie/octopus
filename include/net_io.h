@@ -74,8 +74,13 @@ struct netmsg_mark {
 	int offset;
 };
 
-#define REF_MALLOC -1
-#define REF_STATIC -2
+enum conn_memory_ownership {
+	MO_MALLOC	 = 0x01,
+	MO_STATIC	 = 0x02,
+	MO_SLAB		 = 0x03,
+	MO_MY_OWN_POOL   = 0x10
+};
+#define MO_CONN_OWNERSHIP_MASK	(MO_MALLOC | MO_STATIC | MO_SLAB)	
 
 struct conn {
 	struct palloc_pool *pool;
@@ -83,6 +88,7 @@ struct conn {
 	int fd, ref;
 	struct netmsg_head out_messages;
 
+	enum conn_memory_ownership  memory_ownership;
 	enum { READING, PROCESSING, CLOSE_AFTER_WRITE, CLOSED } state;
 	LIST_ENTRY(conn) link;
 	TAILQ_ENTRY(conn) processing_link;
@@ -130,7 +136,7 @@ void net_add_lua_iov(struct netmsg **m, lua_State *L, int str);
 void netmsg_verify_ownership(struct netmsg_head *h);
 
 struct conn *conn_init(struct conn *c, struct palloc_pool *pool, int fd,
-		       struct fiber *in, struct fiber *out, int ref);
+		       struct fiber *in, struct fiber *out, enum conn_memory_ownership memory_ownership);
 void conn_set(struct conn *c, int fd);
 int conn_close(struct conn *c);
 void conn_gc(struct palloc_pool *pool, void *ptr);

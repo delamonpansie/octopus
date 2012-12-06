@@ -345,31 +345,41 @@ conn_set(struct conn *c, int fd)
 }
 
 struct conn *
-conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, struct fiber *out, int ref)
+conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, struct fiber *out, 
+	  enum conn_memory_ownership memory_ownership)
 {
-	assert(ref >= -2 && ref <= 0);
 	assert(in != NULL && out != NULL);
 
 	say_debug("%s: c:%p fd:%i", __func__, c, fd);
+	assert(memory_ownership & MO_CONN_OWNERSHIP_MASK);
 	if (!c) {
-		assert(ref == 0);
+		assert(memory_ownership & MO_SLAB);
 		c = slab_cache_alloc(&conn_cache);
 	}
 
 	TAILQ_INIT(&c->out_messages.q);
-	c->out_messages.pool = pool;
 	c->out_messages.bytes = 0;
-	c->ref = ref;
+	c->ref = 0;
 	c->fd = fd;
-	c->pool = pool;
 	c->state = -1;
 	c->peer_name[0] = 0;
-	c->rbuf = tbuf_alloc(c->pool);
 
 	ev_init(&c->in, (void *)in);
 	ev_init(&c->out, (void *)out);
 	c->out.coro = c->in.coro = 1;
 	c->out.data = c->in.data = c;
+
+	c->memory_ownership = memory_ownership;
+	if (pool == NULL || memory_ownership & MO_MY_OWN_POOL) {
+		c->memory_ownership |= MO_MY_OWN_POOL;
+
+		c->pool = palloc_create_pool("connection owned pool");
+	} else {
+		c->pool = pool;
+	}
+
+	c->rbuf = tbuf_alloc(c->pool);
+	c->out_messages.pool = c->pool;
 
 	if (fd >= 0)
 		conn_set(c, fd);
@@ -383,10 +393,23 @@ conn_gc(struct palloc_pool *pool, void *ptr)
 	struct conn *c = ptr;
 	struct netmsg *m;
 
-	c->pool = pool;
+	if (c->memory_ownership & MO_MY_OWN_POOL) {
+		assert(pool == NULL);
+
+		if (palloc_allocated(c->pool) < 128 * 1024)
+			return;
+
+		pool = palloc_create_pool("connection owned new pool");
+	}
+
 	c->rbuf = tbuf_clone(pool, c->rbuf);
 	TAILQ_FOREACH(m, &c->out_messages.q, link)
 		netmsg_gc(pool, m);
+
+	if (c->memory_ownership & MO_MY_OWN_POOL)
+		palloc_destroy_pool(c->pool);
+
+	c->pool = c->out_messages.pool = pool;
 }
 
 ssize_t
@@ -431,7 +454,7 @@ conn_close(struct conn *c)
 
 		/* the conn will either free'd or put back to pool,
 		   so next time it get used it will be configure by conn_init */
-		if (c->ref != REF_STATIC)
+		if ((c->memory_ownership & MO_CONN_OWNERSHIP_MASK) != MO_STATIC)
 			c->in.cb = c->out.cb = NULL;
 
 		r = close(c->fd);
@@ -449,24 +472,32 @@ conn_close(struct conn *c)
 	    by callbacks even if c->fd == -1, so drop all this data */
 	conn_reset(c);
 
-	switch (c->ref) {
-	case REF_STATIC:
+	if (c->ref > 0)
 		return r;
-	case REF_MALLOC:
-		free(c);
-		return r;
-	case 0:
-		if (c->service)
-			LIST_REMOVE(c, link);
 
-		c->service = NULL;
-		c->pool = NULL;
-		slab_cache_free(&conn_cache, c);
-		return r;
-	default:
-		/* c->ref > 0 => some fiber still holding ref to connection */
-		return 0;
+	if (c->service)
+		LIST_REMOVE(c, link);
+
+	c->service = NULL;
+	if (c->memory_ownership & MO_MY_OWN_POOL)
+		palloc_destroy_pool(c->pool);
+
+	c->pool = NULL;
+
+	switch (c->memory_ownership & MO_CONN_OWNERSHIP_MASK) {
+		case MO_STATIC:
+			break;
+		case MO_MALLOC:
+			free(c);
+			break;
+		case MO_SLAB:
+			slab_cache_free(&conn_cache, c);
+			break;
+		default:
+			abort();
 	}
+
+	return r;
 }
 
 ssize_t
@@ -909,7 +940,7 @@ accept_client(int fd, void *data)
 {
 	struct service *service = data;
 	struct conn *clnt = conn_init(NULL, service->pool, fd,
-				      service->input_reader, service->output_flusher, 0);
+				      service->input_reader, service->output_flusher, MO_SLAB);
 	LIST_INSERT_HEAD(&service->conn, clnt, link);
 	clnt->service = service;
 	ev_io_start(&clnt->in);
