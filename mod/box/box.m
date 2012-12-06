@@ -887,7 +887,7 @@ box_select_cb(struct netmsg **m, struct iproto *request)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index is invalid");
 
 	process_select(m, txn.index, limit, offset, &data);
-	stat_collect(stat_base, txn.op, 1);
+	stat_collect(stat_base, request->msg_code, 1);
 }
 
 static void
