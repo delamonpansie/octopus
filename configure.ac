@@ -67,7 +67,10 @@ AS_IF([test -n $DOT], [AC_SUBST(HAVE_DOT, 1)])
 
 
 # Checks for libraries.
-AC_SEARCH_LIBS([__objc_exec_class], [objc], [], [AC_MSG_ERROR([Unable to locate Objective C runtime library.])])
+AC_SEARCH_LIBS([objc_msg_lookup], [objc], [objc_gnu_runtime=yes])
+AC_SEARCH_LIBS([_objc_msgSend], [objc], [objc_apple_runtime=yes])
+AS_IF([test -z "$objc_gnu_runtime" -a -z "$objc_apple_runtime"],
+      [AC_MSG_ERROR([Unable to locate Objective C runtime library.])])
 AC_SEARCH_LIBS([dlopen], [dl dld], [], [AC_MSG_ERROR([unable to find the dlopen() function])])
 AC_SEARCH_LIBS(setproctitle, util)
 
