@@ -145,9 +145,13 @@ netmsg_rewind(struct netmsg **m, struct netmsg_mark *mark)
 	TAILQ_FOREACH_REVERSE_SAFE(tail, &h->q, netmsg_tailq, link, tvar) {
 		if (tail == mark->m)
 			break;
+		for (int i = tail->offset; i < tail->count; i++)
+			h->bytes -= tail->iov[i].iov_len;
 		netmsg_release(tail);
 	}
 
+	for (int i = mark->offset + 1; i < mark->m->count; i++)
+		h->bytes -= mark->m->iov[i].iov_len;
 	netmsg_unref(mark->m, mark->offset + 1);
 	*m = mark->m;
 	(*m)->count = mark->offset + 1;
@@ -326,7 +330,7 @@ conn_flush(struct conn *c)
 	} while (conn_write_netmsg(c) > 0);
 	ev_io_stop(&c->out);
 
-	return TAILQ_EMPTY(&c->out_messages.q) ? 0 : -1;
+	return c->out_messages.bytes == 0 ? 0 : -1;
 }
 
 void
@@ -405,6 +409,14 @@ again:
 	return r;
 }
 
+void
+conn_reset(struct conn *c)
+{
+	struct netmsg *m, *tmp;
+	TAILQ_FOREACH_SAFE(m, &c->out_messages.q, link, tmp)
+		netmsg_release(m);
+	c->out_messages.bytes = 0;
+}
 
 int
 conn_close(struct conn *c)
@@ -435,9 +447,7 @@ conn_close(struct conn *c)
 
 	/*  as long as struct conn *C is alive, c->out_messages may be populated
 	    by callbacks even if c->fd == -1, so drop all this data */
-	struct netmsg *m, *tmp;
-	TAILQ_FOREACH_SAFE(m, &c->out_messages.q, link, tmp)
-		netmsg_release(m);
+	conn_reset(c);
 
 	switch (c->ref) {
 	case REF_STATIC:
@@ -547,7 +557,7 @@ service_output_flusher(va_list ap __attribute__((unused)))
 		if (r < 0)
 			conn_close(c);
 
-		if (TAILQ_EMPTY(&c->out_messages.q))
+		if (c->out_messages.bytes == 0)
 			ev_io_stop(&c->out);
 
 		if ((tbuf_len(c->rbuf) < cfg.input_low_watermark || c->state == READING) &&
