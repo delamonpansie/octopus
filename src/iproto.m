@@ -270,7 +270,6 @@ iproto_wakeup_workers(ev_prepare *ev)
 
 	if (palloc_allocated(service->pool) > 64 * 1024 * 1024) /* FIXME: do it after change of that size */
 		palloc_gc(service->pool);
-
 }
 
 
