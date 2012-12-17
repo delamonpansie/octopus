@@ -524,7 +524,7 @@ slab_stat(struct tbuf *t)
 			free_slabs++;
 
 
-		tbuf_printf(t, "    - { type: %s, used: %.2f, size: %"PRIi64", free_slabs: %i }" CRLF,
+		tbuf_printf(t, "    - { type: %s, used: %.2f, size: %zi, free_slabs: %i }" CRLF,
 			    &arena[i] == fixed_arena ? "fixed" :
 			    &arena[i] == grow_arena ? "grow" : "unknown",
 			    (double)arena[i].used / arena[i].size * 100,

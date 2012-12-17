@@ -28,10 +28,14 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#ifndef __regparam
+# define __regparam
+#endif
+
 struct palloc_pool;
 void palloc_init(void);
 void *palloc(struct palloc_pool *pool, size_t size)
-	__attribute__((regparm(2),malloc));
+	__regparam __attribute__((malloc));
 void *p0alloc(struct palloc_pool *pool, size_t size);
 void *palloca(struct palloc_pool *pool, size_t size, size_t align);
 void prelease(struct palloc_pool *pool);
