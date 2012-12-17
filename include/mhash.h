@@ -430,16 +430,16 @@ _mh(resize)(struct mhash_t *h)
 }
 
 MH_DECL void
-_mh(start_resize)(struct mhash_t *h, uint32_t buckets, uint32_t batch)
+_mh(start_resize)(struct mhash_t *h, uint32_t want_size, uint32_t batch)
 {
 	if (h->resizing)
 		return;
 	struct mhash_t *s = h->shadow;
-	if (buckets < h->n_buckets)
-		buckets = h->n_buckets;
-	if (h->size > buckets / 2) {
+	uint32_t size = h->size > want_size ? h->size : want_size;
+
+	if (size > h->n_buckets / 2) {
 		for (int k = h->prime; k < __ac_HASH_PRIME_SIZE; k++)
-			if (__ac_prime_list[k] > h->size) {
+			if (__ac_prime_list[k] > size) {
 				h->prime = k + 1;
 				break;
 			}
