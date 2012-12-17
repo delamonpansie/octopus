@@ -1062,6 +1062,7 @@ submit:(void *)data len:(u32)len tag:(u16)tag
 			say_debug("backtrace:\n%s", e->backtrace);
 		return 0;
 	}
+	return 0; /* make apple's gcc happy */
 }
 
 - (void)

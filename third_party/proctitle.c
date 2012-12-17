@@ -242,6 +242,12 @@ set_proc_title(const char *format, ...)
 {
 	va_list ap;
 
+	/* make apple's gcc happy */
+	(void)(ap);
+	(void)format;
+	(void)ps_buffer;
+	(void)ps_buffer_fixed_size;
+
 #ifndef PS_USE_NONE
 
 #ifdef PS_USE_CLOBBER_ARGV

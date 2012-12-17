@@ -57,6 +57,9 @@
 /* Define to 1 if you have the <memory.h> header file. */
 #undef HAVE_MEMORY_H
 
+/* Define to 1 if you have the `memrchr' function. */
+#undef HAVE_MEMRCHR
+
 /* Define to 1 if you have the `nanosleep' function. */
 #undef HAVE_NANOSLEEP
 
@@ -173,6 +176,12 @@
 
 /* Define to 1 if assertions should be disabled. */
 #undef NDEBUG
+
+/* Define if you have Apple ObjC runtime */
+#undef OBJC_APPLE_RUNTIME
+
+/* Define if you have GNU ObjC runtime */
+#undef OBJC_GNU_RUNTIME
 
 /* Define to the address where bug reports for this package should be sent. */
 #undef PACKAGE_BUGREPORT

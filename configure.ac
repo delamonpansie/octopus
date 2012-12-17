@@ -67,8 +67,10 @@ AS_IF([test -n $DOT], [AC_SUBST(HAVE_DOT, 1)])
 
 
 # Checks for libraries.
-AC_SEARCH_LIBS([objc_msg_lookup], [objc], [objc_gnu_runtime=yes])
-AC_SEARCH_LIBS([_objc_msgSend], [objc], [objc_apple_runtime=yes])
+AC_SEARCH_LIBS([objc_msg_lookup], [objc], [AC_DEFINE(OBJC_GNU_RUNTIME, 1, [Define if you have GNU ObjC runtime])
+                                           [objc_gnu_runtime=yes]])
+AC_SEARCH_LIBS([objc_msgSend], [objc], [AC_DEFINE(OBJC_APPLE_RUNTIME, 1, [Define if you have Apple ObjC runtime])
+                                        [objc_apple_runtime=yes]])
 AS_IF([test -z "$objc_gnu_runtime" -a -z "$objc_apple_runtime"],
       [AC_MSG_ERROR([Unable to locate Objective C runtime library.])])
 AC_SEARCH_LIBS([dlopen], [dl dld], [], [AC_MSG_ERROR([unable to find the dlopen() function])])
@@ -135,7 +137,7 @@ AS_IF([test $ac_cv_sizeof_off_t -ne 8 -a $ac_cv_sizeof_off_t -ne 4],
 
 # Checks for required library functions.
 AC_FUNC_ALLOCA
-AC_CHECK_FUNCS([setproctitle sigaltstack prctl fdatasync  posix_fadvise madvise sysconf])
+AC_CHECK_FUNCS([setproctitle sigaltstack prctl fdatasync  posix_fadvise madvise sysconf memrchr])
 AC_CHECK_DECL(PAGE_SIZE, [AC_DEFINE(HAVE_PAGE_SIZE, 1, [Define to 1 if PAGE_SIZE provided])], [], [[#include <sys/param.h>]])
 AC_CHECK_DECL(strdupa, [AC_DEFINE(HAVE_STRDUPA, 1, [Define to 1 if strdupa provided])], [])
 AC_CHECK_DECL(TCP_KEEPIDLE, AC_DEFINE(HAVE_TCP_KEEPIDLE, 1, [Define to 1 if setsockopt(fd, SOL_TCP, TCP_KEEPIDLE) available]),
@@ -196,6 +198,11 @@ AC_SUBST(CFLAGS_WARNS)
 AC_CC_FLAG_CHECK([-MD -MP])
 AS_IF([test $ac_cv_MD__MP == yes],
       CFLAGS="-MD -MP $CFLAGS")
+
+# for some reason apple ships gcc with nested functions disabled
+AC_CC_FLAG_CHECK([-fnested-functions])
+AS_IF([test $ac_cv_fnested_functions == yes],
+      CFLAGS="-fnested-functions $CFLAGS")
 
 AC_CC_FLAG_CHECK([-Wno-comment], [AC_SUBST(HAVE_CC_FLAG_W_NO_COMMENT, 1)])
 AC_CC_FLAG_CHECK([-Wno-unused-value], [AC_SUBST(HAVE_CC_FLAG_W_NO_UNUSED_VALUE, 1)])

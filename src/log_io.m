@@ -40,8 +40,27 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include <objc/objc-api.h>
+
+#if !HAVE_MEMRCHR
+/* os x doesn't have memrchr */
+static void *
+memrchr(const void *s, int c, size_t n)
+{
+    const unsigned char *cp;
+
+    if (n != 0) {
+        cp = (unsigned char *)s + n;
+        do {
+            if (*(--cp) == (unsigned char)c)
+                return((void *)cp);
+        } while (--n != 0);
+    }
+    return(NULL);
+}
+#endif
 
 const u64 default_cookie = 0;
 const u32 default_version = 12;
@@ -470,13 +489,13 @@ init_filename:(const char *)filename_
 	return self;
 }
 
-- (void)
+- (id)
 free
 {
 	free(filename);
 	free(vbuf);
 	palloc_destroy_pool(pool);
-	[super free];
+	return [super free];
 }
 
 - (size_t)

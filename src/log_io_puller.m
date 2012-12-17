@@ -263,13 +263,13 @@ close
 	return conn_close(&c);
 }
 
-- (void)
+- (id)
 free
 {
 	say_debug("%s", __func__);
 	palloc_unregister_gc_root(fiber->pool, &c);
 	[self close];
-	[super free];
+	return [super free];
 }
 
 @end

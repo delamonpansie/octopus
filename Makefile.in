@@ -101,7 +101,7 @@ $(filter-out $(disable-warns-obj),$(obj)): CFLAGS += $(CFLAGS_WARNS)
 %.o: %.m
 	@mkdir -p $(dir $@)
 	$(E) "CC	$@"
-	$(Q)$(CC) $(CPPFLAGS) $(CFLAGS) -Wno-protocol -fobjc-exceptions -fgnu-runtime -c $< -o $@
+	$(Q)$(CC) $(CPPFLAGS) $(CFLAGS) -Wno-protocol -fobjc-exceptions -c $< -o $@
 
 %.o: %.c
 	@mkdir -p $(dir $@)

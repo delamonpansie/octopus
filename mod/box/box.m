@@ -181,7 +181,7 @@ validate_indexes(struct box_txn *txn)
                         if (obj != NULL && obj != txn->old_obj)
 				iproto_raise_fmt(ERR_CODE_INDEX_VIOLATION,
 						 "duplicate key value violates unique index %i:%s",
-						 index->n, [index class]->name);
+						 index->n, [[index class] name]);
                 }
 	}
 }
@@ -1045,7 +1045,7 @@ configure(void)
 		object_space_registry[i].enabled = true;
 
 		say_info("object space %i successfully configured", i);
-		say_info("  PK %i:%s", pk->n, [pk class]->name);
+		say_info("  PK %i:%s", pk->n, [[pk class] name]);
 	}
 }
 
@@ -1113,7 +1113,7 @@ build_object_space_trees(struct object_space *object_space)
 	}
 
 	for (int i = 0; i < tree_count; i++) {
-		say_info("  %i:%s", ts[i]->n, [ts[i] class]->name);
+		say_info("  %i:%s", ts[i]->n, [[ts[i] class] name]);
 		[ts[i] set_nodes:nodes[i]
 			   count:n_tuples
 		       allocated:estimated_tuples];
@@ -1140,7 +1140,7 @@ build_secondary_indexes()
 
 		struct tbuf *i = tbuf_alloc(fiber->pool);
 		foreach_index(index, &object_space_registry[n])
-			tbuf_printf(i, " %i:%s", index->n, [index class]->name);
+			tbuf_printf(i, " %i:%s", index->n, [[index class] name]);
 
 		say_info("Object space %i indexes:%.*s", n, tbuf_len(i), (char *)i->ptr);
 	}
