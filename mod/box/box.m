@@ -1033,7 +1033,7 @@ configure(void)
 				panic("object_space = %" PRIu32 " index = %" PRIu32 ") "
 				      "unknown index type `%s'", i, j, index_cfg->type);
 
-			if ([index respondsTo:@selector(resize)])
+			if ([index respondsTo:@selector(resize:)])
 				[(id)index resize:cfg.object_space[i]->estimated_rows];
 		}
 
