@@ -122,7 +122,7 @@ field_print(struct tbuf *buf, void *f)
 
 	tbuf_printf(buf, "\"");
 	while (size-- > 0) {
-		if (0x20 <= *(u8 *)f && *(u8 *)f < 0x7f)
+		if (0x20 <= *(u8 *)f && *(u8 *)f < 0x7f && !(*(u8 *)f == '"' || *(u8 *)f == '\\'))
 			tbuf_printf(buf, "%c", *(u8 *)f++);
 		else
 			tbuf_printf(buf, "\\x%02X", *(u8 *)f++);
