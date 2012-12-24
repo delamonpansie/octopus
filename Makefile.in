@@ -82,7 +82,7 @@ octopus: $(obj)
 	$E "CC	$@"
 	$Q$(CC) $(LDFLAGS) $^ $(LIBS) -o $@
 
-octopus: LDFLAGS += -Lthird_party/luajit/src -Wl,--export-dynamic
+octopus: LDFLAGS += -Lthird_party/luajit/src
 octopus: LIBS += -lluajit
 octopus: third_party/luajit/src/libluajit.a
 third_party/luajit/src/libluajit.a:

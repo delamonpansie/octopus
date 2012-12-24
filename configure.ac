@@ -207,6 +207,11 @@ AC_CC_FLAG_CHECK([-fnested-functions])
 AS_IF([test $ac_cv_fnested_functions == yes],
       CFLAGS="-fnested-functions $CFLAGS")
 
+dnl internal backtrace facility will resolve all dynamic symbols
+AC_CC_FLAG_CHECK([-Wl,--export-dynamic])
+AS_IF([test $ac_cv_Wl___export_dynamic == yes],
+      [LDFLAGS="-Wl,--export-dynamic $LDFLAGS"])
+
 AC_CC_FLAG_CHECK([-Wno-comment], [AC_SUBST(HAVE_CC_FLAG_W_NO_COMMENT, 1)])
 AC_CC_FLAG_CHECK([-Wno-unused-value], [AC_SUBST(HAVE_CC_FLAG_W_NO_UNUSED_VALUE, 1)])
 AC_CC_FLAG_CHECK([-Wno-unused-parameter], [AC_SUBST(HAVE_CC_FLAG_W_NO_UNUSED_PARAMETER, 1)])
