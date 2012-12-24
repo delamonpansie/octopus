@@ -155,7 +155,7 @@ AC_DEFUN([AC_CC_FLAG_CHECK], [
   AC_MSG_CHECKING([whether the _AC_LANG compiler accepts the $1 flag])
   CFLAGS_saved="$CFLAGS"
   CFLAGS="$CFLAGS $1"
-  AC_COMPILE_IFELSE([AC_LANG_SOURCE([[char foobar;]])],
+  AC_LINK_IFELSE([AC_LANG_SOURCE([[int main(int argc, char **argv) { return 0; }]])],
                     [AS_TR_SH([ac_cv$1])=yes
                      $2],
                     [AS_TR_SH([ac_cv$1])=no]
