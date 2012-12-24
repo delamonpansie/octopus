@@ -950,8 +950,8 @@ accept_client(int fd, void *data)
 struct service *
 tcp_service(u16 port, void (*on_bind)(int fd), void (*wakeup_workers)(ev_prepare *))
 {
-	struct service *service = calloc(1, sizeof(*service));
-	char *name = malloc(13);  /* strlen("iproto:xxxxx") */
+	struct service *service = xcalloc(1, sizeof(*service));
+	char *name = xmalloc(13);  /* strlen("iproto:xxxxx") */
 	snprintf(name, 13, "tcp:%i", port);
 
 	TAILQ_INIT(&service->processing);

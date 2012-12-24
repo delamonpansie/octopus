@@ -1095,7 +1095,7 @@ build_object_space_trees(struct object_space *object_space)
 
         if (n_tuples > 0) {
 		for (int i = 0; i < tree_count; i++) {
-                        nodes[i] = malloc(estimated_tuples * ts[i]->node_size);
+                        nodes[i] = xmalloc(estimated_tuples * ts[i]->node_size);
 			if (nodes[i] == NULL)
                                 panic("can't allocate node array");
                 }
@@ -1365,7 +1365,7 @@ init(void)
 {
 	stat_base = stat_register(ops, nelem(ops));
 
-	object_space_registry = calloc(object_space_count, sizeof(struct object_space));
+	object_space_registry = xcalloc(object_space_count, sizeof(struct object_space));
 	for (int i = 0; i < object_space_count; i++)
 		object_space_registry[i].n = i;
 
@@ -1401,24 +1401,24 @@ init(void)
 	if (cfg.memcached != 0) {
 		int n = cfg.memcached_object_space > 0 ? cfg.memcached_object_space : MEMCACHED_OBJECT_SPACE;
 
-		cfg.object_space = calloc(n + 2, sizeof(cfg.object_space[0]));
+		cfg.object_space = xcalloc(n + 2, sizeof(cfg.object_space[0]));
 		for (u32 i = 0; i <= n; ++i) {
-			cfg.object_space[i] = calloc(1, sizeof(cfg.object_space[0][0]));
+			cfg.object_space[i] = xcalloc(1, sizeof(cfg.object_space[0][0]));
 			cfg.object_space[i]->enabled = false;
 		}
 
 		cfg.object_space[n]->enabled = true;
 		cfg.object_space[n]->cardinality = 4;
 		cfg.object_space[n]->estimated_rows = 0;
-		cfg.object_space[n]->index = calloc(2, sizeof(cfg.object_space[n]->index[0]));
-		cfg.object_space[n]->index[0] = calloc(1, sizeof(cfg.object_space[n]->index[0][0]));
+		cfg.object_space[n]->index = xcalloc(2, sizeof(cfg.object_space[n]->index[0]));
+		cfg.object_space[n]->index[0] = xcalloc(1, sizeof(cfg.object_space[n]->index[0][0]));
 		cfg.object_space[n]->index[1] = NULL;
 		cfg.object_space[n]->index[0]->type = "HASH";
 		cfg.object_space[n]->index[0]->unique = 1;
 		cfg.object_space[n]->index[0]->key_field =
-			calloc(2, sizeof(cfg.object_space[n]->index[0]->key_field[0]));
+			xcalloc(2, sizeof(cfg.object_space[n]->index[0]->key_field[0]));
 		cfg.object_space[n]->index[0]->key_field[0] =
-			calloc(1, sizeof(cfg.object_space[n]->index[0]->key_field[0][0]));
+			xcalloc(1, sizeof(cfg.object_space[n]->index[0]->key_field[0][0]));
 		cfg.object_space[n]->index[0]->key_field[1] = NULL;
 		cfg.object_space[n]->index[0]->key_field[0]->fieldno = 0;
 		cfg.object_space[n]->index[0]->key_field[0]->type = "STR";

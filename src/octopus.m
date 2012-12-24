@@ -558,7 +558,7 @@ octopus(int argc, char **argv)
 	}
 
 	if (cfg_filename[0] != '/') {
-		cfg_filename_fullpath = malloc(PATH_MAX);
+		cfg_filename_fullpath = xmalloc(PATH_MAX);
 		if (getcwd(cfg_filename_fullpath, PATH_MAX - strlen(cfg_filename) - 1) == NULL) {
 			say_syserror("getcwd");
 			exit(EX_OSERR);
@@ -655,7 +655,7 @@ octopus(int argc, char **argv)
 		if (cfg.custom_proc_title == NULL)
 			custom_proc_title = "";
 		else {
-			custom_proc_title = calloc(strlen(cfg.custom_proc_title) + 2, 1);
+			custom_proc_title = xcalloc(strlen(cfg.custom_proc_title) + 2, 1);
 			strcat(custom_proc_title, "@");
 			strcat(custom_proc_title, cfg.custom_proc_title);
 		}

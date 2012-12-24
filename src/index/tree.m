@@ -40,7 +40,7 @@ set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated
 	if (nodes_ == NULL) {
 		if (allocated == 0)
 			allocated = 64;
-		nodes = malloc(allocated * node_size);
+		nodes = xmalloc(allocated * node_size);
 	} else {
 		nodes = nodes_;
 	}
@@ -54,7 +54,7 @@ init_with_unique:(bool)_unique
 {
 	[super init];
 	type = TREE;
-	tree = malloc(sizeof(*tree));
+	tree = xmalloc(sizeof(*tree));
 	unique = _unique;
 	return self;
 }

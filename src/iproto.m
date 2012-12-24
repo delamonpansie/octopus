@@ -383,7 +383,7 @@ int
 init_iproto_peer(struct iproto_peer *p, int id, const char *name, const char *addr)
 {
 	if (req_registry == NULL)
-		req_registry = mh_i32_init(NULL);
+		req_registry = mh_i32_init(xrealloc);
 
 	memset(p, 0, sizeof(*p));
 
@@ -399,7 +399,7 @@ init_iproto_peer(struct iproto_peer *p, int id, const char *name, const char *ad
 struct iproto_peer *
 make_iproto_peer(int id, const char *name, const char *addr)
 {
-	struct iproto_peer *p = malloc(sizeof(*p));
+	struct iproto_peer *p = xmalloc(sizeof(*p));
 	if (init_iproto_peer(p, id, name, addr) == -1) {
 		free(p);
 		return NULL;

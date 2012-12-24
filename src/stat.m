@@ -49,7 +49,7 @@ stat_register(char * const * name, size_t count)
 	for (int i = 0; i < count; i++, name++, base++) {
 		if (stats_size <= base) {
 			stats_size += 1024;
-			stats = realloc(stats, sizeof(*stats) * stats_size);
+			stats = xrealloc(stats, sizeof(*stats) * stats_size);
 			if (stats == NULL)
 				abort();
 		}

@@ -149,15 +149,6 @@ keepalive(void)
 }
 
 
-void *
-xrealloc(void *ptr, size_t size)
-{
-	void *ret = realloc(ptr, size);
-	if (size > 0 && ret == NULL)
-		abort();
-	return ret;
-}
-
 volatile int gdb_wait_lock = 1;
 void
 wait_gdb(void)
@@ -306,7 +297,7 @@ load_symbols(const char *name)
 		}
 	}
 
-	symbols = malloc(symbol_count * sizeof(struct symbol));
+	symbols = xmalloc(symbol_count * sizeof(struct symbol));
 
 	scn = NULL;
 	while ((scn = elf_nextscn(elf, scn)) != NULL) {
@@ -372,32 +363,28 @@ out:
 
 #endif
 
-void *__real_calloc(size_t nmemb, size_t size);
-void *__real_malloc(size_t size);
-void *__real_realloc(void *ptr, size_t size);
-
 void *
-__wrap_malloc(size_t size)
+xmalloc(size_t size)
 {
-	void *ptr = __real_malloc(size);
+	void *ptr = malloc(size);
 	if (ptr == NULL)
 		panic("Out of memory");
 	return ptr;
 }
 
 void *
-__wrap_calloc(size_t nmemb, size_t size)
+xcalloc(size_t nmemb, size_t size)
 {
-	void *ptr = __real_calloc(nmemb, size);
+	void *ptr = calloc(nmemb, size);
 	if (ptr == NULL)
 		panic("Out of memory");
 	return ptr;
 }
 
 void *
-__wrap_realloc(void *ptr, size_t size)
+xrealloc(void *ptr, size_t size)
 {
-	ptr = __real_realloc(ptr, size);
+	ptr = realloc(ptr, size);
 	if (size > 0 && ptr == NULL)
 		panic("Out of memory");
 	return ptr;

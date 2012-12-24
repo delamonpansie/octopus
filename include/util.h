@@ -47,6 +47,10 @@ void *alloca (size_t);
 #include <unistd.h>
 #include <stddef.h>
 
+void *xcalloc(size_t nmemb, size_t size);
+void *xmalloc(size_t size);
+void *xrealloc(void *ptr, size_t size);
+
 #ifndef MAX
 # define MAX(a, b) ((a) > (b) ? (a) : (b))
 # define MIN(a, b) ((a) < (b) ? (a) : (b))

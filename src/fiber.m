@@ -242,7 +242,7 @@ fiber_create(const char *name, void (*f)(va_list va), ...)
 		new = SLIST_FIRST(&zombie_fibers);
 		SLIST_REMOVE_HEAD(&zombie_fibers, zombie_link);
 	} else {
-		new = calloc(1, sizeof(*fiber));
+		new = xcalloc(1, sizeof(*fiber));
 		if (new == NULL)
 			return NULL;
 
@@ -315,7 +315,7 @@ spawn_child(const char *name, struct fiber *in, struct fiber *out,
 		if (ioctl(socks[1], FIONBIO, &one) < 0)
 			return NULL;
 
-		struct child *child = malloc(sizeof(*child));
+		struct child *child = xmalloc(sizeof(*child));
 		child->pid = pid;
 
 		struct palloc_pool *p = palloc_create_pool(name);
@@ -326,7 +326,7 @@ spawn_child(const char *name, struct fiber *in, struct fiber *out,
 	} else {
 		salloc_destroy();
 		close_all_xcpt(3, socks[0], stderrfd, sayfd);
-		child_name = malloc(64);
+		child_name = xmalloc(64);
 		snprintf(child_name, 64, "%s/child", name);
 		sched.name = child_name;
 		set_proc_title("%s%s", name, custom_proc_title);
@@ -372,7 +372,7 @@ fiber_init(void)
 	SLIST_INIT(&zombie_fibers);
 	TAILQ_INIT(&wake_list);
 
-	fibers_registry = mh_i32_init(NULL);
+	fibers_registry = mh_i32_init(xrealloc);
 
 	memset(&sched, 0, sizeof(sched));
 	sched.fid = 1;

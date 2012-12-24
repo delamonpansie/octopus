@@ -67,7 +67,7 @@ struct paxos_peer *
 make_paxos_peer(int id, const char *name, const char *addr,
 		short primary_port, short feeder_port)
 {
-	struct paxos_peer *p = calloc(1, sizeof(*p));
+	struct paxos_peer *p = xcalloc(1, sizeof(*p));
 
 	p->id = id;
 	p->name = name;

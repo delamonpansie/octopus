@@ -52,7 +52,7 @@ octopus_coro_create(struct octopus_coro *coro, void (*f) (void *), void *data)
 	const int page = sysconf(_SC_PAGESIZE);
 
 	if (coro == NULL)
-		coro = malloc(sizeof(*coro));
+		coro = xmalloc(sizeof(*coro));
 
 	if (coro == NULL)
 		return NULL;

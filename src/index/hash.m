@@ -116,7 +116,7 @@ ordered_iterator_init
 init									\
 {									\
 	[super init];							\
-	h = mh_##type##_init(NULL);					\
+	h = mh_##type##_init(xrealloc);					\
 	node_size = sizeof(struct index_node) + sizeof(type);		\
 	lua_ctor = luaT_##type##_ctor;					\
 	compare = ucompare = (index_cmp)type##_compare;			\

@@ -82,7 +82,6 @@ octopus: $(obj)
 	$E "CC	$@"
 	$Q$(CC) $(LDFLAGS) $^ $(LIBS) -o $@
 
-octopus: LDFLAGS += -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc
 octopus: LDFLAGS += -Lthird_party/luajit/src -Wl,--export-dynamic
 octopus: LIBS += -lluajit
 octopus: third_party/luajit/src/libluajit.a

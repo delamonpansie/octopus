@@ -486,7 +486,7 @@ init_filename:(const char *)filename_
 
 #ifdef __GLIBC__
 	const int bufsize = 1024 * 1024;
-	vbuf = malloc(bufsize);
+	vbuf = xmalloc(bufsize);
 	setvbuf(fd, vbuf, _IOFBF, bufsize);
 #endif
 	offset = ftello(fd);
