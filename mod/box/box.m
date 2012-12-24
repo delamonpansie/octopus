@@ -385,6 +385,12 @@ do_field_splice(struct tbuf *field, void *args_data, u32 args_data_size)
 	return diff;
 }
 
+int __attribute__((pure))
+field_len(const struct tbuf *b)
+{
+	return varint32_sizeof(tbuf_len(b)) + tbuf_len(b);
+}
+
 static void __attribute__((noinline))
 prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 {
@@ -423,11 +429,6 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 		   .free - len(data) */
 		fields[i] = (struct tbuf){ .ptr = src, .end = field, .free = len, .pool = NULL };
 		field += len;
-	}
-
-	int __attribute__((pure)) field_len(const struct tbuf *b)
-	{
-		return varint32_sizeof(tbuf_len(b)) + tbuf_len(b);
 	}
 
 	while (op_cnt-- > 0) {

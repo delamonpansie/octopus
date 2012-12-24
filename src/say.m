@@ -294,15 +294,16 @@ _panic_syserror(const char *file, unsigned line, const char *format, ...)
 }
 
 void __attribute__((noreturn))
+panic_exc_aux(Error *exc, const char *format, ...)
+{
+	va_list ap;
+	va_start(ap, format);
+	vpanic(EXIT_FAILURE, exc->file, exc->line, NULL, exc->backtrace, format, ap);
+}
+
+void __attribute__((noreturn))
 panic_exc(Error *exc)
 {
-	void __attribute__((noreturn)) panic_exc_aux(const char *format, ...)
-	{
-		va_list ap;
-		va_start(ap, format);
-		vpanic(EXIT_FAILURE, exc->file, exc->line, NULL, exc->backtrace, format, ap);
-	}
-
-	panic_exc_aux("exception: %s", exc->reason);
+	panic_exc_aux(exc, "exception: %s", exc->reason);
 }
 
