@@ -165,6 +165,10 @@ octopus_version.h: FORCE
 endif
 endif
 
+scripts/stringify: scripts/stringify.c
+	$(Q)$(CC) $< -o $@
+	$(E) "CC	$@"
+
 .PHONY: distclean clean
 clean:
 	$(E) "CLEAN	octopus"
@@ -176,7 +180,7 @@ luaclean:
 	$(Q)$(MAKE) -C third_party/luajit/src clean
 
 configure-byproducts += autom4te.cache config.log config.status
-configure-byproducts += include/config.h Makefile scripts/gen-lua-registry.sh
+configure-byproducts += include/config.h Makefile
 
 distclean: clean luaclean
 	$(Q)rm -rf $(dist-clean)

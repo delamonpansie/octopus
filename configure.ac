@@ -6,7 +6,7 @@ AC_PREREQ([2.63])
 AC_INIT([octopus],[2.0],[mon@unformed.ru])
 AC_CONFIG_SRCDIR([src/octopus.m])
 AC_CONFIG_HEADERS([include/config.h])
-AC_CONFIG_FILES([Makefile scripts/gen-lua-registry.sh])
+AC_CONFIG_FILES([Makefile])
 
 # We use same compiler to compile both C and Objective C sources.
 # Due to limited support of Objective C in autoconf, pretend that we are

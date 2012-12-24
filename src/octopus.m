@@ -336,7 +336,7 @@ luaT_static_module(lua_State *L)
     for (struct lua_src *s = lua_src; s->name; s++)
 	    if (strcmp(name, s->name) == 0) {
 		    if (luaL_loadbuffer(L, s->start, s->size, name) != 0)
-			    panic("luaL_loadbuffer: %s", lua_tostring(L, 1));
+			    panic("luaL_loadbuffer: %s", lua_tostring(L, 2));
 		    return 1;
 	    }
 
