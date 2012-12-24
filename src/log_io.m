@@ -42,6 +42,10 @@
 #include <string.h>
 #include <unistd.h>
 
+#if !HAVE_DECL_FDATASYNC
+extern int fdatasync(int fd);
+#endif
+
 #include <objc/objc-api.h>
 
 #if !HAVE_MEMRCHR

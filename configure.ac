@@ -145,6 +145,9 @@ AC_CHECK_DECL(TCP_KEEPIDLE, AC_DEFINE(HAVE_TCP_KEEPIDLE, 1, [Define to 1 if sets
 [#include <netinet/in.h>]
 [#include <netinet/tcp.h>]])
 
+dnl MacOS X 10.7 has fdatasync but does not declare it.
+AC_CHECK_DECLS_ONCE([fdatasync])
+
 # checks for compiler characteristics
 
 AC_DEFUN([AC_CC_FLAG_CHECK], [

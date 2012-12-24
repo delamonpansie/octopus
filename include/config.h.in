@@ -24,6 +24,10 @@
 /* Define to 1 to use the syscall interface for clock_gettime */
 #undef HAVE_CLOCK_SYSCALL
 
+/* Define to 1 if you have the declaration of `fdatasync', and to 0 if you
+   don't. */
+#undef HAVE_DECL_FDATASYNC
+
 /* Define to 1 if you have the `epoll_ctl' function. */
 #undef HAVE_EPOLL_CTL
 
