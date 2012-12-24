@@ -186,48 +186,54 @@ extern _Unwind_Ptr _Unwind_GetIP (struct _Unwind_Context *);
 extern void * _Unwind_FindEnclosingFunction (void *pc);
 
 static char backtrace_buf[4096 * 4];
+struct print_state {
+	char *p;
+	size_t len;
+};
+static _Unwind_Reason_Code
+print_frame(struct _Unwind_Context *ctx,
+	    void *arg)
+{
+	struct print_state *s = arg;
+	void *pc = (void *)_Unwind_GetIP(ctx);
+	void *fn = _Unwind_FindEnclosingFunction(pc);
+	size_t r;
+
+	if (pc == NULL || fn == NULL)
+		return _URC_NO_REASON;
+
+	r = snprintf(s->p, s->len, "        - { pc: %p", fn);
+	if (r >= s->len)
+		r = s->len;
+	s->p += r;
+	s->len -= r;
+
+#ifdef HAVE_LIBELF
+	struct symbol *sym = addr2symbol(fn);
+	if (sym != NULL) {
+		r = snprintf(s->p, s->len, ", sym: '%s+%zu'", sym->name, pc - fn);
+		if (r >= s->len)
+			r = s->len;
+		s->p += r;
+		s->len -= r;
+
+	}
+#endif
+	r = snprintf(s->p, s->len, " }\r\n");
+	if (r >= s->len)
+		r = s->len;
+
+	s->p += r;
+	s->len -= r;
+	return _URC_NO_REASON;
+}
+
 const char *
 tnt_backtrace(void)
 {
-	char *p = backtrace_buf;
-	size_t r, len = sizeof(backtrace_buf);
-
-	_Unwind_Reason_Code print_frame(struct _Unwind_Context *ctx,
-					void *arg __attribute__((unused)))
-	{
-		void *pc = (void *)_Unwind_GetIP(ctx);
-		void *fn = _Unwind_FindEnclosingFunction(pc);
-
-		if (pc == NULL || fn == NULL)
-			return _URC_NO_REASON;
-
-		r = snprintf(p, len, "        - { pc: %p", fn);
-		if (r >= len)
-			r = len;
-		p += r;
-		len -= r;
-
-#ifdef HAVE_LIBELF
-		struct symbol *s = addr2symbol(fn);
-		if (s != NULL) {
-			r = snprintf(p, len, ", sym: '%s+%zu'", s->name, pc - fn);
-			if (r >= len)
-				r = len;
-			p += r;
-			len -= r;
-
-		}
-#endif
-		r = snprintf(p, len, " }\r\n");
-		if (r >= len)
-			r = len;
-
-		p += r;
-		len -= r;
-		return _URC_NO_REASON;
-	}
-	_Unwind_Backtrace(print_frame, NULL);
-	*p = 0;
+	struct print_state s = { backtrace_buf, sizeof(backtrace_buf) };
+	_Unwind_Backtrace(print_frame, &s);
+	*(s.p) = 0;
         return backtrace_buf;
 }
 
