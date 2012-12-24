@@ -187,10 +187,10 @@ CFLAGS="$CFLAGS_saved"
 
 AC_CC_FLAG_CHECK([-fno-stack-protector])
 AS_IF([test "x$ac_cv_no_stack_protector" == xyes]
-      CFLAGS="$CFLAGS -fno-stack-protector")
+      [CFLAGS="$CFLAGS -fno-stack-protector"])
 AC_CC_FLAG_CHECK([-pipe])
 AS_IF([test "x$ac_cv_pipe" == xyes]
-      CFLAGS="$CFLAGS -pipe")
+      [CFLAGS="$CFLAGS -pipe"])
 
 AC_CC_FLAG_CHECK([-Werror], [CFLAGS_WARNS="-Werror $CFLAGS_WARNS"])
 AC_CC_FLAG_CHECK([-Wno-sign-compare], [CFLAGS_WARNS="-Wno-sign-compare $CFLAGS_WARNS"])
@@ -200,12 +200,12 @@ AC_SUBST(CFLAGS_WARNS)
 
 AC_CC_FLAG_CHECK([-MD -MP])
 AS_IF([test $ac_cv_MD__MP == yes],
-      CFLAGS="-MD -MP $CFLAGS")
+      [CFLAGS="-MD -MP $CFLAGS"])
 
 # for some reason apple ships gcc with nested functions disabled
 AC_CC_FLAG_CHECK([-fnested-functions])
 AS_IF([test $ac_cv_fnested_functions == yes],
-      CFLAGS="-fnested-functions $CFLAGS")
+      [CFLAGS="-fnested-functions $CFLAGS"])
 
 dnl internal backtrace facility will resolve all dynamic symbols
 AC_CC_FLAG_CHECK([-Wl,--export-dynamic])
