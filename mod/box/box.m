@@ -107,6 +107,19 @@ tuple_field(struct box_tuple *tuple, size_t i)
 	return field;
 }
 
+static int
+quote_all(int c __attribute__((unused)))
+{
+	return 1;
+}
+static int
+quote_non_printable(int c)
+{
+	return !(0x20 <= c && c < 0x7f && !(c == '"' || c == '\\'));
+}
+
+static int (*quote)(int c) = quote_non_printable;
+
 static void
 field_print(struct tbuf *buf, void *f)
 {
@@ -114,20 +127,27 @@ field_print(struct tbuf *buf, void *f)
 
 	size = LOAD_VARINT32(f);
 
-	if (size == 2)
-		tbuf_printf(buf, "%i:", *(u16 *)f);
+	if (quote != quote_all) {
+		if (size == 2)
+			tbuf_printf(buf, "%i:", *(u16 *)f);
 
-	if (size == 4)
-		tbuf_printf(buf, "%i:", *(u32 *)f);
+		if (size == 4)
+			tbuf_printf(buf, "%i:", *(u32 *)f);
 
-	tbuf_printf(buf, "\"");
-	while (size-- > 0) {
-		if (0x20 <= *(u8 *)f && *(u8 *)f < 0x7f && !(*(u8 *)f == '"' || *(u8 *)f == '\\'))
-			tbuf_printf(buf, "%c", *(u8 *)f++);
-		else
+		tbuf_printf(buf, "\"");
+		while (size-- > 0) {
+			if (quote(*(u8 *)f))
+				tbuf_printf(buf, "\\x%02X", *(u8 *)f++);
+			else
+				tbuf_printf(buf, "%c", *(u8 *)f++);
+		}
+		tbuf_printf(buf, "\"");
+	} else {
+		tbuf_printf(buf, "\"");
+		while (size-- > 0)
 			tbuf_printf(buf, "\\x%02X", *(u8 *)f++);
+		tbuf_printf(buf, "\"");
 	}
-	tbuf_printf(buf, "\"");
 
 }
 
@@ -1518,6 +1538,12 @@ cat_scn(i64 stop_scn)
 static int
 cat(const char *filename)
 {
+	const char *q = getenv("BOX_CAT_QUOTE");
+	if (q && !strcmp(q, "ALL")) {
+		quote = quote_all;
+	} else {
+		quote = quote_non_printable;
+	}
 	read_log(filename, print_row);
 	return 0; /* ignore return status of read_log */
 }
