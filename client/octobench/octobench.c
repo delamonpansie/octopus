@@ -209,7 +209,7 @@ octopoll(int fd, int event) {
 			pfd.revents |= POLLERR;
 			break;
 		}
-	} while(ret == 0);
+	} while (ret == 0);
 
 	return pfd.revents;
 }
