@@ -347,7 +347,14 @@ worker(void *arg) {
 	while(!(local.nOk >= nRequests && local.nProceed == nSended)) {
 		int state;
 
-		state = octopoll(fd, POLLIN | ((needToSend || local.nOk < nRequests) ? POLLOUT : 0));
+		state = POLLIN;
+		if (needToSend)
+			state |= POLLOUT;
+		if (local.nOk < nRequests && local.nProceed + nWriteAhead > nSended)
+			state |= POLLOUT;
+
+		state = octopoll(fd, state);
+
 		if (state & POLLERR) {
 			fprintf(stderr,"poll fails: %s\n", strerror(errno));
 			exit(1);
