@@ -74,8 +74,13 @@ struct netmsg_mark {
 	int offset;
 };
 
-#define REF_MALLOC -1
-#define REF_STATIC -2
+enum conn_memory_ownership {
+	MO_MALLOC	 = 0x01,
+	MO_STATIC	 = 0x02,
+	MO_SLAB		 = 0x03,
+	MO_MY_OWN_POOL   = 0x10
+};
+#define MO_CONN_OWNERSHIP_MASK	(MO_MALLOC | MO_STATIC | MO_SLAB)	
 
 struct conn {
 	struct palloc_pool *pool;
@@ -83,22 +88,38 @@ struct conn {
 	int fd, ref;
 	struct netmsg_head out_messages;
 
+	enum conn_memory_ownership  memory_ownership;
 	enum { READING, PROCESSING, CLOSE_AFTER_WRITE, CLOSED } state;
 	LIST_ENTRY(conn) link;
 	TAILQ_ENTRY(conn) processing_link;
 	ev_io in, out;
 	struct service *service;
 	char peer_name[22]; /* aaa.bbb.ccc.ddd:xxxxx */
+
+	ev_timer 	timer;
+};
+
+enum { IPROTO_NONBLOCK = 1 };
+struct iproto;
+typedef union {
+	void (*stream)(struct netmsg **, struct iproto *);
+	struct netmsg_head *(*block)(struct conn *, struct iproto *);
+} iproto_cb;
+
+struct iproto_handler {
+	iproto_cb cb;
+	int flags;
 };
 
 struct service {
 	struct palloc_pool *pool;
 	const char *name;
-	TAILQ_HEAD(, conn) processing;
+	TAILQ_HEAD(conn_tailq, conn) processing;
 	LIST_HEAD(, conn) conn;
 	struct fiber *acceptor, *input_reader, *output_flusher;
 	SLIST_HEAD(, fiber) workers; /* <- handlers */
 	ev_prepare wakeup;
+	struct iproto_handler ih[256];
 };
 
 struct netmsg *netmsg_tail(struct netmsg_head *h);
@@ -115,7 +136,7 @@ void net_add_lua_iov(struct netmsg **m, lua_State *L, int str);
 void netmsg_verify_ownership(struct netmsg_head *h);
 
 struct conn *conn_init(struct conn *c, struct palloc_pool *pool, int fd,
-		       struct fiber *in, struct fiber *out, int ref);
+		       struct fiber *in, struct fiber *out, enum conn_memory_ownership memory_ownership);
 void conn_set(struct conn *c, int fd);
 int conn_close(struct conn *c);
 void conn_gc(struct palloc_pool *pool, void *ptr);
@@ -127,13 +148,28 @@ ssize_t conn_flush(struct conn *c);
 char *conn_peer_name(struct conn *c);
 
 void service_output_flusher(va_list ap __attribute__((unused)));
+
+enum tac_state {
+	tac_ok = 0,
+	tac_error,
+	tac_wait,
+	tac_alien_event
+};
+enum tac_state  tcp_async_connect(struct conn *c, ev_watcher *w,
+				struct sockaddr_in 	*dst,
+				struct sockaddr_in 	*src,
+				ev_tstamp		timeout);
+
 int tcp_connect(struct sockaddr_in *dst, struct sockaddr_in *src, ev_tstamp timeout);
 void tcp_server(va_list ap);
 void udp_server(va_list ap);
 int server_socket(int type, struct sockaddr_in *src, int nonblock,
 		  void (*on_bind)(int fd), void (*sleep)(ev_tstamp tm));
 
-struct service *tcp_service(u16 port, void (*on_bind)(int fd));
+struct service *tcp_service(u16 port, void (*on_bind)(int fd), void (*wakeup)(ev_prepare *));
+void wakeup_workers(ev_prepare *ev);
+void service_iproto(struct service *s);
+void iproto_wakeup_workers(ev_prepare *ev);
 
 int atosin(const char *orig, struct sockaddr_in *addr);
 const char *sintoa(const struct sockaddr_in *addr);

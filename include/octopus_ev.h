@@ -37,10 +37,19 @@ extern struct fiber *fiber;
 #define EV_COMMON void *data; char coro; const char *cb_src;
 #define ev_set_cb(ev,cb_) ev_cb (ev) = (cb_); (ev)->cb_src = __FILE__ ":" EV_STRINGIFY(__LINE__);
 #define EV_CB_DECLARE(type) void (*cb)(struct type *w, int revents);
+
+#if defined(FIBER_DEBUG) || defined(FIBER_EV_DEBUG)
+extern void fiber_ev_cb(void *);
+#define EV_CB_LOG(arg) fiber_ev_cb((arg))
+#else
+#define EV_CB_LOG(arg) (void)0
+#endif
+
 #define EV_CB_INVOKE(watcher, revents) ({			\
 if ((watcher)->coro) {						\
 	fiber = (struct fiber *)(watcher)->cb;			\
-	((struct octopus_coro *)fiber)->w = (watcher); 	\
+	((struct octopus_coro *)fiber)->w = (watcher);		\
+	EV_CB_LOG((watcher));					\
 	coro_transfer(sched_ctx, (coro_context *)fiber);	\
 } else								\
 	(watcher)->cb((watcher), (revents));			\

@@ -41,8 +41,8 @@ class RunEnv < TinyRakeEmbed
     sleep($options[:valgrind] ? 4 : 0.1)
   end
 
-  def connect
-    SilverBox.new connect_string
+  def connect(*args)
+    SilverBox.new connect_string, *args
   end
 
   def cd_test_root

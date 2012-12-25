@@ -61,7 +61,7 @@ void register_module_(struct tnt_module *);
 extern lua_State *root_L;
 struct lua_src {
 	const char *name;
-	void *start;
+	const char *start;
 	size_t size;
 };
 extern struct lua_src *lua_src;

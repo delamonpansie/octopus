@@ -71,19 +71,26 @@ static struct mhash_t *fibers_registry;
 
 TAILQ_HEAD(, fiber) wake_list;
 
+#if defined(FIBER_DEBUG) || defined(FIBER_EV_DEBUG)
+void
+fiber_ev_cb(void *arg)
+{
+	say_debug("%s: =<< arg:%p", __func__, arg);
+}
+#endif
+
 void
 resume(struct fiber *callee, void *w)
 {
 	assert(callee != &sched);
 	struct fiber *caller = fiber;
-	callee->caller = caller;
-	assert(callee->name);
-	fiber = callee;
-	callee->coro.w = w;
 #ifdef FIBER_DEBUG
 	say_debug("%s: %i/%s -> %i/%s arg:%p", __func__,
 		  caller->fid, caller->name, callee->fid, callee->name, w);
 #endif
+	callee->caller = caller;
+	fiber = callee;
+	callee->coro.w = w;
 	coro_transfer(&caller->coro.ctx, &callee->coro.ctx);
 	callee->caller = &sched;
 }
@@ -92,8 +99,17 @@ void *
 yield(void)
 {
 	struct fiber *callee = fiber;
+#ifdef FIBER_DEBUG
+	say_debug("%s: %i/%s -> %i/%s", __func__,
+		  callee->fid, callee->name,
+		  callee->caller->fid, callee->caller->name);
+#endif
 	fiber = callee->caller;
 	coro_transfer(&callee->coro.ctx, &callee->caller->coro.ctx);
+#ifdef FIBER_DEBUG
+	say_debug("%s: return arg:%p", __func__, fiber->coro.w);
+#endif
+
 	return fiber->coro.w;
 }
 
@@ -226,7 +242,7 @@ fiber_create(const char *name, void (*f)(va_list va), ...)
 		new = SLIST_FIRST(&zombie_fibers);
 		SLIST_REMOVE_HEAD(&zombie_fibers, zombie_link);
 	} else {
-		new = calloc(1, sizeof(*fiber));
+		new = xcalloc(1, sizeof(*fiber));
 		if (new == NULL)
 			return NULL;
 
@@ -299,18 +315,18 @@ spawn_child(const char *name, struct fiber *in, struct fiber *out,
 		if (ioctl(socks[1], FIONBIO, &one) < 0)
 			return NULL;
 
-		struct child *child = malloc(sizeof(*child));
+		struct child *child = xmalloc(sizeof(*child));
 		child->pid = pid;
 
 		struct palloc_pool *p = palloc_create_pool(name);
-		child->c = conn_init(NULL, p, socks[1], in, out, 0);
+		child->c = conn_init(NULL, p, socks[1], in, out, MO_SLAB);
 		palloc_register_gc_root(p, child->c, conn_gc);
 
 		return child;
 	} else {
 		salloc_destroy();
 		close_all_xcpt(3, socks[0], stderrfd, sayfd);
-		child_name = malloc(64);
+		child_name = xmalloc(64);
 		snprintf(child_name, 64, "%s/child", name);
 		sched.name = child_name;
 		set_proc_title("%s%s", name, custom_proc_title);
@@ -356,7 +372,7 @@ fiber_init(void)
 	SLIST_INIT(&zombie_fibers);
 	TAILQ_INIT(&wake_list);
 
-	fibers_registry = mh_i32_init(NULL);
+	fibers_registry = mh_i32_init(xrealloc);
 
 	memset(&sched, 0, sizeof(sched));
 	sched.fid = 1;

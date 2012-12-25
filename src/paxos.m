@@ -68,7 +68,7 @@ struct paxos_peer *
 make_paxos_peer(int id, const char *name, const char *addr,
 		short primary_port, short feeder_port)
 {
-	struct paxos_peer *p = calloc(1, sizeof(*p));
+	struct paxos_peer *p = xcalloc(1, sizeof(*p));
 
 	p->id = id;
 	p->name = name;
@@ -1190,17 +1190,14 @@ snap_io_rate_limit:(int)snap_io_rate_limit_
 
 	quorum = 2; /* FIXME: hardcoded */
 
-	pool = palloc_create_pool("paxos");
 	output_flusher = fiber_create("paxos/output_flusher", service_output_flusher);
 	reply_reader = fiber_create("paxos/reply_reader", iproto_reply_reader, req_collect_reply);
 
 	short accept_port;
 	accept_port = ntohs(paxos_peer(self, self_id)->iproto.addr.sin_port);
-	input_service = tcp_service(accept_port, NULL);
+	input_service = tcp_service(accept_port, NULL, wakeup_workers);
 	fiber_create("paxos/worker", iproto_interact, input_service, recv_msg, self);
-
-	fiber_create("paxos/rendevouz", iproto_rendevouz,
-		     NULL, &remotes, pool, reply_reader, output_flusher);
+	fiber_create("paxos/rendevouz", iproto_rendevouz, NULL, &remotes, reply_reader, output_flusher);
 	fiber_create("paxos/elect", propose_leadership, self);
 	follower = fiber_create("paxos/follower", follow_leader_fib, self);
 	mbox_init(&wal_dumper_mbox);
@@ -1308,6 +1305,7 @@ submit:(void *)data len:(u32)len tag:(u16)tag
 			say_debug("backtrace:\n%s", e->backtrace);
 		return 0;
 	}
+	return 0; /* make apple's gcc happy */
 }
 
 - (int)

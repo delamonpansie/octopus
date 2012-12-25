@@ -31,22 +31,45 @@
 #import <palloc.h>
 #import <say.h>
 
+#if OBJC_GNU_RUNTIME
+#include <objc/objc-api.h>
+#elif OBJC_APPLE_RUNTIME
+#include <objc/runtime.h>
+#endif
+
 @implementation Object (Palloc)
+
 + (id)
 palloc
 {
+#if OBJC_GNU_RUNTIME
 	Class class = (Class)self;
-	id obj = p0alloc(fiber->pool, class->instance_size);
+	id obj = p0alloc(fiber->pool, class_get_instance_size(class));
 	obj->class_pointer = class;
+#elif OBJC_APPLE_RUNTIME
+	Class class = (Class)self;
+	id obj = p0alloc(fiber->pool, class_getInstanceSize(class));
+	obj->isa = class;
+#else
+# error Unknown runtime
+#endif
 	return obj;
 }
 
 + (id)
 palloc_from:(struct palloc_pool *)pool
 {
+#if OBJC_GNU_RUNTIME
 	Class class = (Class)self;
-	id obj = p0alloc(pool, class->instance_size);
+	id obj = p0alloc(pool, class_get_instance_size(class));
 	obj->class_pointer = class;
+#elif OBJC_APPLE_RUNTIME
+	Class class = (Class)self;
+	id obj = p0alloc(pool, class_getInstanceSize(class));
+	obj->isa = class;
+#else
+# error Unknown runtime
+#endif
 	return obj;
 }
 @end

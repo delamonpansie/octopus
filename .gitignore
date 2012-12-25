@@ -19,7 +19,6 @@ autom4te.cache
 config.*
 configure
 /Makefile
-scripts/gen-lua-registry.sh
 include/config.h
 
 
@@ -30,8 +29,6 @@ mod/box/memcached.m
 src/admin.m
 octopus_version.h
 src-lua/registry.m
-src-lua/bundle.nm
-src-lua/bundle.o.redefine
 
 # luajit
 third_party/luajit/src/buildvm

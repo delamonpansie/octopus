@@ -82,8 +82,7 @@ octopus: $(obj)
 	$E "CC	$@"
 	$Q$(CC) $(LDFLAGS) $^ $(LIBS) -o $@
 
-octopus: LDFLAGS += -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc
-octopus: LDFLAGS += -Lthird_party/luajit/src -Wl,--export-dynamic
+octopus: LDFLAGS += -Lthird_party/luajit/src
 octopus: LIBS += -lluajit
 octopus: third_party/luajit/src/libluajit.a
 third_party/luajit/src/libluajit.a:
@@ -101,7 +100,7 @@ $(filter-out $(disable-warns-obj),$(obj)): CFLAGS += $(CFLAGS_WARNS)
 %.o: %.m
 	@mkdir -p $(dir $@)
 	$(E) "CC	$@"
-	$(Q)$(CC) $(CPPFLAGS) $(CFLAGS) -Wno-protocol -fobjc-exceptions -fgnu-runtime -c $< -o $@
+	$(Q)$(CC) $(CPPFLAGS) $(CFLAGS) -Wno-protocol -fobjc-exceptions -c $< -o $@
 
 %.o: %.c
 	@mkdir -p $(dir $@)
@@ -165,6 +164,10 @@ octopus_version.h: FORCE
 endif
 endif
 
+scripts/stringify: scripts/stringify.c
+	$(Q)$(CC) $< -o $@
+	$(E) "CC	$@"
+
 .PHONY: distclean clean
 clean:
 	$(E) "CLEAN	octopus"
@@ -176,7 +179,7 @@ luaclean:
 	$(Q)$(MAKE) -C third_party/luajit/src clean
 
 configure-byproducts += autom4te.cache config.log config.status
-configure-byproducts += include/config.h Makefile scripts/gen-lua-registry.sh
+configure-byproducts += include/config.h Makefile
 
 distclean: clean luaclean
 	$(Q)rm -rf $(dist-clean)

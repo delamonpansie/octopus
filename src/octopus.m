@@ -336,7 +336,7 @@ luaT_static_module(lua_State *L)
     for (struct lua_src *s = lua_src; s->name; s++)
 	    if (strcmp(name, s->name) == 0) {
 		    if (luaL_loadbuffer(L, s->start, s->size, name) != 0)
-			    panic("luaL_loadbuffer: %s", lua_tostring(L, 1));
+			    panic("luaL_loadbuffer: %s", lua_tostring(L, 2));
 		    return 1;
 	    }
 
@@ -470,7 +470,7 @@ octopus(int argc, char **argv)
 			   gopt_option('C', GOPT_ARG, gopt_shorts(0), gopt_longs("cat"),
 				       "=FILE|SCN", "cat xlog to stdout in readable format and exit"),
 			   gopt_option('F', GOPT_ARG, gopt_shorts(0), gopt_longs("fold"),
-				       "=SCN", "save snapshot at given SCN and exit"),
+				       "=SCN", "calculate CRC32C of storage at given SCN and exit"),
 			   gopt_option('i', 0, gopt_shorts('i'),
 				       gopt_longs("init-storage"),
 				       NULL, "initialize storage (an empty snapshot file) and exit"),
@@ -558,7 +558,7 @@ octopus(int argc, char **argv)
 	}
 
 	if (cfg_filename[0] != '/') {
-		cfg_filename_fullpath = malloc(PATH_MAX);
+		cfg_filename_fullpath = xmalloc(PATH_MAX);
 		if (getcwd(cfg_filename_fullpath, PATH_MAX - strlen(cfg_filename) - 1) == NULL) {
 			say_syserror("getcwd");
 			exit(EX_OSERR);
@@ -655,7 +655,7 @@ octopus(int argc, char **argv)
 		if (cfg.custom_proc_title == NULL)
 			custom_proc_title = "";
 		else {
-			custom_proc_title = calloc(strlen(cfg.custom_proc_title) + 2, 1);
+			custom_proc_title = xcalloc(strlen(cfg.custom_proc_title) + 2, 1);
 			strcat(custom_proc_title, "@");
 			strcat(custom_proc_title, cfg.custom_proc_title);
 		}
@@ -702,7 +702,19 @@ octopus(int argc, char **argv)
 	signal_init();
 	ev_set_syserr_cb(ev_panic);
 	ev_default_loop(ev_recommended_backends() | EVFLAG_SIGNALFD);
-	say_debug("ev_loop initialized");
+	char *evb = NULL;
+	switch(ev_backend()) {
+		case    EVBACKEND_SELECT:   evb = "select"; break;
+		case    EVBACKEND_POLL:     evb = "poll"; break;
+		case    EVBACKEND_EPOLL:    evb = "epoll"; break;
+		case    EVBACKEND_KQUEUE:   evb = "kqueue"; break;
+		case    EVBACKEND_DEVPOLL:  evb = "dev/poll"; break;
+		case    EVBACKEND_PORT:     evb = "port"; break;
+		default:                    evb = "unknown";
+	}
+
+	say_info("ev_loop initialized using '%s' backend, libev version is %d.%d", 
+		 evb, ev_version_major(), ev_version_minor());
 
 	ev_timer coredump_timer = { .coro = 0 };
 	if (cfg.coredump > 0) {

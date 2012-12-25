@@ -128,8 +128,6 @@ store(void *key, u32 exptime, u32 flags, u32 bytes, u8 *data)
 		stop = ev_now();
 		if (stop - start > cfg.too_long_threshold)
 			say_warn("too long store: %.3f sec", stop - start);
-
-		return 0;
 	}
 	@catch (id e) {
 		txn_abort(&txn);
@@ -138,6 +136,7 @@ store(void *key, u32 exptime, u32 flags, u32 bytes, u8 *data)
 	@finally {
 		txn_cleanup(&txn);
 	}
+	return 0;
 }
 
 static int
@@ -157,7 +156,6 @@ delete(void *key)
 		box_prepare_update(&txn, req);
 		txn_submit_to_storage(&txn);
 		txn_commit(&txn);
-		return 0;
 	}
 	@catch (id e) {
 		txn_abort(&txn);
@@ -166,6 +164,7 @@ delete(void *key)
 	@finally {
 		txn_cleanup(&txn);
 	}
+	return 0;
 }
 
 
@@ -695,7 +694,7 @@ memcached_handler(va_list ap)
 	int r, p;
 	int batch_count;
 
-	c = conn_init(NULL, fiber->pool, fd, fiber, fiber, 0);
+	c = conn_init(NULL, fiber->pool, fd, fiber, fiber, MO_SLAB);
 	palloc_register_gc_root(fiber->pool, c, conn_gc);
 
 	@try {

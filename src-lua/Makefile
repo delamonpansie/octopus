@@ -2,25 +2,10 @@ src-lua += src-lua/prelude.lua
 src-lua += src-lua/index.lua
 src-lua += src-lua/stat.lua
 
-obj += src-lua/bundle.o
 obj += src-lua/registry.o
 
-dist-clean += src-lua/bundle.o
-dist-clean += src-lua/bundle.o.redefine
-dist-clean += src-lua/bundle.nm
 dist-clean += src-lua/registry.m
 
-src-lua/bundle.o: $(src-lua)
+src-lua/registry.m: $(src-lua-c) scripts/stringify
 	@mkdir -p $(dir $@)
-	$(Q)$(LD) $(LD_EMU) -r -b binary $(filter %.lua,$^) -o $@
-	$(Q)$(NM) $@ | $(SED) 's/.* //; h; s/src_lua_/\n/; s/.*\n//; x; G; s/\n/ /' > $@.redefine
-	$(E) "OBJCOPY	$@"
-	$(Q)$(OBJCOPY) --redefine-syms $@.redefine $@
-
-src-lua/bundle.nm: src-lua/bundle.o
-	@mkdir -p $(dir $@)
-	$(Q)$(NM) $^ | $(SED) '/end$$/d; s/.* //;' | sort -r > $@
-
-src-lua/registry.m: src-lua/bundle.nm
-	@mkdir -p $(dir $@)
-	$(Q)sh $(srcdir)/scripts/gen-lua-registry.sh $< > $@
+	$(Q)sh $(srcdir)/scripts/gen-lua-registry.sh $(src-lua) > $@

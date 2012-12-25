@@ -226,7 +226,7 @@ next_chunk_for(struct palloc_pool *pool, size_t size)
 
 	if (class->size == malloc_fallback) {
 		chunk_size = size;
-		chunk = malloc(sizeof(struct chunk) + chunk_size);
+		chunk = xmalloc(sizeof(struct chunk) + chunk_size);
 		if (chunk == NULL)
 			return NULL;
 	} else {
@@ -383,7 +383,7 @@ prelease_after(struct palloc_pool *pool, size_t after)
 struct palloc_pool *
 palloc_create_pool(const char *name)
 {
-	struct palloc_pool *pool = malloc(sizeof(struct palloc_pool));
+	struct palloc_pool *pool = xmalloc(sizeof(struct palloc_pool));
 	assert(pool != NULL);
 	memset(pool, 0, sizeof(*pool));
 	pool->name = name;

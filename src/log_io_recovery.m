@@ -690,7 +690,7 @@ pull_from_remote_trampoline(va_list ap)
 - (struct fiber *)
 recover_follow_remote_async:(struct sockaddr_in *)addr;
 {
-	char *name = malloc(64);
+	char *name = xmalloc(64);
 	snprintf(name, 64, "remote_hot_standby/%s", sintoa(addr));
 
 	remote_puller = fiber_create(name, pull_from_remote_trampoline, self, addr);
@@ -713,7 +713,7 @@ enable_local_writes
 		if (lsn > 0) /* we're already have some xlogs and recovered from them */
 			[self configure_wal_writer];
 
-		struct sockaddr_in *sin = malloc(sizeof(*sin));
+		struct sockaddr_in *sin = xmalloc(sizeof(*sin));
 		if (atosin(feeder_addr, sin) == -1 || sin->sin_addr.s_addr == INADDR_ANY)
 			panic("bad feeder addr: `%s'", feeder_addr);
 

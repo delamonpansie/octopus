@@ -32,6 +32,8 @@
 #import <say.h>
 #import <assoc.h>
 #import <salloc.h>
+#import <index.h>
+#import <object.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -67,6 +69,208 @@ iproto_parse(struct tbuf *in)
 		return NULL;
 
 	return tbuf_split(in, sizeof(struct iproto) + iproto(in)->data_len);
+}
+
+struct worker_arg {
+	struct netmsg_head * (*cb)(struct conn *c, struct iproto *);
+	struct iproto *r;
+	struct conn *c;
+};
+
+void
+iproto_worker(va_list ap)
+{
+	struct service *service = va_arg(ap, typeof(service));
+	struct worker_arg a;
+
+	for (;;) {
+		SLIST_INSERT_HEAD(&service->workers, fiber, worker_link);
+		memcpy(&a, yield(), sizeof(a));
+
+		a.c->ref++;
+
+		@try {
+			struct netmsg_head *reply = a.cb(a.c, a.r);
+			netmsg_concat(&a.c->out_messages, reply);
+		}
+		@catch (Error *e) {
+			u32 rc = ERR_CODE_UNKNOWN_ERROR;
+			if ([e respondsTo:@selector(code)])
+				rc = [(id)e code];
+			else if ([e isMemberOf:[IndexError class]])
+				rc = ERR_CODE_ILLEGAL_PARAMS;
+
+			struct netmsg *m = netmsg_tail(&a.c->out_messages);
+			struct netmsg_mark header_mark;
+			netmsg_getmark(m, &header_mark);
+			iproto_reply(&m, a.r->msg_code, a.r->sync);
+			iproto_error(&m, &header_mark, rc, e->reason);
+		}
+
+		a.c->ref--;
+
+		if (a.c->state == CLOSED)
+			/* connection is already closed by other fiber */
+			conn_close(a.c);
+
+		if (a.c->out_messages.bytes > 0)
+			ev_io_start(&a.c->out);
+
+		fiber_gc();
+	}
+}
+
+
+static void
+err(struct netmsg **m, struct iproto *r)
+{
+	iproto_reply(m, r->msg_code, r->sync);
+	iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "unknown iproto command %i", r->msg_code);
+}
+
+static void
+iproto_ping(struct netmsg **m, struct iproto *r)
+{
+	if (r->msg_code != msg_ping)
+		err(m, r);
+
+	net_add_iov_dup(m, r, sizeof(struct iproto));
+}
+
+void
+service_register_iproto_stream(struct service *s, u32 cmd,
+			       void (*cb)(struct netmsg **, struct iproto *),
+			       int flags)
+{
+	s->ih[cmd & 0xff].cb.stream = cb;
+	s->ih[cmd & 0xff].flags = flags | IPROTO_NONBLOCK;
+}
+
+void
+service_register_iproto_block(struct service *s, u32 cmd,
+			      struct netmsg_head *(*cb)(struct conn *, struct iproto *),
+			      int flags)
+{
+	s->ih[cmd & 0xff].cb.block = cb;
+	s->ih[cmd & 0xff].flags = flags & ~IPROTO_NONBLOCK;
+}
+
+void
+service_iproto(struct service *s)
+{
+	for (int i = 0; i < 256; i++)
+		service_register_iproto_stream(s, i, err, 0);
+	service_register_iproto_stream(s, msg_ping, iproto_ping, IPROTO_NONBLOCK);
+}
+
+struct netmsg_head * box_cb(struct conn *c, struct iproto *request);
+
+static int
+handle_c(struct service *service, struct conn *c)
+{
+	int batch = cfg.wal_writer_inbox_size / 8;
+	struct netmsg *m = NULL;
+	int r = 0;
+
+	while (tbuf_len(c->rbuf) >= sizeof(struct iproto) &&
+	       tbuf_len(c->rbuf) >= sizeof(struct iproto) + iproto(c->rbuf)->data_len)
+	{
+		struct iproto *request = iproto(c->rbuf);
+		struct iproto_handler *ih = &service->ih[request->msg_code & 0xff];
+
+		if (ih->flags & IPROTO_NONBLOCK) {
+			if (!m)
+				m = netmsg_tail(&c->out_messages);
+
+			tbuf_ltrim(c->rbuf, sizeof(struct iproto) + request->data_len);
+			struct netmsg_mark header_mark;
+			netmsg_getmark(m, &header_mark);
+			@try {
+				ih->cb.stream(&m, request);
+				if (request->msg_code != msg_ping)
+					iproto_commit(&header_mark, ERR_CODE_OK);
+			}
+			@catch (Error *e) {
+				u32 rc = ERR_CODE_UNKNOWN_ERROR;
+				if ([e respondsTo:@selector(code)])
+					rc = [(id)e code];
+				else if ([e isMemberOf:[IndexError class]])
+					rc = ERR_CODE_ILLEGAL_PARAMS;
+
+				/* FIXME: SEGV if cb.stream() fails before iproto_reply() */
+				iproto_error(&m, &header_mark, rc, e->reason);
+			}
+		} else {
+			struct fiber *w = SLIST_FIRST(&service->workers);
+			if (w) {
+				if (!m)
+					m = netmsg_tail(&c->out_messages);
+
+				tbuf_ltrim(c->rbuf, sizeof(struct iproto) + request->data_len);
+				SLIST_REMOVE_HEAD(&service->workers, worker_link);
+				c->ref++;
+				resume(w, &(struct worker_arg){ih->cb.block, request, c});
+				c->ref--;
+				r++;
+			} else {
+				break; // FIXME: need state for this
+			}
+
+			if (batch-- == 0)
+				break;
+		}
+	}
+
+	if (tbuf_len(c->rbuf) < sizeof(struct iproto) ||
+	    tbuf_len(c->rbuf) < sizeof(struct iproto) + iproto(c->rbuf)->data_len)
+	{
+		TAILQ_REMOVE(&service->processing, c, processing_link);
+		c->state = READING;
+	} else {
+		TAILQ_REMOVE(&service->processing, c, processing_link);
+		TAILQ_INSERT_TAIL(&service->processing, c, processing_link);
+	}
+
+	/* Prevent output owerflow by start reading if
+	   output size is below output_low_watermark.
+	   Otherwise output flusher will start reading,
+	   when size of output is small enought  */
+	if (c->out_messages.bytes < cfg.output_low_watermark)
+		ev_io_start(&c->in);
+
+	if (c->out_messages.bytes > 0) {
+		ev_io_start(&c->out);
+		if (c->out_messages.bytes >= cfg.output_high_watermark)
+			ev_io_stop(&c->in);
+	}
+
+	return r;
+}
+
+
+void
+iproto_wakeup_workers(ev_prepare *ev)
+{
+	struct service *service = (void *)ev - offsetof(struct service, wakeup);
+	struct conn *c;
+
+	while (!SLIST_EMPTY(&service->workers)) {
+		c = TAILQ_FIRST(&service->processing);
+		if (!c)
+			break;
+		handle_c(service, c);
+	}
+
+		struct conn *last = TAILQ_LAST(&service->processing, conn_tailq);
+	do {
+		c = TAILQ_FIRST(&service->processing);
+		if (!c)
+			break;
+		handle_c(service, c);
+	} while (c != last);
+
+	if (palloc_allocated(service->pool) > 64 * 1024 * 1024) /* FIXME: do it after change of that size */
+		palloc_gc(service->pool);
 }
 
 
@@ -116,7 +320,7 @@ next:
 		}
 	}
 
-	if (!TAILQ_EMPTY(&c->out_messages.q)) {
+	if (c->out_messages.bytes > 0) {
 		ev_io_start(&c->out);
 		if (c->out_messages.bytes > cfg.output_high_watermark)
 			ev_io_stop(&c->in);
@@ -179,7 +383,7 @@ int
 init_iproto_peer(struct iproto_peer *p, int id, const char *name, const char *addr)
 {
 	if (req_registry == NULL)
-		req_registry = mh_i32_init(NULL);
+		req_registry = mh_i32_init(xrealloc);
 
 	memset(p, 0, sizeof(*p));
 
@@ -195,7 +399,7 @@ init_iproto_peer(struct iproto_peer *p, int id, const char *name, const char *ad
 struct iproto_peer *
 make_iproto_peer(int id, const char *name, const char *addr)
 {
-	struct iproto_peer *p = malloc(sizeof(*p));
+	struct iproto_peer *p = xmalloc(sizeof(*p));
 	if (init_iproto_peer(p, id, name, addr) == -1) {
 		free(p);
 		return NULL;
@@ -393,40 +597,87 @@ iproto_reply_reader(va_list ap)
 			tbuf_ltrim(c->rbuf, sizeof(struct iproto) + msg->data_len);
 			collect(c, msg);
 		}
+
+		conn_gc(NULL, c);
 	}
 }
 
 void
 iproto_rendevouz(va_list ap)
 {
-	struct sockaddr_in *self_addr = va_arg(ap, struct sockaddr_in *);
-	struct iproto_group *group = va_arg(ap, struct iproto_group *);
-	struct palloc_pool *pool = va_arg(ap, struct palloc_pool *);
-	struct fiber *in = va_arg(ap, struct fiber *);
-	struct fiber *out = va_arg(ap, struct fiber *);
-	struct iproto_peer *p;
+	struct sockaddr_in 	*self_addr = va_arg(ap, struct sockaddr_in *);
+	struct iproto_group 	*group = va_arg(ap, struct iproto_group *);
+	struct fiber 		*in = va_arg(ap, struct fiber *);
+	struct fiber 		*out = va_arg(ap, struct fiber *);
+	struct iproto_peer 	*p;
+	ev_watcher		*w = NULL;
+	ev_timer		timer = { .coro=1 };
+	int			ev_own_counter = 1;
+
+	/* some warranty to be correctly initialized */
+	SLIST_FOREACH(p, group, link) {
+		p->in_connect = false;
+		p->last_connect_try = 0;
+		p->c.fd = -1;
+	}
+
+	ev_timer_init(&timer, (void *)fiber, 1.0, 0.);
 
 loop:
 	SLIST_FOREACH(p, group, link) {
-		if (p->c.fd > 0)
+		enum tac_state	r;
+
+		if (p->c.fd >= 0 && p->in_connect == false)
 			continue;
 
-		int fd = tcp_connect(&p->addr, self_addr, 5);
-		assert(p->c.fd < 0);
+		if (p->in_connect == false) {
+			assert(p->c.fd < 0);
+			if (ev_now() - p->last_connect_try <= 1.0 /* no more then one reconnect in second */)
+				continue;
+			p->last_connect_try = ev_now();
+		}
 
-		if (fd > 0) {
-			conn_init(&p->c, pool, fd, in, out, REF_STATIC);
-			ev_io_start(&p->c.in);
-			say_info("connected to %s/%s", p->name, sintoa(&p->addr));
-			p->connect_err_said = false;
-		} else {
-			if (!p->connect_err_said)
-				say_syserror("connect to %s/%s failed", p->name, sintoa(&p->addr));
-			p->connect_err_said = true;
+		r = tcp_async_connect(&p->c, 
+				      (p->in_connect) ? w : NULL, /* NULL means initial state for tcp_async_connect */
+				      &p->addr, self_addr, 5);
+
+		switch(r) {
+			case tac_wait:
+				ev_own_counter++;
+				p->in_connect = true;
+				break; /* wait for event */
+			case tac_error:
+				ev_own_counter++;
+				p->in_connect = false;
+				p->c.fd = -1;
+				if (!p->connect_err_said)
+					say_syserror("connect to %s/%s failed", p->name, sintoa(&p->addr));
+				p->connect_err_said = true;
+				break;
+			case tac_ok:
+				ev_own_counter++;
+				p->in_connect = false;
+				conn_init(&p->c, NULL, p->c.fd, in, out, MO_STATIC | MO_MY_OWN_POOL);
+				ev_io_start(&p->c.in);
+				say_info("connected to %s/%s", p->name, sintoa(&p->addr));
+				p->connect_err_said = false;
+				break;
+			case tac_alien_event:
+				break;
+			default:
+				abort();
 		}
 	}
 
-	fiber_sleep(1); /* no more then one reconnect in second */
+	assert(ev_own_counter > 0);
+	ev_timer_stop(&timer);
+	ev_timer_init(&timer, (void *)fiber, 1.0, 0.);
+	ev_timer_start(&timer);
+	w = yield();
+	ev_timer_stop(&timer);
+
+	ev_own_counter = (w == (ev_watcher*)&timer) ? 1 : 0;
+
 	goto loop;
 }
 

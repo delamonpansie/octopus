@@ -30,7 +30,7 @@
 
 #include <third_party/libcoro/coro.h>
 
-#if HAVE_VALGRIND_VALGRIND_H
+#if HAVE_VALGRIND_VALGRIND_H && !defined(NVALGRIND)
 # include <valgrind/valgrind.h>
 # include <valgrind/memcheck.h>
 #else
@@ -38,6 +38,8 @@
 # define VALGRIND_MAKE_MEM_UNDEFINED(_qzz_addr, _qzz_len) (void)0
 # define VALGRIND_MALLOCLIKE_BLOCK(addr, sizeB, rzB, is_zeroed) (void)0
 # define VALGRIND_FREELIKE_BLOCK(addr, rzB) (void)0
+# define VALGRIND_MAKE_MEM_NOACCESS(_qzz_addr,_qzz_len) (void)0
+# define VALGRIND_STACK_REGISTER(_qzz_addr,_qzz_len) (void)0
 #endif
 
 #include <unistd.h>
@@ -50,7 +52,7 @@ octopus_coro_create(struct octopus_coro *coro, void (*f) (void *), void *data)
 	const int page = sysconf(_SC_PAGESIZE);
 
 	if (coro == NULL)
-		coro = malloc(sizeof(*coro));
+		coro = xmalloc(sizeof(*coro));
 
 	if (coro == NULL)
 		return NULL;

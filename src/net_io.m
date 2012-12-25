@@ -145,9 +145,13 @@ netmsg_rewind(struct netmsg **m, struct netmsg_mark *mark)
 	TAILQ_FOREACH_REVERSE_SAFE(tail, &h->q, netmsg_tailq, link, tvar) {
 		if (tail == mark->m)
 			break;
+		for (int i = tail->offset; i < tail->count; i++)
+			h->bytes -= tail->iov[i].iov_len;
 		netmsg_release(tail);
 	}
 
+	for (int i = mark->offset + 1; i < mark->m->count; i++)
+		h->bytes -= mark->m->iov[i].iov_len;
 	netmsg_unref(mark->m, mark->offset + 1);
 	*m = mark->m;
 	(*m)->count = mark->offset + 1;
@@ -258,16 +262,18 @@ netmsg_verify_ownership(struct netmsg_head *h)
 ssize_t
 conn_write_netmsg(struct conn *c)
 {
+	struct netmsg_head *head = &c->out_messages;
 	struct netmsg *m;
 	ssize_t ret = 0;
 restart:
-	m = TAILQ_FIRST(&c->out_messages.q);
+	m = TAILQ_FIRST(&head->q);
 	if (m == NULL)
 		return ret;
 
 	struct iovec *iov = m->iov + m->offset;
 	unsigned iov_cnt = m->count - m->offset;
 	ssize_t r = 0;
+
 	while (iov_cnt > 0) {
 		r = writev(c->fd, iov, iov_cnt);
 		if (unlikely(r < 0)) {
@@ -281,10 +287,10 @@ restart:
 				ret = r;
 			break;
 		};
-		m->head->bytes -= r;
+		head->bytes -= r;
 		ret += r;
 
-		while (iov_cnt > 0) {
+		do {
 			if (iov->iov_len > r) {
 				iov->iov_base += r;
 				iov->iov_len -= r;
@@ -294,7 +300,7 @@ restart:
 				iov++;
 				iov_cnt--;
 			}
-		}
+		} while (iov_cnt > 0);
 	};
 
 #ifdef NET_IO_TIMESTAMPS
@@ -324,7 +330,7 @@ conn_flush(struct conn *c)
 	} while (conn_write_netmsg(c) > 0);
 	ev_io_stop(&c->out);
 
-	return TAILQ_EMPTY(&(c->out_messages.q))  ? 0 : -1;
+	return c->out_messages.bytes == 0 ? 0 : -1;
 }
 
 void
@@ -339,31 +345,41 @@ conn_set(struct conn *c, int fd)
 }
 
 struct conn *
-conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, struct fiber *out, int ref)
+conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, struct fiber *out, 
+	  enum conn_memory_ownership memory_ownership)
 {
-	assert(ref >= -2 && ref <= 0);
 	assert(in != NULL && out != NULL);
 
 	say_debug("%s: c:%p fd:%i", __func__, c, fd);
+	assert(memory_ownership & MO_CONN_OWNERSHIP_MASK);
 	if (!c) {
-		assert(ref == 0);
+		assert(memory_ownership & MO_SLAB);
 		c = slab_cache_alloc(&conn_cache);
 	}
 
 	TAILQ_INIT(&c->out_messages.q);
-	c->out_messages.pool = pool;
 	c->out_messages.bytes = 0;
-	c->ref = ref;
+	c->ref = 0;
 	c->fd = fd;
-	c->pool = pool;
 	c->state = -1;
 	c->peer_name[0] = 0;
-	c->rbuf = tbuf_alloc(c->pool);
 
 	ev_init(&c->in, (void *)in);
 	ev_init(&c->out, (void *)out);
 	c->out.coro = c->in.coro = 1;
 	c->out.data = c->in.data = c;
+
+	c->memory_ownership = memory_ownership;
+	if (pool == NULL || memory_ownership & MO_MY_OWN_POOL) {
+		c->memory_ownership |= MO_MY_OWN_POOL;
+
+		c->pool = palloc_create_pool("connection owned pool");
+	} else {
+		c->pool = pool;
+	}
+
+	c->rbuf = tbuf_alloc(c->pool);
+	c->out_messages.pool = c->pool;
 
 	if (fd >= 0)
 		conn_set(c, fd);
@@ -377,10 +393,23 @@ conn_gc(struct palloc_pool *pool, void *ptr)
 	struct conn *c = ptr;
 	struct netmsg *m;
 
-	c->pool = pool;
+	if (c->memory_ownership & MO_MY_OWN_POOL) {
+		assert(pool == NULL);
+
+		if (palloc_allocated(c->pool) < 128 * 1024)
+			return;
+
+		pool = palloc_create_pool("connection owned new pool");
+	}
+
 	c->rbuf = tbuf_clone(pool, c->rbuf);
 	TAILQ_FOREACH(m, &c->out_messages.q, link)
 		netmsg_gc(pool, m);
+
+	if (c->memory_ownership & MO_MY_OWN_POOL)
+		palloc_destroy_pool(c->pool);
+
+	c->pool = c->out_messages.pool = pool;
 }
 
 ssize_t
@@ -403,6 +432,14 @@ again:
 	return r;
 }
 
+void
+conn_reset(struct conn *c)
+{
+	struct netmsg *m, *tmp;
+	TAILQ_FOREACH_SAFE(m, &c->out_messages.q, link, tmp)
+		netmsg_release(m);
+	c->out_messages.bytes = 0;
+}
 
 int
 conn_close(struct conn *c)
@@ -417,19 +454,12 @@ conn_close(struct conn *c)
 
 		/* the conn will either free'd or put back to pool,
 		   so next time it get used it will be configure by conn_init */
-		if (c->ref != REF_STATIC)
+		if ((c->memory_ownership & MO_CONN_OWNERSHIP_MASK) != MO_STATIC)
 			c->in.cb = c->out.cb = NULL;
 
 		r = close(c->fd);
 		c->fd = -1;
 		c->peer_name[0] = 0;
-
-		if (!TAILQ_EMPTY(&c->out_messages.q)) {
-			say_error("client unexpectedly gone, some data unwritten");
-			struct netmsg *m, *tmp;
-			TAILQ_FOREACH_SAFE(m, &c->out_messages.q, link, tmp)
-				netmsg_release(m);
-		}
 
 		if (c->service && c->state == PROCESSING) {
 			TAILQ_REMOVE(&c->service->processing, c, processing_link);
@@ -438,24 +468,36 @@ conn_close(struct conn *c)
 		c->state = CLOSED;
 	}
 
-	switch (c->ref) {
-	case REF_STATIC:
-		return r;
-	case REF_MALLOC:
-		free(c);
-		return r;
-	case 0:
-		if (c->service)
-			LIST_REMOVE(c, link);
+	/*  as long as struct conn *C is alive, c->out_messages may be populated
+	    by callbacks even if c->fd == -1, so drop all this data */
+	conn_reset(c);
 
-		c->service = NULL;
-		c->pool = NULL;
-		slab_cache_free(&conn_cache, c);
+	if (c->ref > 0)
 		return r;
-	default:
-		/* c->ref > 0 => some fiber still holding ref to connection */
-		return 0;
+
+	if (c->service)
+		LIST_REMOVE(c, link);
+
+	c->service = NULL;
+	if (c->memory_ownership & MO_MY_OWN_POOL)
+		palloc_destroy_pool(c->pool);
+
+	c->pool = NULL;
+
+	switch (c->memory_ownership & MO_CONN_OWNERSHIP_MASK) {
+		case MO_STATIC:
+			break;
+		case MO_MALLOC:
+			free(c);
+			break;
+		case MO_SLAB:
+			slab_cache_free(&conn_cache, c);
+			break;
+		default:
+			abort();
 	}
+
+	return r;
 }
 
 ssize_t
@@ -543,12 +585,11 @@ service_output_flusher(va_list ap __attribute__((unused)))
 	for (;;) {
 		struct conn *c = ((struct ev_watcher *)yield())->data;
 		ssize_t r = conn_write_netmsg(c);
-		if (r <= 0) {
-			if (r < 0)
-				conn_close(c);
-			else
-				ev_io_stop(&c->out);
-		}
+		if (r < 0)
+			conn_close(c);
+
+		if (c->out_messages.bytes == 0)
+			ev_io_stop(&c->out);
 
 		if ((tbuf_len(c->rbuf) < cfg.input_low_watermark || c->state == READING) &&
 		    c->out_messages.bytes < cfg.output_low_watermark &&
@@ -557,74 +598,115 @@ service_output_flusher(va_list ap __attribute__((unused)))
 	}
 }
 
-int
-tcp_connect(struct sockaddr_in *dst, struct sockaddr_in *src, ev_tstamp timeout)
+enum tac_state
+tcp_async_connect(struct conn *c, ev_watcher *w /* result of yield() */,
+		  struct sockaddr_in      *dst,
+		  struct sockaddr_in      *src,
+		  ev_tstamp               timeout)
 {
-	int fd = -1, optval = 1;
-	socklen_t optlen = sizeof(optval);
-	ev_io io = { .coro = 1 };
-	ev_timer timer = { .coro = 1 };
-	ev_watcher *w;
+	if (w == NULL) {
+		/* init */
+		int	optval = 1;
 
-	fd = socket(AF_INET, SOCK_STREAM, 0);
-	if (fd < 0) {
-		say_syserror("socket");
-		goto error;
-	}
+		c->fd = -1;
+		c->out.coro = 1;
+		c->timer.coro = 1;
 
-	if (ioctl(fd, FIONBIO, &optval) < 0) {
-		say_syserror("ioctl");
-		goto error;
-	}
+		c->fd = socket(AF_INET, SOCK_STREAM, 0);
+		if (c->fd < 0) {
+			say_syserror("socket");
+			goto error;
+		}
 
-	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) == -1 ||
-	    setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval)) == -1) {
-		say_syserror("setsockopt");
-		goto error;
-	}
+		if (ioctl(c->fd, FIONBIO, &optval) < 0) {
+			say_syserror("ioctl");
+			goto error;
+		}
 
-	if (src) {
-		if (bind(fd, (struct sockaddr *)src, sizeof(*src)) < 0) {
-			say_syserror("bind(%s)", sintoa(src));
+		if (setsockopt(c->fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) == -1 ||
+		    setsockopt(c->fd, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval)) == -1) {
+			say_syserror("setsockopt");
+			goto error;
+		}
+
+		if (src) {
+			if (bind(c->fd, (struct sockaddr *)src, sizeof(*src)) < 0) {
+				say_syserror("bind(%s)", sintoa(src));
+				goto error;
+			}
+		}
+
+		if (setsockopt(c->fd, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval)) < 0)
+			say_syserror("setsockopt(SO_KEEPALIVE)");
+
+		if (connect(c->fd, (struct sockaddr *)dst, sizeof(*dst)) < 0) {
+			if (errno != EINPROGRESS)
+				goto error;
+		}
+
+		ev_io_init(&c->out, (void *)fiber, c->fd, EV_WRITE);
+		ev_timer_init(&c->timer, (void *)fiber, timeout, 0.);
+		if (timeout > 0)
+			ev_timer_start(&c->timer);
+		ev_io_start(&c->out);
+
+		return tac_wait;
+	} else {
+		int		optval = 1;
+		socklen_t 	optlen = sizeof(optval);
+
+		if (w == (ev_watcher *)&c->timer) {
+			ev_timer_stop(&c->timer);
+			ev_io_stop(&c->out);
+			goto error;
+		}
+
+		if (w != (ev_watcher *)&c->out)
+			return tac_alien_event;
+
+		ev_timer_stop(&c->timer);
+		ev_io_stop(&c->out);
+
+		if (getsockopt(c->fd, SOL_SOCKET, SO_ERROR, &optval, &optlen) < 0)
+			goto error;
+
+		if (optval != 0) {
+			errno = optval;
 			goto error;
 		}
 	}
 
-	if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval)) < 0)
-		say_syserror("setsockopt(SO_KEEPALIVE)");
-
-	if (connect(fd, (struct sockaddr *)dst, sizeof(*dst)) < 0) {
-		if (errno != EINPROGRESS)
-			goto error;
-	}
-
-	ev_io_init(&io, (void *)fiber, fd, EV_WRITE);
-	ev_timer_init(&timer, (void *)fiber, timeout, 0.);
-	if (timeout > 0)
-		ev_timer_start(&timer);
-
-	ev_io_start(&io);
-	w = yield();
-	ev_timer_stop(&timer);
-	ev_io_stop(&io);
-
-	if (w == (ev_watcher *)&timer)
-		goto error;
-
-	if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &optval, &optlen) < 0)
-		goto error;
-
-	if (optval != 0) {
-		errno = optval;
-		goto error;
-	}
-
-	return fd;
+	return tac_ok;
       error:
-	close(fd);
-	return -1;
+	close(c->fd);
+	c->fd = -1;
+
+	return tac_error;
 }
 
+int
+tcp_connect(struct sockaddr_in *dst, struct sockaddr_in *src, ev_tstamp timeout) {
+	struct 		conn			c;
+	ev_watcher 				*w = NULL;
+	int					fd;
+
+	for(;;) {
+		switch(tcp_async_connect(&c, w, dst, src, timeout)) {
+			case tac_ok:
+				return c.fd;
+			case tac_wait:
+				w = yield();
+				break;
+			case tac_error:
+				return -1;
+			case tac_alien_event:
+			default:
+				abort();
+		}
+	}
+
+	return fd;	
+}
 
 struct sockaddr_in *
 sinany(struct sockaddr_in *sin, int port)
@@ -800,7 +882,6 @@ input_reader(va_list ap)
 	ssize_t r;
 
 	say_info("input reader for service %s started", service->name);
-	yield();
 loop:
 	w = yield();
 	c = w->data;
@@ -828,7 +909,7 @@ loop:
 	goto loop;
 }
 
-static void
+void
 wakeup_workers(ev_prepare *ev)
 {
 	struct service *service = (void *)ev - offsetof(struct service, wakeup);
@@ -859,7 +940,7 @@ accept_client(int fd, void *data)
 {
 	struct service *service = data;
 	struct conn *clnt = conn_init(NULL, service->pool, fd,
-				      service->input_reader, service->output_flusher, 0);
+				      service->input_reader, service->output_flusher, MO_SLAB);
 	LIST_INSERT_HEAD(&service->conn, clnt, link);
 	clnt->service = service;
 	ev_io_start(&clnt->in);
@@ -867,10 +948,10 @@ accept_client(int fd, void *data)
 }
 
 struct service *
-tcp_service(u16 port, void (*on_bind)(int fd))
+tcp_service(u16 port, void (*on_bind)(int fd), void (*wakeup_workers)(ev_prepare *))
 {
-	struct service *service = calloc(1, sizeof(*service));
-	char *name = malloc(13);  /* strlen("iproto:xxxxx") */
+	struct service *service = xcalloc(1, sizeof(*service));
+	char *name = xmalloc(13);  /* strlen("iproto:xxxxx") */
 	snprintf(name, 13, "tcp:%i", port);
 
 	TAILQ_INIT(&service->processing);

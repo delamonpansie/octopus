@@ -26,8 +26,7 @@
 
 #import <util.h>
 #import <net_io.h>
-
-#include <objc/Object.h>
+#import <object.h>
 
 #include <stdio.h>
 #include <limits.h>

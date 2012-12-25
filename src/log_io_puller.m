@@ -47,7 +47,7 @@
 init
 {
 	say_debug("%s", __func__);
-	conn_init(&c, fiber->pool, -2, fiber, fiber, REF_STATIC);
+	conn_init(&c, fiber->pool, -2, fiber, fiber, MO_STATIC);
 	palloc_register_gc_root(fiber->pool, &c, conn_gc);
 	return [super init];
 }
@@ -263,13 +263,13 @@ close
 	return conn_close(&c);
 }
 
-- (void)
+- (id)
 free
 {
 	say_debug("%s", __func__);
 	palloc_unregister_gc_root(fiber->pool, &c);
 	[self close];
-	[super free];
+	return [super free];
 }
 
 @end

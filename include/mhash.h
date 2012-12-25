@@ -422,24 +422,24 @@ _mh(resize)(struct mhash_t *h)
 		mh_setexist(s, n);
 		s->n_occupied++;
 	}
-	free(h->nodes);
-	free(h->bitmap);
+	mh_free(h, h->nodes);
+	mh_free(h, h->bitmap);
 	s->size = h->size;
 	memcpy(h, s, sizeof(*h));
 	h->resize_cnt++;
 }
 
 MH_DECL void
-_mh(start_resize)(struct mhash_t *h, uint32_t buckets, uint32_t batch)
+_mh(start_resize)(struct mhash_t *h, uint32_t want_size, uint32_t batch)
 {
 	if (h->resizing)
 		return;
 	struct mhash_t *s = h->shadow;
-	if (buckets < h->n_buckets)
-		buckets = h->n_buckets;
-	if (h->size > buckets / 2) {
+	uint32_t size = h->size > want_size ? h->size : want_size;
+
+	if (size > h->n_buckets / 2) {
 		for (int k = h->prime; k < __ac_HASH_PRIME_SIZE; k++)
-			if (__ac_prime_list[k] > h->size) {
+			if (__ac_prime_list[k] > size) {
 				h->prime = k + 1;
 				break;
 			}
@@ -493,8 +493,8 @@ _mh(dump)(struct mhash_t *h)
 MH_DECL void
 mh_clear(struct mhash_t *h)
 {
-	free(h->nodes);
-	free(h->bitmap);
+	mh_free(h, h->nodes);
+	mh_free(h, h->bitmap);
 	h->n_buckets = 3;
 	h->prime = 0;
 	h->upper_bound = h->n_buckets * 0.7;

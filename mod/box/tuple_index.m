@@ -120,7 +120,7 @@ box_tuple_gen_dtor(struct tnt_object *obj, struct index_node *node_, void *arg)
 static struct gen_dtor *
 cfg_box_tuple_gen_dtor(struct octopus_cfg_object_space_index *c)
 {
-	struct gen_dtor *d = calloc(1, sizeof(*d));
+	struct gen_dtor *d = xcalloc(1, sizeof(*d));
 
 	for (int k = 0; c->key_field[k] != NULL; k++) {
 		if (c->key_field[k]->fieldno == -1)

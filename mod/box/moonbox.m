@@ -276,7 +276,7 @@ luaT_pushfield(struct lua_State *L)
 	u8 *dst;
 	/* FIXME: this will crash, given str is large enougth */
 	if (flen > 128)
-		dst = malloc(flen);
+		dst = xmalloc(flen);
 	else
 		dst = alloca(flen);
 	u8 *tail = save_varint32(dst, len);

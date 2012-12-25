@@ -122,7 +122,7 @@ field_print(struct tbuf *buf, void *f)
 
 	tbuf_printf(buf, "\"");
 	while (size-- > 0) {
-		if (0x20 <= *(u8 *)f && *(u8 *)f < 0x7f)
+		if (0x20 <= *(u8 *)f && *(u8 *)f < 0x7f && !(*(u8 *)f == '"' || *(u8 *)f == '\\'))
 			tbuf_printf(buf, "%c", *(u8 *)f++);
 		else
 			tbuf_printf(buf, "\\x%02X", *(u8 *)f++);
@@ -181,7 +181,7 @@ validate_indexes(struct box_txn *txn)
                         if (obj != NULL && obj != txn->old_obj)
 				iproto_raise_fmt(ERR_CODE_INDEX_VIOLATION,
 						 "duplicate key value violates unique index %i:%s",
-						 index->n, [index class]->name);
+						 index->n, [[index class] name]);
                 }
 	}
 }
@@ -264,8 +264,7 @@ commit_replace(struct box_txn *txn)
 	}
 
 	if (txn->m) {
-		/* safe, because it will be copied by netmsg_concat */
-		net_add_iov(&txn->m, &txn->obj_affected, sizeof(u32));
+		net_add_iov_dup(&txn->m, &txn->obj_affected, sizeof(u32));
 
 		if (txn->obj && txn->flags & BOX_RETURN_TUPLE)
 			tuple_add_iov(&txn->m, txn->obj);
@@ -386,6 +385,12 @@ do_field_splice(struct tbuf *field, void *args_data, u32 args_data_size)
 	return diff;
 }
 
+int __attribute__((pure))
+field_len(const struct tbuf *b)
+{
+	return varint32_sizeof(tbuf_len(b)) + tbuf_len(b);
+}
+
 static void __attribute__((noinline))
 prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 {
@@ -424,11 +429,6 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 		   .free - len(data) */
 		fields[i] = (struct tbuf){ .ptr = src, .end = field, .free = len, .pool = NULL };
 		field += len;
-	}
-
-	int __attribute__((pure)) field_len(const struct tbuf *b)
-	{
-		return varint32_sizeof(tbuf_len(b)) + tbuf_len(b);
 	}
 
 	while (op_cnt-- > 0) {
@@ -561,21 +561,21 @@ tuple_add_iov(struct netmsg **m, struct tnt_object *obj)
 }
 
 static void __attribute__((noinline))
-process_select(struct box_txn *txn, u32 limit, u32 offset, struct tbuf *data)
+process_select(struct netmsg **m, Index<BasicIndex> *index, u32 limit, u32 offset, struct tbuf *data)
 {
 	struct tnt_object *obj;
 	uint32_t *found;
 	u32 count = read_u32(data);
 
 	say_debug("SELECT");
-	found = palloc(txn->m->head->pool, sizeof(*found));
-	net_add_iov(&txn->m, found, sizeof(*found));
+	found = palloc((*m)->head->pool, sizeof(*found));
+	net_add_iov(m, found, sizeof(*found));
 	*found = 0;
 
-	if (txn->index->unique) {
+	if (index->unique) {
 		for (u32 i = 0; i < count; i++) {
 			u32 c = read_u32(data);
-			obj = [txn->index find_key:data with_cardinalty:c];
+			obj = [index find_key:data with_cardinalty:c];
 			if (obj == NULL)
 				continue;
 			if (unlikely(ghost(obj)))
@@ -588,12 +588,12 @@ process_select(struct box_txn *txn, u32 limit, u32 offset, struct tbuf *data)
 			}
 
 			(*found)++;
-			tuple_add_iov(&txn->m, obj);
+			tuple_add_iov(m, obj);
 			limit--;
 		}
 	} else {
 		/* The only non unique index type is Tree */
-		Tree *tree = (Tree *)txn->index;
+		Tree *tree = (Tree *)index;
 		for (u32 i = 0; i < count; i++) {
 			u32 c = read_u32(data);
 			[tree iterator_init:data with_cardinalty:c];
@@ -612,7 +612,7 @@ process_select(struct box_txn *txn, u32 limit, u32 offset, struct tbuf *data)
 				}
 
 				(*found)++;
-				tuple_add_iov(&txn->m, obj);
+				tuple_add_iov(m, obj);
 				--limit;
 			}
 		}
@@ -622,7 +622,6 @@ process_select(struct box_txn *txn, u32 limit, u32 offset, struct tbuf *data)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
 
 	stat_collect(stat_base, SELECT_KEYS, count);
-	stat_collect(stat_base, txn->op, 1);
 }
 
 static void __attribute__((noinline))
@@ -642,8 +641,7 @@ commit_delete(struct box_txn *txn)
 		object_ref(txn->old_obj, -1);
 	}
 	if (txn->m)
-		/* safe, because it will be copied by netmsg_concat */
-		net_add_iov(&txn->m, &txn->obj_affected, sizeof(u32));
+		net_add_iov_dup(&txn->m, &txn->obj_affected, sizeof(u32));
 }
 
 void
@@ -760,31 +758,6 @@ txn_common_parser(struct box_txn *txn, struct tbuf *data)
 	txn->index = txn->object_space->index[0];
 }
 
-static bool __attribute__((pure))
-op_is_select(u32 op)
-{
-	return op == SELECT || op == SELECT_LIMIT;
-}
-
-static void
-box_dispach_select(struct box_txn *txn, struct tbuf *data)
-{
-	txn_common_parser(txn, data);
-	say_debug("box_dispach(%i)", txn->op);
-
-	u32 i = read_u32(data);
-	u32 offset = read_u32(data);
-	u32 limit = read_u32(data);
-
-	if (i > MAX_IDX)
-		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index too big");
-
-	if ((txn->index = txn->object_space->index[i]) == NULL)
-		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index is invalid");
-
-	process_select(txn, limit, offset, data);
-}
-
 
 void
 box_prepare_update(struct box_txn *txn, struct tbuf *data)
@@ -837,52 +810,48 @@ box_prepare_update(struct box_txn *txn, struct tbuf *data)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
 }
 
-static void
-box_process(struct conn *c, struct iproto *request, void *arg __attribute__((unused)))
+static struct netmsg_head *
+box_cb(struct conn *c, struct iproto *request)
 {
 	struct box_txn txn = { .op = 0 };
 	u32 msg_code = request->msg_code;
 	struct tbuf request_data = TBUF(request->data, request->data_len, fiber->pool);
 	say_debug("%s: c:%p op:0x%02x sync:%u", __func__, c, msg_code, request->sync);
+	struct netmsg_head *h = p0alloc(fiber->pool, sizeof(*h));
+	TAILQ_INIT(&h->q);
+	h->pool = fiber->pool;
+
 	@try {
-		if (op_is_select(msg_code)) {
-			txn_init(request, &txn, netmsg_tail(&c->out_messages));
-			box_dispach_select(&txn, &request_data);
-			iproto_commit(&txn.header_mark, ERR_CODE_OK);
-		} else {
-			ev_tstamp start = ev_now(), stop;
-			struct netmsg_head h = { TAILQ_HEAD_INITIALIZER(h.q), fiber->pool, 0 };
-			txn_init(request, &txn, netmsg_tail(&h));
+		ev_tstamp start = ev_now(), stop;
+		txn_init(request, &txn, netmsg_tail(h));
 
-			if (unlikely(c->service != box_primary))
-				iproto_raise(ERR_CODE_NONMASTER, "updates forbiden on secondary port");
+		if (unlikely(c->service != box_primary))
+			iproto_raise(ERR_CODE_NONMASTER, "updates forbiden on secondary port");
 
-			u32 rc = ERR_CODE_OK;
-			switch (msg_code) {
-			case EXEC_LUA:
-				rc = box_dispach_lua(&txn, &request_data);
-				stat_collect(stat_base, EXEC_LUA, 1);
-				break;
-			case PAXOS_LEADER:
-				if ([recovery respondsTo:@selector(leader_redirect_raise)])
-					[recovery perform:@selector(leader_redirect_raise)];
-				else
-					iproto_raise(ERR_CODE_UNSUPPORTED_COMMAND,
-						     "PAXOS_LEADER unsupported in non cluster configuration");
-				break;
-			default:
-				box_prepare_update(&txn, &request_data);
-				/* we'r potentially block here */
-				txn_submit_to_storage(&txn);
-				txn_commit(&txn);
-			}
-			iproto_commit(&txn.header_mark, rc);
-			netmsg_concat(&c->out_messages, &h);
-
-			stop = ev_now();
-			if (stop - start > cfg.too_long_threshold)
-				say_warn("too long %s: %.3f sec", ops[txn.op], stop - start);
+		u32 rc = ERR_CODE_OK;
+		switch (msg_code) {
+		case EXEC_LUA:
+			rc = box_dispach_lua(&txn, &request_data);
+			stat_collect(stat_base, EXEC_LUA, 1);
+			break;
+		case PAXOS_LEADER:
+			if ([recovery respondsTo:@selector(leader_redirect_raise)])
+				[recovery perform:@selector(leader_redirect_raise)];
+			else
+				iproto_raise(ERR_CODE_UNSUPPORTED_COMMAND,
+					     "PAXOS_LEADER unsupported in non cluster configuration");
+			break;
+		default:
+			box_prepare_update(&txn, &request_data);
+			/* we'r potentially block here */
+			txn_submit_to_storage(&txn);
+			txn_commit(&txn);
 		}
+		iproto_commit(&txn.header_mark, rc);
+
+		stop = ev_now();
+		if (stop - start > cfg.too_long_threshold)
+			say_warn("too long %s: %.3f sec", ops[txn.op], stop - start);
 	}
 	@catch (Error *e) {
 		if (strcmp(e->file, "src/paxos.m") != 0) {
@@ -892,14 +861,7 @@ box_process(struct conn *c, struct iproto *request, void *arg __attribute__((unu
 				say_debug("backtrace:\n%s", e->backtrace);
 		}
 		txn_abort(&txn);
-		u32 rc = ERR_CODE_UNKNOWN_ERROR;
-		if ([e respondsTo:@selector(code)])
-			rc = [(id)e code];
-		else if ([e isMemberOf:[IndexError class]])
-			rc = ERR_CODE_ILLEGAL_PARAMS;
-		iproto_error(&txn.m, &txn.header_mark, rc, e->reason);
-		if (&c->out_messages != txn.m->head)
-			netmsg_concat(&c->out_messages, txn.m->head);
+		@throw;
 	}
 	@finally {
 		say_debug("%s: @finally c:%p", __func__, c);
@@ -908,6 +870,31 @@ box_process(struct conn *c, struct iproto *request, void *arg __attribute__((unu
 		netmsg_verify_ownership(&c->out_messages);
 #endif
 	}
+	return h;
+}
+
+static void
+box_select_cb(struct netmsg **m, struct iproto *request)
+{
+	struct box_txn txn = { .op = 0 };
+	struct tbuf data = TBUF(request->data, request->data_len, fiber->pool);
+
+	iproto_reply(m, request->msg_code, request->sync);
+
+	txn_common_parser(&txn, &data);
+
+	u32 i = read_u32(&data);
+	u32 offset = read_u32(&data);
+	u32 limit = read_u32(&data);
+
+	if (i > MAX_IDX)
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index too big");
+
+	if ((txn.index = txn.object_space->index[i]) == NULL)
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index is invalid");
+
+	process_select(m, txn.index, limit, offset, &data);
+	stat_collect(stat_base, request->msg_code, 1);
 }
 
 static void
@@ -1053,7 +1040,7 @@ configure(void)
 				panic("object_space = %" PRIu32 " index = %" PRIu32 ") "
 				      "unknown index type `%s'", i, j, index_cfg->type);
 
-			if ([index respondsTo:@selector(resize)])
+			if ([index respondsTo:@selector(resize:)])
 				[(id)index resize:cfg.object_space[i]->estimated_rows];
 		}
 
@@ -1062,13 +1049,10 @@ configure(void)
 		if (pk->unique == false)
 			panic("(object_space = %" PRIu32 ") object_space PK index must be unique", i);
 
-		if ([pk cardinality] != 1)
-			panic("(object_space = %" PRIu32 ") object_space PK index must be 1 cardinality", i);
-
 		object_space_registry[i].enabled = true;
 
 		say_info("object space %i successfully configured", i);
-		say_info("  PK %i:%s", pk->n, [pk class]->name);
+		say_info("  PK %i:%s", pk->n, [[pk class] name]);
 	}
 }
 
@@ -1118,7 +1102,7 @@ build_object_space_trees(struct object_space *object_space)
 
         if (n_tuples > 0) {
 		for (int i = 0; i < tree_count; i++) {
-                        nodes[i] = malloc(estimated_tuples * ts[i]->node_size);
+                        nodes[i] = xmalloc(estimated_tuples * ts[i]->node_size);
 			if (nodes[i] == NULL)
                                 panic("can't allocate node array");
                 }
@@ -1136,7 +1120,7 @@ build_object_space_trees(struct object_space *object_space)
 	}
 
 	for (int i = 0; i < tree_count; i++) {
-		say_info("  %i:%s", ts[i]->n, [ts[i] class]->name);
+		say_info("  %i:%s", ts[i]->n, [[ts[i] class] name]);
 		[ts[i] set_nodes:nodes[i]
 			   count:n_tuples
 		       allocated:estimated_tuples];
@@ -1163,7 +1147,7 @@ build_secondary_indexes()
 
 		struct tbuf *i = tbuf_alloc(fiber->pool);
 		foreach_index(index, &object_space_registry[n])
-			tbuf_printf(i, " %i:%s", index->n, [index class]->name);
+			tbuf_printf(i, " %i:%s", index->n, [[index class] name]);
 
 		say_info("Object space %i indexes:%.*s", n, tbuf_len(i), (char *)i->ptr);
 	}
@@ -1190,20 +1174,37 @@ box_bound_to_primary(int fd)
 }
 
 static void
+box_service_register(struct service *s)
+{
+	service_iproto(s);
+
+	service_register_iproto_stream(s, NOP, box_select_cb, 0);
+	service_register_iproto_stream(s, SELECT, box_select_cb, 0);
+	service_register_iproto_stream(s, SELECT_LIMIT, box_select_cb, 0);
+	service_register_iproto_stream(s, SELECT_LIMIT, box_select_cb, 0);
+	service_register_iproto_block(s, INSERT, box_cb, 0);
+	service_register_iproto_block(s, UPDATE_FIELDS, box_cb, 0);
+	service_register_iproto_block(s, DELETE, box_cb, 0);
+	service_register_iproto_block(s, EXEC_LUA, box_cb, 0);
+}
+
+static void
 initialize_service()
 {
 	if (cfg.memcached != 0) {
 		memcached_init();
 	} else {
-		box_primary = tcp_service(cfg.primary_port, box_bound_to_primary);
-		for (int i = 0; i < cfg.wal_writer_inbox_size - 2; i++)
-			fiber_create("box_worker", iproto_interact, box_primary, box_process, NULL);
+		box_primary = tcp_service(cfg.primary_port, box_bound_to_primary, iproto_wakeup_workers);
+		box_service_register(box_primary);
+
+		for (int i = 0; i < cfg.wal_writer_inbox_size; i++)
+			fiber_create("box_worker", iproto_worker, box_primary);
 
 		if (cfg.secondary_port > 0) {
-			box_secondary = tcp_service(cfg.secondary_port, NULL);
-			fiber_create("box_secondary_worker", iproto_interact, box_secondary, box_process);
+			box_secondary = tcp_service(cfg.secondary_port, NULL, wakeup_workers);
+			box_service_register(box_secondary);
+			fiber_create("box_secondary_worker", iproto_worker, box_secondary);
 		}
-
 		say_info("(silver)box initialized (%i workers)", cfg.wal_writer_inbox_size);
 	}
 }
@@ -1377,7 +1378,7 @@ init(void)
 {
 	stat_base = stat_register(ops, nelem(ops));
 
-	object_space_registry = calloc(object_space_count, sizeof(struct object_space));
+	object_space_registry = xcalloc(object_space_count, sizeof(struct object_space));
 	for (int i = 0; i < object_space_count; i++)
 		object_space_registry[i].n = i;
 
@@ -1413,24 +1414,24 @@ init(void)
 	if (cfg.memcached != 0) {
 		int n = cfg.memcached_object_space > 0 ? cfg.memcached_object_space : MEMCACHED_OBJECT_SPACE;
 
-		cfg.object_space = calloc(n + 2, sizeof(cfg.object_space[0]));
+		cfg.object_space = xcalloc(n + 2, sizeof(cfg.object_space[0]));
 		for (u32 i = 0; i <= n; ++i) {
-			cfg.object_space[i] = calloc(1, sizeof(cfg.object_space[0][0]));
+			cfg.object_space[i] = xcalloc(1, sizeof(cfg.object_space[0][0]));
 			cfg.object_space[i]->enabled = false;
 		}
 
 		cfg.object_space[n]->enabled = true;
 		cfg.object_space[n]->cardinality = 4;
 		cfg.object_space[n]->estimated_rows = 0;
-		cfg.object_space[n]->index = calloc(2, sizeof(cfg.object_space[n]->index[0]));
-		cfg.object_space[n]->index[0] = calloc(1, sizeof(cfg.object_space[n]->index[0][0]));
+		cfg.object_space[n]->index = xcalloc(2, sizeof(cfg.object_space[n]->index[0]));
+		cfg.object_space[n]->index[0] = xcalloc(1, sizeof(cfg.object_space[n]->index[0][0]));
 		cfg.object_space[n]->index[1] = NULL;
 		cfg.object_space[n]->index[0]->type = "HASH";
 		cfg.object_space[n]->index[0]->unique = 1;
 		cfg.object_space[n]->index[0]->key_field =
-			calloc(2, sizeof(cfg.object_space[n]->index[0]->key_field[0]));
+			xcalloc(2, sizeof(cfg.object_space[n]->index[0]->key_field[0]));
 		cfg.object_space[n]->index[0]->key_field[0] =
-			calloc(1, sizeof(cfg.object_space[n]->index[0]->key_field[0][0]));
+			xcalloc(1, sizeof(cfg.object_space[n]->index[0]->key_field[0][0]));
 		cfg.object_space[n]->index[0]->key_field[1] = NULL;
 		cfg.object_space[n]->index[0]->key_field[0]->fieldno = 0;
 		cfg.object_space[n]->index[0]->key_field[0]->type = "STR";

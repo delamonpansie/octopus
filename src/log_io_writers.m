@@ -318,7 +318,7 @@ wal_disk_writer(int fd, void *state)
 		u32 row_count;
 		u32 run_crc; /* run_crc is computed */
 		i64 scn;
-	} *request = malloc(sizeof(*request) * 1024);
+	} *request = xmalloc(sizeof(*request) * 1024);
 	bool broken[1024];
 
 	ev_tstamp start_time = ev_now();

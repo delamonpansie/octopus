@@ -116,12 +116,9 @@ static u_int64_t	nWriteAhead = 10;
 static u_int64_t	nRequests = 1000;
 static u_int64_t	nActiveConnections = 10;
 static u_int64_t	nConnections = 10;
-static u_int64_t	nSuccess = 0;
-static u_int64_t	nTotal = 0;
 static pthread_mutex_t	mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t	cond  = PTHREAD_COND_INITIALIZER;
 static bool		ignoreFatal = false;
-static bool		printRequest = false;
 
 #define		OCTO_PING	(0xff00) /* XXX src/iproto.m:const uint32_t msg_ping = 0xff00; */
 #define		BOX_INSERT	(13)
@@ -131,17 +128,48 @@ static u_int16_t	messageType = OCTO_PING;
 static u_int32_t	minId = 0,
 			maxId = 1000;
 
-static u_int32_t	errstat[ 256 ];
 
 static 	char		*server = NULL;
 int			port = -1;
 
+
+typedef struct BenchRes {
+	u_int32_t	nOk;
+	u_int32_t	nProceed;
+	double		maxTime;
+	double		minTime;
+	double		totalTime;
+	u_int32_t	errstat[256];
+} BenchRes;
+
+static BenchRes SumResults;
+
 static void
-signalMain(u_int32_t nOk, u_int32_t nProceed) {
+initBenchRes(BenchRes *res) {
+	memset(res, 0, sizeof(*res));
+	res->minTime = 1e10;
+}
+
+static void
+signalMain(BenchRes *local) {
+	int	i;
+
 	pthread_mutex_lock(&mutex);
+
 	nActiveConnections--;
-	nSuccess += nOk;
-	nTotal += nProceed;
+
+	SumResults.nOk += local->nOk;
+	SumResults.nProceed += local->nProceed;
+
+	if (local->maxTime > SumResults.maxTime)
+		SumResults.maxTime = local->maxTime;
+	if (local->minTime < SumResults.minTime)
+		SumResults.minTime = local->minTime;
+	SumResults.totalTime += local->totalTime;
+
+	for(i=0; i<256; i++)
+		SumResults.errstat[i] += local->errstat[i]; 
+
 	pthread_cond_signal(&cond);
 	pthread_mutex_unlock(&mutex);
 }
@@ -166,20 +194,39 @@ octopoll(int fd, int event) {
 	pfd.events = event;
 	pfd.revents = 0;
 
-	ret = poll(&pfd, 1, -1);
-	if (ret < 0 || (pfd.revents & (POLLHUP | POLLNVAL | POLLERR)) != 0)
-		return (pfd.revents | POLLERR);
+	do {
+		ret = poll(&pfd, 1, -1);
+
+		if (ret < 0) {
+			if (errno == EINTR || errno == EINPROGRESS || errno == EAGAIN)
+				continue;
+
+			pfd.revents |= POLLERR;
+			break;
+		}
+ 
+		if (pfd.revents & (POLLHUP | POLLNVAL | POLLERR)) {
+			pfd.revents |= POLLERR;
+			break;
+		}
+	} while(ret == 0);
 
 	return pfd.revents;
 }
 
+static inline double
+timediff(struct timeval *begin, struct timeval *end) {
+    return ((double)( end->tv_sec - begin->tv_sec )) + ( (double)( end->tv_usec-begin->tv_usec ) ) / 1.0e+6;
+}
+
 typedef struct AllocatedRequestBody {
 	struct AllocatedRequestBody	*next;
+	struct timeval			begin; 
 	/* data follows */
 } AllocatedRequestBody;
 
 static inline void *
-popAllocatedRequestBody(AllocatedRequestBody **stack, size_t size) {
+popAllocatedRequestBody(AllocatedRequestBody **stack, size_t size, struct timeval *begin) {
 	AllocatedRequestBody	*p;
 
 	if (*stack) {
@@ -189,22 +236,29 @@ popAllocatedRequestBody(AllocatedRequestBody **stack, size_t size) {
 		p = malloc(size + sizeof(*p));
 	}
 
+	p->begin = *begin;
+
 	return ((char*)p) + sizeof(*p);
 }
 
-static inline void
+static inline struct timeval*
 pushAllocatedRequestBody(AllocatedRequestBody **stack, char *ptr) {
-	AllocatedRequestBody	*p;
 
 	if (ptr) {
+		AllocatedRequestBody	*p;
+
 		p = (AllocatedRequestBody*)(ptr - sizeof(*p));
 		p->next = *stack;
 		*stack = p;
-	}
+
+		return &p->begin;
+	} 
+
+	return NULL;
 }
 
 static inline void*
-generateRequestBody(AllocatedRequestBody **stack, int workerId, unsigned int *seed, size_t *size) {
+generateRequestBody(AllocatedRequestBody **stack, unsigned int *seed, size_t *size, struct timeval *begin) {
 	void *ptr = NULL;
 
 	*size = 0;
@@ -213,6 +267,8 @@ generateRequestBody(AllocatedRequestBody **stack, int workerId, unsigned int *se
 
 	switch(messageType) {
 		case OCTO_PING:
+			ptr = popAllocatedRequestBody(stack, 0, begin);
+			*size = 0;
 			break;
 		case BOX_INSERT:
 			{
@@ -224,7 +280,7 @@ generateRequestBody(AllocatedRequestBody **stack, int workerId, unsigned int *se
 					u_int32_t	id;
 				} __attribute__((packed)) *ps, s = {0, 0, 1, 4, 0};
 
-				ps = popAllocatedRequestBody(stack, sizeof(*ps));
+				ps = popAllocatedRequestBody(stack, sizeof(*ps), begin);
 				memcpy(ps, &s, sizeof(*ps));
 				ps->id = GEN_RND_BETWEEN(minId, maxId);
 				ptr = ps;
@@ -244,7 +300,7 @@ generateRequestBody(AllocatedRequestBody **stack, int workerId, unsigned int *se
 					u_int32_t	id;
 				} __attribute__((packed)) *ps, s = {0, 0, 0, 0xffffffff, 1, 1, 4, 0};
 
-				ps = popAllocatedRequestBody(stack, sizeof(*ps));
+				ps = popAllocatedRequestBody(stack, sizeof(*ps), begin);
 				memcpy(ps, &s, sizeof(*ps));
 				ps->id = GEN_RND_BETWEEN(minId, maxId);
 				ptr = ps;
@@ -267,11 +323,12 @@ worker(void *arg) {
 	struct iproto_connection_t*	conn = li_conn_init(my_alloc, rap, reqap);
 	u_int32_t			errcode;
 	int				fd;
-	u_int32_t			nSended = 0, nOk = 0, nGet = 0;
+	u_int32_t			nSended = 0;
 	bool				needToSend = false;
 	AllocatedRequestBody		*stack = NULL;
 	size_t				size;
 	u_int32_t			flags = LIBIPROTO_OPT_NONBLOCK;
+	BenchRes			local;
 
 	if (messageType != OCTO_PING)
 		flags |= LIBIPROTO_OPT_HAS_4BYTE_ERRCODE;
@@ -285,11 +342,12 @@ worker(void *arg) {
 	}
 
 	fd = li_get_fd(conn);
+	initBenchRes(&local);
 
-	while(!(nOk >= nRequests && nGet == nSended)) {
+	while(!(local.nOk >= nRequests && local.nProceed == nSended)) {
 		int state;
 
-		state = octopoll(fd, POLLIN | ((needToSend || nOk < nRequests) ? POLLOUT : 0));
+		state = octopoll(fd, POLLIN | ((needToSend || local.nOk < nRequests) ? POLLOUT : 0));
 		if (state & POLLERR) {
 			fprintf(stderr,"poll fails: %s\n", strerror(errno));
 			exit(1);
@@ -297,6 +355,8 @@ worker(void *arg) {
 
 		if (state & POLLIN) {
 			struct iproto_request_t	*request;
+			struct timeval *begin, end;
+			double	elapsed;
 
 			errcode = li_read(conn);
 
@@ -305,6 +365,7 @@ worker(void *arg) {
 				exit(1);
 			}
 
+			gettimeofday(&end, NULL);
 			while((request = li_get_ready_reqs(conn)) != NULL) {
 
 				errcode = li_req_state(request);
@@ -315,8 +376,8 @@ worker(void *arg) {
 				}
 
 				if (errcode == ERR_CODE_OK || errcode == ERR_CODE_REQUEST_READY)
-					nOk++;
-				nGet++;
+					local.nOk++;
+				local.nProceed++;
 
 				if (ignoreFatal == false && ERR_CODE_IS_FATAL(errcode)) {
 					fprintf(stderr,"octopus returns fatal error: %s (%08x)\n",
@@ -324,22 +385,34 @@ worker(void *arg) {
 					exit(1);
 				}
 
-				__sync_fetch_and_add(errstat + ((errcode >> 8) & 0xff), 1);
+				local.errstat[ (errcode >> 8) & 0xff ] ++;
 
-				pushAllocatedRequestBody(&stack, li_req_request_data(request, &size));
+				begin = pushAllocatedRequestBody(&stack, li_req_request_data(request, &size));
+				if (begin) {
+					elapsed = timediff(begin, &end);
+
+					if (elapsed > local.maxTime)
+						local.maxTime = elapsed;
+					if (elapsed < local.minTime)
+						local.minTime = elapsed;
+					local.totalTime += elapsed;
+				}
 				li_req_free(request);
 			}
 		}
 
 		if (state & POLLOUT) {
-			while (nOk < nRequests && (nGet + nWriteAhead) > nSended) {
+			while (local.nOk < nRequests && (local.nProceed + nWriteAhead) > nSended) {
 				int i;
+				struct timeval begin;
+
+				gettimeofday(&begin, NULL);
 
 				for(i=0; i<nWriteAhead >> 2; i++) {
 					void	*body;
 					size_t	size;
 
-					body = generateRequestBody(&stack, idWorker, &rndseed, &size);
+					body = generateRequestBody(&stack, &rndseed, &size, &begin);
 					li_req_init(conn, messageType, body, size);
 				}
 
@@ -363,7 +436,7 @@ worker(void *arg) {
 		}
 	}
 
-	signalMain(nOk, nGet);
+	signalMain(&local);
 	li_close(conn);
 	li_free(conn);
 	map_free(rap);
@@ -395,11 +468,6 @@ usage(const char *errmsg) {
 #define	OPT_ERR(cond)	if (!(cond))	{						\
 	fprintf(stderr, "Input option check fails: " #cond "\n");	\
 	exit(1);													\
-}
-
-static inline double
-timediff(struct timeval *begin, struct timeval *end) {
-    return ((double)( end->tv_sec - begin->tv_sec )) + ( (double)( end->tv_usec-begin->tv_usec ) ) / 1.0e+6;
 }
 
 int
@@ -453,6 +521,8 @@ main(int argc, char* argv[]) {
 		}
 	}
 
+	OPT_ERR(nWriteAhead <= nRequests);
+	OPT_ERR(nWriteAhead >= 4);
 	OPT_ERR(optind == argc);
 	OPT_ERR(minId < maxId);
 
@@ -460,6 +530,8 @@ main(int argc, char* argv[]) {
 		usage("error: bad server address/port");
 
 	ERRCODE_ADD(ERRCODE_DESCRIPTION, ERROR_CODES);
+
+	initBenchRes(&SumResults);
 
 	gettimeofday(&begin,NULL);
 	pthread_mutex_lock(&mutex);
@@ -480,14 +552,19 @@ main(int argc, char* argv[]) {
 	elapsed = timediff(&begin, &end);
 
 	printf("Elapsed time: %.3f secs\n", elapsed);
-	printf("Number of OK requests: %.3f\n", ((double)nSuccess));
-	printf("RPS: %.3f\n", ((double)nSuccess) / elapsed );
-	printf("Number of ALL requests: %.3f\n", ((double)nTotal));
-	printf("RPS: %.3f\n", ((double)nTotal) / elapsed );
+	printf("Number of OK requests: %.3f\n", ((double)SumResults.nOk));
+	printf("RPS: %.3f\n", ((double)SumResults.nOk) / elapsed );
+	printf("Number of ALL requests: %.3f\n", ((double)SumResults.nProceed));
+	printf("RPS: %.3f\n", ((double)SumResults.nProceed) / elapsed );
+	printf("MIN/AVG/MAX time per request: %.03f / %.03f / %.03f millisecs\n", 
+	       SumResults.minTime * 1e3, 
+	       SumResults.totalTime * 1e3/ (double)SumResults.nProceed, 
+	       SumResults.maxTime * 1e3);  
 
 	for(i=0; i<256; i++)
-		if (errstat[i] > 0)
-			printf("N number of %02x: %d (%s)\n", i, errstat[i]);
+		if (SumResults.errstat[i] > 0)
+			printf("N number of %02x: %d\n", i, SumResults.errstat[i]
+			       /* errcode_desc(i): i is only one byte from error code */);
 
 	return 0;
 }
