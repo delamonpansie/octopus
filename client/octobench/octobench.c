@@ -106,7 +106,40 @@ blrand_r(unsigned int *ctx)
 }
 
 /************************************************************************************/
+/* source src/pickle.m */
 
+static u_int8_t *
+save_varint32(u_int8_t *target, u_int32_t value)
+{
+
+	if (value >= (1 << 7)) {
+		if (value >= (1 << 14)) {
+			if (value >= (1 << 21)) {
+				if (value >= (1 << 28))
+					*(target++) = (u_int8_t)(value >> 28) | 0x80;
+				*(target++) = (u_int8_t)(value >> 21) | 0x80;
+			}
+			*(target++) = (u_int8_t)((value >> 14) | 0x80);
+		}
+		*(target++) = (u_int8_t)((value >> 7) | 0x80);
+	}
+	*(target++) = (u_int8_t)((value) & 0x7F);
+
+	return target;
+}
+
+static size_t
+varint32_sizeof(u_int32_t value)
+{
+	int s = 1;
+	while (value >= 1 << 7) {
+		value >>= 7;
+		s++;
+	}
+	return s;
+}
+
+/************************************************************************************/
 #include <client/libiproto/libiproto.h>
 #include <iproto_def.h>
 #define SUM_ERROR_CODES(x) LIBIPROTO_ERROR_CODES(x) ERROR_CODES(x)
@@ -127,7 +160,7 @@ static bool		ignoreFatal = false;
 static u_int16_t	messageType = OCTO_PING;
 static u_int32_t	minId = 0,
 			maxId = 1000;
-
+static u_int32_t	insertSize = 0;
 
 static 	char		*server = NULL;
 int			port = -1;
@@ -280,11 +313,20 @@ generateRequestBody(AllocatedRequestBody **stack, unsigned int *seed, size_t *si
 					u_int32_t	id;
 				} __attribute__((packed)) *ps, s = {0, 0, 1, 4, 0};
 
-				ps = popAllocatedRequestBody(stack, sizeof(*ps), begin);
+				*size = sizeof(*ps);
+
+				if (insertSize > 0)
+					*size += varint32_sizeof(insertSize) + insertSize;
+				
+				ps = popAllocatedRequestBody(stack, *size, begin);
 				memcpy(ps, &s, sizeof(*ps));
 				ps->id = GEN_RND_BETWEEN(minId, maxId);
+
+				if (insertSize > 0) {
+					ps->n = 2;
+					save_varint32(((u_int8_t*)ps) + sizeof(*ps), insertSize);
+				}
 				ptr = ps;
-				*size = sizeof(*ps);
 			}
 			break;
 		case BOX_SELECT:
@@ -459,12 +501,12 @@ usage(const char *errmsg) {
 	/*    ################################################################################ */
 	puts("octobench -s HOST -p PORT");
 	puts("   [-n NREQUESTS] [-w NWRITE_AHEAD_REQUESTS] [-c NCONNECTION]");
-	puts("   [-t (ping|box_insert|box_select)]");
+	puts("   [-t (ping|box_insert [-S TUPLE_SIZE]|box_select)]");
 	puts("   [-i MINID] [-I MAXID] -- min/max random id");
 	puts("   [-F]                  -- ignore fatal error from db");
 	puts("Defaults:");
 	printf("    -n %"PRIu64" -w %"PRIu64" -c %"PRIu64"\n    -t ping", nRequests, nWriteAhead, nConnections);
-	printf("    -i %u -I %u\n", minId, maxId);
+	printf("    -i %u -I %u -S %u\n", minId, maxId, insertSize);
 	if (errmsg) {
 		puts("");
 		puts(errmsg);
@@ -486,7 +528,7 @@ main(int argc, char* argv[]) {
 
 	nConnections = nActiveConnections;
 
-	while((i=getopt(argc,argv,"s:p:n:w:c:t:Fi:I:h")) != EOF) {
+	while((i=getopt(argc,argv,"s:p:n:w:c:t:Fi:I:S:h")) != EOF) {
 		switch(i) {
 			case 's':
 				server = strdup(optarg);
@@ -519,6 +561,9 @@ main(int argc, char* argv[]) {
 			case  'I':
 				maxId = strtoul(optarg, NULL, 0);
 				break;
+			case  'S':
+				insertSize = strtoul(optarg, NULL, 0);
+				break;
 			case 'F':
 				ignoreFatal = true;
 				break;
@@ -537,6 +582,7 @@ main(int argc, char* argv[]) {
 		usage("error: bad server address/port");
 
 	ERRCODE_ADD(ERRCODE_DESCRIPTION, ERROR_CODES);
+
 
 	initBenchRes(&SumResults);
 
