@@ -163,9 +163,11 @@ static u_int32_t	minId = 0,
 static u_int32_t	insertMaxSize = 0,
 			insertMinSize = 0,
 			addonSize = 0;
+static double		timeLimit = 0.0;
 
 static 	char		*server = NULL;
 int			port = -1;
+static struct timeval 	begin;
 
 
 typedef struct BenchRes {
@@ -252,6 +254,13 @@ octopoll(int fd, int event) {
 static inline double
 timediff(struct timeval *begin, struct timeval *end) {
     return ((double)( end->tv_sec - begin->tv_sec )) + ( (double)( end->tv_usec-begin->tv_usec ) ) / 1.0e+6;
+}
+
+static inline double
+elapsedtime(struct timeval *begin) {
+	struct timeval end;
+	gettimeofday(&end,NULL);
+	return timediff(begin,&end);
 }
 
 typedef struct AllocatedRequestBody {
@@ -381,6 +390,7 @@ worker(void *arg) {
 	size_t				size;
 	u_int32_t			flags = LIBIPROTO_OPT_NONBLOCK;
 	BenchRes			local;
+	bool				timeLimitExceed = false;
 
 	if (messageType != OCTO_PING)
 		flags |= LIBIPROTO_OPT_HAS_4BYTE_ERRCODE;
@@ -396,13 +406,13 @@ worker(void *arg) {
 	fd = li_get_fd(conn);
 	initBenchRes(&local);
 
-	while(!(local.nOk >= nRequests && local.nProceed == nSended)) {
+	while(!((local.nOk >= nRequests || timeLimitExceed == true) && local.nProceed == nSended)) {
 		int state;
 
 		state = POLLIN;
 		if (needToSend)
 			state |= POLLOUT;
-		if (local.nOk < nRequests && local.nProceed + nWriteAhead > nSended)
+		if (timeLimitExceed == false && local.nOk < nRequests && local.nProceed + nWriteAhead > nSended)
 			state |= POLLOUT;
 
 		state = octopoll(fd, state);
@@ -411,6 +421,10 @@ worker(void *arg) {
 			fprintf(stderr,"poll fails: %s\n", strerror(errno));
 			exit(1);
 		}
+
+		if (timeLimit > 0.0 && elapsedtime(&begin) >= timeLimit)
+			timeLimitExceed = true;
+
 
 		if (state & POLLIN) {
 			struct iproto_request_t	*request;
@@ -511,12 +525,14 @@ usage(const char *errmsg) {
 	/*    ################################################################################ */
 	puts("octobench -s HOST -p PORT");
 	puts("   [-n NREQUESTS] [-w NWRITE_AHEAD_REQUESTS] [-c NCONNECTION]");
-	puts("   [-t (ping|box_insert [-z MIN_TUPLE_SIZE] [-Z MAX_TUPLE_SIZE]|box_select)]");
-	puts("   [-i MINID] [-I MAXID] -- min/max random id");
-	puts("   [-F]                  -- ignore fatal error from db");
+	puts("   [-t (ping|box_insert|box_select)]");
+	puts("   [-i MINID] [-I MAXID]     -- min/max random id for -t box_insert|box_select");
+	puts("   [-z MINSIZE] [-Z MAXSIZE] -- min/max tuple size for -t box_insert");
+	puts("   [-T TIME_LIMIT]           -- time limit for test");
+	puts("   [-F]                      -- ignore fatal error from db");
 	puts("Defaults:");
 	printf("    -n %"PRIu64" -w %"PRIu64" -c %"PRIu64"\n    -t ping", nRequests, nWriteAhead, nConnections);
-	printf("    -i %u -I %u -z %u -Z -%u\n", minId, maxId, insertMinSize, insertMaxSize);
+	printf("    -i %u -I %u -z %u -Z %u\n", minId, maxId, insertMinSize, insertMaxSize);
 	if (errmsg) {
 		puts("");
 		puts(errmsg);
@@ -532,13 +548,13 @@ usage(const char *errmsg) {
 int
 main(int argc, char* argv[]) {
 	int 			i;
-	struct timeval 		begin, end;
+	struct timeval 		end;
 	double			elapsed;
 	pthread_t		tid;
 
 	nConnections = nActiveConnections;
 
-	while((i=getopt(argc,argv,"s:p:n:w:c:t:Fi:I:z:Z:h")) != EOF) {
+	while((i=getopt(argc,argv,"s:p:n:w:c:t:Fi:I:z:Z:T:h")) != EOF) {
 		switch(i) {
 			case 's':
 				server = strdup(optarg);
@@ -580,6 +596,9 @@ main(int argc, char* argv[]) {
 			case 'F':
 				ignoreFatal = true;
 				break;
+			case 'T':
+				timeLimit = strtod(optarg, NULL);
+				break;
 			case 'h':
 			default:
 				usage(NULL);
@@ -591,6 +610,7 @@ main(int argc, char* argv[]) {
 	OPT_ERR(optind == argc);
 	OPT_ERR(minId < maxId);
 	OPT_ERR(insertMinSize <= insertMaxSize);
+	OPT_ERR(timeLimit >= 0);
 
 	if (server==NULL || port <= 0)
 		usage("error: bad server address/port");
