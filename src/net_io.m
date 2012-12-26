@@ -54,6 +54,7 @@ netmsg_alloc(struct netmsg_head *h)
 	struct netmsg *n = slab_cache_alloc(&netmsg_cache);
 	n->count = n->offset = 0;
 	n->head = h;
+	memset(n->ref, 0, sizeof(n->ref));
 
 	TAILQ_INSERT_TAIL(&h->q, n, link);
 	return n;
@@ -126,6 +127,7 @@ netmsg_concat(struct netmsg_head *dst, struct netmsg_head *src)
 			memcpy(tail->ref + tail->count, m->ref, sizeof(m->ref[0]) * m->count);
 			tail->count += m->count;
 
+			memset(m->ref, 0, sizeof(m->ref[0]) * m->count);
 			slab_cache_free(&netmsg_cache, m);
 		} else {
 			m->head = dst;
@@ -154,7 +156,7 @@ netmsg_rewind(struct netmsg **m, struct netmsg_mark *mark)
 		h->bytes -= mark->m->iov[i].iov_len;
 	netmsg_unref(mark->m, mark->offset + 1);
 	*m = mark->m;
-	(*m)->count = mark->offset + 1;
+	(*m)->count = mark->offset;
 }
 
 void
