@@ -611,7 +611,7 @@ loop:
 			p->last_connect_try = ev_now();
 		}
 
-		r = tcp_async_connect(&p->c, 
+		r = tcp_async_connect(&p->c,
 				      (p->in_connect) ? w : NULL, /* NULL means initial state for tcp_async_connect */
 				      &p->addr, self_addr, 5);
 
