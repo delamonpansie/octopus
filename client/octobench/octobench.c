@@ -196,6 +196,7 @@ static struct timeval 	begin;
 typedef struct BenchRes {
 	u_int32_t	nOk;
 	u_int32_t	nProceed;
+	u_int32_t	nFound;
 	double		maxTime;
 	double		minTime;
 	double		totalTime;
@@ -220,6 +221,7 @@ signalMain(BenchRes *local) {
 
 	SumResults.nOk += local->nOk;
 	SumResults.nProceed += local->nProceed;
+	SumResults.nFound += local->nFound;
 
 	if (local->maxTime > SumResults.maxTime)
 		SumResults.maxTime = local->maxTime;
@@ -472,8 +474,19 @@ worker(void *arg) {
 					exit(1);
 				}
 
-				if (errcode == ERR_CODE_OK || errcode == ERR_CODE_REQUEST_READY)
+				if (errcode == ERR_CODE_OK || errcode == ERR_CODE_REQUEST_READY) {
 					local.nOk++;
+
+					if (messageType == BOX_SELECT) {
+						size_t 	s;
+						void 	*d;
+
+						d = li_req_response_data(request, &s);
+
+						if (s >= sizeof(u_int32_t))
+							local.nFound += *(u_int32_t*)d;
+					}
+				}
 				local.nProceed++;
 
 				if (ignoreFatal == false && ERR_CODE_IS_FATAL(errcode)) {
@@ -678,6 +691,8 @@ main(int argc, char* argv[]) {
 	printf("                Elapsed time: %.3f secs\n", elapsed);
 	printf("       Number of OK requests: %' 10i\n", SumResults.nOk);
 	printf("                         RPS: %' 10i\n", (u_int32_t)(((double)SumResults.nOk) / elapsed));
+	if (messageType == BOX_SELECT)
+		 printf("   Number of returned tuples: %' 10i\n", SumResults.nFound);
 	printf("      Number of ALL requests: %' 10i\n", SumResults.nProceed);
 	printf("                         RPS: %' 10i\n", (u_int32_t)(((double)SumResults.nProceed) / elapsed));
 	printf("MIN/AVG/MAX time per request: %.03f / %.03f / %.03f millisecs\n",
