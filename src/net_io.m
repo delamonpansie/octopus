@@ -54,6 +54,7 @@ netmsg_alloc(struct netmsg_head *h)
 	struct netmsg *n = slab_cache_alloc(&netmsg_cache);
 	n->count = n->offset = 0;
 	n->head = h;
+	n->dummy.iov_len = -1;
 	memset(n->ref, 0, sizeof(n->ref));
 
 	TAILQ_INSERT_TAIL(&h->q, n, link);
@@ -157,6 +158,7 @@ netmsg_rewind(struct netmsg **m, struct netmsg_mark *mark)
 	netmsg_unref(mark->m, mark->offset + 1);
 	*m = mark->m;
 	(*m)->count = mark->offset;
+	*((*m)->iov + (*m)->count - 1) = mark->iov;
 }
 
 void
@@ -164,6 +166,7 @@ netmsg_getmark(struct netmsg *m, struct netmsg_mark *mark)
 {
 	mark->m = m;
 	mark->offset = m->count;
+	mark->iov = *(m->iov + m->count - 1);
 }
 
 static void __attribute__((noinline))
@@ -176,11 +179,16 @@ enlarge(struct netmsg **m)
 void
 net_add_iov(struct netmsg **m, const void *buf, size_t len)
 {
-	struct iovec *v = (*m)->iov + (*m)->count;
+	struct iovec *v = (*m)->iov + (*m)->count, *p = v - 1;
+
+	(*m)->head->bytes += len;
+	if (unlikely(p->iov_base + p->iov_len == buf)) {
+		p->iov_len += len;
+		return;
+	}
 	v->iov_base = (char *)buf;
 	v->iov_len = len;
 
-	(*m)->head->bytes += len;
 	/* *((*m)->ref + (*m)->count) is NULL here. see netmsg_unref() */
 
 #ifdef NET_IO_TIMESTAMPS
