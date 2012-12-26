@@ -160,7 +160,8 @@ static bool		ignoreFatal = false;
 static u_int16_t	messageType = OCTO_PING;
 static u_int32_t	minId = 0,
 			maxId = 1000;
-static u_int32_t	insertSize = 0;
+static u_int32_t	insertMaxSize = 0,
+			insertMinSize = 0;
 
 static 	char		*server = NULL;
 int			port = -1;
@@ -291,12 +292,13 @@ pushAllocatedRequestBody(AllocatedRequestBody **stack, char *ptr) {
 }
 
 static inline void*
-generateRequestBody(AllocatedRequestBody **stack, unsigned int *seed, size_t *size, struct timeval *begin) {
+generateRequestBody(AllocatedRequestBody **stack, unsigned int *seed, unsigned int *seed1,
+		    size_t *size, struct timeval *begin) {
 	void *ptr = NULL;
 
 	*size = 0;
 
-#define GEN_RND_BETWEEN(mn, mx)	(mn + (mx - mn) * ( ((double)blrand_r(seed)) / ((double)BL_RAND_MAX) ))
+#define GEN_RND_BETWEEN(mn, mx, seed)	(mn + (mx - mn) * ( ((double)blrand_r(seed)) / ((double)BL_RAND_MAX) ))
 
 	switch(messageType) {
 		case OCTO_PING:
@@ -312,6 +314,12 @@ generateRequestBody(AllocatedRequestBody **stack, unsigned int *seed, size_t *si
 					u_int8_t	len;
 					u_int32_t	id;
 				} __attribute__((packed)) *ps, s = {0, 0, 1, 4, 0};
+				u_int32_t	insertSize;
+
+				if (insertMinSize == insertMaxSize)
+					insertSize = insertMaxSize;
+				else
+					insertSize = GEN_RND_BETWEEN(insertMinSize, insertMaxSize, seed1); 
 
 				*size = sizeof(*ps);
 
@@ -320,7 +328,7 @@ generateRequestBody(AllocatedRequestBody **stack, unsigned int *seed, size_t *si
 				
 				ps = popAllocatedRequestBody(stack, *size, begin);
 				memcpy(ps, &s, sizeof(*ps));
-				ps->id = GEN_RND_BETWEEN(minId, maxId);
+				ps->id = GEN_RND_BETWEEN(minId, maxId, seed);
 
 				if (insertSize > 0) {
 					ps->n = 2;
@@ -344,7 +352,7 @@ generateRequestBody(AllocatedRequestBody **stack, unsigned int *seed, size_t *si
 
 				ps = popAllocatedRequestBody(stack, sizeof(*ps), begin);
 				memcpy(ps, &s, sizeof(*ps));
-				ps->id = GEN_RND_BETWEEN(minId, maxId);
+				ps->id = GEN_RND_BETWEEN(minId, maxId, seed);
 				ptr = ps;
 				*size = sizeof(*ps);
 			}
@@ -360,6 +368,7 @@ void*
 worker(void *arg) {
 	int				idWorker = (int)(uintptr_t)arg;
 	unsigned int			rndseed = idWorker;
+	unsigned int			rndseed1 = blrand_r(&rndseed);
 	struct memory_arena_pool_t*	rap = map_alloc(my_alloc, 2, 64*1024);
 	struct memory_arena_pool_t*	reqap = map_alloc(my_alloc, 64, 64*1024);
 	struct iproto_connection_t*	conn = li_conn_init(my_alloc, rap, reqap);
@@ -461,7 +470,7 @@ worker(void *arg) {
 					void	*body;
 					size_t	size;
 
-					body = generateRequestBody(&stack, &rndseed, &size, &begin);
+					body = generateRequestBody(&stack, &rndseed, &rndseed1, &size, &begin);
 					li_req_init(conn, messageType, body, size);
 				}
 
@@ -501,12 +510,12 @@ usage(const char *errmsg) {
 	/*    ################################################################################ */
 	puts("octobench -s HOST -p PORT");
 	puts("   [-n NREQUESTS] [-w NWRITE_AHEAD_REQUESTS] [-c NCONNECTION]");
-	puts("   [-t (ping|box_insert [-S TUPLE_SIZE]|box_select)]");
+	puts("   [-t (ping|box_insert [-z MIN_TUPLE_SIZE] [-Z MAX_TUPLE_SIZE]|box_select)]");
 	puts("   [-i MINID] [-I MAXID] -- min/max random id");
 	puts("   [-F]                  -- ignore fatal error from db");
 	puts("Defaults:");
 	printf("    -n %"PRIu64" -w %"PRIu64" -c %"PRIu64"\n    -t ping", nRequests, nWriteAhead, nConnections);
-	printf("    -i %u -I %u -S %u\n", minId, maxId, insertSize);
+	printf("    -i %u -I %u -z %u -Z -%u\n", minId, maxId, insertMinSize, insertMaxSize);
 	if (errmsg) {
 		puts("");
 		puts(errmsg);
@@ -528,7 +537,7 @@ main(int argc, char* argv[]) {
 
 	nConnections = nActiveConnections;
 
-	while((i=getopt(argc,argv,"s:p:n:w:c:t:Fi:I:S:h")) != EOF) {
+	while((i=getopt(argc,argv,"s:p:n:w:c:t:Fi:I:z:Z:h")) != EOF) {
 		switch(i) {
 			case 's':
 				server = strdup(optarg);
@@ -561,8 +570,11 @@ main(int argc, char* argv[]) {
 			case  'I':
 				maxId = strtoul(optarg, NULL, 0);
 				break;
-			case  'S':
-				insertSize = strtoul(optarg, NULL, 0);
+			case  'z':
+				insertMinSize = strtoul(optarg, NULL, 0);
+				break;
+			case  'Z':
+				insertMaxSize = strtoul(optarg, NULL, 0);
 				break;
 			case 'F':
 				ignoreFatal = true;
@@ -577,12 +589,12 @@ main(int argc, char* argv[]) {
 	OPT_ERR(nWriteAhead >= 4);
 	OPT_ERR(optind == argc);
 	OPT_ERR(minId < maxId);
+	OPT_ERR(insertMinSize <= insertMaxSize);
 
 	if (server==NULL || port <= 0)
 		usage("error: bad server address/port");
 
 	ERRCODE_ADD(ERRCODE_DESCRIPTION, ERROR_CODES);
-
 
 	initBenchRes(&SumResults);
 
