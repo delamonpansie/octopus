@@ -197,6 +197,8 @@ typedef struct BenchRes {
 	u_int32_t	nOk;
 	u_int32_t	nProceed;
 	u_int32_t	nFound;
+	u_int64_t	mbIn;
+	u_int64_t	mbOut;
 	double		maxTime;
 	double		minTime;
 	double		totalTime;
@@ -222,6 +224,8 @@ signalMain(BenchRes *local) {
 	SumResults.nOk += local->nOk;
 	SumResults.nProceed += local->nProceed;
 	SumResults.nFound += local->nFound;
+	SumResults.mbIn += local->mbIn;
+	SumResults.mbOut += local->mbOut;
 
 	if (local->maxTime > SumResults.maxTime)
 		SumResults.maxTime = local->maxTime;
@@ -466,6 +470,8 @@ worker(void *arg) {
 
 			gettimeofday(&end, NULL);
 			while((request = li_get_ready_reqs(conn)) != NULL) {
+				size_t 	s;
+				void 	*d;
 
 				errcode = li_req_state(request);
 
@@ -474,18 +480,17 @@ worker(void *arg) {
 					exit(1);
 				}
 
+				d = li_req_response_data(request, &s);
+
+				local.mbIn += s + 
+					(messageType == OCTO_PING) ? 
+						sizeof(struct iproto) : sizeof(struct iproto_retcode);
+
 				if (errcode == ERR_CODE_OK || errcode == ERR_CODE_REQUEST_READY) {
 					local.nOk++;
 
-					if (messageType == BOX_SELECT) {
-						size_t 	s;
-						void 	*d;
-
-						d = li_req_response_data(request, &s);
-
-						if (s >= sizeof(u_int32_t))
-							local.nFound += *(u_int32_t*)d;
-					}
+					if (messageType == BOX_SELECT && s >= sizeof(u_int32_t))
+						local.nFound += *(u_int32_t*)d;
 				}
 				local.nProceed++;
 
@@ -523,6 +528,7 @@ worker(void *arg) {
 					size_t	size;
 
 					body = generateRequestBody(&stack, &rndseed, &rndseed1, &size, &begin);
+					local.mbOut += sizeof(struct iproto) + size;
 					li_req_init(conn, messageType, body, size);
 				}
 
@@ -695,6 +701,10 @@ main(int argc, char* argv[]) {
 		 printf("   Number of returned tuples: %' 10i\n", SumResults.nFound);
 	printf("      Number of ALL requests: %' 10i\n", SumResults.nProceed);
 	printf("                         RPS: %' 10i\n", (u_int32_t)(((double)SumResults.nProceed) / elapsed));
+	printf("               Output stream: % 10.02f MB/sec\n", 
+	       					((double)SumResults.mbOut) / (1024.0 * 1024.0 * elapsed));
+	printf("                Input stream: % 10.02f MB/sec\n", 
+	       					((double)SumResults.mbIn) / (1024.0 * 1024.0 * elapsed));
 	printf("MIN/AVG/MAX time per request: %.03f / %.03f / %.03f millisecs\n",
 	       SumResults.minTime * 1e3,
 	       SumResults.totalTime * 1e3/ (double)SumResults.nProceed,
