@@ -96,13 +96,34 @@ do_rand(unsigned long *ctx)
 	return ((*ctx = x) % ((unsigned long)BL_RAND_MAX + 1));
 }
 
+typedef struct blrand_t {
+	unsigned int 	initial_seed;
+	unsigned int	ctx;
+	unsigned int	cnt;
+	unsigned int	limit;
+} blrand_t;
+
+static void
+blrand_init(blrand_t *state, unsigned int seed, unsigned int limit) {
+	state->initial_seed = state->ctx = seed;
+	state->cnt = 0;
+	state->limit = limit;
+}
+
 static int
-blrand_r(unsigned int *ctx)
+blrand_r(blrand_t *state)
 {
-	unsigned long val = (unsigned long) *ctx;
+	unsigned long val = (unsigned long) state->ctx;
 	int r = do_rand(&val);
 
-	*ctx = (unsigned int) val;
+	state->cnt++;
+	if (state->cnt >= state->limit) {
+		state->ctx = state->initial_seed;
+		state->cnt = 0;
+
+	} else {
+		state->ctx = (unsigned int) val;
+	}
 	return (r);
 }
 
@@ -165,6 +186,7 @@ static u_int32_t	insertMaxSize = 0,
 			insertMinSize = 0,
 			addonSize = 0;
 static double		timeLimit = 0.0;
+static u_int32_t	nReset = 0xffffffff; 
 
 static 	char		*server = NULL;
 int			port = -1;
@@ -303,7 +325,7 @@ pushAllocatedRequestBody(AllocatedRequestBody **stack, char *ptr) {
 }
 
 static inline void*
-generateRequestBody(AllocatedRequestBody **stack, unsigned int *seed, unsigned int *seed1,
+generateRequestBody(AllocatedRequestBody **stack, blrand_t *seed, blrand_t *seed1,
 		    size_t *size, struct timeval *begin) {
 	void *ptr = NULL;
 
@@ -378,8 +400,7 @@ generateRequestBody(AllocatedRequestBody **stack, unsigned int *seed, unsigned i
 void*
 worker(void *arg) {
 	int				idWorker = (int)(uintptr_t)arg;
-	unsigned int			rndseed = idWorker;
-	unsigned int			rndseed1 = blrand_r(&rndseed);
+	blrand_t			rndseed, rndseed1;
 	struct memory_arena_pool_t*	rap = map_alloc(my_alloc, 2, 64*1024);
 	struct memory_arena_pool_t*	reqap = map_alloc(my_alloc, 64, 64*1024);
 	struct iproto_connection_t*	conn = li_conn_init(my_alloc, rap, reqap);
@@ -392,6 +413,9 @@ worker(void *arg) {
 	u_int32_t			flags = LIBIPROTO_OPT_NONBLOCK;
 	BenchRes			local;
 	bool				timeLimitExceed = false;
+
+	blrand_init(&rndseed, idWorker, nReset); 
+	blrand_init(&rndseed1, idWorker + 128, 0xffffffff); 
 
 	if (messageType != OCTO_PING)
 		flags |= LIBIPROTO_OPT_HAS_4BYTE_ERRCODE;
@@ -529,10 +553,13 @@ usage(const char *errmsg) {
 	puts("   [-i MINID] [-I MAXID]     -- min/max random id for -t box_insert|box_select");
 	puts("   [-z MINSIZE] [-Z MAXSIZE] -- min/max tuple size for -t box_insert");
 	puts("   [-T TIME_LIMIT]           -- time limit for test");
+	puts("   [-r NRESET]               -- reset random generator after NRESET requests");
 	puts("   [-F]                      -- ignore fatal error from db");
 	puts("Defaults:");
 	printf("    -n %"PRIu64" -w %"PRIu64" -c %"PRIu64"\n    -t ping", nRequests, nWriteAhead, nConnections);
-	printf("    -i %u -I %u -z %u -Z %u\n", minId, maxId, insertMinSize, insertMaxSize);
+	printf("    -i %u -I %u\n", minId, maxId);
+	printf("    -z %u -Z %u\n", insertMinSize, insertMaxSize);
+	printf("    -r %u", nReset);
 	if (errmsg) {
 		puts("");
 		puts(errmsg);
@@ -554,7 +581,7 @@ main(int argc, char* argv[]) {
 
 	nConnections = nActiveConnections;
 
-	while((i=getopt(argc,argv,"s:p:n:w:c:t:Fi:I:z:Z:T:h")) != EOF) {
+	while((i=getopt(argc,argv,"s:p:n:w:c:t:Fi:I:z:Z:T:r:h")) != EOF) {
 		switch(i) {
 			case 's':
 				server = strdup(optarg);
@@ -598,6 +625,9 @@ main(int argc, char* argv[]) {
 				break;
 			case 'T':
 				timeLimit = strtod(optarg, NULL);
+				break;
+			case  'r':
+				nReset = strtoul(optarg, NULL, 0);
 				break;
 			case 'h':
 			default:
