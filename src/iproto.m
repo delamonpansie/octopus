@@ -101,10 +101,7 @@ iproto_worker(va_list ap)
 				rc = ERR_CODE_ILLEGAL_PARAMS;
 
 			struct netmsg *m = netmsg_tail(&a.c->out_messages);
-			struct netmsg_mark header_mark;
-			netmsg_getmark(m, &header_mark);
-			iproto_reply(&m, a.r->msg_code, a.r->sync);
-			iproto_error(&m, &header_mark, rc, e->reason);
+			iproto_error(&m, a.r, rc, e->reason);
 		}
 
 		a.c->ref--;
@@ -122,9 +119,8 @@ iproto_worker(va_list ap)
 
 
 static void
-err(struct netmsg **m, struct iproto *r)
+err(struct netmsg **m __attribute__((unused)), struct iproto *r)
 {
-	iproto_reply(m, r->msg_code, r->sync);
 	iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "unknown iproto command %i", r->msg_code);
 }
 
@@ -187,8 +183,6 @@ handle_c(struct service *service, struct conn *c)
 			netmsg_getmark(m, &header_mark);
 			@try {
 				ih->cb.stream(&m, request);
-				if (request->msg_code != msg_ping)
-					iproto_commit(&header_mark, ERR_CODE_OK);
 			}
 			@catch (Error *e) {
 				u32 rc = ERR_CODE_UNKNOWN_ERROR;
@@ -197,8 +191,8 @@ handle_c(struct service *service, struct conn *c)
 				else if ([e isMemberOf:[IndexError class]])
 					rc = ERR_CODE_ILLEGAL_PARAMS;
 
-				/* FIXME: SEGV if cb.stream() fails before iproto_reply() */
-				iproto_error(&m, &header_mark, rc, e->reason);
+				netmsg_rewind(&m, &header_mark);
+				iproto_error(&m, request, rc, e->reason);
 			}
 		} else {
 			struct fiber *w = SLIST_FIRST(&service->workers);
@@ -333,42 +327,22 @@ next:
 	goto next;
 }
 
-
-void
-iproto_reply(struct netmsg **m, u32 msg_code, u32 sync)
+struct iproto_retcode *
+iproto_reply(struct netmsg **m, const struct iproto *request)
 {
 	struct iproto_retcode *h = palloc((*m)->head->pool, sizeof(*h));
 	net_add_iov(m, h, sizeof(*h));
-	h->msg_code = msg_code;
+	h->msg_code = request->msg_code;
 	h->data_len = sizeof(h->ret_code);
-	h->sync = sync;
+	h->sync = request->sync;
+	h->ret_code = ERR_CODE_OK;
+	return h;
 }
 
 void
-iproto_commit(struct netmsg_mark *mark, u32 ret_code)
+iproto_error(struct netmsg **m, const struct iproto *request, u32 ret_code, const char *err)
 {
-	struct netmsg *m = mark->m;
-	struct iproto_retcode *h = m->iov[mark->offset].iov_base;
-	int len = 0, offset = mark->offset + 1;
-	do {
-		for (int i = offset; i < m->count; i++)
-			len += m->iov[i].iov_len;
-		offset = 0; /* offset used only for first netmsg */
-	} while ((m = TAILQ_NEXT(m, link)) != NULL);
-	h->ret_code = ret_code;
-	h->data_len += len;
-	say_debug("%s: op:%x data_len:%i sync:%i ret:%i", __func__,
-		  h->msg_code, h->data_len, h->sync, h->ret_code);
-}
-
-void
-iproto_error(struct netmsg **m, struct netmsg_mark *header_mark, u32 ret_code, const char *err)
-{
-	struct netmsg *h = header_mark->m;
-	netmsg_rewind(m, header_mark); /* TODO: set iov's length to zero instead? */
-	h->iov[header_mark->offset].iov_len = sizeof(struct iproto_retcode);
-	struct iproto_retcode *header = h->iov[header_mark->offset].iov_base;
-	header->data_len = sizeof(u32);
+	struct iproto_retcode *header = iproto_reply(m, request);
 	header->ret_code = ret_code;
 	if (err && strlen(err) > 0) {
 		header->data_len += strlen(err);

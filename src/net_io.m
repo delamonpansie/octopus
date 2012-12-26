@@ -156,7 +156,7 @@ netmsg_rewind(struct netmsg **m, struct netmsg_mark *mark)
 		h->bytes -= mark->m->iov[i].iov_len;
 	netmsg_unref(mark->m, mark->offset + 1);
 	*m = mark->m;
-	(*m)->count = mark->offset + 1;
+	(*m)->count = mark->offset;
 }
 
 void

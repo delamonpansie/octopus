@@ -69,8 +69,9 @@ box_tuple(struct tnt_object *obj)
 }
 
 struct box_txn {
-	struct netmsg *m;
+	struct netmsg **m;
 	struct netmsg_mark header_mark;
+	struct iproto_retcode *iproto;
 
 	u16 op;
 	u32 flags;
@@ -123,7 +124,7 @@ struct box_txn {
 enum messages ENUM_INITIALIZER(MESSAGES);
 
 @class Recovery;
-void txn_init(const struct iproto *req, struct box_txn *txn, struct netmsg *m);
+void txn_init(const struct iproto *req, struct box_txn *txn, struct netmsg **m);
 void txn_commit(struct box_txn *txn);
 void txn_abort(struct box_txn *txn);
 void txn_cleanup(struct box_txn *txn);
@@ -136,7 +137,6 @@ void txn_ref(struct box_txn *txn, struct tnt_object *obj);
 void *next_field(void *f);
 void append_field(struct tbuf *b, void *f);
 void *tuple_field(struct box_tuple *tuple, size_t i);
-void tuple_add_iov(struct netmsg **m, struct tnt_object *obj);
 
 void box_bound_to_primary(int fd);
 void memcached_init(void);

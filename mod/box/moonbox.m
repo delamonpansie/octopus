@@ -173,7 +173,10 @@ netmsg_add_iov(struct lua_State *L)
 
 	case LUA_TUSERDATA: {
 		struct tnt_object *obj = *(void **)luaL_checkudata(L, 2, objectlib_name);
-		tuple_add_iov(&m, obj);
+		struct box_tuple *tuple = box_tuple(obj);
+		net_add_ref_iov(&m, obj, &tuple->bsize,
+				tuple->bsize + sizeof(tuple->bsize) +
+				sizeof(tuple->cardinality));
 		return 0;
 	}
 	default:
@@ -423,6 +426,7 @@ box_dispach_lua(struct box_txn *txn, struct tbuf *data)
 	void *fname = read_bytes(data, flen);
 	u32 nargs = read_u32(data);
 
+	/* FIXME: probably we can use netmsg from txn and avoid double copy */
 	luaT_pushnetmsg(L);
 
 	if (luaT_find_proc(L, fname, flen) == 0) {
@@ -446,7 +450,8 @@ box_dispach_lua(struct box_txn *txn, struct tbuf *data)
 	}
 
 	struct netmsg_head *h = luaT_checknetmsg(L, 1);
-	txn->m = netmsg_concat(txn->m->head, h);
+	txn->iproto->data_len += h->bytes;
+	*txn->m = netmsg_concat((*txn->m)->head, h);
 
 	u32 ret = luaL_checkinteger(L, 2);
 	lua_pop(L, 2);
