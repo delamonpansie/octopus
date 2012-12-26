@@ -62,6 +62,7 @@ struct netmsg {
 
 	TAILQ_ENTRY(netmsg) link;
 
+	struct iovec dummy;
 	struct iovec iov[NETMSG_MAX];
 	struct tnt_object *ref[NETMSG_MAX];
 #ifdef NET_IO_TIMESTAMPS
@@ -71,6 +72,7 @@ struct netmsg {
 
 struct netmsg_mark {
 	struct netmsg *m;
+	struct iovec iov;
 	int offset;
 };
 
