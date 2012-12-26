@@ -483,8 +483,8 @@ worker(void *arg) {
 				d = li_req_response_data(request, &s);
 
 				local.mbIn += s + 
-					(messageType == OCTO_PING) ? 
-						sizeof(struct iproto) : sizeof(struct iproto_retcode);
+					((messageType == OCTO_PING) ? 
+						sizeof(struct iproto) : sizeof(struct iproto_retcode));
 
 				if (errcode == ERR_CODE_OK || errcode == ERR_CODE_REQUEST_READY) {
 					local.nOk++;
@@ -517,7 +517,8 @@ worker(void *arg) {
 		}
 
 		if (state & POLLOUT) {
-			while (local.nOk < nRequests && (local.nProceed + nWriteAhead) > nSended) {
+			while (timeLimitExceed == false && 
+			       		local.nOk < nRequests && (local.nProceed + nWriteAhead) > nSended) {
 				int i;
 				struct timeval begin;
 
