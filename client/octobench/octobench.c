@@ -36,6 +36,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <inttypes.h>
+#include <locale.h>
 
 /************************************************************************************/
 /*-
@@ -425,7 +426,6 @@ worker(void *arg) {
 		if (timeLimit > 0.0 && elapsedtime(&begin) >= timeLimit)
 			timeLimitExceed = true;
 
-
 		if (state & POLLIN) {
 			struct iproto_request_t	*request;
 			struct timeval *begin, end;
@@ -640,11 +640,16 @@ main(int argc, char* argv[]) {
 
 	elapsed = timediff(&begin, &end);
 
-	printf("Elapsed time: %.3f secs\n", elapsed);
-	printf("Number of OK requests: %.3f\n", ((double)SumResults.nOk));
-	printf("RPS: %.3f\n", ((double)SumResults.nOk) / elapsed );
-	printf("Number of ALL requests: %.3f\n", ((double)SumResults.nProceed));
-	printf("RPS: %.3f\n", ((double)SumResults.nProceed) / elapsed );
+	/* 23 345 format */
+	//setlocale(LC_NUMERIC, ""); /* 23 345 format */
+	localeconv()->thousands_sep= " ";
+	localeconv()->grouping= "\x03\00";
+
+	printf("                Elapsed time: %.3f secs\n", elapsed);
+	printf("       Number of OK requests: %' 10i\n", SumResults.nOk);
+	printf("                         RPS: %' 10i\n", (u_int32_t)(((double)SumResults.nOk) / elapsed));
+	printf("      Number of ALL requests: %' 10i\n", SumResults.nProceed);
+	printf("                         RPS: %' 10i\n", (u_int32_t)(((double)SumResults.nProceed) / elapsed));
 	printf("MIN/AVG/MAX time per request: %.03f / %.03f / %.03f millisecs\n",
 	       SumResults.minTime * 1e3,
 	       SumResults.totalTime * 1e3/ (double)SumResults.nProceed,
@@ -652,7 +657,7 @@ main(int argc, char* argv[]) {
 
 	for(i=0; i<256; i++)
 		if (SumResults.errstat[i] > 0)
-			printf("N number of %02x: %d\n", i, SumResults.errstat[i]
+			printf("              N number of %02x: %' 10i\n", i, SumResults.errstat[i]
 			       /* errcode_desc(i): i is only one byte from error code */);
 
 	return 0;
