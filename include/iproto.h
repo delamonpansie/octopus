@@ -80,7 +80,7 @@ service_register_iproto_stream(struct service *s, u32 cmd,
 			       int flags);
 void
 service_register_iproto_block(struct service *s, u32 cmd,
-			      struct netmsg_head *(*cb)(struct conn *, struct iproto *),
+			      void (*cb)(struct conn *, struct iproto *),
 			      int flags);
 
 u32 iproto_next_sync();

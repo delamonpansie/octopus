@@ -833,45 +833,69 @@ box_prepare_update(struct box_txn *txn, struct tbuf *data)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
 }
 
-static struct netmsg_head *
-box_cb(struct conn *c, struct iproto *request)
+static void
+box_lua_cb(struct conn *c, struct iproto *request)
 {
-	struct box_txn txn = { .op = 0 };
+	struct box_txn txn = { .op = request->msg_code };
 	u32 msg_code = request->msg_code;
 	struct tbuf request_data = TBUF(request->data, request->data_len, fiber->pool);
 	say_debug("%s: c:%p op:0x%02x sync:%u", __func__, c, msg_code, request->sync);
-	struct netmsg_head *h = p0alloc(fiber->pool, sizeof(*h));
-	TAILQ_INIT(&h->q);
-	h->pool = fiber->pool;
 
 	@try {
 		ev_tstamp start = ev_now(), stop;
-		struct netmsg *m = netmsg_tail(h);
-		txn_init(request, &txn, &m);
 
 		if (unlikely(c->service != box_primary))
 			iproto_raise(ERR_CODE_NONMASTER, "updates forbiden on secondary port");
 
-		u32 rc = ERR_CODE_OK;
-		switch (msg_code) {
-		case EXEC_LUA:
-			rc = box_dispach_lua(&txn, &request_data);
-			stat_collect(stat_base, EXEC_LUA, 1);
-			break;
-		case PAXOS_LEADER:
-			if ([recovery respondsTo:@selector(leader_redirect_raise)])
-				[recovery perform:@selector(leader_redirect_raise)];
-			else
-				iproto_raise(ERR_CODE_UNSUPPORTED_COMMAND,
-					     "PAXOS_LEADER unsupported in non cluster configuration");
-			break;
-		default:
-			box_prepare_update(&txn, &request_data);
-			/* we'r potentially block here */
-			txn_submit_to_storage(&txn);
-			txn_commit(&txn);
-		}
-		txn.iproto->ret_code = rc;
+		box_dispach_lua(c, request, &request_data);
+		stat_collect(stat_base, EXEC_LUA, 1);
+
+		stop = ev_now();
+		if (stop - start > cfg.too_long_threshold)
+			say_warn("too long %s: %.3f sec", ops[txn.op], stop - start);
+	}
+	@catch (Error *e) {
+		say_warn("aborting txn, [%s reason:\"%s\"] at %s:%d peer:%s",
+			 [[e class] name], e->reason, e->file, e->line, conn_peer_name(c));
+		if (e->backtrace)
+			say_debug("backtrace:\n%s", e->backtrace);
+		@throw;
+	}
+}
+
+static void
+box_paxos_cb(struct conn *c __attribute__((unused)),
+	     struct iproto *request __attribute__((unused)))
+{
+	if ([recovery respondsTo:@selector(leader_redirect_raise)])
+		[recovery perform:@selector(leader_redirect_raise)];
+	else
+		iproto_raise(ERR_CODE_UNSUPPORTED_COMMAND,
+			     "PAXOS_LEADER unsupported in non cluster configuration");
+}
+
+static void
+box_cb(struct conn *c, struct iproto *request)
+{
+	struct box_txn txn = { .op = request->msg_code };
+	struct tbuf request_data = TBUF(request->data, request->data_len, fiber->pool);
+	say_debug("%s: c:%p op:0x%02x sync:%u", __func__, c, request->msg_code, request->sync);
+
+	@try {
+		ev_tstamp start = ev_now(), stop;
+
+		if (unlikely(c->service != box_primary))
+			iproto_raise(ERR_CODE_NONMASTER, "updates forbiden on secondary port");
+
+		box_prepare_update(&txn, &request_data);
+		/* we'r potentially block here */
+		txn_submit_to_storage(&txn);
+
+		struct netmsg *m = netmsg_tail(&c->out_messages);
+		txn.m = &m;
+		netmsg_getmark(*txn.m, &txn.header_mark);
+		txn.iproto = iproto_reply(txn.m, request);
+		txn_commit(&txn);
 
 		stop = ev_now();
 		if (stop - start > cfg.too_long_threshold)
@@ -892,7 +916,6 @@ box_cb(struct conn *c, struct iproto *request)
 		netmsg_verify_ownership(&c->out_messages);
 #endif
 	}
-	return h;
 }
 
 static void
@@ -1205,7 +1228,8 @@ box_service_register(struct service *s)
 	service_register_iproto_block(s, INSERT, box_cb, 0);
 	service_register_iproto_block(s, UPDATE_FIELDS, box_cb, 0);
 	service_register_iproto_block(s, DELETE, box_cb, 0);
-	service_register_iproto_block(s, EXEC_LUA, box_cb, 0);
+	service_register_iproto_block(s, EXEC_LUA, box_lua_cb, 0);
+	service_register_iproto_block(s, PAXOS_LEADER, box_paxos_cb, 0);
 }
 
 static void

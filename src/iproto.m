@@ -72,7 +72,7 @@ iproto_parse(struct tbuf *in)
 }
 
 struct worker_arg {
-	struct netmsg_head * (*cb)(struct conn *c, struct iproto *);
+	void (*cb)(struct conn *c, struct iproto *);
 	struct iproto *r;
 	struct conn *c;
 };
@@ -90,8 +90,7 @@ iproto_worker(va_list ap)
 		a.c->ref++;
 
 		@try {
-			struct netmsg_head *reply = a.cb(a.c, a.r);
-			netmsg_concat(&a.c->out_messages, reply);
+			a.cb(a.c, a.r);
 		}
 		@catch (Error *e) {
 			u32 rc = ERR_CODE_UNKNOWN_ERROR;
@@ -144,7 +143,7 @@ service_register_iproto_stream(struct service *s, u32 cmd,
 
 void
 service_register_iproto_block(struct service *s, u32 cmd,
-			      struct netmsg_head *(*cb)(struct conn *, struct iproto *),
+			      void (*cb)(struct conn *, struct iproto *),
 			      int flags)
 {
 	s->ih[cmd & 0xff].cb.block = cb;
@@ -197,13 +196,13 @@ handle_c(struct service *service, struct conn *c)
 		} else {
 			struct fiber *w = SLIST_FIRST(&service->workers);
 			if (w) {
-				if (!m)
-					m = netmsg_tail(&c->out_messages);
-
-				tbuf_ltrim(c->rbuf, sizeof(struct iproto) + request->data_len);
+				size_t req_size = sizeof(struct iproto) + request->data_len;
+				void *request_copy = palloc(w->pool, req_size);
+				memcpy(request_copy, request, req_size);
+				tbuf_ltrim(c->rbuf, req_size);
 				SLIST_REMOVE_HEAD(&service->workers, worker_link);
 				c->ref++;
-				resume(w, &(struct worker_arg){ih->cb.block, request, c});
+				resume(w, &(struct worker_arg){ih->cb.block, request_copy, c});
 				c->ref--;
 				r++;
 			} else {
