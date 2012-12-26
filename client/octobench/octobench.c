@@ -161,7 +161,8 @@ static u_int16_t	messageType = OCTO_PING;
 static u_int32_t	minId = 0,
 			maxId = 1000;
 static u_int32_t	insertMaxSize = 0,
-			insertMinSize = 0;
+			insertMinSize = 0,
+			addonSize = 0;
 
 static 	char		*server = NULL;
 int			port = -1;
@@ -326,7 +327,7 @@ generateRequestBody(AllocatedRequestBody **stack, unsigned int *seed, unsigned i
 				if (insertSize > 0)
 					*size += varint32_sizeof(insertSize) + insertSize;
 				
-				ps = popAllocatedRequestBody(stack, *size, begin);
+				ps = popAllocatedRequestBody(stack, sizeof(*ps) + addonSize, begin);
 				memcpy(ps, &s, sizeof(*ps));
 				ps->id = GEN_RND_BETWEEN(minId, maxId, seed);
 
@@ -597,6 +598,9 @@ main(int argc, char* argv[]) {
 	ERRCODE_ADD(ERRCODE_DESCRIPTION, ERROR_CODES);
 
 	initBenchRes(&SumResults);
+
+	if (insertMaxSize > 0)
+		addonSize = varint32_sizeof(insertMaxSize) + insertMaxSize;
 
 	gettimeofday(&begin,NULL);
 	pthread_mutex_lock(&mutex);
