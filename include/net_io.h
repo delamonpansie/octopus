@@ -80,7 +80,7 @@ enum conn_memory_ownership {
 	MO_SLAB		 = 0x03,
 	MO_MY_OWN_POOL   = 0x10
 };
-#define MO_CONN_OWNERSHIP_MASK	(MO_MALLOC | MO_STATIC | MO_SLAB)	
+#define MO_CONN_OWNERSHIP_MASK	(MO_MALLOC | MO_STATIC | MO_SLAB)
 
 struct conn {
 	struct palloc_pool *pool;
