@@ -4,6 +4,7 @@ benchobj += $(OBDIR)/octobench.o
 dep += $(call depend,$(benchobj))
 
 $(benchobj): CFLAGS += -pthread $(CFLAGS_WARNS)
+$(benchobj): Makefile $(sub-Makefile)
 
 octobench_all: $(OBDIR)/octobench
 $(OBDIR)/octobench: $(benchobj) client/libiproto/libiproto.a
