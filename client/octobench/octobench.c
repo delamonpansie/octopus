@@ -752,7 +752,7 @@ main(int argc, char* argv[]) {
 
 	elapsed = timediff(&begin, &end);
 
-	printf("                Elapsed time: %.3f secs\n", elapsed);
+	printf("                Elapsed time: % 12.2f secs\n", elapsed);
 	printf("       Number of OK requests: %s\n", formatInt(SumResults.nOk));
 	printf("                         RPS: %s\n", formatInt((u_int32_t)(((double)SumResults.nOk) / elapsed)));
 	if (messageType == BOX_SELECT)
