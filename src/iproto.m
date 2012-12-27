@@ -262,7 +262,7 @@ iproto_wakeup_workers(ev_prepare *ev)
 		handle_c(service, c);
 	} while (c != last);
 
-	if (palloc_allocated(service->pool) > 64 * 1024 * 1024) /* FIXME: do it after change of that size */
+	if (palloc_diff_allocated(service->pool) > 64 * 1024 * 1024)
 		palloc_gc(service->pool);
 }
 
