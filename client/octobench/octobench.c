@@ -202,6 +202,7 @@ typedef struct BenchRes {
 	double		maxTime;
 	double		minTime;
 	double		totalTime;
+	double		squareTotalTime;
 	u_int32_t	errstat[256];
 } BenchRes;
 
@@ -232,6 +233,7 @@ signalMain(BenchRes *local) {
 	if (local->minTime < SumResults.minTime)
 		SumResults.minTime = local->minTime;
 	SumResults.totalTime += local->totalTime;
+	SumResults.squareTotalTime += local->squareTotalTime;
 
 	for(i=0; i<256; i++)
 		SumResults.errstat[i] += local->errstat[i];
@@ -511,6 +513,7 @@ worker(void *arg) {
 					if (elapsed < local.minTime)
 						local.minTime = elapsed;
 					local.totalTime += elapsed;
+					local.squareTotalTime += elapsed * elapsed;
 				}
 				li_req_free(request);
 			}
@@ -706,10 +709,14 @@ main(int argc, char* argv[]) {
 	       					((double)SumResults.mbOut) / (1024.0 * 1024.0 * elapsed));
 	printf("                Input stream: % 10.02f MB/sec\n", 
 	       					((double)SumResults.mbIn) / (1024.0 * 1024.0 * elapsed));
-	printf("MIN/AVG/MAX time per request: %.03f / %.03f / %.03f millisecs\n",
+
+	double tmp = SumResults.totalTime / (double)SumResults.nProceed;
+	printf("MIN/AVG/MAX/STDDEV time/reqs: %.03f / %.03f / %.03f / %.03f millisecs\n",
 	       SumResults.minTime * 1e3,
 	       SumResults.totalTime * 1e3/ (double)SumResults.nProceed,
-	       SumResults.maxTime * 1e3);
+	       SumResults.maxTime * 1e3,
+	       1e3 * sqrt((SumResults.squareTotalTime/(double)SumResults.nProceed - tmp * tmp)) 
+	);
 
 	for(i=0; i<256; i++)
 		if (SumResults.errstat[i] > 0)
