@@ -142,7 +142,10 @@ admin_dispatch(struct conn *c)
 	int cs;
 	char *p, *pe;
 	char *strstart, *strend;
+
 	while ((pe = memchr(c->rbuf->ptr, '\n', tbuf_len(c->rbuf))) == NULL) {
+		if (tbuf_len(c->rbuf) > 0 && *(char*)(c->rbuf->ptr) == 0x04 /* Ctrl-D */)
+			return 0;
 		if (conn_recv(c) <= 0)
 			return 0;
 	}
