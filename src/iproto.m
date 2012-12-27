@@ -228,8 +228,6 @@ handle_c(struct service *service, struct conn *c)
 	   output size is below output_low_watermark.
 	   Otherwise output flusher will start reading,
 	   when size of output is small enought  */
-	if (c->out_messages.bytes < cfg.output_low_watermark)
-		ev_io_start(&c->in);
 
 	if (c->out_messages.bytes > 0) {
 		ev_io_start(&c->out);
