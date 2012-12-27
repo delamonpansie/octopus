@@ -228,8 +228,6 @@ handle_c(struct service *service, struct conn *c)
 	   output size is below output_low_watermark.
 	   Otherwise output flusher will start reading,
 	   when size of output is small enought  */
-	if (c->out_messages.bytes < cfg.output_low_watermark)
-		ev_io_start(&c->in);
 
 	if (c->out_messages.bytes > 0) {
 		ev_io_start(&c->out);
@@ -262,7 +260,7 @@ iproto_wakeup_workers(ev_prepare *ev)
 		handle_c(service, c);
 	} while (c != last);
 
-	if (palloc_allocated(service->pool) > 64 * 1024 * 1024) /* FIXME: do it after change of that size */
+	if (palloc_diff_allocated(service->pool) > 64 * 1024 * 1024)
 		palloc_gc(service->pool);
 }
 
