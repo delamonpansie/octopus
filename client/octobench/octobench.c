@@ -724,12 +724,12 @@ main(int argc, char* argv[]) {
 	localeconv()->grouping= "\x03\00";
 
 	printf("                Elapsed time: %.3f secs\n", elapsed);
-	printf("       Number of OK requests: %' 10i\n", SumResults.nOk);
-	printf("                         RPS: %' 10i\n", (u_int32_t)(((double)SumResults.nOk) / elapsed));
+	printf("       Number of OK requests: %' 11i\n", SumResults.nOk);
+	printf("                         RPS: %' 11i\n", (u_int32_t)(((double)SumResults.nOk) / elapsed));
 	if (messageType == BOX_SELECT)
 		 printf("   Number of returned tuples: %' 10i\n", SumResults.nFound);
-	printf("      Number of ALL requests: %' 10i\n", SumResults.nProceed);
-	printf("                         RPS: %' 10i\n", (u_int32_t)(((double)SumResults.nProceed) / elapsed));
+	printf("      Number of ALL requests: %' 11i\n", SumResults.nProceed);
+	printf("                         RPS: %' 11i\n", (u_int32_t)(((double)SumResults.nProceed) / elapsed));
 	printf("               Output stream: % 10.02f MB/sec\n", 
 	       					((double)SumResults.mbOut) / (1024.0 * 1024.0 * elapsed));
 	printf("                Input stream: % 10.02f MB/sec\n", 
@@ -745,7 +745,7 @@ main(int argc, char* argv[]) {
 
 	for(i=0; i<256; i++)
 		if (SumResults.errstat[i] > 0)
-			printf("              N number of %02x: %' 10i\n", i, SumResults.errstat[i]
+			printf("              N number of %02x: %' 11i\n", i, SumResults.errstat[i]
 			       /* errcode_desc(i): i is only one byte from error code */);
 
 	if (scaleBin > 0.0) {
