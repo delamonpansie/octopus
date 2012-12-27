@@ -719,7 +719,7 @@ main(int argc, char* argv[]) {
 	elapsed = timediff(&begin, &end);
 
 	/* 23 345 format */
-	//setlocale(LC_NUMERIC, ""); /* 23 345 format */
+	setlocale(LC_NUMERIC, ""); /* 23 345 format */
 	localeconv()->thousands_sep= " ";
 	localeconv()->grouping= "\x03\00";
 
