@@ -1045,7 +1045,7 @@ sintoa(const struct sockaddr_in *addr)
 	return buf;
 }
 
-void __attribute__((constructor))
+static void __attribute__((constructor))
 init_slab_cache(void)
 {
 	slab_cache_init(&conn_cache, sizeof(struct conn), SLAB_GROW, "net_io/conn");
