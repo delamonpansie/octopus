@@ -187,6 +187,9 @@ static u_int32_t	insertMaxSize = 0,
 			addonSize = 0;
 static double		timeLimit = 0.0;
 static u_int32_t	nReset = 0xffffffff; 
+double			minBin = 0.0,
+			maxBin = 0.0,
+			scaleBin = 0.0;
 
 static 	char		*server = NULL;
 int			port = -1;
@@ -204,6 +207,8 @@ typedef struct BenchRes {
 	double		totalTime;
 	double		squareTotalTime;
 	u_int32_t	errstat[256];
+#define N_BINS	(16)
+	u_int32_t	bins[N_BINS];
 } BenchRes;
 
 static BenchRes SumResults;
@@ -237,6 +242,8 @@ signalMain(BenchRes *local) {
 
 	for(i=0; i<256; i++)
 		SumResults.errstat[i] += local->errstat[i];
+	for(i=0; i<N_BINS; i++)
+		SumResults.bins[i] += local->bins[i];
 
 	pthread_cond_signal(&cond);
 	pthread_mutex_unlock(&mutex);
@@ -514,6 +521,12 @@ worker(void *arg) {
 						local.minTime = elapsed;
 					local.totalTime += elapsed;
 					local.squareTotalTime += elapsed * elapsed;
+
+					if (scaleBin > 0) {
+						int i = (elapsed - minBin) / scaleBin;
+						if (i >= 0 && i < N_BINS)
+							local.bins[i] ++;
+					}
 				}
 				li_req_free(request);
 			}
@@ -575,6 +588,7 @@ usage(const char *errmsg) {
 	puts("   [-t (ping|box_insert|box_select)]");
 	puts("   [-i MINID] [-I MAXID]     -- min/max random id for -t box_insert|box_select");
 	puts("   [-z MINSIZE] [-Z MAXSIZE] -- min/max tuple size for -t box_insert");
+	puts("   [-b MINHIST] [-B MAXHIST] -- min/max for time histogram, millisececonds");
 	puts("   [-T TIME_LIMIT]           -- time limit for test");
 	puts("   [-r NRESET]               -- reset random generator after NRESET requests");
 	puts("   [-F]                      -- ignore fatal error from db");
@@ -582,6 +596,7 @@ usage(const char *errmsg) {
 	printf("    -n %"PRIu64" -w %"PRIu64" -c %"PRIu64"\n    -t ping", nRequests, nWriteAhead, nConnections);
 	printf("    -i %u -I %u\n", minId, maxId);
 	printf("    -z %u -Z %u\n", insertMinSize, insertMaxSize);
+	printf("    -b %f -B %f\n", minBin * 1e3, maxBin * 1e3);
 	printf("    -r %u", nReset);
 	if (errmsg) {
 		puts("");
@@ -604,7 +619,7 @@ main(int argc, char* argv[]) {
 
 	nConnections = nActiveConnections;
 
-	while((i=getopt(argc,argv,"s:p:n:w:c:t:Fi:I:z:Z:T:r:h")) != EOF) {
+	while((i=getopt(argc,argv,"s:p:n:w:c:t:Fi:I:z:Z:T:r:b:B:h")) != EOF) {
 		switch(i) {
 			case 's':
 				server = strdup(optarg);
@@ -649,6 +664,12 @@ main(int argc, char* argv[]) {
 			case 'T':
 				timeLimit = strtod(optarg, NULL);
 				break;
+			case 'b':
+				minBin = 1e-3 * strtod(optarg, NULL);
+				break;
+			case 'B':
+				maxBin = 1e-3 * strtod(optarg, NULL);
+				break;
 			case  'r':
 				nReset = strtoul(optarg, NULL, 0);
 				break;
@@ -662,8 +683,12 @@ main(int argc, char* argv[]) {
 	OPT_ERR(nWriteAhead >= 4);
 	OPT_ERR(optind == argc);
 	OPT_ERR(minId < maxId);
+	OPT_ERR(minBin <= maxBin);
 	OPT_ERR(insertMinSize <= insertMaxSize);
 	OPT_ERR(timeLimit >= 0);
+
+	if ( (scaleBin = (maxBin - minBin) / N_BINS) <= 0.0 || isnan(scaleBin))
+		scaleBin = 0.0;
 
 	if (server==NULL || port <= 0)
 		usage("error: bad server address/port");
@@ -722,6 +747,33 @@ main(int argc, char* argv[]) {
 		if (SumResults.errstat[i] > 0)
 			printf("              N number of %02x: %' 10i\n", i, SumResults.errstat[i]
 			       /* errcode_desc(i): i is only one byte from error code */);
+
+	if (scaleBin > 0.0) {
+		u_int32_t	maxCount = 0;
+
+		for(i=0; i<N_BINS; i++) 
+			if (SumResults.bins[i] > maxCount)
+				maxCount = SumResults.bins[i];
+
+		printf("Time histogram:\n");
+		printf("           +-------------------------------------------------------------------+\n");	
+
+		for(i=0; i<N_BINS; i++) {
+			int	j, nprint = (80 - 13) * (((double)SumResults.bins[i]) / maxCount);
+
+			printf("% 10.3f |", 1e3 * (minBin + scaleBin * i));
+
+			for(j=0; j<nprint; j++)
+				fputc('*', stdout);
+			for(;j<(80 - 13); j++)
+				fputc(' ', stdout);
+			fputc('|', stdout);
+			fputc('\n', stdout);
+
+		}
+
+		printf("           +-------------------------------------------------------------------+\n");	
+	}
 
 	return 0;
 }
