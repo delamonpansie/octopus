@@ -173,7 +173,10 @@ netmsg_add_iov(struct lua_State *L)
 
 	case LUA_TUSERDATA: {
 		struct tnt_object *obj = *(void **)luaL_checkudata(L, 2, objectlib_name);
-		tuple_add_iov(&m, obj);
+		struct box_tuple *tuple = box_tuple(obj);
+		net_add_ref_iov(&m, obj, &tuple->bsize,
+				tuple->bsize + sizeof(tuple->bsize) +
+				sizeof(tuple->cardinality));
 		return 0;
 	}
 	default:
@@ -413,8 +416,8 @@ luaT_find_proc(lua_State *L, char *fname, i32 len)
 	return 1;
 }
 
-u32
-box_dispach_lua(struct box_txn *txn, struct tbuf *data)
+void
+box_dispach_lua(struct conn *c, struct iproto *request, struct tbuf *data)
 {
 	lua_State *L = fiber->L;
 
@@ -446,11 +449,12 @@ box_dispach_lua(struct box_txn *txn, struct tbuf *data)
 	}
 
 	struct netmsg_head *h = luaT_checknetmsg(L, 1);
-	txn->m = netmsg_concat(txn->m->head, h);
-
-	u32 ret = luaL_checkinteger(L, 2);
+	struct netmsg *m = netmsg_tail(&c->out_messages);
+	struct iproto_retcode *reply = iproto_reply(&m, request);
+	reply->data_len += h->bytes;
+	netmsg_concat(&c->out_messages, h);
+	reply->ret_code = luaL_checkinteger(L, 2);
 	lua_pop(L, 2);
-	return ret;
 }
 
 register_source();

@@ -36,6 +36,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <inttypes.h>
+#include <locale.h>
 
 /************************************************************************************/
 /*-
@@ -95,18 +96,72 @@ do_rand(unsigned long *ctx)
 	return ((*ctx = x) % ((unsigned long)BL_RAND_MAX + 1));
 }
 
+typedef struct blrand_t {
+	unsigned int 	initial_seed;
+	unsigned int	ctx;
+	unsigned int	cnt;
+	unsigned int	limit;
+} blrand_t;
+
+static void
+blrand_init(blrand_t *state, unsigned int seed, unsigned int limit) {
+	state->initial_seed = state->ctx = seed;
+	state->cnt = 0;
+	state->limit = limit;
+}
+
 static int
-blrand_r(unsigned int *ctx)
+blrand_r(blrand_t *state)
 {
-	unsigned long val = (unsigned long) *ctx;
+	unsigned long val = (unsigned long) state->ctx;
 	int r = do_rand(&val);
 
-	*ctx = (unsigned int) val;
+	state->cnt++;
+	if (state->cnt >= state->limit) {
+		state->ctx = state->initial_seed;
+		state->cnt = 0;
+
+	} else {
+		state->ctx = (unsigned int) val;
+	}
 	return (r);
 }
 
 /************************************************************************************/
+/* source src/pickle.m */
 
+static u_int8_t *
+save_varint32(u_int8_t *target, u_int32_t value)
+{
+
+	if (value >= (1 << 7)) {
+		if (value >= (1 << 14)) {
+			if (value >= (1 << 21)) {
+				if (value >= (1 << 28))
+					*(target++) = (u_int8_t)(value >> 28) | 0x80;
+				*(target++) = (u_int8_t)(value >> 21) | 0x80;
+			}
+			*(target++) = (u_int8_t)((value >> 14) | 0x80);
+		}
+		*(target++) = (u_int8_t)((value >> 7) | 0x80);
+	}
+	*(target++) = (u_int8_t)((value) & 0x7F);
+
+	return target;
+}
+
+static size_t
+varint32_sizeof(u_int32_t value)
+{
+	int s = 1;
+	while (value >= 1 << 7) {
+		value >>= 7;
+		s++;
+	}
+	return s;
+}
+
+/************************************************************************************/
 #include <client/libiproto/libiproto.h>
 #include <iproto_def.h>
 #define SUM_ERROR_CODES(x) LIBIPROTO_ERROR_CODES(x) ERROR_CODES(x)
@@ -127,19 +182,33 @@ static bool		ignoreFatal = false;
 static u_int16_t	messageType = OCTO_PING;
 static u_int32_t	minId = 0,
 			maxId = 1000;
-
+static u_int32_t	insertMaxSize = 0,
+			insertMinSize = 0,
+			addonSize = 0;
+static double		timeLimit = 0.0;
+static u_int32_t	nReset = 0xffffffff; 
+double			minBin = 0.0,
+			maxBin = 0.0,
+			scaleBin = 0.0;
 
 static 	char		*server = NULL;
 int			port = -1;
+static struct timeval 	begin;
 
 
 typedef struct BenchRes {
 	u_int32_t	nOk;
 	u_int32_t	nProceed;
+	u_int32_t	nFound;
+	u_int64_t	mbIn;
+	u_int64_t	mbOut;
 	double		maxTime;
 	double		minTime;
 	double		totalTime;
+	double		squareTotalTime;
 	u_int32_t	errstat[256];
+#define N_BINS	(16)
+	u_int32_t	bins[N_BINS];
 } BenchRes;
 
 static BenchRes SumResults;
@@ -160,15 +229,21 @@ signalMain(BenchRes *local) {
 
 	SumResults.nOk += local->nOk;
 	SumResults.nProceed += local->nProceed;
+	SumResults.nFound += local->nFound;
+	SumResults.mbIn += local->mbIn;
+	SumResults.mbOut += local->mbOut;
 
 	if (local->maxTime > SumResults.maxTime)
 		SumResults.maxTime = local->maxTime;
 	if (local->minTime < SumResults.minTime)
 		SumResults.minTime = local->minTime;
 	SumResults.totalTime += local->totalTime;
+	SumResults.squareTotalTime += local->squareTotalTime;
 
 	for(i=0; i<256; i++)
 		SumResults.errstat[i] += local->errstat[i];
+	for(i=0; i<N_BINS; i++)
+		SumResults.bins[i] += local->bins[i];
 
 	pthread_cond_signal(&cond);
 	pthread_mutex_unlock(&mutex);
@@ -209,7 +284,7 @@ octopoll(int fd, int event) {
 			pfd.revents |= POLLERR;
 			break;
 		}
-	} while(ret == 0);
+	} while (ret == 0);
 
 	return pfd.revents;
 }
@@ -217,6 +292,13 @@ octopoll(int fd, int event) {
 static inline double
 timediff(struct timeval *begin, struct timeval *end) {
     return ((double)( end->tv_sec - begin->tv_sec )) + ( (double)( end->tv_usec-begin->tv_usec ) ) / 1.0e+6;
+}
+
+static inline double
+elapsedtime(struct timeval *begin) {
+	struct timeval end;
+	gettimeofday(&end,NULL);
+	return timediff(begin,&end);
 }
 
 typedef struct AllocatedRequestBody {
@@ -258,12 +340,13 @@ pushAllocatedRequestBody(AllocatedRequestBody **stack, char *ptr) {
 }
 
 static inline void*
-generateRequestBody(AllocatedRequestBody **stack, unsigned int *seed, size_t *size, struct timeval *begin) {
+generateRequestBody(AllocatedRequestBody **stack, blrand_t *seed, blrand_t *seed1,
+		    size_t *size, struct timeval *begin) {
 	void *ptr = NULL;
 
 	*size = 0;
 
-#define GEN_RND_BETWEEN(mn, mx)	(mn + (mx - mn) * ( ((double)blrand_r(seed)) / ((double)BL_RAND_MAX) ))
+#define GEN_RND_BETWEEN(mn, mx, seed)	(mn + (mx - mn) * ( ((double)blrand_r(seed)) / ((double)BL_RAND_MAX) ))
 
 	switch(messageType) {
 		case OCTO_PING:
@@ -279,12 +362,27 @@ generateRequestBody(AllocatedRequestBody **stack, unsigned int *seed, size_t *si
 					u_int8_t	len;
 					u_int32_t	id;
 				} __attribute__((packed)) *ps, s = {0, 0, 1, 4, 0};
+				u_int32_t	insertSize;
 
-				ps = popAllocatedRequestBody(stack, sizeof(*ps), begin);
-				memcpy(ps, &s, sizeof(*ps));
-				ps->id = GEN_RND_BETWEEN(minId, maxId);
-				ptr = ps;
+				if (insertMinSize == insertMaxSize)
+					insertSize = insertMaxSize;
+				else
+					insertSize = GEN_RND_BETWEEN(insertMinSize, insertMaxSize, seed1); 
+
 				*size = sizeof(*ps);
+
+				if (insertSize > 0)
+					*size += varint32_sizeof(insertSize) + insertSize;
+				
+				ps = popAllocatedRequestBody(stack, sizeof(*ps) + addonSize, begin);
+				memcpy(ps, &s, sizeof(*ps));
+				ps->id = GEN_RND_BETWEEN(minId, maxId, seed);
+
+				if (insertSize > 0) {
+					ps->n = 2;
+					save_varint32(((u_int8_t*)ps) + sizeof(*ps), insertSize);
+				}
+				ptr = ps;
 			}
 			break;
 		case BOX_SELECT:
@@ -302,7 +400,7 @@ generateRequestBody(AllocatedRequestBody **stack, unsigned int *seed, size_t *si
 
 				ps = popAllocatedRequestBody(stack, sizeof(*ps), begin);
 				memcpy(ps, &s, sizeof(*ps));
-				ps->id = GEN_RND_BETWEEN(minId, maxId);
+				ps->id = GEN_RND_BETWEEN(minId, maxId, seed);
 				ptr = ps;
 				*size = sizeof(*ps);
 			}
@@ -317,7 +415,7 @@ generateRequestBody(AllocatedRequestBody **stack, unsigned int *seed, size_t *si
 void*
 worker(void *arg) {
 	int				idWorker = (int)(uintptr_t)arg;
-	unsigned int			rndseed = idWorker;
+	blrand_t			rndseed, rndseed1;
 	struct memory_arena_pool_t*	rap = map_alloc(my_alloc, 2, 64*1024);
 	struct memory_arena_pool_t*	reqap = map_alloc(my_alloc, 64, 64*1024);
 	struct iproto_connection_t*	conn = li_conn_init(my_alloc, rap, reqap);
@@ -329,6 +427,10 @@ worker(void *arg) {
 	size_t				size;
 	u_int32_t			flags = LIBIPROTO_OPT_NONBLOCK;
 	BenchRes			local;
+	bool				timeLimitExceed = false;
+
+	blrand_init(&rndseed, idWorker, nReset); 
+	blrand_init(&rndseed1, idWorker + 128, 0xffffffff); 
 
 	if (messageType != OCTO_PING)
 		flags |= LIBIPROTO_OPT_HAS_4BYTE_ERRCODE;
@@ -344,14 +446,24 @@ worker(void *arg) {
 	fd = li_get_fd(conn);
 	initBenchRes(&local);
 
-	while(!(local.nOk >= nRequests && local.nProceed == nSended)) {
+	while(!((local.nOk >= nRequests || timeLimitExceed == true) && local.nProceed == nSended)) {
 		int state;
 
-		state = octopoll(fd, POLLIN | ((needToSend || local.nOk < nRequests) ? POLLOUT : 0));
+		state = POLLIN;
+		if (needToSend)
+			state |= POLLOUT;
+		if (timeLimitExceed == false && local.nOk < nRequests && local.nProceed + nWriteAhead > nSended)
+			state |= POLLOUT;
+
+		state = octopoll(fd, state);
+
 		if (state & POLLERR) {
 			fprintf(stderr,"poll fails: %s\n", strerror(errno));
 			exit(1);
 		}
+
+		if (timeLimit > 0.0 && elapsedtime(&begin) >= timeLimit)
+			timeLimitExceed = true;
 
 		if (state & POLLIN) {
 			struct iproto_request_t	*request;
@@ -367,6 +479,8 @@ worker(void *arg) {
 
 			gettimeofday(&end, NULL);
 			while((request = li_get_ready_reqs(conn)) != NULL) {
+				size_t 	s;
+				void 	*d;
 
 				errcode = li_req_state(request);
 
@@ -375,8 +489,18 @@ worker(void *arg) {
 					exit(1);
 				}
 
-				if (errcode == ERR_CODE_OK || errcode == ERR_CODE_REQUEST_READY)
+				d = li_req_response_data(request, &s);
+
+				local.mbIn += s + 
+					((messageType == OCTO_PING) ? 
+						sizeof(struct iproto) : sizeof(struct iproto_retcode));
+
+				if (errcode == ERR_CODE_OK || errcode == ERR_CODE_REQUEST_READY) {
 					local.nOk++;
+
+					if (messageType == BOX_SELECT && s >= sizeof(u_int32_t))
+						local.nFound += *(u_int32_t*)d;
+				}
 				local.nProceed++;
 
 				if (ignoreFatal == false && ERR_CODE_IS_FATAL(errcode)) {
@@ -396,13 +520,21 @@ worker(void *arg) {
 					if (elapsed < local.minTime)
 						local.minTime = elapsed;
 					local.totalTime += elapsed;
+					local.squareTotalTime += elapsed * elapsed;
+
+					if (scaleBin > 0) {
+						int i = (elapsed - minBin) / scaleBin;
+						if (i >= 0 && i < N_BINS)
+							local.bins[i] ++;
+					}
 				}
 				li_req_free(request);
 			}
 		}
 
 		if (state & POLLOUT) {
-			while (local.nOk < nRequests && (local.nProceed + nWriteAhead) > nSended) {
+			while (timeLimitExceed == false && 
+			       		local.nOk < nRequests && (local.nProceed + nWriteAhead) > nSended) {
 				int i;
 				struct timeval begin;
 
@@ -412,7 +544,8 @@ worker(void *arg) {
 					void	*body;
 					size_t	size;
 
-					body = generateRequestBody(&stack, &rndseed, &size, &begin);
+					body = generateRequestBody(&stack, &rndseed, &rndseed1, &size, &begin);
+					local.mbOut += sizeof(struct iproto) + size;
 					li_req_init(conn, messageType, body, size);
 				}
 
@@ -453,11 +586,18 @@ usage(const char *errmsg) {
 	puts("octobench -s HOST -p PORT");
 	puts("   [-n NREQUESTS] [-w NWRITE_AHEAD_REQUESTS] [-c NCONNECTION]");
 	puts("   [-t (ping|box_insert|box_select)]");
-	puts("   [-i MINID] [-I MAXID] -- min/max random id");
-	puts("   [-F]                  -- ignore fatal error from db");
+	puts("   [-i MINID] [-I MAXID]     -- min/max random id for -t box_insert|box_select");
+	puts("   [-z MINSIZE] [-Z MAXSIZE] -- min/max tuple size for -t box_insert");
+	puts("   [-b MINHIST] [-B MAXHIST] -- min/max for time histogram, millisececonds");
+	puts("   [-T TIME_LIMIT]           -- time limit for test");
+	puts("   [-r NRESET]               -- reset random generator after NRESET requests");
+	puts("   [-F]                      -- ignore fatal error from db");
 	puts("Defaults:");
 	printf("    -n %"PRIu64" -w %"PRIu64" -c %"PRIu64"\n    -t ping", nRequests, nWriteAhead, nConnections);
 	printf("    -i %u -I %u\n", minId, maxId);
+	printf("    -z %u -Z %u\n", insertMinSize, insertMaxSize);
+	printf("    -b %f -B %f\n", minBin * 1e3, maxBin * 1e3);
+	printf("    -r %u", nReset);
 	if (errmsg) {
 		puts("");
 		puts(errmsg);
@@ -473,13 +613,13 @@ usage(const char *errmsg) {
 int
 main(int argc, char* argv[]) {
 	int 			i;
-	struct timeval 		begin, end;
+	struct timeval 		end;
 	double			elapsed;
 	pthread_t		tid;
 
 	nConnections = nActiveConnections;
 
-	while((i=getopt(argc,argv,"s:p:n:w:c:t:Fi:I:h")) != EOF) {
+	while((i=getopt(argc,argv,"s:p:n:w:c:t:Fi:I:z:Z:T:r:b:B:h")) != EOF) {
 		switch(i) {
 			case 's':
 				server = strdup(optarg);
@@ -512,8 +652,26 @@ main(int argc, char* argv[]) {
 			case  'I':
 				maxId = strtoul(optarg, NULL, 0);
 				break;
+			case  'z':
+				insertMinSize = strtoul(optarg, NULL, 0);
+				break;
+			case  'Z':
+				insertMaxSize = strtoul(optarg, NULL, 0);
+				break;
 			case 'F':
 				ignoreFatal = true;
+				break;
+			case 'T':
+				timeLimit = strtod(optarg, NULL);
+				break;
+			case 'b':
+				minBin = 1e-3 * strtod(optarg, NULL);
+				break;
+			case 'B':
+				maxBin = 1e-3 * strtod(optarg, NULL);
+				break;
+			case  'r':
+				nReset = strtoul(optarg, NULL, 0);
 				break;
 			case 'h':
 			default:
@@ -525,6 +683,12 @@ main(int argc, char* argv[]) {
 	OPT_ERR(nWriteAhead >= 4);
 	OPT_ERR(optind == argc);
 	OPT_ERR(minId < maxId);
+	OPT_ERR(minBin <= maxBin);
+	OPT_ERR(insertMinSize <= insertMaxSize);
+	OPT_ERR(timeLimit >= 0);
+
+	if ( (scaleBin = (maxBin - minBin) / N_BINS) <= 0.0 || isnan(scaleBin))
+		scaleBin = 0.0;
 
 	if (server==NULL || port <= 0)
 		usage("error: bad server address/port");
@@ -532,6 +696,9 @@ main(int argc, char* argv[]) {
 	ERRCODE_ADD(ERRCODE_DESCRIPTION, ERROR_CODES);
 
 	initBenchRes(&SumResults);
+
+	if (insertMaxSize > 0)
+		addonSize = varint32_sizeof(insertMaxSize) + insertMaxSize;
 
 	gettimeofday(&begin,NULL);
 	pthread_mutex_lock(&mutex);
@@ -551,20 +718,65 @@ main(int argc, char* argv[]) {
 
 	elapsed = timediff(&begin, &end);
 
-	printf("Elapsed time: %.3f secs\n", elapsed);
-	printf("Number of OK requests: %.3f\n", ((double)SumResults.nOk));
-	printf("RPS: %.3f\n", ((double)SumResults.nOk) / elapsed );
-	printf("Number of ALL requests: %.3f\n", ((double)SumResults.nProceed));
-	printf("RPS: %.3f\n", ((double)SumResults.nProceed) / elapsed );
-	printf("MIN/AVG/MAX time per request: %.03f / %.03f / %.03f millisecs\n",
+	/* 23 345 format */
+	//setlocale(LC_NUMERIC, ""); /* 23 345 format */
+	localeconv()->thousands_sep= " ";
+	localeconv()->grouping= "\x03\00";
+
+	printf("                Elapsed time: %.3f secs\n", elapsed);
+	printf("       Number of OK requests: %' 11i\n", SumResults.nOk);
+	printf("                         RPS: %' 11i\n", (u_int32_t)(((double)SumResults.nOk) / elapsed));
+	if (messageType == BOX_SELECT)
+		 printf("   Number of returned tuples: %' 10i\n", SumResults.nFound);
+	printf("      Number of ALL requests: %' 11i\n", SumResults.nProceed);
+	printf("                         RPS: %' 11i\n", (u_int32_t)(((double)SumResults.nProceed) / elapsed));
+	printf("               Output stream: % 10.02f MB/sec\n", 
+	       					((double)SumResults.mbOut) / (1024.0 * 1024.0 * elapsed));
+	printf("                Input stream: % 10.02f MB/sec\n", 
+	       					((double)SumResults.mbIn) / (1024.0 * 1024.0 * elapsed));
+
+	double tmp = SumResults.totalTime / (double)SumResults.nProceed;
+	printf("MIN/AVG/MAX/STDDEV time/reqs: %.03f / %.03f / %.03f / %.03f millisecs\n",
 	       SumResults.minTime * 1e3,
 	       SumResults.totalTime * 1e3/ (double)SumResults.nProceed,
-	       SumResults.maxTime * 1e3);
+	       SumResults.maxTime * 1e3,
+	       1e3 * sqrt((SumResults.squareTotalTime/(double)SumResults.nProceed - tmp * tmp)) 
+	);
 
 	for(i=0; i<256; i++)
 		if (SumResults.errstat[i] > 0)
-			printf("N number of %02x: %d\n", i, SumResults.errstat[i]
+			printf("              N number of %02x: %' 11i\n", i, SumResults.errstat[i]
 			       /* errcode_desc(i): i is only one byte from error code */);
+
+	if (scaleBin > 0.0) {
+		u_int32_t	maxCount = 0, sumCount = 0;
+
+		for(i=0; i<N_BINS; i++) {
+			sumCount += SumResults.bins[i];
+			if (SumResults.bins[i] > maxCount)
+				maxCount = SumResults.bins[i];
+		}
+
+		printf("Time histogram (histogram covers %.2f%% of all results)\n", 
+		       100.0 * ((double)sumCount)/(double)SumResults.nProceed);
+		printf("      msec +-------------------------------------------------------------------+\n");	
+
+		for(i=0; i<N_BINS; i++) {
+			int	j, nprint = (80 - 13) * (((double)SumResults.bins[i]) / maxCount);
+
+			printf("% 10.3f |", 1e3 * (minBin + scaleBin * i));
+
+			for(j=0; j<nprint; j++)
+				fputc('*', stdout);
+			for(;j<(80 - 13); j++)
+				fputc(' ', stdout);
+			fputc('|', stdout);
+			fputc('\n', stdout);
+
+		}
+
+		printf("           +-------------------------------------------------------------------+\n");	
+	}
 
 	return 0;
 }

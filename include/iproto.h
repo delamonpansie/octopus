@@ -50,10 +50,8 @@ static inline struct iproto_retcode *iproto_retcode(const struct tbuf *t)
 struct tbuf *iproto_parse(struct tbuf *in);
 
 struct netmsg;
-struct netmsg_mark;
-void iproto_reply(struct netmsg **m, u32 msg_code, u32 sync);
-void iproto_commit(struct netmsg_mark *header_mark, u32 ret_code);
-void iproto_error(struct netmsg **m, struct netmsg_mark *header_mark, u32 ret_code, const char *err);
+struct iproto_retcode * iproto_reply(struct netmsg **m, const struct iproto *request);
+void iproto_error(struct netmsg **m, const struct iproto *request, u32 ret_code, const char *err);
 
 typedef void (iproto_callback)(struct conn *c, struct iproto *request, void *arg);
 void iproto_interact(va_list ap);
@@ -82,7 +80,7 @@ service_register_iproto_stream(struct service *s, u32 cmd,
 			       int flags);
 void
 service_register_iproto_block(struct service *s, u32 cmd,
-			      struct netmsg_head *(*cb)(struct conn *, struct iproto *),
+			      void (*cb)(struct conn *, struct iproto *),
 			      int flags);
 
 u32 iproto_next_sync();

@@ -62,6 +62,7 @@ struct netmsg {
 
 	TAILQ_ENTRY(netmsg) link;
 
+	struct iovec dummy;
 	struct iovec iov[NETMSG_MAX];
 	struct tnt_object *ref[NETMSG_MAX];
 #ifdef NET_IO_TIMESTAMPS
@@ -71,6 +72,7 @@ struct netmsg {
 
 struct netmsg_mark {
 	struct netmsg *m;
+	struct iovec iov;
 	int offset;
 };
 
@@ -80,7 +82,7 @@ enum conn_memory_ownership {
 	MO_SLAB		 = 0x03,
 	MO_MY_OWN_POOL   = 0x10
 };
-#define MO_CONN_OWNERSHIP_MASK	(MO_MALLOC | MO_STATIC | MO_SLAB)	
+#define MO_CONN_OWNERSHIP_MASK	(MO_MALLOC | MO_STATIC | MO_SLAB)
 
 struct conn {
 	struct palloc_pool *pool;
@@ -103,7 +105,7 @@ enum { IPROTO_NONBLOCK = 1 };
 struct iproto;
 typedef union {
 	void (*stream)(struct netmsg **, struct iproto *);
-	struct netmsg_head *(*block)(struct conn *, struct iproto *);
+	void (*block)(struct conn *, struct iproto *);
 } iproto_cb;
 
 struct iproto_handler {

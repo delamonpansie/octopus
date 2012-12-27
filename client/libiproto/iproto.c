@@ -688,6 +688,7 @@ begin:
 			struct iproto		*header = (struct iproto*)
 								(c->readArena->data + c->readArena->arenaBegin);
 			struct iproto_request_t	*request;
+			u_int32_t		k;
 
 			if (c->readArena->arenaEnd - c->readArena->arenaBegin <
 			    		sizeof(struct iproto) + header->data_len) {
@@ -697,14 +698,12 @@ begin:
 				goto begin;
 			}
 
-			do {
-				u_int32_t			k;
-
-				k = mh_sp_request_get(c->requestHash, header->sync);
-				assert(k != mh_end(c->requestHash));
-				request = mh_sp_request_value(c->requestHash, k);
-			} while(0);
-
+			k = mh_sp_request_get(c->requestHash, header->sync);
+			if (k == mh_end(c->requestHash)) {
+				c->connectState = ConnectionError;
+				return ERR_CODE_PROTO_ERR;
+			}
+			request = mh_sp_request_value(c->requestHash, k);
 			assert(header->sync == request->headerSend.sync);
 
 			request->headerRecv = (union iproto_any_header*)header;

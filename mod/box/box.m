@@ -107,6 +107,19 @@ tuple_field(struct box_tuple *tuple, size_t i)
 	return field;
 }
 
+static int
+quote_all(int c __attribute__((unused)))
+{
+	return 1;
+}
+static int
+quote_non_printable(int c)
+{
+	return !(0x20 <= c && c < 0x7f && !(c == '"' || c == '\\'));
+}
+
+static int (*quote)(int c) = quote_non_printable;
+
 static void
 field_print(struct tbuf *buf, void *f)
 {
@@ -114,20 +127,27 @@ field_print(struct tbuf *buf, void *f)
 
 	size = LOAD_VARINT32(f);
 
-	if (size == 2)
-		tbuf_printf(buf, "%i:", *(u16 *)f);
+	if (quote != quote_all) {
+		if (size == 2)
+			tbuf_printf(buf, "%i:", *(u16 *)f);
 
-	if (size == 4)
-		tbuf_printf(buf, "%i:", *(u32 *)f);
+		if (size == 4)
+			tbuf_printf(buf, "%i:", *(u32 *)f);
 
-	tbuf_printf(buf, "\"");
-	while (size-- > 0) {
-		if (0x20 <= *(u8 *)f && *(u8 *)f < 0x7f && !(*(u8 *)f == '"' || *(u8 *)f == '\\'))
-			tbuf_printf(buf, "%c", *(u8 *)f++);
-		else
+		tbuf_printf(buf, "\"");
+		while (size-- > 0) {
+			if (quote(*(u8 *)f))
+				tbuf_printf(buf, "\\x%02X", *(u8 *)f++);
+			else
+				tbuf_printf(buf, "%c", *(u8 *)f++);
+		}
+		tbuf_printf(buf, "\"");
+	} else {
+		tbuf_printf(buf, "\"");
+		while (size-- > 0)
 			tbuf_printf(buf, "\\x%02X", *(u8 *)f++);
+		tbuf_printf(buf, "\"");
 	}
-	tbuf_printf(buf, "\"");
 
 }
 
@@ -167,6 +187,17 @@ valid_tuple(struct tbuf *buf, u32 cardinality)
 		read_field(&tmp);
 
 	return tbuf_len(&tmp) == 0;
+}
+
+static void
+tuple_add(struct box_txn *txn, struct tnt_object *obj)
+{
+	struct box_tuple *tuple = box_tuple(obj);
+	size_t size = tuple->bsize + sizeof(tuple->bsize) +
+		       sizeof(tuple->cardinality);
+
+	txn->iproto->data_len += size;
+	net_add_ref_iov(txn->m, obj, &tuple->bsize, size);
 }
 
 static void
@@ -264,10 +295,11 @@ commit_replace(struct box_txn *txn)
 	}
 
 	if (txn->m) {
-		net_add_iov_dup(&txn->m, &txn->obj_affected, sizeof(u32));
+		txn->iproto->data_len += sizeof(u32);
+		net_add_iov_dup(txn->m, &txn->obj_affected, sizeof(u32));
 
 		if (txn->obj && txn->flags & BOX_RETURN_TUPLE)
-			tuple_add_iov(&txn->m, txn->obj);
+			tuple_add(txn, txn->obj);
 	}
 }
 
@@ -550,26 +582,19 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 	}
 }
 
-void
-tuple_add_iov(struct netmsg **m, struct tnt_object *obj)
-{
-	struct box_tuple *tuple = box_tuple(obj);
-
-	net_add_ref_iov(m, obj, &tuple->bsize,
-			tuple->bsize + sizeof(tuple->bsize) +
-			sizeof(tuple->cardinality));
-}
 
 static void __attribute__((noinline))
-process_select(struct netmsg **m, Index<BasicIndex> *index, u32 limit, u32 offset, struct tbuf *data)
+process_select(struct box_txn *txn, u32 limit, u32 offset, struct tbuf *data)
 {
+	Index<BasicIndex> *index = txn->index;
 	struct tnt_object *obj;
 	uint32_t *found;
 	u32 count = read_u32(data);
 
 	say_debug("SELECT");
-	found = palloc((*m)->head->pool, sizeof(*found));
-	net_add_iov(m, found, sizeof(*found));
+	found = palloc((*txn->m)->head->pool, sizeof(*found));
+	txn->iproto->data_len += sizeof(*found);
+	net_add_iov(txn->m, found, sizeof(*found));
 	*found = 0;
 
 	if (index->unique) {
@@ -588,7 +613,7 @@ process_select(struct netmsg **m, Index<BasicIndex> *index, u32 limit, u32 offse
 			}
 
 			(*found)++;
-			tuple_add_iov(m, obj);
+			tuple_add(txn, obj);
 			limit--;
 		}
 	} else {
@@ -612,7 +637,7 @@ process_select(struct netmsg **m, Index<BasicIndex> *index, u32 limit, u32 offse
 				}
 
 				(*found)++;
-				tuple_add_iov(m, obj);
+				tuple_add(txn, obj);
 				--limit;
 			}
 		}
@@ -640,19 +665,21 @@ commit_delete(struct box_txn *txn)
 			[index remove: txn->old_obj];
 		object_ref(txn->old_obj, -1);
 	}
-	if (txn->m)
-		net_add_iov_dup(&txn->m, &txn->obj_affected, sizeof(u32));
+	if (txn->m) {
+		txn->iproto->data_len += sizeof(u32);
+		net_add_iov_dup(txn->m, &txn->obj_affected, sizeof(u32));
+	}
 }
 
 void
-txn_init(const struct iproto *req, struct box_txn *txn, struct netmsg *m)
+txn_init(const struct iproto *req, struct box_txn *txn, struct netmsg **m)
 {
 	memset(txn, 0, sizeof(*txn));
 	txn->op = req->msg_code;
 	if (m) {
 		txn->m = m;
-		netmsg_getmark(txn->m, &txn->header_mark);
-		iproto_reply(&txn->m, req->msg_code, req->sync);
+		netmsg_getmark(*txn->m, &txn->header_mark);
+		txn->iproto = iproto_reply(m, req);
 	}
 }
 
@@ -810,44 +837,69 @@ box_prepare_update(struct box_txn *txn, struct tbuf *data)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
 }
 
-static struct netmsg_head *
-box_cb(struct conn *c, struct iproto *request)
+static void
+box_lua_cb(struct conn *c, struct iproto *request)
 {
-	struct box_txn txn = { .op = 0 };
+	struct box_txn txn = { .op = request->msg_code };
 	u32 msg_code = request->msg_code;
 	struct tbuf request_data = TBUF(request->data, request->data_len, fiber->pool);
 	say_debug("%s: c:%p op:0x%02x sync:%u", __func__, c, msg_code, request->sync);
-	struct netmsg_head *h = p0alloc(fiber->pool, sizeof(*h));
-	TAILQ_INIT(&h->q);
-	h->pool = fiber->pool;
 
 	@try {
 		ev_tstamp start = ev_now(), stop;
-		txn_init(request, &txn, netmsg_tail(h));
 
 		if (unlikely(c->service != box_primary))
 			iproto_raise(ERR_CODE_NONMASTER, "updates forbiden on secondary port");
 
-		u32 rc = ERR_CODE_OK;
-		switch (msg_code) {
-		case EXEC_LUA:
-			rc = box_dispach_lua(&txn, &request_data);
-			stat_collect(stat_base, EXEC_LUA, 1);
-			break;
-		case PAXOS_LEADER:
-			if ([recovery respondsTo:@selector(leader_redirect_raise)])
-				[recovery perform:@selector(leader_redirect_raise)];
-			else
-				iproto_raise(ERR_CODE_UNSUPPORTED_COMMAND,
-					     "PAXOS_LEADER unsupported in non cluster configuration");
-			break;
-		default:
-			box_prepare_update(&txn, &request_data);
-			/* we'r potentially block here */
-			txn_submit_to_storage(&txn);
-			txn_commit(&txn);
-		}
-		iproto_commit(&txn.header_mark, rc);
+		box_dispach_lua(c, request, &request_data);
+		stat_collect(stat_base, EXEC_LUA, 1);
+
+		stop = ev_now();
+		if (stop - start > cfg.too_long_threshold)
+			say_warn("too long %s: %.3f sec", ops[txn.op], stop - start);
+	}
+	@catch (Error *e) {
+		say_warn("aborting txn, [%s reason:\"%s\"] at %s:%d peer:%s",
+			 [[e class] name], e->reason, e->file, e->line, conn_peer_name(c));
+		if (e->backtrace)
+			say_debug("backtrace:\n%s", e->backtrace);
+		@throw;
+	}
+}
+
+static void
+box_paxos_cb(struct conn *c __attribute__((unused)),
+	     struct iproto *request __attribute__((unused)))
+{
+	if ([recovery respondsTo:@selector(leader_redirect_raise)])
+		[recovery perform:@selector(leader_redirect_raise)];
+	else
+		iproto_raise(ERR_CODE_UNSUPPORTED_COMMAND,
+			     "PAXOS_LEADER unsupported in non cluster configuration");
+}
+
+static void
+box_cb(struct conn *c, struct iproto *request)
+{
+	struct box_txn txn = { .op = request->msg_code };
+	struct tbuf request_data = TBUF(request->data, request->data_len, fiber->pool);
+	say_debug("%s: c:%p op:0x%02x sync:%u", __func__, c, request->msg_code, request->sync);
+
+	@try {
+		ev_tstamp start = ev_now(), stop;
+
+		if (unlikely(c->service != box_primary))
+			iproto_raise(ERR_CODE_NONMASTER, "updates forbiden on secondary port");
+
+		box_prepare_update(&txn, &request_data);
+		/* we'r potentially block here */
+		txn_submit_to_storage(&txn);
+
+		struct netmsg *m = netmsg_tail(&c->out_messages);
+		txn.m = &m;
+		netmsg_getmark(*txn.m, &txn.header_mark);
+		txn.iproto = iproto_reply(txn.m, request);
+		txn_commit(&txn);
 
 		stop = ev_now();
 		if (stop - start > cfg.too_long_threshold)
@@ -870,16 +922,13 @@ box_cb(struct conn *c, struct iproto *request)
 		netmsg_verify_ownership(&c->out_messages);
 #endif
 	}
-	return h;
 }
 
 static void
 box_select_cb(struct netmsg **m, struct iproto *request)
 {
-	struct box_txn txn = { .op = 0 };
+	struct box_txn txn = { .op = 0, .m = m, .iproto = iproto_reply(m, request) };
 	struct tbuf data = TBUF(request->data, request->data_len, fiber->pool);
-
-	iproto_reply(m, request->msg_code, request->sync);
 
 	txn_common_parser(&txn, &data);
 
@@ -893,7 +942,7 @@ box_select_cb(struct netmsg **m, struct iproto *request)
 	if ((txn.index = txn.object_space->index[i]) == NULL)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index is invalid");
 
-	process_select(m, txn.index, limit, offset, &data);
+	process_select(&txn, limit, offset, &data);
 	stat_collect(stat_base, request->msg_code, 1);
 }
 
@@ -1185,7 +1234,8 @@ box_service_register(struct service *s)
 	service_register_iproto_block(s, INSERT, box_cb, 0);
 	service_register_iproto_block(s, UPDATE_FIELDS, box_cb, 0);
 	service_register_iproto_block(s, DELETE, box_cb, 0);
-	service_register_iproto_block(s, EXEC_LUA, box_cb, 0);
+	service_register_iproto_block(s, EXEC_LUA, box_lua_cb, 0);
+	service_register_iproto_block(s, PAXOS_LEADER, box_paxos_cb, 0);
 }
 
 static void
@@ -1531,6 +1581,12 @@ cat_scn(i64 stop_scn)
 static int
 cat(const char *filename)
 {
+	const char *q = getenv("BOX_CAT_QUOTE");
+	if (q && !strcmp(q, "ALL")) {
+		quote = quote_all;
+	} else {
+		quote = quote_non_printable;
+	}
 	read_log(filename, print_row);
 	return 0; /* ignore return status of read_log */
 }

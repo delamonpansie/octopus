@@ -2,6 +2,8 @@ CLDIR=client/libiproto
 libobj += $(CLDIR)/iproto.o $(CLDIR)/errcode.o
 dep += $(call depend,$(libobj))
 
+$(libobj): Makefile $(sub-Makefile)
+
 libiproto_all: $(CLDIR)/libiproto.a
 $(CLDIR)/libiproto.a: $(libobj) third_party/qsort_arg.o
 	$(E) "AR	$@"

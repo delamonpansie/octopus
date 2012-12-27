@@ -742,7 +742,11 @@ octopus(int argc, char **argv)
 	ev_signal_init(&ev_sig, (void *)save_snapshot, SIGUSR1);
 	ev_signal_start(&ev_sig);
 
-	salloc_init(cfg.slab_alloc_arena * (1 << 30), cfg.slab_alloc_minimal, cfg.slab_alloc_factor);
+	u64 fixed_arena = cfg.slab_alloc_arena * (1 << 30);
+	if ((size_t)fixed_arena != fixed_arena)
+		panic("slab_alloc_arena overflow");
+
+	salloc_init(fixed_arena, cfg.slab_alloc_minimal, cfg.slab_alloc_factor);
 
 	stat_init();
 	@try {
