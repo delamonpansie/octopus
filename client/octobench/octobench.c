@@ -36,7 +36,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <inttypes.h>
-#include <locale.h>
 
 /************************************************************************************/
 /*-
@@ -610,6 +609,41 @@ usage(const char *errmsg) {
 	exit(1);													\
 }
 
+/* "%' 12i" is too buggy on Linux */
+static char*
+formatInt(u_int32_t v) {
+	static char 	buf[64];
+	char 		*ptr = buf + 16, *str, *ps, *end;
+	int 		len, ndelim;
+
+	snprintf(ptr, sizeof(buf) - (buf - ptr) - 1, "%i", v);
+
+	len = strlen(ptr);
+	ndelim = len / 3;
+	end = ptr + len;
+
+	ps = str = ptr - ndelim;
+
+	while(ptr < end) {
+		if ((end - ptr) % 3 == 0) {
+			*ps = ' ';
+			ps++;
+		}
+
+		*ps = *ptr;
+		ptr++;
+		ps++;
+	}
+
+	while(end - str < 12) {
+		str--;
+		*str=' ';
+	}
+
+	return str;
+}
+
+
 int
 main(int argc, char* argv[]) {
 	int 			i;
@@ -718,21 +752,16 @@ main(int argc, char* argv[]) {
 
 	elapsed = timediff(&begin, &end);
 
-	/* 23 345 format */
-	setlocale(LC_NUMERIC, ""); /* 23 345 format */
-	localeconv()->thousands_sep= " ";
-	localeconv()->grouping= "\x03\00";
-
 	printf("                Elapsed time: %.3f secs\n", elapsed);
-	printf("       Number of OK requests: %' 11i\n", SumResults.nOk);
-	printf("                         RPS: %' 11i\n", (u_int32_t)(((double)SumResults.nOk) / elapsed));
+	printf("       Number of OK requests: %s\n", formatInt(SumResults.nOk));
+	printf("                         RPS: %s\n", formatInt((u_int32_t)(((double)SumResults.nOk) / elapsed)));
 	if (messageType == BOX_SELECT)
-		 printf("   Number of returned tuples: %' 10i\n", SumResults.nFound);
-	printf("      Number of ALL requests: %' 11i\n", SumResults.nProceed);
-	printf("                         RPS: %' 11i\n", (u_int32_t)(((double)SumResults.nProceed) / elapsed));
-	printf("               Output stream: % 10.02f MB/sec\n", 
+		 printf("   Number of returned tuples: %s\n", formatInt(SumResults.nFound));
+	printf("      Number of ALL requests: %s\n", formatInt(SumResults.nProceed));
+	printf("                         RPS: %s\n", formatInt((u_int32_t)(((double)SumResults.nProceed) / elapsed)));
+	printf("               Output stream: % 12.02f MB/sec\n", 
 	       					((double)SumResults.mbOut) / (1024.0 * 1024.0 * elapsed));
-	printf("                Input stream: % 10.02f MB/sec\n", 
+	printf("                Input stream: % 12.02f MB/sec\n", 
 	       					((double)SumResults.mbIn) / (1024.0 * 1024.0 * elapsed));
 
 	double tmp = SumResults.totalTime / (double)SumResults.nProceed;
@@ -745,7 +774,7 @@ main(int argc, char* argv[]) {
 
 	for(i=0; i<256; i++)
 		if (SumResults.errstat[i] > 0)
-			printf("              N number of %02x: %' 11i\n", i, SumResults.errstat[i]
+			printf("              N number of %02x: %s\n", i, formatInt(SumResults.errstat[i])
 			       /* errcode_desc(i): i is only one byte from error code */);
 
 	if (scaleBin > 0.0) {
