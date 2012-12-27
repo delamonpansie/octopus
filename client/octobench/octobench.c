@@ -749,14 +749,17 @@ main(int argc, char* argv[]) {
 			       /* errcode_desc(i): i is only one byte from error code */);
 
 	if (scaleBin > 0.0) {
-		u_int32_t	maxCount = 0;
+		u_int32_t	maxCount = 0, sumCount = 0;
 
-		for(i=0; i<N_BINS; i++) 
+		for(i=0; i<N_BINS; i++) {
+			sumCount += SumResults.bins[i];
 			if (SumResults.bins[i] > maxCount)
 				maxCount = SumResults.bins[i];
+		}
 
-		printf("Time histogram:\n");
-		printf("           +-------------------------------------------------------------------+\n");	
+		printf("Time histogram (histogram covers %.2f%% of all results)\n", 
+		       100.0 * ((double)sumCount)/(double)SumResults.nProceed);
+		printf("      msec +-------------------------------------------------------------------+\n");	
 
 		for(i=0; i<N_BINS; i++) {
 			int	j, nprint = (80 - 13) * (((double)SumResults.bins[i]) / maxCount);
