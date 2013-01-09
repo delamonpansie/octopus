@@ -160,8 +160,6 @@ service_iproto(struct service *s)
 	service_register_iproto_stream(s, msg_ping, iproto_ping, IPROTO_NONBLOCK);
 }
 
-struct netmsg_head * box_cb(struct conn *c, struct iproto *request);
-
 static int
 handle_c(struct service *service, struct conn *c)
 {
