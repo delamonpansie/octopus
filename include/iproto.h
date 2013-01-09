@@ -76,11 +76,11 @@ struct iproto_peer *make_iproto_peer(int id, const char *name, const char *addr)
 
 void
 service_register_iproto_stream(struct service *s, u32 cmd,
-			       void (*cb)(struct netmsg **, struct iproto *),
+			       void (*cb)(struct netmsg **, struct iproto *, struct conn *),
 			       int flags);
 void
 service_register_iproto_block(struct service *s, u32 cmd,
-			      void (*cb)(struct conn *, struct iproto *),
+			      void (*cb)(struct iproto *, struct conn *),
 			      int flags);
 
 u32 iproto_next_sync();

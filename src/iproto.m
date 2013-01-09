@@ -72,7 +72,7 @@ iproto_parse(struct tbuf *in)
 }
 
 struct worker_arg {
-	void (*cb)(struct conn *c, struct iproto *);
+	void (*cb)(struct iproto *, struct conn *c);
 	struct iproto *r;
 	struct conn *c;
 };
@@ -90,7 +90,7 @@ iproto_worker(va_list ap)
 		a.c->ref++;
 
 		@try {
-			a.cb(a.c, a.r);
+			a.cb(a.r, a.c);
 		}
 		@catch (Error *e) {
 			u32 rc = ERR_CODE_UNKNOWN_ERROR;
@@ -118,23 +118,25 @@ iproto_worker(va_list ap)
 
 
 static void
-err(struct netmsg **m __attribute__((unused)), struct iproto *r)
+err(struct netmsg **m __attribute__((unused)),
+    struct iproto *r,
+    struct conn *c __attribute__((unused)))
 {
 	iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "unknown iproto command %i", r->msg_code);
 }
 
 static void
-iproto_ping(struct netmsg **m, struct iproto *r)
+iproto_ping(struct netmsg **m, struct iproto *r, struct conn *c)
 {
 	if (r->msg_code != msg_ping)
-		err(m, r);
+		err(m, r, c);
 
 	net_add_iov_dup(m, r, sizeof(struct iproto));
 }
 
 void
 service_register_iproto_stream(struct service *s, u32 cmd,
-			       void (*cb)(struct netmsg **, struct iproto *),
+			       void (*cb)(struct netmsg **, struct iproto *, struct conn *),
 			       int flags)
 {
 	s->ih[cmd & 0xff].cb.stream = cb;
@@ -143,7 +145,7 @@ service_register_iproto_stream(struct service *s, u32 cmd,
 
 void
 service_register_iproto_block(struct service *s, u32 cmd,
-			      void (*cb)(struct conn *, struct iproto *),
+			      void (*cb)(struct iproto *, struct conn *),
 			      int flags)
 {
 	s->ih[cmd & 0xff].cb.block = cb;
@@ -181,7 +183,7 @@ handle_c(struct service *service, struct conn *c)
 			struct netmsg_mark header_mark;
 			netmsg_getmark(m, &header_mark);
 			@try {
-				ih->cb.stream(&m, request);
+				ih->cb.stream(&m, request, c);
 			}
 			@catch (Error *e) {
 				u32 rc = ERR_CODE_UNKNOWN_ERROR;

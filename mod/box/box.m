@@ -54,7 +54,7 @@
 #include <arpa/inet.h>
 #include <sysexits.h>
 
-static struct service *box_primary, *box_secondary;
+static struct service box_primary, box_secondary;
 
 static int stat_base;
 char * const ops[] = ENUM_STR_INITIALIZER(MESSAGES);
@@ -838,7 +838,7 @@ box_prepare_update(struct box_txn *txn, struct tbuf *data)
 }
 
 static void
-box_lua_cb(struct conn *c, struct iproto *request)
+box_lua_cb(struct iproto *request, struct conn *c)
 {
 	struct box_txn txn = { .op = request->msg_code };
 	u32 msg_code = request->msg_code;
@@ -848,7 +848,7 @@ box_lua_cb(struct conn *c, struct iproto *request)
 	@try {
 		ev_tstamp start = ev_now(), stop;
 
-		if (unlikely(c->service != box_primary))
+		if (unlikely(c->service != &box_primary))
 			iproto_raise(ERR_CODE_NONMASTER, "updates forbiden on secondary port");
 
 		box_dispach_lua(c, request, &request_data);
@@ -868,8 +868,8 @@ box_lua_cb(struct conn *c, struct iproto *request)
 }
 
 static void
-box_paxos_cb(struct conn *c __attribute__((unused)),
-	     struct iproto *request __attribute__((unused)))
+box_paxos_cb(struct iproto *request __attribute__((unused)),
+	     struct conn *c __attribute__((unused)))
 {
 	if ([recovery respondsTo:@selector(leader_redirect_raise)])
 		[recovery perform:@selector(leader_redirect_raise)];
@@ -879,7 +879,7 @@ box_paxos_cb(struct conn *c __attribute__((unused)),
 }
 
 static void
-box_cb(struct conn *c, struct iproto *request)
+box_cb(struct iproto *request, struct conn *c)
 {
 	struct box_txn txn = { .op = request->msg_code };
 	struct tbuf request_data = TBUF(request->data, request->data_len, fiber->pool);
@@ -888,7 +888,7 @@ box_cb(struct conn *c, struct iproto *request)
 	@try {
 		ev_tstamp start = ev_now(), stop;
 
-		if (unlikely(c->service != box_primary))
+		if (unlikely(c->service != &box_primary))
 			iproto_raise(ERR_CODE_NONMASTER, "updates forbiden on secondary port");
 
 		box_prepare_update(&txn, &request_data);
@@ -925,7 +925,7 @@ box_cb(struct conn *c, struct iproto *request)
 }
 
 static void
-box_select_cb(struct netmsg **m, struct iproto *request)
+box_select_cb(struct netmsg **m, struct iproto *request, struct conn *c __attribute__((unused)))
 {
 	struct box_txn txn = { .op = 0, .m = m, .iproto = iproto_reply(m, request) };
 	struct tbuf data = TBUF(request->data, request->data_len, fiber->pool);
@@ -1244,16 +1244,16 @@ initialize_service()
 	if (cfg.memcached != 0) {
 		memcached_init();
 	} else {
-		box_primary = tcp_service(cfg.primary_port, box_bound_to_primary, iproto_wakeup_workers);
-		box_service_register(box_primary);
+		tcp_service(&box_primary, cfg.primary_port, box_bound_to_primary, iproto_wakeup_workers);
+		box_service_register(&box_primary);
 
 		for (int i = 0; i < cfg.wal_writer_inbox_size; i++)
-			fiber_create("box_worker", iproto_worker, box_primary);
+			fiber_create("box_worker", iproto_worker, &box_primary);
 
 		if (cfg.secondary_port > 0) {
-			box_secondary = tcp_service(cfg.secondary_port, NULL, wakeup_workers);
-			box_service_register(box_secondary);
-			fiber_create("box_secondary_worker", iproto_worker, box_secondary);
+			tcp_service(&box_secondary, cfg.secondary_port, NULL, wakeup_workers);
+			box_service_register(&box_secondary);
+			fiber_create("box_secondary_worker", iproto_worker, &box_secondary);
 		}
 		say_info("(silver)box initialized (%i workers)", cfg.wal_writer_inbox_size);
 	}
@@ -1321,7 +1321,7 @@ apply_row:(const struct row_v12 *)r
 - (void)
 wal_final_row
 {
-	if (box_primary == NULL) {
+	if (box_primary.name == NULL) {
 		build_secondary_indexes();
 		initialize_service();
 		title("%s", [recovery status]);
@@ -1626,10 +1626,10 @@ info(struct tbuf *out)
 				    index->n, [index slots], [index bytes]);
 	}
 
-	if (box_primary != NULL)
-		service_info(out, box_primary);
-	if (box_secondary != NULL)
-		service_info(out, box_secondary);
+	if (box_primary.name != NULL)
+		service_info(out, &box_primary);
+	if (box_secondary.name != NULL)
+		service_info(out, &box_secondary);
 }
 
 

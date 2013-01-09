@@ -104,8 +104,8 @@ struct conn {
 enum { IPROTO_NONBLOCK = 1 };
 struct iproto;
 typedef union {
-	void (*stream)(struct netmsg **, struct iproto *);
-	void (*block)(struct conn *, struct iproto *);
+	void (*stream)(struct netmsg **, struct iproto *, struct conn *);
+	void (*block)(struct iproto *, struct conn *);
 } iproto_cb;
 
 struct iproto_handler {
@@ -168,7 +168,7 @@ void udp_server(va_list ap);
 int server_socket(int type, struct sockaddr_in *src, int nonblock,
 		  void (*on_bind)(int fd), void (*sleep)(ev_tstamp tm));
 
-struct service *tcp_service(u16 port, void (*on_bind)(int fd), void (*wakeup)(ev_prepare *));
+void tcp_service(struct service *s , u16 port, void (*on_bind)(int fd), void (*wakeup)(ev_prepare *));
 void wakeup_workers(ev_prepare *ev);
 void service_iproto(struct service *s);
 void iproto_wakeup_workers(ev_prepare *ev);
