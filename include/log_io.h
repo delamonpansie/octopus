@@ -287,6 +287,8 @@ i64 fold_scn;
 	     wal_dir:(const char *)wal_dirname;
 @end
 
+@interface NoWALRecovery: Recovery
+@end
 
 int wal_disk_writer(int fd, void *state);
 void wal_disk_writer_input_dispatch(va_list ap __attribute__((unused)));

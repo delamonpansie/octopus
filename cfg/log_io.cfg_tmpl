@@ -31,6 +31,7 @@ nop_hb_delay=60.0, ro
 wal_fsync_on_close=1, ro
 
 # size of WAL writer requests buffer
+# WAL is disabled if wal_writer_inbox_size is equal to 0
 wal_writer_inbox_size=128, ro
 
 # Local hot standby (if enabled server will run in locale hot standby mode

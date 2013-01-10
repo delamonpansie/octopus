@@ -58,6 +58,9 @@ alloc
 	if (fold_scn > 0)
 		return [FoldRecovery alloc];
 
+	if (cfg.wal_writer_inbox_size == 0)
+		return [NoWALRecovery alloc];
+
 #ifdef PAXOS
 	if (cfg.paxos_enabled)
 		return [PaxosRecovery alloc];
@@ -745,7 +748,7 @@ submit:(const void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag
 	if ([self is_replica])
 		raise("replica is readonly");
 
-	return [super wal_row_submit:data len:data_len scn:scn_ tag:tag];
+	return [self wal_row_submit:data len:data_len scn:scn_ tag:tag];
 }
 
 - (int)
@@ -856,9 +859,6 @@ nop_hb_writer(va_list ap)
 
 - (id) init_snap_dir:(const char *)snap_dirname
              wal_dir:(const char *)wal_dirname
-
-
-
 	rows_per_wal:(int)wal_rows_per_file
 	 feeder_addr:(const char *)feeder_addr_
          fsync_delay:(double)wal_fsync_delay
@@ -1067,5 +1067,60 @@ read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, struct
 	}
 	return 0;
 }
+
+@implementation NoWALRecovery
+
+- (id)
+init_snap_dir:(const char *)snap_dirname
+      wal_dir:(const char *)wal_dirname
+{
+	[super init];
+        snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
+        wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
+	return self;
+}
+
+- (id) init_snap_dir:(const char *)snap_dirname
+             wal_dir:(const char *)wal_dirname
+        rows_per_wal:(int)wal_rows_per_file
+	 feeder_addr:(const char *)feeder_addr_
+         fsync_delay:(double)wal_fsync_delay
+       run_crc_delay:(double)run_crc_delay
+	nop_hb_delay:(double)nop_hb_delay
+               flags:(int)flags
+  snap_io_rate_limit:(int)snap_io_rate_limit_
+{
+	say_info("WAL disabled");
+	return [super init_snap_dir:snap_dirname
+			    wal_dir:wal_dirname
+		       rows_per_wal:wal_rows_per_file
+			feeder_addr:feeder_addr_
+			fsync_delay:wal_fsync_delay
+		      run_crc_delay:run_crc_delay
+		       nop_hb_delay:nop_hb_delay
+			      flags:flags | RECOVER_READONLY
+		 snap_io_rate_limit:snap_io_rate_limit_];
+}
+
+
+- (void)
+configure_wal_writer
+{
+}
+
+
+- (int)
+wal_row_submit:(const void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag
+{
+	(void)data;
+	(void)data_len;
+	(void)scn_;
+	(void)tag;
+	scn++;
+	lsn++;
+	return 1;
+}
+
+@end
 
 register_source();

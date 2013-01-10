@@ -1247,7 +1247,7 @@ initialize_service()
 		tcp_service(&box_primary, cfg.primary_port, box_bound_to_primary, iproto_wakeup_workers);
 		box_service_register(&box_primary);
 
-		for (int i = 0; i < cfg.wal_writer_inbox_size; i++)
+		for (int i = 0; i < MAX(1, cfg.wal_writer_inbox_size); i++)
 			fiber_create("box_worker", iproto_worker, &box_primary);
 
 		if (cfg.secondary_port > 0) {
