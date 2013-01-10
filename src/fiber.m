@@ -131,6 +131,7 @@ fiber_wake(struct fiber *f, void *arg)
 void
 fiber_sleep(ev_tstamp delay)
 {
+	assert(fiber != &sched);
 	ev_timer *s, w = { .coro = 1 };
 	ev_timer_init(&w, (void *)fiber, delay, 0.);
 	ev_timer_start(&w);
