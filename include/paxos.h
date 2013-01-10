@@ -39,9 +39,10 @@ RB_HEAD(ptree, proposal);
 	struct fiber *proposer_fiber;
 	struct fiber *output_flusher, *reply_reader, *follower, *wal_dumper;
 	struct palloc_pool *pool;
-	i64 max_scn;
+	i64 app_scn, max_scn;
 	bool wal_dumper_busy;
 	struct ptree proposals;
+	struct service service;
 }
 
 - (i64) next_scn;

@@ -152,6 +152,12 @@ recover_row:(struct row_v12 *)r
 			scn = r->scn;
 			say_debug("%s: run_crc_log/mod: 0x%x/0x%x", __func__, run_crc_log, run_crc_mod);
 			break;
+		case snap_skip_scn:
+			assert(r->len > 0 && r->len % sizeof(u64) == 0);
+			char *ptr = malloc(r->len);
+			memcpy(ptr, r->data, r->len);
+			skip_scn = TBUF(ptr, r->len, (void *)ptr); /* NB: backing storage is malloc! */
+			next_skip_scn = read_u64(&skip_scn);
 		case run_crc: {
 			if (cfg.ignore_run_crc)
 				break;
@@ -203,7 +209,8 @@ recover_row:(struct row_v12 *)r
 
 		lsn = r->lsn;
 		if (r->tag == snap_final_tag || r->tag == wal_tag || r->tag == nop || r->tag == run_crc) {
-			if (unlikely(r->tag != snap_final_tag && r->scn - scn != 1 && cfg.panic_on_scn_gap))
+			if (unlikely(r->tag != snap_final_tag && r->scn - scn != 1 &&
+				     cfg.panic_on_scn_gap && [[self class] name] == [Recovery name]))
 				raise("non consecutive SCN %"PRIi64 " -> %"PRIi64, scn, r->scn);
 
 			scn = r->scn;
@@ -299,6 +306,12 @@ recover_wal:(id<XLogPuller>)l
 	@try {
 		const struct row_v12 *r;
 		while ((r = [l fetch_row])) {
+			if (r->scn == next_skip_scn) {
+				say_info("SKIP SCN:%"PRIi64, next_skip_scn);
+				next_skip_scn = tbuf_len(&skip_scn) > 0 ?
+						read_u64(&skip_scn) : 0;
+				continue;
+			}
 			if (r->lsn > lsn) {
 				last_wal_lsn = r->lsn;
 				[self recover_row:r];
@@ -482,6 +495,9 @@ recover_finalize
 
         [current_wal close];
         current_wal = nil;
+
+	free(skip_scn.pool);
+	skip_scn = TBUF(NULL, 0, NULL);
 }
 
 
@@ -840,7 +856,10 @@ nop_hb_writer(va_list ap)
 
 - (id) init_snap_dir:(const char *)snap_dirname
              wal_dir:(const char *)wal_dirname
-        rows_per_wal:(int)wal_rows_per_file
+
+
+
+	rows_per_wal:(int)wal_rows_per_file
 	 feeder_addr:(const char *)feeder_addr_
          fsync_delay:(double)wal_fsync_delay
        run_crc_delay:(double)run_crc_delay
@@ -944,6 +963,7 @@ recover_row:(struct row_v12 *)r
 	[super recover_row:r];
 
 	if (r->scn == fold_scn) {
+		exit(0);
 		if ([self respondsTo:@selector(snapshot_fold)])
 			exit([self snapshot_fold]);
 		exit([self snapshot_write]);
@@ -980,6 +1000,9 @@ print_gen_row(struct tbuf *out, const struct row_v12 *row,
 				    count, log, mod);
 		}
 		break;
+	case snap_skip_scn:
+		while (tbuf_len(&row_data) > 0)
+			tbuf_printf(out, "%"PRIi64" ", read_u64(&row_data));
 	case snap_tag:
 	case wal_tag:
 		handler(out, row->tag, &row_data);

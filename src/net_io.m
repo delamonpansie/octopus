@@ -957,10 +957,10 @@ accept_client(int fd, void *data)
 	clnt->state = READING;
 }
 
-struct service *
-tcp_service(u16 port, void (*on_bind)(int fd), void (*wakeup_workers)(ev_prepare *))
+void
+tcp_service(struct service *service, u16 port, void (*on_bind)(int fd), void (*wakeup_workers)(ev_prepare *))
 {
-	struct service *service = xcalloc(1, sizeof(*service));
+	memset(service, 0, sizeof(*service));
 	char *name = xmalloc(13);  /* strlen("iproto:xxxxx") */
 	snprintf(name, 13, "tcp:%i", port);
 
@@ -976,8 +976,6 @@ tcp_service(u16 port, void (*on_bind)(int fd), void (*wakeup_workers)(ev_prepare
 
 	ev_prepare_init(&service->wakeup, (void *)wakeup_workers);
 	ev_prepare_start(&service->wakeup);
-
-	return service;
 }
 
 void

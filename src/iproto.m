@@ -72,7 +72,7 @@ iproto_parse(struct tbuf *in)
 }
 
 struct worker_arg {
-	void (*cb)(struct conn *c, struct iproto *);
+	void (*cb)(struct iproto *, struct conn *c);
 	struct iproto *r;
 	struct conn *c;
 };
@@ -90,7 +90,7 @@ iproto_worker(va_list ap)
 		a.c->ref++;
 
 		@try {
-			a.cb(a.c, a.r);
+			a.cb(a.r, a.c);
 		}
 		@catch (Error *e) {
 			u32 rc = ERR_CODE_UNKNOWN_ERROR;
@@ -118,23 +118,25 @@ iproto_worker(va_list ap)
 
 
 static void
-err(struct netmsg **m __attribute__((unused)), struct iproto *r)
+err(struct netmsg **m __attribute__((unused)),
+    struct iproto *r,
+    struct conn *c __attribute__((unused)))
 {
 	iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "unknown iproto command %i", r->msg_code);
 }
 
 static void
-iproto_ping(struct netmsg **m, struct iproto *r)
+iproto_ping(struct netmsg **m, struct iproto *r, struct conn *c)
 {
 	if (r->msg_code != msg_ping)
-		err(m, r);
+		err(m, r, c);
 
 	net_add_iov_dup(m, r, sizeof(struct iproto));
 }
 
 void
 service_register_iproto_stream(struct service *s, u32 cmd,
-			       void (*cb)(struct netmsg **, struct iproto *),
+			       void (*cb)(struct netmsg **, struct iproto *, struct conn *),
 			       int flags)
 {
 	s->ih[cmd & 0xff].cb.stream = cb;
@@ -143,7 +145,7 @@ service_register_iproto_stream(struct service *s, u32 cmd,
 
 void
 service_register_iproto_block(struct service *s, u32 cmd,
-			      void (*cb)(struct conn *, struct iproto *),
+			      void (*cb)(struct iproto *, struct conn *),
 			      int flags)
 {
 	s->ih[cmd & 0xff].cb.block = cb;
@@ -157,8 +159,6 @@ service_iproto(struct service *s)
 		service_register_iproto_stream(s, i, err, 0);
 	service_register_iproto_stream(s, msg_ping, iproto_ping, IPROTO_NONBLOCK);
 }
-
-struct netmsg_head * box_cb(struct conn *c, struct iproto *request);
 
 static int
 handle_c(struct service *service, struct conn *c)
@@ -181,7 +181,7 @@ handle_c(struct service *service, struct conn *c)
 			struct netmsg_mark header_mark;
 			netmsg_getmark(m, &header_mark);
 			@try {
-				ih->cb.stream(&m, request);
+				ih->cb.stream(&m, request, c);
 			}
 			@catch (Error *e) {
 				u32 rc = ERR_CODE_UNKNOWN_ERROR;
@@ -264,65 +264,6 @@ iproto_wakeup_workers(ev_prepare *ev)
 		palloc_gc(service->pool);
 }
 
-
-void
-iproto_interact(va_list ap)
-{
-	struct service *service = va_arg(ap, struct service *);
-	iproto_callback *callback = va_arg(ap, iproto_callback *);
-	void *arg = va_arg(ap, void *);
-	struct conn *c;
-
-next:
-	c = TAILQ_FIRST(&service->processing);
-	if (unlikely(c == NULL)) {
-		SLIST_INSERT_HEAD(&service->workers, fiber, worker_link);
-		yield();
-		goto next;
-	}
-
-	TAILQ_REMOVE(&service->processing, c, processing_link);
-	bool has_req = tbuf_len(c->rbuf) >= sizeof(struct iproto) &&
-		       tbuf_len(c->rbuf) >= sizeof(struct iproto) + iproto(c->rbuf)->data_len;
-
-	if (!has_req) {
-		c->state = READING;
-		if (c->out_messages.bytes < cfg.output_low_watermark)
-			ev_io_start(&c->in);
-		goto next;
-	} else {
-		TAILQ_INSERT_TAIL(&service->processing, c, processing_link);
-	}
-
-	struct iproto *request = iproto(c->rbuf);
-	tbuf_ltrim(c->rbuf, sizeof(struct iproto) + request->data_len);
-
-	if (unlikely(request->msg_code == msg_ping)) {
-		struct netmsg *m = netmsg_tail(&c->out_messages);
-		net_add_iov_dup(&m, request, sizeof(struct iproto));
-	} else {
-		c->ref++;
-		callback(c, request, arg);
-		c->ref--;
-		if (c->state == CLOSED) {
-			/* connection is already closed by other fiber */
-			conn_close(c);
-			goto next;
-		}
-	}
-
-	if (c->out_messages.bytes > 0) {
-		ev_io_start(&c->out);
-		if (c->out_messages.bytes > cfg.output_high_watermark)
-			ev_io_stop(&c->in);
-	}
-
-	if (palloc_allocated(service->pool) > 64 * 1024 * 1024) /* FIXME: do it after change of that size */
-		palloc_gc(service->pool);
-
-	fiber_gc();
-	goto next;
-}
 
 struct iproto_retcode *
 iproto_reply(struct netmsg **m, const struct iproto *request)

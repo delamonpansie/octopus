@@ -34,7 +34,6 @@
 #include <iproto_def.h>
 
 extern const uint32_t msg_ping;
-
 extern const uint32_t msg_replica;
 
 static inline struct iproto *iproto(const struct tbuf *t)
@@ -53,8 +52,6 @@ struct netmsg;
 struct iproto_retcode * iproto_reply(struct netmsg **m, const struct iproto *request);
 void iproto_error(struct netmsg **m, const struct iproto *request, u32 ret_code, const char *err);
 
-typedef void (iproto_callback)(struct conn *c, struct iproto *request, void *arg);
-void iproto_interact(va_list ap);
 void iproto_worker(va_list ap);
 
 struct iproto_peer {
@@ -76,11 +73,11 @@ struct iproto_peer *make_iproto_peer(int id, const char *name, const char *addr)
 
 void
 service_register_iproto_stream(struct service *s, u32 cmd,
-			       void (*cb)(struct netmsg **, struct iproto *),
+			       void (*cb)(struct netmsg **, struct iproto *, struct conn *),
 			       int flags);
 void
 service_register_iproto_block(struct service *s, u32 cmd,
-			      void (*cb)(struct conn *, struct iproto *),
+			      void (*cb)(struct iproto *, struct conn *),
 			      int flags);
 
 u32 iproto_next_sync();

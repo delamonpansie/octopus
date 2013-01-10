@@ -203,20 +203,23 @@ wal_pack_submit
 
 	ev_io_start(&wal_writer->c->out);
 	struct wal_reply *reply = yield();
+	assert(reply->lsn != -1);
 	if (reply->lsn == 0) {
 		say_warn("wal writer returned error status");
 	} else {
 		if (cfg.sync_scn_with_lsn && reply->lsn != reply->scn)
 			raise("out ouf sync SCN:%"PRIi64 " != LSN:%"PRIi64,
 			      reply->scn, reply->lsn);
-
+		if (scn != reply->scn)
+			say_debug("%s: update SCN:%"PRIi64" -> %"PRIi64, __func__, scn, reply->scn);
+		if (run_crc_log != reply->run_crc)
+			say_debug("%s: update run_crc:%08x -> %08x", __func__, run_crc_log, reply->run_crc);
 		/* update local vars */
 		lsn = reply->lsn;
 		scn = reply->scn;
 		run_crc_log = reply->run_crc;
 	}
-	say_debug("%s: => LSN:%"PRIi64" SCN:%"PRIi64" rows:%i run_crc:0x%x", __func__,
-		  reply->lsn, reply->scn, reply->row_count, reply->run_crc);
+	say_debug("%s: => LSN:%"PRIi64" rows:%i", __func__, reply->lsn, reply->row_count);
 	return reply->row_count;
 }
 
@@ -225,6 +228,7 @@ wal_pack_submit_x
 {
 	ev_io_start(&wal_writer->c->out);
 	struct wal_reply *reply = yield();
+	assert(reply->lsn != -1);
 	if (reply->lsn == 0)
 		say_warn("wal writer returned error status");
 
@@ -315,6 +319,8 @@ wal_disk_writer(int fd, void *state)
 		u32 run_crc; /* run_crc is computed */
 		i64 scn;
 	} *request = xmalloc(sizeof(*request) * 1024);
+	bool broken[1024];
+
 	ev_tstamp start_time = ev_now();
 	palloc_register_gc_root(fiber->pool, &rbuf, tbuf_gc);
 
@@ -373,6 +379,7 @@ wal_disk_writer(int fd, void *state)
 			}
 
 			tbuf_ltrim(&rbuf, sizeof(u32)); /* drop packet_len */
+			broken[requests_processed] = 0;
 			request[requests_processed].fid = read_u32(&rbuf);
 			request[requests_processed].row_count = read_u32(&rbuf);
 
@@ -402,8 +409,14 @@ wal_disk_writer(int fd, void *state)
 				/* next_scn is used for writing XLog header, which is turn used to
 				   find correct file for replication reply.
 				   so, next_scn should be updated only when data modification occurs */
-				if (h->tag == wal_tag || h->tag == run_crc || h->tag == nop)
+				if (h->tag == wal_tag || h->tag == run_crc || h->tag == nop) {
+					if (h->scn > 100 && h->scn - next_scn != 1) {
+						say_warn("GAP %i rows:%i", (int)(h->scn - next_scn),
+							 request[requests_processed].row_count);
+						broken[requests_processed] = true;
+					}
 					next_scn = h->scn;
+				}
 
 				request[requests_processed].run_crc = crc;
 				request[requests_processed].scn = next_scn;
@@ -431,12 +444,17 @@ wal_disk_writer(int fd, void *state)
 				start_lsn += reply.row_count;
 				reply.lsn = start_lsn;
 				reply.scn = request[i].scn ?: reply.lsn;
+
+				if (broken[i]) {
+					reply.lsn = -1;
+					reply.scn = -1;
+				}
 			}
 
 			tbuf_append(wbuf, &reply, sizeof(reply));
 
-			say_debug("sending LSN:%"PRIi64" SCN:%"PRIi64" rows:%i run_crc:0x%x to parent",
-				  reply.lsn, reply.scn, reply.row_count, reply.run_crc);
+			say_debug("%s: wrote rows:%i  maxLSN:%"PRIi64,
+				  __func__, reply.row_count, reply.lsn);
 		}
 
 
@@ -510,6 +528,13 @@ snapshot_estimate
 }
 
 - (int)
+snapshot_write_header_rows:(XLog *)snap
+{
+	(void)snap;
+	return 0;
+}
+
+- (int)
 snapshot_write_rows:(XLog *)snap
 {
 	(void)snap;
@@ -552,6 +577,9 @@ snapshot_write
 		say_error("unable write initial row");
 		return -1;
 	}
+
+	if ([self snapshot_write_header_rows:snap] < 0) /* FIXME: this is ugly */
+		return -1;
 
 	if ([self snapshot_write_rows:snap] < 0)
 		return -1;

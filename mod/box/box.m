@@ -54,7 +54,7 @@
 #include <arpa/inet.h>
 #include <sysexits.h>
 
-static struct service *box_primary, *box_secondary;
+static struct service box_primary, box_secondary;
 
 static int stat_base;
 char * const ops[] = ENUM_STR_INITIALIZER(MESSAGES);
@@ -701,6 +701,7 @@ txn_cleanup(struct box_txn *txn)
 }
 
 
+#ifndef PAXOS
 static void
 update_crc(struct tnt_object *obj, u32 *crc)
 {
@@ -716,6 +717,7 @@ update_crc(struct tnt_object *obj, u32 *crc)
 #endif
 	*crc = new_crc;
 }
+#endif
 
 void
 txn_commit(struct box_txn *txn)
@@ -725,10 +727,12 @@ txn_commit(struct box_txn *txn)
 	else
 		commit_replace(txn);
 
+#ifndef PAXOS
 	if (unlikely(!txn->snap)) {
 		update_crc(txn->old_obj, &recovery->run_crc_mod);
 		update_crc(txn->obj, &recovery->run_crc_mod);
 	}
+#endif
 
 	stat_collect(stat_base, txn->op, 1);
 
@@ -834,7 +838,7 @@ box_prepare_update(struct box_txn *txn, struct tbuf *data)
 }
 
 static void
-box_lua_cb(struct conn *c, struct iproto *request)
+box_lua_cb(struct iproto *request, struct conn *c)
 {
 	struct box_txn txn = { .op = request->msg_code };
 	u32 msg_code = request->msg_code;
@@ -844,7 +848,7 @@ box_lua_cb(struct conn *c, struct iproto *request)
 	@try {
 		ev_tstamp start = ev_now(), stop;
 
-		if (unlikely(c->service != box_primary))
+		if (unlikely(c->service != &box_primary))
 			iproto_raise(ERR_CODE_NONMASTER, "updates forbiden on secondary port");
 
 		box_dispach_lua(c, request, &request_data);
@@ -864,8 +868,8 @@ box_lua_cb(struct conn *c, struct iproto *request)
 }
 
 static void
-box_paxos_cb(struct conn *c __attribute__((unused)),
-	     struct iproto *request __attribute__((unused)))
+box_paxos_cb(struct iproto *request __attribute__((unused)),
+	     struct conn *c __attribute__((unused)))
 {
 	if ([recovery respondsTo:@selector(leader_redirect_raise)])
 		[recovery perform:@selector(leader_redirect_raise)];
@@ -875,7 +879,7 @@ box_paxos_cb(struct conn *c __attribute__((unused)),
 }
 
 static void
-box_cb(struct conn *c, struct iproto *request)
+box_cb(struct iproto *request, struct conn *c)
 {
 	struct box_txn txn = { .op = request->msg_code };
 	struct tbuf request_data = TBUF(request->data, request->data_len, fiber->pool);
@@ -884,7 +888,7 @@ box_cb(struct conn *c, struct iproto *request)
 	@try {
 		ev_tstamp start = ev_now(), stop;
 
-		if (unlikely(c->service != box_primary))
+		if (unlikely(c->service != &box_primary))
 			iproto_raise(ERR_CODE_NONMASTER, "updates forbiden on secondary port");
 
 		box_prepare_update(&txn, &request_data);
@@ -902,10 +906,12 @@ box_cb(struct conn *c, struct iproto *request)
 			say_warn("too long %s: %.3f sec", ops[txn.op], stop - start);
 	}
 	@catch (Error *e) {
-		say_warn("aborting txn, [%s reason:\"%s\"] at %s:%d peer:%s",
-			 [[e class] name], e->reason, e->file, e->line, conn_peer_name(c));
-		if (e->backtrace)
-			say_debug("backtrace:\n%s", e->backtrace);
+		if (strcmp(e->file, "src/paxos.m") != 0) {
+			say_warn("aborting txn, [%s reason:\"%s\"] at %s:%d peer:%s",
+				 [[e class] name], e->reason, e->file, e->line, conn_peer_name(c));
+			if (e->backtrace)
+				say_debug("backtrace:\n%s", e->backtrace);
+		}
 		txn_abort(&txn);
 		@throw;
 	}
@@ -919,7 +925,7 @@ box_cb(struct conn *c, struct iproto *request)
 }
 
 static void
-box_select_cb(struct netmsg **m, struct iproto *request)
+box_select_cb(struct netmsg **m, struct iproto *request, struct conn *c __attribute__((unused)))
 {
 	struct box_txn txn = { .op = 0, .m = m, .iproto = iproto_reply(m, request) };
 	struct tbuf data = TBUF(request->data, request->data_len, fiber->pool);
@@ -1238,16 +1244,16 @@ initialize_service()
 	if (cfg.memcached != 0) {
 		memcached_init();
 	} else {
-		box_primary = tcp_service(cfg.primary_port, box_bound_to_primary, iproto_wakeup_workers);
-		box_service_register(box_primary);
+		tcp_service(&box_primary, cfg.primary_port, box_bound_to_primary, iproto_wakeup_workers);
+		box_service_register(&box_primary);
 
 		for (int i = 0; i < cfg.wal_writer_inbox_size; i++)
-			fiber_create("box_worker", iproto_worker, box_primary);
+			fiber_create("box_worker", iproto_worker, &box_primary);
 
 		if (cfg.secondary_port > 0) {
-			box_secondary = tcp_service(cfg.secondary_port, NULL, wakeup_workers);
-			box_service_register(box_secondary);
-			fiber_create("box_secondary_worker", iproto_worker, box_secondary);
+			tcp_service(&box_secondary, cfg.secondary_port, NULL, wakeup_workers);
+			box_service_register(&box_secondary);
+			fiber_create("box_secondary_worker", iproto_worker, &box_secondary);
 		}
 		say_info("(silver)box initialized (%i workers)", cfg.wal_writer_inbox_size);
 	}
@@ -1315,7 +1321,7 @@ apply_row:(const struct row_v12 *)r
 - (void)
 wal_final_row
 {
-	if (box_primary == NULL) {
+	if (box_primary.name == NULL) {
 		build_secondary_indexes();
 		initialize_service();
 		title("%s", [recovery status]);
@@ -1339,7 +1345,9 @@ snapshot_fold
 	struct box_tuple *tuple;
 
 	u32 crc = 0;
-
+#ifdef FOLD_DEBUG
+	int count = 0;
+#endif
 	for (int n = 0; n < object_space_count; n++) {
 		if (!object_space_registry[n].enabled)
 			continue;
@@ -1354,7 +1362,11 @@ snapshot_fold
 
 		while ((obj = [pk iterator_next])) {
 			tuple = box_tuple(obj);
-
+#ifdef FOLD_DEBUG
+			struct tbuf *b = tbuf_alloc(fiber->pool);
+			tuple_print(b, tuple->cardinality, tuple->data);
+			say_info("row %i: %.*s", count++, tbuf_len(b), (char *)b->ptr);
+#endif
 			crc = crc32c(crc, (unsigned char *)&tuple->bsize,
 				     tuple->bsize + sizeof(tuple->bsize) +
 				     sizeof(tuple->cardinality));
@@ -1543,7 +1555,7 @@ apply_row:(struct row_v12 *)r
 	struct tbuf *out = tbuf_alloc(fiber->pool);
 	print_gen_row(out, r, print_row);
 	puts(out->ptr);
-	if (r->scn == stop_scn && r->tag == wal_tag)
+	if (r->scn >= stop_scn && r->tag == wal_tag)
 		exit(0);
 }
 
@@ -1565,6 +1577,7 @@ cat_scn(i64 stop_scn)
 				   stop_scn:stop_scn] recover_start];
 	return 0;
 }
+
 static int
 cat(const char *filename)
 {
@@ -1613,10 +1626,10 @@ info(struct tbuf *out)
 				    index->n, [index slots], [index bytes]);
 	}
 
-	if (box_primary != NULL)
-		service_info(out, box_primary);
-	if (box_secondary != NULL)
-		service_info(out, box_secondary);
+	if (box_primary.name != NULL)
+		service_info(out, &box_primary);
+	if (box_secondary.name != NULL)
+		service_info(out, &box_secondary);
 }
 
 
