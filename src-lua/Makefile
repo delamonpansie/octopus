@@ -6,6 +6,6 @@ obj += src-lua/registry.o
 
 dist-clean += src-lua/registry.m
 
-src-lua/registry.m: $(src-lua-c) scripts/stringify
+src-lua/registry.m: $(src-lua) scripts/stringify
 	@mkdir -p $(dir $@)
 	$(Q)sh $(srcdir)/scripts/gen-lua-registry.sh $(src-lua) > $@
