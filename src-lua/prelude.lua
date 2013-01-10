@@ -55,7 +55,7 @@ function reloadfile(filename)
                         fiber.sleep(1)
                 end
         end
-        pcall(require, filename)
+        -- do all loading from fiber, since loaded code may call fiber.sleep()
         return fiber.create(reload_loop)
 end
 print("Lua prelude initialized.")
