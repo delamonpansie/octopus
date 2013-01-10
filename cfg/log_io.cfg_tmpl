@@ -15,7 +15,7 @@ rows_per_wal=500000, ro
 # fsync WAL delay, only issue fsync if last fsync was wal_fsync_delay seconds ago
 # -1 : no fsync
 # 0 : fsycn every record
-# WARNING: actually, several last requsts may stall for much longer
+# WARNING: actually, several last requests may stall for much longer
 wal_fsync_delay=0.0, ro
 
 # how often run_crc is submited to wal (if running as master)
