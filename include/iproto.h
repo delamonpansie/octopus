@@ -34,7 +34,6 @@
 #include <iproto_def.h>
 
 extern const uint32_t msg_ping;
-
 extern const uint32_t msg_replica;
 
 static inline struct iproto *iproto(const struct tbuf *t)
