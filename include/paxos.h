@@ -42,6 +42,7 @@ RB_HEAD(ptree, proposal);
 	i64 app_scn, max_scn;
 	bool wal_dumper_busy;
 	struct ptree proposals;
+	struct service service;
 }
 
 - (i64) next_scn;

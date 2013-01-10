@@ -96,7 +96,7 @@ paxos_peer(PaxosRecovery *r, int id)
 static u16 paxos_default_version;
 
 struct msg_leader {
-	struct iproto msg;
+	struct iproto header;
 	u16 peer_id;
 	u16 version;
 	i16 leader_id;
@@ -164,8 +164,6 @@ static const ev_tstamp leader_lease_interval = 10;
 static const ev_tstamp paxos_default_timeout = 0.2;
 
 struct service *mesh_service;
-
-static struct service paxos_service;
 
 extern void title(const char *fmt, ...); /* FIXME: hack */
 
@@ -281,7 +279,7 @@ propose_leadership(va_list ap)
 {
 	PaxosRecovery *r = va_arg(ap, PaxosRecovery *);
 
-	struct msg_leader leader_propose = { .msg = { .data_len = sizeof(leader_propose) - sizeof(struct iproto),
+	struct msg_leader leader_propose = { .header = { .data_len = sizeof(leader_propose) - sizeof(struct iproto),
 						      .sync = 0,
 						      .msg_code = LEADER_PROPOSE },
 					     .peer_id = self_id,
@@ -309,7 +307,7 @@ propose_leadership(va_list ap)
 
 		leader_propose.expire = ev_now() + leader_lease_interval;
 		broadcast(&r->remotes, req_make("leader_propose", 2, 1.0,
-						&leader_propose.msg, NULL, 0));
+						&leader_propose.header, NULL, 0));
 		struct iproto_req *req = yield();
 
 		int votes = 0;
@@ -342,13 +340,53 @@ propose_leadership(va_list ap)
 	}
 }
 
+
+#ifdef RANDOM_DROP
+#define PAXOS_MSG_DROP \
+	double drop = rand() / (double)RAND_MAX;			\
+	static double drop_p;						\
+	if (!drop_p) {							\
+		char *drop_pstr = getenv("RANDOM_DROP");		\
+		drop_p = drop_pstr ? atof(drop_pstr) : 0.01;		\
+	}								\
+	if (drop < drop_p) {						\
+		say_debug("%s: op:0x%02x/%s sync:%i DROP", __func__,	\
+			  msg->msg_code, paxos_msg_code_strs[msg->msg_code], msg->sync); \
+		return;							\
+	}
+#else
+#define PAXOS_MSG_DROP
+#endif
+
+#define PAXOS_MSG_CHECK(msg, c, peer)	({				\
+	say_debug("%s: peer:%i/%s op:0x%02x/%s sync:%i", __func__,\
+		  (peer)->id, (peer)->name, (msg)->header.msg_code,	\
+		  paxos_msg_code[(msg)->header.msg_code], (msg)->header.sync);	\
+	if ((msg)->version != paxos_default_version) {			\
+		say_warn("%s: bad version %i, closing connect from peer %i", \
+			 __func__, (msg)->version, (msg)->peer_id);	\
+		conn_close(c);						\
+		return;							\
+	}								\
+	if (!peer) {							\
+		say_warn("%s: closing connect from unknown peer %i", __func__, (msg)->peer_id); \
+		conn_close(c);						\
+		return;							\
+	}								\
+	PAXOS_MSG_DROP							\
+})
+
+
 static void
-leader_reply(struct PaxosRecovery *pr, struct paxos_peer *peer, struct conn *c, struct iproto *msg)
+leader(struct iproto *msg, struct conn *c)
 {
+	struct PaxosRecovery *r = (void *)c->service - offsetof(PaxosRecovery, service);
 	struct msg_leader *pmsg = (struct msg_leader *)msg;
+	struct paxos_peer *peer = paxos_peer(r, pmsg->peer_id);
 	const char *ret = "accept";
 	const ev_tstamp to_expire = leadership_expire - ev_now();
-	(void)peer;
+
+	PAXOS_MSG_CHECK(pmsg, c, peer);
 
 	say_debug("|   LEADER_PROPOSE to_expire:%.2f leader/propos:%i/%i",
 		  to_expire, leader_id, pmsg->leader_id);
@@ -364,7 +402,7 @@ leader_reply(struct PaxosRecovery *pr, struct paxos_peer *peer, struct conn *c, 
 		if (pmsg->leader_id != self_id) {
 			leader_id = pmsg->leader_id;
 			leadership_expire = pmsg->expire;
-			notify_leadership_change(pr);
+			notify_leadership_change(r);
 		}
 	} else {
 		ret = "nack";
@@ -628,9 +666,14 @@ loop:
 
 
 static void
-learner(PaxosRecovery *r, struct paxos_peer *peer, struct iproto *msg)
+learner(struct iproto *msg, struct conn *c)
 {
+	struct PaxosRecovery *r = (void *)c->service - offsetof(PaxosRecovery, service);
 	struct msg_paxos *mp = (struct msg_paxos *)msg;
+	struct paxos_peer *peer = paxos_peer(r, mp->peer_id);
+
+	PAXOS_MSG_CHECK(mp, c, peer);
+
 	if (mp->peer_id == self_id)
 		return;
 	if (mp->scn <= r->app_scn)
@@ -670,10 +713,14 @@ learner(PaxosRecovery *r, struct paxos_peer *peer, struct iproto *msg)
 }
 
 static void
-acceptor(PaxosRecovery *r, struct paxos_peer *peer, struct conn *c, struct iproto *msg)
+acceptor(struct iproto *msg, struct conn *c)
 {
+	struct PaxosRecovery *r = (void *)c->service - offsetof(PaxosRecovery, service);
 	struct msg_paxos *mp = (struct msg_paxos *)msg;
+	struct paxos_peer *peer = paxos_peer(r, mp->peer_id);
 	struct proposal *p;
+
+	PAXOS_MSG_CHECK(mp, c, peer);
 
 	say_debug("%s: SCN:%"PRIi64, __func__, mp->scn);
 
@@ -868,65 +915,7 @@ query(struct PaxosRecovery *r, struct iproto_peer *p, struct iproto_msg *msg)
 }
 #endif
 
-static void
-recv_msg(struct conn *c, struct iproto *msg, void *arg)
-{
-	PaxosRecovery *pr = arg;
-	struct msg_paxos *h = (struct msg_paxos *)msg;
-	struct paxos_peer *peer = paxos_peer(pr, h->peer_id);
 
-
-#ifdef RANDOM_DROP
-	double drop = rand() / (double)RAND_MAX;
-	static double drop_p;
-
-	if (!drop_p) {
-		char *drop_pstr = getenv("RANDOM_DROP");
-		drop_p = drop_pstr ? atof(drop_pstr) : 0.01;
-	}
-
-	if (drop < drop_p) {
-		say_debug("%s: op:0x%02x/%s sync:%i DROP", __func__,
-			  msg->msg_code, paxos_msg_code_strs[msg->msg_code], msg->sync);
-		return;
-	}
-#endif
-
-	say_debug("%s: peer:%i/%s op:0x%02x/%s sync:%i", __func__,
-		  peer->id, peer->name, msg->msg_code, paxos_msg_code[msg->msg_code], msg->sync);
-
-	if (h->version != paxos_default_version) {
-		say_warn("%s: bad version %i, closing connect from peer %i",
-			 __func__, h->version, h->peer_id);
-		conn_close(c);
-	}
-
-	if (!peer) {
-		say_warn("%s: closing connect from unknown peer %i", __func__, h->peer_id);
-		conn_close(c);
-		return;
-	}
-
-	switch (msg->msg_code) {
-	case LEADER_PROPOSE:
-		leader_reply(pr, peer, c, msg);
-		break;
-	case PREPARE:
-	case ACCEPT:
-		acceptor(pr, peer, c, msg);
-		break;
-	case DECIDE:
-		learner(pr, peer, msg);
-		break;
-#if 0
-	case QUERY:
-		query(p, pr, msg);
-		break;
-#endif
-	default:
-		say_warn("unable to reply unknown op:0x%02x peer:%s", msg->msg_code, conn_peer_name(c));
-	}
-}
 
 
 static i64 follow_scn;
@@ -1195,8 +1184,14 @@ snap_io_rate_limit:(int)snap_io_rate_limit_
 
 	short accept_port;
 	accept_port = ntohs(paxos_peer(self, self_id)->iproto.addr.sin_port);
-	tcp_service(&paxos_service, accept_port, NULL, iproto_wakeup_workers);
-	fiber_create("paxos/worker", iproto_interact, &paxos_service, recv_msg, self);
+	tcp_service(&service, accept_port, NULL, iproto_wakeup_workers);
+	service_iproto(&service);
+	service_register_iproto_block(&service, LEADER_PROPOSE, leader, 0);
+	service_register_iproto_block(&service, PREPARE, acceptor, 0);
+	service_register_iproto_block(&service, ACCEPT, acceptor, 0);
+	service_register_iproto_block(&service, DECIDE, learner, 0);
+	for (int i = 0; i < 3; i++)
+		fiber_create("paxos/worker", iproto_worker, &service);
 
 	fiber_create("paxos/rendevouz", iproto_rendevouz, NULL, &remotes, reply_reader, output_flusher);
 	fiber_create("paxos/elect", propose_leadership, self);

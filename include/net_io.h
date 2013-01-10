@@ -124,6 +124,7 @@ struct service {
 	struct iproto_handler ih[256];
 };
 
+
 struct netmsg *netmsg_tail(struct netmsg_head *h);
 struct netmsg *netmsg_concat(struct netmsg_head *dst, struct netmsg_head *src);
 void netmsg_release(struct netmsg *m);

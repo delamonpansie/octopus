@@ -52,8 +52,6 @@ struct netmsg;
 struct iproto_retcode * iproto_reply(struct netmsg **m, const struct iproto *request);
 void iproto_error(struct netmsg **m, const struct iproto *request, u32 ret_code, const char *err);
 
-typedef void (iproto_callback)(struct conn *c, struct iproto *request, void *arg);
-void iproto_interact(va_list ap);
 void iproto_worker(va_list ap);
 
 struct iproto_peer {

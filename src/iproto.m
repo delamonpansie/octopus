@@ -265,65 +265,6 @@ iproto_wakeup_workers(ev_prepare *ev)
 }
 
 
-void
-iproto_interact(va_list ap)
-{
-	struct service *service = va_arg(ap, struct service *);
-	iproto_callback *callback = va_arg(ap, iproto_callback *);
-	void *arg = va_arg(ap, void *);
-	struct conn *c;
-
-next:
-	c = TAILQ_FIRST(&service->processing);
-	if (unlikely(c == NULL)) {
-		SLIST_INSERT_HEAD(&service->workers, fiber, worker_link);
-		yield();
-		goto next;
-	}
-
-	TAILQ_REMOVE(&service->processing, c, processing_link);
-	bool has_req = tbuf_len(c->rbuf) >= sizeof(struct iproto) &&
-		       tbuf_len(c->rbuf) >= sizeof(struct iproto) + iproto(c->rbuf)->data_len;
-
-	if (!has_req) {
-		c->state = READING;
-		if (c->out_messages.bytes < cfg.output_low_watermark)
-			ev_io_start(&c->in);
-		goto next;
-	} else {
-		TAILQ_INSERT_TAIL(&service->processing, c, processing_link);
-	}
-
-	struct iproto *request = iproto(c->rbuf);
-	tbuf_ltrim(c->rbuf, sizeof(struct iproto) + request->data_len);
-
-	if (unlikely(request->msg_code == msg_ping)) {
-		struct netmsg *m = netmsg_tail(&c->out_messages);
-		net_add_iov_dup(&m, request, sizeof(struct iproto));
-	} else {
-		c->ref++;
-		callback(c, request, arg);
-		c->ref--;
-		if (c->state == CLOSED) {
-			/* connection is already closed by other fiber */
-			conn_close(c);
-			goto next;
-		}
-	}
-
-	if (c->out_messages.bytes > 0) {
-		ev_io_start(&c->out);
-		if (c->out_messages.bytes > cfg.output_high_watermark)
-			ev_io_stop(&c->in);
-	}
-
-	if (palloc_allocated(service->pool) > 64 * 1024 * 1024) /* FIXME: do it after change of that size */
-		palloc_gc(service->pool);
-
-	fiber_gc();
-	goto next;
-}
-
 struct iproto_retcode *
 iproto_reply(struct netmsg **m, const struct iproto *request)
 {
