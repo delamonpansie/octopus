@@ -434,6 +434,7 @@ worker(void *arg) {
 	if (messageType != OCTO_PING)
 		flags |= LIBIPROTO_OPT_HAS_4BYTE_ERRCODE;
 
+reconnect:
 	while((errcode = li_connect(conn, server, port, flags)) == ERR_CODE_CONNECT_IN_PROGRESS)
 		octopoll(li_get_fd(conn), POLLOUT);
 
@@ -501,6 +502,20 @@ worker(void *arg) {
 						local.nFound += *(u_int32_t*)d;
 				}
 				local.nProceed++;
+
+				if (errcode == ERR_CODE_REDIRECT) {
+					size_t size;
+					char *hd = li_req_response_data(request, &size);
+					char *tl = memchr(hd, ':', size);
+					*tl++ = 0;
+
+					free(server);
+					server = strdup(hd);
+					port = atoi(tl);
+					while (li_get_ready_reqs(conn)); /* flush */
+					li_close(conn);
+					goto reconnect;
+				}
 
 				if (ignoreFatal == false && ERR_CODE_IS_FATAL(errcode)) {
 					fprintf(stderr,"octopus returns fatal error: %s (%08x)\n",
