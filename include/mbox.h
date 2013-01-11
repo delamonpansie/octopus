@@ -72,7 +72,7 @@ mbox_get(struct mbox *mbox) {
 
 	if (mbox->msg_list_len > 0) {
 		struct mbox_msg *mbox_msg = STAILQ_FIRST(&mbox->msg_list);
-			
+
 		assert(mbox_msg != NULL);
 
 		STAILQ_REMOVE_HEAD(&mbox->msg_list, msglink);
@@ -90,7 +90,7 @@ static inline void
 mbox_wait(struct mbox *mbox) {
 	struct mbox_consumer	mbox_consumer = { .fiber = fiber };
 
-	TAILQ_INSERT_TAIL(&mbox->consumer_list, &mbox_consumer,  conslink); 
+	TAILQ_INSERT_TAIL(&mbox->consumer_list, &mbox_consumer,  conslink);
 	while(mbox->msg_list_len == 0) {
 		void *r = yield();
 
