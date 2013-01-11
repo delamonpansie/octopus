@@ -333,12 +333,13 @@ restart:
 ssize_t
 conn_flush(struct conn *c)
 {
-	assert(c->out.cb == (void *)fiber);
-	ev_io_start(&c->out);
+	ev_io io = { .coro = 1 };
+	ev_io_init(&io, (void *)fiber, c->fd, EV_WRITE);
+	ev_io_start(&io);
 	do {
 		yield();
 	} while (conn_write_netmsg(c) > 0);
-	ev_io_stop(&c->out);
+	ev_io_stop(&io);
 
 	return c->out_messages.bytes == 0 ? 0 : -1;
 }
@@ -426,10 +427,11 @@ ssize_t
 conn_recv(struct conn *c)
 {
 	ssize_t r;
-	assert(c->in.cb == (void *)fiber);
-	tbuf_ensure(c->rbuf, 16 * 1024);
+	ev_io io = { .coro = 1 };
+	ev_io_init(&io, (void *)fiber, c->fd, EV_READ);
+	ev_io_start(&io);
 
-	ev_io_start(&c->in);
+	tbuf_ensure(c->rbuf, 16 * 1024);
 again:
 	yield();
 	r = tbuf_recv(c->rbuf, c->fd);
@@ -438,7 +440,7 @@ again:
 			goto again;
 		say_syserror("%s", __func__);
 	}
-	ev_io_stop(&c->in);
+	ev_io_stop(&io);
 	return r;
 }
 
@@ -514,9 +516,10 @@ ssize_t
 conn_read(struct conn *c, void *buf, size_t count)
 {
 	ssize_t r, done = 0;
-	assert(c->in.cb == (void *)fiber);
+	ev_io io = { .coro = 1 };
+	ev_io_init(&io, (void *)fiber, c->fd, EV_READ);
+	ev_io_start(&io);
 
-	ev_io_start(&c->in);
 	while (count > done) {
 		yield();
 		r = read(c->fd, buf + done, count - done);
@@ -535,8 +538,8 @@ conn_read(struct conn *c, void *buf, size_t count)
 		}
 		done += r;
 	}
+	ev_io_stop(&io);
 
-	ev_io_stop(&c->out);
 	return done;
 }
 
@@ -545,8 +548,9 @@ conn_write(struct conn *c, const void *buf, size_t count)
 {
 	int r;
 	unsigned int done = 0;
-	assert(c->out.cb == (void *)fiber);
-	ev_io_start(&c->out);
+	ev_io io = { .coro = 1 };
+	ev_io_init(&io, (void *)fiber, c->fd, EV_WRITE);
+	ev_io_start(&io);
 
 	do {
 		yield();
@@ -558,7 +562,7 @@ conn_write(struct conn *c, const void *buf, size_t count)
 		}
 		done += r;
 	} while (count != done);
-	ev_io_stop(&c->out);
+	ev_io_stop(&io);
 
 	return done;
 }
