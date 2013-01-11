@@ -428,8 +428,8 @@ worker(void *arg) {
 	BenchRes			local;
 	bool				timeLimitExceed = false;
 
-	blrand_init(&rndseed, idWorker, nReset); 
-	blrand_init(&rndseed1, idWorker + 128, 0xffffffff); 
+	blrand_init(&rndseed, idWorker, nReset);
+	blrand_init(&rndseed1, idWorker + 128, 0xffffffff);
 
 	if (messageType != OCTO_PING)
 		flags |= LIBIPROTO_OPT_HAS_4BYTE_ERRCODE;
@@ -490,8 +490,8 @@ worker(void *arg) {
 
 				d = li_req_response_data(request, &s);
 
-				local.mbIn += s + 
-					((messageType == OCTO_PING) ? 
+				local.mbIn += s +
+					((messageType == OCTO_PING) ?
 						sizeof(struct iproto) : sizeof(struct iproto_retcode));
 
 				if (errcode == ERR_CODE_OK || errcode == ERR_CODE_REQUEST_READY) {

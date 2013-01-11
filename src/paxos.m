@@ -948,9 +948,8 @@ loop:
 
 			i64 initial_scn = follow_scn <= 1024 ? 1 : follow_scn - 1024,
 				max_scn = r->max_scn;
-			while ([puller handshake:&leader->feeder_addr scn:initial_scn] <= 0) {
+			while ([puller handshake:&leader->feeder_addr scn:initial_scn] <= 0)
 				fiber_sleep(0.1);
-			}
 
 			for (;;) {
 				const struct row_v12 *row;

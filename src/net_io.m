@@ -715,7 +715,7 @@ tcp_connect(struct sockaddr_in *dst, struct sockaddr_in *src, ev_tstamp timeout)
 		}
 	}
 
-	return fd;	
+	return fd;
 }
 
 struct sockaddr_in *
