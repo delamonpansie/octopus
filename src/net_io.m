@@ -661,33 +661,33 @@ tcp_async_connect(struct conn *c, ev_watcher *w /* result of yield() */,
 		ev_io_start(&c->out);
 
 		return tac_wait;
-	} else {
-		int		optval = 1;
-		socklen_t 	optlen = sizeof(optval);
-
-		if (w == (ev_watcher *)&c->timer) {
-			ev_timer_stop(&c->timer);
-			ev_io_stop(&c->out);
-			goto error;
-		}
-
-		if (w != (ev_watcher *)&c->out)
-			return tac_alien_event;
-
-		ev_timer_stop(&c->timer);
-		ev_io_stop(&c->out);
-
-		if (getsockopt(c->fd, SOL_SOCKET, SO_ERROR, &optval, &optlen) < 0)
-			goto error;
-
-		if (optval != 0) {
-			errno = optval;
-			goto error;
-		}
 	}
 
+	int		optval = 1;
+	socklen_t 	optlen = sizeof(optval);
+
+	if (w == (ev_watcher *)&c->timer) {
+		ev_timer_stop(&c->timer);
+		ev_io_stop(&c->out);
+		goto error;
+	}
+
+	if (w != (ev_watcher *)&c->out)
+		return tac_alien_event;
+
+	ev_timer_stop(&c->timer);
+	ev_io_stop(&c->out);
+
+	if (getsockopt(c->fd, SOL_SOCKET, SO_ERROR, &optval, &optlen) < 0)
+		goto error;
+
+	if (optval != 0) {
+		errno = optval;
+		goto error;
+	}
 	return tac_ok;
-      error:
+
+error:
 	close(c->fd);
 	c->fd = -1;
 
