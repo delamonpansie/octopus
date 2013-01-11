@@ -633,14 +633,14 @@ recover_follow_remote:(struct sockaddr_in *)addr exit_on_eof:(int)exit_on_eof
 		@try {
 			const char *err;
 			bool warning_said = false;
-			i64 want_scn = scn, remote_scn = 0;
+			i64 want_scn = scn;
 			puller = [[XLogPuller alloc] init_addr:addr];
 			if (want_scn > 0) {
 				want_scn -= 1024;
 				if (want_scn < 1)
 					want_scn = 1;
 			}
-			while ((remote_scn = [puller handshake:want_scn err:&err]) < 0) {
+			while ([puller handshake:want_scn err:&err] <= 0) {
 				if (exit_on_eof)
 					return;
 
