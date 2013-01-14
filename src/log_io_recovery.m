@@ -505,10 +505,13 @@ recover_finalize
 
 
 static void
-pull_snapshot(Recovery *r, id<XLogPuller> puller)
+pull_snapshot(Recovery *r, id<XLogPullerAsync> puller)
 {
 	for (;;) {
 		const struct row_v12 *row;
+		if ([puller recv] <= 0)
+			raise("unexpected eof");
+
 		while ((row = [puller fetch_row])) {
 			switch (row->tag) {
 			case snap_initial_tag:
@@ -529,7 +532,7 @@ pull_snapshot(Recovery *r, id<XLogPuller> puller)
 }
 
 static void
-pull_wal(Recovery *r, id<XLogPuller> puller, int exit_on_eof)
+pull_wal(Recovery *r, id<XLogPullerAsync> puller, int exit_on_eof)
 {
 	struct row_v12 *row, *special_row = NULL, *rows[WAL_PACK_MAX];
 	struct wal_pack *pack;
@@ -538,6 +541,9 @@ pull_wal(Recovery *r, id<XLogPuller> puller, int exit_on_eof)
 
 	for (;;) {
 		int pack_rows = 0;
+		if ([puller recv] <= 0)
+			raise("unexpected eof");
+
 		while ((row = [puller fetch_row])) {
 			if (row->tag == wal_final_tag) {
 				special_row = row;

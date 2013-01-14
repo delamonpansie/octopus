@@ -72,6 +72,11 @@ struct tbuf;
 - (struct palloc_pool *) pool;
 @end
 
+@protocol XLogPullerAsync <XLogPuller>
+- (ssize_t) recv;
+- (void) abort_recv; /* abort running recv asynchronously */
+@end
+
 @class XLog;
 @class XLogWriter;
 @class Recovery;
@@ -207,18 +212,22 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (int) snapshot_fold;
 @end
 
-@interface XLogPuller: Object <XLogPuller> {
+@interface XLogPuller: Object <XLogPuller, XLogPullerAsync> {
 	struct conn c;
 	struct sockaddr_in addr;
 	u32 version;
-	size_t pack;
+	bool abort;
+	struct fiber *in_recv;
 }
+
+- (ssize_t) recv;
+- (void) abort_recv;
 
 - (XLogPuller *) init;
 - (XLogPuller *) init_addr:(struct sockaddr_in *)addr_;
-- (i64) handshake:(i64)scn err:(const char **)err_ptr;
-- (i64) handshake:(struct sockaddr_in *)addr_ scn:(i64)scn;
-- (i64) handshake:(struct sockaddr_in *)addr_ scn:(i64)scn err:(const char **)err_ptr;
+- (int) handshake:(i64)scn err:(const char **)err_ptr;
+- (int) handshake:(struct sockaddr_in *)addr_ scn:(i64)scn;
+- (int) handshake:(struct sockaddr_in *)addr_ scn:(i64)scn err:(const char **)err_ptr;
 @end
 
 @interface Recovery: XLogWriter {

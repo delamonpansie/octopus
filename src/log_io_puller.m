@@ -59,25 +59,27 @@ init_addr:(struct sockaddr_in *)addr_
 	return [self init];
 }
 
-- (i64)
+- (int)
 handshake:(struct sockaddr_in *)addr_ scn:(i64)scn err:(const char **)err_ptr
 {
 	memcpy(&addr, addr_, sizeof(addr));
 	return [self handshake:scn err:err_ptr];
 }
 
-- (i64)
+- (int)
 handshake:(struct sockaddr_in *)addr_ scn:(i64)scn
 {
 	return [self handshake:addr_ scn:scn err:NULL];
 }
 
-- (i64)
+- (int)
 handshake:(i64)scn err:(const char **)err_ptr
 {
 	const char *err;
 	struct tbuf *rep;
 	int fd;
+
+	abort = 0; /* must be set before connect */
 
 	assert(scn >= 0);
 	say_debug("%s: connect", __func__);
@@ -174,7 +176,7 @@ handshake:(i64)scn err:(const char **)err_ptr
 
 	say_info("succefully connected to feeder/%s, version:%i", sintoa(&addr), version);
 	say_info("starting remote recovery from scn:%" PRIi64, scn);
-	return scn;
+	return 1;
 err:
 	if (err_ptr)
 		*err_ptr = err;
@@ -199,6 +201,36 @@ contains_full_row_v11(const struct tbuf *b)
 		tbuf_len(b) >= sizeof(struct _row_v11) + _row_v11(b)->len;
 }
 
+- (ssize_t)
+recv
+{
+	in_recv = fiber;
+	if (abort) {
+		conn_close(&c);
+		return -1;
+	}
+
+	ssize_t r = conn_recv(&c);
+
+	in_recv = NULL;
+	if (abort) {
+		conn_close(&c);
+		return -1;
+
+	}
+
+	return r;
+}
+
+- (void)
+abort_recv
+{
+	abort = 1;
+	/* it's safe to wake conn_recv() with NULL */
+	if (in_recv)
+		fiber_wake(in_recv, NULL);
+}
+
 - (struct row_v12 *)
 fetch_row
 {
@@ -207,14 +239,8 @@ fetch_row
 
 	switch (version) {
 	case 12:
-		while (!contains_full_row_v12(c.rbuf)) {
-			if (pack) {
-				pack = 0;
-				return NULL;
-			}
-			if (conn_recv(&c) <= 0)
-				raise("eof");
-		}
+		if (!contains_full_row_v12(c.rbuf))
+			return NULL;
 
 		row = tbuf_split(c.rbuf, sizeof(struct row_v12) + row_v12(c.rbuf)->len);
 		row->pool = c.rbuf->pool; /* FIXME: this is cludge */
@@ -227,14 +253,8 @@ fetch_row
 			row_v12(row)->scn = row_v12(row)->lsn;
 		break;
 	case 11:
-		while (!contains_full_row_v11(c.rbuf)) {
-			if (pack) {
-				pack = 0;
+		if (!contains_full_row_v11(c.rbuf))
 				return NULL;
-			}
-			if (conn_recv(&c) <= 0)
-				raise("eof");
-		}
 
 		row = tbuf_split(c.rbuf, sizeof(struct _row_v11) + _row_v11(c.rbuf)->len);
 		row->pool = c.rbuf->pool;
@@ -252,7 +272,6 @@ fetch_row
 	say_debug("%s: scn:%"PRIi64 " tag:%s", __func__,
 		  row_v12(row)->scn, xlog_tag_to_a(row_v12(row)->tag));
 
-	pack++;
 	return row->ptr;
 }
 

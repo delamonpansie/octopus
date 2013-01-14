@@ -423,6 +423,7 @@ conn_gc(struct palloc_pool *pool, void *ptr)
 	c->pool = c->out_messages.pool = pool;
 }
 
+/* as recv() may return 0 */
 ssize_t
 conn_recv(struct conn *c)
 {
