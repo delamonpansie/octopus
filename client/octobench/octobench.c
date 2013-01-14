@@ -441,8 +441,7 @@ worker(void *arg) {
 reconnect:
 	if (wantReconnect)
 		li_close(conn);
-if (wantReconnect)
-fprintf(stderr, "reconnect %s:%i\n", localServer, port);
+
 	while((errcode = li_connect(conn, localServer, port, flags)) == ERR_CODE_CONNECT_IN_PROGRESS)
 		octopoll(li_get_fd(conn), POLLOUT);
 
