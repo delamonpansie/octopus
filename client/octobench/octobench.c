@@ -199,6 +199,7 @@ typedef struct BenchRes {
 	u_int32_t	nOk;
 	u_int32_t	nProceed;
 	u_int32_t	nFound;
+	u_int32_t	nReconnect;
 	u_int64_t	mbIn;
 	u_int64_t	mbOut;
 	double		maxTime;
@@ -229,6 +230,7 @@ signalMain(BenchRes *local) {
 	SumResults.nOk += local->nOk;
 	SumResults.nProceed += local->nProceed;
 	SumResults.nFound += local->nFound;
+	SumResults.nReconnect += local->nReconnect;
 	SumResults.mbIn += local->mbIn;
 	SumResults.mbOut += local->mbOut;
 
@@ -439,8 +441,10 @@ worker(void *arg) {
 	initBenchRes(&local);
 
 reconnect:
-	if (wantReconnect)
+	if (wantReconnect) {
 		li_close(conn);
+		local.nReconnect++;
+	}
 
 	while((errcode = li_connect(conn, localServer, port, flags)) == ERR_CODE_CONNECT_IN_PROGRESS)
 		octopoll(li_get_fd(conn), POLLOUT);
@@ -779,6 +783,7 @@ main(int argc, char* argv[]) {
 	elapsed = timediff(&begin, &end);
 
 	printf("                Elapsed time: % 12.2f secs\n", elapsed);
+	printf("         Number of reconnect: %s\n", formatInt(SumResults.nReconnect));
 	printf("       Number of OK requests: %s\n", formatInt(SumResults.nOk));
 	printf("                         RPS: %s\n", formatInt((u_int32_t)(((double)SumResults.nOk) / elapsed)));
 	if (messageType == BOX_SELECT)
