@@ -427,6 +427,8 @@ worker(void *arg) {
 	u_int32_t			flags = LIBIPROTO_OPT_NONBLOCK;
 	BenchRes			local;
 	bool				timeLimitExceed = false;
+	bool				wantReconnect = false;
+	char				*localServer = strdup(server);
 
 	blrand_init(&rndseed, idWorker, nReset);
 	blrand_init(&rndseed1, idWorker + 128, 0xffffffff);
@@ -434,9 +436,17 @@ worker(void *arg) {
 	if (messageType != OCTO_PING)
 		flags |= LIBIPROTO_OPT_HAS_4BYTE_ERRCODE;
 
+	initBenchRes(&local);
+
 reconnect:
-	while((errcode = li_connect(conn, server, port, flags)) == ERR_CODE_CONNECT_IN_PROGRESS)
+	if (wantReconnect)
+		li_close(conn);
+if (wantReconnect)
+fprintf(stderr, "reconnect %s:%i\n", localServer, port);
+	while((errcode = li_connect(conn, localServer, port, flags)) == ERR_CODE_CONNECT_IN_PROGRESS)
 		octopoll(li_get_fd(conn), POLLOUT);
+
+	wantReconnect = false;
 
 	if (errcode != ERR_CODE_OK) {
 		fprintf(stderr,"li_connect fails: %s (%08x)\n", errcode_desc(errcode), errcode);
@@ -444,7 +454,6 @@ reconnect:
 	}
 
 	fd = li_get_fd(conn);
-	initBenchRes(&local);
 
 	while(!((local.nOk >= nRequests || timeLimitExceed == true) && local.nProceed == nSended)) {
 		int state;
@@ -452,7 +461,8 @@ reconnect:
 		state = POLLIN;
 		if (needToSend)
 			state |= POLLOUT;
-		if (timeLimitExceed == false && local.nOk < nRequests && local.nProceed + nWriteAhead > nSended)
+		if (wantReconnect == false && timeLimitExceed == false && 
+		    		local.nOk < nRequests && local.nProceed + nWriteAhead > nSended)
 			state |= POLLOUT;
 
 		state = octopoll(fd, state);
@@ -504,20 +514,19 @@ reconnect:
 				local.nProceed++;
 
 				if (errcode == ERR_CODE_REDIRECT) {
-					size_t size;
-					char *hd = li_req_response_data(request, &size);
-					char *tl = memchr(hd, ':', size);
-					*tl++ = 0;
+					if (wantReconnect == false) {
+						size_t size;
+						char *hd = li_req_response_data(request, &size);
+						char *tl = memchr(hd, ':', size);
 
-					free(server);
-					server = strdup(hd);
-					port = atoi(tl);
-					while (li_get_ready_reqs(conn)); /* flush */
-					li_close(conn);
-					goto reconnect;
-				}
+						*tl++ = 0;
 
-				if (ignoreFatal == false && ERR_CODE_IS_FATAL(errcode)) {
+						free(localServer);
+						localServer = strdup(hd);
+						port = atoi(tl);
+						wantReconnect = true;
+					}
+				} else if (ignoreFatal == false && ERR_CODE_IS_FATAL(errcode)) {
 					fprintf(stderr,"octopus returns fatal error: %s (%08x)\n",
 						errcode_desc(errcode), errcode);
 					exit(1);
@@ -544,10 +553,13 @@ reconnect:
 				}
 				li_req_free(request);
 			}
+
+			if (wantReconnect && local.nProceed == nSended)
+				goto reconnect;
 		}
 
 		if (state & POLLOUT) {
-			while (timeLimitExceed == false && 
+			while (wantReconnect == false && timeLimitExceed == false && 
 			       		local.nOk < nRequests && (local.nProceed + nWriteAhead) > nSended) {
 				int i;
 				struct timeval begin;
