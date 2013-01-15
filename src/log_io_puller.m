@@ -120,11 +120,10 @@ handshake:(i64)scn err:(const char **)err_ptr
 		struct replication_handshake hshake = {1, scn, {0}};
 
 		if (cfg.wal_feeder_filter != NULL) {
-			if (strlen(cfg.wal_feeder_filter) + 1 > sizeof(hshake.filter)) {
-				say_error("wal_feeder_filter too big");
-				exit(EXIT_FAILURE);
-			}
-			strcpy(hshake.filter, cfg.wal_feeder_filter);
+			if (strlen(cfg.wal_feeder_filter) + 1 > sizeof(hshake.filter))
+				say_error("wal_feeder_filter too big, ignoring");
+			else
+				strcpy(hshake.filter, cfg.wal_feeder_filter);
 		}
 		struct tbuf *req = tbuf_alloc(fiber->pool);
 		tbuf_append(req, &(struct iproto){ .msg_code = 0, .sync = 0, .data_len = sizeof(hshake) },
