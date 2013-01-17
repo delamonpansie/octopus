@@ -948,12 +948,15 @@ loop:
 
 			i64 initial_scn = follow_scn <= 1024 ? 1 : follow_scn - 1024,
 				max_scn = r->max_scn;
-			while ([puller handshake:&leader->feeder_addr scn:initial_scn] <= 0) {
+			while ([puller handshake:&leader->feeder_addr scn:initial_scn] <= 0)
 				fiber_sleep(0.1);
-			}
 
 			for (;;) {
 				const struct row_v12 *row;
+
+				if ([puller recv] < 0)
+					break; /* reconnect on -[abort_recv] */
+
 				while ((row = [puller fetch_row])) {
 					if (row->tag != wal_tag && row->tag != run_crc && row->tag != nop)
 						continue;
