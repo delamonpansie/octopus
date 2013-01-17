@@ -125,11 +125,11 @@ load_cfg(struct octopus_cfg *conf, i32 check_rdonly)
 		return 0;
 }
 
-i32
-reload_cfg()
+int
+reload_cfg(void)
 {
 	struct octopus_cfg new_cfg1, new_cfg2;
-	i32 ret;
+	int ret;
 
 	memset(&new_cfg1, 0, sizeof(new_cfg1));
 	memset(&new_cfg2, 0, sizeof(new_cfg2));

@@ -74,7 +74,11 @@ extern bool init_storage, booting;
 extern char *binary_filename;
 @class Recovery;
 extern Recovery *recovery;
-i32 reload_cfg();
+
+extern char *cfg_err;
+extern int cfg_err_len;
+int reload_cfg(void);
+
 const char *octopus_version(void);
 void octopus_info(struct tbuf *out);
 unsigned tnt_uptime(void);

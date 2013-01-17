@@ -210,8 +210,8 @@ admin_dispatch(struct conn *c)
 		}
 
 		action reload_configuration {
-			if (reload_cfg(err))
-				fail(out, err);
+			if (reload_cfg() < 0)
+				fail(out, &TBUF(cfg_err, cfg_err_len, NULL));
 			else
 				ok(out);
 		}
