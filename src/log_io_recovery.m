@@ -875,8 +875,8 @@ nop_hb_writer(va_list ap)
 {
 	/* Recovery object is never released */
 
-        snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
-        wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
+	snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
+	wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
 
 	snap_dir->writer = self;
 	wal_dir->writer = self;
