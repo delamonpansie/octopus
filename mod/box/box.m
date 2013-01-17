@@ -1251,7 +1251,7 @@ initialize_service()
 			fiber_create("box_worker", iproto_worker, &box_primary);
 
 		if (cfg.secondary_port > 0) {
-			tcp_service(&box_secondary, cfg.secondary_port, NULL, wakeup_workers);
+			tcp_service(&box_secondary, cfg.secondary_port, NULL, iproto_wakeup_workers);
 			box_service_register(&box_secondary);
 			fiber_create("box_secondary_worker", iproto_worker, &box_secondary);
 		}
