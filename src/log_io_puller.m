@@ -140,10 +140,19 @@ handshake:(i64)scn err:(const char **)err_ptr
 		}
 
 		do {
-			if (conn_recv(&c) <= 0) {
+			ssize_t r = conn_recv(&c);
+			if (r < 0) {
+				if (errno == EAGAIN ||
+				    errno == EWOULDBLOCK ||
+				    errno == EINTR)
+					continue;
 				err = "can'r read initial handshake";
 				goto err;
+			} else if (r == 0) {
+				err = "can'r read initial handshake, eof";
+				goto err;
 			}
+
 			say_debug("%s: recv handshake part, %u bytes", __func__, tbuf_len(c.rbuf));
 		} while (tbuf_len(c.rbuf) < sizeof(struct iproto_retcode) + sizeof(version));
 

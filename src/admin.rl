@@ -146,7 +146,11 @@ admin_dispatch(struct conn *c)
 	while ((pe = memchr(c->rbuf->ptr, '\n', tbuf_len(c->rbuf))) == NULL) {
 		if (tbuf_len(c->rbuf) > 0 && *(char*)(c->rbuf->ptr) == 0x04 /* Ctrl-D */)
 			return 0;
-		if (conn_recv(c) <= 0)
+		ssize_t r = conn_recv(c);
+		if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK ||
+			      errno == EINTR))
+			continue;
+		if (r <= 0)
 			return 0;
 	}
 

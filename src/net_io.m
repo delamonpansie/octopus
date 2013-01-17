@@ -423,26 +423,16 @@ conn_gc(struct palloc_pool *pool, void *ptr)
 	c->pool = c->out_messages.pool = pool;
 }
 
-/* as recv() may return 0 */
 ssize_t
 conn_recv(struct conn *c)
 {
-	ssize_t r;
 	ev_io io = { .coro = 1 };
 	ev_io_init(&io, (void *)fiber, c->fd, EV_READ);
 	ev_io_start(&io);
-
-	tbuf_ensure(c->rbuf, 16 * 1024);
-again:
 	yield();
-	r = tbuf_recv(c->rbuf, c->fd);
-	if (unlikely(r < 0)) {
-		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
-			goto again;
-		say_syserror("%s", __func__);
-	}
 	ev_io_stop(&io);
-	return r;
+	tbuf_ensure(c->rbuf, 16 * 1024);
+	return tbuf_recv(c->rbuf, c->fd);
 }
 
 void
