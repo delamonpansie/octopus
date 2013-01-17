@@ -223,6 +223,7 @@ recv
 	in_recv = NULL;
 	if (abort) {
 		conn_close(&c);
+		errno = 0;
 		return -1;
 
 	}

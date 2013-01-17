@@ -531,185 +531,195 @@ pull_snapshot(Recovery *r, id<XLogPullerAsync> puller)
 	}
 }
 
-static void
-pull_wal(Recovery *r, id<XLogPullerAsync> puller, int exit_on_eof)
+static int
+pull_wal(Recovery *r, id<XLogPullerAsync> puller)
 {
-	struct row_v12 *row, *special_row = NULL, *rows[WAL_PACK_MAX];
+	struct row_v12 *row, *final_row = NULL, *rows[WAL_PACK_MAX];
 	struct wal_pack *pack;
 	/* TODO: use designated palloc_pool */
 	say_debug("%s: scn:%"PRIi64, __func__, [r scn]);
 
-	for (;;) {
-		int pack_rows = 0;
-		if ([puller recv] <= 0)
-			raise("unexpected eof");
+	int pack_rows = 0;
+	if ([puller recv] <= 0)
+		raise("unexpected eof");
 
-		while ((row = [puller fetch_row])) {
-			if (row->tag == wal_final_tag) {
-				special_row = row;
-				break;
-			}
-
-			if (row->tag != wal_tag &&
-			    row->tag != run_crc &&
-			    row->tag != nop)
-				continue;
-
-			if (cfg.io12_hack)
-				fix_scn(row);
-
-			if (row->scn <= [r scn])
-				continue;
-
-			if (cfg.io_compat) {
-				if (row->tag == run_crc)
-					continue;
-			}
-
-			rows[pack_rows++] = row;
-			if (pack_rows == WAL_PACK_MAX)
-				break;
+	while ((row = [puller fetch_row])) {
+		if (row->tag == wal_final_tag) {
+			final_row = row;
+			break;
 		}
 
-		if (pack_rows > 0) {
-			/* we'r use our own lsn numbering */
-			for (int j = 0; j < pack_rows; j++)
-				rows[j]->lsn = [r lsn] + 1 + j;
+		if (row->tag != wal_tag &&
+		    row->tag != run_crc &&
+		    row->tag != nop)
+			continue;
+
+		if (cfg.io12_hack)
+			fix_scn(row);
+
+		if (row->scn <= [r scn])
+			continue;
+
+		if (cfg.io_compat) {
+			if (row->tag == run_crc)
+				continue;
+		}
+
+		rows[pack_rows++] = row;
+		if (pack_rows == WAL_PACK_MAX)
+			break;
+	}
+
+	if (pack_rows > 0) {
+		/* we'r use our own lsn numbering */
+		for (int j = 0; j < pack_rows; j++)
+			rows[j]->lsn = [r lsn] + 1 + j;
 
 #ifndef NDEBUG
-			i64 pack_min_scn = rows[0]->scn,
-			    pack_max_scn = rows[pack_rows - 1]->scn,
-			    pack_max_lsn = rows[pack_rows - 1]->lsn;
+		i64 pack_min_scn = rows[0]->scn,
+		    pack_max_scn = rows[pack_rows - 1]->scn,
+		    pack_max_lsn = rows[pack_rows - 1]->lsn;
 #endif
-			assert(!cfg.sync_scn_with_lsn || [r scn] == pack_min_scn - 1);
-			@try {
-
-				for (int j = 0; j < pack_rows; j++) {
-					row = rows[j]; /* this pointer required for catch below */
-					[r recover_row:row];
-				}
-			}
-			@catch (Error *e) {
-				panic("Replication failure: %s at %s:%i"
-				      " remote row LSN:%"PRIi64 " SCN:%"PRIi64,
-				      e->reason, e->file, e->line,
-				      row->lsn, row->scn);
-			}
-
-			int confirmed = 0;
-			while (confirmed != pack_rows) {
-				pack = [r wal_pack_prepare];
-				for (int i = confirmed; i < pack_rows; i++) {
-					row = rows[i];
-					[r wal_pack_append:pack
-						      data:row->data
-						       len:row->len
-						       scn:row->scn
-						       tag:row->tag
-						    cookie:row->cookie];
-				}
-				confirmed += [r wal_pack_submit_x];
-				if (confirmed != pack_rows) {
-					say_warn("WAL write failed confirmed:%i != sent:%i",
-						 confirmed, pack_rows);
-					fiber_sleep(0.05);
-				}
-			}
-
-			assert([r scn] == pack_max_scn);
-			assert([r lsn] == pack_max_lsn);
-		}
-
-		if (special_row) {
-			[r wal_final_row];
-			special_row = NULL;
-			if (exit_on_eof)
-				return;
-		}
-
-		fiber_gc();
-	}
-}
-
-- (void)
-recover_follow_remote:(struct sockaddr_in *)addr exit_on_eof:(int)exit_on_eof
-{
-	for (;;) {
-		XLogPuller *puller = nil;
+		assert(!cfg.sync_scn_with_lsn || [r scn] == pack_min_scn - 1);
 		@try {
-			const char *err;
-			bool warning_said = false;
-			i64 want_scn = scn;
-			puller = [[XLogPuller alloc] init_addr:addr];
-			if (want_scn > 0) {
-				want_scn -= 1024;
-				if (want_scn < 1)
-					want_scn = 1;
+			for (int j = 0; j < pack_rows; j++) {
+				row = rows[j]; /* this pointer required for catch below */
+				[r recover_row:row];
 			}
-			while ([puller handshake:want_scn err:&err] <= 0) {
-				if (exit_on_eof)
-					return;
-
-				/* no more WAL rows in near future, notify module about that */
-				[self wal_final_row];
-
-				ev_tstamp reconnect_delay = 0.5;
-				if (!warning_said) {
-					say_error("%s", err);
-					say_info("will retry every %.2f second", reconnect_delay);
-					warning_said = true;
-				}
-				fiber_sleep(reconnect_delay);
-			}
-
-			if (lsn == 0) {
-				pull_snapshot(self, puller);
-				[self configure_wal_writer];
-				if ([self snapshot_write] != 0)
-					raise("replication failure: failed save snapshot");
-			}
-
-			if ([puller version] == 11)
-				[self wal_final_row];
-
-			pull_wal(self, puller, exit_on_eof);
-			if (exit_on_eof)
-				return;
 		}
 		@catch (Error *e) {
-			say_error("replication failure: %s", e->reason);
-			fiber_sleep(1);
-			fiber_gc();
+			panic("Replication failure: %s at %s:%i"
+			      " remote row LSN:%"PRIi64 " SCN:%"PRIi64,
+			      e->reason, e->file, e->line,
+			      row->lsn, row->scn);
 		}
-		@finally {
-			[puller free];
-			puller = nil;
+
+		int confirmed = 0;
+		while (confirmed != pack_rows) {
+			pack = [r wal_pack_prepare];
+			for (int i = confirmed; i < pack_rows; i++) {
+				row = rows[i];
+				[r wal_pack_append:pack
+					      data:row->data
+					       len:row->len
+					       scn:row->scn
+					       tag:row->tag
+					    cookie:row->cookie];
+			}
+			confirmed += [r wal_pack_submit_x];
+			if (confirmed != pack_rows) {
+				say_warn("WAL write failed confirmed:%i != sent:%i",
+					 confirmed, pack_rows);
+				fiber_sleep(0.05);
+			}
+		}
+
+		assert([r scn] == pack_max_scn);
+		assert([r lsn] == pack_max_lsn);
+	}
+
+	if (final_row) {
+		[r wal_final_row];
+		return 1;
+	}
+
+	return 0;
+}
+
+- (int)
+recover_follow_remote:(XLogPuller *)puller exit_on_eof:(int)exit_on_eof
+{
+	@try {
+		const char *err;
+		bool warning_said = false;
+		i64 want_scn = scn;
+		if (want_scn > 0) {
+			want_scn -= 1024;
+			if (want_scn < 1)
+				want_scn = 1;
+		}
+		while ([puller handshake:want_scn err:&err] <= 0) {
+			if (exit_on_eof) {
+				say_info("exit on handshake");
+				return -1;
+			}
+
+			/* no more WAL rows in near future, notify module about that */
+			[self wal_final_row];
+
+			ev_tstamp reconnect_delay = 0.5;
+			if (!warning_said) {
+				say_error("replication failure: %s", err);
+				say_info("will retry every %.2f second", reconnect_delay);
+				warning_said = true;
+			}
+			fiber_sleep(reconnect_delay);
+		}
+
+		if (lsn == 0) {
+			pull_snapshot(self, puller);
+			[self configure_wal_writer];
+			if ([self snapshot_write] != 0)
+				raise("replication failure: failed save snapshot");
+		}
+
+		/* old version doesn's send wal_final_tag for us. */
+		if ([puller version] == 11)
+			[self wal_final_row];
+
+		for (;;) {
+			int final_row = pull_wal(self, puller);
+			fiber_gc();
+
+			if (final_row && exit_on_eof) {
+				say_info("exit on final row");
+				return 0;
+			}
 		}
 	}
+	@catch (Error *e) {
+		say_error("replication failure: %s", e->reason);
+		return -1;
+	}
+	return 0;
 }
 
 static void
-pull_from_remote_trampoline(va_list ap)
+remote_hot_standby(va_list ap)
 {
 	Recovery *r = va_arg(ap, Recovery *);
-	struct sockaddr_in *addr = va_arg(ap, struct sockaddr_in *);
-	[r recover_follow_remote:addr exit_on_eof:false];
-}
+	struct sockaddr_in sin;
 
-- (struct fiber *)
-recover_follow_remote_async:(struct sockaddr_in *)addr;
-{
-	char *name = xmalloc(64);
-	snprintf(name, 64, "remote_hot_standby/%s", sintoa(addr));
+	for (;;) {
+		if (!recovery->feeder_addr)
+			goto sleep;
 
-	remote_puller = fiber_create(name, pull_from_remote_trampoline, self, addr);
-	if (remote_puller == NULL) {
-		free(name);
-		return NULL;
+		memset(&sin, 0, sizeof(sin));
+		atosin(recovery->feeder_addr, &sin);
+		if (sin.sin_addr.s_addr == INADDR_ANY)
+			goto sleep;
+
+		[recovery->remote_puller init_addr:&sin];
+		[r recover_follow_remote:recovery->remote_puller exit_on_eof:false];
+
+	sleep:
+		fiber_sleep(0.1);
 	}
-
-	return remote_puller;
 }
+
+
+- (void)
+feeder_change_from:(const char *)old to:(const char *)new
+{
+	if (!local_writes)
+		return;
+
+	if (!old || !new || strcmp(old, new)) {
+		feeder_addr = new;
+		[remote_puller abort_recv];
+	}
+}
+
 
 - (void)
 enable_local_writes
@@ -726,7 +736,7 @@ enable_local_writes
 		if (atosin(feeder_addr, sin) == -1 || sin->sin_addr.s_addr == INADDR_ANY)
 			panic("bad feeder addr: `%s'", feeder_addr);
 
-		if ([self recover_follow_remote_async:sin] == NULL)
+		if (!fiber_create("remote_hot_standby", remote_hot_standby, self))
 			panic("unable to start remote hot standby fiber");
 
 		say_info("starting remote hot standby");
@@ -877,6 +887,7 @@ nop_hb_writer(va_list ap)
 
 	snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
 	wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
+	remote_puller = [XLogPuller alloc];
 
 	snap_dir->writer = self;
 	wal_dir->writer = self;

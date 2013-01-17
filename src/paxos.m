@@ -1222,7 +1222,9 @@ enable_local_writes
 					continue;
 
 				say_debug("feeding from %s", p->name);
-				[self recover_follow_remote:&p->feeder_addr exit_on_eof:true];
+				XLogPuller *puller = [[XLogPuller alloc] init_addr:&p->feeder_addr];
+				[self recover_follow_remote:puller exit_on_eof:true];
+				[puller free];
 				if ([self scn] > 0)
 					goto out;
 			}

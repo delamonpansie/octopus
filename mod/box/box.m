@@ -1632,12 +1632,23 @@ info(struct tbuf *out)
 		service_info(out, &box_secondary);
 }
 
+static void
+reload_config(struct octopus_cfg *old,
+	      struct octopus_cfg *new)
+{
+	if (!old->wal_feeder_addr && !new->wal_feeder_addr)
+		return;
+
+	[recovery feeder_change_from:old->wal_feeder_addr
+				  to:new->wal_feeder_addr];
+	title("%s", [recovery status]);
+}
 
 static struct tnt_module box = {
         .name = "box",
         .init = init,
         .check_config = NULL,
-        .reload_config = NULL,
+        .reload_config = reload_config,
         .cat = cat,
 	.cat_scn = cat_scn,
         .info = info,

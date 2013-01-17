@@ -237,8 +237,9 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 
 	struct mhash_t *pending_row;
 
-	struct fiber *remote_puller;
+	XLogPuller *remote_puller;
 	const char *feeder_addr;
+
 	bool run_crc_log_mismatch, run_crc_mod_mismatch;
 	u32 processed_rows, estimated_snap_rows;
 
@@ -264,10 +265,11 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (i64) recover_snap;
 - (i64) recover_cont;
 - (void) wal_final_row;
-- (void) recover_follow_remote:(struct sockaddr_in *)addr exit_on_eof:(int)exit_on_eof;
-- (struct fiber *) recover_follow_remote_async:(struct sockaddr_in *)addr;
+- (int) recover_follow_remote:(XLogPuller *)puller exit_on_eof:(int)exit_on_eof;
 - (void) enable_local_writes;
 - (bool) is_replica;
+
+- (void) feeder_change_from:(const char *)old to:(const char *)new;
 
 - (int) submit:(const void *)data len:(u32)len;
 - (int) submit:(const void *)data len:(u32)len tag:(u16)tag;
