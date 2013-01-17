@@ -163,8 +163,11 @@ reload_cfg(void)
 		return -1;
 	}
 	destroy_octopus_cfg(&new_cfg1);
-	if (module(NULL)->reload_config)
-		module(NULL)->reload_config(&cfg, &new_cfg2);
+	foreach_module (m)
+		if (m->reload_config != NULL) {
+			say_info("reload!");
+			m->reload_config(&cfg, &new_cfg2);
+		}
 	destroy_octopus_cfg(&cfg);
 	cfg = new_cfg2;
 	return 0;
