@@ -11,10 +11,11 @@ class StandAloneEnv < RunEnv
   def initialize
     super
     @config_template = File.read(Root + "/test/basic.cfg")
+    @primary_port = 33013
   end
 
   def connect_string
-    "0:33013"
+    "0:#@primary_port"
   end
 
   def config

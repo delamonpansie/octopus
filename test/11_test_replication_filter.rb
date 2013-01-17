@@ -45,12 +45,16 @@ EOD
 end
 
 class SlaveEnv < StandAloneEnv
+  def initialize
+    super
+    @primary_port = 33023
+  end
+
   def test_root
     super + "_slave"
   end
 
   def config
-    @primary_port = 33023
     super + <<EOD
 wal_feeder_addr = "127.0.0.1:33034"
 wal_feeder_filter = "test_filter"
@@ -62,9 +66,6 @@ object_space[0].index[0].key_field[0].type = "NUM"
 sync_scn_with_lsn = 0
 panic_on_scn_gap = 0
 EOD
-  end
-  def connect_string
-    "0:33023"
   end
 end
 
