@@ -45,12 +45,12 @@ VPATH := @srcdir@
 
 MAKEFLAGS += --no-print-directory
 
-CFLAGS += -I. -Iinclude
+%.o: CFLAGS += -I. -Iinclude
 ifneq (.,$(srcdir))
-    CFLAGS += -I$(srcdir) -I$(srcdir)/include
+  %.o: CFLAGS += -I$(srcdir) -I$(srcdir)/include
 endif
 
-CFLAGS += -Wno-strict-aliasing -funwind-tables
+%.o octopus: CFLAGS += -Wno-strict-aliasing -funwind-tables
 
 ifeq ("$(origin V)", "command line")
     VERBOSE = $(V)
@@ -75,7 +75,7 @@ sub-Makefile = $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
 -include $(sub-Makefile)
 
 ifneq ($(findstring src/paxos.o,$(obj)),)
-  CFLAGS += -DPAXOS
+  %.o: CFLAGS += -DPAXOS
 endif
 
 octopus: $(obj)
