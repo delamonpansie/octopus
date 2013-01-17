@@ -793,7 +793,7 @@ retry_bind:
 void
 tcp_server(va_list ap)
 {
-	int port = va_arg(ap, int);
+	int port = va_arg(ap, int); /* TODO: report an error if already has server on this port */
 	void (*handler)(int fd, void *data) = va_arg(ap, void (*)(int, void *));
 	void (*on_bind)(int fd) = va_arg(ap, void (*)(int fd));
 	void *data = va_arg(ap, void *);
