@@ -54,7 +54,7 @@ netmsg_alloc(struct netmsg_head *h)
 	struct netmsg *n = slab_cache_alloc(&netmsg_cache);
 	n->count = n->offset = 0;
 	n->head = h;
-	n->dummy.iov_len = -1;
+	n->dummy = (struct iovec){0, -1};
 	memset(n->ref, 0, sizeof(n->ref));
 
 	TAILQ_INSERT_TAIL(&h->q, n, link);
