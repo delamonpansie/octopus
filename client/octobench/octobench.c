@@ -211,6 +211,7 @@ typedef struct BenchRes {
 	u_int32_t	bins[N_BINS];
 } BenchRes;
 
+static char*		errnames[256 /* as BenchRes.errstat */];
 static BenchRes SumResults;
 
 static void
@@ -536,6 +537,8 @@ reconnect:
 				}
 
 				local.errstat[ (errcode >> 8) & 0xff ] ++;
+				if (errnames[(errcode >> 8) & 0xff] == NULL)
+					errnames[(errcode >> 8) & 0xff] = errcode_desc(errcode);
 
 				begin = pushAllocatedRequestBody(&stack, li_req_request_data(request, &size));
 				if (begin) {
@@ -805,8 +808,11 @@ main(int argc, char* argv[]) {
 
 	for(i=0; i<256; i++)
 		if (SumResults.errstat[i] > 0)
-			printf("              N number of %02x: %s\n", i, formatInt(SumResults.errstat[i])
-			       /* errcode_desc(i): i is only one byte from error code */);
+			printf("        number of %02x errcode: %s (%s)\n", 
+			       		i, 
+			       		formatInt(SumResults.errstat[i]),
+			       		errnames[i]
+			       );
 
 	if (scaleBin > 0.0) {
 		u_int32_t	maxCount = 0, sumCount = 0;
