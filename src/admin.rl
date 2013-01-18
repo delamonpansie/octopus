@@ -92,7 +92,7 @@ ok(struct tbuf *out)
 }
 
 static void
-fail(struct tbuf *out, struct tbuf *err)
+fail(struct tbuf *out, const struct tbuf *err)
 {
 	start(out);
 	tbuf_printf(out, "fail:%.*s" CRLF, (int)tbuf_len(err), (char *)err->ptr);
@@ -107,7 +107,7 @@ tbuf_reader(lua_State *L __attribute__((unused)), void *data, size_t *size)
 	return read_bytes(code, tbuf_len(code));
 }
 
-void
+static void
 exec_lua(lua_State *L, struct tbuf *code, struct tbuf *out)
 {
 	if (!cfg.admin_exec_lua) {
