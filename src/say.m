@@ -97,20 +97,24 @@ say_register_source(const char *file)
 	mh_cstr_put(filter, file, level, &ret);
 }
 
-void
+int
 say_level_source(const char *file, int diff)
 {
 	int max = 0;
+	int found = 0;
 	for (int k = 0; k < mh_end(filter); k++) {
 		if (!mh_exist(filter, k))
 		    continue;
 		struct node *n = mh_slot(filter, k);
-		if (strcmp(file, "ALL") == 0 || strcmp(file, n->key) == 0)
+		if (strcmp(file, "ALL") == 0 || strcmp(file, n->key) == 0) {
 			n->value += diff;
+			found = 1;
+		}
 		if (n->value > max)
 			max = n->value;
 	}
 	max_level = max;
+	return found;
 }
 
 void

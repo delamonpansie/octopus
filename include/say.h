@@ -71,7 +71,7 @@ void say_CRIT(const char *filename, unsigned line, const char *format, ...)
     __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
 
 
-void say_level_source(const char *file, int diff);
+int say_level_source(const char *file, int diff);
 void say_list_sources(void);
 void say_register_source(const char *file);
 #define register_source()				\

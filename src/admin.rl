@@ -60,6 +60,8 @@ static const char help[] =
 	" - exec lua <code>" CRLF
 	" - incr log_level" CRLF
 	" - decr log_level" CRLF
+	" - incr log_level source_name" CRLF
+	" - decr log_level source_name" CRLF
 	" - reload configuration" CRLF;
 
 
@@ -92,7 +94,7 @@ ok(struct tbuf *out)
 }
 
 static void
-fail(struct tbuf *out, struct tbuf *err)
+fail(struct tbuf *out, const struct tbuf *err)
 {
 	start(out);
 	tbuf_printf(out, "fail:%.*s" CRLF, (int)tbuf_len(err), (char *)err->ptr);
@@ -107,7 +109,7 @@ tbuf_reader(lua_State *L __attribute__((unused)), void *data, size_t *size)
 	return read_bytes(code, tbuf_len(code));
 }
 
-void
+static void
 exec_lua(lua_State *L, struct tbuf *code, struct tbuf *out)
 {
 	if (!cfg.admin_exec_lua) {
@@ -132,6 +134,26 @@ exec_lua(lua_State *L, struct tbuf *code, struct tbuf *out)
 	size_t len;
 	const char *str = lua_tolstring(L, -1, &len);
 	tbuf_append(out, str, len);
+}
+
+
+static void
+log_level(struct tbuf *out, const char *strstart, const char *strend, int diff)
+{
+	const char *too_long = "too long source";
+	const char *not_found = "unknown source";
+	int len = strend ? strend - strstart : strlen(strstart);
+	if (len > 64) {
+		fail(out, &TBUF(too_long, strlen(too_long), NULL));
+	} else {
+		char *filename = alloca(len + 1);
+		memcpy(filename, strstart, len);
+		filename[len] = 0;
+		if (say_level_source(filename, diff))
+			ok(out);
+		else
+			fail(out, &TBUF(not_found, strlen(not_found), NULL));
+	}
 }
 
 static int
@@ -255,7 +277,7 @@ admin_dispatch(struct conn *c)
 		reload = "re"("l"("o"("a"("d")?)?)?)?;
 		incr = "inc"("r")?;
 		decr = "dec"("r")?;
-		log_level = "log"("_"("l"("e"("v"("e"("l")?)?)?)?)?)?;
+		log = "log"("_"("l"("e"("v"("e"("l")?)?)?)?)?)?;
 
 		commands = (help			%help						|
 			    exit			%{return 0;}					|
@@ -268,9 +290,11 @@ admin_dispatch(struct conn *c)
 			    enable " "+ coredump        %{maximize_core_rlimit(); ok(out);}		|
 			    save " "+ coredump		%{coredump(60); ok(out);}			|
 			    save " "+ snapshot		%save_snapshot					|
-			    incr " "+ log_level         %{cfg.log_level++; ok(out);}			|
-			    decr " "+ log_level         %{cfg.log_level--; ok(out);}			|
-			    exec " "+ mod " " + string	%mod_exec					|
+			    incr " "+ log         	%{log_level(out, "ALL", NULL, 1); }		|
+			    decr " "+ log         	%{log_level(out, "ALL", NULL, -1); }		|
+			    incr " "+ log " "+ string	%{log_level(out, strstart, strend, 1); }	|
+			    decr " "+ log " "+ string	%{log_level(out, strstart, strend, -1); }	|
+			    exec " "+ mod " "+ string	%mod_exec					|
 			    exec " "+ lua " "+ string	%lua_exec					|
 			    check " "+ slab		%{slab_validate(); ok(out);}			|
 			    reload " "+ configuration	%reload_configuration);

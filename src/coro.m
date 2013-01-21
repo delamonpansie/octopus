@@ -69,7 +69,7 @@ octopus_coro_create(struct octopus_coro *coro, void (*f) (void *), void *data)
 	if (mprotect(coro->mmap, page, PROT_NONE) < 0)
 		goto fail;
 
-	(void)VALGRIND_MAKE_MEM_NOACCESS(coro->mmap, coro->mmap + page);
+	(void)VALGRIND_MAKE_MEM_NOACCESS(coro->mmap, page);
 
 	coro->stack = coro->mmap + page;
 	coro->stack_size = coro->mmap_size - page;
