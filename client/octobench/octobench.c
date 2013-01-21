@@ -519,14 +519,12 @@ reconnect:
 
 				if (errcode == ERR_CODE_REDIRECT) {
 					if (wantReconnect == false) {
-						size_t size;
-						char *hd = li_req_response_data(request, &size);
-						char *tl = memchr(hd, ':', size);
+						char *tl = memchr(d, ':', s);
 
 						*tl++ = 0;
 
 						free(localServer);
-						localServer = strdup(hd);
+						localServer = strdup(d);
 						port = atoi(tl);
 						wantReconnect = true;
 					}
