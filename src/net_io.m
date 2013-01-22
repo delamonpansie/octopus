@@ -895,8 +895,6 @@ loop:
 	r = tbuf_recv(c->rbuf, c->fd);
 
 	if (likely(r > 0)) {
-		if (tbuf_len(c->rbuf) > cfg.input_high_watermark)
-			ev_io_stop(&c->in);
 		if (c->state != PROCESSING) {
 			TAILQ_INSERT_HEAD(&c->service->processing, c, processing_link);
 			c->state = PROCESSING;
