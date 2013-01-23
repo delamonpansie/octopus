@@ -58,6 +58,7 @@ struct wal_pack {
 	u32 packet_len;
 	u32 fid;
 	u32 row_count;
+	struct wal_row row[];
 } __attribute__((packed));
 
 struct wal_row_meta {
@@ -132,35 +133,47 @@ configure_wal_writer
 - (int)
 wal_row_submit:(const void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag
 {
-	say_debug("%s: data_len:%i SCN:%"PRIi64" tag:%s", __func__, data_len, scn_, xlog_tag_to_a(tag));
+	struct wal_row row = { .scn = scn_,
+			       .tag = tag,
+			       .cookie = 0,
+			       .data_len = data_len,
+			       .data = data,
+			       .old_obj = NULL,
+			       .obj = NULL };
 
-	void *buf = palloc(fiber->pool, sizeof(struct wal_pack) + sizeof(struct wal_row_meta));
+	return [self wal_row_submit:&row];
+}
 
-	struct wal_pack *pack = buf;
-	struct wal_row_meta *h = buf + sizeof(*pack);
+- (int)
+wal_row_submit:(const struct wal_row *)src
+{
+	say_debug("%s: data_len:%i SCN:%"PRIi64" tag:%s old_obj:%p obj:%p", __func__,
+		  src->data_len, src->scn, xlog_tag_to_a(src->tag),
+		  src->old_obj, src->obj);
+
+	struct wal_pack *pack = palloc(fiber->pool, sizeof(struct wal_pack) + sizeof(struct wal_row));
+	struct wal_row *row = pack->row;
+	memcpy(row, src, sizeof(*row));
 
 	pack->netmsg = netmsg_tail(&wal_writer->c->out_messages);
-	pack->packet_len = sizeof(*pack) - offsetof(struct wal_pack, packet_len) + sizeof(*h) + data_len;
+	pack->packet_len = sizeof(*pack) - offsetof(struct wal_pack, packet_len) +
+			   sizeof(struct wal_row_meta) + row->data_len;
 	pack->fid = fiber->fid;
 	pack->row_count = 1;
 
-	h->scn = scn_;
-	h->tag = tag;
-	h->cookie = 0;
-	h->data_len = data_len;
-
 	net_add_iov(&pack->netmsg, &pack->packet_len,
-		    sizeof(struct wal_pack) - offsetof(struct wal_pack, packet_len) + sizeof(*h));
-	net_add_iov(&pack->netmsg, data, data_len); /* safe, since when wal_pack_submit returns
-						       data is already sent */
+		    sizeof(struct wal_pack) - offsetof(struct wal_pack, packet_len) +
+		    sizeof(struct wal_row_meta));
+	net_add_iov(&pack->netmsg, row->data, row->data_len); /* safe, since when wal_pack_submit returns
+								 data is already sent */
 
-	return [self wal_pack_submit];
+	return [self wal_pack_submit:pack];
 }
 
 - (struct wal_pack *)
-wal_pack_prepare
+wal_pack_prepare:(int)size
 {
-	struct wal_pack *pack = palloc(fiber->pool, sizeof(*pack));
+	struct wal_pack *pack = palloc(fiber->pool, sizeof(*pack) + sizeof(struct wal_row) * size);
 
 	pack->netmsg = netmsg_tail(&wal_writer->c->out_messages);
 	pack->packet_len = sizeof(*pack) - offsetof(struct wal_pack, packet_len);
@@ -176,25 +189,36 @@ wal_pack_prepare
 wal_pack_append:(struct wal_pack *)pack data:(const void *)data len:(u32)data_len
 	    scn:(i64)scn_ tag:(u16)tag cookie:(u64)cookie
 {
-	struct wal_row_meta *h = palloc(fiber->pool, sizeof(*h));
+	struct wal_row row = { .scn = scn_,
+			       .tag = tag,
+			       .cookie = cookie,
+			       .data_len = data_len,
+			       .data = data,
+			       .old_obj = NULL,
+			       .obj = NULL };
 
-	pack->packet_len += sizeof(*h) + data_len;
+	return [self wal_pack_append:pack row:&row];
+}
+
+- (u32)
+wal_pack_append:(struct wal_pack *)pack row:(const struct wal_row *)src
+{
+	struct wal_row *row = pack->row + pack->row_count;
+	memcpy(row, src, sizeof(*row));
+	pack->packet_len += sizeof(struct wal_row_meta) + row->data_len;
 	pack->row_count++;
 	assert(pack->row_count <= WAL_PACK_MAX);
 
-	h->scn = scn_;
-	h->tag = tag;
-	h->cookie = cookie;
-	h->data_len = data_len;
-
-	net_add_iov(&pack->netmsg, h, sizeof(*h));
-	net_add_iov(&pack->netmsg, data, data_len);
+	net_add_iov(&pack->netmsg, row, sizeof(struct wal_row_meta)); /* send meta only ! */
+	net_add_iov(&pack->netmsg, row->data, row->data_len);
 
 	return WAL_PACK_MAX - pack->row_count;
 }
 
+extern void update_crc(struct tnt_object *obj, u32 *crc);
+
 - (int)
-wal_pack_submit
+wal_pack_submit:(const struct wal_pack *)pack
 {
 	if (!local_writes) {
 		say_warn("local writes disabled");
@@ -218,6 +242,12 @@ wal_pack_submit
 		lsn = reply->lsn;
 		scn = reply->scn;
 		run_crc_log = reply->run_crc;
+
+		for (int i = 0; i < reply->row_count; i++) {
+			const struct wal_row *row = pack->row + i;
+			update_crc(row->old_obj, &run_crc_mod);
+			update_crc(row->obj, &run_crc_mod);
+		}
 	}
 	say_debug("%s: => LSN:%"PRIi64" rows:%i", __func__, reply->lsn, reply->row_count);
 	return reply->row_count;

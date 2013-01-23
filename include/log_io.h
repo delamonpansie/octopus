@@ -169,6 +169,16 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (void) configure_for_write:(i64)lsn next_scn:(i64)scn;
 @end
 
+struct wal_row {
+	i64 scn;
+	u16 tag;
+	u64 cookie;
+	u32 data_len;
+	const void *data;
+	struct tnt_object *old_obj;
+	struct tnt_object *obj;
+} __attribute__((packed));
+
 
 @interface XLogWriter: Object {
 	i64 lsn, scn, last_scn;
@@ -190,15 +200,18 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (struct child *) wal_writer;
 - (void) configure_wal_writer;
 
-- (struct wal_pack *) wal_pack_prepare;
+- (struct wal_pack *) wal_pack_prepare:(int)size;
+- (u32) wal_pack_append:(struct wal_pack *)pack row:(const struct wal_row *)row;
 - (u32) wal_pack_append:(struct wal_pack *)pack
 		   data:(const void *)data
 		    len:(u32)data_len
 		    scn:(i64)scn
 		    tag:(u16)tag
 		 cookie:(u64)cookie;
-- (int) wal_pack_submit;
+- (int) wal_pack_submit:(const struct wal_pack *)pack;
 - (int) wal_pack_submit_x; // FIXME: hack
+
+- (int) wal_row_submit:(const struct wal_row *)row;
 - (int) wal_row_submit:(const void *)data len:(u32)len scn:(i64)scn tag:(u16)tag;
 
 - (int) snapshot:(bool)sync;

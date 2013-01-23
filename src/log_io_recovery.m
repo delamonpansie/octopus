@@ -596,7 +596,7 @@ pull_wal(Recovery *r, id<XLogPullerAsync> puller)
 
 		int confirmed = 0;
 		while (confirmed != pack_rows) {
-			pack = [r wal_pack_prepare];
+			pack = [r wal_pack_prepare:(pack_rows - confirmed)];
 			for (int i = confirmed; i < pack_rows; i++) {
 				row = rows[i];
 				[r wal_pack_append:pack

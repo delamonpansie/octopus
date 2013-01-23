@@ -701,24 +701,6 @@ txn_cleanup(struct box_txn *txn)
 }
 
 
-#ifndef PAXOS
-static void
-update_crc(struct tnt_object *obj, u32 *crc)
-{
-	if (!obj)
-		return;
-
-	struct box_tuple *tuple = box_tuple(obj);
-	u32 new_crc= crc32c(*crc, (void *)tuple, sizeof(*tuple) + tuple->bsize);
-#ifdef LOGCRC
-	say_info("SCN: %"PRIi64" crc: 0x%08x -> 0x%08x %s",
-		 [recovery scn], *crc, new_crc,
-		 tbuf_to_hex(&TBUF(tuple, sizeof(*tuple) + tuple->bsize, fiber->pool)));
-#endif
-	*crc = new_crc;
-}
-#endif
-
 void
 txn_commit(struct box_txn *txn)
 {
@@ -727,18 +709,7 @@ txn_commit(struct box_txn *txn)
 	else
 		commit_replace(txn);
 
-#ifndef PAXOS
-	if (unlikely(!txn->snap)) {
-		update_crc(txn->old_obj, &recovery->run_crc_mod);
-		update_crc(txn->obj, &recovery->run_crc_mod);
-	}
-#endif
-
 	stat_collect(stat_base, txn->op, 1);
-
-	say_debug("txn_commit(op:%s) run_crc_mod:0x%x",
-		  ops[txn->op], recovery->run_crc_mod);
-
 	say_debug("%s: old_obj:refs=%i,%p obj:ref=%i,%p", __func__,
 		 txn->old_obj ? txn->old_obj->refs : 0, txn->old_obj,
 		 txn->obj ? txn->obj->refs : 0, txn->obj);
@@ -763,8 +734,15 @@ txn_abort(struct box_txn *txn)
 void
 txn_submit_to_storage(struct box_txn *txn)
 {
-	if ([recovery submit:txn->wal_record->ptr
-			 len:tbuf_len(txn->wal_record)] != 1)
+	struct wal_row row = { .scn = 0,
+			       .tag = wal_tag,
+			       .cookie = 0,
+			       .data_len = tbuf_len(txn->wal_record),
+			       .data = txn->wal_record->ptr,
+			       .old_obj = txn->old_obj,
+			       .obj = txn->obj };
+
+	if ([recovery wal_row_submit:&row] != 1)
 		iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
 	say_debug("%s: old_obj:refs=%i,%p obj:ref=%i,%p", __func__,
 		 txn->old_obj ? txn->old_obj->refs : 0, txn->old_obj,
@@ -1287,14 +1265,34 @@ wal_apply(struct box_txn *txn, struct tbuf *t)
 
 @implementation Recovery (Box)
 
+void
+update_crc(struct tnt_object *obj, u32 *crc)
+{
+	if (!obj)
+		return;
+
+	struct box_tuple *tuple = box_tuple(obj);
+	u32 new_crc= crc32c(*crc, (void *)tuple, sizeof(*tuple) + tuple->bsize);
+#ifdef LOGCRC
+	say_info("SCN: %"PRIi64" crc: 0x%08x -> 0x%08x %s",
+		 [recovery scn], *crc, new_crc,
+		 tbuf_to_hex(&TBUF(tuple, sizeof(*tuple) + tuple->bsize, fiber->pool)));
+#endif
+	*crc = new_crc;
+}
+
 static void
-apply(struct tbuf *op, u16 tag)
+apply(struct tbuf *op, u16 tag, u32 *crc)
 {
 	struct box_txn txn;
 	memset(&txn, 0, sizeof(txn));
 	switch (tag) {
 	case wal_tag:
 		wal_apply(&txn, op);
+		if (crc) {
+			update_crc(txn.old_obj, crc);
+			update_crc(txn.obj, crc);
+		}
 		break;
 	case snap_tag:
 		snap_apply(&txn, op);
@@ -1309,13 +1307,13 @@ apply(struct tbuf *op, u16 tag)
 - (void)
 apply:(struct tbuf *)op tag:(u16)tag
 {
-	apply(op, tag);
+	apply(op, tag, NULL);
 }
 
 - (void)
 apply_row:(const struct row_v12 *)r
 {
-	apply(&TBUF(r->data, r->len, NULL), r->tag);
+	apply(&TBUF(r->data, r->len, NULL), r->tag, &run_crc_mod);
 }
 
 - (void)
