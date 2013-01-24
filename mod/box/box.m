@@ -190,14 +190,15 @@ valid_tuple(struct tbuf *buf, u32 cardinality)
 }
 
 static void
-tuple_add(struct box_txn *txn, struct tnt_object *obj)
+tuple_add(struct netmsg **m, struct iproto_retcode *reply, struct tnt_object *obj)
 {
 	struct box_tuple *tuple = box_tuple(obj);
-	size_t size = tuple->bsize + sizeof(tuple->bsize) +
-		       sizeof(tuple->cardinality);
+	size_t size = tuple->bsize +
+		      sizeof(tuple->bsize) +
+		      sizeof(tuple->cardinality);
 
-	txn->iproto->data_len += size;
-	net_add_ref_iov(txn->m, obj, &tuple->bsize, size);
+	reply->data_len += size;
+	net_add_ref_iov(m, obj, &tuple->bsize, size);
 }
 
 static void
@@ -294,13 +295,6 @@ commit_replace(struct box_txn *txn)
 		}
 	}
 
-	if (txn->m) {
-		txn->iproto->data_len += sizeof(u32);
-		net_add_iov_dup(txn->m, &txn->obj_affected, sizeof(u32));
-
-		if (txn->obj && txn->flags & BOX_RETURN_TUPLE)
-			tuple_add(txn, txn->obj);
-	}
 }
 
 static void
@@ -584,17 +578,17 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 
 
 static void __attribute__((noinline))
-process_select(struct box_txn *txn, u32 limit, u32 offset, struct tbuf *data)
+process_select(struct netmsg **m, struct iproto_retcode *reply, Index<BasicIndex> *index,
+	       u32 limit, u32 offset, struct tbuf *data)
 {
-	Index<BasicIndex> *index = txn->index;
 	struct tnt_object *obj;
 	uint32_t *found;
 	u32 count = read_u32(data);
 
 	say_debug("SELECT");
-	found = palloc((*txn->m)->head->pool, sizeof(*found));
-	txn->iproto->data_len += sizeof(*found);
-	net_add_iov(txn->m, found, sizeof(*found));
+	found = palloc((*m)->head->pool, sizeof(*found));
+	reply->data_len += sizeof(*found);
+	net_add_iov(m, found, sizeof(*found));
 	*found = 0;
 
 	if (index->unique) {
@@ -613,7 +607,7 @@ process_select(struct box_txn *txn, u32 limit, u32 offset, struct tbuf *data)
 			}
 
 			(*found)++;
-			tuple_add(txn, obj);
+			tuple_add(m, reply, obj);
 			limit--;
 		}
 	} else {
@@ -637,7 +631,7 @@ process_select(struct box_txn *txn, u32 limit, u32 offset, struct tbuf *data)
 				}
 
 				(*found)++;
-				tuple_add(txn, obj);
+				tuple_add(m, reply, obj);
 				--limit;
 			}
 		}
@@ -665,23 +659,8 @@ commit_delete(struct box_txn *txn)
 			[index remove: txn->old_obj];
 		object_ref(txn->old_obj, -1);
 	}
-	if (txn->m) {
-		txn->iproto->data_len += sizeof(u32);
-		net_add_iov_dup(txn->m, &txn->obj_affected, sizeof(u32));
-	}
 }
 
-void
-txn_init(const struct iproto *req, struct box_txn *txn, struct netmsg **m)
-{
-	memset(txn, 0, sizeof(*txn));
-	txn->op = req->msg_code;
-	if (m) {
-		txn->m = m;
-		netmsg_getmark(*txn->m, &txn->header_mark);
-		txn->iproto = iproto_reply(m, req);
-	}
-}
 
 void
 txn_cleanup(struct box_txn *txn)
@@ -872,12 +851,14 @@ box_cb(struct iproto *request, struct conn *c)
 		box_prepare_update(&txn, &request_data);
 		/* we'r potentially block here */
 		txn_submit_to_storage(&txn);
+		txn_commit(&txn);
 
 		struct netmsg *m = netmsg_tail(&c->out_messages);
-		txn.m = &m;
-		netmsg_getmark(*txn.m, &txn.header_mark);
-		txn.iproto = iproto_reply(txn.m, request);
-		txn_commit(&txn);
+		struct iproto_retcode *reply = iproto_reply(&m, request);
+		reply->data_len += sizeof(u32);
+		net_add_iov_dup(&m, &txn.obj_affected, sizeof(u32));
+		if (request->msg_code != DELETE && txn.flags & BOX_RETURN_TUPLE && txn.obj)
+			tuple_add(&m, reply, txn.obj);
 
 		stop = ev_now();
 		if (stop - start > cfg.too_long_threshold)
@@ -905,22 +886,30 @@ box_cb(struct iproto *request, struct conn *c)
 static void
 box_select_cb(struct netmsg **m, struct iproto *request, struct conn *c __attribute__((unused)))
 {
-	struct box_txn txn = { .op = 0, .m = m, .iproto = iproto_reply(m, request) };
 	struct tbuf data = TBUF(request->data, request->data_len, fiber->pool);
+	struct iproto_retcode *reply = iproto_reply(m, request);
+	struct object_space *object_space;
 
-	txn_common_parser(&txn, &data);
-
+	i32 n = read_u32(&data);
 	u32 i = read_u32(&data);
 	u32 offset = read_u32(&data);
 	u32 limit = read_u32(&data);
 
+	if (n < 0 || n > object_space_count - 1)
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "bad namespace number");
+
+	if (!object_space_registry[n].enabled)
+		iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "object_space %i is not enabled", n);
+
 	if (i > MAX_IDX)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index too big");
 
-	if ((txn.index = txn.object_space->index[i]) == NULL)
+	object_space = &object_space_registry[n];
+
+	if ((object_space->index[i]) == NULL)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index is invalid");
 
-	process_select(&txn, limit, offset, &data);
+	process_select(m, reply, object_space->index[i], limit, offset, &data);
 	stat_collect(stat_base, request->msg_code, 1);
 }
 

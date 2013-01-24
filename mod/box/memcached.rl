@@ -110,11 +110,9 @@ store(void *key, u32 exptime, u32 flags, u32 bytes, u8 *data)
 	write_varint32(req, bytes);
 	tbuf_append(req, data, bytes);
 
-	struct box_txn txn;
+	struct box_txn txn = { .op = INSERT };
 	@try {
 		ev_tstamp start = ev_now(), stop;
-		struct iproto r = { .msg_code = INSERT };
-		txn_init(&r, &txn, NULL);
 		box_prepare_update(&txn, req);
 		txn_submit_to_storage(&txn);
 		txn_commit(&txn);
@@ -149,10 +147,8 @@ delete(void *key)
 	tbuf_append(req, &key_len, sizeof(key_len));
 	tbuf_append_field(req, key);
 
-	struct box_txn txn;
+	struct box_txn txn = { .op = DELETE };
 	@try {
-		struct iproto r = { .msg_code = DELETE };
-		txn_init(&r, &txn, NULL);
 		box_prepare_update(&txn, req);
 		txn_submit_to_storage(&txn);
 		txn_commit(&txn);

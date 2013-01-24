@@ -69,10 +69,6 @@ box_tuple(struct tnt_object *obj)
 }
 
 struct box_txn {
-	struct netmsg **m;
-	struct netmsg_mark header_mark;
-	struct iproto_retcode *iproto;
-
 	u16 op;
 	u32 flags;
 
@@ -124,7 +120,6 @@ struct box_txn {
 enum messages ENUM_INITIALIZER(MESSAGES);
 
 @class Recovery;
-void txn_init(const struct iproto *req, struct box_txn *txn, struct netmsg **m);
 void txn_commit(struct box_txn *txn);
 void txn_abort(struct box_txn *txn);
 void txn_cleanup(struct box_txn *txn);
