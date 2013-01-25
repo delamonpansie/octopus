@@ -180,9 +180,9 @@ tuple_alloc(unsigned cardinality, unsigned size)
 }
 
 static bool
-valid_tuple(struct tbuf *buf, u32 cardinality)
+valid_tuple(u32 cardinality, const void *data, u32 data_len)
 {
-	struct tbuf tmp = *buf;
+	struct tbuf tmp = TBUF(data, data_len, NULL);
 	for (int i = 0; i < cardinality; i++)
 		read_field(&tmp);
 
@@ -236,18 +236,17 @@ txn_acquire(struct box_txn *txn, struct tnt_object *obj)
 }
 
 
-static void __attribute((noinline))
-prepare_replace(struct box_txn *txn, size_t cardinality, struct tbuf *data)
+static void __attribute__((noinline))
+prepare_replace(struct box_txn *txn, size_t cardinality, const void *data, u32 data_len)
 {
 	if (cardinality == 0)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "cardinality can't be equal to 0");
-	if (tbuf_len(data) == 0 || !valid_tuple(data, cardinality))
+	if (data_len == 0 || !valid_tuple(cardinality, data, data_len))
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "tuple encoding error");
 
-	txn->obj = txn_acquire(txn, tuple_alloc(cardinality, tbuf_len(data)));
+	txn->obj = txn_acquire(txn, tuple_alloc(cardinality, data_len));
 	struct box_tuple *tuple = box_tuple(txn->obj);
-	memcpy(tuple->data, data->ptr, tbuf_len(data));
-	tbuf_ltrim(data, tbuf_len(data));
+	memcpy(tuple->data, data, data_len);
 
 	txn->old_obj = txn_acquire(txn, [txn->index find_by_obj:txn->obj]);
 	txn->obj_affected = txn->old_obj != NULL ? 2 : 1;
@@ -763,7 +762,9 @@ box_prepare_update(struct box_txn *txn, struct tbuf *data)
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS,
 				  "tuple cardinality must match object_space cardinality");
 		}
-		prepare_replace(txn, cardinality, data);
+		u32 data_len = tbuf_len(data);
+		void *tuple_bytes = read_bytes(data, data_len);
+		prepare_replace(txn, cardinality, tuple_bytes, data_len);
 		break;
 
 	case DELETE:
@@ -787,7 +788,7 @@ box_prepare_update(struct box_txn *txn, struct tbuf *data)
 
 	if (txn->obj) {
 		struct box_tuple *tuple = box_tuple(txn->obj);
-		if (!valid_tuple(&TBUF(tuple->data, tuple->bsize, NULL), tuple->cardinality))
+		if (!valid_tuple(tuple->cardinality, tuple->data, tuple->bsize))
 			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "internal error");
 	}
 	if (tbuf_len(data) != 0)
@@ -931,9 +932,12 @@ xlog_print(struct tbuf *out, struct tbuf *b)
 		tbuf_printf(out, "%s n:%i ", ops[op], n);
 		flags = read_u32(b);
 		cardinality = read_u32(b);
-		if (!valid_tuple(b, cardinality))
+		u32 data_len = tbuf_len(b);
+		void *data= read_bytes(b, data_len);
+
+		if (!valid_tuple(cardinality, data, data_len))
 			abort();
-		tuple_print(out, cardinality, b->ptr);
+		tuple_print(out, cardinality, data);
 		break;
 
 	case DELETE:
@@ -1241,7 +1245,7 @@ snap_apply(struct box_txn *txn, struct tbuf *t)
 	assert(txn->index != nil);
 
 	txn->snap = true;
-	prepare_replace(txn, row->tuple_size, &TBUF(row->data, row->data_size, NULL));
+	prepare_replace(txn, row->tuple_size, row->data, row->data_size);
 	txn->op = INSERT;
 }
 
