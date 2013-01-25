@@ -270,10 +270,10 @@ iproto_reply(struct netmsg **m, const struct iproto *request)
 {
 	struct iproto_retcode *h = palloc((*m)->head->pool, sizeof(*h));
 	net_add_iov(m, h, sizeof(*h));
-	h->msg_code = request->msg_code;
-	h->data_len = sizeof(h->ret_code);
-	h->sync = request->sync;
-	h->ret_code = ERR_CODE_OK;
+	*h = (struct iproto_retcode){ .msg_code = request->msg_code,
+				      .data_len = sizeof(h->ret_code),
+				      .sync = request->sync,
+				      .ret_code = ERR_CODE_OK };
 	return h;
 }
 
