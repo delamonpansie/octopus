@@ -305,8 +305,8 @@ struct wal_row {
 @end
 
 
-i64 fold_scn;
 @interface FoldRecovery: Recovery
+i64 fold_scn;
 - (id) init_snap_dir:(const char *)snap_dirname
 	     wal_dir:(const char *)wal_dirname;
 @end
