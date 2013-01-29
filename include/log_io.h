@@ -248,8 +248,6 @@ struct wal_row {
 	ev_tstamp lag, last_update_tstamp, run_crc_verify_tstamp;
 	char status[64];
 
-	struct mhash_t *pending_row;
-
 	XLogPuller *remote_puller;
 	const char *feeder_addr;
 
