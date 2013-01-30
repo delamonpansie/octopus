@@ -392,6 +392,8 @@ open_for_write:(i64)lsn scn:(i64)scn
 	l->inprogress = true;
 	return l;
       error:
+	if (fd >= 0)
+		close(fd);
         if (file != NULL)
                 fclose(file);
         [l free];
