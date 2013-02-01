@@ -483,7 +483,6 @@ init_filename:(const char *)filename_
 	fd = fd_;
 	mode = LOG_READ;
 	dir = dir_;
-	writer = dir->writer;
 	stat.data = dir->writer;
 
 #ifdef __GLIBC__

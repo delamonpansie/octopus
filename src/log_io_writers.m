@@ -514,7 +514,7 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *row)
 	static int bytes;
 	ev_tstamp elapsed;
 	static ev_tstamp last = 0;
-	const int io_rate_limit = l->writer->snap_io_rate_limit;
+	const int io_rate_limit = l->dir->writer->snap_io_rate_limit;
 
 	if ([l append_row:row->ptr len:tbuf_len(row) scn:0 tag:tag] < 0) {
 		say_error("unable write row");

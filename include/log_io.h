@@ -121,7 +121,6 @@ typedef void (follow_cb)(ev_stat *w, int events);
 	ev_stat stat;
 
 	XLogDir *dir;
-	XLogWriter *writer;
 	i64 next_lsn;
 
 	struct palloc_pool *pool;
