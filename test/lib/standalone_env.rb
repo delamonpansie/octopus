@@ -63,9 +63,10 @@ class StandAloneEnv < RunEnv
 
   def gdb_if_core
     if FileTest.readable?("core")
-      STDERR.puts "\n\nCore found. starting gdb."
+      STDERR.puts "\nLast 20 lines from log\n-------\n"
       system *%w[tail -n20 octopus.log]
       STDERR.puts "\n-------\n"
+      STDERR.puts "\n\nCore found. starting gdb."
       exec *%w[gdb --quiet octopus core]
     end
   end
