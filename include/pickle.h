@@ -40,6 +40,7 @@ void *read_field(struct tbuf *buf);
 struct lua_State;
 void read_push_field(struct lua_State *L, struct tbuf *buf);
 void *read_bytes(struct tbuf *buf, u32 data_len);
+void *read_ptr(struct tbuf *buf);
 
 u32 pick_u32(void *data, void **rest);
 

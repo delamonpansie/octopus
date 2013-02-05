@@ -167,6 +167,12 @@ read_bytes(struct tbuf *buf, u32 data_len)
 	return p;
 }
 
+void *
+read_ptr(struct tbuf *buf)
+{
+	return *(void **)read_bytes(buf, sizeof(void *));
+}
+
 size_t
 varint32_sizeof(u32 value)
 {
