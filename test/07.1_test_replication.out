@@ -6610,3 +6610,9 @@
 # box.select([999])
 [["\xE7\x03\x00\x00", "\xE8\x03\x00\x00", "ABC", "DEF"]]
 
+# box.select([998])
+[]
+
+# box.select([999])
+[["\xE7\x03\x00\x00", "\xE8\x03\x00\x00", "ABC", "DEF"]]
+

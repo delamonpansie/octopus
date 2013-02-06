@@ -94,6 +94,14 @@ MasterEnv.clean do
     sleep(0.5)
     slave.select [998]
     slave.select [999]
+
+    # verify that replica is able to read it's own xlog's
+    stop
+    start
+    sleep(0.5)
+    slave = connect
+    slave.select [998]
+    slave.select [999]
   end
 end
 

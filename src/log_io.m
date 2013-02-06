@@ -368,6 +368,7 @@ open_for_write:(i64)lsn scn:(i64)scn
 {
         XLog *l = nil;
         FILE *file = NULL;
+	int fd = -1;
         assert(lsn > 0);
 
 
@@ -390,7 +391,7 @@ open_for_write:(i64)lsn scn:(i64)scn
 	 * Open the <lsn>.<suffix>.inprogress file. If it
 	 * exists, open will fail.
 	 */
-	int fd = open(filename, O_WRONLY | O_CREAT | O_EXCL | O_APPEND, 0664);
+	fd = open(filename, O_WRONLY | O_CREAT | O_EXCL | O_APPEND, 0664);
 	if (fd < 0) {
 		say_error("failed to open `%s': %s", filename, strerror(errno));
 		goto error;
@@ -419,6 +420,8 @@ open_for_write:(i64)lsn scn:(i64)scn
 	l->inprogress = true;
 	return l;
       error:
+	if (fd >= 0)
+		close(fd);
         if (file != NULL)
                 fclose(file);
         [l free];
