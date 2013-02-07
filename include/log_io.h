@@ -111,6 +111,27 @@ typedef void (follow_cb)(ev_stat *w, int events);
 @interface WALDir: XLogDir
 @end
 
+struct _row_v11 {
+	u32 header_crc32c;
+	i64 lsn;
+	double tm;
+	u32 len;
+	u32 data_crc32c;
+	u8 data[];
+} __attribute__((packed));
+
+struct row_v12 {
+	u32 header_crc32c;
+	i64 lsn;
+	i64 scn;
+	u16 tag;
+	u64 cookie;
+	double tm;
+	u32 len;
+	u32 data_crc32c;
+	u8 data[];
+} __attribute__((packed));
+
 @interface XLog: Object <XLogPuller> {
 	size_t rows, wet_rows;
 	bool eof;
@@ -154,6 +175,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 - (size_t)wet_rows_offset_available;
 - (i64) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie;
 - (i64) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag;
+- (i64) append_row:(struct row_v12 *)row data:(const void *)data;
 - (void) configure_for_write:(i64)lsn;
 - (i64) confirm_write;
 @end
@@ -319,27 +341,6 @@ struct replication_handshake {
 		u32 ver;
 		i64 scn;
 		char filter[32];
-} __attribute__((packed));
-
-struct _row_v11 {
-	u32 header_crc32c;
-	i64 lsn;
-	double tm;
-	u32 len;
-	u32 data_crc32c;
-	u8 data[];
-} __attribute__((packed));
-
-struct row_v12 {
-	u32 header_crc32c;
-	i64 lsn;
-	i64 scn;
-	u16 tag;
-	u64 cookie;
-	double tm;
-	u32 len;
-	u32 data_crc32c;
-	u8 data[];
 } __attribute__((packed));
 
 static inline struct _row_v11 *_row_v11(const struct tbuf *t)
