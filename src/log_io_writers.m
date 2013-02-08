@@ -40,43 +40,6 @@
 #include <sysexits.h>
 #include <sys/socket.h>
 
-/* Wal pack is :
-   Header:     packet_len: u32
-	       fid: u32
-	       row_count: u32
-
-   Row x row_count:
-	       scn: i64
-	       tag: u16
-	       cookie: u64
-	       data_len: u32
-	       data: u8[data_len]
-*/
-
-struct wal_pack {
-	struct netmsg *netmsg;
-	u32 packet_len;
-	u32 fid;
-	u32 row_count;
-	struct wal_row row[];
-} __attribute__((packed));
-
-struct wal_row_meta {
-	i64 scn;
-	u16 tag;
-	u64 cookie;
-	u32 data_len;
-} __attribute__((packed));
-
-struct wal_reply {
-	u32 data_len;
-	i64 lsn;
-	i64 scn;
-	u32 fid;
-	u32 row_count;
-	u32 run_crc;
-} __attribute__((packed));
-
 void
 wal_disk_writer_input_dispatch(va_list ap __attribute__((unused)))
 {
@@ -95,12 +58,15 @@ wal_disk_writer_input_dispatch(va_list ap __attribute__((unused)))
 				panic("WAL writer connection EOF");
 		}
 
-		while (tbuf_len(c->rbuf) > sizeof(u32) * 2 &&
+		while (tbuf_len(c->rbuf) > sizeof(u32) &&
 		       tbuf_len(c->rbuf) >= *(u32 *)c->rbuf->ptr)
 		{
-			struct wal_reply *r = c->rbuf->ptr;
-			resume(fid2fiber(r->fid), r);
-			tbuf_ltrim(c->rbuf, sizeof(*r));
+			struct wal_reply *r = read_bytes(c->rbuf, sizeof(*r));
+			if (unlikely(r->sender->fid != r->fid)) {
+				say_warn("orphan WAL reply");
+				continue;
+			}
+			resume(r->sender, r);
 		}
 
 		if (palloc_allocated(c->rbuf->pool) > 4 * 1024 * 1024)
@@ -130,131 +96,80 @@ configure_wal_writer
 	ev_io_start(&wal_writer->c->out);
 }
 
+- (void)
+wal_commit:(const struct wal_reply *)reply
+{
+	/* FIXME: move to wal_pack_submit ? */
+	say_debug("%s: LSN:%"PRIi64"->%"PRIi64" crc:0x%08x->%08x", __func__,
+		  lsn, reply->lsn, run_crc_log, reply->run_crc);
+	lsn = reply->lsn;
+	scn = reply->scn;
+	run_crc_log = reply->run_crc;
+}
+
+
 - (int)
 wal_row_submit:(const void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag
 {
-	struct wal_row row = { .scn = scn_,
-			       .tag = tag,
-			       .cookie = 0,
-			       .data_len = data_len,
-			       .data = data,
-			       .old_obj = NULL,
-			       .obj = NULL };
+	struct row_v12 row = { .scn = scn_,
+			       .tag = tag };
 
-	return [self wal_row_submit:&row];
-}
-
-- (int)
-wal_row_submit:(const struct wal_row *)src
-{
-	say_debug("%s: data_len:%i SCN:%"PRIi64" tag:%s old_obj:%p obj:%p", __func__,
-		  src->data_len, src->scn, xlog_tag_to_a(src->tag),
-		  src->old_obj, src->obj);
-
-	struct wal_pack *pack = palloc(fiber->pool, sizeof(struct wal_pack) + sizeof(struct wal_row));
-	struct wal_row *row = pack->row;
-	memcpy(row, src, sizeof(*row));
-
-	pack->netmsg = netmsg_tail(&wal_writer->c->out_messages);
-	pack->packet_len = sizeof(*pack) - offsetof(struct wal_pack, packet_len) +
-			   sizeof(struct wal_row_meta) + row->data_len;
-	pack->fid = fiber->fid;
-	pack->row_count = 1;
-
-	net_add_iov(&pack->netmsg, &pack->packet_len,
-		    sizeof(struct wal_pack) - offsetof(struct wal_pack, packet_len) +
-		    sizeof(struct wal_row_meta));
-	net_add_iov(&pack->netmsg, row->data, row->data_len); /* safe, since when wal_pack_submit returns
-								 data is already sent */
-
-	return [self wal_pack_submit:pack];
-}
-
-- (struct wal_pack *)
-wal_pack_prepare:(int)size
-{
-	struct wal_pack *pack = palloc(fiber->pool, sizeof(*pack) + sizeof(struct wal_row) * size);
-
-	pack->netmsg = netmsg_tail(&wal_writer->c->out_messages);
-	pack->packet_len = sizeof(*pack) - offsetof(struct wal_pack, packet_len);
-	pack->fid = fiber->fid;
-	pack->row_count = 0;
-	net_add_iov(&pack->netmsg, &pack->packet_len, pack->packet_len);
-
-	return pack;
-}
-
-
-- (u32)
-wal_pack_append:(struct wal_pack *)pack data:(const void *)data len:(u32)data_len
-	    scn:(i64)scn_ tag:(u16)tag cookie:(u64)cookie
-{
-	struct wal_row row = { .scn = scn_,
-			       .tag = tag,
-			       .cookie = cookie,
-			       .data_len = data_len,
-			       .data = data,
-			       .old_obj = NULL,
-			       .obj = NULL };
-
-	return [self wal_pack_append:pack row:&row];
-}
-
-- (u32)
-wal_pack_append:(struct wal_pack *)pack row:(const struct wal_row *)src
-{
-	struct wal_row *row = pack->row + pack->row_count;
-	memcpy(row, src, sizeof(*row));
-	pack->packet_len += sizeof(struct wal_row_meta) + row->data_len;
-	pack->row_count++;
-	assert(pack->row_count <= WAL_PACK_MAX);
-
-	net_add_iov(&pack->netmsg, row, sizeof(struct wal_row_meta)); /* send meta only ! */
-	net_add_iov(&pack->netmsg, row->data, row->data_len);
-
-	return WAL_PACK_MAX - pack->row_count;
-}
-
-extern void update_crc(struct tnt_object *obj, u32 *crc);
-
-- (int)
-wal_pack_submit:(const struct wal_pack *)pack
-{
-	if (!local_writes) {
-		say_warn("local writes disabled");
+	struct wal_pack *pack = wal_pack_prepare(1, self);
+	if (!pack)
 		return 0;
-	}
+	wal_pack_append_row(pack, &row);
+	wal_pack_append_data(pack, data, data_len);
 
-	ev_io_start(&wal_writer->c->out);
-	struct wal_reply *reply = yield();
-	assert(reply->lsn != -1);
-	if (reply->lsn == 0) {
-		say_warn("wal writer returned error status");
-	} else {
-		if (cfg.sync_scn_with_lsn && reply->lsn != reply->scn)
-			raise("out ouf sync SCN:%"PRIi64 " != LSN:%"PRIi64,
-			      reply->scn, reply->lsn);
-		if (scn != reply->scn)
-			say_debug("%s: update SCN:%"PRIi64" -> %"PRIi64, __func__, scn, reply->scn);
-		if (run_crc_log != reply->run_crc)
-			say_debug("%s: update run_crc:%08x -> %08x", __func__, run_crc_log, reply->run_crc);
-		/* update local vars */
-		lsn = reply->lsn;
-		scn = reply->scn;
-		run_crc_log = reply->run_crc;
+	struct wal_reply *reply = [self wal_pack_submit];
+	[self wal_commit:reply];
 
-		for (int i = 0; i < reply->row_count; i++) {
-			const struct wal_row *row = pack->row + i;
-			update_crc(row->old_obj, &run_crc_mod);
-			update_crc(row->obj, &run_crc_mod);
-		}
-	}
-	say_debug("%s: => LSN:%"PRIi64" rows:%i", __func__, reply->lsn, reply->row_count);
 	return reply->row_count;
 }
 
-- (int)
-wal_pack_submit_x
+struct wal_pack *
+wal_pack_prepare(size_t count, XLogWriter *w)
+{
+	if (!w->local_writes) {
+		say_warn("local writes disabled");
+		return NULL;
+	}
+
+	struct wal_pack *pack = palloc(fiber->pool, sizeof(*pack) + sizeof(pack->row[0]) * count);
+	pack->netmsg = netmsg_tail(&w->wal_writer->c->out_messages);
+	pack->packet_len = sizeof(*pack) - offsetof(struct wal_pack, packet_len);
+	pack->sender = fiber;
+	pack->pack = pack;
+	pack->fid = fiber->fid;
+	pack->row_count = 0;
+	net_add_iov(&pack->netmsg, &pack->packet_len, pack->packet_len);
+	return pack;
+}
+
+u32
+wal_pack_append_row(struct wal_pack *pack, struct row_v12 *row)
+{
+	pack->packet_len += sizeof(*row) + row->len;
+	pack->row[pack->row_count] = row;
+	pack->row_count++;
+	assert(pack->row_count <= WAL_PACK_MAX);
+
+	net_add_iov(&pack->netmsg, row, sizeof(*row));
+	if (row->len > 0)
+		net_add_iov(&pack->netmsg, row->data, row->len);
+	return WAL_PACK_MAX - pack->row_count;
+}
+
+void
+wal_pack_append_data(struct wal_pack *pack, const void *data, size_t len)
+{
+	struct row_v12 *row = pack->row[pack->row_count - 1];
+	pack->packet_len += len;
+	row->len += len;
+	net_add_iov(&pack->netmsg, data, len);
+}
+
+- (struct wal_reply *)
+wal_pack_submit
 {
 	ev_io_start(&wal_writer->c->out);
 	struct wal_reply *reply = yield();
@@ -266,11 +181,22 @@ wal_pack_submit_x
 		raise("out ouf sync SCN:%"PRIi64 " != LSN:%"PRIi64,
 		      reply->scn, reply->lsn);
 
-	assert(lsn >= reply->lsn);
-	assert(scn >= reply->scn);
+	struct wal_pack *pack = reply->pack;
 
-	return reply->row_count;
+	i64 reply_lsn = reply->lsn;
+	i64 reply_scn = reply->scn;
+	for (int i = reply->row_count - 1; i >=0 ; i--) {
+		struct row_v12 *row = pack->row[i];
+		row->lsn = reply_lsn--;
+		if (!row->scn)
+			row->scn = reply_scn--;
+	}
+	run_crc_log = reply->run_crc;
+
+	say_debug("%s: => rows:%i", __func__, reply->row_count);
+	return reply;
 }
+
 
 - (i64)
 append_row:(const void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag cookie:(u64)cookie
@@ -344,6 +270,8 @@ wal_disk_writer(int fd, void *state)
 	bool io_failure = false, have_unwritten_rows = false;
 	ssize_t r;
 	struct {
+		struct fiber *sender;
+		struct wal_pack *pack;
 		u32 fid;
 		u32 row_count;
 		u32 run_crc; /* run_crc is computed */
@@ -401,7 +329,7 @@ wal_disk_writer(int fd, void *state)
 		ev_now_update();
 
 		while (tbuf_len(&rbuf) > sizeof(u32) && tbuf_len(&rbuf) >= *(u32 *)rbuf.ptr) {
-			u32 row_count = ((u32 *)rbuf.ptr)[2];
+			u32 row_count = ((u32 *)rbuf.ptr)[1];
 			if (!io_failure && row_count > [writer->current_wal wet_rows_offset_available]) {
 				assert(requests_processed != 0);
 				have_unwritten_rows = true;
@@ -410,20 +338,24 @@ wal_disk_writer(int fd, void *state)
 
 			tbuf_ltrim(&rbuf, sizeof(u32)); /* drop packet_len */
 			broken[requests_processed] = 0;
-			request[requests_processed].fid = read_u32(&rbuf);
 			request[requests_processed].row_count = read_u32(&rbuf);
+			request[requests_processed].sender = read_ptr(&rbuf);
+			request[requests_processed].pack = read_ptr(&rbuf);
+			request[requests_processed].fid = read_u32(&rbuf);
 
 			for (int i = 0; i < request[requests_processed].row_count; i++) {
-				struct wal_row_meta *h = read_bytes(&rbuf, sizeof(*h));
-				void *data = read_bytes(&rbuf, h->data_len);
+				struct row_v12 *h = read_bytes(&rbuf, sizeof(*h));
+				void *data = read_bytes(&rbuf, h->len);
 
 				if (io_failure)
 					continue;
 
 				say_debug("%s: SCN:%"PRIi64" tag:%s data_len:%u", __func__,
-					  h->scn, xlog_tag_to_a(h->tag), h->data_len);
+					  h->scn, xlog_tag_to_a(h->tag), h->len);
+
+				/* FIXME: use packed repr! */
 				i64 ret = [writer append_row:data
-							 len:h->data_len
+							 len:h->len
 							 scn:h->scn
 							 tag:h->tag
 						      cookie:h->cookie];
@@ -434,7 +366,7 @@ wal_disk_writer(int fd, void *state)
 				}
 
 				if (h->tag == wal_tag)
-					crc = crc32c(crc, data, h->data_len);
+					crc = crc32c(crc, data, h->len);
 
 				/* next_scn is used for writing XLog header, which is turn used to
 				   find correct file for replication reply.
@@ -465,6 +397,8 @@ wal_disk_writer(int fd, void *state)
 						   .lsn = 0,
 						   .scn = 0,
 						   .row_count = 0,
+						   .sender = request[i].sender,
+						   .pack = request[i].pack,
 						   .fid = request[i].fid,
 						   .run_crc = request[i].run_crc };
 

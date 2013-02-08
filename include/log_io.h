@@ -190,25 +190,41 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (void) configure_for_write:(i64)lsn next_scn:(i64)scn;
 @end
 
-struct wal_row {
-	i64 scn;
-	u16 tag;
-	u64 cookie;
+
+struct wal_pack {
+	struct netmsg *netmsg;
+	u32 packet_len;
+	u32 row_count;
+	struct fiber *sender;
+	struct wal_pack *pack;
+	u32 fid;
+	struct row_v12 *row[];
+} __attribute__((packed));
+
+struct wal_reply {
 	u32 data_len;
-	const void *data;
-	struct tnt_object *old_obj;
-	struct tnt_object *obj;
+	struct fiber *sender;
+	struct wal_pack *pack;
+	u32 fid;
+	i64 lsn;
+	i64 scn;
+	u32 row_count;
+	u32 run_crc;
 } __attribute__((packed));
 
 
+struct wal_pack *wal_pack_prepare(size_t count, XLogWriter *r);
+u32 wal_pack_append_row(struct wal_pack *pack, struct row_v12 *row);
+void wal_pack_append_data(struct wal_pack *pack, const void *data, size_t len);
+
 @interface XLogWriter: Object {
 	i64 lsn, scn, last_scn;
-	struct child *wal_writer;
 	XLogDir *wal_dir, *snap_dir;
-	bool local_writes;
 	XLog *wal_to_close;
 	ev_timer wal_timer;
 @public
+	bool local_writes;
+	struct child *wal_writer;
 	XLog *current_wal;	/* the WAL we'r currently reading/writing from/to */
 	int snap_io_rate_limit;
 	u32 run_crc_log, run_crc_mod;
@@ -221,18 +237,8 @@ struct wal_row {
 - (struct child *) wal_writer;
 - (void) configure_wal_writer;
 
-- (struct wal_pack *) wal_pack_prepare:(int)size;
-- (u32) wal_pack_append:(struct wal_pack *)pack row:(const struct wal_row *)row;
-- (u32) wal_pack_append:(struct wal_pack *)pack
-		   data:(const void *)data
-		    len:(u32)data_len
-		    scn:(i64)scn
-		    tag:(u16)tag
-		 cookie:(u64)cookie;
-- (int) wal_pack_submit:(const struct wal_pack *)pack;
-- (int) wal_pack_submit_x; // FIXME: hack
-
-- (int) wal_row_submit:(const struct wal_row *)row;
+- (struct wal_reply *) wal_pack_submit;
+- (void)wal_commit:(const struct wal_reply *)r;
 - (int) wal_row_submit:(const void *)data len:(u32)len scn:(i64)scn tag:(u16)tag;
 
 - (int) snapshot:(bool)sync;
@@ -264,6 +270,13 @@ struct wal_row {
 - (int) handshake:(struct sockaddr_in *)addr_ scn:(i64)scn err:(const char **)err_ptr;
 @end
 
+@protocol Txn
+- (void) append:(struct wal_pack *)pack;
+- (void) prepare:(struct row_v12 *)row;
+- (void) commit;
+- (void) rollback;
+@end
+
 @interface Recovery: XLogWriter {
 	i64 last_wal_lsn;
 	ev_tstamp lag, last_update_tstamp, run_crc_verify_tstamp;
@@ -280,6 +293,8 @@ struct wal_row {
 
 	i64 next_skip_scn;
 	struct tbuf skip_scn;
+
+	Class txn_class;
 }
 
 - (const char *) status;
@@ -288,8 +303,6 @@ struct wal_row {
 - (ev_tstamp) run_crc_lag;
 - (const char *) run_crc_status;
 
-- (void) apply:(struct tbuf *)op tag:(u16)tag;
-- (void) apply_row:(const struct row_v12 *)row;
 - (void) recover_row:(const struct row_v12 *)row;
 - (void) recover_finalize;
 - (i64) recover_start;
@@ -320,7 +333,8 @@ struct wal_row {
        run_crc_delay:(double)run_crc_delay
 	nop_hb_delay:(double)nop_hb_delay
                flags:(int)flags
-  snap_io_rate_limit:(int)snap_io_rate_limit;
+  snap_io_rate_limit:(int)snap_io_rate_limit
+	   txn_class:(Class)txn_class;
 @end
 
 

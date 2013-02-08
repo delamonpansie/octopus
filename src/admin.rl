@@ -43,6 +43,9 @@
 #include <unistd.h>
 #include <stdlib.h>
 
+@class Recovery;
+extern Recovery *recovery;
+
 static const char help[] =
 	"available commands:" CRLF
 	" - help" CRLF

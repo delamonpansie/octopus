@@ -215,28 +215,22 @@ static const struct luaL_reg netmsg_mt [] = {
 static int
 luaT_box_dispatch(struct lua_State *L)
 {
-	u32 op = luaL_checkinteger(L, 1);
+	u16 op = luaL_checkinteger(L, 1);
 	size_t len;
 	const char *req = luaL_checklstring(L, 2, &len);
-	struct box_txn txn;
-	memset(&txn, 0, sizeof(txn));
-	txn.op = op;
+	struct BoxTxn *txn = [BoxTxn palloc];
+
 	@try {
-		box_prepare_update(&txn, &TBUF(req, len, NULL));
-		txn_submit_to_storage(&txn);
-		txn_commit(&txn);
-		if (txn.obj != NULL) {
-			luaT_pushobject(L, txn.obj);
+		[recovery wal_commit:[txn commit:op data:req len:len]];
+		if (txn->obj != NULL) {
+			luaT_pushobject(L, txn->obj);
 			return 1;
 		}
 	}
 	@catch (Error *e) {
-		txn_abort(&txn);
+		[txn rollback];
 		lua_pushstring(L, e->reason);
 		lua_error(L);
-	}
-	@finally {
-		txn_cleanup(&txn);
 	}
 	return 0;
 }
@@ -417,14 +411,15 @@ luaT_find_proc(lua_State *L, char *fname, i32 len)
 }
 
 void
-box_dispach_lua(struct conn *c, struct iproto *request, struct tbuf *data)
+box_dispach_lua(struct conn *c, struct iproto *request)
 {
 	lua_State *L = fiber->L;
+	struct tbuf data = TBUF(request->data, request->data_len, fiber->pool);
 
-	u32 flags = read_u32(data); (void)flags; /* compat, ignored */
-	u32 flen = read_varint32(data);
-	void *fname = read_bytes(data, flen);
-	u32 nargs = read_u32(data);
+	u32 flags = read_u32(&data); (void)flags; /* compat, ignored */
+	u32 flen = read_varint32(&data);
+	void *fname = read_bytes(&data, flen);
+	u32 nargs = read_u32(&data);
 
 	luaT_pushnetmsg(L);
 
@@ -434,7 +429,7 @@ box_dispach_lua(struct conn *c, struct iproto *request, struct tbuf *data)
 	}
 	lua_pushvalue(L, 1);
 	for (int i = 0; i < nargs; i++)
-		read_push_field(L, data);
+		read_push_field(L, &data);
 
 	/* FIXME: switch to native exceptions ? */
 	if (lua_pcall(L, 1 + nargs, 1, 0)) {
