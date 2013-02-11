@@ -1599,8 +1599,10 @@ info(struct tbuf *out)
 	tbuf_printf(out, "  version: \"%s\"" CRLF, octopus_version());
 	tbuf_printf(out, "  uptime: %i" CRLF, tnt_uptime());
 	tbuf_printf(out, "  pid: %i" CRLF, getpid());
-	tbuf_printf(out, "  wal_writer_pid: %" PRIi64 CRLF,
-		    (i64) [recovery wal_writer]->pid);
+	struct child *wal_writer = [recovery wal_writer];
+	if (wal_writer)
+		tbuf_printf(out, "  wal_writer_pid: %" PRIi64 CRLF,
+			    (i64)wal_writer->pid);
 	tbuf_printf(out, "  lsn: %" PRIi64 CRLF, [recovery lsn]);
 	tbuf_printf(out, "  scn: %" PRIi64 CRLF, [recovery scn]);
 	if ([recovery is_replica]) {
