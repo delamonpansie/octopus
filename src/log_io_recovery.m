@@ -980,7 +980,6 @@ recover_row:(struct row_v12 *)r
 	[super recover_row:r];
 
 	if (r->scn == fold_scn) {
-		exit(0);
 		if ([self respondsTo:@selector(snapshot_fold)])
 			exit([self snapshot_fold]);
 		exit([self snapshot_write]);

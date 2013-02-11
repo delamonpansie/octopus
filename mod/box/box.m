@@ -1372,7 +1372,7 @@ snapshot_fold
 				     sizeof(tuple->cardinality));
 		}
 	}
-	say_info("CRC: 0x%08x", crc);
+	printf("CRC: 0x%08x\n", crc);
 	return 0;
 }
 
