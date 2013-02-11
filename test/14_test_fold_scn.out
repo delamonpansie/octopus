@@ -1,0 +1,37 @@
+# box.insert([0, 0])
+1
+
+# box.insert([1, 1])
+1
+
+# box.insert([2, 2])
+1
+
+# box.insert([3, 3])
+1
+
+# box.insert([4, 4])
+1
+
+# box.insert([5, 5])
+1
+
+# box.insert([6, 6])
+1
+
+# box.insert([7, 7])
+1
+
+# box.insert([8, 8])
+1
+
+# box.insert([9, 9])
+1
+
+# box.insert([10, 10])
+1
+
+# box.insert([11, 11])
+1
+
+CRC: 0x0ebc74b5
