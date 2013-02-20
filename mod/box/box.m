@@ -1201,7 +1201,7 @@ initialize_service()
 		for (int i = 0; i < cfg.wal_writer_inbox_size - 2; i++)
 			fiber_create("box_worker", iproto_interact, box_primary, box_process, NULL);
 
-		if (cfg.secondary_port > 0) {
+		if (cfg.secondary_port > 0 && cfg.secondary_port != cfg.primary_port) {
 			box_secondary = tcp_service(cfg.secondary_port, NULL);
 			fiber_create("box_secondary_worker", iproto_interact, box_secondary, box_process);
 		}
