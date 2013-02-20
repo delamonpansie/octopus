@@ -463,7 +463,9 @@ init_filename:(const char *)filename_
 	stat.data = dir->writer;
 
 #ifdef __GLIBC__
-	const int bufsize = 1024 * 1024;
+	/* libc will try prepread sizeof(vbuf) bytes on every fseeko,
+	   so no reason to make vbuf particulary large */
+	const int bufsize = 64 * 1024;
 	vbuf = malloc(bufsize);
 	setvbuf(fd, vbuf, _IOFBF, bufsize);
 #endif
@@ -644,7 +646,7 @@ fetch_row
 {
 	struct tbuf *row;
 	u32 magic;
-	off_t marker_offset = 0, good_offset;
+	off_t marker_offset = 0, good_offset, eof_offset;
 
 	assert(sizeof(magic) == sizeof(marker));
 	good_offset = ftello(fd);
@@ -683,21 +685,28 @@ restart:
 	++rows;
 	return row->ptr;
 eof:
-	if (ftello(fd) == good_offset + sizeof(eof_marker)) {
+	eof_offset = ftello(fd);
+	if (eof_offset == good_offset + sizeof(eof_marker)) {
 		fseeko(fd, good_offset, SEEK_SET);
 
-		if (fread(&magic, sizeof(eof_marker), 1, fd) != 1)
-			goto seek_back;
+		if (fread(&magic, sizeof(eof_marker), 1, fd) != 1) {
+			fseeko(fd, good_offset, SEEK_SET);
+			return NULL;
+		}
 
-		if (memcmp(&magic, &eof_marker, sizeof(eof_marker)) != 0)
-			goto seek_back;
+		if (memcmp(&magic, &eof_marker, sizeof(eof_marker)) != 0) {
+			fseeko(fd, good_offset, SEEK_SET);
+			return NULL;
+		}
 
 		eof = 1;
 		return NULL;
 	}
-seek_back:
-	/* seek back to last known good offset */
-	fseeko(fd, good_offset, SEEK_SET);
+	/* libc will try prepread sizeof(vbuf) bytes on fseeko,
+	   and this behavior will trash system on continous log follow mode
+	   since every fetch_row will result in seek + read(sizeof(vbuf)) */
+	if (eof_offset != good_offset)
+		fseeko(fd, good_offset, SEEK_SET);
 	return NULL;
 }
 
