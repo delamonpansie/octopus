@@ -653,7 +653,7 @@ restart:
 	if (marker_offset > 0)
 		fseeko(fd, marker_offset + 1, SEEK_SET);
 
-	say_debug("next_row: start offt %08" PRIofft, ftello(fd));
+	say_debug("%s: start offt %08" PRIofft, __func__, ftello(fd));
 	if (fread(&magic, sizeof(marker), 1, fd) != 1)
 		goto eof;
 
