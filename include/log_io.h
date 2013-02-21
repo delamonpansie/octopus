@@ -130,9 +130,9 @@ typedef void (follow_cb)(ev_stat *w, int events);
 	size_t bytes_written;
 	off_t offset, wet_rows_offset[WAL_PACK_MAX * 8];
 
-#if HAVE_POSIX_FADVISE
-	size_t fadvise_bytes;
-	off_t fadvise_offset;
+#if HAVE_SYNC_FILE_RANGE
+	size_t sync_bytes;
+	off_t sync_offset;
 #endif
 }
 - (XLog *) init_filename:(const char *)filename_
@@ -146,6 +146,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 - (int) read_header;
 - (int) write_header;
 - (int) flush;
+- (void) fadvise_dont_need;
 - (size_t) rows;
 - (size_t)wet_rows_offset_available;
 - (i64) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie;

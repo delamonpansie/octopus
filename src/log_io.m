@@ -576,8 +576,9 @@ close
 			if (!legacy_snap)
 				panic("no valid rows were read");
 		}
-#if HAVE_POSIX_FADVISE
-		posix_fadvise(fileno(fd), 0, ftello(fd), POSIX_FADV_DONTNEED);
+#if HAVE_SYNC_FILE_RANGE
+		if (sync_file_range(fileno(fd), 0, 0, SYNC_FILE_RANGE_WRITE) < 0)
+			say_syserror("sync_file_range");
 #endif
 	}
 
@@ -610,6 +611,16 @@ flush
 	}
 #endif
 	return 0;
+}
+
+- (void)
+fadvise_dont_need
+{
+#if HAVE_POSIX_FADVISE
+	off_t end = ftello(fd);
+	end -= end % 4096;
+	posix_fadvise(fileno(fd), 0, end, POSIX_FADV_DONTNEED);
+#endif
 }
 
 - (int)
@@ -780,15 +791,12 @@ confirm_write
 		next_lsn++;
 		rows++;
 	}
-#if HAVE_POSIX_FADVISE
-	fadvise_bytes += tail - offset;
-	if (unlikely(fadvise_bytes > 32 * 4096)) {
-		posix_fadvise(fileno(fd),
-			      fadvise_offset - fadvise_offset % 4096,
-			      fadvise_offset + fadvise_offset % 4096 + fadvise_bytes,
-			      POSIX_FADV_DONTNEED);
-		fadvise_offset += fadvise_bytes;
-		fadvise_bytes = 0;
+#if HAVE_SYNC_FILE_RANGE
+	sync_bytes += tail - offset;
+	if (unlikely(sync_bytes > 32 * 4096)) {
+		sync_file_range(fileno(fd), sync_offset, 0, SYNC_FILE_RANGE_WRITE);
+		sync_offset += sync_bytes;
+		sync_bytes = 0;
 	}
 #endif
 	bytes_written += tail - offset;

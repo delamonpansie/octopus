@@ -559,6 +559,9 @@ snapshot_save:(u32 (*)(XLog *))callback
 		say_syserror("snap flush failed");
 		_exit(EXIT_FAILURE);
 	}
+
+	[snap fadvise_dont_need];
+
 	if ([snap close] == -1) {
 		say_syserror("snap close failed");
 		_exit(EXIT_FAILURE);
