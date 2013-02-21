@@ -45,7 +45,7 @@ struct tnt_module {
 	void (*reload_config)(struct octopus_cfg *old_conf, struct octopus_cfg *new_conf);
 	int  (*cat)(const char *filename);
 	int  (*cat_scn)(i64 scn);
-	void (*info)(struct tbuf *out);
+	void (*info)(struct tbuf *out, const char *what);
 	void (*exec)(char *str, int len, struct tbuf *out);
 };
 struct tnt_module *modules_head;
