@@ -228,6 +228,8 @@ struct iproto_request_t {
 	size_t				dataSendSize;
 	char				*dataSend;
 	struct iproto			headerSend; /* clang wants it at the end */
+
+	void				*assocData;
 };
 
 struct iproto_connection_t*
@@ -491,6 +493,7 @@ li_req_init(struct iproto_connection_t* c, u_int32_t msg_code, void *data, size_
 	r->headerSend.sync = ++c->mirrorCnt;
 	r->headerSend.msg_code = msg_code;
 	r->dataSend = data;
+	r->assocData = NULL;
 
 	mh_sp_request_put(c->requestHash, r->headerSend.sync, r, NULL);
 
@@ -500,7 +503,18 @@ li_req_init(struct iproto_connection_t* c, u_int32_t msg_code, void *data, size_
 	TAILQ_INSERT_TAIL(&c->sendList, r, link);
 	c->nReqInProgress++;
 
+
 	return r;
+}
+
+void
+li_req_set_assoc_data(struct iproto_request_t *r, void *data) {
+	r->assocData = data;
+}
+
+void*
+li_req_get_assoc_data(struct iproto_request_t *r) {
+	return r->assocData;
 }
 
 u_int32_t

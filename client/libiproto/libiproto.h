@@ -169,6 +169,8 @@ struct iproto_request_t*	li_get_ready_reqs(struct iproto_connection_t *c);
 
 struct iproto_request_t*	li_req_init(struct iproto_connection_t* c,
 					    u_int32_t msg_code, void *data, size_t size);
+void 				li_req_set_assoc_data(struct iproto_request_t *r, void *data);
+void* 				li_req_get_assoc_data(struct iproto_request_t *r);
 u_int32_t			li_req_state(struct iproto_request_t* r);
 void*				li_req_response_data(struct iproto_request_t* r, size_t *size);
 void*               		li_req_request_data(struct iproto_request_t* r, size_t *size);
