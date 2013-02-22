@@ -490,7 +490,9 @@ init_filename:(const char *)filename_
 	stat.data = dir->writer;
 
 #ifdef __GLIBC__
-	const int bufsize = 1024 * 1024;
+	/* libc will try prepread sizeof(vbuf) bytes on every fseeko,
+	   so no reason to make vbuf particulary large */
+	const int bufsize = 64 * 1024;
 	vbuf = xmalloc(bufsize);
 	setvbuf(fd, vbuf, _IOFBF, bufsize);
 #endif
@@ -601,8 +603,9 @@ close
 			if (!legacy_snap)
 				panic("no valid rows were read");
 		}
-#if HAVE_POSIX_FADVISE
-		posix_fadvise(fileno(fd), 0, ftello(fd), POSIX_FADV_DONTNEED);
+#if HAVE_SYNC_FILE_RANGE
+		if (sync_file_range(fileno(fd), 0, 0, SYNC_FILE_RANGE_WRITE) < 0)
+			say_syserror("sync_file_range");
 #endif
 	}
 
@@ -635,6 +638,16 @@ flush
 	}
 #endif
 	return 0;
+}
+
+- (void)
+fadvise_dont_need
+{
+#if HAVE_POSIX_FADVISE
+	off_t end = ftello(fd);
+	end -= end % 4096;
+	posix_fadvise(fileno(fd), 0, end, POSIX_FADV_DONTNEED);
+#endif
 }
 
 - (int)
@@ -671,7 +684,7 @@ fetch_row
 {
 	struct tbuf *row;
 	u32 magic;
-	off_t marker_offset = 0, good_offset;
+	off_t marker_offset = 0, good_offset, eof_offset;
 
 	assert(sizeof(magic) == sizeof(marker));
 	good_offset = ftello(fd);
@@ -680,7 +693,7 @@ restart:
 	if (marker_offset > 0)
 		fseeko(fd, marker_offset + 1, SEEK_SET);
 
-	say_debug("next_row: start offt %08" PRIofft, ftello(fd));
+	say_debug("%s: start offt %08" PRIofft, __func__, ftello(fd));
 	if (fread(&magic, sizeof(marker), 1, fd) != 1)
 		goto eof;
 
@@ -710,21 +723,28 @@ restart:
 	++rows;
 	return row->ptr;
 eof:
-	if (ftello(fd) == good_offset + sizeof(eof_marker)) {
+	eof_offset = ftello(fd);
+	if (eof_offset == good_offset + sizeof(eof_marker)) {
 		fseeko(fd, good_offset, SEEK_SET);
 
-		if (fread(&magic, sizeof(eof_marker), 1, fd) != 1)
-			goto seek_back;
+		if (fread(&magic, sizeof(eof_marker), 1, fd) != 1) {
+			fseeko(fd, good_offset, SEEK_SET);
+			return NULL;
+		}
 
-		if (memcmp(&magic, &eof_marker, sizeof(eof_marker)) != 0)
-			goto seek_back;
+		if (memcmp(&magic, &eof_marker, sizeof(eof_marker)) != 0) {
+			fseeko(fd, good_offset, SEEK_SET);
+			return NULL;
+		}
 
 		eof = 1;
 		return NULL;
 	}
-seek_back:
-	/* seek back to last known good offset */
-	fseeko(fd, good_offset, SEEK_SET);
+	/* libc will try prepread sizeof(vbuf) bytes on fseeko,
+	   and this behavior will trash system on continous log follow mode
+	   since every fetch_row will result in seek + read(sizeof(vbuf)) */
+	if (eof_offset != good_offset)
+		fseeko(fd, good_offset, SEEK_SET);
 	return NULL;
 }
 
@@ -804,16 +824,12 @@ confirm_write
 		next_lsn += wet_rows;
 		rows += wet_rows;
 	}
-
-#if HAVE_POSIX_FADVISE
-	fadvise_bytes += tail - offset;
-	if (unlikely(fadvise_bytes > 32 * 4096)) {
-		posix_fadvise(fileno(fd),
-			      fadvise_offset - fadvise_offset % 4096,
-			      fadvise_offset + fadvise_offset % 4096 + fadvise_bytes,
-			      POSIX_FADV_DONTNEED);
-		fadvise_offset += fadvise_bytes;
-		fadvise_bytes = 0;
+#if HAVE_SYNC_FILE_RANGE
+	sync_bytes += tail - offset;
+	if (unlikely(sync_bytes > 32 * 4096)) {
+		sync_file_range(fileno(fd), sync_offset, 0, SYNC_FILE_RANGE_WRITE);
+		sync_offset += sync_bytes;
+		sync_bytes = 0;
 	}
 #endif
 	bytes_written += tail - offset;
