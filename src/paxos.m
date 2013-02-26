@@ -352,7 +352,7 @@ propose_leadership(va_list ap)
 	}								\
 	if (drop < drop_p) {						\
 		say_debug("%s: op:0x%02x/%s sync:%i DROP", __func__,	\
-			  msg->msg_code, paxos_msg_code_strs[msg->msg_code], msg->sync); \
+			  msg->msg_code, paxos_msg_code[msg->msg_code], msg->sync); \
 		return;							\
 	}
 #else
