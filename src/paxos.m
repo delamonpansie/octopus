@@ -268,7 +268,7 @@ notify_leadership_change(PaxosRecovery *r)
 	prev_leader = leader_id;
 }
 
-static void
+void
 giveup_leadership()
 {
 	leader_id = -2;
@@ -552,7 +552,7 @@ static void
 promise(PaxosRecovery *r, struct paxos_peer *peer, struct conn *c, struct proposal *p, struct msg_paxos *req)
 {
 	assert(p->flags & P_LOCK);
-	if ([r wal_row_submit:&req->ballot len:sizeof(req->ballot) scn:req->scn tag:paxos_promise] != 1)
+	if ([r submit:&req->ballot len:sizeof(req->ballot) scn:req->scn tag:paxos_promise] != 1)
 		return;
 
 	u64 old_ballot = p->ballot;
@@ -574,7 +574,7 @@ accepted(PaxosRecovery *r, struct paxos_peer *peer, struct conn *c, struct propo
 	tbuf_append(x, &req->value_len, sizeof(req->value_len));
 	tbuf_append(x, req->value, req->value_len);
 
-	if ([r wal_row_submit:x->ptr len:tbuf_len(x) scn:req->scn tag:paxos_accept] != 1)
+	if ([r submit:x->ptr len:tbuf_len(x) scn:req->scn tag:paxos_accept] != 1)
 		return;
 
 	update_proposal_ballot(p, req->ballot);
@@ -586,7 +586,7 @@ accepted(PaxosRecovery *r, struct paxos_peer *peer, struct conn *c, struct propo
 static struct iproto_req *
 prepare(PaxosRecovery *r, struct proposal *p, u64 ballot)
 {
-	if ([r wal_row_submit:&ballot len:sizeof(ballot) scn:p->scn tag:paxos_prepare] != 1)
+	if ([r submit:&ballot len:sizeof(ballot) scn:p->scn tag:paxos_prepare] != 1)
 		panic("give up");
 	update_proposal_pre_ballot(p, ballot);
 	paxos_broadcast(r, PREPARE, p->delay, p->scn, ballot, NULL, 0, 0);
@@ -601,8 +601,9 @@ propose(PaxosRecovery *r, u64 ballot, i64 scn, const char *value, u32 value_len,
 	tbuf_append(m, &tag, sizeof(tag));
 	tbuf_append(m, &value_len, sizeof(value_len));
 	tbuf_append(m, value, value_len);
-	if ([r wal_row_submit:m->ptr len:tbuf_len(m) scn:scn tag:paxos_propose] != 1)
+	if ([r submit:m->ptr len:tbuf_len(m) scn:scn tag:paxos_propose] != 1)
 		panic("give up");
+	assert(value_len > 0);
 	paxos_broadcast(r, ACCEPT, paxos_default_timeout, scn, ballot, value, value_len, tag);
 	return yield();
 }
@@ -657,7 +658,12 @@ loop:
 		   p->value_len, tbuf_to_hex(&TBUF(p->value, p->value_len, fiber->pool)));
 
 
-	[r apply:&TBUF(p->value, p->value_len, NULL) tag:p->tag]; /* FIXME: what to do if this fails ? */
+	id<Txn> txn = [r->txn_class alloc];
+	struct row_v12 row = { .scn = p->scn,
+			       .tag = p->tag,
+			       .len = p->value_len };
+	[txn prepare:&row data:p->value];
+	[txn commit:&r->run_crc_mod];
 	mark_applied(r, p);
 
 	p = RB_NEXT(ptree, &r->proposals, p);
@@ -775,6 +781,8 @@ acceptor(struct iproto *msg, struct conn *c)
 static u64
 run_protocol(PaxosRecovery *r, i64 scn, u64 ballot, char *value, u32 value_len, u16 tag)
 {
+	assert(value_len > 0);
+
 	struct iproto_req *rsp;
 	bool has_old_value = false;
 	int votes;
@@ -1053,7 +1061,7 @@ loop:
 		assert(p->flags & P_DECIDED);
 		say_debug2("wal_dump:  % 8"PRIi64" APPLIED", p->scn);
 		assert([r scn] + 1 == p->scn);
-		if ([r wal_row_submit:p->value len:p->value_len scn:p->scn tag:p->tag] != 1)
+		if ([r submit:p->value len:p->value_len scn:p->scn tag:p->tag] != 1)
 			panic("give up");
 
 		p->flags |= P_CLOSED;
@@ -1138,6 +1146,7 @@ run_crc_delay:(double)run_crc_delay
  nop_hb_delay:(double)nop_hb_delay
 	flags:(int)flags
 snap_io_rate_limit:(int)snap_io_rate_limit_
+    txn_class:(Class)txn_class_
 {
 	struct octopus_cfg_paxos_peer *c;
 
@@ -1149,7 +1158,8 @@ snap_io_rate_limit:(int)snap_io_rate_limit_
 	       run_crc_delay:run_crc_delay
 		nop_hb_delay:nop_hb_delay
 		       flags:flags
-	  snap_io_rate_limit:snap_io_rate_limit_];
+	  snap_io_rate_limit:snap_io_rate_limit_
+		   txn_class:txn_class_];
 
 	SLIST_INIT(&group);
 	RB_INIT(&proposals);
@@ -1263,15 +1273,43 @@ leader_redirect_raise
 	}
 }
 
+
 - (int)
-submit:(void *)data len:(u32)len tag:(u16)tag
+submit:(const void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag
+{
+	struct row_v12 row = { .scn = scn_,
+			       .tag = tag };
+
+	struct wal_pack pack;
+	if (!wal_pack_prepare(self, &pack))
+		return 0;
+	wal_pack_append_row(&pack, &row);
+	wal_pack_append_data(&pack, &row, data, data_len);
+	return [self wal_pack_submit];
+}
+
+- (void)
+check_replica
 {
 	if (!paxos_leader())
 		[self leader_redirect_raise];
 
 	if (!catchup_done)
 		iproto_raise(ERR_CODE_LEADER_UNKNOW, "leader not ready");
+}
 
+- (int)
+submit:(id<Txn>)txn
+{
+	struct row_v12 *r = [txn row];
+	assert(r->len > 0);
+	assert(*(u16 *)r->data > 0);
+	return [self submit:r->data len:r->len tag:r->tag];
+}
+
+- (int)
+submit:(void *)data len:(u32)len tag:(u16)tag
+{
 	@try {
 		i64 cur_scn = [self next_scn];
 		struct proposal *p = proposal(self, cur_scn);
