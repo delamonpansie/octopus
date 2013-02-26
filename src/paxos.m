@@ -50,7 +50,6 @@
 	_(ACCEPT, 0xf6)				\
 	_(ACCEPTED, 0xf7)			\
 	_(DECIDE, 0xf8)				\
-	_(QUERY, 0xf9)				\
 	_(STALE, 0xfa)
 
 enum paxos_msg_code ENUM_INITIALIZER(PAXOS_CODE);
@@ -898,32 +897,6 @@ retry:
 	paxos_broadcast(r, DECIDE, 0, scn, ballot, value, value_len, tag);
 	return has_old_value ? 0 : ballot;
 }
-
-
-#if 0
-static void
-query(struct PaxosRecovery *r, struct iproto_peer *p, struct iproto_msg *msg)
-{
-	struct netmsg *m = peer_netmsg_tail(peer);
-	struct msg_paxos *req = (struct msg_paxos *)msg;
-	struct msg_paxos reply = PREPLY(ACCEPTED, req);
-	struct proposal *p = find_proposal(req->scn);
-	if (!paxos_leader()) {
-		say_warn("%s: not paxos leader, ignoring query SCN:%"PRIi64, __func__, req->scn);
-		return;
-	}
-	if (p == NULL || (p->flags & P_DECIDED) == 0) {
-		say_warn("%s: not decided, ignoring query SCN:%"PRIi64, __func__, req->scn);
-
-	}
-	net_add_iov_dup(&m, &reply, sizeof(reply));
-	say_debug("%s: sync:%i SCN:%"PRIi64" value_len:%i %s", __func__,
-		  req->header.sync, req->scn, req->value_len,
-		  tbuf_to_hex(&TBUF(req->value, req->value_len, fiber->pool)));
-}
-#endif
-
-
 
 
 static i64 follow_scn;
