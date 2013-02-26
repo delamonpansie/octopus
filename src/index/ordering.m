@@ -107,3 +107,20 @@ lstr_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __a
 	else
 		return 0;
 }
+
+int
+cstr_compare(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)))
+{
+        return strcmp(*(void **)na->key, *(void **)nb->key);
+}
+
+int
+cstr_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)))
+{
+        int r = lstrcmp(*(void **)na->key, *(void **)nb->key);
+
+        if (r != 0 && na->obj != nb->obj)
+                r = na->obj > nb->obj ? 1 : -1;
+
+        return r;
+}

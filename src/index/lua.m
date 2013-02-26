@@ -80,10 +80,24 @@ luaT_lstr_ctor(struct lua_State *L, int i)
 	size_t len;
 	const char *str = lua_tolstring(L, i, &len);
 	if (str == NULL) {
-		lua_pushliteral(L, "can't convert to u64");
+		lua_pushliteral(L, "can't convert to string");
 		lua_error(L);
 	}
 	write_varint32(key, len);
+	tbuf_append(key, str, len);
+	return key;
+}
+
+struct tbuf *
+luaT_cstr_ctor(struct lua_State *L, int i)
+{
+	struct tbuf *key = tbuf_alloc(fiber->pool);
+	size_t len;
+	const char *str = lua_tolstring(L, i, &len);
+	if (str == NULL) {
+		lua_pushliteral(L, "can't convert to string");
+		lua_error(L);
+	}
 	tbuf_append(key, str, len);
 	return key;
 }

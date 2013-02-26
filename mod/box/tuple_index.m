@@ -183,7 +183,7 @@ new_with_n:(int)n cfg:(struct octopus_cfg_object_space_index *)cfg
 			i = [Int64Hash alloc];
 			i->dtor = box_tuple_u64_dtor;
 		} else {
-			i = [StringHash alloc];
+			i = [LStringHash alloc];
 			i->dtor = box_tuple_lstr_dtor;
 		}
 		i->dtor_arg = (void *)(uintptr_t)cfg->key_field[0]->fieldno;

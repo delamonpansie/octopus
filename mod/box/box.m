@@ -1462,7 +1462,7 @@ init(void)
 		cfg.object_space[n]->index[0]->key_field[0]->fieldno = 0;
 		cfg.object_space[n]->index[0]->key_field[0]->type = "STR";
 
-		memcached_index = (StringHash *)object_space_registry[n].index[0];
+		memcached_index = (LStringHash *)object_space_registry[n].index[0];
 	}
 
 	configure();

@@ -144,5 +144,5 @@ void *tuple_field(struct box_tuple *tuple, size_t i);
 void box_bound_to_primary(int fd);
 void memcached_init(void);
 
-extern StringHash *memcached_index;
+extern LStringHash *memcached_index;
 #endif
