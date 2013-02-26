@@ -990,6 +990,9 @@ loop:
 					p->flags |= P_DECIDED;
 					punlock(p);
 					learn(r, p);
+
+					if ((row->scn % 10000) == 0)
+						fiber_gc();
 				}
 			}
 		}
@@ -997,6 +1000,8 @@ loop:
 			say_error("replication failure: %s", e->reason);
 			[puller close];
 			fiber_sleep(1);
+		}
+		@finally {
 			fiber_gc();
 		}
 	}

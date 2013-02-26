@@ -486,7 +486,6 @@ init_filename:(const char *)filename_
 	fd = fd_;
 	mode = LOG_READ;
 	dir = dir_;
-	writer = dir->writer;
 	stat.data = dir->writer;
 
 #ifdef __GLIBC__
@@ -765,21 +764,6 @@ next_lsn
 	return next_lsn + wet_rows;
 }
 
-- (i64)
-append_row:(void *)data len:(u32)len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie
-{
-	(void)data; (void)len; (void)scn; (void)tag; (void)cookie;
-	assert(false);
-	return 0;
-}
-
-- (i64)
-append_row:(void *)data len:(u32)len scn:(i64)scn tag:(u16)tag
-{
-
-	return [self append_row:data len:len scn:scn tag:tag cookie:default_cookie];
-}
-
 - (void)
 append_successful:(size_t)bytes
 {
@@ -790,6 +774,40 @@ append_successful:(size_t)bytes
 	wet_rows_offset[wet_rows] = prev_offt + bytes;
 	wet_rows++;
 }
+
+- (i64)
+append_row:(struct row_v12 *)row data:(const void *)data
+{
+	(void)row; (void)data;
+	panic("%s: virtual", __func__);
+}
+
+- (i64)
+append_row:(void *)data len:(u32)len scn:(i64)scn tag:(u16)tag
+{
+	assert(wet_rows < nelem(wet_rows_offset));
+	struct row_v12 row = { .scn = scn ?: 0,
+			       .tm = ev_now(),
+			       .tag = tag,
+			       .cookie = default_cookie,
+			       .len = len };
+
+	return [self append_row:&row data:data];
+}
+
+- (i64)
+append_row:(const void *)data len:(u32)len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie
+{
+	assert(wet_rows < nelem(wet_rows_offset));
+	struct row_v12 row = { .scn = scn ?: 0,
+			       .tm = ev_now(),
+			       .tag = tag,
+			       .cookie = cookie,
+			       .len = len };
+
+	return [self append_row:&row data:data];
+}
+
 
 - (void)
 configure_for_write:(i64)lsn
@@ -942,9 +960,13 @@ read_row
 
 
 - (i64)
-append_row:(void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie
+append_row:(struct row_v12 *)row_ data:(const void *)data
 {
 	struct _row_v11 row;
+	u16 tag = row_->tag;
+	i64 scn = row_->scn;
+	u32 data_len = row_->len;
+	u64 cookie = row_->cookie;
 
 	assert(wet_rows < nelem(wet_rows_offset));
 	if (tag == snap_tag) {
@@ -1109,31 +1131,24 @@ read_row
 }
 
 - (i64)
-append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie
+append_row:(struct row_v12 *)row data:(const void *)data
 {
-	struct row_v12 row;
-	assert(wet_rows < nelem(wet_rows_offset));
-
-	row.lsn = [self next_lsn];
-	row.scn = scn ?: row.lsn;
-	row.tm = ev_now();
-	row.tag = tag;
-	row.cookie = cookie;
-	row.len = data_len;
-	row.data_crc32c = crc32c(0, data, data_len);
-	row.header_crc32c = crc32c(0, (unsigned char *)&row + sizeof(row.header_crc32c),
-				   sizeof(row) - sizeof(row.header_crc32c));
+	row->lsn = [self next_lsn];
+	row->scn = row->scn ?: row->lsn;
+	row->data_crc32c = crc32c(0, data, row->len);
+	row->header_crc32c = crc32c(0, (unsigned char *)row + sizeof(row->header_crc32c),
+				   sizeof(*row) - sizeof(row->header_crc32c));
 
 	if (fwrite(&marker, sizeof(marker), 1, fd) != 1 ||
-	    fwrite(&row, sizeof(row), 1, fd) != 1 ||
-	    fwrite(data, data_len, 1, fd) != 1)
+	    fwrite(row, sizeof(*row), 1, fd) != 1 ||
+	    fwrite(data, row->len, 1, fd) != 1)
 	{
 		say_syserror("fwrite");
 		return -1;
 	}
 
-	[self append_successful:sizeof(marker) + sizeof(row) + data_len];
-	return row.scn;
+	[self append_successful:sizeof(marker) + sizeof(*row) + row->len];
+	return row->scn;
 }
 
 @end

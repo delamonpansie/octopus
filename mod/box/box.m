@@ -64,8 +64,6 @@ const int MEMCACHED_OBJECT_SPACE = 23;
 struct object_space *object_space_registry;
 const int object_space_count = 256;
 
-extern Recovery *recovery;
-
 struct box_snap_row {
 	u32 object_space;
 	u32 tuple_size;
@@ -180,9 +178,9 @@ tuple_alloc(unsigned cardinality, unsigned size)
 }
 
 static bool
-valid_tuple(struct tbuf *buf, u32 cardinality)
+valid_tuple(u32 cardinality, const void *data, u32 data_len)
 {
-	struct tbuf tmp = *buf;
+	struct tbuf tmp = TBUF(data, data_len, NULL);
 	for (int i = 0; i < cardinality; i++)
 		read_field(&tmp);
 
@@ -190,18 +188,19 @@ valid_tuple(struct tbuf *buf, u32 cardinality)
 }
 
 static void
-tuple_add(struct box_txn *txn, struct tnt_object *obj)
+tuple_add(struct netmsg **m, struct iproto_retcode *reply, struct tnt_object *obj)
 {
 	struct box_tuple *tuple = box_tuple(obj);
-	size_t size = tuple->bsize + sizeof(tuple->bsize) +
-		       sizeof(tuple->cardinality);
+	size_t size = tuple->bsize +
+		      sizeof(tuple->bsize) +
+		      sizeof(tuple->cardinality);
 
-	txn->iproto->data_len += size;
-	net_add_ref_iov(txn->m, obj, &tuple->bsize, size);
+	reply->data_len += size;
+	net_add_ref_iov(m, obj, &tuple->bsize, size);
 }
 
 static void
-validate_indexes(struct box_txn *txn)
+validate_indexes(BoxTxn *txn)
 {
 	foreach_index(index, txn->object_space) {
                 [index valid_object:txn->obj];
@@ -218,7 +217,7 @@ validate_indexes(struct box_txn *txn)
 }
 
 static struct tnt_object *
-txn_acquire(struct box_txn *txn, struct tnt_object *obj)
+txn_acquire(BoxTxn *txn, struct tnt_object *obj)
 {
 	if (unlikely(obj == NULL))
 		return NULL;
@@ -235,18 +234,17 @@ txn_acquire(struct box_txn *txn, struct tnt_object *obj)
 }
 
 
-static void __attribute((noinline))
-prepare_replace(struct box_txn *txn, size_t cardinality, struct tbuf *data)
+static void __attribute__((noinline))
+prepare_replace(BoxTxn *txn, size_t cardinality, const void *data, u32 data_len)
 {
 	if (cardinality == 0)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "cardinality can't be equal to 0");
-	if (tbuf_len(data) == 0 || !valid_tuple(data, cardinality))
+	if (data_len == 0 || !valid_tuple(cardinality, data, data_len))
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "tuple encoding error");
 
-	txn->obj = txn_acquire(txn, tuple_alloc(cardinality, tbuf_len(data)));
+	txn->obj = txn_acquire(txn, tuple_alloc(cardinality, data_len));
 	struct box_tuple *tuple = box_tuple(txn->obj);
-	memcpy(tuple->data, data->ptr, tbuf_len(data));
-	tbuf_ltrim(data, tbuf_len(data));
+	memcpy(tuple->data, data, data_len);
 
 	txn->old_obj = txn_acquire(txn, [txn->index find_by_obj:txn->obj]);
 	txn->obj_affected = txn->old_obj != NULL ? 2 : 1;
@@ -275,7 +273,7 @@ prepare_replace(struct box_txn *txn, size_t cardinality, struct tbuf *data)
 }
 
 static void
-commit_replace(struct box_txn *txn)
+commit_replace(BoxTxn *txn)
 {
 	say_debug("%s: old_obj:%p obj:%p", __func__, txn->old_obj, txn->obj);
 	if (txn->old_obj != NULL) {
@@ -294,17 +292,10 @@ commit_replace(struct box_txn *txn)
 		}
 	}
 
-	if (txn->m) {
-		txn->iproto->data_len += sizeof(u32);
-		net_add_iov_dup(txn->m, &txn->obj_affected, sizeof(u32));
-
-		if (txn->obj && txn->flags & BOX_RETURN_TUPLE)
-			tuple_add(txn, txn->obj);
-	}
 }
 
 static void
-rollback_replace(struct box_txn *txn)
+rollback_replace(BoxTxn *txn)
 {
 	say_debug("rollback_replace: txn->obj:%p", txn->obj);
 
@@ -424,7 +415,7 @@ field_len(const struct tbuf *b)
 }
 
 static void __attribute__((noinline))
-prepare_update_fields(struct box_txn *txn, struct tbuf *data)
+prepare_update_fields(BoxTxn *txn, struct tbuf *data)
 {
 	struct tbuf *fields;
 	void *field;
@@ -584,17 +575,17 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 
 
 static void __attribute__((noinline))
-process_select(struct box_txn *txn, u32 limit, u32 offset, struct tbuf *data)
+process_select(struct netmsg **m, struct iproto_retcode *reply, Index<BasicIndex> *index,
+	       u32 limit, u32 offset, struct tbuf *data)
 {
-	Index<BasicIndex> *index = txn->index;
 	struct tnt_object *obj;
 	uint32_t *found;
 	u32 count = read_u32(data);
 
 	say_debug("SELECT");
-	found = palloc((*txn->m)->head->pool, sizeof(*found));
-	txn->iproto->data_len += sizeof(*found);
-	net_add_iov(txn->m, found, sizeof(*found));
+	found = palloc((*m)->head->pool, sizeof(*found));
+	reply->data_len += sizeof(*found);
+	net_add_iov(m, found, sizeof(*found));
 	*found = 0;
 
 	if (index->unique) {
@@ -613,7 +604,7 @@ process_select(struct box_txn *txn, u32 limit, u32 offset, struct tbuf *data)
 			}
 
 			(*found)++;
-			tuple_add(txn, obj);
+			tuple_add(m, reply, obj);
 			limit--;
 		}
 	} else {
@@ -637,7 +628,7 @@ process_select(struct box_txn *txn, u32 limit, u32 offset, struct tbuf *data)
 				}
 
 				(*found)++;
-				tuple_add(txn, obj);
+				tuple_add(m, reply, obj);
 				--limit;
 			}
 		}
@@ -650,7 +641,7 @@ process_select(struct box_txn *txn, u32 limit, u32 offset, struct tbuf *data)
 }
 
 static void __attribute__((noinline))
-prepare_delete(struct box_txn *txn, struct tbuf *key_data)
+prepare_delete(BoxTxn *txn, struct tbuf *key_data)
 {
 	u32 c = read_u32(key_data);
 	txn->old_obj = txn_acquire(txn, [txn->index find_key:key_data with_cardinalty:c]);
@@ -658,121 +649,18 @@ prepare_delete(struct box_txn *txn, struct tbuf *key_data)
 }
 
 static void
-commit_delete(struct box_txn *txn)
+commit_delete(BoxTxn *txn)
 {
 	if (txn->old_obj) {
 		foreach_index(index, txn->object_space)
 			[index remove: txn->old_obj];
 		object_ref(txn->old_obj, -1);
 	}
-	if (txn->m) {
-		txn->iproto->data_len += sizeof(u32);
-		net_add_iov_dup(txn->m, &txn->obj_affected, sizeof(u32));
-	}
 }
 
-void
-txn_init(const struct iproto *req, struct box_txn *txn, struct netmsg **m)
-{
-	memset(txn, 0, sizeof(*txn));
-	txn->op = req->msg_code;
-	if (m) {
-		txn->m = m;
-		netmsg_getmark(*txn->m, &txn->header_mark);
-		txn->iproto = iproto_reply(m, req);
-	}
-}
-
-void
-txn_cleanup(struct box_txn *txn)
-{
-	if (txn->op == 0) /* txn wasn't initialized, e.g. txn->op wasn't set by box_prepare_update */
-		return;
-
-	for (int i = 0; i < nelem(txn->ref); i++) {
-		if (txn->ref[i] == NULL)
-			break;
-		object_unlock(txn->ref[i]);
-		object_decr_ref(txn->ref[i]);
-	}
-
-	/* mark txn as clean */
-	memset(txn, 0, sizeof(*txn));
-}
-
-
-#ifndef PAXOS
-static void
-update_crc(struct tnt_object *obj, u32 *crc)
-{
-	if (!obj)
-		return;
-
-	struct box_tuple *tuple = box_tuple(obj);
-	u32 new_crc= crc32c(*crc, (void *)tuple, sizeof(*tuple) + tuple->bsize);
-#ifdef LOGCRC
-	say_info("SCN: %"PRIi64" crc: 0x%08x -> 0x%08x %s",
-		 [recovery scn], *crc, new_crc,
-		 tbuf_to_hex(&TBUF(tuple, sizeof(*tuple) + tuple->bsize, fiber->pool)));
-#endif
-	*crc = new_crc;
-}
-#endif
-
-void
-txn_commit(struct box_txn *txn)
-{
-	if (txn->op == DELETE)
-		commit_delete(txn);
-	else
-		commit_replace(txn);
-
-#ifndef PAXOS
-	if (unlikely(!txn->snap)) {
-		update_crc(txn->old_obj, &recovery->run_crc_mod);
-		update_crc(txn->obj, &recovery->run_crc_mod);
-	}
-#endif
-
-	stat_collect(stat_base, txn->op, 1);
-
-	say_debug("txn_commit(op:%s) run_crc_mod:0x%x",
-		  ops[txn->op], recovery->run_crc_mod);
-
-	say_debug("%s: old_obj:refs=%i,%p obj:ref=%i,%p", __func__,
-		 txn->old_obj ? txn->old_obj->refs : 0, txn->old_obj,
-		 txn->obj ? txn->obj->refs : 0, txn->obj);
-}
-
-void
-txn_abort(struct box_txn *txn)
-{
-	say_debug("box_rollback(op:%s)", ops[txn->op]);
-
-	if (txn->op == DELETE)
-		return;
-
-	if (txn->op == INSERT || txn->op == UPDATE_FIELDS)
-		rollback_replace(txn);
-
-	say_debug("%s: old_obj:refs=%i,%p obj:ref=%i,%p", __func__,
-		 txn->old_obj ? txn->old_obj->refs : 0, txn->old_obj,
-		 txn->obj ? txn->obj->refs : 0, txn->obj);
-}
-
-void
-txn_submit_to_storage(struct box_txn *txn)
-{
-	if ([recovery submit:txn->wal_record->ptr
-			 len:tbuf_len(txn->wal_record)] != 1)
-		iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
-	say_debug("%s: old_obj:refs=%i,%p obj:ref=%i,%p", __func__,
-		 txn->old_obj ? txn->old_obj->refs : 0, txn->old_obj,
-		 txn->obj ? txn->obj->refs : 0, txn->obj);
-}
 
 static void
-txn_common_parser(struct box_txn *txn, struct tbuf *data)
+txn_common_parser(BoxTxn *txn, struct tbuf *data)
 {
 	i32 n = read_u32(data);
 	if (n < 0 || n > object_space_count - 1)
@@ -787,41 +675,40 @@ txn_common_parser(struct box_txn *txn, struct tbuf *data)
 
 
 void
-box_prepare_update(struct box_txn *txn, struct tbuf *data)
+box_prepare_update(BoxTxn *txn)
 {
-	txn->wal_record = tbuf_alloc(fiber->pool);
-	tbuf_append(txn->wal_record, &txn->op, sizeof(txn->op));
-	tbuf_append(txn->wal_record, data->ptr, tbuf_len(data));
-
-	say_debug("box_dispach(%i)", txn->op);
+	struct tbuf data = TBUF(txn->body, txn->body_len, NULL);
+	say_debug("box_prepare_update(%i)", txn->op);
 
 	switch (txn->op) {
 	case INSERT:
-		txn_common_parser(txn, data);
-		txn->flags = read_u32(data);
-		u32 cardinality = read_u32(data);
+		txn_common_parser(txn, &data);
+		txn->flags = read_u32(&data);
+		u32 cardinality = read_u32(&data);
 		if (txn->object_space->cardinality > 0
 		    && txn->object_space->cardinality != cardinality)
 		{
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS,
 				  "tuple cardinality must match object_space cardinality");
 		}
-		prepare_replace(txn, cardinality, data);
+		u32 data_len = tbuf_len(&data);
+		void *tuple_bytes = read_bytes(&data, data_len);
+		prepare_replace(txn, cardinality, tuple_bytes, data_len);
 		break;
 
 	case DELETE:
-		txn_common_parser(txn, data);
-		prepare_delete(txn, data);
+		txn_common_parser(txn, &data);
+		prepare_delete(txn, &data);
 		break;
 
 	case UPDATE_FIELDS:
-		txn_common_parser(txn, data);
-		txn->flags = read_u32(data);
-		prepare_update_fields(txn, data);
+		txn_common_parser(txn, &data);
+		txn->flags = read_u32(&data);
+		prepare_update_fields(txn, &data);
 		break;
 
 	case NOP:
-		txn_common_parser(txn, data);
+		txn_common_parser(txn, &data);
 		break;
 
 	default:
@@ -830,20 +717,18 @@ box_prepare_update(struct box_txn *txn, struct tbuf *data)
 
 	if (txn->obj) {
 		struct box_tuple *tuple = box_tuple(txn->obj);
-		if (!valid_tuple(&TBUF(tuple->data, tuple->bsize, NULL), tuple->cardinality))
+		if (!valid_tuple(tuple->cardinality, tuple->data, tuple->bsize))
 			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "internal error");
 	}
-	if (tbuf_len(data) != 0)
+	if (tbuf_len(&data) != 0)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
 }
 
 static void
 box_lua_cb(struct iproto *request, struct conn *c)
 {
-	struct box_txn txn = { .op = request->msg_code };
-	u32 msg_code = request->msg_code;
-	struct tbuf request_data = TBUF(request->data, request->data_len, fiber->pool);
-	say_debug("%s: c:%p op:0x%02x sync:%u", __func__, c, msg_code, request->sync);
+	say_debug("%s: c:%p op:0x%02x sync:%u", __func__, c,
+		  request->msg_code, request->sync);
 
 	@try {
 		ev_tstamp start = ev_now(), stop;
@@ -851,12 +736,12 @@ box_lua_cb(struct iproto *request, struct conn *c)
 		if (unlikely(c->service != &box_primary))
 			iproto_raise(ERR_CODE_NONMASTER, "updates forbiden on secondary port");
 
-		box_dispach_lua(c, request, &request_data);
+		box_dispach_lua(c, request);
 		stat_collect(stat_base, EXEC_LUA, 1);
 
 		stop = ev_now();
 		if (stop - start > cfg.too_long_threshold)
-			say_warn("too long %s: %.3f sec", ops[txn.op], stop - start);
+			say_warn("too long %s: %.3f sec", ops[request->msg_code], stop - start);
 	}
 	@catch (Error *e) {
 		say_warn("aborting txn, [%s reason:\"%s\"] at %s:%d peer:%s",
@@ -881,29 +766,33 @@ box_paxos_cb(struct iproto *request __attribute__((unused)),
 static void
 box_cb(struct iproto *request, struct conn *c)
 {
-	struct box_txn txn = { .op = request->msg_code };
-	struct tbuf request_data = TBUF(request->data, request->data_len, fiber->pool);
 	say_debug("%s: c:%p op:0x%02x sync:%u", __func__, c, request->msg_code, request->sync);
 
+	struct BoxTxn *txn = [BoxTxn palloc];
 	@try {
 		ev_tstamp start = ev_now(), stop;
 
 		if (unlikely(c->service != &box_primary))
 			iproto_raise(ERR_CODE_NONMASTER, "updates forbiden on secondary port");
 
-		box_prepare_update(&txn, &request_data);
-		/* we'r potentially block here */
-		txn_submit_to_storage(&txn);
+		[recovery check_replica];
+		[txn prepare:request->msg_code
+			data:request->data
+			 len:request->data_len];
+		if ([recovery submit:txn] != 1)
+			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
+		[txn commit:&recovery->run_crc_mod];
 
 		struct netmsg *m = netmsg_tail(&c->out_messages);
-		txn.m = &m;
-		netmsg_getmark(*txn.m, &txn.header_mark);
-		txn.iproto = iproto_reply(txn.m, request);
-		txn_commit(&txn);
+		struct iproto_retcode *reply = iproto_reply(&m, request);
+		reply->data_len += sizeof(u32);
+		net_add_iov_dup(&m, &txn->obj_affected, sizeof(u32));
+		if (request->msg_code != DELETE && txn->flags & BOX_RETURN_TUPLE && txn->obj)
+			tuple_add(&m, reply, txn->obj);
 
 		stop = ev_now();
 		if (stop - start > cfg.too_long_threshold)
-			say_warn("too long %s: %.3f sec", ops[txn.op], stop - start);
+			say_warn("too long %s: %.3f sec", ops[txn->op], stop - start);
 	}
 	@catch (Error *e) {
 		if (strcmp(e->file, "src/paxos.m") != 0) {
@@ -912,37 +801,38 @@ box_cb(struct iproto *request, struct conn *c)
 			if (e->backtrace)
 				say_debug("backtrace:\n%s", e->backtrace);
 		}
-		txn_abort(&txn);
+		[txn rollback];
 		@throw;
-	}
-	@finally {
-		say_debug("%s: @finally c:%p", __func__, c);
-		txn_cleanup(&txn);
-#ifdef NET_IO_PARANOIA
-		netmsg_verify_ownership(&c->out_messages);
-#endif
 	}
 }
 
 static void
 box_select_cb(struct netmsg **m, struct iproto *request, struct conn *c __attribute__((unused)))
 {
-	struct box_txn txn = { .op = 0, .m = m, .iproto = iproto_reply(m, request) };
 	struct tbuf data = TBUF(request->data, request->data_len, fiber->pool);
+	struct iproto_retcode *reply = iproto_reply(m, request);
+	struct object_space *object_space;
 
-	txn_common_parser(&txn, &data);
-
+	i32 n = read_u32(&data);
 	u32 i = read_u32(&data);
 	u32 offset = read_u32(&data);
 	u32 limit = read_u32(&data);
 
+	if (n < 0 || n > object_space_count - 1)
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "bad namespace number");
+
+	if (!object_space_registry[n].enabled)
+		iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "object_space %i is not enabled", n);
+
 	if (i > MAX_IDX)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index too big");
 
-	if ((txn.index = txn.object_space->index[i]) == NULL)
+	object_space = &object_space_registry[n];
+
+	if ((object_space->index[i]) == NULL)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index is invalid");
 
-	process_select(&txn, limit, offset, &data);
+	process_select(m, reply, object_space->index[i], limit, offset, &data);
 	stat_collect(stat_base, request->msg_code, 1);
 }
 
@@ -964,9 +854,12 @@ xlog_print(struct tbuf *out, struct tbuf *b)
 		tbuf_printf(out, "%s n:%i ", ops[op], n);
 		flags = read_u32(b);
 		cardinality = read_u32(b);
-		if (!valid_tuple(b, cardinality))
+		u32 data_len = tbuf_len(b);
+		void *data= read_bytes(b, data_len);
+
+		if (!valid_tuple(cardinality, data, data_len))
 			abort();
-		tuple_print(out, cardinality, b->ptr);
+		tuple_print(out, cardinality, data);
 		break;
 
 	case DELETE:
@@ -1259,64 +1152,146 @@ initialize_service()
 	}
 }
 
+
+@implementation BoxTxn
+
 static void
-snap_apply(struct box_txn *txn, struct tbuf *t)
+txn_cleanup(BoxTxn *txn)
 {
-	struct box_snap_row *row;
-
-	row = box_snap_row(t);
-	txn->object_space = &object_space_registry[row->object_space];
-
-	if (!txn->object_space->enabled)
-		raise("object_space %i is not configured", txn->object_space->n);
-
-	txn->index = txn->object_space->index[0];
-	assert(txn->index != nil);
-
-	txn->snap = true;
-	prepare_replace(txn, row->tuple_size, &TBUF(row->data, row->data_size, NULL));
-	txn->op = INSERT;
+	assert(!txn->closed);
+	txn->closed = true;
+	for (int i = 0; i < nelem(txn->ref); i++) {
+		if (txn->ref[i] == NULL)
+			break;
+		object_unlock(txn->ref[i]);
+		object_decr_ref(txn->ref[i]);
+	}
 }
 
 static void
-wal_apply(struct box_txn *txn, struct tbuf *t)
+update_crc(struct tnt_object *obj, u32 *crc)
 {
-	txn->op = read_u16(t);
-	box_prepare_update(txn, t);
+	if (!obj)
+		return;
+
+	struct box_tuple *tuple = box_tuple(obj);
+	u32 new_crc= crc32c(*crc, (void *)tuple, sizeof(*tuple) + tuple->bsize);
+#ifdef LOGCRC
+	say_info("SCN: %"PRIi64" crc: 0x%08x -> 0x%08x %s",
+		 [recovery scn], *crc, new_crc,
+		 tbuf_to_hex(&TBUF(tuple, sizeof(*tuple) + tuple->bsize, fiber->pool)));
+#endif
+	*crc = new_crc;
 }
 
-@implementation Recovery (Box)
 
-static void
-apply(struct tbuf *op, u16 tag)
+- (void)
+prepare:(u16)op_ data:(const void *)data len:(u32)len
 {
-	struct box_txn txn;
-	memset(&txn, 0, sizeof(txn));
-	switch (tag) {
+	wal.tag = wal_tag;
+	op = op_;
+	body = data;
+	body_len = len;
+	box_prepare_update(self);
+}
+
+
+- (void)
+prepare:(const struct row_v12 *)row data:(const void *)data
+{
+	memcpy(&wal, row, sizeof(wal));
+	wal.len = 0;
+
+	say_debug("%s tag:%i data:%s", __func__, row->tag,
+		 tbuf_to_hex(&TBUF(data, row->len, fiber->pool)));
+
+	switch (row->tag) {
 	case wal_tag:
-		wal_apply(&txn, op);
+		op = *(u16 *)data;
+		body = data + sizeof(u16);
+		body_len = row->len - sizeof(u16);
+		assert(op != 0);
+		box_prepare_update(self);
 		break;
 	case snap_tag:
-		snap_apply(&txn, op);
+		op = INSERT;
+		body = data;
+		body_len = row->len;
+
+		const struct box_snap_row *snap = body;
+		object_space = &object_space_registry[snap->object_space];
+		if (!object_space->enabled)
+			raise("object_space %i is not configured", object_space->n);
+		index = object_space->index[0];
+		assert(index != nil);
+
+		prepare_replace(self, snap->tuple_size, snap->data, snap->data_size);
 		break;
-	default:
-		return;
 	}
-	txn_commit(&txn);
-	txn_cleanup(&txn);
 }
 
 - (void)
-apply:(struct tbuf *)op tag:(u16)tag
+append:(struct wal_pack *)pack
 {
-	apply(op, tag);
+	wal_pack_append_row(pack, &wal);
+	if (wal.len == 0) {
+		wal_pack_append_data(pack, &wal, &op, sizeof(op));
+		wal_pack_append_data(pack, &wal, body, body_len);
+	}
+}
+
+- (struct row_v12 *)
+row
+{
+	assert(wal.len == 0);
+	struct row_v12 *r = palloc(fiber->pool, sizeof(*r) + sizeof(op) + body_len);
+	memcpy(r, &wal, sizeof(*r));
+	r->len += sizeof(op) + body_len;
+	memcpy(r->data, &op, sizeof(op));
+	memcpy(r->data + sizeof(op), body, body_len);
+	return r;
 }
 
 - (void)
-apply_row:(const struct row_v12 *)r
+commit:(u32 *)crc
 {
-	apply(&TBUF(r->data, r->len, NULL), r->tag);
+	if (wal.tag == wal_tag && crc != NULL) {
+		update_crc(old_obj, crc);
+		update_crc(obj, crc);
+	}
+
+	if (op == DELETE)
+		commit_delete(self);
+	else
+		commit_replace(self);
+
+	stat_collect(stat_base, op, 1);
+	say_debug("%s: old_obj:refs=%i,%p obj:ref=%i,%p", __func__,
+		 old_obj ? old_obj->refs : 0, old_obj,
+		 obj ? obj->refs : 0, obj);
+	txn_cleanup(self);
 }
+
+- (void)
+rollback
+{
+	say_debug("box_rollback(op:%s)", ops[op]);
+
+	if (op == DELETE)
+		return;
+
+	if (op == INSERT || op == UPDATE_FIELDS)
+		rollback_replace(self);
+
+	say_debug("%s: old_obj:refs=%i,%p obj:ref=%i,%p", __func__,
+		 old_obj ? old_obj->refs : 0, old_obj,
+		 obj ? obj->refs : 0, obj);
+
+	txn_cleanup(self);
+}
+@end
+
+@implementation Recovery (Box)
 
 - (void)
 wal_final_row
@@ -1457,7 +1432,8 @@ init(void)
 				     run_crc_delay:cfg.memcached ? 0 : cfg.run_crc_delay
 				      nop_hb_delay:cfg.memcached ? 0 : cfg.nop_hb_delay
 					     flags:init_storage ? RECOVER_READONLY : 0
-				snap_io_rate_limit:cfg.snap_io_rate_limit * 1024 * 1024];
+				snap_io_rate_limit:cfg.snap_io_rate_limit * 1024 * 1024
+					 txn_class:[BoxTxn class]];
 
 	/* initialize hashes _after_ starting wal writer */
 

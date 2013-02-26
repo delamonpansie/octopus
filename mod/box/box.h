@@ -31,6 +31,7 @@
 #import <iproto.h>
 #import <net_io.h>
 #import <object.h>
+#import <log_io.h>
 
 extern bool box_updates_allowed;
 
@@ -68,11 +69,9 @@ box_tuple(struct tnt_object *obj)
 	return (struct box_tuple *)obj->data;
 }
 
-struct box_txn {
-	struct netmsg **m;
-	struct netmsg_mark header_mark;
-	struct iproto_retcode *iproto;
-
+@interface BoxTxn : Object <Txn> {
+@public
+	struct row_v12 wal;
 	u16 op;
 	u32 flags;
 
@@ -83,9 +82,20 @@ struct box_txn {
 	struct tnt_object *ref[2];
 	u32 obj_affected;
 
-	struct tbuf *wal_record;
-	bool snap;
+	bool closed;
+
+	const void *body;
+	u32 body_len;
 };
+
+- (void) append:(struct wal_pack *)pack;
+- (void) prepare:(struct row_v12 *)row data:(const void *)data;
+- (void) prepare:(u16)op_ data:(const void *)data len:(u32)len;
+
+- (void) commit:(u32 *)crc;
+- (void) rollback;
+
+@end
 
 #define BOX_RETURN_TUPLE 1
 #define BOX_ADD 2
@@ -123,16 +133,9 @@ struct box_txn {
 
 enum messages ENUM_INITIALIZER(MESSAGES);
 
-@class Recovery;
-void txn_init(const struct iproto *req, struct box_txn *txn, struct netmsg **m);
-void txn_commit(struct box_txn *txn);
-void txn_abort(struct box_txn *txn);
-void txn_cleanup(struct box_txn *txn);
-void txn_submit_to_storage(struct box_txn *txn);
-void box_prepare_update(struct box_txn *txn, struct tbuf *data);
-
-void object_ref(struct tnt_object *obj, int count);
-void txn_ref(struct box_txn *txn, struct tnt_object *obj);
+@interface Recovery (Box)
+@end
+extern Recovery *recovery;
 
 void *next_field(void *f);
 void append_field(struct tbuf *b, void *f);

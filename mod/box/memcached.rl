@@ -110,14 +110,13 @@ store(void *key, u32 exptime, u32 flags, u32 bytes, u8 *data)
 	write_varint32(req, bytes);
 	tbuf_append(req, data, bytes);
 
-	struct box_txn txn;
+	struct BoxTxn *txn = [BoxTxn palloc];
 	@try {
 		ev_tstamp start = ev_now(), stop;
-		struct iproto r = { .msg_code = INSERT };
-		txn_init(&r, &txn, NULL);
-		box_prepare_update(&txn, req);
-		txn_submit_to_storage(&txn);
-		txn_commit(&txn);
+		[txn prepare:INSERT data:req->ptr len:tbuf_len(req)];
+		if ([recovery submit:txn] != 1)
+			raise("unable write row");
+		[txn commit:NULL];
 
 		int key_len = LOAD_VARINT32(key);
 		say_debug("memcached/store key:(%i)'%.*s' exptime:%"PRIu32" flags:%"PRIu32
@@ -130,11 +129,8 @@ store(void *key, u32 exptime, u32 flags, u32 bytes, u8 *data)
 			say_warn("too long store: %.3f sec", stop - start);
 	}
 	@catch (id e) {
-		txn_abort(&txn);
+		[txn rollback];
 		return 1;
-	}
-	@finally {
-		txn_cleanup(&txn);
 	}
 	return 0;
 }
@@ -149,20 +145,16 @@ delete(void *key)
 	tbuf_append(req, &key_len, sizeof(key_len));
 	tbuf_append_field(req, key);
 
-	struct box_txn txn;
+	struct BoxTxn *txn = [BoxTxn palloc];
 	@try {
-		struct iproto r = { .msg_code = DELETE };
-		txn_init(&r, &txn, NULL);
-		box_prepare_update(&txn, req);
-		txn_submit_to_storage(&txn);
-		txn_commit(&txn);
+		[txn prepare:DELETE data:req->ptr len:tbuf_len(req)];
+		if ([recovery submit:txn] != 1)
+			raise("unable write row");
+		[txn commit:NULL];
 	}
 	@catch (id e) {
-		txn_abort(&txn);
+		[txn rollback];
 		return 1;
-	}
-	@finally {
-		txn_cleanup(&txn);
 	}
 	return 0;
 }

@@ -37,6 +37,8 @@
 #ifdef PAXOS
 #import <paxos.h>
 #endif
+#import <iproto.h>
+
 #include <third_party/crc32.h>
 
 #include <dirent.h>
@@ -91,12 +93,86 @@ dummy_row_lsn:(i64)lsn_ scn:(i64)scn_ tag:(u16)tag
 	return r;
 }
 
+
 - (void)
-apply:(struct tbuf *)op tag:(u16)tag
+fixup:(const struct row_v12 *)r
 {
-	(void)op;
-	(void)tag;
-	panic("%s must be specilized in subclass", __func__);
+	switch (r->tag) {
+	case snap_tag:
+	case snap_final_tag:
+		break;
+	case wal_tag:
+		assert(r->scn > 1);
+		break;
+
+	case snap_initial_tag:
+		if (r->len == sizeof(u32) * 3) { /* not a dummy row */
+			struct tbuf buf = TBUF(r->data, r->len, NULL);
+			estimated_snap_rows = read_u32(&buf);
+			run_crc_log = read_u32(&buf);
+			run_crc_mod = read_u32(&buf);
+		}
+			/* set initial lsn & scn, otherwise gap check below will fail */
+		lsn = r->lsn;
+		scn = r->scn;
+		say_debug("%s: run_crc_log/mod: 0x%x/0x%x", __func__, run_crc_log, run_crc_mod);
+		break;
+	case snap_skip_scn:
+		assert(r->len > 0 && r->len % sizeof(u64) == 0);
+		char *ptr = malloc(r->len);
+		memcpy(ptr, r->data, r->len);
+		skip_scn = TBUF(ptr, r->len, (void *)ptr); /* NB: backing storage is malloc! */
+		next_skip_scn = read_u64(&skip_scn);
+		break;
+	case run_crc: {
+		if (cfg.ignore_run_crc)
+			break;
+
+		if (r->len != sizeof(i64) + sizeof(u32) * 2)
+			break;
+
+		struct tbuf buf = TBUF(r->data, r->len, NULL);
+		i64 scn_of_crc = read_u64(&buf);
+		u32 log = read_u32(&buf);
+		u32 mod = read_u32(&buf);
+		struct crc_hist *h = NULL;
+		for (unsigned i = crc_hist_i, j = 0; j < nelem(crc_hist); j++, i--) {
+			struct crc_hist *p = &crc_hist[i % nelem(crc_hist)];
+			if (p->scn == scn_of_crc) {
+				h = p;
+				break;
+			}
+		}
+
+		if (!h) {
+			say_warn("unable to track run_crc: crc history too short"
+				 " SCN:%"PRIi64" CRC_SCN:%"PRIi64, scn, scn_of_crc);
+			break;
+		}
+
+		if (h->log != log) {
+			run_crc_log_mismatch |= 1;
+			say_error("run_crc_log mismatch: SCN:%"PRIi64" saved:0x%08x computed:0x%08x",
+				  scn_of_crc, log, h->log);
+		}
+		if (h->mod != mod) {
+			run_crc_mod_mismatch |= 1;
+			say_error("run_crc_mod mismatch: SCN:%"PRIi64" saved:0x%08x computed:0x%08x",
+				  scn_of_crc, mod, h->mod);
+		}
+
+		run_crc_verify_tstamp = ev_now();
+		break;
+	}
+	case nop:
+		break;
+
+	default:
+		panic("unhandled tag: %i", r->tag);
+	}
+
+	last_update_tstamp = ev_now();
+	lag = last_update_tstamp - r->tm;
 }
 
 void
@@ -109,18 +185,13 @@ fix_scn(struct row_v12 *row)
 }
 
 - (void)
-apply_row:(struct row_v12 *)r
-{
-	[self apply:&TBUF(r->data, r->len, NULL) tag:r->tag];
-}
-
-- (void)
 recover_row:(struct row_v12 *)r
 {
 	/* FIXME: temporary hack */
 	if (cfg.io12_hack)
 		fix_scn(r);
 
+	id<Txn> txn = [txn_class palloc];
 	@try {
 		say_debug("%s: LSN:%"PRIi64" SCN:%"PRIi64" tag:%s",
 			  __func__, r->lsn, r->scn, xlog_tag_to_a(r->tag));
@@ -136,73 +207,12 @@ recover_row:(struct row_v12 *)r
 			}
 		}
 
-		[self apply_row:r];
-
-		switch (r->tag) {
-		case wal_tag:
+		if (r->tag == wal_tag)
 			run_crc_log = crc32c(run_crc_log, r->data, r->len);
-			say_debug("%s: computed run_crc_log: 0x%x", __func__, run_crc_log);
-			break;
-		case snap_initial_tag:
-			if (r->len == sizeof(u32) * 3) { /* not a dummy row */
-				struct tbuf buf = TBUF(r->data, r->len, NULL);
-				estimated_snap_rows = read_u32(&buf);
-				run_crc_log = read_u32(&buf);
-				run_crc_mod = read_u32(&buf);
-			}
-			/* set initial lsn & scn, otherwise gap check below will fail */
-			lsn = r->lsn;
-			scn = r->scn;
-			say_debug("%s: run_crc_log/mod: 0x%x/0x%x", __func__, run_crc_log, run_crc_mod);
-			break;
-		case snap_skip_scn:
-			assert(r->len > 0 && r->len % sizeof(u64) == 0);
-			char *ptr = malloc(r->len);
-			memcpy(ptr, r->data, r->len);
-			skip_scn = TBUF(ptr, r->len, (void *)ptr); /* NB: backing storage is malloc! */
-			next_skip_scn = read_u64(&skip_scn);
-		case run_crc: {
-			if (cfg.ignore_run_crc)
-				break;
 
-			if (r->len != sizeof(i64) + sizeof(u32) * 2)
-				break;
-
-			struct tbuf buf = TBUF(r->data, r->len, NULL);
-			i64 scn_of_crc = read_u64(&buf);
-			u32 log = read_u32(&buf);
-			u32 mod = read_u32(&buf);
-			struct crc_hist *h = NULL;
-			for (unsigned i = crc_hist_i, j = 0; j < nelem(crc_hist); j++, i--) {
-				struct crc_hist *p = &crc_hist[i % nelem(crc_hist)];
-				if (p->scn == scn_of_crc) {
-					h = p;
-					break;
-				}
-			}
-
-			if (!h) {
-				say_warn("unable to track run_crc: crc history too short"
-					 " SCN:%"PRIi64" CRC_SCN:%"PRIi64, scn, scn_of_crc);
-				break;
-			}
-
-			if (h->log != log) {
-				run_crc_log_mismatch |= 1;
-				say_error("run_crc_log mismatch: SCN:%"PRIi64" saved:0x%08x computed:0x%08x",
-					  scn_of_crc, log, h->log);
-			}
-			if (h->mod != mod) {
-				run_crc_mod_mismatch |= 1;
-				say_error("run_crc_mod mismatch: saved:0x%08x computed:0x%08x",
-					  mod, run_crc_mod);
-			}
-
-			run_crc_verify_tstamp = ev_now();
-			break;
-		}
-		}
-
+		[txn prepare:r data:r->data];
+		[txn commit:&run_crc_mod];
+		[self fixup:r];
 
 		if (unlikely(r->lsn - lsn > 1 && cfg.panic_on_lsn_gap))
 			raise("LSN sequence has gap after %"PRIi64 " -> %"PRIi64, lsn, r->lsn);
@@ -217,13 +227,14 @@ recover_row:(struct row_v12 *)r
 				raise("non consecutive SCN %"PRIi64 " -> %"PRIi64, scn, r->scn);
 
 			scn = r->scn;
-			crc_hist[++crc_hist_i % nelem(crc_hist)] = (struct crc_hist){ scn, run_crc_log, run_crc_mod };
+			say_debug("save crc_hist SCN:%"PRIi64" log:0x%08x mod:0x%08x",
+				  scn, run_crc_log, run_crc_mod);
+			crc_hist[++crc_hist_i % nelem(crc_hist)] =
+				(struct crc_hist){ scn, run_crc_log, run_crc_mod };
 		}
-
-		last_update_tstamp = ev_now();
-		lag = last_update_tstamp - r->tm;
 	}
 	@catch (Error *e) {
+		[txn rollback];
 		say_error("Recovery: %s at %s:%i", e->reason, e->file, e->line);
 		@throw;
 	}
@@ -535,7 +546,7 @@ static int
 pull_wal(Recovery *r, id<XLogPullerAsync> puller)
 {
 	struct row_v12 *row, *final_row = NULL, *rows[WAL_PACK_MAX];
-	struct wal_pack *pack;
+	id<Txn> txn[WAL_PACK_MAX];
 	/* TODO: use designated palloc_pool */
 	say_debug("%s: scn:%"PRIi64, __func__, [r scn]);
 
@@ -584,7 +595,11 @@ pull_wal(Recovery *r, id<XLogPullerAsync> puller)
 		@try {
 			for (int j = 0; j < pack_rows; j++) {
 				row = rows[j]; /* this pointer required for catch below */
-				[r recover_row:row];
+
+				txn[j] = [r->txn_class palloc];
+				[txn[j] prepare:rows[j] data:rows[j]->data];
+				[txn[j] commit:&r->run_crc_mod];
+				[r fixup:rows[j]];
 			}
 		}
 		@catch (Error *e) {
@@ -596,17 +611,16 @@ pull_wal(Recovery *r, id<XLogPullerAsync> puller)
 
 		int confirmed = 0;
 		while (confirmed != pack_rows) {
-			pack = [r wal_pack_prepare];
-			for (int i = confirmed; i < pack_rows; i++) {
-				row = rows[i];
-				[r wal_pack_append:pack
-					      data:row->data
-					       len:row->len
-					       scn:row->scn
-					       tag:row->tag
-					    cookie:row->cookie];
+			struct wal_pack pack;
+
+			if (!wal_pack_prepare(r, &pack)) {
+				fiber_sleep(0.1);
+				continue;
 			}
-			confirmed += [r wal_pack_submit_x];
+			for (int i = confirmed; i < pack_rows; i++)
+				[txn[i] append:&pack];
+
+			confirmed += [r wal_pack_submit];
 			if (confirmed != pack_rows) {
 				say_warn("WAL write failed confirmed:%i != sent:%i",
 					 confirmed, pack_rows);
@@ -691,16 +705,16 @@ remote_hot_standby(va_list ap)
 	struct sockaddr_in sin;
 
 	for (;;) {
-		if (!recovery->feeder_addr)
+		if (!r->feeder_addr)
 			goto sleep;
 
 		memset(&sin, 0, sizeof(sin));
-		atosin(recovery->feeder_addr, &sin);
+		atosin(r->feeder_addr, &sin);
 		if (sin.sin_addr.s_addr == INADDR_ANY)
 			goto sleep;
 
-		[recovery->remote_puller init_addr:&sin];
-		[r recover_follow_remote:recovery->remote_puller exit_on_eof:false];
+		[r->remote_puller init_addr:&sin];
+		[r recover_follow_remote:r->remote_puller exit_on_eof:false];
 
 	sleep:
 		fiber_sleep(0.1);
@@ -758,25 +772,11 @@ is_replica
 	return false;
 }
 
-- (int)
-submit:(const void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag
+- (void)
+check_replica
 {
 	if ([self is_replica])
-		raise("replica is readonly");
-
-	return [self wal_row_submit:data len:data_len scn:scn_ tag:tag];
-}
-
-- (int)
-submit:(const void *)data len:(u32)len tag:(u16)tag
-{
-	return [self submit:data len:len scn:0 tag:tag];
-}
-
-- (int)
-submit:(const void *)data len:(u32)len
-{
-	return [self submit:data len:len tag:wal_tag];
+		iproto_raise(ERR_CODE_NONMASTER, "replica is readonly");
 }
 
 - (int)
@@ -863,15 +863,9 @@ nop_hb_writer(va_list ap)
 		if ([recovery is_replica])
 			continue;
 
-		@try {
-			[recovery submit:body len:nelem(body) tag:nop];
-		}
-		@catch (id exc) {
-			; /* missing nop is not fatal */
-		}
+		[recovery submit:body len:nelem(body) tag:nop];
 	}
 }
-
 
 - (id) init_snap_dir:(const char *)snap_dirname
              wal_dir:(const char *)wal_dirname
@@ -882,9 +876,11 @@ nop_hb_writer(va_list ap)
 	nop_hb_delay:(double)nop_hb_delay
                flags:(int)flags
   snap_io_rate_limit:(int)snap_io_rate_limit_
+	   txn_class:(Class)txn_class_
 {
 	/* Recovery object is never released */
 
+	txn_class = txn_class_;
 	snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
 	wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
 	remote_puller = [XLogPuller alloc];
@@ -1105,6 +1101,7 @@ init_snap_dir:(const char *)snap_dirname
 	nop_hb_delay:(double)nop_hb_delay
                flags:(int)flags
   snap_io_rate_limit:(int)snap_io_rate_limit_
+	   txn_class:(Class)txn_class_
 {
 	say_info("WAL disabled");
 	return [super init_snap_dir:snap_dirname
@@ -1115,7 +1112,8 @@ init_snap_dir:(const char *)snap_dirname
 		      run_crc_delay:run_crc_delay
 		       nop_hb_delay:nop_hb_delay
 			      flags:flags | RECOVER_READONLY
-		 snap_io_rate_limit:snap_io_rate_limit_];
+		 snap_io_rate_limit:snap_io_rate_limit_
+			  txn_class:txn_class_];
 }
 
 
@@ -1126,12 +1124,9 @@ configure_wal_writer
 
 
 - (int)
-wal_row_submit:(const void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag
+submit:(id<Txn>)txn
 {
-	(void)data;
-	(void)data_len;
-	(void)scn_;
-	(void)tag;
+	(void)txn;
 	scn++;
 	lsn++;
 	return 1;

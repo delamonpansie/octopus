@@ -111,6 +111,27 @@ typedef void (follow_cb)(ev_stat *w, int events);
 @interface WALDir: XLogDir
 @end
 
+struct _row_v11 {
+	u32 header_crc32c;
+	i64 lsn;
+	double tm;
+	u32 len;
+	u32 data_crc32c;
+	u8 data[];
+} __attribute__((packed));
+
+struct row_v12 {
+	u32 header_crc32c;
+	i64 lsn;
+	i64 scn;
+	u16 tag;
+	u64 cookie;
+	double tm;
+	u32 len;
+	u32 data_crc32c;
+	u8 data[];
+} __attribute__((packed));
+
 @interface XLog: Object <XLogPuller> {
 	size_t rows, wet_rows;
 	bool eof;
@@ -121,7 +142,6 @@ typedef void (follow_cb)(ev_stat *w, int events);
 	ev_stat stat;
 
 	XLogDir *dir;
-	XLogWriter *writer;
 	i64 next_lsn;
 
 	struct palloc_pool *pool;
@@ -156,6 +176,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 - (size_t)wet_rows_offset_available;
 - (i64) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie;
 - (i64) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag;
+- (i64) append_row:(struct row_v12 *)row data:(const void *)data;
 - (void) configure_for_write:(i64)lsn;
 - (i64) confirm_write;
 @end
@@ -170,15 +191,46 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (void) configure_for_write:(i64)lsn next_scn:(i64)scn;
 @end
 
+@protocol Txn
+- (void) prepare:(struct row_v12 *)row data:(const void *)data;
+- (void) commit:(u32 *)crc;
+- (void) rollback;
+- (void) append:(struct wal_pack *)pack;
+- (struct row_v12 *)row;
+@end
+
+struct wal_pack {
+	struct netmsg *netmsg;
+	u32 packet_len;
+	u32 row_count;
+	struct fiber *sender;
+	u32 fid;
+} __attribute__((packed));
+
+struct wal_reply {
+	u32 packet_len;
+	u32 row_count;
+	struct fiber *sender;
+	u32 fid;
+	i64 lsn;
+	i64 scn;
+	u32 run_crc;
+} __attribute__((packed));
+
+
+int wal_pack_prepare(XLogWriter *r, struct wal_pack *);
+u32 wal_pack_append_row(struct wal_pack *pack, struct row_v12 *row);
+void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
+			  const void *data, size_t len);
 
 @interface XLogWriter: Object {
 	i64 lsn, scn, last_scn;
-	struct child *wal_writer;
 	XLogDir *wal_dir, *snap_dir;
-	bool local_writes;
 	XLog *wal_to_close;
 	ev_timer wal_timer;
 @public
+	bool local_writes;
+	struct child *wal_writer;
 	XLog *current_wal;	/* the WAL we'r currently reading/writing from/to */
 	int snap_io_rate_limit;
 	u32 run_crc_log, run_crc_mod;
@@ -191,16 +243,11 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (struct child *) wal_writer;
 - (void) configure_wal_writer;
 
-- (struct wal_pack *) wal_pack_prepare;
-- (u32) wal_pack_append:(struct wal_pack *)pack
-		   data:(const void *)data
-		    len:(u32)data_len
-		    scn:(i64)scn
-		    tag:(u16)tag
-		 cookie:(u64)cookie;
 - (int) wal_pack_submit;
-- (int) wal_pack_submit_x; // FIXME: hack
-- (int) wal_row_submit:(const void *)data len:(u32)len scn:(i64)scn tag:(u16)tag;
+
+/* entry points: modules should call this */
+- (int) submit:(id<Txn>)txn;
+- (int) submit:(const void *)data len:(u32)len tag:(u16)tag;
 
 - (int) snapshot:(bool)sync;
 - (int) snapshot_write;
@@ -236,8 +283,6 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 	ev_tstamp lag, last_update_tstamp, run_crc_verify_tstamp;
 	char status[64];
 
-	struct mhash_t *pending_row;
-
 	XLogPuller *remote_puller;
 	const char *feeder_addr;
 
@@ -249,6 +294,9 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 
 	i64 next_skip_scn;
 	struct tbuf skip_scn;
+
+@public
+	Class txn_class;
 }
 
 - (const char *) status;
@@ -257,8 +305,6 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (ev_tstamp) run_crc_lag;
 - (const char *) run_crc_status;
 
-- (void) apply:(struct tbuf *)op tag:(u16)tag;
-- (void) apply_row:(const struct row_v12 *)row;
 - (void) recover_row:(const struct row_v12 *)row;
 - (void) recover_finalize;
 - (i64) recover_start;
@@ -269,11 +315,10 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (int) recover_follow_remote:(XLogPuller *)puller exit_on_eof:(int)exit_on_eof;
 - (void) enable_local_writes;
 - (bool) is_replica;
+- (void) check_replica;
 
 - (void) feeder_change_from:(const char *)old to:(const char *)new;
 
-- (int) submit:(const void *)data len:(u32)len;
-- (int) submit:(const void *)data len:(u32)len tag:(u16)tag;
 - (int) submit_run_crc;
 
 - (const struct row_v12 *)dummy_row_lsn:(i64)lsn_ scn:(i64)scn_ tag:(u16)tag;
@@ -289,12 +334,13 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
        run_crc_delay:(double)run_crc_delay
 	nop_hb_delay:(double)nop_hb_delay
                flags:(int)flags
-  snap_io_rate_limit:(int)snap_io_rate_limit;
+  snap_io_rate_limit:(int)snap_io_rate_limit
+	   txn_class:(Class)txn_class;
 @end
 
 
-i64 fold_scn;
 @interface FoldRecovery: Recovery
+i64 fold_scn;
 - (id) init_snap_dir:(const char *)snap_dirname
 	     wal_dir:(const char *)wal_dirname;
 @end
@@ -310,27 +356,6 @@ struct replication_handshake {
 		u32 ver;
 		i64 scn;
 		char filter[32];
-} __attribute__((packed));
-
-struct _row_v11 {
-	u32 header_crc32c;
-	i64 lsn;
-	double tm;
-	u32 len;
-	u32 data_crc32c;
-	u8 data[];
-} __attribute__((packed));
-
-struct row_v12 {
-	u32 header_crc32c;
-	i64 lsn;
-	i64 scn;
-	u16 tag;
-	u64 cookie;
-	double tm;
-	u32 len;
-	u32 data_crc32c;
-	u8 data[];
 } __attribute__((packed));
 
 static inline struct _row_v11 *_row_v11(const struct tbuf *t)

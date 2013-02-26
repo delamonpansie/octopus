@@ -36,7 +36,7 @@
 #include <stdlib.h>
 
 void __attribute__((noreturn))
-buffer_too_short()
+tbuf_too_short()
 {
 	iproto_raise(ERR_CODE_UNKNOWN_ERROR, "tbuf too short");
 }
@@ -91,7 +91,7 @@ write_varint32(struct tbuf *b, u32 value)
 	u##bits read_u##bits(struct tbuf *b)				\
 	{								\
 		if (unlikely(tbuf_len(b) < bits/8))			\
-			buffer_too_short();				\
+			tbuf_too_short();				\
 		u##bits r = *(u##bits *)b->ptr;				\
 		b->ptr += bits/8;					\
 		return r;						\
@@ -111,7 +111,7 @@ read_varint32(struct tbuf *buf)
 	if (unlikely(p - buf->ptr > 4))
 	    iproto_raise(ERR_CODE_UNKNOWN_ERROR, "bad varint32");
 	if (unlikely(p >= buf->end))
-		buffer_too_short();
+		tbuf_too_short();
 
 	buf->ptr = p;
 	return r;
@@ -134,7 +134,7 @@ read_field(struct tbuf *buf)
 	buf->ptr += data_len;
 	if (unlikely(buf->ptr > buf->end)) {
 		buf->ptr = p;
-		buffer_too_short();
+		tbuf_too_short();
 	}
 
 	return p;
@@ -148,7 +148,7 @@ read_push_field(lua_State *L, struct tbuf *buf)
 
 	if (unlikely(buf->ptr + data_len > buf->end)) {
 		buf->ptr = p;
-		buffer_too_short();
+		tbuf_too_short();
 	} else {
 		lua_pushlstring(L, buf->ptr, data_len);
 		buf->ptr += data_len;
@@ -160,11 +160,17 @@ void *
 read_bytes(struct tbuf *buf, u32 data_len)
 {
 	if (unlikely(data_len > tbuf_len(buf)))
-		buffer_too_short();
+		tbuf_too_short();
 
 	void *p = buf->ptr;
 	buf->ptr += data_len;
 	return p;
+}
+
+void *
+read_ptr(struct tbuf *buf)
+{
+	return *(void **)read_bytes(buf, sizeof(void *));
 }
 
 size_t

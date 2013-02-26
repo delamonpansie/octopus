@@ -72,8 +72,6 @@ extern const char *cfg_filename;
 extern char *custom_proc_title;
 extern bool init_storage, booting;
 extern char *binary_filename;
-@class Recovery;
-extern Recovery *recovery;
 
 extern char *cfg_err;
 extern int cfg_err_len;
