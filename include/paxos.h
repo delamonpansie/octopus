@@ -35,7 +35,6 @@ RB_HEAD(ptree, proposal);
 @public
 	SLIST_HEAD(paxos_group, paxos_peer) group;
 	struct iproto_group remotes;
-	int quorum;
 	struct fiber *proposer_fiber;
 	struct fiber *output_flusher, *reply_reader, *follower, *wal_dumper;
 	struct palloc_pool *pool;

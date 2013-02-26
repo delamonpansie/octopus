@@ -55,6 +55,8 @@
 enum paxos_msg_code ENUM_INITIALIZER(PAXOS_CODE);
 const char *paxos_msg_code[] = ENUM_STR_INITIALIZER(PAXOS_CODE);
 
+const int quorum = 2; /* FIXME: hardcoded */
+
 struct paxos_peer {
 	struct iproto_peer iproto;
 	int id;
@@ -188,7 +190,7 @@ paxos_broadcast(PaxosRecovery *r, enum paxos_msg_code code, ev_tstamp timeout,
 				 .tag = tag,
 				 .value_len = value_len };
 
-	struct iproto_req *req = req_make(paxos_msg_code[code], r->quorum, timeout,
+	struct iproto_req *req = req_make(paxos_msg_code[code], quorum, timeout,
 					  &msg.header, value, value_len);
 
 	say_debug("%s: > %s sync:%u SCN:%"PRIi64" ballot:%"PRIu64" timeout:%.2f",
@@ -785,7 +787,6 @@ run_protocol(PaxosRecovery *r, i64 scn, u64 ballot, char *value, u32 value_len, 
 	struct iproto_req *rsp;
 	bool has_old_value = false;
 	int votes;
-	const int quorum = 2; /* FIXME: hardcoded */
 	u64 min_ballot = 1;
 
 #ifndef NDEBUG
@@ -1167,8 +1168,6 @@ snap_io_rate_limit:(int)snap_io_rate_limit_
 
 	if (!paxos_peer(self, self_id))
 		panic("unable to find myself among paxos peers");
-
-	quorum = 2; /* FIXME: hardcoded */
 
 	output_flusher = fiber_create("paxos/output_flusher", service_output_flusher);
 	reply_reader = fiber_create("paxos/reply_reader", iproto_reply_reader, req_collect_reply);
