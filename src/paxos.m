@@ -671,42 +671,45 @@ static void
 learner(struct iproto *msg, struct conn *c)
 {
 	struct PaxosRecovery *r = (void *)c->service - offsetof(PaxosRecovery, service);
-	struct msg_paxos *mp = (struct msg_paxos *)msg;
-	struct paxos_peer *peer = paxos_peer(r, mp->peer_id);
+	struct msg_paxos *req = (struct msg_paxos *)msg;
+	struct paxos_peer *peer = paxos_peer(r, req->peer_id);
 
-	PAXOS_MSG_CHECK(mp, c, peer);
-
-	if (mp->peer_id == self_id)
-		return;
-	if (mp->scn <= r->app_scn)
-		return;
-
-	struct proposal *p = proposal(r, mp->scn);
-
+	PAXOS_MSG_CHECK(req, c, peer);
 	say_debug("%s: < peer:%i/%s sync:%i type:DECIDE SCN:%"PRIi64" ballot:%"PRIu64" tag:%s",
-		  __func__, peer->id, peer->name, msg->sync, mp->scn, mp->ballot, xlog_tag_to_a(mp->tag));
-	say_debug2("|  tag:%s value_len:%i value:%s", xlog_tag_to_a(mp->tag), mp->value_len,
-		   tbuf_to_hex(&TBUF(mp->value, mp->value_len, fiber->pool)));
+		  __func__, peer->id, peer->name, msg->sync, req->scn, req->ballot, xlog_tag_to_a(req->tag));
+	say_debug2("|  tag:%s value_len:%i value:%s", xlog_tag_to_a(req->tag), req->value_len,
+		   tbuf_to_hex(&TBUF(req->value, req->value_len, fiber->pool)));
+
+
+	if (req->peer_id == self_id)
+		return;
+
+	if (req->scn <= r->app_scn) {
+		say_warn("%s: SCN:%"PRIi64" ignoring stale DECIDE", __func__, req->scn);
+		return;
+	}
+
+	struct proposal *p = proposal(r, req->scn);
+
+	if (p->ballot > req->ballot) {
+		say_warn("%s: SCN:%"PRIi64" ignoring stale DECIDE", __func__, p->scn);
+		return;
+	}
+
+	if (p->flags & P_DECIDED) {
+		assert(memcmp(req->value, p->value, MIN(req->value_len, p->value_len)) == 0);
+		assert(p->tag == req->tag);
+		return;
+	}
 
 	if (p->flags & P_LOCK) {
 		say_warn("%s: SCN:%"PRIi64" ignoring concurent update", __func__, p->scn);
 		return;
 	}
 
-	if (p->flags & P_DECIDED) {
-		assert(memcmp(mp->value, p->value, MIN(mp->value_len, p->value_len)) == 0);
-		assert(p->tag == mp->tag);
-		return;
-	}
-
-	if (p->ballot > mp->ballot) {
-		say_warn("%s: SCN:%"PRIi64" ignoring stale DECIDE", __func__, p->scn);
-		return;
-	}
-
 	plock(p);
-	update_proposal_ballot(p, mp->ballot);
-	update_proposal_value(p, mp->value_len, mp->value, mp->tag);
+	update_proposal_ballot(p, req->ballot);
+	update_proposal_value(p, req->value_len, req->value, req->tag);
 	p->flags |= P_DECIDED;
 	punlock(p);
 
