@@ -550,7 +550,7 @@ expire_proposal(PaxosRecovery *r)
 }
 
 static void
-promise(PaxosRecovery *r, struct paxos_peer *peer, struct conn *c, struct proposal *p, struct msg_paxos *req)
+promise(PaxosRecovery *r, struct paxos_peer *peer, struct conn *c, struct msg_paxos *req, struct proposal *p)
 {
 	assert(p->flags & P_LOCK);
 	if ([r submit:&req->ballot len:sizeof(req->ballot) scn:req->scn tag:paxos_promise] != 1)
@@ -562,7 +562,7 @@ promise(PaxosRecovery *r, struct paxos_peer *peer, struct conn *c, struct propos
 }
 
 static void
-accepted(PaxosRecovery *r, struct paxos_peer *peer, struct conn *c, struct proposal *p, struct msg_paxos *req)
+accepted(PaxosRecovery *r, struct paxos_peer *peer, struct conn *c, struct msg_paxos *req, struct proposal *p)
 {
 	assert(req->scn == p->scn);
 	assert(p->ballot <= req->ballot);
@@ -723,20 +723,20 @@ static void
 acceptor(struct iproto *msg, struct conn *c)
 {
 	struct PaxosRecovery *r = (void *)c->service - offsetof(PaxosRecovery, service);
-	struct msg_paxos *mp = (struct msg_paxos *)msg;
-	struct paxos_peer *peer = paxos_peer(r, mp->peer_id);
+	struct msg_paxos *req = (struct msg_paxos *)msg;
+	struct paxos_peer *peer = paxos_peer(r, req->peer_id);
 	struct proposal *p;
 
-	PAXOS_MSG_CHECK(mp, c, peer);
+	PAXOS_MSG_CHECK(req, c, peer);
 
-	say_debug("%s: SCN:%"PRIi64, __func__, mp->scn);
+	say_debug("%s: SCN:%"PRIi64, __func__, req->scn);
 
-	if (mp->scn <= r->app_scn) {
-		paxos_reply(peer, c, mp, STALE, 0, NULL);
+	if (req->scn <= r->app_scn) {
+		paxos_reply(peer, c, req, STALE, 0, NULL);
 		return;
 	}
 
-	p = proposal(r, mp->scn);
+	p = proposal(r, req->scn);
 	if (p->flags & P_LOCK) {
 		say_warn("%s: SCN:%"PRIi64" ignoring concurent update", __func__, p->scn);
 		return;
@@ -745,30 +745,30 @@ acceptor(struct iproto *msg, struct conn *c)
 	if (p->flags & P_DECIDED) {
 		/* if we already knew the value, notify current leader immediately */
 		if (!paxos_leader())
-			decided(peer, c, mp, p);
+			decided(peer, c, req, p);
 		return;
 	}
 
-	if (p->ballot > mp->ballot) {
-		nack(peer, c, mp, p->ballot);
+	if (p->ballot > req->ballot) {
+		nack(peer, c, req, p->ballot);
 		return;
 	}
 
-	assert(p->ballot <= mp->ballot);
+	assert(p->ballot <= req->ballot);
 	say_debug("%s: < peer:%i/%s type:%s sync:%i SCN:%"PRIi64" ballot:%"PRIu64,
 		  __func__, peer->id, peer->name, paxos_msg_code[msg->msg_code],
-		  msg->sync, mp->scn, mp->ballot);
-	say_debug2("|  tag:%s value_len:%i value:%s", xlog_tag_to_a(mp->tag), mp->value_len,
-		   tbuf_to_hex(&TBUF(mp->value, mp->value_len, fiber->pool)));
+		  msg->sync, req->scn, req->ballot);
+	say_debug2("|  tag:%s value_len:%i value:%s", xlog_tag_to_a(req->tag), req->value_len,
+		   tbuf_to_hex(&TBUF(req->value, req->value_len, fiber->pool)));
 
 	plock(p);
 	switch (msg->msg_code) {
 	case PREPARE:
-		assert(p->ballot <= mp->ballot);
-		promise(r, peer, c, p, mp);
+		assert(p->ballot <= req->ballot);
+		promise(r, peer, c, req, p);
 		break;
 	case ACCEPT:
-		accepted(r, peer, c, p, mp);
+		accepted(r, peer, c, req, p);
 		break;
 	default:
 		say_error("%s: < unexpected msg type: %s", __func__, paxos_msg_code[msg->msg_code]);
