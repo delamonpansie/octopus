@@ -638,37 +638,32 @@ mark_applied(PaxosRecovery *r, struct proposal *p)
 static void
 learn(PaxosRecovery *r, struct proposal *p)
 {
-loop:
-	if (!p)
-		return;
+	for (; p != NULL; p = RB_NEXT(ptree, &r->proposals, p)) {
+		assert([r scn] <= r->app_scn);
+		assert(r->app_scn <= r->max_scn);
 
-	assert([r scn] <= r->app_scn);
-	assert(r->app_scn <= r->max_scn);
+		if (p->scn != r->app_scn + 1)
+			return;
 
-	if (p->scn != r->app_scn + 1)
-		return;
+		if (p->flags & P_APPLIED)
+			return;
 
-	if (p->flags & P_APPLIED)
-		return;
+		if ((p->flags & P_DECIDED) == 0)
+			return;
 
-	if ((p->flags & P_DECIDED) == 0)
-		return;
-
-	say_debug("%s: SCN:%"PRIi64" ballot:%"PRIu64, __func__, p->scn, p->ballot);
-	say_debug2("|  value_len:%i value:%s",
-		   p->value_len, tbuf_to_hex(&TBUF(p->value, p->value_len, fiber->pool)));
+		say_debug("%s: SCN:%"PRIi64" ballot:%"PRIu64, __func__, p->scn, p->ballot);
+		say_debug2("|  value_len:%i value:%s",
+			   p->value_len, tbuf_to_hex(&TBUF(p->value, p->value_len, fiber->pool)));
 
 
-	id<Txn> txn = [r->txn_class alloc];
-	struct row_v12 row = { .scn = p->scn,
-			       .tag = p->tag,
-			       .len = p->value_len };
-	[txn prepare:&row data:p->value];
-	[txn commit:&r->run_crc_mod];
-	mark_applied(r, p);
-
-	p = RB_NEXT(ptree, &r->proposals, p);
-	goto loop;
+		id<Txn> txn = [r->txn_class alloc];
+		struct row_v12 row = { .scn = p->scn,
+				       .tag = p->tag,
+				       .len = p->value_len };
+		[txn prepare:&row data:p->value];
+		[txn commit:&r->run_crc_mod];
+		mark_applied(r, p);
+	}
 }
 
 
