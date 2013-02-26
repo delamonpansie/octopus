@@ -190,32 +190,37 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 - (void) configure_for_write:(i64)lsn next_scn:(i64)scn;
 @end
 
+@protocol Txn
+- (void) prepare:(struct row_v12 *)row data:(const void *)data;
+- (void) commit:(u32 *)crc;
+- (void) rollback;
+- (void) append:(struct wal_pack *)pack;
+- (struct row_v12 *)row;
+@end
 
 struct wal_pack {
 	struct netmsg *netmsg;
 	u32 packet_len;
 	u32 row_count;
 	struct fiber *sender;
-	struct wal_pack *pack;
 	u32 fid;
-	struct row_v12 *row[];
 } __attribute__((packed));
 
 struct wal_reply {
-	u32 data_len;
+	u32 packet_len;
+	u32 row_count;
 	struct fiber *sender;
-	struct wal_pack *pack;
 	u32 fid;
 	i64 lsn;
 	i64 scn;
-	u32 row_count;
 	u32 run_crc;
 } __attribute__((packed));
 
 
-struct wal_pack *wal_pack_prepare(size_t count, XLogWriter *r);
+int wal_pack_prepare(XLogWriter *r, struct wal_pack *);
 u32 wal_pack_append_row(struct wal_pack *pack, struct row_v12 *row);
-void wal_pack_append_data(struct wal_pack *pack, const void *data, size_t len);
+void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
+			  const void *data, size_t len);
 
 @interface XLogWriter: Object {
 	i64 lsn, scn, last_scn;
@@ -237,9 +242,11 @@ void wal_pack_append_data(struct wal_pack *pack, const void *data, size_t len);
 - (struct child *) wal_writer;
 - (void) configure_wal_writer;
 
-- (struct wal_reply *) wal_pack_submit;
-- (void)wal_commit:(const struct wal_reply *)r;
-- (int) wal_row_submit:(const void *)data len:(u32)len scn:(i64)scn tag:(u16)tag;
+- (int) wal_pack_submit;
+
+/* entry points: modules should call this */
+- (int) submit:(id<Txn>)txn;
+- (int) submit:(const void *)data len:(u32)len tag:(u16)tag;
 
 - (int) snapshot:(bool)sync;
 - (int) snapshot_write;
@@ -270,13 +277,6 @@ void wal_pack_append_data(struct wal_pack *pack, const void *data, size_t len);
 - (int) handshake:(struct sockaddr_in *)addr_ scn:(i64)scn err:(const char **)err_ptr;
 @end
 
-@protocol Txn
-- (void) append:(struct wal_pack *)pack;
-- (void) prepare:(struct row_v12 *)row;
-- (void) commit;
-- (void) rollback;
-@end
-
 @interface Recovery: XLogWriter {
 	i64 last_wal_lsn;
 	ev_tstamp lag, last_update_tstamp, run_crc_verify_tstamp;
@@ -294,6 +294,7 @@ void wal_pack_append_data(struct wal_pack *pack, const void *data, size_t len);
 	i64 next_skip_scn;
 	struct tbuf skip_scn;
 
+@public
 	Class txn_class;
 }
 
@@ -313,11 +314,10 @@ void wal_pack_append_data(struct wal_pack *pack, const void *data, size_t len);
 - (int) recover_follow_remote:(XLogPuller *)puller exit_on_eof:(int)exit_on_eof;
 - (void) enable_local_writes;
 - (bool) is_replica;
+- (void) check_replica;
 
 - (void) feeder_change_from:(const char *)old to:(const char *)new;
 
-- (int) submit:(const void *)data len:(u32)len;
-- (int) submit:(const void *)data len:(u32)len tag:(u16)tag;
 - (int) submit_run_crc;
 
 - (const struct row_v12 *)dummy_row_lsn:(i64)lsn_ scn:(i64)scn_ tag:(u16)tag;

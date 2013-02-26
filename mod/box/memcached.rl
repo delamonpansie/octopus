@@ -113,7 +113,10 @@ store(void *key, u32 exptime, u32 flags, u32 bytes, u8 *data)
 	struct BoxTxn *txn = [BoxTxn palloc];
 	@try {
 		ev_tstamp start = ev_now(), stop;
-		[recovery wal_commit:[txn commit:INSERT data:req->ptr len:tbuf_len(req)]];
+		[txn prepare:INSERT data:req->ptr len:tbuf_len(req)];
+		if ([recovery submit:txn] != 1)
+			raise("unable write row");
+		[txn commit:NULL];
 
 		int key_len = LOAD_VARINT32(key);
 		say_debug("memcached/store key:(%i)'%.*s' exptime:%"PRIu32" flags:%"PRIu32
@@ -144,7 +147,10 @@ delete(void *key)
 
 	struct BoxTxn *txn = [BoxTxn palloc];
 	@try {
-		[recovery wal_commit:[txn commit:DELETE data:req->ptr len:tbuf_len(req)]];
+		[txn prepare:DELETE data:req->ptr len:tbuf_len(req)];
+		if ([recovery submit:txn] != 1)
+			raise("unable write row");
+		[txn commit:NULL];
 	}
 	@catch (id e) {
 		[txn rollback];

@@ -678,7 +678,7 @@ void
 box_prepare_update(BoxTxn *txn)
 {
 	struct tbuf data = TBUF(txn->body, txn->body_len, NULL);
-	say_debug("box_dispach(%i)", txn->op);
+	say_debug("box_prepare_update(%i)", txn->op);
 
 	switch (txn->op) {
 	case INSERT:
@@ -775,10 +775,13 @@ box_cb(struct iproto *request, struct conn *c)
 		if (unlikely(c->service != &box_primary))
 			iproto_raise(ERR_CODE_NONMASTER, "updates forbiden on secondary port");
 
-
-		[recovery wal_commit:[txn commit:request->msg_code
-					    data:request->data
-					     len:request->data_len]];
+		[recovery check_replica];
+		[txn prepare:request->msg_code
+			data:request->data
+			 len:request->data_len];
+		if ([recovery submit:txn] != 1)
+			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
+		[txn commit:&recovery->run_crc_mod];
 
 		struct netmsg *m = netmsg_tail(&c->out_messages);
 		struct iproto_retcode *reply = iproto_reply(&m, request);
@@ -1181,70 +1184,38 @@ update_crc(struct tnt_object *obj, u32 *crc)
 	*crc = new_crc;
 }
 
-static void
-txn_commit(BoxTxn *txn)
-{
-	if (txn->wal.tag == wal_tag) {
-		update_crc(txn->old_obj, &recovery->run_crc_mod);
-		update_crc(txn->obj, &recovery->run_crc_mod);
-	}
 
-	if (txn->op == DELETE)
-		commit_delete(txn);
-	else
-		commit_replace(txn);
-
-	stat_collect(stat_base, txn->op, 1);
-	say_debug("%s: old_obj:refs=%i,%p obj:ref=%i,%p", __func__,
-		 txn->old_obj ? txn->old_obj->refs : 0, txn->old_obj,
-		 txn->obj ? txn->obj->refs : 0, txn->obj);
-	txn_cleanup(txn);
-}
-
-static void
-txn_append(BoxTxn *txn, struct wal_pack *pack)
-{
-	wal_pack_append_row(pack, &txn->wal);
-	if (txn->wal.len == 0) {
-		wal_pack_append_data(pack, &txn->op, sizeof(txn->op));
-		wal_pack_append_data(pack, txn->body, txn->body_len);
-	}
-}
-
-- (struct wal_reply *)
-commit:(u16)op_ data:(const void *)data len:(u32)len
+- (void)
+prepare:(u16)op_ data:(const void *)data len:(u32)len
 {
 	wal.tag = wal_tag;
 	op = op_;
 	body = data;
 	body_len = len;
-
 	box_prepare_update(self);
-	struct wal_pack *pack = wal_pack_prepare(1, recovery);
-	txn_append(self, pack);
-	struct wal_reply *reply = [recovery wal_pack_submit];
-	if (reply->row_count != 1)
- 		iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
-	txn_commit(self);
-	return reply;
 }
 
+
 - (void)
-prepare:(const struct row_v12 *)row
+prepare:(const struct row_v12 *)row data:(const void *)data
 {
 	memcpy(&wal, row, sizeof(wal));
 	wal.len = 0;
 
+	say_debug("%s tag:%i data:%s", __func__, row->tag,
+		 tbuf_to_hex(&TBUF(data, row->len, fiber->pool)));
+
 	switch (row->tag) {
 	case wal_tag:
-		op = *(u16 *)row->data;
-		body = row->data + sizeof(u16);
+		op = *(u16 *)data;
+		body = data + sizeof(u16);
 		body_len = row->len - sizeof(u16);
+		assert(op != 0);
 		box_prepare_update(self);
 		break;
 	case snap_tag:
 		op = INSERT;
-		body = row->data;
+		body = data;
 		body_len = row->len;
 
 		const struct box_snap_row *snap = body;
@@ -1262,13 +1233,43 @@ prepare:(const struct row_v12 *)row
 - (void)
 append:(struct wal_pack *)pack
 {
-	txn_append(self, pack);
+	wal_pack_append_row(pack, &wal);
+	if (wal.len == 0) {
+		wal_pack_append_data(pack, &wal, &op, sizeof(op));
+		wal_pack_append_data(pack, &wal, body, body_len);
+	}
+}
+
+- (struct row_v12 *)
+row
+{
+	assert(wal.len == 0);
+	struct row_v12 *r = palloc(fiber->pool, sizeof(*r) + sizeof(op) + body_len);
+	memcpy(r, &wal, sizeof(*r));
+	r->len += sizeof(op) + body_len;
+	memcpy(r->data, &op, sizeof(op));
+	memcpy(r->data + sizeof(op), body, body_len);
+	return r;
 }
 
 - (void)
-commit
+commit:(u32 *)crc
 {
-	txn_commit(self);
+	if (wal.tag == wal_tag && crc != NULL) {
+		update_crc(old_obj, crc);
+		update_crc(obj, crc);
+	}
+
+	if (op == DELETE)
+		commit_delete(self);
+	else
+		commit_replace(self);
+
+	stat_collect(stat_base, op, 1);
+	say_debug("%s: old_obj:refs=%i,%p obj:ref=%i,%p", __func__,
+		 old_obj ? old_obj->refs : 0, old_obj,
+		 obj ? obj->refs : 0, obj);
+	txn_cleanup(self);
 }
 
 - (void)

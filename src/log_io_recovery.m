@@ -37,6 +37,8 @@
 #ifdef PAXOS
 #import <paxos.h>
 #endif
+#import <iproto.h>
+
 #include <third_party/crc32.h>
 
 #include <dirent.h>
@@ -93,7 +95,7 @@ dummy_row_lsn:(i64)lsn_ scn:(i64)scn_ tag:(u16)tag
 
 
 - (void)
-commit:(const struct row_v12 *)r
+fixup:(const struct row_v12 *)r
 {
 	switch (r->tag) {
 	case snap_tag:
@@ -169,26 +171,6 @@ commit:(const struct row_v12 *)r
 		panic("unhandled tag: %i", r->tag);
 	}
 
-
-	if (unlikely(r->lsn - lsn > 1 && cfg.panic_on_lsn_gap))
-		raise("LSN sequence has gap after %"PRIi64 " -> %"PRIi64, lsn, r->lsn);
-
-	if (cfg.sync_scn_with_lsn && r->lsn != r->scn)
-		raise("out of sync SCN:%"PRIi64 " != LSN:%"PRIi64, r->scn, r->lsn);
-
-	lsn = r->lsn;
-	if (r->tag == snap_final_tag || r->tag == wal_tag || r->tag == nop || r->tag == run_crc) {
-		if (unlikely(r->tag != snap_final_tag && r->scn - scn != 1 &&
-			     cfg.panic_on_scn_gap && [[self class] name] == [Recovery name]))
-			raise("non consecutive SCN %"PRIi64 " -> %"PRIi64, scn, r->scn);
-
-		scn = r->scn;
-		say_debug("save crc_hist SCN:%"PRIi64" log:0x%08x mod:0x%08x",
-			  scn, run_crc_log, run_crc_mod);
-		crc_hist[++crc_hist_i % nelem(crc_hist)] =
-			(struct crc_hist){ scn, run_crc_log, run_crc_mod };
-	}
-
 	last_update_tstamp = ev_now();
 	lag = last_update_tstamp - r->tm;
 }
@@ -228,9 +210,28 @@ recover_row:(struct row_v12 *)r
 		if (r->tag == wal_tag)
 			run_crc_log = crc32c(run_crc_log, r->data, r->len);
 
-		[txn prepare:r];
-		[txn commit];
-		[self commit:r];
+		[txn prepare:r data:r->data];
+		[txn commit:&run_crc_mod];
+		[self fixup:r];
+
+		if (unlikely(r->lsn - lsn > 1 && cfg.panic_on_lsn_gap))
+			raise("LSN sequence has gap after %"PRIi64 " -> %"PRIi64, lsn, r->lsn);
+
+		if (cfg.sync_scn_with_lsn && r->lsn != r->scn)
+			raise("out of sync SCN:%"PRIi64 " != LSN:%"PRIi64, r->scn, r->lsn);
+
+		lsn = r->lsn;
+		if (r->tag == snap_final_tag || r->tag == wal_tag || r->tag == nop || r->tag == run_crc) {
+			if (unlikely(r->tag != snap_final_tag && r->scn - scn != 1 &&
+				     cfg.panic_on_scn_gap && [[self class] name] == [Recovery name]))
+				raise("non consecutive SCN %"PRIi64 " -> %"PRIi64, scn, r->scn);
+
+			scn = r->scn;
+			say_debug("save crc_hist SCN:%"PRIi64" log:0x%08x mod:0x%08x",
+				  scn, run_crc_log, run_crc_mod);
+			crc_hist[++crc_hist_i % nelem(crc_hist)] =
+				(struct crc_hist){ scn, run_crc_log, run_crc_mod };
+		}
 	}
 	@catch (Error *e) {
 		[txn rollback];
@@ -596,8 +597,9 @@ pull_wal(Recovery *r, id<XLogPullerAsync> puller)
 				row = rows[j]; /* this pointer required for catch below */
 
 				txn[j] = [r->txn_class palloc];
-				[txn[j] prepare:rows[j]];
-				[txn[j] commit];
+				[txn[j] prepare:rows[j] data:rows[j]->data];
+				[txn[j] commit:&r->run_crc_mod];
+				[r fixup:rows[j]];
 			}
 		}
 		@catch (Error *e) {
@@ -609,19 +611,16 @@ pull_wal(Recovery *r, id<XLogPullerAsync> puller)
 
 		int confirmed = 0;
 		while (confirmed != pack_rows) {
-			struct wal_pack *pack = wal_pack_prepare(pack_rows - confirmed, r);
-			if (!pack) {
+			struct wal_pack pack;
+
+			if (!wal_pack_prepare(r, &pack)) {
 				fiber_sleep(0.1);
 				continue;
 			}
 			for (int i = confirmed; i < pack_rows; i++)
-				[txn[i] append:pack];
+				[txn[i] append:&pack];
 
-			struct wal_reply *reply = [r wal_pack_submit];
-			for (int i = confirmed; i < confirmed + reply->row_count; i++)
-				[r commit:rows[i]];
-
-			confirmed += reply->row_count;
+			confirmed += [r wal_pack_submit];
 			if (confirmed != pack_rows) {
 				say_warn("WAL write failed confirmed:%i != sent:%i",
 					 confirmed, pack_rows);
@@ -773,25 +772,11 @@ is_replica
 	return false;
 }
 
-- (int)
-submit:(const void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag
+- (void)
+check_replica
 {
 	if ([self is_replica])
-		raise("replica is readonly");
-
-	return [self wal_row_submit:data len:data_len scn:scn_ tag:tag];
-}
-
-- (int)
-submit:(const void *)data len:(u32)len tag:(u16)tag
-{
-	return [self submit:data len:len scn:0 tag:tag];
-}
-
-- (int)
-submit:(const void *)data len:(u32)len
-{
-	return [self submit:data len:len tag:wal_tag];
+		iproto_raise(ERR_CODE_NONMASTER, "replica is readonly");
 }
 
 - (int)
@@ -878,12 +863,7 @@ nop_hb_writer(va_list ap)
 		if ([recovery is_replica])
 			continue;
 
-		@try {
-			[recovery submit:body len:nelem(body) tag:nop];
-		}
-		@catch (id exc) {
-			; /* missing nop is not fatal */
-		}
+		[recovery submit:body len:nelem(body) tag:nop];
 	}
 }
 

@@ -88,10 +88,11 @@ box_tuple(struct tnt_object *obj)
 	u32 body_len;
 };
 
-- (struct wal_reply *) commit:(u16)op data:(const void *)data len:(u32)len;
 - (void) append:(struct wal_pack *)pack;
-- (void) prepare:(struct row_v12 *)row;
-- (void) commit;
+- (void) prepare:(struct row_v12 *)row data:(const void *)data;
+- (void) prepare:(u16)op_ data:(const void *)data len:(u32)len;
+
+- (void) commit:(u32 *)crc;
 - (void) rollback;
 
 @end
