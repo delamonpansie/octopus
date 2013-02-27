@@ -1143,7 +1143,7 @@ initialize_service()
 		for (int i = 0; i < MAX(1, cfg.wal_writer_inbox_size); i++)
 			fiber_create("box_worker", iproto_worker, &box_primary);
 
-		if (cfg.secondary_port > 0) {
+		if (cfg.secondary_port > 0 && cfg.secondary_port != cfg.primary_port) {
 			tcp_service(&box_secondary, cfg.secondary_port, NULL, iproto_wakeup_workers);
 			box_service_register(&box_secondary);
 			fiber_create("box_secondary_worker", iproto_worker, &box_secondary);
@@ -1462,7 +1462,7 @@ init(void)
 		cfg.object_space[n]->index[0]->key_field[0]->fieldno = 0;
 		cfg.object_space[n]->index[0]->key_field[0]->type = "STR";
 
-		memcached_index = (StringHash *)object_space_registry[n].index[0];
+		memcached_index = (LStringHash *)object_space_registry[n].index[0];
 	}
 
 	configure();
@@ -1569,43 +1569,51 @@ cat(const char *filename)
 
 
 static void
-info(struct tbuf *out)
+info(struct tbuf *out, const char *what)
 {
-	tbuf_printf(out, "info:" CRLF);
-	tbuf_printf(out, "  version: \"%s\"" CRLF, octopus_version());
-	tbuf_printf(out, "  uptime: %i" CRLF, tnt_uptime());
-	tbuf_printf(out, "  pid: %i" CRLF, getpid());
-	tbuf_printf(out, "  wal_writer_pid: %" PRIi64 CRLF,
-		    (i64) [recovery wal_writer]->pid);
-	tbuf_printf(out, "  lsn: %" PRIi64 CRLF, [recovery lsn]);
-	tbuf_printf(out, "  scn: %" PRIi64 CRLF, [recovery scn]);
-	if ([recovery is_replica]) {
-		tbuf_printf(out, "  recovery_lag: %.3f" CRLF, [recovery lag]);
-		tbuf_printf(out, "  recovery_last_update: %.3f" CRLF, [recovery last_update_tstamp]);
-		if (!cfg.ignore_run_crc) {
-			tbuf_printf(out, "  recovery_run_crc_lag: %.3f" CRLF, [recovery run_crc_lag]);
-			tbuf_printf(out, "  recovery_run_crc_status: %s" CRLF, [recovery run_crc_status]);
+	if (what == NULL) {
+		tbuf_printf(out, "info:" CRLF);
+		tbuf_printf(out, "  version: \"%s\"" CRLF, octopus_version());
+		tbuf_printf(out, "  uptime: %i" CRLF, tnt_uptime());
+		tbuf_printf(out, "  pid: %i" CRLF, getpid());
+		struct child *wal_writer = [recovery wal_writer];
+		if (wal_writer)
+			tbuf_printf(out, "  wal_writer_pid: %" PRIi64 CRLF,
+				    (i64)wal_writer->pid);
+		tbuf_printf(out, "  lsn: %" PRIi64 CRLF, [recovery lsn]);
+		tbuf_printf(out, "  scn: %" PRIi64 CRLF, [recovery scn]);
+		if ([recovery is_replica]) {
+			tbuf_printf(out, "  recovery_lag: %.3f" CRLF, [recovery lag]);
+			tbuf_printf(out, "  recovery_last_update: %.3f" CRLF, [recovery last_update_tstamp]);
+			if (!cfg.ignore_run_crc) {
+				tbuf_printf(out, "  recovery_run_crc_lag: %.3f" CRLF, [recovery run_crc_lag]);
+				tbuf_printf(out, "  recovery_run_crc_status: %s" CRLF, [recovery run_crc_status]);
+			}
 		}
-	}
-	tbuf_printf(out, "  status: %s%s" CRLF, [recovery status], custom_proc_title);
-	tbuf_printf(out, "  config: \"%s\""CRLF, cfg_filename);
+		tbuf_printf(out, "  status: %s%s" CRLF, [recovery status], custom_proc_title);
+		tbuf_printf(out, "  config: \"%s\""CRLF, cfg_filename);
 
-	tbuf_printf(out, "  namespaces:" CRLF);
-	for (uint32_t n = 0; n < object_space_count; ++n) {
-		if (!object_space_registry[n].enabled)
-			continue;
-		tbuf_printf(out, "  - n: %i"CRLF, n);
-		tbuf_printf(out, "    objects: %i"CRLF, [object_space_registry[n].index[0] size]);
-		tbuf_printf(out, "    indexes:"CRLF);
-		foreach_index(index, &object_space_registry[n])
-			tbuf_printf(out, "    - { index: %i, slots: %i, bytes: %zi }" CRLF,
-				    index->n, [index slots], [index bytes]);
+		tbuf_printf(out, "  namespaces:" CRLF);
+		for (uint32_t n = 0; n < object_space_count; ++n) {
+			if (!object_space_registry[n].enabled)
+				continue;
+			tbuf_printf(out, "  - n: %i"CRLF, n);
+			tbuf_printf(out, "    objects: %i"CRLF, [object_space_registry[n].index[0] size]);
+			tbuf_printf(out, "    indexes:"CRLF);
+			foreach_index(index, &object_space_registry[n])
+				tbuf_printf(out, "    - { index: %i, slots: %i, bytes: %zi }" CRLF,
+					    index->n, [index slots], [index bytes]);
+		}
+		return;
 	}
 
-	if (box_primary.name != NULL)
-		service_info(out, &box_primary);
-	if (box_secondary.name != NULL)
-		service_info(out, &box_secondary);
+	if (strcmp(what, "net") == 0) {
+		if (box_primary.name != NULL)
+			service_info(out, &box_primary);
+		if (box_secondary.name != NULL)
+			service_info(out, &box_secondary);
+		return;
+	}
 }
 
 static void

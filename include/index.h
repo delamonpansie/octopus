@@ -137,7 +137,9 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 }
 @end
 
-@interface StringHash: Hash <HashIndex>
+@interface LStringHash: Hash <HashIndex>
+@end
+@interface CStringHash: Hash <HashIndex>
 @end
 @interface Int32Hash: Hash <HashIndex>
 @end
@@ -192,6 +194,7 @@ void luaT_pushindex(struct lua_State *L, Index *index);
 struct tbuf *luaT_i32_ctor(struct lua_State *L, int i);
 struct tbuf *luaT_i64_ctor(struct lua_State *L, int i);
 struct tbuf *luaT_lstr_ctor(struct lua_State *L, int i);
+struct tbuf *luaT_cstr_ctor(struct lua_State *L, int i);
 
 void index_raise_(const char *file, int line, const char *msg)
 	__attribute__((noreturn)) oct_cold;
@@ -204,3 +207,5 @@ int i64_compare(struct index_node *na, struct index_node *nb, void *x __attribut
 int i64_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)));
 int lstr_compare(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)));
 int lstr_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)));
+int cstr_compare(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)));
+int cstr_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)));

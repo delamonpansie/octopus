@@ -50,7 +50,7 @@ static const char help[] =
 	"available commands:" CRLF
 	" - help" CRLF
 	" - exit" CRLF
-	" - show info" CRLF
+	" - show info [net]" CRLF
 	" - show fiber" CRLF
 	" - show configuration" CRLF
 	" - show slab" CRLF
@@ -167,6 +167,7 @@ admin_dispatch(struct conn *c)
 	int cs;
 	char *p, *pe;
 	char *strstart, *strend;
+	int info_net = 0;
 
 	while ((pe = memchr(c->rbuf->ptr, '\n', tbuf_len(c->rbuf))) == NULL) {
 		if (tbuf_len(c->rbuf) > 0 && *(char*)(c->rbuf->ptr) == 0x04 /* Ctrl-D */)
@@ -204,7 +205,7 @@ admin_dispatch(struct conn *c)
 		action show_info {
 			start(out);
 			if (module(NULL)->info != NULL)
-				module(NULL)->info(out);
+				module(NULL)->info(out, info_net ? "net" : NULL);
 			end(out);
 		}
 
@@ -281,10 +282,11 @@ admin_dispatch(struct conn *c)
 		incr = "inc"("r")?;
 		decr = "dec"("r")?;
 		log = "log"("_"("l"("e"("v"("e"("l")?)?)?)?)?)?;
+                net = "n"("e"("t")?)? %{ info_net = 1;};
 
 		commands = (help			%help						|
 			    exit			%{return 0;}					|
-			    show " "+ info		%show_info					|
+			    show " "+ info (" "+ net)?	%show_info					|
 			    show " "+ fiber		%{start(out); fiber_info(out); end(out);}	|
 			    show " "+ configuration 	%show_configuration				|
 			    show " "+ slab		%{start(out); slab_stat(out); end(out);}	|

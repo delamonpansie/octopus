@@ -54,7 +54,7 @@ char * const memcached_stat[] = ENUM_STR_INITIALIZER(STAT);
 int stat_base;
 
 
-StringHash *memcached_index;
+LStringHash *memcached_index;
 
 /* memcached tuple format:
    <key, meta, data> */
@@ -756,7 +756,7 @@ memcached_init()
 	say_info("memcached initialized");
 
 	int n = cfg.memcached_object_space > 0 ? cfg.memcached_object_space : 23;
-	memcached_index = (StringHash *)object_space_registry[n].index[0];
+	memcached_index = (LStringHash *)object_space_registry[n].index[0];
 }
 
 register_source();

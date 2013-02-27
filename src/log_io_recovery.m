@@ -191,7 +191,7 @@ recover_row:(struct row_v12 *)r
 	if (cfg.io12_hack)
 		fix_scn(r);
 
-	id<Txn> txn = [txn_class palloc];
+	id<Txn> txn = nil;
 	@try {
 		say_debug("%s: LSN:%"PRIi64" SCN:%"PRIi64" tag:%s",
 			  __func__, r->lsn, r->scn, xlog_tag_to_a(r->tag));
@@ -210,8 +210,15 @@ recover_row:(struct row_v12 *)r
 		if (r->tag == wal_tag)
 			run_crc_log = crc32c(run_crc_log, r->data, r->len);
 
-		[txn prepare:r data:r->data];
-		[txn commit:&run_crc_mod];
+		if (txn_class) {
+			txn = [txn_class palloc];
+			[txn prepare:r data:r->data];
+			[txn commit:&run_crc_mod];
+		} else {
+			struct tbuf op = TBUF(r->data, r->len, fiber->pool);
+			[self apply:&op tag:r->tag];
+		}
+
 		[self fixup:r];
 
 		if (unlikely(r->lsn - lsn > 1 && cfg.panic_on_lsn_gap))
@@ -916,6 +923,9 @@ nop_hb_writer(va_list ap)
 	}
 
 	if (feeder_addr_ != NULL) {
+		if ([self respondsTo:@selector(apply:tag:)])
+			panic("No replication supported in legacy WAL mode");
+
 		feeder_addr = feeder_addr_;
 		say_info("configuring remote hot standby, WAL feeder %s", feeder_addr);
 	}
@@ -1101,6 +1111,7 @@ init_snap_dir:(const char *)snap_dirname
 	nop_hb_delay:(double)nop_hb_delay
                flags:(int)flags
   snap_io_rate_limit:(int)snap_io_rate_limit_
+	   txn_class:(Class)txn_class_
 {
 	say_info("WAL disabled");
 	return [super init_snap_dir:snap_dirname
@@ -1112,7 +1123,7 @@ init_snap_dir:(const char *)snap_dirname
 		       nop_hb_delay:nop_hb_delay
 			      flags:flags | RECOVER_READONLY
 		 snap_io_rate_limit:snap_io_rate_limit_
-			  txn_class:nil];
+			  txn_class:txn_class_];
 }
 
 
@@ -1123,12 +1134,9 @@ configure_wal_writer
 
 
 - (int)
-wal_row_submit:(const void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag
+submit:(id<Txn>)txn
 {
-	(void)data;
-	(void)data_len;
-	(void)scn_;
-	(void)tag;
+	(void)txn;
 	scn++;
 	lsn++;
 	return 1;

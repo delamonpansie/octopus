@@ -155,9 +155,9 @@ struct row_v12 {
 	size_t bytes_written;
 	off_t offset, wet_rows_offset[WAL_PACK_MAX * 8];
 
-#if HAVE_POSIX_FADVISE
-	size_t fadvise_bytes;
-	off_t fadvise_offset;
+#if HAVE_SYNC_FILE_RANGE
+	size_t sync_bytes;
+	off_t sync_offset;
 #endif
 }
 - (XLog *) init_filename:(const char *)filename_
@@ -171,6 +171,7 @@ struct row_v12 {
 - (int) read_header;
 - (int) write_header;
 - (int) flush;
+- (void) fadvise_dont_need;
 - (size_t) rows;
 - (size_t)wet_rows_offset_available;
 - (i64) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie;
@@ -337,6 +338,9 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 	   txn_class:(Class)txn_class;
 @end
 
+@interface Recovery (Deprecated)
+- (void) apply:(struct tbuf *)op tag:(u16)tag;
+@end
 
 @interface FoldRecovery: Recovery
 i64 fold_scn;

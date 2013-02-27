@@ -97,4 +97,4 @@ Failed with: {code: 0x202, message: 'update of field beyond tuple cardinality'}
 [["\x03\x00\x00\x00", "bar"], ["\x04\x00\x00\x00", "foo"]]
 
 # box.update_fields(4, [0, :set, 3])
-Failed with: {code: 0x3802, message: 'duplicate key value violates unique index 0:StringHash'}
+Failed with: {code: 0x3802, message: 'duplicate key value violates unique index 0:LStringHash'}

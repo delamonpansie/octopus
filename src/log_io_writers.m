@@ -226,10 +226,12 @@ confirm_write
 
 		ev_tstamp fsync_delay = current_wal->dir->fsync_delay;
 		if (fsync_delay >= 0 && ev_now() - last_flush >= fsync_delay) {
-			if ([current_wal flush] < 0)
+			if ([current_wal flush] < 0) {
 				say_syserror("can't flush wal");
-			else
+			} else {
+				ev_now_update();
 				last_flush = ev_now();
+			}
 		}
 
 		if (current_wal->dir->rows_per_file <= [current_wal rows] ||
@@ -539,6 +541,9 @@ snapshot_write
 		say_syserror("snap flush failed");
 		return -1;
 	}
+
+	[snap fadvise_dont_need];
+
 	if ([snap close] == -1) {
 		say_syserror("snap close failed");
 		return -1;

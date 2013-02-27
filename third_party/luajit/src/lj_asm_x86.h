@@ -1,6 +1,6 @@
 /*
 ** x86/x64 IR assembler (SSA IR -> machine code).
-** Copyright (C) 2005-2012 Mike Pall. See Copyright Notice in luajit.h
+** Copyright (C) 2005-2013 Mike Pall. See Copyright Notice in luajit.h
 */
 
 /* -- Guard handling ------------------------------------------------------ */
@@ -1999,10 +1999,9 @@ static void asm_bitshift(ASMState *as, IRIns *ir, x86Shift xs)
     else if (right != RID_ECX)
       ra_scratch(as, RID2RSET(RID_ECX));
     emit_rr(as, XO_SHIFTcl, REX_64IR(ir, xs), dest);
-    if (right != RID_ECX) {
-      ra_noweak(as, right);
+    ra_noweak(as, right);
+    if (right != RID_ECX)
       emit_rr(as, XO_MOV, RID_ECX, right);
-    }
   }
   ra_left(as, dest, ir->op1);
   /*
@@ -2084,7 +2083,7 @@ static void asm_comp(ASMState *as, IRIns *ir, uint32_t cc)
     Reg r64 = REX_64IR(ir, 0);
     int32_t imm = 0;
     lua_assert(irt_is64(ir->t) || irt_isint(ir->t) ||
-	       irt_isu32(ir->t) || irt_isaddr(ir->t));
+	       irt_isu32(ir->t) || irt_isaddr(ir->t) || irt_isu8(ir->t));
     /* Swap constants (only for ABC) and fusable loads to the right. */
     if (irref_isk(lref) || (!irref_isk(rref) && opisfusableload(leftop))) {
       if ((cc & 0xc) == 0xc) cc ^= 0x53;  /* L <-> G, LE <-> GE */
@@ -2158,12 +2157,27 @@ static void asm_comp(ASMState *as, IRIns *ir, uint32_t cc)
 	    return;
 	  }  /* Otherwise handle register case as usual. */
 	} else {
-	  left = asm_fuseloadm(as, lref, RSET_GPR, r64);
+	  left = asm_fuseloadm(as, lref,
+			       irt_isu8(ir->t) ? RSET_GPR8 : RSET_GPR, r64);
 	}
 	asm_guardcc(as, cc);
 	if (usetest && left != RID_MRM) {
 	  /* Use test r,r instead of cmp r,0. */
-	  emit_rr(as, irt_isu8(ir->t) ? XO_TESTb : XO_TEST, r64 + left, left);
+	  x86Op xo = XO_TEST;
+	  if (irt_isu8(ir->t)) {
+	    lua_assert(ir->o == IR_EQ || ir->o == IR_NE);
+	    xo = XO_TESTb;
+	    if (!rset_test(RSET_RANGE(RID_EAX, RID_EBX+1), left)) {
+	      if (LJ_64) {
+		left |= FORCE_REX;
+	      } else {
+		emit_i32(as, 0xff);
+		emit_mrm(as, XO_GROUP3, XOg_TEST, left);
+		return;
+	      }
+	    }
+	  }
+	  emit_rr(as, xo, r64 + left, left);
 	  if (irl+1 == ir)  /* Referencing previous ins? */
 	    as->flagmcp = as->mcp;  /* Set flag to drop test r,r if possible. */
 	} else {

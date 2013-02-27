@@ -240,7 +240,7 @@ find:(void *)key
 
 @end
 
-@implementation StringHash
+@implementation LStringHash
 DEFINE_METHODS(lstr)
 
 - (int)
@@ -249,6 +249,41 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 	struct index_node *na = GET_NODE(obj_a, node_a),
 			  *nb = GET_NODE(obj_b, node_b);
 	return lstrcmp(*(void **)na->key, *(void **)nb->key) == 0;
+}
+
+- (struct tnt_object *)
+find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
+{
+        if (key_cardinality != 1)
+                index_raise("hashed key has cardinality != 1");
+
+	void *f = read_field(key_data);
+        u32 k = mh_lstr_get(h, f);
+        if (k != mh_end(h))
+		return mh_lstr_value(h, k);
+	return NULL;
+}
+
+- (struct tnt_object *)
+find:(void *)key
+{
+	u32 k = mh_lstr_get(h, key);
+	if (k != mh_end(h))
+		return mh_lstr_value(h, k);
+	return NULL;
+}
+
+@end
+
+@implementation CStringHash
+DEFINE_METHODS(cstr)
+
+- (int)
+eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
+{
+	struct index_node *na = GET_NODE(obj_a, node_a),
+			  *nb = GET_NODE(obj_b, node_b);
+	return strcmp(*(void **)na->key, *(void **)nb->key) == 0;
 }
 
 - (struct tnt_object *)

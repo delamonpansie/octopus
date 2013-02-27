@@ -31,7 +31,7 @@
 
 typedef void* ptr_t;
 typedef void* lstr;
-typedef void* str;
+typedef void* cstr;
 
 /* All hashes use same layout
    {
@@ -86,8 +86,8 @@ static inline int lstrcmp(void *a, void *b)
 #include <mhash.h>
 
 
-#define mh_name _str
-#define mh_key_t str
+#define mh_name _cstr
+#define mh_key_t cstr
 #define mh_val_t ptr_t
 #define mh_hash(key) ({ MurmurHash2((key), strlen(key), 13); })
 #define mh_eq(a, b) ({ strcmp(*(mh_key_t *)((a) + sizeof(mh_val_t)), (b)) == 0; })
