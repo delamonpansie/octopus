@@ -193,7 +193,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 
 @protocol Txn
 - (void) prepare:(struct row_v12 *)row data:(const void *)data;
-- (void) commit:(u32 *)crc;
+- (void) commit;
 - (void) rollback;
 - (void) append:(struct wal_pack *)pack;
 - (struct row_v12 *)row;

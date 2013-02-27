@@ -213,7 +213,7 @@ recover_row:(struct row_v12 *)r
 		if (txn_class) {
 			txn = [txn_class palloc];
 			[txn prepare:r data:r->data];
-			[txn commit:&run_crc_mod];
+			[txn commit];
 		} else {
 			struct tbuf op = TBUF(r->data, r->len, fiber->pool);
 			[self apply:&op tag:r->tag];
@@ -605,7 +605,7 @@ pull_wal(Recovery *r, id<XLogPullerAsync> puller)
 
 				txn[j] = [r->txn_class palloc];
 				[txn[j] prepare:rows[j] data:rows[j]->data];
-				[txn[j] commit:&r->run_crc_mod];
+				[txn[j] commit];
 				[r fixup:rows[j]];
 			}
 		}
