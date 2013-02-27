@@ -338,6 +338,9 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 	   txn_class:(Class)txn_class;
 @end
 
+@interface Recovery (Deprecated)
+- (void) apply:(struct tbuf *)op tag:(u16)tag;
+@end
 
 @interface FoldRecovery: Recovery
 i64 fold_scn;
