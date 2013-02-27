@@ -69,7 +69,9 @@ all: octopus $(foreach client,$(clients),$(client)_all)
 
 subdirs += $(foreach dir,$(modules),mod/$(dir))
 subdirs += $(foreach dir,$(clients),client/$(dir))
-subdirs += client/libiproto
+ifeq (,$(filter libiproto,$(clients)))
+  subdirs += client/libiproto
+endif
 subdirs += third_party cfg src src-lua
 
 sub-Makefile = $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
