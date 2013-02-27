@@ -67,8 +67,9 @@ depend = $(patsubst %.o,%.d,$(1))
 
 all: octopus $(foreach client,$(clients),$(client)_all)
 
-subdirs += $(foreach module,$(modules),mod/$(module))
-subdirs += $(wildcard client/*)
+subdirs += $(foreach dir,$(modules),mod/$(dir))
+subdirs += $(foreach dir,$(clients),client/$(dir))
+subdirs += client/libiproto
 subdirs += third_party cfg src src-lua
 
 sub-Makefile = $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
