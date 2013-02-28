@@ -362,6 +362,13 @@ recover_remaining_wals
 	if (wal_greatest_lsn == -1)
 		raise("wal_dir reading failed");
 
+	/* there is a race in open_for_read. the file may exists
+	   but not yet have valid header */
+	if (current_wal != nil && !current_wal->valid) {
+		[current_wal close];
+		current_wal = nil;
+	}
+
 	/* if the caller already opened WAL for us, recover from it first */
 	if (current_wal != nil) {
 		say_debug("%s: current_wal:%s", __func__, current_wal->filename);
