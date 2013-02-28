@@ -293,18 +293,18 @@ find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
                 index_raise("hashed key has cardinality != 1");
 
 	void *f = read_field(key_data);
-        u32 k = mh_lstr_get(h, f);
+        u32 k = mh_cstr_get(h, f);
         if (k != mh_end(h))
-		return mh_lstr_value(h, k);
+		return mh_cstr_value(h, k);
 	return NULL;
 }
 
 - (struct tnt_object *)
 find:(void *)key
 {
-	u32 k = mh_lstr_get(h, key);
+	u32 k = mh_cstr_get(h, key);
 	if (k != mh_end(h))
-		return mh_lstr_value(h, k);
+		return mh_cstr_value(h, k);
 	return NULL;
 }
 
