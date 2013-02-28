@@ -227,7 +227,8 @@ AC_ARG_ENABLE([valgrind],
                               [compile with Valgring support])],
             [valgrind=$enableval])
 AS_IF([test "x$valgrind" == xyes],
-      [AS_IF([test -z "$ac_cv_header_valgrind_valgrind_h"], AC_MSG_ERROR([unable to find valgrind headers]))],
+      [AS_IF([test $ac_cv_header_valgrind_valgrind_h == no],
+             AC_MSG_ERROR([unable to find valgrind headers]))],
       [CFLAGS="-DNVALGRIND $CFLAGS"])
 
 AC_ARG_ENABLE([modules],
