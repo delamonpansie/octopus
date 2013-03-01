@@ -9,7 +9,6 @@ obj += third_party/qsort_arg.o
 
 ifeq ($(PAXOS),1)
   obj += src/paxos.o
-  src/log_io_recovery.o: CFLAGS += -DPAXOS
 endif
 
 src-lua += mod/box/src-lua/box.lua

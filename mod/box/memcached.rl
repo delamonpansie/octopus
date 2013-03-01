@@ -116,7 +116,7 @@ store(void *key, u32 exptime, u32 flags, u32 bytes, u8 *data)
 		[txn prepare:INSERT data:req->ptr len:tbuf_len(req)];
 		if ([recovery submit:txn] != 1)
 			raise("unable write row");
-		[txn commit:NULL];
+		[txn commit];
 
 		int key_len = LOAD_VARINT32(key);
 		say_debug("memcached/store key:(%i)'%.*s' exptime:%"PRIu32" flags:%"PRIu32
@@ -150,7 +150,7 @@ delete(void *key)
 		[txn prepare:DELETE data:req->ptr len:tbuf_len(req)];
 		if ([recovery submit:txn] != 1)
 			raise("unable write row");
-		[txn commit:NULL];
+		[txn commit];
 	}
 	@catch (id e) {
 		[txn rollback];

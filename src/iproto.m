@@ -324,6 +324,9 @@ req_dump(struct iproto_req *r, const char *prefix)
 {
 	say_debug("%s: response:%s q/c:%i/%i %s", prefix, r->name, r->quorum, r->count,
 		  r->closed ? "[CLOSED]" : "");
+	if (!r->waiter)
+		return;
+
 	for (int i = 0; i < nelem(r->reply) && r->reply[i]; i++)
 		say_debug("|   reply: sync:%i op:0x%02x len:%i",
 			  r->reply[i]->sync, r->reply[i]->msg_code, r->reply[i]->data_len);

@@ -781,7 +781,7 @@ box_cb(struct iproto *request, struct conn *c)
 			 len:request->data_len];
 		if ([recovery submit:txn] != 1)
 			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
-		[txn commit:&recovery->run_crc_mod];
+		[txn commit];
 
 		struct netmsg *m = netmsg_tail(&c->out_messages);
 		struct iproto_retcode *reply = iproto_reply(&m, request);
@@ -1168,23 +1168,6 @@ txn_cleanup(BoxTxn *txn)
 	}
 }
 
-static void
-update_crc(struct tnt_object *obj, u32 *crc)
-{
-	if (!obj)
-		return;
-
-	struct box_tuple *tuple = box_tuple(obj);
-	u32 new_crc= crc32c(*crc, (void *)tuple, sizeof(*tuple) + tuple->bsize);
-#ifdef LOGCRC
-	say_info("SCN: %"PRIi64" crc: 0x%08x -> 0x%08x %s",
-		 [recovery scn], *crc, new_crc,
-		 tbuf_to_hex(&TBUF(tuple, sizeof(*tuple) + tuple->bsize, fiber->pool)));
-#endif
-	*crc = new_crc;
-}
-
-
 - (void)
 prepare:(u16)op_ data:(const void *)data len:(u32)len
 {
@@ -1253,13 +1236,8 @@ row
 }
 
 - (void)
-commit:(u32 *)crc
+commit
 {
-	if (wal.tag == wal_tag && crc != NULL) {
-		update_crc(old_obj, crc);
-		update_crc(obj, crc);
-	}
-
 	if (op == DELETE)
 		commit_delete(self);
 	else
