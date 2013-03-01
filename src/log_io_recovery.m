@@ -191,7 +191,7 @@ recover_row:(struct row_v12 *)r
 	if (cfg.io12_hack)
 		fix_scn(r);
 
-	id<Txn> txn = [txn_class palloc];
+	id<Txn> txn = nil;
 	@try {
 		say_debug("%s: LSN:%"PRIi64" SCN:%"PRIi64" tag:%s",
 			  __func__, r->lsn, r->scn, xlog_tag_to_a(r->tag));
@@ -210,8 +210,15 @@ recover_row:(struct row_v12 *)r
 		if (r->tag == wal_tag)
 			run_crc_log = crc32c(run_crc_log, r->data, r->len);
 
-		[txn prepare:r data:r->data];
-		[txn commit:&run_crc_mod];
+		if (txn_class) {
+			txn = [txn_class palloc];
+			[txn prepare:r data:r->data];
+			[txn commit:&run_crc_mod];
+		} else {
+			struct tbuf op = TBUF(r->data, r->len, fiber->pool);
+			[self apply:&op tag:r->tag];
+		}
+
 		[self fixup:r];
 
 		if (unlikely(r->lsn - lsn > 1 && cfg.panic_on_lsn_gap))
@@ -354,6 +361,13 @@ recover_remaining_wals
 	i64 wal_greatest_lsn = [wal_dir greatest_lsn];
 	if (wal_greatest_lsn == -1)
 		raise("wal_dir reading failed");
+
+	/* there is a race in open_for_read. the file may exists
+	   but not yet have valid header */
+	if (current_wal != nil && !current_wal->valid) {
+		[current_wal close];
+		current_wal = nil;
+	}
 
 	/* if the caller already opened WAL for us, recover from it first */
 	if (current_wal != nil) {
@@ -916,6 +930,9 @@ nop_hb_writer(va_list ap)
 	}
 
 	if (feeder_addr_ != NULL) {
+		if ([self respondsTo:@selector(apply:tag:)])
+			panic("No replication supported in legacy WAL mode");
+
 		feeder_addr = feeder_addr_;
 		say_info("configuring remote hot standby, WAL feeder %s", feeder_addr);
 	}
