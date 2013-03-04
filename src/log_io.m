@@ -672,7 +672,7 @@ read_header
         return 0;
 }
 
-- (struct tbuf *)
+- (struct row_v12 *)
 read_row
 {
 	return NULL;
@@ -681,7 +681,7 @@ read_row
 - (struct row_v12 *)
 fetch_row
 {
-	struct tbuf *row;
+	struct row_v12 *row;
 	u32 magic;
 	off_t marker_offset = 0, good_offset, eof_offset;
 
@@ -720,7 +720,7 @@ restart:
 	}
 
 	++rows;
-	return row->ptr;
+	return row;
 eof:
 	eof_offset = ftello(fd);
 	if (eof_offset == good_offset + sizeof(eof_marker)) {
@@ -908,7 +908,7 @@ write_header
 	return 0;
 }
 
-- (struct tbuf *)
+- (struct row_v12 *)
 read_row
 {
 	struct tbuf *m = tbuf_alloc(pool);
@@ -955,7 +955,7 @@ read_row
 
 	say_debug("read row v11 success lsn:%" PRIi64, _row_v11(m)->lsn);
 
-	return convert_row_v11_to_v12(m);
+	return convert_row_v11_to_v12(m)->ptr;
 }
 
 
@@ -1080,7 +1080,7 @@ write_header
 	return 0;
 }
 
-- (struct tbuf *)
+- (struct row_v12 *)
 read_row
 {
 	struct tbuf *m = tbuf_alloc(pool);
@@ -1127,7 +1127,7 @@ read_row
 
 	say_debug("read row v12 success lsn:%" PRIi64, row_v12(m)->lsn);
 
-	return m;
+	return m->ptr;
 }
 
 - (i64)
