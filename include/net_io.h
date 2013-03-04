@@ -64,7 +64,8 @@ struct netmsg {
 
 	TAILQ_ENTRY(netmsg) link;
 
-	struct iovec dummy;
+	struct iovec dummy; /* used to eliminate branch in net_add_iov,
+			       there is no explicit access */
 	struct iovec iov[NETMSG_MAX];
 	struct tnt_object *ref[NETMSG_MAX];
 #ifdef NET_IO_TIMESTAMPS

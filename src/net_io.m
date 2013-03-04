@@ -179,7 +179,8 @@ enlarge(struct netmsg **m)
 void
 net_add_iov(struct netmsg **m, const void *buf, size_t len)
 {
-	struct iovec *v = (*m)->iov + (*m)->count, *p = v - 1;
+	struct iovec *v = (*m)->iov + (*m)->count,
+		     *p = v - 1; /* if count == 0, then p == dummy */
 
 	(*m)->head->bytes += len;
 	if (unlikely(p->iov_base + p->iov_len == buf)) {
