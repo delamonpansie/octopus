@@ -216,7 +216,9 @@ struct iproto_connection_t {
 struct iproto_request_t {
 	struct iproto_connection_t	*c;
 	u_int32_t			state;
+	bool				dataResponsibility;
 	struct memory_arena_t		*reqArena;
+	struct memory_arena_t		*dataArena;
 
 	union iproto_any_header		*headerRecv;
 	char				*dataRecv;
@@ -374,6 +376,13 @@ li_get_fd(struct iproto_connection_t *c) {
 
 static void
 freeData(struct iproto_request_t *r) {
+	if (r->dataResponsibility) {
+		if (r->c->reqap)
+			memory_arena_decr_refcount(r->dataArena);
+		else
+			r->c->sp_alloc(r->dataSend, 0);
+	}
+
 	if (r->readArena)
 		memory_arena_decr_refcount(r->readArena);
 
@@ -503,8 +512,52 @@ li_req_init(struct iproto_connection_t* c, u_int32_t msg_code, void *data, size_
 	TAILQ_INSERT_TAIL(&c->sendList, r, link);
 	c->nReqInProgress++;
 
+	r->dataResponsibility = false;
 
 	return r;
+}
+
+struct iproto_request_t*
+li_req_init_copy(struct iproto_connection_t* c, u_int32_t msg_code, void *data, size_t size) {
+	void 				*cdata;
+	struct memory_arena_t		*arena = NULL;
+	struct iproto_request_t		*request;
+
+	if (size == 0)
+		return li_req_init(c, msg_code, data, size);
+
+	if (c->reqap) {
+		if (c->reqArena == NULL || (c->reqArena->arenaSize - c->reqArena->arenaEnd) < size) {
+			if (c->reqArena)
+				memory_arena_decr_refcount(c->reqArena);
+			c->reqArena = map_get_arena(c->reqap, size);
+			memory_arena_incr_refcount(c->reqArena);
+		}
+
+		arena = c->reqArena;
+		cdata = c->reqArena->data + c->reqArena->arenaEnd;
+		c->reqArena->arenaEnd += size;
+		memory_arena_incr_refcount(arena);
+	} else {
+		cdata = c->sp_alloc(NULL, size);
+
+		if (!cdata)
+			return NULL;
+	}
+
+	request = li_req_init(c, msg_code, cdata, size);
+
+	if (!request) {
+		if (arena)
+			memory_arena_decr_refcount(arena);
+		else
+			c->sp_alloc(cdata, 0);
+	}
+
+	request->dataResponsibility = true;
+	request->dataArena = arena;
+
+	return request;
 }
 
 void
