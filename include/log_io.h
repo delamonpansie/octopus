@@ -166,7 +166,7 @@ struct row_v12 {
 	double tm;
 	u32 len;
 	u32 data_crc32c;
-	u8 data[];
+	u8 data[0];
 } __attribute__((packed));
 
 @interface XLog: Object <XLogPuller> {
