@@ -1010,11 +1010,10 @@ print_gen_row(struct tbuf *out, const struct row_v12 *row,
 	      void (*handler)(struct tbuf *out, u16 tag, struct tbuf *row))
 {
 	int tag = row->tag & TAG_MASK;
-	// int tag_type = row->tag & ~TAG_MASK;
-	tbuf_printf(out, "lsn:%" PRIi64 " scn:%" PRIi64 " tm:%.3f t:%s %s ",
+	int tag_type = row->tag & ~TAG_MASK;
+	tbuf_printf(out, "lsn:%" PRIi64 " scn:%" PRIi64 " tm:%.3f t:%i/%s %s ",
 		    row->lsn, row->scn, row->tm,
-		    // tag_type >> TAG_SIZE, 
-		    xlog_tag_to_a(tag),
+		    tag_type >> TAG_SIZE, xlog_tag_to_a(tag),
 		    sintoa((void *)&row->cookie));
 
 	struct tbuf row_data = TBUF(row->data, row->len, NULL);

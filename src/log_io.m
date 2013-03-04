@@ -81,6 +81,8 @@ const char *
 xlog_tag_to_a(u16 tag)
 {
 	static char buf[16];
+	u16 tag_type = (tag & ~TAG_MASK) >> TAG_SIZE;
+	tag &= TAG_MASK;
 	switch (tag) {
 	case snap_initial_tag:	return "snap_initial_tag";
 	case snap_tag:		return "snap_tag";
@@ -95,7 +97,10 @@ xlog_tag_to_a(u16 tag)
 	case paxos_accept:	return "paxos_accept";
 	case snap_skip_scn:	return "snap_skip_scn";
 	}
-	snprintf(buf, sizeof(buf), "%i/%i", (tag & ~TAG_MASK) >> TAG_SIZE, tag & TAG_MASK);
+	if (tag < user_tag)
+		snprintf(buf, sizeof(buf), "%i/s%i", tag_type, tag);
+	else
+		snprintf(buf, sizeof(buf), "%i/u%i", tag_type, tag - user_tag);
 	return buf;
 }
 
