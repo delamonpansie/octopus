@@ -24,8 +24,11 @@
  * SUCH DAMAGE.
  */
 
-#import <util.h>
-#import <octopus.h>
+#ifndef SAY_H
+#define SAY_H
+
+#include <util.h>
+#include <octopus.h>
 
 #include <stdlib.h>
 #include <stdbool.h>
@@ -110,3 +113,5 @@ void panic_exc(Error *exc) __attribute__((noreturn));
 
 #define panic(...) _panic(__FILE__, __LINE__, __VA_ARGS__)
 #define panic_syserror(...) _panic_syserror(__FILE__, __LINE__, __VA_ARGS__)
+
+#endif

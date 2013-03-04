@@ -24,9 +24,12 @@
  * SUCH DAMAGE.
  */
 
-#import <util.h>
-#import <net_io.h>
-#import <object.h>
+#ifndef LOG_IO_H
+#define LOG_IO_H
+
+#include <util.h>
+#include <net_io.h>
+#include <object.h>
 
 #include <stdio.h>
 #include <limits.h>
@@ -413,3 +416,5 @@ int read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, st
 
 void print_gen_row(struct tbuf *out, const struct row_v12 *row,
 		   void (*handler)(struct tbuf *out, u16 tag, struct tbuf *row));
+
+#endif

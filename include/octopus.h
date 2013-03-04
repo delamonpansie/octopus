@@ -24,9 +24,12 @@
  * SUCH DAMAGE.
  */
 
-#import <util.h>
-#import <tbuf.h>
-#import <cfg/octopus.h>
+#ifndef OCTOPUS_H
+#define OCTOPUS_H
+
+#include <util.h>
+#include <tbuf.h>
+#include <cfg/octopus.h>
 
 #include <stdbool.h>
 
@@ -105,3 +108,5 @@ const char *objectlib_name;
 void luaT_pushobject(struct lua_State *L, struct tnt_object *obj);
 int luaT_objinit(struct lua_State *L);
 void luaT_dofile(const char *filename);
+
+#endif

@@ -24,7 +24,10 @@
  * SUCH DAMAGE.
  */
 
-#import <util.h>
+#ifndef PICKLE_H
+#define PICKLE_H
+
+#include <util.h>
 
 struct tbuf;
 u8 *save_varint32(u8 *target, u32 value);
@@ -53,3 +56,5 @@ u32 load_varint32(void **data);
 	((data)++, *__load_ptr) :	\
 	load_varint32(&(data));		\
 })
+
+#endif

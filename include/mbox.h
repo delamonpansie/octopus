@@ -24,11 +24,14 @@
  * SUCH DAMAGE.
  */
 
+#ifndef MBOX_H
+#define MBOX_H
+
 #include <third_party/queue.h>
 
-#import <octopus_ev.h>
-#import <util.h>
-#import <fiber.h>
+#include <octopus_ev.h>
+#include <util.h>
+#include <fiber.h>
 
 #define MBOX_MAGICK_COOKIE	((void*)(uintptr_t)0xBADC0DEF)
 
@@ -129,3 +132,4 @@ mbox_timedwait(struct mbox *mbox, ev_tstamp delay) {
 	return res;
 }
 
+#endif

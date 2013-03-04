@@ -24,8 +24,11 @@
  * SUCH DAMAGE.
  */
 
-#import <util.h>
-#import <tbuf.h>
+#ifndef STAT_H
+#define STAT_H
+
+#include <util.h>
+#include <tbuf.h>
 
 #include <third_party/luajit/src/lua.h>
 
@@ -33,3 +36,5 @@ void stat_init(void);
 int stat_register(char * const *name, size_t count);
 void stat_collect(int base, int name, i64 value);
 void stat_print(struct lua_State *L, struct tbuf *buf);
+
+#endif

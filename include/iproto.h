@@ -24,10 +24,13 @@
  * SUCH DAMAGE.
  */
 
-#import <util.h>
-#import <object.h>
-#import <tbuf.h>
-#import <net_io.h>
+#ifndef IPROTO_H
+#define IPROTO_H
+
+#include <util.h>
+#include <object.h>
+#include <tbuf.h>
+#include <net_io.h>
 
 #include <stdint.h>
 
@@ -136,3 +139,5 @@ void req_release(struct iproto_req *r);
 					format:(fmt), __VA_ARGS__]
 
 enum error_codes ENUM_INITIALIZER(ERROR_CODES);
+
+#endif

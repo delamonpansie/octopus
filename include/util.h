@@ -24,7 +24,10 @@
  * SUCH DAMAGE.
  */
 
-#import <config.h>
+#ifndef UTIL_H
+#define UTIL_H
+
+#include <config.h>
 
 #ifndef HAVE_ALLOCA
 #error Working alloca() required
@@ -207,3 +210,5 @@ void assert_fail(const char *assertion, const char *file,
 	dst[len * 3] = 0;				\
 	dst;						\
 })
+
+#endif

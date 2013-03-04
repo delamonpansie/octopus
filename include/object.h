@@ -24,9 +24,12 @@
  * SUCH DAMAGE.
  */
 
+#ifndef OBJECT_H
+#define OBJECT_H
+
 #import <objc/Object.h>
-#import <palloc.h>
-#import <util.h>
+#include <palloc.h>
+#include <util.h>
 
 @interface Object (Palloc)
 + (id)palloc;
@@ -62,3 +65,5 @@
 				       backtrace: tnt_backtrace()	\
 					  format:(fmt), ##__VA_ARGS__]; \
 	})
+
+#endif
