@@ -837,16 +837,13 @@ box_select_cb(struct netmsg **m, struct iproto *request, struct conn *c __attrib
 }
 
 static void
-xlog_print(struct tbuf *out, struct tbuf *b)
+xlog_print(struct tbuf *out, u16 op, struct tbuf *b)
 {
-	u16 op;
 	u32 n, key_len;
 	void *key;
 	u32 cardinality, field_no;
 	u32 flags;
 	u32 op_cnt;
-
-	op = read_u16(b);
 
 	switch (op) {
 	case INSERT:
@@ -940,10 +937,22 @@ snap_print(struct tbuf *out, struct tbuf *row)
 static void
 print_row(struct tbuf *out, u16 tag, struct tbuf *r)
 {
-	if (tag == wal_tag)
-		xlog_print(out, r);
-	else if (tag == snap_tag)
+	int tag_type = tag & ~TAG_MASK;
+	tag &= TAG_MASK;
+	if (tag == wal_tag) {
+		u16 op = read_u16(r);
+		xlog_print(out, op, r);
+		return;
+	}
+	if (tag_type == TAG_WAL) {
+		u16 op = tag >> 5;
+		xlog_print(out, op, r);
+		return;
+	}
+	if (tag == snap_tag) {
 		snap_print(out, r);
+		return;
+	}
 }
 
 static void
@@ -1185,10 +1194,10 @@ prepare:(const struct row_v12 *)row data:(const void *)data
 	memcpy(&wal, row, sizeof(wal));
 	wal.len = 0;
 
-	say_debug("%s tag:%i data:%s", __func__, row->tag,
+	say_debug("%s tag:%s data:%s", __func__, xlog_tag_to_a(row->tag),
 		 tbuf_to_hex(&TBUF(data, row->len, fiber->pool)));
 
-	switch (row->tag) {
+	switch (row->tag & TAG_MASK) {
 	case wal_tag:
 		op = *(u16 *)data;
 		body = data + sizeof(u16);
@@ -1216,6 +1225,7 @@ prepare:(const struct row_v12 *)row data:(const void *)data
 - (void)
 append:(struct wal_pack *)pack
 {
+	wal.tag |= TAG_WAL;
 	wal_pack_append_row(pack, &wal);
 	if (wal.len == 0) {
 		wal_pack_append_data(pack, &wal, &op, sizeof(op));
@@ -1227,6 +1237,7 @@ append:(struct wal_pack *)pack
 row
 {
 	assert(wal.len == 0);
+	wal.tag |= TAG_WAL;
 	struct row_v12 *r = palloc(fiber->pool, sizeof(*r) + sizeof(op) + body_len);
 	memcpy(r, &wal, sizeof(*r));
 	r->len += sizeof(op) + body_len;
@@ -1504,13 +1515,21 @@ snap_lsn
 }
 
 - (void)
-apply_row:(struct row_v12 *)r
+recover_row:(struct row_v12 *)r
 {
+	[super recover_row:r];
 	struct tbuf *out = tbuf_alloc(fiber->pool);
 	print_gen_row(out, r, print_row);
 	puts(out->ptr);
-	if (r->scn >= stop_scn && r->tag == wal_tag)
+	if (r->scn >= stop_scn && (r->tag & ~TAG_MASK) == TAG_WAL)
 		exit(0);
+}
+
+- (void)
+apply:(struct tbuf *)op tag:(u16)tag
+{
+	(void)op;
+	(void)tag;
 }
 
 - (void)

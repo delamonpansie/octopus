@@ -97,14 +97,13 @@ dummy_row_lsn:(i64)lsn_ scn:(i64)scn_ tag:(u16)tag
 - (void)
 fixup:(const struct row_v12 *)r
 {
-	switch (r->tag) {
-	case snap_tag:
-	case snap_final_tag:
-		break;
-	case wal_tag:
-		assert(r->scn > 1);
-		break;
+	int tag = r->tag & TAG_MASK;
+	int tag_type = r->tag & ~TAG_MASK;
 
+	assert(tag_type != 0);
+	assert(tag_type == TAG_WAL ? r->scn > 1 : 1);
+
+	switch (tag) {
 	case snap_initial_tag:
 		if (r->len == sizeof(u32) * 3) { /* not a dummy row */
 			struct tbuf buf = TBUF(r->data, r->len, NULL);
@@ -164,11 +163,6 @@ fixup:(const struct row_v12 *)r
 		run_crc_verify_tstamp = ev_now();
 		break;
 	}
-	case nop:
-		break;
-
-	default:
-		panic("unhandled tag: %i", r->tag);
 	}
 
 	last_update_tstamp = ev_now();
@@ -191,7 +185,10 @@ recover_row:(struct row_v12 *)r
 	if (cfg.io12_hack)
 		fix_scn(r);
 
+	int tag = r->tag & TAG_MASK;
+	int tag_type = r->tag & ~TAG_MASK;
 	id<Txn> txn = nil;
+
 	@try {
 		say_debug("%s: LSN:%"PRIi64" SCN:%"PRIi64" tag:%s",
 			  __func__, r->lsn, r->scn, xlog_tag_to_a(r->tag));
@@ -207,7 +204,7 @@ recover_row:(struct row_v12 *)r
 			}
 		}
 
-		if (r->tag == wal_tag)
+		if (tag_type == TAG_WAL && (tag == wal_tag || tag > user_tag))
 			run_crc_log = crc32c(run_crc_log, r->data, r->len);
 
 		if (txn_class) {
@@ -228,8 +225,9 @@ recover_row:(struct row_v12 *)r
 			raise("out of sync SCN:%"PRIi64 " != LSN:%"PRIi64, r->scn, r->lsn);
 
 		lsn = r->lsn;
-		if (r->tag == snap_final_tag || r->tag == wal_tag || r->tag == nop || r->tag == run_crc) {
-			if (unlikely(r->tag != snap_final_tag && r->scn - scn != 1 &&
+
+		if (tag == snap_final_tag || tag_type == TAG_WAL) {
+			if (unlikely(tag != snap_final_tag && r->scn - scn != 1 &&
 				     cfg.panic_on_scn_gap && [[self class] name] == [Recovery name]))
 				raise("non consecutive SCN %"PRIi64 " -> %"PRIi64, scn, r->scn);
 
@@ -290,7 +288,7 @@ recover_snap
 			panic("sync_scn_with_lsn is required when loading from v11 snapshots");
 
 		if (legacy_snap)
-			[self recover_row:[self dummy_row_lsn:snap_lsn scn:snap_lsn tag:snap_initial_tag]];
+			[self recover_row:[self dummy_row_lsn:snap_lsn scn:snap_lsn tag:(snap_initial_tag | TAG_SNAP)]];
 
 		while ((r = [snap fetch_row])) {
 			/* some of old tarantool snapshots has all rows with lsn == 0,
@@ -305,7 +303,7 @@ recover_snap
 
 		/* old v11 snapshot, scn == lsn from filename */
 		if (legacy_snap)
-			[self recover_row:[self dummy_row_lsn:snap_lsn scn:snap_lsn tag:snap_final_tag]];
+			[self recover_row:[self dummy_row_lsn:snap_lsn scn:snap_lsn tag:(snap_final_tag | TAG_SNAP)]];
 
 		if (![snap eof])
 			raise("unable to fully read snapshot");
@@ -538,19 +536,17 @@ pull_snapshot(Recovery *r, id<XLogPullerAsync> puller)
 			raise("unexpected eof");
 
 		while ((row = [puller fetch_row])) {
-			switch (row->tag) {
-			case snap_initial_tag:
-			case snap_tag:
+			int tag = row->tag & TAG_MASK;
+			int tag_type = row->tag & ~TAG_MASK;
+
+			if (tag_type == TAG_SNAP) {
 				[r recover_row:row];
-				break;
-			case snap_final_tag:
-				[r recover_row:row];
-				return;
-			default:
+				if (tag == snap_final_tag)
+					return;
+			} else {
 				raise("unexpected tag %i/%s",
 				      row->tag, xlog_tag_to_a(row->tag));
 			}
-
 		}
 		fiber_gc();
 	}
@@ -569,15 +565,17 @@ pull_wal(Recovery *r, id<XLogPullerAsync> puller)
 		raise("unexpected eof");
 
 	while ((row = [puller fetch_row])) {
-		if (row->tag == wal_final_tag) {
+		int tag = row->tag & TAG_MASK;
+		int tag_type = row->tag & ~TAG_MASK;
+
+		if (tag == wal_final_tag) {
 			final_row = row;
 			break;
 		}
 
-		if (row->tag != wal_tag &&
-		    row->tag != run_crc &&
-		    row->tag != nop)
-			continue;
+		if (tag_type != TAG_WAL)
+			raise("unexpected tag %i/%s",
+			      row->tag, xlog_tag_to_a(row->tag));
 
 		if (cfg.io12_hack)
 			fix_scn(row);
@@ -585,10 +583,8 @@ pull_wal(Recovery *r, id<XLogPullerAsync> puller)
 		if (row->scn <= [r scn])
 			continue;
 
-		if (cfg.io_compat) {
-			if (row->tag == run_crc)
+		if (cfg.io_compat && tag == run_crc)
 				continue;
-		}
 
 		rows[pack_rows++] = row;
 		if (pack_rows == WAL_PACK_MAX)
@@ -801,7 +797,7 @@ submit_run_crc
 	tbuf_append(b, &run_crc_log, sizeof(run_crc_log));
 	tbuf_append(b, &run_crc_mod, sizeof(run_crc_mod));
 
-	return [self submit:b->ptr len:tbuf_len(b) tag:run_crc];
+	return [self submit:b->ptr len:tbuf_len(b) tag:(run_crc | TAG_WAL)];
 }
 
 - (id) init_snap_dir:(const char *)snap_dirname
@@ -877,7 +873,7 @@ nop_hb_writer(va_list ap)
 		if ([recovery is_replica])
 			continue;
 
-		[recovery submit:body len:nelem(body) tag:nop];
+		[recovery submit:body len:nelem(body) tag:(nop | TAG_WAL)];
 	}
 }
 
@@ -1013,13 +1009,17 @@ void
 print_gen_row(struct tbuf *out, const struct row_v12 *row,
 	      void (*handler)(struct tbuf *out, u16 tag, struct tbuf *row))
 {
+	int tag = row->tag & TAG_MASK;
+	// int tag_type = row->tag & ~TAG_MASK;
 	tbuf_printf(out, "lsn:%" PRIi64 " scn:%" PRIi64 " tm:%.3f t:%s %s ",
-		    row->lsn, row->scn, row->tm, xlog_tag_to_a(row->tag),
+		    row->lsn, row->scn, row->tm,
+		    // tag_type >> TAG_SIZE, 
+		    xlog_tag_to_a(tag),
 		    sintoa((void *)&row->cookie));
 
 	struct tbuf row_data = TBUF(row->data, row->len, NULL);
 
-	switch (row->tag) {
+	switch (tag) {
 	case snap_initial_tag:
 		if (tbuf_len(&row_data) == sizeof(u32) * 3) {
 			u32 count = read_u32(&row_data);
@@ -1032,9 +1032,6 @@ print_gen_row(struct tbuf *out, const struct row_v12 *row,
 	case snap_skip_scn:
 		while (tbuf_len(&row_data) > 0)
 			tbuf_printf(out, "%"PRIi64" ", read_u64(&row_data));
-	case snap_tag:
-	case wal_tag:
-		handler(out, row->tag, &row_data);
 		break;
 	case run_crc: {
 		i64 scn = -1;
@@ -1056,7 +1053,7 @@ print_gen_row(struct tbuf *out, const struct row_v12 *row,
 		break;
 #endif
 	default:
-		tbuf_printf(out, "UNKNOWN");
+		handler(out, row->tag, &row_data);
 	}
 }
 

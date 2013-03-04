@@ -31,7 +31,7 @@ env.with_server do
   16.times {|i| insert [i,i]}
   Process.kill('USR1', env.pid)
   32.times {|i| insert [i, i + 1]}
-  wait_for { open('|octopus --cat 00000000000000000032.xlog').lines.grep(/run_crc/).length > 0 }
+  wait_for { lx = open('|./octopus --cat 00000000000000000032.xlog').lines.grep(/run_crc/).length > 0 }
 end
 
 env.with_server do
@@ -45,7 +45,7 @@ end
 
 env.with_server do
   32.times {|i| insert [i, i + 1]}
-  wait_for { open('|octopus --cat 00000000000000000096.xlog').lines.grep(/run_crc/).length > 0 }
+  wait_for { open('|./octopus --cat 00000000000000000096.xlog').lines.grep(/run_crc/).length > 0 }
 end
 
 env.with_server do

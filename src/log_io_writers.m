@@ -350,13 +350,15 @@ wal_disk_writer(int fd, void *state)
 					continue;
 				}
 
-				if (h->tag == wal_tag)
+				int tag = h->tag & TAG_MASK;
+				int tag_type = h->tag & ~TAG_MASK;
+				if (tag_type == TAG_WAL && (tag == wal_tag || tag > user_tag))
 					crc = crc32c(crc, data, h->len);
 
 				/* next_scn is used for writing XLog header, which is turn used to
 				   find correct file for replication replay.
 				   so, next_scn should be updated only when data modification occurs */
-				if (h->tag == wal_tag || h->tag == run_crc || h->tag == nop) {
+				if (tag_type == TAG_WAL) {
 					if (h->scn > 100 && h->scn - next_scn != 1) {
 						say_warn("GAP %i rows:%i", (int)(h->scn - next_scn),
 							 request[requests_processed].row_count);
@@ -434,7 +436,7 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *row)
 	static ev_tstamp last = 0;
 	const int io_rate_limit = l->dir->writer->snap_io_rate_limit;
 
-	if ([l append_row:row->ptr len:tbuf_len(row) scn:0 tag:tag] < 0) {
+	if ([l append_row:row->ptr len:tbuf_len(row) scn:0 tag:(tag | TAG_SNAP)] < 0) {
 		say_error("unable write row");
 		return -1;
 	}
@@ -521,7 +523,7 @@ snapshot_write
 	tbuf_append(snap_ini, &run_crc_log, sizeof(run_crc_log));
 	tbuf_append(snap_ini, &run_crc_mod, sizeof(run_crc_mod));
 
-	if ([snap append_row:snap_ini->ptr len:tbuf_len(snap_ini) scn:scn tag:snap_initial_tag] < 0) {
+	if ([snap append_row:snap_ini->ptr len:tbuf_len(snap_ini) scn:scn tag:(snap_initial_tag | TAG_SNAP)] < 0) {
 		say_error("unable write initial row");
 		return -1;
 	}
@@ -533,7 +535,7 @@ snapshot_write
 		return -1;
 
 	const char end[] = "END";
-	if ([snap append_row:end len:strlen(end) scn:scn tag:snap_final_tag] < 0) {
+	if ([snap append_row:end len:strlen(end) scn:scn tag:(snap_final_tag | TAG_SNAP)] < 0) {
 		say_error("unable write final row");
 		return -1;
 	}

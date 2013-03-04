@@ -95,7 +95,7 @@ xlog_tag_to_a(u16 tag)
 	case paxos_accept:	return "paxos_accept";
 	case snap_skip_scn:	return "snap_skip_scn";
 	}
-	snprintf(buf, sizeof(buf), "unknown_%i", tag);
+	snprintf(buf, sizeof(buf), "%i/%i", (tag & ~TAG_MASK) >> TAG_SIZE, tag & TAG_MASK);
 	return buf;
 }
 
@@ -720,6 +720,8 @@ restart:
 	}
 
 	++rows;
+	if ((row->tag & ~TAG_MASK) == 0) /* old style row */
+		row->tag = fix_tag(row->tag);
 	return row;
 eof:
 	eof_offset = ftello(fd);
@@ -962,8 +964,9 @@ read_row
 - (i64)
 append_row:(struct row_v12 *)row_ data:(const void *)data
 {
+	assert(row_->tag & ~TAG_MASK);
 	struct _row_v11 row;
-	u16 tag = row_->tag;
+	u16 tag = row_->tag & TAG_MASK;
 	i64 scn = row_->scn;
 	u32 data_len = row_->len;
 	u64 cookie = row_->cookie;
@@ -1133,6 +1136,7 @@ read_row
 - (i64)
 append_row:(struct row_v12 *)row data:(const void *)data
 {
+	assert(row->tag & ~TAG_MASK);
 	row->lsn = [self next_lsn];
 	row->scn = row->scn ?: row->lsn;
 	row->data_crc32c = crc32c(0, data, row->len);

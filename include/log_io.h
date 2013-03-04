@@ -35,24 +35,61 @@
 #define RECOVER_READONLY 1
 #define WAL_PACK_MAX 1024
 
-enum { snap_initial_tag = 1,
-       snap_tag,
-       wal_tag,
-       snap_final_tag,
-       wal_final_tag,
-       run_crc,
-       nop,
-       snap_skip_scn,
-       paxos_prepare,
-       paxos_promise,
-       paxos_propose,
-       paxos_accept,
-       paxos_nop
+enum { snap_initial_tag = 1,  /* SNAP */
+       snap_tag,              /* SNAP */
+       wal_tag,               /* WAL */
+       snap_final_tag,        /* SNAP */
+       wal_final_tag,         /* WAL */
+       run_crc,               /* WAL */
+       nop,                   /* WAL */
+       snap_skip_scn,         /* SNAP */
+       paxos_prepare,         /* SYS */
+       paxos_promise,         /* SYS */
+       paxos_propose,         /* SYS */
+       paxos_accept,          /* SYS */
+       paxos_nop,             /* SYS */
+
+       user_tag = 32
 };
+
+
+/* two highest bit in tag encode tag type:
+   00 - invalid
+   01 - snap
+   10 - wal
+   11 - system wal */
+
+#define TAG_MASK 0x3fff
+#define TAG_SIZE 14
+#define TAG_SNAP 0x4000
+#define TAG_WAL 0x8000
+#define TAG_SYS 0xc000
 
 static inline bool dummy_tag(int tag) /* dummy row tag */
 {
-	return tag == wal_final_tag;
+	return (tag & TAG_MASK) == wal_final_tag;
+}
+
+static inline u16 fix_tag(u16 tag)
+{
+	switch (tag) {
+	case snap_initial_tag:	return tag | TAG_SNAP;
+	case snap_tag:		return tag | TAG_SNAP;
+	case wal_tag:		return tag | TAG_WAL;
+	case snap_final_tag:	return tag | TAG_SNAP;
+	case wal_final_tag:	return tag | TAG_WAL;
+	case run_crc:		return tag | TAG_WAL;
+	case nop:		return tag | TAG_WAL;
+	case snap_skip_scn:	return tag | TAG_SNAP;
+	case paxos_prepare:	return tag | TAG_SYS;
+	case paxos_promise:	return tag | TAG_SYS;
+	case paxos_propose:	return tag | TAG_SYS;
+	case paxos_accept:	return tag | TAG_SYS;
+	case paxos_nop:		return tag | TAG_SYS;
+	default:
+		assert(tag & ~TAG_MASK);
+		return tag;
+	}
 }
 
 extern const u64 default_cookie;

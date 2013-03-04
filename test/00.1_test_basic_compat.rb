@@ -7,6 +7,7 @@ class Env < StandAloneEnv
   def config
     super + <<EOD
 rows_per_wal=100
+io_compat = 1
 
 object_space[0].enabled = 1
 object_space[0].index[0].type = "HASH"
