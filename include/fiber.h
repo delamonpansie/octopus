@@ -24,9 +24,12 @@
  * SUCH DAMAGE.
  */
 
-#import <util.h>
-#import <octopus_ev.h>
-#import <coro.h>
+#ifndef FIBER_H
+#define FIBER_H
+
+#include <util.h>
+#include <octopus_ev.h>
+#include <coro.h>
 
 #include <third_party/luajit/src/lua.h>
 #include <third_party/luajit/src/lauxlib.h>
@@ -81,3 +84,5 @@ struct child *spawn_child(const char *name, struct fiber *in, struct fiber *out,
 			  int (*handler)(int fd, void *state), void *state);
 
 int luaT_openfiber(struct lua_State *L);
+
+#endif

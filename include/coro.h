@@ -24,6 +24,9 @@
  * SUCH DAMAGE.
  */
 
+#ifndef	OCTOPUS_CORO_H
+#define OCTOPUS_CORO_H
+
 #include <stdlib.h>
 #include <third_party/libcoro/coro.h>
 
@@ -37,3 +40,5 @@ struct octopus_coro {
 struct octopus_coro *
 octopus_coro_create(struct octopus_coro *ctx, void (*f) (void *), void *data);
 void octopus_coro_destroy(struct octopus_coro *ctx);
+
+#endif

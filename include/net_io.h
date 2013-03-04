@@ -24,11 +24,13 @@
  * SUCH DAMAGE.
  */
 
+#ifndef NET_IO_H
+#define NET_IO_H
 
-#import <tbuf.h>
-#import <octopus.h>
-#import <octopus_ev.h>
-#import <palloc.h>
+#include <tbuf.h>
+#include <octopus.h>
+#include <octopus_ev.h>
+#include <palloc.h>
 
 #include <third_party/queue.h>
 
@@ -177,3 +179,5 @@ void iproto_wakeup_workers(ev_prepare *ev);
 int atosin(const char *orig, struct sockaddr_in *addr);
 const char *sintoa(const struct sockaddr_in *addr);
 void service_info(struct tbuf *out, struct service *service);
+
+#endif

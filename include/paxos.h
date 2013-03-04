@@ -24,7 +24,10 @@
  * SUCH DAMAGE.
  */
 
-#import <iproto.h>
+#ifndef PAXOS_H
+#define PAXOS_H
+
+#include <iproto.h>
 #include <third_party/tree.h>
 
 struct paxos_peer;
@@ -50,3 +53,5 @@ RB_HEAD(ptree, proposal);
 void paxos_print(struct tbuf *out,
 		 void (*handler)(struct tbuf *out, u16 tag, struct tbuf *row),
 		 const struct row_v12 *row);
+
+#endif

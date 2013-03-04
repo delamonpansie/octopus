@@ -24,6 +24,9 @@
  * SUCH DAMAGE.
  */
 
+#ifndef PALLOC_H
+#define PALLOC_H
+
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -58,3 +61,5 @@ void palloc_cutoff(struct palloc_pool *pool);
 struct tbuf;
 void palloc_stat_info(struct tbuf *buf);
 bool palloc_owner(struct palloc_pool *pool, void *ptr);
+
+#endif

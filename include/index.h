@@ -24,8 +24,11 @@
  * SUCH DAMAGE.
  */
 
-#import <util.h>
-#import <object.h>
+#ifndef INDEX_H
+#define INDEX_H
+
+#include <util.h>
+#include <object.h>
 
 #include <stdbool.h>
 
@@ -209,3 +212,5 @@ int lstr_compare(struct index_node *na, struct index_node *nb, void *x __attribu
 int lstr_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)));
 int cstr_compare(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)));
 int cstr_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)));
+
+#endif

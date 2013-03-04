@@ -24,8 +24,11 @@
  * SUCH DAMAGE.
  */
 
-#import <util.h>
-#import <pickle.h>
+#ifndef ASSOC_H
+#define ASSOC_H
+
+#include <util.h>
+#include <pickle.h>
 
 #include <stdlib.h>
 
@@ -92,3 +95,5 @@ static inline int lstrcmp(void *a, void *b)
 #define mh_hash(key) ({ MurmurHash2((key), strlen(key), 13); })
 #define mh_eq(a, b) ({ strcmp(*(mh_key_t *)((a) + sizeof(mh_val_t)), (b)) == 0; })
 #include <mhash.h>
+
+#endif

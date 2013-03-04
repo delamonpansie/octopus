@@ -28,8 +28,8 @@
 #define _SALLOC_H_
 
 #ifdef OCTOPUS
-# import <util.h>
-# import <tbuf.h>
+# include <util.h>
+# include <tbuf.h>
 #endif
 
 #include <stddef.h>

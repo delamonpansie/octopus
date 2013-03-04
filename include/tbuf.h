@@ -24,7 +24,10 @@
  * SUCH DAMAGE.
  */
 
-#import <util.h>
+#ifndef TBUF_H
+#define TBUF_H
+
+#include <util.h>
 
 #include <third_party/luajit/src/lua.h>
 
@@ -93,3 +96,5 @@ void tbuf_printf(struct tbuf *b, const char *format, ...)
 
 ssize_t tbuf_recv(struct tbuf *b, int fd);
 char *tbuf_to_hex(const struct tbuf *x);
+
+#endif
