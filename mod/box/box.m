@@ -196,7 +196,13 @@ tuple_add(struct netmsg **m, struct iproto_retcode *reply, struct tnt_object *ob
 		      sizeof(tuple->cardinality);
 
 	reply->data_len += size;
-	net_add_ref_iov(m, obj, &tuple->bsize, size);
+
+	/* it's faster to copy & join small tuples into single large
+	   iov entry. join is done by net_add_iov() */
+	if (tuple->bsize < 512)
+		net_add_ref_iov(m, obj, &tuple->bsize, size);
+	else
+		net_add_iov_dup(m, &tuple->bsize, size);
 }
 
 static void
