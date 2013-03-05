@@ -99,7 +99,7 @@ user_proc.drop_first_tuple = box.wrap(function ()
                 local idx = object_space.index[0]
                 while true do
                         print("lookin for a tuple")
-                        for i, tuple in index.hashpairs(idx) do
+                        for tuple in index.iter(idx) do
                                 print("found, killin it")
                                 box.delete(object_space, tuple[0])
                                 break

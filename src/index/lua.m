@@ -195,8 +195,8 @@ luaT_index_iter(struct lua_State *L)
 
 	if (index->type == HASH) {
 		Hash<HashIndex> *hash = (id<HashIndex>)index;
-		if (!lua_isnil(L, 2)) {
-			lua_pushliteral(L, "hash index iterator has no args");
+		if (!lua_isnone(L, 2)) {
+			lua_pushliteral(L, "hash index iterator does not accept any args");
 			lua_error(L);
 		}
 		[hash iterator_init];

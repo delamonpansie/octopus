@@ -229,6 +229,7 @@ luaT_box_dispatch(struct lua_State *L)
 			luaT_pushobject(L, txn->obj);
 			return 1;
 		}
+		[txn commit];
 	}
 	@catch (Error *e) {
 		[txn rollback];
