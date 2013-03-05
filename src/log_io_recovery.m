@@ -100,6 +100,7 @@ fixup:(const struct row_v12 *)r
 	int tag = r->tag & TAG_MASK;
 	int tag_type = r->tag & ~TAG_MASK;
 
+	(void)tag_type;
 	assert(tag_type != 0);
 	assert(tag_type == TAG_WAL ? r->scn > 1 : 1);
 
