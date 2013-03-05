@@ -20,6 +20,9 @@ Cons:
 How to run:
 1) compile (note GNU make is required)
 	make
+   note: on MacOSX
+	CC='gcc -m32' ./configure
+	make CORO_IMPL=SJLJ
 2) customize config
 	cp cfg/octopus_box.cfg custom.cfg && emacs custom.cfg
 3) initialize storage
