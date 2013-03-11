@@ -65,7 +65,16 @@ class SilverBox < IProtoRetCode
   end
 
   def pack_key(key)
-    [1].pack("L") + pack_field(key)
+    if key.is_a? Array then
+      result = ""
+      result <<= [key.length].pack("L")
+      key.each do |subkey|
+        result <<= pack_field(subkey)
+      end
+      result
+    else
+      [1].pack("L") + pack_field(key)
+    end
   end
 
   # poor man emulation of perl's pack("w/a*")
@@ -149,9 +158,9 @@ class SilverBox < IProtoRetCode
   end
 
   def select(*keys)
+    param = keys[-1].is_a?(Hash) ? keys.pop : {}
     keys = keys[0] if keys[0].is_a? Array
     return [] if keys.length == 0
-    param = keys[-1].is_a?(Hash) ? keys.pop : {}
     object_space = param[:object_space] || @object_space
     offset = param[:offset] || 0
     limit = param[:limit] || 4294967295
