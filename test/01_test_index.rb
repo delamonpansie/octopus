@@ -84,7 +84,7 @@ Env.clean.with_server do
   self.object_space = 2
   insert ["000", "00000000", 0, 0]
   select "000"
-  select "000", :index => 1
+  select 0, :index => 1
 end
 
 Env.clean.with_server do

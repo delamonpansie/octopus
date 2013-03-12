@@ -126,6 +126,7 @@ cfg_box_tuple_gen_dtor(struct octopus_cfg_object_space_index *c)
 		if (c->key_field[k]->fieldno == -1)
 			break;
 
+		d->cmp_order[d->cardinality] = d->cardinality;
 		d->index_field[d->cardinality] = c->key_field[k]->fieldno;
 
 		if (strcmp(c->key_field[k]->type, "NUM") == 0)
@@ -151,14 +152,11 @@ cfg_box_tuple_gen_dtor(struct octopus_cfg_object_space_index *c)
 	for (int i = 0; i < d->cardinality; i++)
 		for (int j = 0; j < d->cardinality; j++)
 			if (d->index_field[i] < d->index_field[j]) {
-				int t;
-				t = d->index_field[i];
-				d->index_field[i] = d->index_field[j];
-				d->index_field[j] = t;
-
-				t = d->type[i];
-				d->type[i] = d->type[j];
-				d->type[j] = t;
+#define swap(f) ({ int t = d->f[i]; d->f[i] = d->f[j]; d->f[j] = t; })
+				swap(index_field);
+				swap(cmp_order);
+				swap(type);
+#undef swap
 			}
 
 	return d;

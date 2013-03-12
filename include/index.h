@@ -51,9 +51,10 @@ struct field {
 
 enum field_data_type { NUM, NUM64, STRING };
 struct gen_dtor {
-	u32 min_tuple_cardinality;
-	u32 index_field[8];
-	u32 cardinality;
+	int min_tuple_cardinality;
+	int index_field[8];
+	int cmp_order[8];
+	int cardinality;
 	enum field_data_type type[8];
 };
 

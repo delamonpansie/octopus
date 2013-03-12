@@ -47,7 +47,7 @@ Failed with: {code: 0x202, message: 'key is not i64'}
 # box.select("000")
 [["000", "00000000", "\x00\x00\x00\x00", "\x00\x00\x00\x00"]]
 
-# box.select("000", {:index=>1})
+# box.select(0, {:index=>1})
 [["000", "00000000", "\x00\x00\x00\x00", "\x00\x00\x00\x00"]]
 
 # box.ping()
