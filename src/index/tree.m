@@ -273,10 +273,7 @@ cardinality
 static i8
 field_compare(struct field *f1, struct field *f2, enum field_data_type type)
 {
-        /* When data_ptr eq NULL it is an star field , match any in other words */
-	if (f1->data_ptr == NULL)
-		return 0;
-	if (f2->data_ptr == NULL)
+	if (f1->len == 0 || f2->len == 0)
 		return 0;
 
 	if (type == NUM) {
@@ -354,7 +351,7 @@ gen_init_pattern(struct tbuf *key_data, int cardinality, struct index_node *patt
                 index_raise("cardinality too big");
 
         for (int i = 0; i < desc->cardinality; i++)
-		pattern->key[i].data_ptr = NULL;
+		pattern->key[i].len = 0;
 
 	for (int i = 0; i < cardinality; i++) {
 		u32 len = read_varint32(key_data);
