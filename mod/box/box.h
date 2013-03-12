@@ -121,7 +121,8 @@ box_tuple(struct tnt_object *obj)
         _(SELECT_LIMIT, 15)			\
 	_(SELECT, 17)				\
 	_(UPDATE_FIELDS, 19)			\
-	_(DELETE, 20)				\
+	_(DELETE_1_3, 20)			\
+	_(DELETE, 21)				\
 	_(EXEC_LUA, 22)				\
 	_(PAXOS_LEADER, 90)			\
 	_(SELECT_KEYS, 99)

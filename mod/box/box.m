@@ -685,10 +685,10 @@ box_prepare_update(BoxTxn *txn)
 {
 	struct tbuf data = TBUF(txn->body, txn->body_len, NULL);
 	say_debug("box_prepare_update(%i)", txn->op);
+	txn_common_parser(txn, &data);
 
 	switch (txn->op) {
 	case INSERT:
-		txn_common_parser(txn, &data);
 		txn->flags = read_u32(&data);
 		u32 cardinality = read_u32(&data);
 		if (txn->object_space->cardinality > 0
@@ -703,18 +703,17 @@ box_prepare_update(BoxTxn *txn)
 		break;
 
 	case DELETE:
-		txn_common_parser(txn, &data);
+		txn->flags = read_u32(&data); /* not used */
+	case DELETE_1_3:
 		prepare_delete(txn, &data);
 		break;
 
 	case UPDATE_FIELDS:
-		txn_common_parser(txn, &data);
 		txn->flags = read_u32(&data);
 		prepare_update_fields(txn, &data);
 		break;
 
 	case NOP:
-		txn_common_parser(txn, &data);
 		break;
 
 	default:
@@ -793,8 +792,10 @@ box_cb(struct iproto *request, struct conn *c)
 		struct iproto_retcode *reply = iproto_reply(&m, request);
 		reply->data_len += sizeof(u32);
 		net_add_iov_dup(&m, &txn->obj_affected, sizeof(u32));
-		if (request->msg_code != DELETE && txn->flags & BOX_RETURN_TUPLE && txn->obj)
+		if (txn->flags & BOX_RETURN_TUPLE && txn->obj)
 			tuple_add(&m, reply, txn->obj);
+		if (request->msg_code == DELETE && txn->flags & BOX_RETURN_TUPLE && txn->old_obj)
+			tuple_add(&m, reply, txn->old_obj);
 
 		stop = ev_now();
 		if (stop - start > cfg.too_long_threshold)
@@ -851,9 +852,10 @@ xlog_print(struct tbuf *out, u16 op, struct tbuf *b)
 	u32 flags;
 	u32 op_cnt;
 
+	n = read_u32(b);
+
 	switch (op) {
 	case INSERT:
-		n = read_u32(b);
 		tbuf_printf(out, "%s n:%i ", ops[op], n);
 		flags = read_u32(b);
 		cardinality = read_u32(b);
@@ -866,7 +868,8 @@ xlog_print(struct tbuf *out, u16 op, struct tbuf *b)
 		break;
 
 	case DELETE:
-		n = read_u32(b);
+		(void)read_u32(b); /* drop unused flags */
+	case DELETE_1_3:
 		tbuf_printf(out, "%s n:%i ", ops[op], n);
 		key_len = read_u32(b);
 		key = read_field(b);
@@ -876,7 +879,6 @@ xlog_print(struct tbuf *out, u16 op, struct tbuf *b)
 		break;
 
 	case UPDATE_FIELDS:
-		n = read_u32(b);
 		tbuf_printf(out, "%s n:%i ", ops[op], n);
 		flags = read_u32(b);
 		key_len = read_u32(b);
@@ -1142,6 +1144,7 @@ box_service_register(struct service *s)
 	service_register_iproto_block(s, INSERT, box_cb, 0);
 	service_register_iproto_block(s, UPDATE_FIELDS, box_cb, 0);
 	service_register_iproto_block(s, DELETE, box_cb, 0);
+	service_register_iproto_block(s, DELETE_1_3, box_cb, 0);
 	service_register_iproto_block(s, EXEC_LUA, box_lua_cb, 0);
 	service_register_iproto_block(s, PAXOS_LEADER, box_paxos_cb, 0);
 }
@@ -1255,7 +1258,7 @@ row
 - (void)
 commit
 {
-	if (op == DELETE)
+	if (op == DELETE || op == DELETE_1_3)
 		commit_delete(self);
 	else
 		commit_replace(self);
@@ -1272,7 +1275,7 @@ rollback
 {
 	say_debug("box_rollback(op:%s)", ops[op]);
 
-	if (op == DELETE)
+	if (op == DELETE || op == DELETE_1_3)
 		return;
 
 	if (op == INSERT || op == UPDATE_FIELDS)

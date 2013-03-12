@@ -147,7 +147,7 @@ delete(void *key)
 
 	struct BoxTxn *txn = [BoxTxn palloc];
 	@try {
-		[txn prepare:DELETE data:req->ptr len:tbuf_len(req)];
+		[txn prepare:DELETE_1_3 data:req->ptr len:tbuf_len(req)];
 		if ([recovery submit:txn] != 1)
 			raise("unable write row");
 		[txn commit];
