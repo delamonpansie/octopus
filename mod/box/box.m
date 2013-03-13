@@ -1355,7 +1355,9 @@ snapshot_write_rows:(XLog *)l
 	struct box_snap_row header;
 	struct tnt_object *obj;
 	struct box_tuple *tuple;
-	struct tbuf *row;
+	struct palloc_pool *pool = palloc_create_pool(__func__);
+	struct tbuf *row = tbuf_alloc(pool);
+
 	size_t rows = 0, total_rows = [self snapshot_estimate];
 
 	for (int n = 0; n < object_space_count; n++) {
@@ -1371,8 +1373,7 @@ snapshot_write_rows:(XLog *)l
 			header.tuple_size = tuple->cardinality;
 			header.data_size = tuple->bsize;
 
-			/* snapshot_write_row will release fiber->pool time to time */
-			row = tbuf_alloc(fiber->pool);
+			tbuf_reset(row);
 			tbuf_append(row, &header, sizeof(header));
 			tbuf_append(row, tuple->data, tuple->bsize);
 

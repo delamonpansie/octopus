@@ -441,8 +441,6 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *row)
 		return -1;
 	}
 
-	prelease_after(fiber->pool, 128 * 1024);
-
 	if (io_rate_limit > 0) {
 		if (last == 0) {
 			ev_now_update();
