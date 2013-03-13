@@ -243,7 +243,8 @@ abort_recv
 - (struct row_v12 *)
 fetch_row
 {
-	struct tbuf *row = NULL;
+	struct tbuf *buf = NULL;
+	struct row_v12 *row = NULL;
 	u32 data_crc;
 
 	switch (version) {
@@ -251,37 +252,41 @@ fetch_row
 		if (!contains_full_row_v12(c.rbuf))
 			return NULL;
 
-		row = tbuf_split(c.rbuf, sizeof(struct row_v12) + row_v12(c.rbuf)->len);
-		row->pool = c.rbuf->pool; /* FIXME: this is cludge */
+		buf = tbuf_split(c.rbuf, sizeof(struct row_v12) + row_v12(c.rbuf)->len);
+		buf->pool = c.rbuf->pool; /* FIXME: this is cludge */
 
-		data_crc = crc32c(0, row_v12(row)->data, row_v12(row)->len);
-		if (row_v12(row)->data_crc32c != data_crc)
+		data_crc = crc32c(0, row_v12(buf)->data, row_v12(buf)->len);
+		if (row_v12(buf)->data_crc32c != data_crc)
 			raise("data crc32c mismatch");
 
-		if (cfg.io12_hack && row_v12(row)->scn == 0)
-			row_v12(row)->scn = row_v12(row)->lsn;
+		if (cfg.io12_hack && row_v12(buf)->scn == 0)
+			row_v12(buf)->scn = row_v12(buf)->lsn;
 		break;
 	case 11:
 		if (!contains_full_row_v11(c.rbuf))
 				return NULL;
 
-		row = tbuf_split(c.rbuf, sizeof(struct _row_v11) + _row_v11(c.rbuf)->len);
-		row->pool = c.rbuf->pool;
+		buf = tbuf_split(c.rbuf, sizeof(struct _row_v11) + _row_v11(c.rbuf)->len);
+		buf->pool = c.rbuf->pool;
 
-		data_crc = crc32c(0, _row_v11(row)->data, _row_v11(row)->len);
-		if (_row_v11(row)->data_crc32c != data_crc)
+		data_crc = crc32c(0, _row_v11(buf)->data, _row_v11(buf)->len);
+		if (_row_v11(buf)->data_crc32c != data_crc)
 			raise("data crc32c mismatch");
 
-		row = convert_row_v11_to_v12(row);
+		buf = convert_row_v11_to_v12(buf);
 		break;
 	default:
 		assert(false);
 	}
 
-	say_debug("%s: scn:%"PRIi64 " tag:%s", __func__,
-		  row_v12(row)->scn, xlog_tag_to_a(row_v12(row)->tag));
+	row = buf->ptr;
+	if ((row->tag & ~TAG_MASK) == 0) /* old style row */
+		row->tag = fix_tag(row->tag);
 
-	return row->ptr;
+	say_debug("%s: scn:%"PRIi64 " tag:%s", __func__,
+		  row->scn, xlog_tag_to_a(row->tag));
+
+	return row;
 }
 
 
