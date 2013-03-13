@@ -141,8 +141,8 @@ tbuf_reset(struct tbuf *b)
 {
 	tbuf_assert(b);
 	poison(b->ptr, tbuf_len(b));
-	b->end = b->ptr;
 	b->free += tbuf_len(b);
+	b->end = b->ptr;
 }
 
 void
