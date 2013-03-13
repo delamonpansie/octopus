@@ -218,7 +218,16 @@ recv
 		return -1;
 	}
 
-	ssize_t r = conn_recv(&c);
+	tbuf_ensure(c.rbuf, 256 * 1024);
+	ssize_t r = tbuf_recv(c.rbuf, c.fd);
+	if (r == 0) {
+		ev_io io = { .coro = 1 };
+		ev_io_init(&io, (void *)fiber, c.fd, EV_READ);
+		ev_io_start(&io);
+		yield();
+		ev_io_stop(&io);
+		r = tbuf_recv(c.rbuf, c.fd);
+	}
 
 	in_recv = NULL;
 	if (abort) {
