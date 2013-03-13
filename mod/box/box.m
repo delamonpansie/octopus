@@ -1357,7 +1357,7 @@ snapshot_write_rows:(XLog *)l
 	struct box_tuple *tuple;
 	struct palloc_pool *pool = palloc_create_pool(__func__);
 	struct tbuf *row = tbuf_alloc(pool);
-
+	int ret = 0;
 	size_t rows = 0, total_rows = [self snapshot_estimate];
 
 	for (int n = 0; n < object_space_count; n++) {
@@ -1377,8 +1377,10 @@ snapshot_write_rows:(XLog *)l
 			tbuf_append(row, &header, sizeof(header));
 			tbuf_append(row, tuple->data, tuple->bsize);
 
-			if (snapshot_write_row(l, snap_tag, row) < 0)
-				return -1;
+			if (snapshot_write_row(l, snap_tag, row) < 0) {
+				ret = -1;
+				goto out;
+			}
 
 			if (++rows % 100000 == 0) {
 				float pct = (float)rows / total_rows * 100.;
@@ -1389,7 +1391,9 @@ snapshot_write_rows:(XLog *)l
 				[l confirm_write];
 		}
 	}
-	return 0;
+out:
+	palloc_destroy_pool(pool);
+	return ret;
 }
 
 @end
