@@ -87,10 +87,10 @@ wal_disk_writer_input_dispatch(va_list ap __attribute__((unused)))
 - (void)
 configure_wal_writer
 {
-	say_info("Configuring WAL writer lsn:%"PRIi64, lsn);
+	say_info("Configuring WAL writer LSN:%"PRIi64" SCN:%"PRIi64, lsn, scn);
 
 	struct netmsg *n = netmsg_tail(&wal_writer->c->out_messages);
-	net_add_iov(&n, &lsn, sizeof(lsn));
+	net_add_iov_dup(&n, &lsn, sizeof(lsn));
 	net_add_iov_dup(&n, &scn, sizeof(scn));
 	net_add_iov_dup(&n, &run_crc_log, sizeof(run_crc_log));
 	ev_io_start(&wal_writer->c->out);
