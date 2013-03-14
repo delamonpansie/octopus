@@ -551,7 +551,6 @@ static int
 pull_wal(Recovery *r, id<XLogPullerAsync> puller)
 {
 	struct row_v12 *row, *final_row = NULL, *rows[WAL_PACK_MAX];
-	id<Txn> txn[WAL_PACK_MAX];
 	/* TODO: use designated palloc_pool */
 	say_debug("%s: scn:%"PRIi64, __func__, [r scn]);
 
@@ -600,14 +599,7 @@ pull_wal(Recovery *r, id<XLogPullerAsync> puller)
 		@try {
 			for (int j = 0; j < pack_rows; j++) {
 				row = rows[j]; /* this pointer required for catch below */
-				int tag = row->tag & TAG_MASK;
-
-				if (tag == wal_tag || tag > user_tag) {
-					txn[j] = [r->txn_class palloc];
-					[txn[j] prepare:rows[j] data:rows[j]->data];
-					[txn[j] commit];
-				}
-				[r fixup:rows[j]];
+				[r recover_row:row];
 			}
 		}
 		@catch (Error *e) {
