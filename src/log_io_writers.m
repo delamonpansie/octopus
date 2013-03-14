@@ -519,6 +519,7 @@ snapshot_write
 	u32 rows = [self snapshot_estimate];
 	tbuf_append(snap_ini, &rows, sizeof(rows));
 	tbuf_append(snap_ini, &run_crc_log, sizeof(run_crc_log));
+	u32 run_crc_mod = 0;
 	tbuf_append(snap_ini, &run_crc_mod, sizeof(run_crc_mod));
 
 	if ([snap append_row:snap_ini->ptr len:tbuf_len(snap_ini) scn:scn tag:(snap_initial_tag | TAG_SNAP)] < 0) {

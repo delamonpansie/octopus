@@ -273,7 +273,7 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 	struct child *wal_writer;
 	XLog *current_wal;	/* the WAL we'r currently reading/writing from/to */
 	int snap_io_rate_limit;
-	u32 run_crc_log, run_crc_mod;
+	u32 run_crc_log;
 }
 
 - (i64) scn;
@@ -329,7 +329,7 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 	bool run_crc_log_mismatch, run_crc_mod_mismatch;
 	u32 processed_rows, estimated_snap_rows;
 
-	struct crc_hist { i64 scn; u32 log; u32 mod; } crc_hist[512]; /* should be larger then cfg.wal_writer_inbox_size */
+	struct crc_hist { i64 scn; u32 log; } crc_hist[512]; /* should be larger than cfg.wal_writer_inbox_size */
 	unsigned crc_hist_i;
 
 	i64 next_skip_scn;

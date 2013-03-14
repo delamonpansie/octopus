@@ -110,12 +110,12 @@ fixup:(const struct row_v12 *)r
 			struct tbuf buf = TBUF(r->data, r->len, NULL);
 			estimated_snap_rows = read_u32(&buf);
 			run_crc_log = read_u32(&buf);
-			run_crc_mod = read_u32(&buf);
+			(void)read_u32(&buf); /* ignore run_crc_mod */
 		}
 			/* set initial lsn & scn, otherwise gap check below will fail */
 		lsn = r->lsn;
 		scn = r->scn;
-		say_debug("%s: run_crc_log/mod: 0x%x/0x%x", __func__, run_crc_log, run_crc_mod);
+		say_debug("%s: run_crc_log: 0x%x", __func__, run_crc_log);
 		break;
 	case snap_skip_scn:
 		assert(r->len > 0 && r->len % sizeof(u64) == 0);
@@ -134,7 +134,7 @@ fixup:(const struct row_v12 *)r
 		struct tbuf buf = TBUF(r->data, r->len, NULL);
 		i64 scn_of_crc = read_u64(&buf);
 		u32 log = read_u32(&buf);
-		u32 mod = read_u32(&buf);
+		read_u32(&buf); /* ignore run_crc_mod */
 		struct crc_hist *h = NULL;
 		for (unsigned i = crc_hist_i, j = 0; j < nelem(crc_hist); j++, i--) {
 			struct crc_hist *p = &crc_hist[i % nelem(crc_hist)];
@@ -154,11 +154,6 @@ fixup:(const struct row_v12 *)r
 			run_crc_log_mismatch |= 1;
 			say_error("run_crc_log mismatch: SCN:%"PRIi64" saved:0x%08x computed:0x%08x",
 				  scn_of_crc, log, h->log);
-		}
-		if (h->mod != mod) {
-			run_crc_mod_mismatch |= 1;
-			say_error("run_crc_mod mismatch: SCN:%"PRIi64" saved:0x%08x computed:0x%08x",
-				  scn_of_crc, mod, h->mod);
 		}
 
 		run_crc_verify_tstamp = ev_now();
@@ -233,10 +228,9 @@ recover_row:(struct row_v12 *)r
 				raise("non consecutive SCN %"PRIi64 " -> %"PRIi64, scn, r->scn);
 
 			scn = r->scn;
-			say_debug("save crc_hist SCN:%"PRIi64" log:0x%08x mod:0x%08x",
-				  scn, run_crc_log, run_crc_mod);
+			say_debug("save crc_hist SCN:%"PRIi64" log:0x%08x", scn, run_crc_log);
 			crc_hist[++crc_hist_i % nelem(crc_hist)] =
-				(struct crc_hist){ scn, run_crc_log, run_crc_mod };
+				(struct crc_hist){ scn, run_crc_log };
 		}
 	}
 	@catch (Error *e) {
@@ -796,6 +790,7 @@ submit_run_crc
 	struct tbuf *b = tbuf_alloc(fiber->pool);
 	tbuf_append(b, &scn, sizeof(scn));
 	tbuf_append(b, &run_crc_log, sizeof(run_crc_log));
+	typeof(run_crc_log) run_crc_mod = 0;
 	tbuf_append(b, &run_crc_mod, sizeof(run_crc_mod));
 
 	return [self submit:b->ptr len:tbuf_len(b) tag:(run_crc | TAG_WAL)];
