@@ -643,6 +643,7 @@ pull_wal(Recovery *r, id<XLogPullerAsync> puller)
 - (int)
 recover_follow_remote:(XLogPuller *)puller exit_on_eof:(int)exit_on_eof
 {
+	bool revert_io_collect_interval = false;
 	@try {
 		const char *err;
 		bool warning_said = false;
@@ -671,6 +672,13 @@ recover_follow_remote:(XLogPuller *)puller exit_on_eof:(int)exit_on_eof
 		}
 
 		if (lsn == 0) {
+			/* there is only one connection during initial load,
+			   so io_collect_interval is useless */
+			if (cfg.io_collect_interval > 0) {
+				ev_set_io_collect_interval(0);
+				revert_io_collect_interval = true;
+			}
+
 			pull_snapshot(self, puller);
 			[self configure_wal_writer];
 			if ([self snapshot_write] != 0)
@@ -685,6 +693,11 @@ recover_follow_remote:(XLogPuller *)puller exit_on_eof:(int)exit_on_eof
 			int final_row = pull_wal(self, puller);
 			fiber_gc();
 
+			if (final_row && revert_io_collect_interval) {
+				revert_io_collect_interval = false;
+				ev_set_io_collect_interval(cfg.io_collect_interval);
+			}
+
 			if (final_row && exit_on_eof) {
 				say_info("exit on final row");
 				return 0;
@@ -694,6 +707,10 @@ recover_follow_remote:(XLogPuller *)puller exit_on_eof:(int)exit_on_eof
 	@catch (Error *e) {
 		say_error("replication failure: %s", e->reason);
 		return -1;
+	}
+	@finally {
+		if (revert_io_collect_interval)
+			ev_set_io_collect_interval(cfg.io_collect_interval);
 	}
 	return 0;
 }
