@@ -600,10 +600,13 @@ pull_wal(Recovery *r, id<XLogPullerAsync> puller)
 		@try {
 			for (int j = 0; j < pack_rows; j++) {
 				row = rows[j]; /* this pointer required for catch below */
+				int tag = row->tag & TAG_MASK;
 
-				txn[j] = [r->txn_class palloc];
-				[txn[j] prepare:rows[j] data:rows[j]->data];
-				[txn[j] commit];
+				if (tag == wal_tag || tag > user_tag) {
+					txn[j] = [r->txn_class palloc];
+					[txn[j] prepare:rows[j] data:rows[j]->data];
+					[txn[j] commit];
+				}
 				[r fixup:rows[j]];
 			}
 		}
@@ -623,7 +626,7 @@ pull_wal(Recovery *r, id<XLogPullerAsync> puller)
 				continue;
 			}
 			for (int i = confirmed; i < pack_rows; i++)
-				[txn[i] append:&pack];
+				wal_pack_append_row(&pack, rows[i]);
 
 			confirmed += [r wal_pack_submit];
 			if (confirmed != pack_rows) {
