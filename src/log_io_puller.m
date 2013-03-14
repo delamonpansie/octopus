@@ -92,6 +92,10 @@ handshake:(i64)scn err:(const char **)err_ptr
 	if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &one, sizeof(one)) < 0)
 		say_syserror("setsockopt");
 
+	int bufsize = 256 * 1024;
+	if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (char *)&bufsize, sizeof(bufsize)) < 0)
+		say_syserror("setsockopt");
+
 #ifdef HAVE_TCP_KEEPIDLE
 	int keepidle = 20;
 	if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &keepidle, sizeof(keepidle)) < 0)
