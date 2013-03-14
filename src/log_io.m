@@ -594,10 +594,12 @@ close
 			result = -1;
 			say_error("can't write eof_marker");
 		}
-		if (cfg.wal_fsync_on_close) {
-			if ([self flush] == -1)
-				result = -1;
-		}
+		/* partially written tail of WAL will be cause of LSN
+		   gap, which will prevent server from startup.
+		   NB: it's ok to lose tail from last WAL. */
+		if ([self flush] == -1)
+			result = -1;
+
 		if (inprogress)
 			[self inprogress_rename];
 	} else {

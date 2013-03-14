@@ -1428,10 +1428,10 @@ init(void)
 	}
 
 	if (cfg.memcached) {
-		if (cfg.run_crc_delay != 0 || cfg.nop_hb_delay != 0)
-			panic("run_crc_delay and nop_hb_delay must be zero in memcached mode");
-
+		cfg.run_crc_delay = 0;
+		cfg.nop_hb_delay = 0;
 	}
+
 	recovery = [[Recovery alloc] init_snap_dir:cfg.snap_dir
 					   wal_dir:cfg.wal_dir
 				      rows_per_wal:cfg.rows_per_wal
