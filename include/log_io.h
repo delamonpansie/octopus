@@ -370,11 +370,7 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
              wal_dir:(const char *)wal_dir
         rows_per_wal:(int)rows_per_wal
 	 feeder_addr:(const char *)feeder_addr
-	 fsync_delay:(double)wal_fsync_delay
-       run_crc_delay:(double)run_crc_delay
-	nop_hb_delay:(double)nop_hb_delay
                flags:(int)flags
-  snap_io_rate_limit:(int)snap_io_rate_limit
 	   txn_class:(Class)txn_class;
 @end
 

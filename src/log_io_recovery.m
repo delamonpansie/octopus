@@ -882,11 +882,7 @@ nop_hb_writer(va_list ap)
              wal_dir:(const char *)wal_dirname
 	rows_per_wal:(int)wal_rows_per_file
 	 feeder_addr:(const char *)feeder_addr_
-         fsync_delay:(double)wal_fsync_delay
-       run_crc_delay:(double)run_crc_delay
-	nop_hb_delay:(double)nop_hb_delay
                flags:(int)flags
-  snap_io_rate_limit:(int)snap_io_rate_limit_
 	   txn_class:(Class)txn_class_
 {
 	/* Recovery object is never released */
@@ -905,8 +901,8 @@ nop_hb_writer(va_list ap)
 			panic("inacceptable value of 'rows_per_file'");
 
 		wal_dir->rows_per_file = wal_rows_per_file;
-		wal_dir->fsync_delay = wal_fsync_delay;
-		snap_io_rate_limit = snap_io_rate_limit_;
+		wal_dir->fsync_delay = cfg.wal_fsync_delay;
+		snap_io_rate_limit = cfg.snap_io_rate_limit;
 
 		struct fiber *wal_out = fiber_create("wal_writer/output_flusher", service_output_flusher);
 		struct fiber *wal_in = fiber_create("wal_writer/input_dispatcher",
@@ -919,11 +915,11 @@ nop_hb_writer(va_list ap)
 		ev_set_priority(&wal_writer->c->out, 1);
 		ev_io_start(&wal_writer->c->in);
 
-		if (!cfg.io_compat && run_crc_delay > 0)
-			fiber_create("run_crc", run_crc_writer, self, run_crc_delay);
+		if (!cfg.io_compat && cfg.run_crc_delay > 0)
+			fiber_create("run_crc", run_crc_writer, self, cfg.run_crc_delay);
 
-		if (!cfg.io_compat && nop_hb_delay > 0)
-			fiber_create("nop_hb", nop_hb_writer, self, nop_hb_delay);
+		if (!cfg.io_compat && cfg.nop_hb_delay > 0)
+			fiber_create("nop_hb", nop_hb_writer, self, cfg.nop_hb_delay);
 	}
 
 	if (feeder_addr_ != NULL) {
@@ -955,19 +951,11 @@ init_snap_dir:(const char *)snap_dirname
              wal_dir:(const char *)wal_dirname
         rows_per_wal:(int)wal_rows_per_file
 	 feeder_addr:(const char *)feeder_addr_
-         fsync_delay:(double)wal_fsync_delay
-       run_crc_delay:(double)run_crc_delay
-	nop_hb_delay:(double)nop_hb_delay
                flags:(int)flags
-  snap_io_rate_limit:(int)snap_io_rate_limit_
 {
 	(void)wal_rows_per_file;
 	(void)feeder_addr_;
-	(void)wal_fsync_delay;
-	(void)run_crc_delay;
-	(void)nop_hb_delay;
 	(void)flags;
-	(void)snap_io_rate_limit_;
 
 
 	return [self init_snap_dir:snap_dirname wal_dir:wal_dirname];
@@ -1110,11 +1098,7 @@ init_snap_dir:(const char *)snap_dirname
              wal_dir:(const char *)wal_dirname
         rows_per_wal:(int)wal_rows_per_file
 	 feeder_addr:(const char *)feeder_addr_
-         fsync_delay:(double)wal_fsync_delay
-       run_crc_delay:(double)run_crc_delay
-	nop_hb_delay:(double)nop_hb_delay
                flags:(int)flags
-  snap_io_rate_limit:(int)snap_io_rate_limit_
 	   txn_class:(Class)txn_class_
 {
 	say_info("WAL disabled");
@@ -1122,11 +1106,7 @@ init_snap_dir:(const char *)snap_dirname
 			    wal_dir:wal_dirname
 		       rows_per_wal:wal_rows_per_file
 			feeder_addr:feeder_addr_
-			fsync_delay:wal_fsync_delay
-		      run_crc_delay:run_crc_delay
-		       nop_hb_delay:nop_hb_delay
 			      flags:flags | RECOVER_READONLY
-		 snap_io_rate_limit:snap_io_rate_limit_
 			  txn_class:txn_class_];
 }
 

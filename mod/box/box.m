@@ -1427,15 +1427,16 @@ init(void)
 			panic("wal_hot_standby is incompatible with paxos");
 	}
 
+	if (cfg.memcached) {
+		if (cfg.run_crc_delay != 0 || cfg.nop_hb_delay != 0)
+			panic("run_crc_delay and nop_hb_delay must be zero in memcached mode");
+
+	}
 	recovery = [[Recovery alloc] init_snap_dir:cfg.snap_dir
 					   wal_dir:cfg.wal_dir
 				      rows_per_wal:cfg.rows_per_wal
 				       feeder_addr:cfg.wal_feeder_addr
-				       fsync_delay:cfg.wal_fsync_delay
-				     run_crc_delay:cfg.memcached ? 0 : cfg.run_crc_delay
-				      nop_hb_delay:cfg.memcached ? 0 : cfg.nop_hb_delay
 					     flags:init_storage ? RECOVER_READONLY : 0
-				snap_io_rate_limit:cfg.snap_io_rate_limit * 1024 * 1024
 					 txn_class:[BoxTxn class]];
 
 	/* initialize hashes _after_ starting wal writer */
