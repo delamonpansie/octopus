@@ -177,6 +177,7 @@ wal_pack_submit
 	lsn = reply->lsn;
 	scn = reply->scn;
 	run_crc_log = reply->run_crc;
+	crc_hist[++crc_hist_i % nelem(crc_hist)] = (struct crc_hist){ scn, run_crc_log };
 
 	say_debug("%s: => rows:%i", __func__, reply->row_count);
 	return reply->row_count;

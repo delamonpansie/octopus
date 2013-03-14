@@ -1021,8 +1021,8 @@ print_gen_row(struct tbuf *out, const struct row_v12 *row,
 		if (tbuf_len(&row_data) == sizeof(i64) + 2 * sizeof(u32))
 			scn = read_u64(&row_data);
 		u32 log = read_u32(&row_data);
-		u32 mod = read_u32(&row_data);
-		tbuf_printf(out, "SCN:%"PRIi64 " log:0x%08x mod:0x%08x", scn, log, mod);
+		(void)read_u32(&row_data); /* ignore run_crc_mod */
+		tbuf_printf(out, "SCN:%"PRIi64 " log:0x%08x", scn, log);
 		break;
 	}
 	case nop:
