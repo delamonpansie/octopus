@@ -398,13 +398,13 @@ open_for_write:(i64)lsn scn:(i64)scn
 	 */
 	fd = open(filename, O_WRONLY | O_CREAT | O_EXCL | O_APPEND, 0664);
 	if (fd < 0) {
-		say_error("failed to open `%s': %s", filename, strerror(errno));
+		say_syserror("failed to open `%s'", filename);
 		goto error;
 	}
 
 	file = fdopen(fd, "a");
 	if (file == NULL) {
-		say_error("fdopen failed: %s", strerror(errno));
+		say_syserror("fdopen failed");
 		goto error;
 	}
 
@@ -418,7 +418,7 @@ open_for_write:(i64)lsn scn:(i64)scn
 	}
 	say_info("creating `%s'", l->filename);
 	if ([l write_header] < 0) {
-		say_error("failed to write header");
+		say_syserror("failed to write header");
 		goto error;
 	}
 
