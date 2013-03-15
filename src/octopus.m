@@ -412,11 +412,6 @@ luaT_dofile(const char *filename)
 	}
 }
 
- void
-initialize_minimal()
-{
-	salloc_init(0.1 * (1 << 30), 4, 2);
-}
 
 #ifdef STORAGE
 static void
@@ -512,7 +507,7 @@ octopus(int argc, char **argv)
 	}
 #ifdef STORAGE
 	if (gopt_arg(opt, 'C', &cat_filename)) {
-		initialize_minimal();
+		salloc_init(0, 0, 0);
 		fiber_init();
 		set_proc_title("cat %s", cat_filename);
 
@@ -679,7 +674,7 @@ octopus(int argc, char **argv)
 #ifdef STORAGE
 	if (gopt(opt, 'i')) {
 		init_storage = true;
-		initialize_minimal();
+		salloc_init(0, 0, 0);
 		fiber_init();
 		luaT_init();
 		if (cfg.wal_feeder_addr) {
