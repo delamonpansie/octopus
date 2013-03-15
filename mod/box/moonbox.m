@@ -224,12 +224,12 @@ luaT_box_dispatch(struct lua_State *L)
 		[txn prepare:op data:req len:len];
 		if ([recovery submit:txn] != 1)
 			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write row");
+		[txn commit];
 
 		if (txn->obj != NULL) {
 			luaT_pushobject(L, txn->obj);
 			return 1;
 		}
-		[txn commit];
 	}
 	@catch (Error *e) {
 		[txn rollback];

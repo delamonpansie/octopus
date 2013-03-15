@@ -1178,6 +1178,9 @@ txn_cleanup(BoxTxn *txn)
 {
 	assert(!txn->closed);
 	txn->closed = true;
+	/* do not null tnx->obj & txn->old_obj, as there is
+	   code that examines contents of txn after commit */
+
 	for (int i = 0; i < nelem(txn->ref); i++) {
 		if (txn->ref[i] == NULL)
 			break;
