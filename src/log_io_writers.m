@@ -284,6 +284,11 @@ wal_disk_writer(int fd, void *state)
 	say_debug("%s: configured LSN:%"PRIi64 " SCN:%"PRIi64" run_crc_log:0x%x",
 		  __func__, wal_conf.lsn, wal_conf.scn, wal_conf.run_crc);
 
+	/* since wal_writer have bidirectional communiction to master
+	   and checks for errors on send/recv,
+	   there is no need in util.m:keepalive() */
+	signal(SIGPIPE, SIG_IGN);
+
 	for (;;) {
 		if (!have_unwritten_rows) {
 			tbuf_ensure(&rbuf, 16 * 1024);
