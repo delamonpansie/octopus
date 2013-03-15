@@ -20,7 +20,7 @@ env = Env.clean
 env.with_server do
   16.times {|i| insert [i,i]}
 
-  open('|./octopus --cat 10').lines do |l|
+  open('|./octopus --cat 10 2>/dev/null').lines do |l|
     puts l.gsub(/tm:\d+\.\d+ /, '')
   end
 end

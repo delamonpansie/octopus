@@ -43,8 +43,8 @@ env.with_server do
   Process.kill('USR1', env.pid)
   insert [1]
   insert [2]
-  sleep 0.5
 
+  env.stop
   puts Dir.glob("*.snap").sort + ["\n"]
 
   puts Dir.glob("*.xlog").sort + ["\n"]

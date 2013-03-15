@@ -17,12 +17,23 @@ EOD
   end
 end
 
-Env.clean.with_server do
+def wait_for(n=100)
+  n.times do
+    return if yield
+    sleep 0.05
+  end
+  raise "wait_for failed"
+end
+
+env = Env.clean
+env.with_server do
   ping
   129.times do |i|
     insert [i, i + 1, i + 2]
   end
-  sleep 1.1
+
+  wait_for { open('|./octopus --cat 00000000000000000002.xlog 2>/dev/null').lines.grep(/run_crc/).length > 0 }
+  env.stop
 
   puts `./octopus --cat 00000000000000000002.xlog | sed 's/tm:[^ ]* //' | grep run_crc` + "\n"
 end

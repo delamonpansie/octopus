@@ -90,8 +90,8 @@ MasterEnv.clean do
 
     stop
     start
-    puts "Slave\n" + `./octopus --cat 00000000000000000002.xlog | sed 's/tm:[^ ]* //'` + "\n"
+    puts "Slave\n" + `./octopus --cat 00000000000000000002.xlog 2>/dev/null| sed 's/tm:[^ ]* //'` + "\n"
   end
-  puts "Master\n" + `./octopus --cat 00000000000000000002.xlog | sed 's/tm:[^ ]* //'` + "\n"
+  puts "Master\n" + `./octopus --cat 00000000000000000002.xlog 2>/dev/null| sed 's/tm:[^ ]* //'` + "\n"
 end
 
