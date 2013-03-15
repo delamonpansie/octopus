@@ -63,7 +63,7 @@ static struct mhash_t *filter;
 
 int stderrfd, sayfd = STDERR_FILENO;
 int dup_to_stderr = 0;
-int max_level;
+int max_level, default_level = INFO;
 int nonblocking;
 
 static char
@@ -90,11 +90,10 @@ say_register_source(const char *file)
 {
 	if (unlikely(filter == NULL)) {
 		filter = mh_cstr_init(xrealloc);
-		max_level = 0;
+		max_level = default_level;
 	}
 
-	int ret, level = 0;
-	mh_cstr_put(filter, file, level, &ret);
+	mh_cstr_put(filter, file, default_level, NULL);
 }
 
 int

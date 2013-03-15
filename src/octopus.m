@@ -443,7 +443,6 @@ octopus(int argc, char **argv)
 #endif
 	const char *cfg_paramname = NULL;
 
-	cfg.log_level = INFO;
 	master_pid = getpid();
 	srand(master_pid);
 	palloc_init();
@@ -582,7 +581,7 @@ octopus(int argc, char **argv)
 
 	const char *filename;
 	int i = 0;
-	say_level_source("ALL", cfg.log_level);
+	say_level_source("ALL", cfg.log_level - default_level);
 	while ((filename = gopt_arg_i(opt, 'v', i++))) {
 		if (strlen(filename) == 1) {
 			say_level_source("ALL", atoi(filename));
