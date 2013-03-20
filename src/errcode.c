@@ -29,12 +29,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef LIBIPROTO
+#ifdef LIBIPROTO_OCTOPUS
 #include <client/libiproto/libiproto.h>
 #else
 #include <iproto_def.h>
 #endif
-#include <third_party/qsort_arg.h>
 
 static struct storage {
 	u_int32_t	errcode;
@@ -44,7 +43,7 @@ static struct storage {
 static int	nErr = 0;
 
 static int
-errStorageCmp(const void *a, const void *b, void *arg  __attribute__((unused))) {
+errStorageCmp(const void *a, const void *b) {
 	const struct storage 	*as = a,
 	      			*bs = b;
 
@@ -64,7 +63,7 @@ _errcode_add_desc(u_int32_t errcode, char *desc) {
 	nErr++;
 
 	if (nErr > 1)
-		qsort_arg(errStorage, nErr, sizeof(*errStorage), errStorageCmp, NULL);
+		qsort(errStorage, nErr, sizeof(*errStorage), errStorageCmp);
 }
 
 static inline struct storage *
@@ -92,7 +91,7 @@ static inline void
 errcode_init() {
 	if (errStorage == NULL) {
 #define	errcode_add_desc	_errcode_add_desc
-#ifdef LIBIPROTO
+#ifdef LIBIPROTO_OCTOPUS
 		ERRCODE_ADD(ERRCODE_DESCRIPTION, LIBIPROTO_ERROR_CODES);
 #else
 		ERRCODE_ADD(ERRCODE_DESCRIPTION, ERROR_CODES);

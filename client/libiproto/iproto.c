@@ -25,7 +25,9 @@
  * SUCH DAMAGE.
  */
 
+#ifdef LIBIPROTO_OCTOPUS
 #include <config.h>
+#endif
 #include <assert.h>
 #include <string.h>
 #include <stdlib.h>
@@ -43,8 +45,13 @@
 #include <unistd.h>
 #include <stdbool.h>
 
+#ifdef LIBIPROTO_OCTOPUS
 #include <client/libiproto/libiproto.h>
 #include <third_party/queue.h>
+#else
+#include <libiproto.h>
+#include <queue.h>
+#endif
 #include <iproto_def.h>
 
 #define SUM_ERROR_CODES(x) LIBIPROTO_ERROR_CODES(x) ERROR_CODES(x)
