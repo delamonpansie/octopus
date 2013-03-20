@@ -552,6 +552,7 @@ li_req_init_copy(struct iproto_connection_t* c, u_int32_t msg_code, void *data, 
 			return NULL;
 	}
 
+	memcpy(cdata, data, size);
 	request = li_req_init(c, msg_code, cdata, size);
 
 	if (!request) {
