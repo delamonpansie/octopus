@@ -436,6 +436,9 @@ li_free(struct iproto_connection_t *c) {
 
 	if (c->readArena)
 		memory_arena_decr_refcount(c->readArena);
+	if (c->reqArena)
+		memory_arena_decr_refcount(c->reqArena);
+
 	c->sp_alloc(c, 0);
 }
 

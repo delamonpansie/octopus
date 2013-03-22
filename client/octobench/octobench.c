@@ -603,6 +603,7 @@ reconnect:
 	li_close(conn);
 	li_free(conn);
 	map_free(rap);
+	map_free(reqap);
 
 	return NULL;
 }
