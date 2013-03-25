@@ -5,6 +5,7 @@
 # backups
 *~
 .#*
+*.swp
 
 # build byproducs
 TAGS
