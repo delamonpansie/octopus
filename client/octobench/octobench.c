@@ -623,6 +623,7 @@ usage(const char *errmsg) {
 	puts("   [-T TIME_LIMIT]           -- time limit for test");
 	puts("   [-r NRESET]               -- reset random generator after NRESET requests");
 	puts("   [-F]                      -- ignore fatal error from db");
+	puts("   [-P]                      -- ping once and exit");
 	puts("Defaults:");
 	printf("    -n %"PRIu64" -w %"PRIu64" -c %"PRIu64"\n    -t ping", nRequests, nWriteAhead, nConnections);
 	printf("    -i %u -I %u\n", minId, maxId);
@@ -682,10 +683,11 @@ main(int argc, char* argv[]) {
 	struct timeval 		end;
 	double			elapsed;
 	pthread_t		tid;
+	bool			pingOnly = false;
 
 	nConnections = nActiveConnections;
 
-	while((i=getopt(argc,argv,"s:p:n:w:c:t:Fi:I:z:Z:T:r:b:B:h")) != EOF) {
+	while((i=getopt(argc,argv,"s:p:n:w:c:t:Fi:I:z:Z:T:r:b:B:Ph")) != EOF) {
 		switch(i) {
 			case 's':
 				server = strdup(optarg);
@@ -727,6 +729,9 @@ main(int argc, char* argv[]) {
 			case 'F':
 				ignoreFatal = true;
 				break;
+			case 'P':
+				pingOnly = true;
+				break;
 			case 'T':
 				timeLimit = strtod(optarg, NULL);
 				break;
@@ -760,6 +765,28 @@ main(int argc, char* argv[]) {
 		usage("error: bad server address/port");
 
 	ERRCODE_ADD(ERRCODE_DESCRIPTION, ERROR_CODES);
+
+	if (pingOnly) {
+		struct memory_arena_pool_t*	rap = map_alloc(my_alloc, 1, 1024);
+		struct iproto_connection_t*	conn = li_conn_init(my_alloc, rap, NULL);
+		struct iproto_request_t*	req;
+
+		if (li_connect(conn, server, port, 0) != ERR_CODE_OK)
+			exit(1);
+
+		req = li_req_init(conn, OCTO_PING, NULL, 0);
+		if (!req)
+			exit(1);
+
+		if (li_write(conn) != ERR_CODE_NOTHING_TO_DO)
+			exit(1);
+		if (li_read(conn) != ERR_CODE_NOTHING_TO_DO)
+			exit(1);
+
+		if (li_req_state(req) != ERR_CODE_REQUEST_READY)
+			exit(1);
+		exit(0);
+	}
 
 	initBenchRes(&SumResults);
 
