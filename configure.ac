@@ -237,6 +237,7 @@ AC_ARG_ENABLE([modules],
               [octopus_modules=$enableval],
               [octopus_modules="box feeder"])
 AC_SUBST(modules, [$octopus_modules])
+scripts/fetch-modules.sh
 for module in $octopus_modules; do
     AS_IF([test -r mod/$module/Makefile], [], AC_MSG_ERROR([No such module: $module]))
 done
