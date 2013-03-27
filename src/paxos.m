@@ -661,7 +661,7 @@ learn(PaxosRecovery *r, struct proposal *p)
 				       .tag = p->tag,
 				       .len = p->value_len };
 		[txn prepare:&row data:p->value];
-		[txn commit:&r->run_crc_mod];
+		[txn commit];
 		mark_applied(r, p);
 	}
 }
@@ -1113,11 +1113,7 @@ init_snap_dir:(const char *)snap_dirname
       wal_dir:(const char *)wal_dirname
  rows_per_wal:(int)wal_rows_per_file
   feeder_addr:(const char *)feeder_addr_
-  fsync_delay:(double)wal_fsync_delay
-run_crc_delay:(double)run_crc_delay
- nop_hb_delay:(double)nop_hb_delay
 	flags:(int)flags
-snap_io_rate_limit:(int)snap_io_rate_limit_
     txn_class:(Class)txn_class_
 {
 	struct octopus_cfg_paxos_peer *c;
@@ -1126,11 +1122,7 @@ snap_io_rate_limit:(int)snap_io_rate_limit_
 		     wal_dir:wal_dirname
 		rows_per_wal:wal_rows_per_file
 		 feeder_addr:feeder_addr_
-		 fsync_delay:wal_fsync_delay
-	       run_crc_delay:run_crc_delay
-		nop_hb_delay:nop_hb_delay
 		       flags:flags
-	  snap_io_rate_limit:snap_io_rate_limit_
 		   txn_class:txn_class_];
 
 	SLIST_INIT(&group);
