@@ -1,4 +1,4 @@
-include src/index/Makefile
+include $(VPATH)/src/index/Makefile
 
 obj += src/object.o
 obj += src/tnt_obj.o

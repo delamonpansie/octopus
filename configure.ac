@@ -237,9 +237,9 @@ AC_ARG_ENABLE([modules],
               [octopus_modules=$enableval],
               [octopus_modules="box feeder"])
 AC_SUBST(modules, [$octopus_modules])
-scripts/fetch-modules.sh
+${srcdir}/scripts/fetch-modules.sh
 for module in $octopus_modules; do
-    AS_IF([test -r mod/$module/Makefile], [], AC_MSG_ERROR([No such module: $module]))
+    AS_IF([test -r ${srcdir}/mod/$module/Makefile], [], AC_MSG_ERROR([No such module: $module]))
 done
 
 AC_ARG_ENABLE([clients],
@@ -249,7 +249,7 @@ AC_ARG_ENABLE([clients],
               [octopus_clients="libiproto"])
 AC_SUBST(clients, [$octopus_clients])
 for client in $octopus_clients; do
-    AS_IF([test -r client/$client/Makefile], [], AC_MSG_ERROR([No such client: $client]))
+    AS_IF([test -r ${srcdir}/client/$client/Makefile], [], AC_MSG_ERROR([No such client: $client]))
 done
 
 AC_OUTPUT
