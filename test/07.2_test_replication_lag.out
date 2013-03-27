@@ -1,8 +1,0 @@
-# box.ping()
-:pong
-
-# box.insert([1, 2, 3])
-1
-
-recovery_lag: 0.0
-recovery_run_crc_status: ok
