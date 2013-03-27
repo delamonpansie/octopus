@@ -81,7 +81,11 @@
  *  - memalloc(ptr, size > 0)   realloc
  *  - memalloc(ptr, 0)          free
  */
+
+#ifndef MEMALLOC_TYPE_DEFINED
+#define MEMALLOC_TYPE_DEFINED
 typedef void* (*memalloc)(void*, size_t);
+#endif
 
 struct memory_arena_pool_t;
 
@@ -124,6 +128,15 @@ void   				map_free(struct memory_arena_pool_t *rap);
     _(ERR_CODE_REQUEST_READY,		((0x0a) << 16) | LIBIPROTO_ERR_CODE_FLAG, 				\
       					"request is ready")
 
+/* Macros to define enum and corresponding strings. */
+#ifndef ENUM_INITIALIZER
+#  define ENUM_DEF(s, v, d...) s = v,
+#  define ENUM_INITIALIZER(define) { define(ENUM_DEF) }
+#endif
+#ifndef ENUM_STR_INITIALIZER
+#  define ENUM_STR_DEF(s, v, d...) [s] = #s,
+#  define ENUM_STR_INITIALIZER(define) { define(ENUM_STR_DEF) }
+#endif
 
 extern void errcode_add_desc(u_int32_t errcode, char *desc);
 extern char* errcode_desc(u_int32_t errcode);
@@ -142,7 +155,8 @@ struct iproto_request_t;
 
 struct iproto_connection_t*	li_conn_init(memalloc sp_alloc, struct memory_arena_pool_t *rap,
 					     struct memory_arena_pool_t *reqap /* optional, request arena */ );
-u_int32_t			li_connect(struct iproto_connection_t *c, char *server, int port, u_int32_t opt);
+u_int32_t			li_connect(struct iproto_connection_t *c, const char *server, int port, u_int32_t opt);
+u_int32_t			li_uconnect(struct iproto_connection_t *c, const char *path, u_int32_t opt);
 int				li_get_fd(struct iproto_connection_t *c);
 void				li_close(struct iproto_connection_t *c);
 void				li_free(struct iproto_connection_t *c);

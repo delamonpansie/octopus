@@ -36,6 +36,7 @@
 #include <sys/socket.h>
 #include <limits.h>
 #include <netinet/in.h>
+#include <sys/un.h>
 #include <sys/param.h>
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -195,9 +196,21 @@ struct iproto_connection_t {
 			Connected,
 			ConnectionError
 	}					connectState;
-	char					*server;
-	struct sockaddr_in  			serv_addr;
-	int					port;
+	enum {
+			TcpFamily = 0,
+			UnixFamily
+	}					connectFamily;
+	union {
+		struct {
+			struct sockaddr_in	addr;
+			char			*server;
+			int			port;
+		} inet;
+		struct {
+			struct sockaddr_un	addr;
+			char			*path;
+		} un;
+	}					serv_addr;
 	memalloc				sp_alloc;
 	struct mhash_t				*requestHash;
 	u_int32_t				mirrorCnt;
@@ -279,75 +292,122 @@ libpoll(int fd, int event) {
 	return pfd.revents;
 }
 
-u_int32_t
-li_connect(struct iproto_connection_t *c, char *server, int port, u_int32_t opt) {
-	int 		flags;
+static u_int32_t
+li_connect_phase1(struct iproto_connection_t *c) {
 	u_int32_t	r;
 
-	if (c->fd >= 0) {
-		switch(c->connectState) {
-			case Connected:
-				return ERR_CODE_ALREADY_CONNECTED;
-			case ConnectionError:
+	if (c->fd < 0)
+		return ERR_CODE_OK;
+
+	switch(c->connectState) {
+		case Connected:
+			return ERR_CODE_ALREADY_CONNECTED;
+		case ConnectionError:
+			return ERR_CODE_CONNECT_ERR;
+		case ConnectInProgress:
+			r = libpoll(c->fd, POLLOUT);
+
+			if (r & POLLERR) {
+				c->connectState = ConnectionError;
 				return ERR_CODE_CONNECT_ERR;
-			case ConnectInProgress:
-				r = libpoll(c->fd, POLLOUT);
+			}
 
-				if (r & POLLERR) {
-					c->connectState = ConnectionError;
-					return ERR_CODE_CONNECT_ERR;
-				}
+			if (r & POLLOUT) {
+				c->connectState = Connected;
 
-				if (r & POLLOUT) {
-					c->connectState = Connected;
+				return ERR_CODE_OK;
+			}
 
-					return ERR_CODE_OK;
-				}
+			return ERR_CODE_CONNECT_IN_PROGRESS;
 
-				return ERR_CODE_CONNECT_IN_PROGRESS;
-
-			case NotConnected:
-			default:
-				abort();
-		}
+		case NotConnected:
+		default:
+			abort();
 	}
 
-	assert(c->connectState == NotConnected);
+	return  ERR_CODE_OK;
+}
+
+static u_int32_t
+li_connect_phase2(struct iproto_connection_t *c, u_int32_t opt) {
+	int		flags;
+	struct sockaddr	*addr;
+	socklen_t	addr_len;
 
 	c->nonblock = (opt & LIBIPROTO_OPT_NONBLOCK) ? true : false;
 	c->has4errcode = (opt & LIBIPROTO_OPT_HAS_4BYTE_ERRCODE) ? true : false;
-
-	memset(&c->serv_addr, 0, sizeof(c->serv_addr));
-	c->serv_addr.sin_family = AF_INET;
-	c->serv_addr.sin_addr.s_addr = (server && *server != '*' ) ? inet_addr(server) : htonl(INADDR_ANY);
-
-	if ( c->serv_addr.sin_addr.s_addr == INADDR_NONE ) {
-		struct hostent *host;
-
-		host = gethostbyname(server);
-		if ( host && host->h_addrtype == AF_INET ) {
-			memcpy(&c->serv_addr.sin_addr.s_addr, host->h_addr_list[0],
-					sizeof(c->serv_addr.sin_addr.s_addr));
-		} else {
-			return ERR_CODE_HOST_UNKNOWN;
-		}
-	}
-
-	c->serv_addr.sin_port = htons(port);
-
-	if ((c->fd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-		return ERR_CODE_CONNECT_ERR;
-
-	c->connectState = ConnectInProgress;
-
-	c->port = port;
-	c->server = c->sp_alloc(NULL, strlen(server) + 1);
-	strcpy(c->server, server);
 
 	if (c->nonblock && ((flags=fcntl(c->fd,F_GETFL,0)) == -1 || fcntl(c->fd,F_SETFL,flags|O_NDELAY) < 0)) {
 		c->connectState = ConnectionError;
 		return ERR_CODE_CONNECT_ERR;
 	}
+
+	switch (c->connectFamily) {
+	case TcpFamily:
+		addr = (struct sockaddr *)&c->serv_addr.inet.addr;
+		addr_len = sizeof(c->serv_addr.inet.addr);
+		break;
+	case UnixFamily:
+		addr = (struct sockaddr *)&c->serv_addr.un.addr;
+		addr_len = sizeof(c->serv_addr.un.addr.sun_family) + strlen(c->serv_addr.un.addr.sun_path);
+		break;
+	default:
+		abort();
+	}
+
+	if ( connect(c->fd, addr, addr_len) < 0 ) {
+		if ( errno == EINPROGRESS || errno == EALREADY )
+			return ERR_CODE_CONNECT_IN_PROGRESS;
+
+		c->connectState = ConnectionError;
+		return ERR_CODE_CONNECT_ERR;
+	}
+
+	c->connectState = Connected;
+	return ERR_CODE_OK;
+}
+
+u_int32_t
+li_connect(struct iproto_connection_t *c, const char *server, int port, u_int32_t opt) {
+	int		flags;
+	u_int32_t	r;
+
+	r = li_connect_phase1(c);
+	if (r != ERR_CODE_OK)
+		return r;
+	if (c->connectState == Connected)
+		return ERR_CODE_OK;
+
+	assert(c->connectState == NotConnected);
+
+	c->connectFamily = TcpFamily;
+
+	memset(&c->serv_addr.inet.addr, 0, sizeof(c->serv_addr.inet.addr));
+	c->serv_addr.inet.addr.sin_family = AF_INET;
+	c->serv_addr.inet.addr.sin_addr.s_addr = (server && *server != '*' ) ? inet_addr(server) : htonl(INADDR_ANY);
+
+	if ( c->serv_addr.inet.addr.sin_addr.s_addr == INADDR_NONE ) {
+		struct hostent *host;
+
+		host = gethostbyname(server);
+		if ( host && host->h_addrtype == AF_INET ) {
+			memcpy(&c->serv_addr.inet.addr.sin_addr.s_addr, host->h_addr_list[0],
+					sizeof(c->serv_addr.inet.addr.sin_addr.s_addr));
+		} else {
+			return ERR_CODE_HOST_UNKNOWN;
+		}
+	}
+
+	c->serv_addr.inet.addr.sin_port = htons(port);
+
+	if ((c->fd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+		return ERR_CODE_CONNECT_ERR;
+
+	c->serv_addr.inet.port = port;
+	c->serv_addr.inet.server = c->sp_alloc(NULL, strlen(server) + 1);
+	strcpy(c->serv_addr.inet.server, server);
+
+	c->connectState = ConnectInProgress;
 
 	flags = 1;
 	if (setsockopt(c->fd, SOL_SOCKET, SO_REUSEADDR, &flags, sizeof(flags)) < 0) {
@@ -362,16 +422,36 @@ li_connect(struct iproto_connection_t *c, char *server, int port, u_int32_t opt)
 	}
 #endif
 
-	if ( connect(c->fd, (struct sockaddr *) &(c->serv_addr), sizeof(struct sockaddr_in)) < 0 ) {
-		if ( errno == EINPROGRESS || errno == EALREADY )
-			return ERR_CODE_CONNECT_IN_PROGRESS;
+	return li_connect_phase2(c, opt);
+}
 
-		c->connectState = ConnectionError;
+u_int32_t
+li_uconnect(struct iproto_connection_t *c, const char *path, u_int32_t opt) {
+	u_int32_t	r;
+
+	r = li_connect_phase1(c);
+	if (r != ERR_CODE_OK)
+		return r;
+	if (c->connectState == Connected)
+		return ERR_CODE_OK;
+
+	assert(c->connectState == NotConnected);
+
+	c->connectFamily = UnixFamily;
+
+	memset(&c->serv_addr.un.addr, 0, sizeof(c->serv_addr.un.addr));
+	c->serv_addr.un.addr.sun_family = AF_UNIX;
+	strcpy(c->serv_addr.un.addr.sun_path, path);
+
+	if ((c->fd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0)
 		return ERR_CODE_CONNECT_ERR;
-	}
 
-	c->connectState = Connected;
-	return ERR_CODE_OK;
+	c->serv_addr.un.path = c->sp_alloc(NULL, strlen(path) + 1);
+	strcpy(c->serv_addr.un.path, path);
+
+	c->connectState = ConnectInProgress;
+
+	return li_connect_phase2(c, opt);
 }
 
 int
@@ -407,10 +487,18 @@ li_close(struct iproto_connection_t *c) {
 	c->fd = -1;
 	c->connectState = NotConnected;
 
-	if (c->server)
-		c->sp_alloc(c->server, 0);
-	c->server = NULL;
-	c->port = 0;
+	switch (c->connectFamily) {
+	case TcpFamily:
+		if (c->serv_addr.inet.server)
+			c->sp_alloc(c->serv_addr.inet.server, 0);
+		break;
+	case UnixFamily:
+		if (c->serv_addr.un.path)
+			c->sp_alloc(c->serv_addr.un.path, 0);
+		break;
+	default:
+		abort();
+	}
 	memset(&c->serv_addr, 0, sizeof(c->serv_addr));
 
 	mh_foreach(c->requestHash, k)
