@@ -200,8 +200,6 @@ $(foreach test,$(sort $(wildcard mod/*/test/test_*)),../$(test)
 )
 endef
 test:	octopus
-	@mkdir -p test
-	@cd test
 	@$(run_test)
 
 ifeq (1,$(COVERAGE))
