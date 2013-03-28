@@ -142,6 +142,7 @@ u32
 wal_pack_append_row(struct wal_pack *pack, struct row_v12 *row)
 {
 	assert(pack->row_count <= WAL_PACK_MAX);
+	assert(row->tag & ~TAG_MASK);
 
 	pack->packet_len += sizeof(*row) + row->len;
 	pack->row_count++;
