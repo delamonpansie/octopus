@@ -98,9 +98,9 @@ xlog_tag_to_a(u16 tag)
 	case snap_skip_scn:	return "snap_skip_scn";
 	}
 	if (tag < user_tag)
-		snprintf(buf, sizeof(buf), "%i/s%i", tag_type, tag);
+		snprintf(buf, sizeof(buf), "0x%x/s%i", tag_type, tag);
 	else
-		snprintf(buf, sizeof(buf), "%i/u%i", tag_type, tag - user_tag);
+		snprintf(buf, sizeof(buf), "0x%x/u%i", tag_type, tag - user_tag);
 	return buf;
 }
 

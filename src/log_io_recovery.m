@@ -568,8 +568,7 @@ pull_wal(Recovery *r, id<XLogPullerAsync> puller)
 		}
 
 		if (tag_type != TAG_WAL)
-			raise("unexpected tag %i/%s",
-			      row->tag, xlog_tag_to_a(row->tag));
+			raise("unexpected tag 0x%x/%s", row->tag, xlog_tag_to_a(row->tag));
 
 		if (cfg.io12_hack)
 			fix_scn(row);
