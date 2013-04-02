@@ -207,10 +207,12 @@ next_chunk_for(struct palloc_pool *pool, size_t size)
 	struct chunk_class *class;
 	size_t chunk_size;
 
-	if (chunk != NULL)
+	if (chunk != NULL) {
+		assert(chunk->magic == chunk_magic);
 		class = chunk->class;
-	else
+	} else {
 		class = &classes[0];
+	}
 
 	if (class->size == malloc_fallback) /* move to prev to malloc_fallback class */
 		class--;
