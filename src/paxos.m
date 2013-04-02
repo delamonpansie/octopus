@@ -1278,15 +1278,18 @@ check_replica
 - (int)
 submit:(id<Txn>)txn
 {
+	if (!configured)
+		return 0;
 	struct row_v12 *r = [txn row];
-	assert(r->len > 0);
-	assert(*(u16 *)r->data > 0);
 	return [self submit:r->data len:r->len tag:r->tag];
 }
 
 - (int)
 submit:(void *)data len:(u32)len tag:(u16)tag
 {
+	if (!configured)
+		return 0;
+
 	@try {
 		i64 cur_scn = [self next_scn];
 		struct proposal *p = proposal(self, cur_scn);

@@ -268,6 +268,7 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 	XLogDir *wal_dir, *snap_dir;
 	XLog *wal_to_close;
 	ev_timer wal_timer;
+	bool configured;
 @public
 	bool local_writes;
 	struct child *wal_writer;

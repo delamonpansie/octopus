@@ -94,6 +94,7 @@ configure_wal_writer
 	net_add_iov_dup(&n, &scn, sizeof(scn));
 	net_add_iov_dup(&n, &run_crc_log, sizeof(run_crc_log));
 	ev_io_start(&wal_writer->c->out);
+	configured = true;
 }
 
 - (int)
@@ -164,6 +165,7 @@ wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 - (int)
 wal_pack_submit
 {
+	assert(configured);
 	ev_io_start(&wal_writer->c->out);
 	struct wal_reply *reply = yield();
 	assert(reply->lsn != -1);
