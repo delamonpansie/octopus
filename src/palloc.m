@@ -203,7 +203,7 @@ poison_chunk(struct chunk *chunk)
 static struct chunk *
 next_chunk_for(struct palloc_pool *pool, size_t size)
 {
-	struct chunk * chunk = TAILQ_FIRST(&pool->chunks);
+	struct chunk *chunk = TAILQ_FIRST(&pool->chunks);
 	struct chunk_class *class;
 	size_t chunk_size;
 
