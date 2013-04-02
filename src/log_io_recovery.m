@@ -562,6 +562,12 @@ pull_wal(Recovery *r, id<XLogPullerAsync> puller)
 		int tag = row->tag & TAG_MASK;
 		int tag_type = row->tag & ~TAG_MASK;
 
+		/* TODO: apply filter on feeder side */
+		/* filter out all system (paxos) rows
+		   these rows define non shared/non replicated state */
+		if (tag_type == TAG_SYS)
+			continue;
+
 		if (tag == wal_final_tag) {
 			final_row = row;
 			break;
