@@ -357,7 +357,7 @@ conn_set(struct conn *c, int fd)
 }
 
 struct conn *
-conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, struct fiber *out, 
+conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, struct fiber *out,
 	  enum conn_memory_ownership memory_ownership)
 {
 	assert(in != NULL && out != NULL);
@@ -373,7 +373,7 @@ conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, st
 	c->out_messages.bytes = 0;
 	c->ref = 0;
 	c->fd = fd;
-	c->state = -1;
+	c->state = CONNECTED;
 	c->peer_name[0] = 0;
 
 	ev_init(&c->in, (void *)in);

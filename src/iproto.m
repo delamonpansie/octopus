@@ -531,8 +531,8 @@ iproto_rendevouz(va_list ap)
 
 	/* some warranty to be correctly initialized */
 	SLIST_FOREACH(p, group, link) {
-		p->in_connect = false;
 		p->last_connect_try = 0;
+		p->c.state = CLOSED;
 		p->c.fd = -1;
 	}
 
@@ -542,10 +542,11 @@ loop:
 	SLIST_FOREACH(p, group, link) {
 		enum tac_state	r;
 
-		if (p->c.fd >= 0 && p->in_connect == false)
+		if (p->c.fd >= 0 && p->c.state != IN_CONNECT)
 			continue;
 
-		if (p->in_connect == false) {
+		assert(p->c.state == IN_CONNECT || p->c.state == CLOSED);
+		if (p->c.state == CLOSED) {
 			assert(p->c.fd < 0);
 			if (ev_now() - p->last_connect_try <= 1.0 /* no more then one reconnect in second */)
 				continue;
@@ -553,17 +554,17 @@ loop:
 		}
 
 		r = tcp_async_connect(&p->c,
-				      (p->in_connect) ? w : NULL, /* NULL means initial state for tcp_async_connect */
+				      (p->c.state == IN_CONNECT) ? w : NULL, /* NULL means initial state for tcp_async_connect */
 				      &p->addr, self_addr, 5);
 
 		switch(r) {
 			case tac_wait:
 				ev_own_counter++;
-				p->in_connect = true;
+				p->c.state = IN_CONNECT;
 				break; /* wait for event */
 			case tac_error:
 				ev_own_counter++;
-				p->in_connect = false;
+				p->c.state = CLOSED;
 				p->c.fd = -1;
 				if (!p->connect_err_said)
 					say_syserror("connect to %s/%s failed", p->name, sintoa(&p->addr));
@@ -571,7 +572,7 @@ loop:
 				break;
 			case tac_ok:
 				ev_own_counter++;
-				p->in_connect = false;
+				/* conn_init will set state = CONNECTED */
 				conn_init(&p->c, NULL, p->c.fd, in, out, MO_STATIC | MO_MY_OWN_POOL);
 				ev_io_start(&p->c.in);
 				say_info("connected to %s/%s", p->name, sintoa(&p->addr));
