@@ -77,6 +77,10 @@
 # define say_info(...) (void)0;
 #endif
 
+#ifndef SLAB_SIZE
+# define SLAB_SIZE (1 << 22)
+#endif
+
 #define SLAB_ALIGN_PTR(ptr) (void *)((uintptr_t)(ptr) & ~(SLAB_SIZE - 1))
 
 #ifdef SLAB_DEBUG
@@ -87,7 +91,6 @@ uint8_t red_zone[0] = { };
 #endif
 
 static const uint32_t SLAB_MAGIC = 0x51abface;
-static const size_t SLAB_SIZE = 1 << 22;
 static const size_t MAX_SLAB_ITEM = 1 << 20;
 static size_t page_size;
 
