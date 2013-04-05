@@ -1152,6 +1152,8 @@ box_service_register(struct service *s)
 static void
 initialize_service()
 {
+	build_secondary_indexes();
+
 	if (cfg.memcached != 0) {
 		memcached_init();
 	} else {
@@ -1298,7 +1300,6 @@ rollback
 wal_final_row
 {
 	if (box_primary.name == NULL) {
-		build_secondary_indexes();
 		initialize_service();
 		title("%s", [recovery status]);
 	}
@@ -1502,6 +1503,8 @@ init_second_stage(va_list ap __attribute__((unused)))
 			}
 			if (!cfg.local_hot_standby)
 				[recovery enable_local_writes];
+			else
+				initialize_service();
 		}
 	}
 	@catch (Error *e) {
