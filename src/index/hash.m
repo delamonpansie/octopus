@@ -89,6 +89,12 @@ iterator_next
 ordered_iterator_init
 {
 	int j = 0;
+	[self iterator_init];
+
+	/* assert(j + 1 == ..) assumes that hash has at least one elem */
+	if (mh_size(h) == 0)
+		return;
+
 	for (int i = 1; i < mh_end(h); i++) {
 		if (!mh_exist(h, i))
 		    continue;
@@ -106,7 +112,6 @@ ordered_iterator_init
 	}
 	assert(j + 1 == mh_size(h));
 	qsort_arg(h->nodes, mh_size(h), node_size, compare, self);
-	[self iterator_init];
 }
 
 @end
