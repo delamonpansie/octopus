@@ -284,8 +284,9 @@ salloc_init(size_t size, size_t minimal, double factor)
 
 	slab_cache_series_init(size > 0 ? SLAB_FIXED : SLAB_GROW,
 			       MAX(sizeof(void *), minimal), factor);
-	say_info("slab allocator configured, fixed_arena:%.1fGB",
-		 size / (1024. * 1024 * 1024));
+	if (size > 0)
+		say_info("slab allocator configured, fixed_arena:%.1fGB",
+			 size / (1024. * 1024 * 1024));
 }
 
 void
