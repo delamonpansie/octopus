@@ -454,7 +454,7 @@ broadcast(struct iproto_group *group, struct iproto_req *r)
 	}
 
 	if (r->waiter)
-		r->reply = p0alloc(r->waiter->pool, sizeof(struct iproto *) * peers_count);
+		r->reply = p0alloc(r->waiter->pool, sizeof(struct iproto *) * (peers_count + 1));
 }
 
 
