@@ -94,7 +94,7 @@ struct conn {
 	struct netmsg_head out_messages;
 
 	enum conn_memory_ownership  memory_ownership;
-	enum { CLOSED, IN_CONNECT, CONNECTED, READING, PROCESSING, CLOSE_AFTER_WRITE } state;
+	enum { CLOSED, IN_CONNECT, CONNECTED } state;
 	LIST_ENTRY(conn) link;
 	TAILQ_ENTRY(conn) processing_link;
 	ev_io in, out;

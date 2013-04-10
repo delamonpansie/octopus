@@ -373,7 +373,7 @@ conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, st
 	c->out_messages.bytes = 0;
 	c->ref = 0;
 	c->fd = fd;
-	c->state = CONNECTED;
+	c->state = fd >= 0 ? CONNECTED : CLOSED;
 	c->peer_name[0] = 0;
 
 	ev_init(&c->in, (void *)in);
@@ -465,9 +465,9 @@ conn_close(struct conn *c)
 		c->fd = -1;
 		c->peer_name[0] = 0;
 
-		if (c->service && c->state == PROCESSING) {
+		if (c->service && c->processing_link.tqe_prev != NULL) {
 			TAILQ_REMOVE(&c->service->processing, c, processing_link);
-			c->state = -1;
+			c->processing_link.tqe_prev = NULL;
 		}
 		c->state = CLOSED;
 	}
@@ -597,7 +597,9 @@ service_output_flusher(va_list ap __attribute__((unused)))
 		if (c->out_messages.bytes == 0)
 			ev_io_stop(&c->out);
 
-		if ((tbuf_len(c->rbuf) < cfg.input_low_watermark || c->state == READING) &&
+		/* c->processing_link.tqe_prev == NULL implies
+		   that we'r reading (possibly) an oversize request */
+		if ((tbuf_len(c->rbuf) < cfg.input_low_watermark || c->processing_link.tqe_prev == NULL) &&
 		    c->out_messages.bytes < cfg.output_low_watermark &&
 		    c->state != CLOSED)
 			ev_io_start(&c->in);
@@ -904,10 +906,8 @@ loop:
 	r = tbuf_recv(c->rbuf, c->fd);
 
 	if (likely(r > 0)) {
-		if (c->state != PROCESSING) {
+		if (c->processing_link.tqe_prev == NULL)
 			TAILQ_INSERT_HEAD(&c->service->processing, c, processing_link);
-			c->state = PROCESSING;
-		}
 	} else if (r == 0) {
 		say_debug("closing conn c:%p fd:%i EOF", c, c->fd);
 		conn_close(c);
@@ -956,7 +956,7 @@ accept_client(int fd, void *data)
 	LIST_INSERT_HEAD(&service->conn, clnt, link);
 	clnt->service = service;
 	ev_io_start(&clnt->in);
-	clnt->state = READING;
+	clnt->state = CONNECTED;
 }
 
 void

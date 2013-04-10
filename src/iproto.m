@@ -218,7 +218,7 @@ handle_c(struct service *service, struct conn *c)
 	    tbuf_len(c->rbuf) < sizeof(struct iproto) + iproto(c->rbuf)->data_len)
 	{
 		TAILQ_REMOVE(&service->processing, c, processing_link);
-		c->state = READING;
+		c->processing_link.tqe_prev = NULL;
 	} else {
 		TAILQ_REMOVE(&service->processing, c, processing_link);
 		TAILQ_INSERT_TAIL(&service->processing, c, processing_link);
@@ -440,7 +440,7 @@ broadcast(struct iproto_group *group, struct iproto_req *r)
 
 	SLIST_FOREACH(p, group, link) {
 		peers_count++;
-		if (p->c.fd < 0)
+		if (p->c.state < CONNECTED)
 			continue;
 
 		struct netmsg *m = netmsg_tail(&p->c.out_messages);
@@ -572,8 +572,8 @@ loop:
 				break;
 			case tac_ok:
 				ev_own_counter++;
-				/* conn_init will set state = CONNECTED */
 				conn_init(&p->c, NULL, p->c.fd, in, out, MO_STATIC | MO_MY_OWN_POOL);
+				p->c.state = CONNECTED;
 				ev_io_start(&p->c.in);
 				say_info("connected to %s/%s", p->name, sintoa(&p->addr));
 				p->connect_err_said = false;

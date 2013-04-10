@@ -217,8 +217,10 @@ paxos_reply(struct paxos_request *req, enum paxos_msg_code code, u64 ballot)
 	const struct proposal *p = req->p;
 	struct conn *c = req->c;
 
-	if (c->state == CLOSED)
+	if (c->state < CONNECTED) {
+		say_debug("not connected: ignoring fd:%i start:%i", c->fd, c->state);
 		return;
+	}
 
 	struct msg_paxos *msg = p0alloc(c->pool, sizeof(*msg));
 	msg->header = (struct iproto){ code,
@@ -421,7 +423,7 @@ leader(struct iproto *msg, struct conn *c)
 		pmsg->leader_id = leader_id;
 		pmsg->expire = leadership_expire;
 	}
-	if (c->state == CLOSED)
+	if (c->state < CONNECTED)
 		return;
 
 	say_debug("|   -> reply with %s", ret);
