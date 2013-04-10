@@ -34,6 +34,8 @@ scripts/stringify
 mod
 client/*
 !client/*/
+client/octobench/
+client/octobench-pub/
 
 # luajit
 third_party/luajit/src/buildvm
