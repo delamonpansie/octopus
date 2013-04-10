@@ -322,14 +322,21 @@ make_iproto_peer(int id, const char *name, const char *addr)
 static void
 req_dump(struct iproto_req *r, const char *prefix)
 {
-	say_debug("%s: response:%s q/c:%i/%i %s", prefix, r->name, r->quorum, r->count,
-		  r->closed ? "[CLOSED]" : "");
+	const char *status = "";
+	if (r->closed)
+		status = "[CLOSED]";
+	if (r->count < r->quorum) {
+		assert(r->closed);
+		status = "[CLOSED,TIMEOUT]";
+	}
+	say_debug("%s: response:%s q/c:%i/%i %s", prefix, r->name, r->quorum, r->count, status);
 	if (!r->waiter)
 		return;
 
-	for (int i = 0; i < nelem(r->reply) && r->reply[i]; i++)
-		say_debug("|   reply: sync:%i op:0x%02x len:%i",
-			  r->reply[i]->sync, r->reply[i]->msg_code, r->reply[i]->data_len);
+	int i;
+	for (i = 0; i < nelem(r->reply) && r->reply[i]; i++)
+		say_debug("|   reply[%i]: sync:%i op:0x%02x len:%i",
+			  i, r->reply[i]->sync, r->reply[i]->msg_code, r->reply[i]->data_len);
 }
 
 static void
