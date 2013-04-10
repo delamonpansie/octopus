@@ -54,7 +54,7 @@
 
 enum paxos_msg_code ENUM_INITIALIZER(PAXOS_CODE);
 const char *paxos_msg_code[] = ENUM_STR_INITIALIZER(PAXOS_CODE);
-
+const int proposal_history_size = 16 * 1024;
 const int quorum = 2; /* FIXME: hardcoded */
 
 struct paxos_peer {
@@ -113,15 +113,19 @@ struct msg_paxos {
 	u64 ballot;
 	u16 tag;
 	u32 value_len;
-	char value[];
+	u8 value[];
 } __attribute__((packed));
 
 struct proposal {
 	const i64 scn;
-	u64 ballot, pre_ballot;
+	u64 prepare_ballot, ballot;
+	/* since we using same rb_tree for both proposer & acceptor
+	   we have to store their ballot separately, so proposers ballot
+	   updates will not affect acceptors ballot */
+
 	u32 flags;
 	u32 value_len; /* must be same type with msg_paxos->value_len */
-	char *value;
+	u8 *value;
 	u16 tag;
 	struct fiber *waiter;
 	ev_tstamp delay, tstamp;
@@ -137,22 +141,17 @@ struct paxos_request {
 	struct proposal *p;
 };
 
-#define P_DECIDED	0x01
-#define P_APPLIED	0x02
-#define P_CLOSED	0x04
-#define P_LOCK		0x08
-#define P_PRE_LOCK	0x10
-
+#define P_APPLIED	0x01
+#define P_CLOSED	0x02
 /*
   1. P_CLOSED: Continious from initial SCN up to [Recovery lsn]. There are no gaps. Proposal may be P_CLOSED
-             only after being P_DECIDED.
-  2. P_APPLIED: Proposal my be P_APPLIED only after being P_DECIDED.
+             only after being decided.
+  2. P_APPLIED: Proposal my be P_APPLIED only after being decided, that is ballot == ULLONG_MAX
               Leader can apply proposal out of order because it may assume theirs independece (this
               follows from the following observation: caller of [Recovery submit] already took all
 	      neccecary locks.)
               Accpetors(non leader) _must_ apply proposals in order because they cannot prove
 	      proposal's independece.
-  3. P_DECIDED: no ordering enforced.
  */
 
 
@@ -177,6 +176,8 @@ struct service *mesh_service;
 extern void title(const char *fmt, ...); /* FIXME: hack */
 
 static int catchup_done;
+
+static void catchup(PaxosRecovery *r, i64 upto_scn);
 
 static bool
 paxos_leader()
@@ -203,8 +204,9 @@ paxos_broadcast(PaxosRecovery *r, enum paxos_msg_code code, ev_tstamp timeout,
 
 	say_debug("%s: > %s sync:%u SCN:%"PRIi64" ballot:%"PRIu64" timeout:%.2f",
 		  __func__, paxos_msg_code[code], req->header->sync, scn, ballot, timeout);
-	say_debug2("|  tag:%s value_len:%i value:%s", xlog_tag_to_a(tag), value_len,
-		   tbuf_to_hex(&TBUF(value, value_len, fiber->pool)));
+	if (code != PREPARE)
+		say_debug2("|  tag:%s value_len:%i value:%s", xlog_tag_to_a(tag), value_len,
+			   tbuf_to_hex(&TBUF(value, value_len, fiber->pool)));
 
 	broadcast(&r->remotes, req);
 }
@@ -250,12 +252,8 @@ paxos_reply(struct paxos_request *req, enum paxos_msg_code code, u64 ballot)
 	if (p)
 		say_debug2("|  tag:%s value_len:%i value:%s", xlog_tag_to_a(p->tag), p->value_len,
 			   tbuf_to_hex(&TBUF(p->value, p->value_len, fiber->pool)));
-
-	assert(c->state != CLOSED);
 	ev_io_start(&c->out);
 }
-
-static void leader_catchup(PaxosRecovery *r);
 
 static void
 notify_leadership_change(PaxosRecovery *r)
@@ -274,7 +272,9 @@ notify_leadership_change(PaxosRecovery *r)
 		if (prev_leader != leader_id) {
 			say_info("I am leader, %i -> %i", prev_leader, leader_id);
 			catchup_done = 0;
-			leader_catchup(r);
+			while (r->app_scn < r->max_scn)
+				catchup(r, r->max_scn);
+			catchup_done = 1;
 		}
 		title("paxos_leader");
 	}
@@ -284,7 +284,8 @@ notify_leadership_change(PaxosRecovery *r)
 void
 giveup_leadership()
 {
-	leader_id = -2;
+	if (paxos_leader())
+		leader_id = -2;
 }
 
 static void
@@ -319,7 +320,7 @@ propose_leadership(va_list ap)
 			continue;
 
 		leader_propose.expire = ev_now() + leader_lease_interval;
-		broadcast(&r->remotes, req_make("leader_propose", 2, 1.0,
+		broadcast(&r->remotes, req_make("leader_propose", quorum, 1.0,
 						&leader_propose.header, NULL, 0));
 		struct iproto_req *req = yield();
 
@@ -353,28 +354,24 @@ propose_leadership(va_list ap)
 	}
 }
 
-
 #ifdef RANDOM_DROP
-#define PAXOS_MSG_DROP \
+#define PAXOS_MSG_DROP(h)						\
 	double drop = rand() / (double)RAND_MAX;			\
 	static double drop_p;						\
 	if (!drop_p) {							\
 		char *drop_pstr = getenv("RANDOM_DROP");		\
-		drop_p = drop_pstr ? atof(drop_pstr) : 0.01;		\
+		drop_p = drop_pstr ? atof(drop_pstr) : RANDOM_DROP;	\
 	}								\
 	if (drop < drop_p) {						\
 		say_debug("%s: op:0x%02x/%s sync:%i DROP", __func__,	\
-			  msg->msg_code, paxos_msg_code[msg->msg_code], msg->sync); \
+			  (h)->msg_code, paxos_msg_code[(h)->msg_code], (h)->sync); \
 		return;							\
 	}
 #else
-#define PAXOS_MSG_DROP
+#define PAXOS_MSG_DROP(h) (void)h
 #endif
 
 #define PAXOS_MSG_CHECK(msg, c, peer)	({				\
-	say_debug("%s: peer:%i/%s op:0x%02x/%s sync:%i", __func__,\
-		  (peer)->id, (peer)->name, (msg)->header.msg_code,	\
-		  paxos_msg_code[(msg)->header.msg_code], (msg)->header.sync);	\
 	if ((msg)->version != paxos_default_version) {			\
 		say_warn("%s: bad version %i, closing connect from peer %i", \
 			 __func__, (msg)->version, (msg)->peer_id);	\
@@ -386,7 +383,7 @@ propose_leadership(va_list ap)
 		conn_close(c);						\
 		return;							\
 	}								\
-	PAXOS_MSG_DROP							\
+	PAXOS_MSG_DROP(&(msg)->header);					\
 })
 
 
@@ -433,28 +430,6 @@ leader(struct iproto *msg, struct conn *c)
 	ev_io_start(&c->out);
 }
 
-void
-plock(struct proposal *p)
-{
-	say_debug3("%s: SCN:%"PRIi64, __func__, p->scn);
-	assert((p->flags & P_LOCK) == 0);
-	p->flags |= P_LOCK;
-	p->locker = fiber;
-}
-
-void
-punlock(struct proposal *p)
-{
-	say_debug3("%s: SCN:%"PRIi64, __func__, p->scn);
-	assert(p->flags & P_LOCK);
-	p->flags &= ~P_LOCK;
-	p->locker = NULL;
-	if (p->waiter) {
-		fiber_wake(p->waiter, p);
-		p->waiter = NULL;
-	}
-}
-
 
 static struct proposal *
 find_proposal(PaxosRecovery *r, i64 scn)
@@ -465,31 +440,30 @@ find_proposal(PaxosRecovery *r, i64 scn)
 static void
 update_proposal_ballot(struct proposal *p, u64 ballot)
 {
-	assert(p->flags & P_LOCK);
 	say_debug2("%s: SCN:%"PRIi64" ballot:%"PRIu64, __func__, p->scn, ballot);
 	assert(p->ballot <= ballot);
+	if (p->ballot == ULLONG_MAX)
+		assert(ballot == ULLONG_MAX); /* decided proposal is immutable */
 	p->ballot = ballot;
 }
 
-static void
-update_proposal_pre_ballot(struct proposal *p, u64 ballot)
-{
-	assert(p->flags & P_PRE_LOCK);
-	say_debug2("%s: SCN:%"PRIi64" ballot:%"PRIu64, __func__, p->scn, ballot);
-	assert(p->pre_ballot <= ballot);
-	p->pre_ballot = ballot;
-}
 
 static void
-update_proposal_value(struct proposal *p, u32 value_len, const char *value, u16 tag)
+update_proposal_value(struct proposal *p, u32 value_len, const u8 *value, u16 tag)
 {
 	say_debug2("%s: SCN:%"PRIi64" tag:%s value_len:%i value:%s", __func__,
 		   p->scn, xlog_tag_to_a(tag), value_len,
 		   tbuf_to_hex(&TBUF(value, value_len, fiber->pool)));
 
+	if (p->ballot == ULLONG_MAX) { /* decided proposal is immutable */
+		assert(value_len == p->value_len);
+		assert(memcmp(value, p->value, value_len) == 0);
+		assert(p->tag == tag);
+		return;
+	}
+
 	if (p->value_len != value_len) {
 		assert(value_len > 0); /* value never goes empty */
-		assert((p->flags & P_DECIDED) == 0); /* P_DECIDED is immutable */
 		if (value_len > p->value_len) {
 			if (p->value)
 			 	sfree(p->value);
@@ -522,16 +496,6 @@ proposal(PaxosRecovery *r, i64 scn)
 	return find_proposal(r, scn) ?: create_proposal(r, scn);
 }
 
-#if 0
-static struct proposal *
-prev_proposal(PaxosRecovery *r, struct proposal *p)
-{
-	if (p->scn == 1)
-		return NULL;
-	return RB_PREV(ptree, &r->proposals, p) ?: create_proposal(r, p->scn - 1);
-}
-#endif
-
 static void
 delete_proposal(PaxosRecovery *r, struct proposal *p)
 {
@@ -545,20 +509,34 @@ static void
 expire_proposal(PaxosRecovery *r)
 {
 	struct proposal *p, *tmp;
-	i64 scn = [r scn];
+	i64 keep_scn = [r scn] - proposal_history_size; /* ok, if negative */
 
 	RB_FOREACH_SAFE(p, ptree, &r->proposals, tmp) {
-		if (p->flags & (P_LOCK|P_PRE_LOCK))
-			break;
-
 		if ((p->flags & P_CLOSED) == 0)
 			break;
 
-		if (p->scn > scn - 64)
+		if (p->scn >= keep_scn)
 			break;
 
 		delete_proposal(r, p);
 	}
+}
+
+#define nack(req, nack_ballot, msg_ballot) ({					\
+	assert(nack_ballot != ULLONG_MAX);						\
+	say_info("NACK(%i%s) sync:%i SCN:%"PRIi64" ballot:%"PRIu64 " nack_ballot:%"PRIi64, \
+		 __LINE__, (msg_ballot & 0xff) == self_id ? "self" : "", \
+		 (req)->msg->header.sync, (req)->p->scn, (req)->p->ballot, (nack_ballot)); \
+	paxos_reply((req), NACK, (nack_ballot));				\
+})
+
+static void
+decided(struct paxos_request *req)
+{
+	if (req->peer->id == self_id)
+		return;
+
+	paxos_reply(req, DECIDE, req->p->ballot);
 }
 
 static void
@@ -566,13 +544,30 @@ promise(PaxosRecovery *r, struct paxos_request *req)
 {
 	struct proposal *p = req->p;
 	const struct msg_paxos *msg = req->msg;
-	assert(p->flags & P_LOCK);
+	u64 ballot = p->ballot;
+
+	if (msg->ballot <= p->ballot) {
+		nack(req, p->ballot, msg->ballot);
+		return;
+	}
 
 	if ([r submit:&msg->ballot len:sizeof(msg->ballot) scn:msg->scn tag:(paxos_promise | TAG_SYS)] != 1)
 		return;
-	u64 old_ballot = p->ballot;
+
+	if (p->ballot == ULLONG_MAX) {
+		decided(req);
+		return;
+	}
+
+	if (msg->ballot <= p->ballot) {
+		nack(req, p->ballot, msg->ballot);
+		return;
+	}
+
+	assert(p->ballot < msg->ballot);
+	ballot = p->ballot; /* concurent update is possible */
 	update_proposal_ballot(p, msg->ballot);
-	paxos_reply(req, PROMISE, old_ballot);
+	paxos_reply(req, PROMISE, ballot);
 }
 
 static void
@@ -580,11 +575,13 @@ accepted(PaxosRecovery *r, struct paxos_request *req)
 {
 	const struct msg_paxos *msg = req->msg;
 	struct proposal *p = req->p;
-
 	assert(msg->scn == p->scn);
-	assert(p->ballot <= msg->ballot);
 	assert(msg->value_len > 0);
-	assert(p->flags & P_LOCK);
+
+	if (msg->ballot < p->ballot) {
+		nack(req, p->ballot, msg->ballot);
+		return;
+	}
 
 	struct tbuf *buf = tbuf_alloc(fiber->pool);
 	tbuf_append(buf, &msg->ballot, sizeof(msg->ballot));
@@ -595,9 +592,19 @@ accepted(PaxosRecovery *r, struct paxos_request *req)
 	if ([r submit:buf->ptr len:tbuf_len(buf) scn:msg->scn tag:(paxos_accept | TAG_SYS)] != 1)
 		return;
 
+	if (p->ballot == ULLONG_MAX) {
+		decided(req);
+		return;
+	}
+
+	if (msg->ballot < p->ballot) {
+		nack(req, p->ballot, msg->ballot);
+		return;
+	}
+
+	assert(msg->ballot >= p->ballot);
 	update_proposal_ballot(p, msg->ballot);
 	update_proposal_value(p, msg->value_len, msg->value, msg->tag);
-
 	paxos_reply(req, ACCEPTED, 0);
 }
 
@@ -605,8 +612,8 @@ static struct iproto_req *
 prepare(PaxosRecovery *r, struct proposal *p, u64 ballot)
 {
 	if ([r submit:&ballot len:sizeof(ballot) scn:p->scn tag:(paxos_prepare | TAG_SYS)] != 1)
-		panic("give up");
-	update_proposal_pre_ballot(p, ballot);
+		return 0;
+	p->prepare_ballot = ballot;
 	paxos_broadcast(r, PREPARE, p->delay, p->scn, ballot, NULL, 0, 0);
 	return yield();
 }
@@ -614,36 +621,19 @@ prepare(PaxosRecovery *r, struct proposal *p, u64 ballot)
 static struct iproto_req *
 propose(PaxosRecovery *r, u64 ballot, i64 scn, const char *value, u32 value_len, u16 tag)
 {
-	struct tbuf *m = tbuf_alloc(fiber->pool);
-	tbuf_append(m, &ballot, sizeof(ballot));
-	tbuf_append(m, &tag, sizeof(tag));
-	tbuf_append(m, &value_len, sizeof(value_len));
-	tbuf_append(m, value, value_len);
-	if ([r submit:m->ptr len:tbuf_len(m) scn:scn tag:(paxos_propose | TAG_SYS)] != 1)
-		panic("give up");
+	assert((tag & ~TAG_MASK) != 0 && (tag & ~TAG_MASK) != TAG_SYS);
 	assert(value_len > 0);
 	paxos_broadcast(r, ACCEPT, paxos_default_timeout, scn, ballot, value, value_len, tag);
 	return yield();
 }
 
-static void
-nack(struct paxos_request *req)
-{
-	paxos_reply(req, NACK, req->p->ballot);
-}
-
-static void
-decided(struct paxos_request *req)
-{
-	paxos_reply(req, DECIDE, req->p->ballot);
-}
 
 static void maybe_wake_dumper(PaxosRecovery *r, struct proposal *p);
 
 static void
 mark_applied(PaxosRecovery *r, struct proposal *p)
 {
-	assert(p->flags & P_DECIDED);
+	assert(p->ballot == ULLONG_MAX);
 	p->flags |= P_APPLIED;
 
 	while (p && p->scn - r->app_scn == 1 && p->flags & P_APPLIED) {
@@ -662,10 +652,10 @@ learn(PaxosRecovery *r, struct proposal *p)
 		if (p->scn != r->app_scn + 1)
 			return;
 
-		if (p->flags & P_APPLIED)
+		if (p->ballot != ULLONG_MAX)
 			return;
 
-		if ((p->flags & P_DECIDED) == 0)
+		if (p->flags & P_APPLIED)
 			return;
 
 		say_debug("%s: SCN:%"PRIi64" ballot:%"PRIu64, __func__, p->scn, p->ballot);
@@ -673,16 +663,27 @@ learn(PaxosRecovery *r, struct proposal *p)
 			   p->value_len, tbuf_to_hex(&TBUF(p->value, p->value_len, fiber->pool)));
 
 
-		id<Txn> txn = [r->txn_class alloc];
+		id<Txn> txn = [r->txn_class palloc];
 		struct row_v12 row = { .scn = p->scn,
 				       .tag = p->tag,
 				       .len = p->value_len };
 		[txn prepare:&row data:p->value];
 		[txn commit];
+
 		mark_applied(r, p);
 	}
 }
 
+static void
+msg_dump(const char *prefix, const struct paxos_peer *peer, const struct iproto *msg)
+{
+	const struct msg_paxos *req = (struct msg_paxos *)msg;
+	const char *code = paxos_msg_code[msg->msg_code];
+	say_debug("%s peer:%i/%s sync:%i type:%s SCN:%"PRIi64" ballot:%"PRIu64" tag:%s",
+		  prefix, peer->id, peer->name, msg->sync, code, req->scn, req->ballot, xlog_tag_to_a(req->tag));
+	say_debug2("|  tag:%s value_len:%i value:%s", xlog_tag_to_a(req->tag), req->value_len,
+		   tbuf_to_hex(&TBUF(req->value, req->value_len, fiber->pool)));
+}
 
 static void
 learner(struct iproto *msg, struct conn *c)
@@ -692,43 +693,25 @@ learner(struct iproto *msg, struct conn *c)
 	struct paxos_peer *peer = paxos_peer(r, req->peer_id);
 
 	PAXOS_MSG_CHECK(req, c, peer);
-	say_debug("%s: < peer:%i/%s sync:%i type:DECIDE SCN:%"PRIi64" ballot:%"PRIu64" tag:%s",
-		  __func__, peer->id, peer->name, msg->sync, req->scn, req->ballot, xlog_tag_to_a(req->tag));
-	say_debug2("|  tag:%s value_len:%i value:%s", xlog_tag_to_a(req->tag), req->value_len,
-		   tbuf_to_hex(&TBUF(req->value, req->value_len, fiber->pool)));
 
+	msg_dump("learner: <", peer, msg);
 
 	if (req->peer_id == self_id)
 		return;
 
-	if (req->scn <= r->app_scn) {
-		say_warn("%s: SCN:%"PRIi64" ignoring stale DECIDE", __func__, req->scn);
+	if (req->scn <= r->app_scn)
 		return;
-	}
 
 	struct proposal *p = proposal(r, req->scn);
 
-	if (p->ballot > req->ballot) {
-		say_warn("%s: SCN:%"PRIi64" ignoring stale DECIDE", __func__, p->scn);
-		return;
-	}
-
-	if (p->flags & P_DECIDED) {
+	if (p->ballot == ULLONG_MAX) {
 		assert(memcmp(req->value, p->value, MIN(req->value_len, p->value_len)) == 0);
 		assert(p->tag == req->tag);
 		return;
 	}
 
-	if (p->flags & P_LOCK) {
-		say_warn("%s: SCN:%"PRIi64" ignoring concurent update", __func__, p->scn);
-		return;
-	}
-
-	plock(p);
-	update_proposal_ballot(p, req->ballot);
 	update_proposal_value(p, req->value_len, req->value, req->tag);
-	p->flags |= P_DECIDED;
-	punlock(p);
+	update_proposal_ballot(p, ULLONG_MAX);
 
 	learn(r, p);
 	maybe_wake_dumper(r, p);
@@ -739,48 +722,40 @@ acceptor(struct iproto *imsg, struct conn *c)
 {
 	struct PaxosRecovery *r = (void *)c->service - offsetof(PaxosRecovery, service);
 	struct msg_paxos *msg = (struct msg_paxos *)imsg;
-	struct proposal *p;
 	struct paxos_request req = { .msg = msg,
 				     .peer = paxos_peer(r, msg->peer_id),
 				     .c = c };
 
 	PAXOS_MSG_CHECK(req.msg, req.c, req.peer);
-	say_debug("%s: SCN:%"PRIi64, __func__, msg->scn);
+
+	msg_dump("acceptor: <", req.peer, imsg);
 
 	if (msg->scn <= r->app_scn) {
-		paxos_reply(&req, STALE, 0);
+		/* the proposal in question was decided too long ago,
+		   no further progress is possible */
+
+		struct proposal *min = RB_MIN(ptree, &r->proposals);
+		if (!min || msg->scn < min->scn) {
+			say_error("STALE SCN:%"PRIi64 " minSCN:%"PRIi64, msg->scn, min ? min->scn : -1);
+			paxos_reply(&req, STALE, 0);
+			return;
+		}
+
+		req.p = proposal(r, msg->scn);
+		assert(req.p->ballot == ULLONG_MAX);
+
+		decided(&req);
 		return;
 	}
 
-	p = req.p = proposal(r, msg->scn);
-	if (p->flags & P_LOCK) {
-		say_warn("%s: SCN:%"PRIi64" ignoring concurent update", __func__, p->scn);
+	req.p = proposal(r, msg->scn);
+	if (req.p->ballot == ULLONG_MAX) {
+		decided(&req);
 		return;
 	}
 
-	if (p->flags & P_DECIDED) {
-		/* if we already knew the value, notify current leader immediately */
-		if (!paxos_leader())
-			decided(&req);
-		return;
-	}
-
-	if (p->ballot > msg->ballot) {
-		nack(&req);
-		return;
-	}
-
-	assert(p->ballot <= msg->ballot);
-	say_debug("%s: < peer:%i/%s type:%s sync:%i SCN:%"PRIi64" ballot:%"PRIu64,
-		  __func__, req.peer->id, req.peer->name, paxos_msg_code[imsg->msg_code],
-		  imsg->sync, msg->scn, msg->ballot);
-	say_debug2("|  tag:%s value_len:%i value:%s", xlog_tag_to_a(msg->tag), msg->value_len,
-		   tbuf_to_hex(&TBUF(msg->value, msg->value_len, fiber->pool)));
-
-	plock(p);
 	switch (imsg->msg_code) {
 	case PREPARE:
-		assert(p->ballot <= msg->ballot);
 		promise(r, &req);
 		break;
 	case ACCEPT:
@@ -789,91 +764,101 @@ acceptor(struct iproto *imsg, struct conn *c)
 	default:
 		assert(false);
 	}
-	punlock(p);
 }
 
 
+static u64 next_ballot(u64 min)
+{
+	/* lower 8 bits is our id (unique in cluster)
+	   high bits - counter */
+
+	assert(min != ULLONG_MAX);
+	u64 ballot = (min & ~0xff) | (self_id & 0xff);
+	do
+		ballot += 0x100;
+	while (ballot < min);
+	return ballot;
+}
 
 static u64
-run_protocol(PaxosRecovery *r, i64 scn, u64 ballot, char *value, u32 value_len, u16 tag)
+run_protocol(PaxosRecovery *r, struct proposal *p, char *value, u32 value_len, u16 tag)
 {
+	assert((tag & ~TAG_MASK) != 0 && (tag & ~TAG_MASK) != TAG_SYS);
 	assert(value_len > 0);
 
 	struct iproto_req *rsp;
 	bool has_old_value = false;
-	int votes;
-	u64 min_ballot = 1;
+	u64 ballot = p->prepare_ballot, nack_ballot = 0;
+	int votes, reply_count;
 
-#ifndef NDEBUG
-	struct proposal *p = proposal(r, scn);
-	assert((p->flags & P_DECIDED) == 0);
-#endif
-
-	say_debug("%s: SCN:%"PRIi64, __func__, scn);
+	say_debug("%s: SCN:%"PRIi64, __func__, p->scn);
 	say_debug2("|  tag:%s value_len:%u value:%s", xlog_tag_to_a(tag), value_len,
 		   tbuf_to_hex(&TBUF(value, value_len, fiber->pool)));
 
 retry:
-	if (!paxos_leader()) { /* FIXME: leadership is required only for leading SCN */
-		say_debug("not a leader, givin up");
-		return 0;
-	}
+	if (p->ballot == ULLONG_MAX)
+		goto decide;
 
-	if (ballot < min_ballot)
-		ballot = ((min_ballot & ~0xff) + 0x100) | (self_id & 0xff);
+	ballot = next_ballot(MAX(ballot, p->ballot));
 
-	assert(ballot > 0);
-	rsp = prepare(r, proposal(r, scn), ballot);
+	rsp = prepare(r, p, ballot);
 	if (rsp == NULL) {
 		fiber_sleep(0.01);
 		goto retry;
 	}
 
-	say_debug("PREPARE reply SCN:%"PRIi64, scn);
+	say_debug("PREPARE reply sync:%i SCN:%"PRIi64, rsp->sync, p->scn);
 	struct msg_paxos *max = NULL;
-	votes = 0;
+	reply_count = votes = 0;
 	FOREACH_REPLY(rsp, reply) {
+		reply_count++;
 		struct msg_paxos *mp = (struct msg_paxos *)reply;
+		say_debug("|  %s SCN:%"PRIi64" ballot:%"PRIu64" value_len:%i",
+			  paxos_msg_code[mp->header.msg_code], mp->scn, mp->ballot, mp->value_len);
+
 		switch(reply->msg_code) {
 		case NACK:
-			say_debug("|  NACK SCN:%"PRIi64" ballot:%"PRIu64, mp->scn, mp->ballot);
-			assert(mp->ballot > ballot);
-			min_ballot = mp->ballot;
+			nack_ballot = mp->ballot;
 			break;
 		case PROMISE:
-			say_debug("|  PROMISE SCN:%"PRIi64" ballot:%"PRIu64" value_len:%i",
-				  mp->scn, mp->ballot, mp->value_len);
 			votes++;
 			if (mp->value_len > 0 && (max == NULL || mp->ballot > max->ballot))
 				max = mp;
-
 			break;
 		case DECIDE:
-			say_debug("|  DECIDE SCN:%"PRIi64" ballot:%"PRIu64" value_len:%i",
-				  mp->scn, mp->ballot, mp->value_len);
-			/* some other leader already decided on value */
-
-			struct proposal *p = proposal(r, scn);
-			if (p->flags & P_LOCK)
-				return 0;
-			plock(p);
-			update_proposal_ballot(p, ULLONG_MAX);
 			update_proposal_value(p, mp->value_len, mp->value, mp->tag);
-			p->flags |= P_DECIDED;
-			punlock(p);
+			update_proposal_ballot(p, ULLONG_MAX);
 			req_release(rsp);
-			return 0;
-		case STALE:
-			giveup_leadership();
-			return 0;
+			goto decide;
+		case STALE: {
+			struct paxos_peer *p;
+			SLIST_FOREACH(p, &r->group, link) {
+				if (p->id == self_id)
+					continue;
 
+				say_debug("feeding from %s", p->name);
+				XLogPuller *puller = [[XLogPuller alloc] init_addr:&p->feeder_addr];
+				[r recover_follow_remote:puller exit_on_eof:true];
+				[puller free];
+				break;
+			}
+			return 0;
+		}
 		default:
 			assert(false);
 		}
 	}
+	if (reply_count == 0)
+		say_debug("|  SCN:%"PRIi64" EMPTY", p->scn);
 
 	if (votes < quorum) {
+		if (nack_ballot > ballot) { /* we have a hint about ballot */
+			assert(nack_ballot != ULLONG_MAX);
+			ballot = nack_ballot;
+		}
+
 		req_release(rsp);
+		fiber_sleep(0.001 * rand() / RAND_MAX);
 		goto retry;
 	}
 
@@ -881,7 +866,7 @@ retry:
 	{
 		has_old_value = 1;
 		say_debug("has REMOTE value for SCN:%"PRIi64" value_len:%i value:%s",
-			  scn, max->value_len,
+			  p->scn, max->value_len,
 			  tbuf_to_hex(&TBUF(max->value, max->value_len, fiber->pool)));
 
 		value = salloc(max->value_len);
@@ -891,130 +876,64 @@ retry:
 	}
 	req_release(rsp);
 
-
-	rsp = propose(r, ballot, scn, value, value_len, tag);
+	rsp = propose(r, ballot, p->scn, value, value_len, tag);
 	if (rsp == NULL)
 		goto retry;
 
-	votes = 0;
+	say_debug("PROPOSE reply sync:%i SCN:%"PRIi64, rsp->sync, p->scn);
+	reply_count = votes = 0;
 	FOREACH_REPLY(rsp, reply) {
-		if (reply->msg_code == ACCEPTED) {
-			say_debug("|  ACCEPTED SCN:%"PRIi64, scn);
+		reply_count++;
+		struct msg_paxos *mp = (struct msg_paxos *)reply;
+		say_debug("|  %s SCN:%"PRIi64" ballot:%"PRIu64" value_len:%i",
+			  paxos_msg_code[mp->header.msg_code], mp->scn, mp->ballot, mp->value_len);
+
+		switch (reply->msg_code) {
+		case ACCEPTED:
 			votes++;
-		} else {
-			say_debug("|  XXXXX%i SCN:%"PRIi64, reply->msg_code, scn);
+			break;
+		case DECIDE:
+			update_proposal_value(p, mp->value_len, mp->value, mp->tag);
+			update_proposal_ballot(p, ULLONG_MAX);
+			req_release(rsp);
+			goto decide;
+			break;
+		case NACK:
+			nack_ballot = mp->ballot;
+			break;
 		}
 	}
+	if (reply_count == 0)
+		say_debug("|  SCN:%"PRIi64" EMPTY", p->scn);
+
 	req_release(rsp);
 
-	if (votes < quorum)
+	if (votes < quorum) {
+		if (nack_ballot > ballot) { /* we have a hint about ballot */
+			assert(nack_ballot != ULLONG_MAX);
+			ballot = nack_ballot;
+		}
+
+		req_release(rsp);
+		fiber_sleep(0.001 * rand() / RAND_MAX);
 		goto retry;
-
-	paxos_broadcast(r, DECIDE, 0, scn, ballot, value, value_len, tag);
-	return has_old_value ? 0 : ballot;
-}
-
-
-static i64 follow_scn;
-static int
-follow_from(PaxosRecovery *r, i64 scn)
-{
-	if (follow_scn > 0)
-		return 0;
-	follow_scn = scn;
-	fiber_wake(r->follower, NULL);
-	return 1;
-}
-
-static void
-follow_leader_fib(va_list ap)
-{
-	PaxosRecovery *r = va_arg(ap, PaxosRecovery *);
-	XLogPuller *puller = [[XLogPuller alloc] init];
-	struct paxos_peer *leader;
-loop:
-	for (;;) {
-		@try {
-			follow_scn = 0;
-			yield();
-
-			while (!(leader = paxos_peer(r, leader_id)))
-				fiber_sleep(0.1);
-
-			say_info("follow_leader: SCN:%"PRIi64 " feeder:%s", follow_scn, sintoa(&leader->feeder_addr));
-
-			i64 initial_scn = follow_scn <= 1024 ? 1 : follow_scn - 1024,
-				max_scn = r->max_scn;
-			while ([puller handshake:&leader->feeder_addr scn:initial_scn] <= 0)
-				fiber_sleep(0.1);
-
-			for (;;) {
-				const struct row_v12 *row;
-
-				if ([puller recv] < 0)
-					break; /* reconnect on -[abort_recv] */
-
-				while ((row = [puller fetch_row])) {
-					if (row->tag != wal_tag && row->tag != run_crc && row->tag != nop)
-						continue;
-
-					if (row->scn == max_scn) {
-						say_warn("exit on max SCN:%"PRIi64
-							 " rSCN:%"PRIi64
-							 " rappSCN:%"PRIi64
-							 " rmaxSCN:%"PRIi64,
-							 max_scn, [r scn], r->app_scn, r->max_scn);
-						[puller close];
-						fiber_sleep(3);
-						goto loop;
-					}
-
-					if (row->scn <= r->app_scn)
-						continue;
-
-					struct proposal *p = proposal(r, row->scn);
-					if (p->flags & (P_LOCK|P_PRE_LOCK)) {
-						say_warn("%s: skipping locked SCN:%"PRIi64, __func__, p->scn);
-						continue;
-					}
-					if (p->flags & P_DECIDED)
-						assert(p->value_len == row->len &&
-						       p->tag == row->tag &&
-						       !memcmp(p->value, row->data, row->len));
-					plock(p);
-					update_proposal_ballot(p, ULLONG_MAX);
-					update_proposal_value(p, row->len, (char *)row->data, row->tag);
-					p->flags |= P_DECIDED;
-					punlock(p);
-					learn(r, p);
-
-					if ((row->scn % 10000) == 0)
-						fiber_gc();
-				}
-			}
-		}
-		@catch (Error *e) {
-			say_error("replication failure: %s", e->reason);
-			[puller close];
-			fiber_sleep(1);
-		}
-		@finally {
-			fiber_gc();
-		}
 	}
-	[puller free];
+
+	paxos_broadcast(r, DECIDE, 0, p->scn, ballot, value, value_len, tag);
+	if (has_old_value)
+		sfree(value);
+	return has_old_value ? 0 : ballot;
+
+decide:
+	if (p->tag == tag &&
+	    p->value_len == value_len &&
+	    memcmp(p->value, value, value_len) == 0 &&
+	    p->flags != P_APPLIED)
+		return p->ballot; /* somebody just decided on our value for us */
+	else
+		return 0;
 }
 
-static void
-close_with_nop(PaxosRecovery *r, struct proposal *p)
-{
-	say_debug("%s: SCN:%"PRIi64, __func__, p->scn);
-	assert((p->flags & P_PRE_LOCK) == 0);
-	p->flags |= P_PRE_LOCK;
-	u64 ballot = MAX(p->ballot, p->pre_ballot);
-	run_protocol(r, p->scn, ballot, "\0\0", 2, nop);
-	p->flags &= ~P_PRE_LOCK;
-}
 
 static struct mbox wal_dumper_mbox;
 
@@ -1041,38 +960,46 @@ loop:
 	fiber_gc(); /* NB: put comment */
 
 	p = RB_MIN(ptree, &r->proposals);
+	say_debug("wal_dump SCN:%"PRIi64 " appSCN:%"PRIi64 " maxSCN:%"PRIi64,
+		  [r scn], r->app_scn, r->max_scn);
+
 	while (p && p->flags & P_CLOSED) {
-		say_debug2("wal_dump:  % 8"PRIi64" CLOSED", p->scn);
+		say_debug2("|  % 8"PRIi64" CLOSED", p->scn);
 		p = RB_NEXT(ptree, &r->proposals, p);
 	}
 
 	while (p && p->scn <= r->app_scn) {
-		assert(p->flags & P_DECIDED);
-		say_debug2("wal_dump:  % 8"PRIi64" APPLIED", p->scn);
+		assert(p->ballot == ULLONG_MAX);
+		assert(p->flags & P_APPLIED);
+		say_debug2("|  % 8"PRIi64" APPLIED", p->scn);
 		assert([r scn] + 1 == p->scn);
-		if ([r submit:p->value len:p->value_len scn:p->scn tag:p->tag] != 1)
-			panic("give up");
+		/* TODO: batch write */
+		if ([r submit:p->value len:p->value_len scn:p->scn tag:p->tag] != 1) {
+			say_error("unable to writer wal row");
+			goto loop;
+		}
+		if (p->tag == (run_crc | TAG_WAL))
+			[r verify_run_crc:&TBUF(p->value, p->value_len, NULL)];
+
 
 		p->flags |= P_CLOSED;
 		p = RB_NEXT(ptree, &r->proposals, p);
 	}
 
-	if (!paxos_leader() && p) {
-		if ((p->scn > r->app_scn && ev_now() - p->tstamp > 1) ||
-		    r->max_scn - [r scn] > cfg.wal_writer_inbox_size * 1.1)
-		{
-			if (follow_scn == 0) {
-				say_info("wal_dump: requesting follow, SCN delay:%.2f gap:%"PRIu64,
-					 ev_now() - p->tstamp, r->max_scn - [r scn]);
-				follow_from(r, [r scn]);
+	if (!paxos_leader()) {
+		bool delay_too_big = p && ev_now() - p->tstamp > 1;
+		bool too_many_not_applied = r->max_scn - [r scn] > cfg.wal_writer_inbox_size * 1.1;
+		if (delay_too_big || too_many_not_applied) {
+			/* if we run protocol on recent proposals we
+			   will interfere with current leader */
+			for (;;) {
+				struct proposal *next = RB_NEXT(ptree, &r->proposals, p);
+				if (!next || ev_now() - next->tstamp > 0.2)
+					break;
+				p = next;
 			}
+			catchup(r, p->scn);
 		}
-	}
-
-	while (p) {
-		say_debug2("wal_dump:  % 8"PRIi64" %s", p->scn,
-			  p->flags & P_DECIDED ? "DECIDED" : "");
-		p = RB_NEXT(ptree, &r->proposals, p);
 	}
 
 	expire_proposal(r);
@@ -1081,30 +1008,25 @@ loop:
 
 
 static void
-leader_catchup(PaxosRecovery *r)
+close_with_nop(PaxosRecovery *r, struct proposal *p)
 {
-	say_debug("%s: SCN:%"PRIi64 " max_scn:%"PRIi64, __func__, [r scn], r->max_scn);
+	say_debug("%s: SCN:%"PRIi64, __func__, p->scn);
+	assert(p->ballot != ULLONG_MAX);
+	run_protocol(r, p, "\0\0", 2, TAG_WAL | nop);
+}
 
-	for (i64 i = r->app_scn + 1; i <= r->max_scn; i++) {
+
+static void
+catchup(PaxosRecovery *r, i64 upto_scn)
+{
+	say_debug("%s: SCN:%"PRIi64 " upte_scn:%"PRIi64, __func__, [r scn], upto_scn);
+
+	for (i64 i = r->app_scn + 1; i <= upto_scn; i++) {
 		struct proposal *p = proposal(r, i);
-
-		while (p->flags & P_PRE_LOCK) {
-			if (!paxos_leader())
-				return;
-
-			fiber_sleep(0.01);
-		}
-
-		while ((p->flags & P_DECIDED) == 0) {
-			if (!paxos_leader())
-				return;
-
+		if (p->ballot != ULLONG_MAX)
 			close_with_nop(r, p);
-		}
 		learn(r, p);
 	}
-	assert(r->app_scn == r->max_scn);
-	catchup_done = 1;
 }
 
 void
@@ -1164,11 +1086,13 @@ init_snap_dir:(const char *)snap_dirname
 
 		say_info("  %s -> %s", c->name, c->addr);
 
-		struct paxos_peer *p = make_paxos_peer(c->id, c->name,
+		const char *name = c->id == self_id ? "self" : c->name;
+		struct paxos_peer *p = make_paxos_peer(c->id, name,
 						       c->addr, c->primary_port, c->feeder_port);
 
 		if (!p)
 			panic("bad addr %s", c->addr);
+
 		SLIST_INSERT_HEAD(&group, p, link);
 		SLIST_INSERT_HEAD(&remotes, &p->iproto, link);
 	}
@@ -1177,7 +1101,51 @@ init_snap_dir:(const char *)snap_dirname
 		panic("unable to find myself among paxos peers");
 
 	output_flusher = fiber_create("paxos/output_flusher", service_output_flusher);
-	reply_reader = fiber_create("paxos/reply_reader", iproto_reply_reader, req_collect_reply);
+
+	fiber_create("paxos/stat", paxos_stat, self);
+	return self;
+}
+
+- (void)
+enable_local_writes
+{
+	say_debug("%s", __func__);
+	[self recover_finalize];
+	local_writes = true;
+
+	if (scn != 0)
+		[self configure_wal_writer];
+
+	for (;;) {
+		struct paxos_peer *p;
+		SLIST_FOREACH(p, &group, link) {
+			if (p->id == self_id)
+				continue;
+
+			say_debug("feeding from %s", p->name);
+			XLogPuller *puller = [[XLogPuller alloc] init_addr:&p->feeder_addr];
+			[self recover_follow_remote:puller exit_on_eof:true];
+			[puller free];
+			if ([self scn] > 0)
+				goto exit;
+		}
+		fiber_sleep(1);
+	}
+exit:
+	if (!configured)
+		[self configure_wal_writer];
+
+	app_scn = scn;
+
+	/* boot from initial state or from non paxos xlogs
+	   there is no TAG_SYS records => we don't create any proposals => max_scn == 0 */
+	if (max_scn == 0)
+		max_scn = scn;
+
+	struct proposal *min = RB_MIN(ptree, &self->proposals);
+	say_info("SCN:%"PRIi64" minSCN:%"PRIi64" appSCN:%"PRIi64" maxSCN:%"PRIi64,
+		 scn, min ? min->scn : -1, app_scn, max_scn);
+	strcpy(status, "active");
 
 	short accept_port;
 	accept_port = ntohs(paxos_peer(self, self_id)->iproto.addr.sin_port);
@@ -1190,46 +1158,12 @@ init_snap_dir:(const char *)snap_dirname
 	for (int i = 0; i < 3; i++)
 		fiber_create("paxos/worker", iproto_worker, &service);
 
+	reply_reader = fiber_create("paxos/reply_reader", iproto_reply_reader, req_collect_reply);
 	fiber_create("paxos/rendevouz", iproto_rendevouz, NULL, &remotes, reply_reader, output_flusher);
 	fiber_create("paxos/elect", propose_leadership, self);
-	follower = fiber_create("paxos/follower", follow_leader_fib, self);
+
 	mbox_init(&wal_dumper_mbox);
 	wal_dumper = fiber_create("paxos/wal_dump", wal_dumper_fib, self);
-
-	fiber_create("paxos/stat", paxos_stat, self);
-	return self;
-}
-
-- (void)
-enable_local_writes
-{
-	say_debug("%s", __func__);
-	[self recover_finalize];
-	local_writes = true;
-	app_scn = max_scn = scn;
-
-	if ([self scn] == 0) {
-		for (;;) {
-			struct paxos_peer *p;
-			SLIST_FOREACH(p, &group, link) {
-				if (p->id == self_id)
-					continue;
-
-				say_debug("feeding from %s", p->name);
-				XLogPuller *puller = [[XLogPuller alloc] init_addr:&p->feeder_addr];
-				[self recover_follow_remote:puller exit_on_eof:true];
-				[puller free];
-				if ([self scn] > 0)
-					goto out;
-			}
-			fiber_sleep(1);
-		}
-	} else {
-		[self configure_wal_writer];
-	}
-out:
-	say_info("Loaded");
-	strcpy(status, "active");
 }
 
 - (bool)
@@ -1295,28 +1229,11 @@ submit:(void *)data len:(u32)len tag:(u16)tag
 	@try {
 		i64 cur_scn = [self next_scn];
 		struct proposal *p = proposal(self, cur_scn);
-		assert((p->flags & P_PRE_LOCK) == 0);
-		p->flags |= P_PRE_LOCK;
-		u64 ballot = run_protocol(self, cur_scn, MAX(p->ballot, p->pre_ballot),
-					  data, len, tag);
-
-		p->flags &= ~P_PRE_LOCK;
+		u64 ballot = run_protocol(self, p, data, len, tag);
 
 		if (ballot) {
-			while (p->flags & P_LOCK) {
-				say_debug("%s: locked", __func__);
-				assert(p->waiter == NULL);
-				p->waiter = fiber;
-				yield();
-			}
-
-			assert(ballot >= p->ballot); /* FIXME: check for value eq */
-
-			plock(p);
-			update_proposal_ballot(p, ballot);
 			update_proposal_value(p, len, data, tag);
-			p->flags |= P_DECIDED;
-			punlock(p);
+			update_proposal_ballot(p, ULLONG_MAX);
 
 			mark_applied(self, p);
 			maybe_wake_dumper(self, p);
@@ -1365,62 +1282,75 @@ recover_row:(const struct row_v12 *)r
 		  r->lsn, r->scn, xlog_tag_to_a(r->tag));
 
 	struct tbuf buf;
-	struct proposal *p = NULL, *tmp;
+	struct proposal *p = NULL;
 	u64 ballot;
 
-	switch (r->tag) {
-	case paxos_prepare:
-		lsn = r->lsn;
-		buf = TBUF(r->data, r->len, NULL);
-		ballot = read_u64(&buf);
-		p = proposal(self, r->scn);
-		p->flags |= P_PRE_LOCK;
-		update_proposal_pre_ballot(p, ballot);
-		p->flags &= ~P_PRE_LOCK;
-		break;
+	int tag = r->tag & TAG_MASK;
+	int tag_type = r->tag & ~TAG_MASK;
 
-	case paxos_promise:
-	case paxos_nop:
-		lsn = r->lsn;
-		buf = TBUF(r->data, r->len, NULL);
-		ballot = read_u64(&buf);
-		p = proposal(self, r->scn);
-		plock(p);
-		update_proposal_ballot(p, ballot);
-		punlock(p);
-		break;
+	switch (tag_type) {
+	case TAG_SYS:
+		switch (tag) {
+		case paxos_prepare:
+			lsn = r->lsn;
+			buf = TBUF(r->data, r->len, NULL);
+			ballot = read_u64(&buf);
+			p = proposal(self, r->scn);
+			p->prepare_ballot = ballot;
+			break;
 
-	case paxos_accept:
-	case paxos_propose:
-		lsn = r->lsn;
-		buf = TBUF(r->data, r->len, NULL);
-		ballot = read_u64(&buf);
-		u16 tag = read_u16(&buf);
-		u32 value_len = read_u32(&buf);
-		void *value = read_bytes(&buf, value_len);
-		p = proposal(self, r->scn);
-		plock(p);
-		update_proposal_value(p, value_len, value, tag);
-		punlock(p);
-		break;
+		case paxos_promise:
+		case paxos_nop:
+			lsn = r->lsn;
+			buf = TBUF(r->data, r->len, NULL);
+			ballot = read_u64(&buf);
+			p = proposal(self, r->scn);
+			if (p->ballot < ballot)
+				update_proposal_ballot(p, ballot);
+			break;
+
+		case paxos_accept:
+		case paxos_propose:
+			lsn = r->lsn;
+			buf = TBUF(r->data, r->len, NULL);
+			ballot = read_u64(&buf);
+			u16 tag = read_u16(&buf);
+			u32 value_len = read_u32(&buf);
+			const u8 *value = read_bytes(&buf, value_len);
+			p = proposal(self, r->scn);
+			if (p->ballot <= ballot) {
+				update_proposal_ballot(p, ballot);
+				update_proposal_value(p, value_len, value, tag);
+			}
+			break;
+		default:
+			[super recover_row:r];
+			break;
+		}
+		return;
+
+	case TAG_SNAP:
+		[super recover_row:r];
+		return;
 
 	default:
+		p = proposal(self, r->scn);
+		update_proposal_value(p, r->len, r->data, r->tag);
+		update_proposal_ballot(p, ULLONG_MAX);
+		p->flags |= P_CLOSED;
+
+		if (r->scn == next_skip_scn) {
+			p->flags |= P_APPLIED;
+			next_skip_scn = tbuf_len(&skip_scn) > 0 ?
+					read_u64(&skip_scn) : 0;
+			return;
+		}
+
 		[super recover_row:r];
 		break;
 	}
 
-	if (p && p->scn == next_skip_scn) {
-		p->flags |= P_APPLIED;
-
-		next_skip_scn = tbuf_len(&skip_scn) > 0 ?
-				read_u64(&skip_scn) : 0;
-	}
-
-	RB_FOREACH_SAFE(p, ptree, &proposals, tmp) {
-		if (r->scn - p->scn > 8)
-			break;
-		delete_proposal(self, p);
-	}
+	expire_proposal(self);
 }
 
 - (i64) next_scn { return ++max_scn; }
@@ -1442,7 +1372,7 @@ paxos_print(struct tbuf *out,
 	    void (*handler)(struct tbuf *out, u16 tag, struct tbuf *row),
 	    const struct row_v12 *row)
 {
-	u16 tag = row->tag, inner_tag;
+	u16 tag = row->tag & TAG_MASK, inner_tag;
 	struct tbuf b = TBUF(row->data, row->len, fiber->pool);
 	u64 ballot, value_len;
 
@@ -1461,7 +1391,19 @@ paxos_print(struct tbuf *out,
 		(void)value_len;
 		assert(value_len == tbuf_len(&b));
 		tbuf_printf(out, "ballot:%"PRIi64" it:%s ", ballot, xlog_tag_to_a(inner_tag));
-		handler(out, inner_tag, &b);
+		switch(inner_tag) {
+		case run_crc: {
+			i64 scn = read_u64(&b);
+			u32 log = read_u32(&b);
+			(void)read_u32(&b); /* ignore run_crc_mod */
+			tbuf_printf(out, "SCN:%"PRIi64 " log:0x%08x", scn, log);
+			break;
+		}
+		case nop:
+			break;
+		default:
+			handler(out, inner_tag, &b);
+		}
 		break;
 	}
 }

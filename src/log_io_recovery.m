@@ -95,6 +95,38 @@ dummy_row_lsn:(i64)lsn_ scn:(i64)scn_ tag:(u16)tag
 
 
 - (void)
+verify_run_crc:(struct tbuf *)buf
+{
+	i64 scn_of_crc = read_u64(buf);
+	u32 log = read_u32(buf);
+	read_u32(buf); /* ignore run_crc_mod */
+
+	struct crc_hist *h = NULL;
+	for (unsigned i = crc_hist_i, j = 0; j < nelem(crc_hist); j++, i--) {
+		struct crc_hist *p = &crc_hist[i % nelem(crc_hist)];
+		if (p->scn == scn_of_crc) {
+			h = p;
+			break;
+		}
+	}
+
+	if (!h) {
+		say_warn("unable to track run_crc: crc history too short"
+			 " SCN:%"PRIi64" CRC_SCN:%"PRIi64, scn, scn_of_crc);
+		return;
+	}
+
+	if (h->log != log) {
+		run_crc_log_mismatch |= 1;
+		say_error("run_crc_log mismatch: SCN:%"PRIi64" saved:0x%08x computed:0x%08x",
+			  scn_of_crc, log, h->log);
+	} else {
+		say_info("run_crc verified SCN:%"PRIi64, h->scn);
+	}
+	run_crc_verify_tstamp = ev_now();
+}
+
+- (void)
 fixup:(const struct row_v12 *)r
 {
 	int tag = r->tag & TAG_MASK;
@@ -131,32 +163,7 @@ fixup:(const struct row_v12 *)r
 		if (r->len != sizeof(i64) + sizeof(u32) * 2)
 			break;
 
-		struct tbuf buf = TBUF(r->data, r->len, NULL);
-		i64 scn_of_crc = read_u64(&buf);
-		u32 log = read_u32(&buf);
-		read_u32(&buf); /* ignore run_crc_mod */
-		struct crc_hist *h = NULL;
-		for (unsigned i = crc_hist_i, j = 0; j < nelem(crc_hist); j++, i--) {
-			struct crc_hist *p = &crc_hist[i % nelem(crc_hist)];
-			if (p->scn == scn_of_crc) {
-				h = p;
-				break;
-			}
-		}
-
-		if (!h) {
-			say_warn("unable to track run_crc: crc history too short"
-				 " SCN:%"PRIi64" CRC_SCN:%"PRIi64, scn, scn_of_crc);
-			break;
-		}
-
-		if (h->log != log) {
-			run_crc_log_mismatch |= 1;
-			say_error("run_crc_log mismatch: SCN:%"PRIi64" saved:0x%08x computed:0x%08x",
-				  scn_of_crc, log, h->log);
-		}
-
-		run_crc_verify_tstamp = ev_now();
+		[self verify_run_crc:&TBUF(r->data, r->len, NULL)];
 		break;
 	}
 	}
@@ -609,7 +616,7 @@ pull_wal(Recovery *r, id<XLogPullerAsync> puller)
 		}
 		@catch (Error *e) {
 			panic("Replication failure: %s at %s:%i"
-			      " remote row LSN:%"PRIi64 " SCN:%"PRIi64,
+			      " remote row LSN:%"PRIi64 " SCN:%"PRIi64, /* FIXME: here we primting "fixed" LSN */
 			      e->reason, e->file, e->line,
 			      row->lsn, row->scn);
 		}
