@@ -31,6 +31,9 @@ src/admin.m
 octopus_version.h
 src-lua/registry.m
 scripts/stringify
+mod
+client/*
+!client/*/
 
 # luajit
 third_party/luajit/src/buildvm

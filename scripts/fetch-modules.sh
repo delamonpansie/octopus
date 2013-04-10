@@ -25,9 +25,9 @@ git branch --list client_* | while read branch_name; do
 done
 
 for mod in mod/*; do
-  for client in mod/$mod/client/*; do
-      if [ ! -e "${client##mod/$mod}" -a -e "$client" ]; then
-          ln -s "$client" "${client##mod/$mod}"
+  for client in $mod/client/*; do
+      if [ ! -e "${client##$mod}" -a -e "$client" ]; then
+          ln -s "../$client" "${client##$mod/}"
       fi
   done
 done
