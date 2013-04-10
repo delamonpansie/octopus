@@ -5,8 +5,8 @@ class StandAloneEnv < RunEnv
   ConfigFile = "octopus.cfg"
   PidFile = "octopus.pid"
   LogFile = "octopus.log"
-  Binary = Root + "/octopus"
-  Suppressions = Root + "/scripts/valgrind.supp"
+  Binary = Root + "/../../octopus"
+  Suppressions = Root + "../../scripts/valgrind.supp"
 
   def initialize
     super
@@ -50,8 +50,8 @@ class StandAloneEnv < RunEnv
   task :setup => [:test_root, :config] do
     cd_test_root do
       ln_s Binary, "octopus"
-      ln_s Root + "/.gdbinit", ".gdbinit"
-      ln_s Root + "/.gdb_history", ".gdb_history"
+      ln_s Root + "/../../.gdbinit", ".gdbinit"
+      ln_s Root + "/../../.gdb_history", ".gdb_history"
 
       waitpid(octopus ['--init-storage'], :out => "/dev/null", :err => "/dev/null")
     end

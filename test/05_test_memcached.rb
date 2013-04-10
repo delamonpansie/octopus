@@ -23,6 +23,6 @@ end
 
 Env.clean.with_server do
   ENV["T_MEMD_USE_DAEMON"]="127.0.0.1:33013"
-  result = `prove ../../third_party/memcached/t`
+  result = `prove ../../../../third_party/memcached/t`
   puts result.gsub(/, \d+ wallclock.*/, "")
 end

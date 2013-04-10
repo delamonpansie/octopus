@@ -1,4 +1,4 @@
-$:.push 'mod/box/client/ruby'
+$:.push 'client/ruby'
 require 'silverbox'
 
 class SilverBox
