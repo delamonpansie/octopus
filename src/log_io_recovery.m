@@ -989,7 +989,7 @@ recover_row:(struct row_v12 *)r
 {
 	[super recover_row:r];
 
-	if (r->scn == fold_scn) {
+	if (r->scn == fold_scn && (r->tag & ~TAG_MASK) == TAG_WAL) {
 		if ([self respondsTo:@selector(snapshot_fold)])
 			exit([self snapshot_fold]);
 		exit([self snapshot_write]);
