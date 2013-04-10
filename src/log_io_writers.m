@@ -178,7 +178,7 @@ wal_pack_submit
 
 	/* update recovery state */
 	lsn = reply->lsn;
-	scn = reply->scn;
+	scn = reply->scn; /* only TAG_WAL rows affect reply->scn & reply->run_crc */
 	run_crc_log = reply->run_crc;
 	crc_hist[++crc_hist_i % nelem(crc_hist)] = (struct crc_hist){ scn, run_crc_log };
 
