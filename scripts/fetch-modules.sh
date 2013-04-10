@@ -19,7 +19,7 @@ git branch --list mod_* | while read branch_name; do
 done
 
 git branch --list client_* | while read branch_name; do
-    if [ ! -e mod/${branch_name##client_} ]; then
+    if [ ! -e client/${branch_name##client_} ]; then
         git clone -q --branch $branch_name . client/${branch_name##client_}
     fi
 done
