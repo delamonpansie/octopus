@@ -34,9 +34,7 @@
 #import <tbuf.h>
 #import <net_io.h>
 #import <assoc.h>
-#ifdef PAXOS
 #import <paxos.h>
-#endif
 #import <iproto.h>
 
 #include <third_party/crc32.h>
@@ -63,10 +61,8 @@ alloc
 	if (cfg.wal_writer_inbox_size == 0)
 		return [NoWALRecovery alloc];
 
-#ifdef PAXOS
 	if (cfg.paxos_enabled)
 		return [PaxosRecovery alloc];
-#endif
 
 ours:
 	return [super alloc];
@@ -1051,14 +1047,12 @@ print_gen_row(struct tbuf *out, const struct row_v12 *row,
 	}
 	case nop:
 		break;
-#ifdef PAXOS
 	case paxos_prepare:
 	case paxos_promise:
 	case paxos_propose:
 	case paxos_accept:
 		paxos_print(out, handler, row);
 		break;
-#endif
 	default:
 		handler(out, row->tag, &row_data);
 	}

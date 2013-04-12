@@ -78,10 +78,6 @@ subdirs += third_party cfg src src-lua
 sub-Makefile = $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
 -include $(sub-Makefile)
 
-ifneq ($(findstring src/paxos.o,$(obj)),)
-  %.o: CFLAGS += -DPAXOS
-endif
-
 octopus: $(obj)
 	$E "CC	$@"
 	$Q$(CC) $(LDFLAGS) $^ $(LIBS) -o $@
