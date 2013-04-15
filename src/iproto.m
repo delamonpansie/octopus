@@ -252,7 +252,7 @@ iproto_wakeup_workers(ev_prepare *ev)
 		handle_c(service, c);
 	}
 
-		struct conn *last = TAILQ_LAST(&service->processing, conn_tailq);
+	struct conn *last = TAILQ_LAST(&service->processing, conn_tailq);
 	do {
 		c = TAILQ_FIRST(&service->processing);
 		if (!c)
