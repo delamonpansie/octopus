@@ -161,9 +161,10 @@ service_iproto(struct service *s)
 }
 
 static int
-handle_c(struct service *service, struct conn *c)
+process_requests(struct conn *c)
 {
-	int batch = cfg.wal_writer_inbox_size / 8;
+	struct service *service = c->service;
+	int batch = service->batch;
 	struct netmsg *m = NULL;
 	int r = 0;
 
@@ -249,7 +250,7 @@ iproto_wakeup_workers(ev_prepare *ev)
 		c = TAILQ_FIRST(&service->processing);
 		if (!c)
 			break;
-		handle_c(service, c);
+		process_requests(c);
 	}
 
 	struct conn *last = TAILQ_LAST(&service->processing, conn_tailq);
@@ -257,7 +258,7 @@ iproto_wakeup_workers(ev_prepare *ev)
 		c = TAILQ_FIRST(&service->processing);
 		if (!c)
 			break;
-		handle_c(service, c);
+		process_requests(c);
 	} while (c != last);
 
 	if (palloc_diff_allocated(service->pool) > 64 * 1024 * 1024)

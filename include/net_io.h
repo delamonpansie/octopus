@@ -123,6 +123,7 @@ struct service {
 	LIST_HEAD(, conn) conn;
 	struct fiber *acceptor, *input_reader, *output_flusher;
 	SLIST_HEAD(, fiber) workers; /* <- handlers */
+	int batch;
 	ev_prepare wakeup;
 	struct iproto_handler ih[256];
 };

@@ -969,6 +969,7 @@ tcp_service(struct service *service, u16 port, void (*on_bind)(int fd), void (*w
 	TAILQ_INIT(&service->processing);
 	service->pool = palloc_create_pool(name);
 	service->name = name;
+	service->batch = 64;
 
 	palloc_register_gc_root(service->pool, service, service_gc);
 
