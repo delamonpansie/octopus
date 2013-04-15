@@ -35,6 +35,11 @@ ifeq ($(binary_type),)
   $(error binary_type must be defined)
 endif
 
+# some modules might be built without paxos
+ifneq ($(findstring src/paxos.o,$(obj)),)
+  src/log_io_recovery.o: CFLAGS += -DPAXOS
+endif
+
 disable-warns-obj += src/octopus_ev.o
 src/octopus_ev.o: CFLAGS += -U_FORTIFY_SOURCE
 ifeq (1,$(HAVE_CC_FLAG_W_NO_COMMENT))
