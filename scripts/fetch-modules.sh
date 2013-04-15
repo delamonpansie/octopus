@@ -26,7 +26,7 @@ done
 
 for mod in mod/*; do
   for client in $mod/client/*; do
-      if [ ! -e "${client##$mod}" -a -e "$client" ]; then
+      if [ ! -e "${client##$mod/}" -a -e "$client" ]; then
           ln -s "../$client" "${client##$mod/}"
       fi
   done
