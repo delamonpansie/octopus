@@ -1,15 +1,12 @@
 binary_type = STORAGE
 
 obj += src/admin.o
+obj += src/paxos.o
 obj += mod/box/box.o
 obj += mod/box/moonbox.o
 obj += mod/box/tuple_index.o
 obj += mod/box/memcached.o
 obj += third_party/qsort_arg.o
-
-ifeq ($(PAXOS),1)
-  obj += src/paxos.o
-endif
 
 src-lua += mod/box/src-lua/box.lua
 src-lua += mod/box/src-lua/box_prelude.lua
