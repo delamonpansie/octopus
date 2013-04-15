@@ -6,10 +6,7 @@ obj += src/net_io.o
 obj += src/coro.o
 obj += src/fiber.o
 obj += src/iproto.o
-obj += src/log_io.o
-obj += src/log_io_writers.o
-obj += src/log_io_recovery.o
-obj += src/log_io_puller.o
+
 obj += src/palloc.o
 obj += src/pickle.o
 obj += src/salloc.o
@@ -21,6 +18,11 @@ obj += src/util.o
 obj += src/assoc.o
 obj += src/octopus.o
 obj += src/errcode.o
+
+obj-log-io += src/log_io.o
+obj-log-io += src/log_io_writers.o
+obj-log-io += src/log_io_recovery.o
+obj-log-io += src/log_io_puller.o
 
 ifeq (1,$(HAVE_RAGEL))
 	dist-clean += src/admin.m
