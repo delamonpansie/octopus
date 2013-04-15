@@ -1,7 +1,9 @@
 binary_type = STORAGE
 
 obj += src/admin.o
+obj += $(obj-log-io)
 obj += src/paxos.o
+
 obj += mod/box/box.o
 obj += mod/box/moonbox.o
 obj += mod/box/tuple_index.o
