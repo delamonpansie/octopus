@@ -235,7 +235,6 @@ net_add_ref_iov(struct netmsg **m, struct tnt_object *obj, const void *buf, size
 		enlarge(m);
 }
 
-extern const char *netmsglib_name;
 void
 net_add_lua_iov(struct netmsg **m, lua_State *L, int str)
 {
