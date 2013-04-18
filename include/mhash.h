@@ -131,11 +131,11 @@ struct mhash_t {
 MH_DECL struct mhash_t * _mh(init)(void *(*custom_realloc)(void *, size_t));
 static inline mh_key_t _mh(key)(struct mhash_t *h, uint32_t i);
 static inline mh_val_t _mh(value)(struct mhash_t *h, uint32_t i);
-static inline uint32_t _mh(get)(struct mhash_t *h, mh_key_t key);
+static inline uint32_t _mh(get)(struct mhash_t *h, const mh_key_t key);
 static inline uint32_t _mh(put)(struct mhash_t *h, mh_key_t key, mh_val_t val, int *ret);
 static inline uint32_t _mh(put_node)(struct mhash_t *h, struct index_node *node);
 static inline uint32_t _mh(get_node)(struct mhash_t *h, struct index_node *node);
-static inline uint32_t _mh(get_slot)(struct mhash_t *h, mh_key_t key);
+static inline uint32_t _mh(get_slot)(struct mhash_t *h, const mh_key_t key);
 static inline uint32_t _mh(put_slot)(struct mhash_t *h, mh_key_t key);
 static inline void _mh(del)(struct mhash_t *h, uint32_t x);
 MH_DECL void mh_clear(struct mhash_t *h);
@@ -183,7 +183,7 @@ _mh(exist)(struct mhash_t *h, mh_key_t key)
 }
 
 static inline uint32_t
-_mh(get_slot)(struct mhash_t *h, mh_key_t key)
+_mh(get_slot)(struct mhash_t *h, const mh_key_t key)
 {
 	uint32_t inc, k, i;
 	k = mh_hash(key);
@@ -271,7 +271,7 @@ next_slot:
 
 
 static inline uint32_t
-_mh(get)(struct mhash_t *h, mh_key_t key)
+_mh(get)(struct mhash_t *h, const mh_key_t key)
 {
 	uint32_t i = _mh(get_slot)(h, key);
 	if (!mh_exist(h, i))
