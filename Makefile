@@ -25,3 +25,5 @@ endif
 cfg_tmpl += cfg/log_io.cfg_tmpl
 cfg_tmpl += mod/box/box.cfg_tmpl
 cfg_tmpl += cfg/paxos.cfg_tmpl
+
+-include ../../jumproot.mk

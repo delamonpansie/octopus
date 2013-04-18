@@ -113,105 +113,6 @@ luaT_toboxtuple(struct lua_State *L, int table)
 #endif
 
 
-
-const char *netmsg_metaname = "Tarantool.netmsg";
-const char *netmsgpromise_metaname = "Tarantool.netmsg.promise";
-
-static int
-luaT_pushnetmsg(struct lua_State *L)
-{
-	struct netmsg_head *h = lua_newuserdata(L, sizeof(struct netmsg_head));
-	luaL_getmetatable(L, netmsg_metaname);
-	lua_setmetatable(L, -2);
-
-	TAILQ_INIT(&h->q);
-	h->pool = NULL;
-	h->bytes = 0;
-	return 1;
-}
-
-static struct netmsg_head *
-luaT_checknetmsg(struct lua_State *L, int i)
-{
-	return luaL_checkudata(L, i, netmsg_metaname);
-}
-
-static int
-netmsg_gc(struct lua_State *L)
-{
-	struct netmsg_head *h = luaT_checknetmsg(L, 1);
-	struct netmsg *m, *tmp;
-
-	TAILQ_FOREACH_SAFE(m, &h->q, link, tmp)
-		netmsg_release(m);
-	return 0;
-}
-
-static int
-netmsg_add_iov(struct lua_State *L)
-{
-	struct netmsg_head *h = luaT_checknetmsg(L, 1);
-	struct netmsg *m = netmsg_tail(h);
-
-	switch (lua_type (L, 2)) {
-	case LUA_TNIL:
-		lua_createtable(L, 2, 0);
-		luaL_getmetatable(L, netmsgpromise_metaname);
-		lua_setmetatable(L, -2);
-
-		struct iovec *v = net_reserve_iov(&m);
-		lua_pushlightuserdata(L, v);
-		lua_rawseti(L, -2, 1);
-
-		lua_pushvalue(L, 1);
-		lua_rawseti(L, -2, 2);
-		return 1;
-
-	case LUA_TSTRING:
-		net_add_lua_iov(&m, L, 2);
-		return 0;
-
-	case LUA_TUSERDATA: {
-		struct tnt_object *obj = *(void **)luaL_checkudata(L, 2, objectlib_name);
-		struct box_tuple *tuple = box_tuple(obj);
-		net_add_ref_iov(&m, obj, &tuple->bsize,
-				tuple->bsize + sizeof(tuple->bsize) +
-				sizeof(tuple->cardinality));
-		return 0;
-	}
-	default:
-		return luaL_argerror(L, 2, "expected nil, string or tuple");
-	}
-}
-
-
-static int
-netmsg_fixup_promise(struct lua_State *L)
-{
-	lua_rawgeti(L, 1, 1);
-	struct iovec *v = lua_touserdata(L, -1);
-	v->iov_base = (char *) luaL_checklstring(L, 2, &v->iov_len);
-	lua_pop(L, 1);
-	lua_rawgeti(L, 1, 2);
-	struct netmsg_head *h = luaT_checknetmsg(L, -1);
-	h->bytes += v->iov_len;
-	return 0;
-}
-
-static const struct luaL_reg netmsg_lib [] = {
-	{"alloc", luaT_pushnetmsg},
-	{"add_iov", netmsg_add_iov},
-	{"fixup_promise", netmsg_fixup_promise},
-	{NULL, NULL}
-};
-
-static const struct luaL_reg netmsg_mt [] = {
-	{"__gc", netmsg_gc},
-	{NULL, NULL}
-};
-
-
-
 static int
 luaT_box_dispatch(struct lua_State *L)
 {
@@ -338,12 +239,6 @@ luaT_openbox(struct lua_State *L)
         lua_setfield(L, -2, "path");
         lua_pop(L, 1);
 
-	luaL_newmetatable(L, netmsgpromise_metaname);
-	luaL_newmetatable(L, netmsg_metaname);
-	luaL_register(L, NULL, netmsg_mt);
-	luaL_register(L, "netmsg", netmsg_lib);
-	lua_pop(L, 3);
-
 	lua_getglobal(L, "string");
 	lua_pushcfunction(L, luaT_pushfield);
 	lua_setfield(L, -2, "tofield");
@@ -390,29 +285,6 @@ luaT_openbox(struct lua_State *L)
 		panic("moonbox: %s", lua_tostring(L, -1));
 }
 
-
-static int
-luaT_find_proc(lua_State *L, char *fname, i32 len)
-{
-	lua_pushvalue(L, LUA_GLOBALSINDEX);
-	do {
-		char *e = memchr(fname, '.', len);
-		if (e == NULL)
-			e = fname + len;
-
-		if (lua_isnil(L, -1))
-			return 0;
-		lua_pushlstring(L, fname, e - fname);
-		lua_gettable(L, -2);
-		lua_remove(L, -2);
-
-		len -= e - fname + 1;
-		fname = e + 1;
-	} while (len > 0);
-	if (lua_isnil(L, -1))
-		return 0;
-	return 1;
-}
 
 void
 box_dispach_lua(struct conn *c, struct iproto *request)
