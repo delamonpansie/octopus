@@ -38,7 +38,6 @@
 #include <sys/uio.h>
 #include <netinet/in.h>
 
-
 struct fiber;
 struct service;
 
