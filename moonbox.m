@@ -298,12 +298,14 @@ box_dispach_lua(struct conn *c, struct iproto *request)
 	u32 nargs = read_u32(&data);
 
 	luaT_pushnetmsg(L);
+	struct netmsg_head *h = lua_touserdata(L, -1); /* safe: we'r keeping own ref */
 
 	if (luaT_find_proc(L, fname, flen) == 0) {
 		lua_pop(L, 1);
 		iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "no such proc: %.*s", flen, fname);
 	}
-	lua_pushvalue(L, 1);
+	lua_pushvalue(L, 1); /* keep ref to netmsg_head */
+
 	for (int i = 0; i < nargs; i++)
 		read_push_field(L, &data);
 
@@ -319,7 +321,6 @@ box_dispach_lua(struct conn *c, struct iproto *request)
 		@throw err;
 	}
 
-	struct netmsg_head *h = luaT_checknetmsg(L, 1);
 	struct netmsg *m = netmsg_tail(&c->out_messages);
 	struct iproto_retcode *reply = iproto_reply(&m, request);
 	reply->data_len += h->bytes;
