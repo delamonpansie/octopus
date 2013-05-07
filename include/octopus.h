@@ -61,14 +61,6 @@ void register_module_(struct tnt_module *);
 	}
 #define foreach_module(m) for (struct tnt_module *m = modules_head; m != NULL; m = m->next)
 
-extern lua_State *root_L;
-struct lua_src {
-	const char *name;
-	const char *start;
-	size_t size;
-};
-extern struct lua_src *lua_src;
-
 extern struct octopus_cfg cfg;
 extern struct tbuf *cfg_out;
 extern const char *cfg_filename;
@@ -104,9 +96,19 @@ static inline bool ghost(struct tnt_object *obj)
 	return obj->flags & GHOST;
 }
 
+
+extern lua_State *root_L;
+struct lua_src {
+	const char *name;
+	const char *start;
+	size_t size;
+};
+extern struct lua_src *lua_src;
+
 const char *objectlib_name;
 void luaT_pushobject(struct lua_State *L, struct tnt_object *obj);
 int luaT_objinit(struct lua_State *L);
 void luaT_dofile(const char *filename);
+int luaT_find_proc(lua_State *L, char *fname, i32 len);
 
 #endif

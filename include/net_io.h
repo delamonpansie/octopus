@@ -181,4 +181,8 @@ int atosin(const char *orig, struct sockaddr_in *addr);
 const char *sintoa(const struct sockaddr_in *addr);
 void service_info(struct tbuf *out, struct service *service);
 
+
+void luaT_opennet(struct lua_State *L);
+int luaT_pushnetmsg(struct lua_State *L);
+
 #endif

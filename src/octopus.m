@@ -371,6 +371,7 @@ luaT_init()
 	lua_register(L, "print", luaT_print);
 
 	luaT_openfiber(L);
+	luaT_opennet(L);
 
 	lua_getglobal(L, "package");
 	lua_getfield(L, -1, "loaders");
@@ -398,6 +399,29 @@ luaT_init()
 		panic("lua_pcall() failed: %s", lua_tostring(L, -1));
 
 	lua_atpanic(L, luaT_error);
+}
+
+int
+luaT_find_proc(lua_State *L, char *fname, i32 len)
+{
+	lua_pushvalue(L, LUA_GLOBALSINDEX);
+	do {
+		char *e = memchr(fname, '.', len);
+		if (e == NULL)
+			e = fname + len;
+
+		if (lua_isnil(L, -1))
+			return 0;
+		lua_pushlstring(L, fname, e - fname);
+		lua_gettable(L, -2);
+		lua_remove(L, -2);
+
+		len -= e - fname + 1;
+		fname = e + 1;
+	} while (len > 0);
+	if (lua_isnil(L, -1))
+		return 0;
+	return 1;
 }
 
 void
