@@ -192,7 +192,7 @@ TAGS:
 
 .PHONY: test
 define run_test
-$(foreach test,$(sort $(wildcard mod/*/test/test_*)),../$(test)
+$(foreach test,$(sort $(wildcard $(foreach mod,$(modules),mod/$(mod)/test/test_*))),./$(test)
 )
 endef
 test:	octopus
