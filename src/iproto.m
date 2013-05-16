@@ -165,8 +165,7 @@ service_register_iproto_block(struct service *s, u32 cmd,
 void
 service_iproto(struct service *s)
 {
-	for (int i = 0; i < 256; i++)
-		service_register_iproto_stream(s, i, err, 0);
+	service_register_iproto_stream(s, -1, err, 0);
 	service_register_iproto_stream(s, msg_ping, iproto_ping, IPROTO_NONBLOCK);
 }
 
