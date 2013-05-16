@@ -92,7 +92,7 @@ MasterEnv1.clean do
       slave.select [1,2,3,4]
 
       @replication_source = 33026
-      File.open(ConfigFile, "w+") { |io| io.write(config) }
+      File.open(SlaveEnv::ConfigFile, "w+") { |io| io.write(config) }
       puts `/bin/echo -e "relo conf\\nexit" | nc 0 33035`
 
       sleep(0.5)
