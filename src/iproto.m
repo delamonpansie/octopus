@@ -175,7 +175,7 @@ process_requests(struct conn *c)
 {
 	struct service *service = c->service;
 	int batch = service->batch;
-	struct netmsg *m = NULL;
+	struct netmsg *m = netmsg_tail(&c->out_messages);
 	int r = 0;
 
 	while (tbuf_len(c->rbuf) >= sizeof(struct iproto) &&
@@ -185,9 +185,6 @@ process_requests(struct conn *c)
 		struct iproto_handler *ih = &service->ih[request->msg_code & 0xff];
 
 		if (ih->flags & IPROTO_NONBLOCK) {
-			if (!m)
-				m = netmsg_tail(&c->out_messages);
-
 			tbuf_ltrim(c->rbuf, sizeof(struct iproto) + request->data_len);
 			struct netmsg_mark header_mark;
 			netmsg_getmark(m, &header_mark);
@@ -216,6 +213,9 @@ process_requests(struct conn *c)
 				resume(w, &(struct worker_arg){ih->cb.block, request_copy, c});
 				c->ref--;
 				r++;
+
+				/* cb may modify c->out_messages before yield() */
+				m = netmsg_tail(&c->out_messages);
 			} else {
 				break; // FIXME: need state for this
 			}
