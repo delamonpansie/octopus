@@ -402,11 +402,11 @@ luaT_init()
 }
 
 int
-luaT_find_proc(lua_State *L, char *fname, i32 len)
+luaT_find_proc(lua_State *L, const char *fname, i32 len)
 {
 	lua_pushvalue(L, LUA_GLOBALSINDEX);
 	do {
-		char *e = memchr(fname, '.', len);
+		const char *e = memchr(fname, '.', len);
 		if (e == NULL)
 			e = fname + len;
 
