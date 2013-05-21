@@ -305,8 +305,8 @@ static int
 luaT_panic(struct lua_State *L)
 {
 	const char *err = "unknown error";
-	if (lua_isstring(L, 1))
-		err = lua_tostring(L, 1);
+	if (lua_isstring(L, -1))
+		err = lua_tostring(L, -1);
 	panic("lua failed with: %s", err);
 }
 
