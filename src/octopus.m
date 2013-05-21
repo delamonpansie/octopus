@@ -370,15 +370,15 @@ luaT_init()
 	luaL_openlibs(L);
 	lua_register(L, "print", luaT_print);
 
-	luaT_openfiber(L);
-	luaT_opennet(L);
-
 	lua_getglobal(L, "package");
 	lua_getfield(L, -1, "loaders");
 	lua_pushinteger(L, lua_objlen(L, -1));
 	lua_pushcfunction(L, luaT_static_module);
 	lua_settable(L, -3);
 	lua_pop(L, 2);
+
+	luaT_openfiber(L);
+	luaT_opennet(L);
 
         lua_getglobal(L, "package");
         lua_pushstring(L, cfg.lua_path);
