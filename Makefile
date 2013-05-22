@@ -10,6 +10,8 @@ obj += mod/box/tuple_index.o
 obj += mod/box/memcached.o
 obj += third_party/qsort_arg.o
 
+mod/box/box.o: mod/box/box_version.h
+
 src-lua += mod/box/src-lua/box.lua
 src-lua += mod/box/src-lua/box_prelude.lua
 src-lua += mod/box/src-lua/box/object_space_info.lua

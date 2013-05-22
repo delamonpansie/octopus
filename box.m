@@ -43,6 +43,7 @@
 
 #import <mod/box/box.h>
 #import <mod/box/moonbox.h>
+#import <mod/box/box_version.h>
 
 #include <third_party/crc32.h>
 
@@ -1645,6 +1646,7 @@ reload_config(struct octopus_cfg *old,
 
 static struct tnt_module box = {
         .name = "box",
+	.version = box_version_string,
         .init = init,
         .check_config = NULL,
         .reload_config = reload_config,
