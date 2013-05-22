@@ -357,14 +357,9 @@ init(void)
 }
 
 static struct tnt_module feeder = {
-        .name = "WAL feeder",
-        .init = init,
-        .check_config = NULL,
-        .reload_config = NULL,
-        .cat = NULL,
-        .info = NULL,
-        .exec = NULL
+	.name = "feeder",
 	.version = feeder_version_string,
+	.init = init
 };
 
 register_module(feeder);
