@@ -18,10 +18,9 @@ src-lua += mod/box/src-lua/box/object_space_info.lua
 src-lua += mod/box/src-lua/box/example_proc.lua
 
 
-
 ifeq (1,$(HAVE_RAGEL))
-	dist-clean += mod/box/memcached.m
-	dist += mod/box/memcached.m
+dist-clean += mod/box/memcached.m
+dist += mod/box/memcached.m
 endif
 
 cfg_tmpl += cfg/log_io.cfg_tmpl

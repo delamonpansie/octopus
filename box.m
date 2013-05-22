@@ -1645,15 +1645,13 @@ reload_config(struct octopus_cfg *old,
 }
 
 static struct tnt_module box = {
-        .name = "box",
+	.name = "box",
 	.version = box_version_string,
-        .init = init,
-        .check_config = NULL,
-        .reload_config = reload_config,
-        .cat = cat,
+	.init = init,
+	.reload_config = reload_config,
+	.cat = cat,
 	.cat_scn = cat_scn,
-        .info = info,
-        .exec = NULL
+	.info = info
 };
 
 register_module(box);
