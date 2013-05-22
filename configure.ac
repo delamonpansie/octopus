@@ -32,7 +32,7 @@ AS_IF([test -z "$RAGEL"],
   AC_MSG_RESULT([$ragel_needed])
   AS_IF([test $ragel_needed = yes],
       [AC_MSG_ERROR([dnl
-You need Ragel to build from DARCS/GIT checkouts.
+You need Ragel to build from GIT checkouts.
 You can find Ragel at http://www.complang.org/ragel/dnl
       ])])
    ],
@@ -47,7 +47,7 @@ AS_IF([test -z "$CONFETTI"],
   AC_MSG_RESULT([$confetti_needed])
   AS_IF([test $confetti_needed = yes],
         [AC_MSG_ERROR([dnl
-You need Confetti to build from DARCS/GIT checkouts.
+You need Confetti to build from GIT checkouts.
 You can find Confetti at http://github.com/mailru/confetti/dnl
 ])])
  ],
@@ -56,9 +56,6 @@ You can find Confetti at http://github.com/mailru/confetti/dnl
 AC_ARG_VAR([GIT], [GIT version control])
 AC_CHECK_PROG([GIT], [git], [git])
 AS_IF([test -n "$GIT" -a -d "${srcdir}/.git" ], [AC_SUBST(HAVE_GIT, 1)])
-AC_ARG_VAR([DARCS], [DARCS version control])
-AC_CHECK_PROG([DARCS], [darcs], [darcs])
-AS_IF([test -n "$DARCS" -a -d "${srcdir}/_darcs"], [AC_SUBST(HAVE_DARCS, 1)])
 AC_CHECK_PROG([ECHO], [echo], [echo])
 AC_CHECK_PROG([DOT], [dot], [dot])
 AC_CHECK_PROG([NM], [nm], [nm])

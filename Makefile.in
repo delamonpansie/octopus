@@ -25,8 +25,6 @@ DOT := @DOT@
 CONFETTI := @CONFETTI@
 GIT := @GIT@
 HAVE_GIT := @HAVE_GIT@
-DARCS := @DARCS@
-HAVE_DARCS := @HAVE_DARCS@
 ECHO := @ECHO@
 CAT := cat
 SED := @SED@
@@ -144,14 +142,6 @@ endif
 
 FORCE:
 .PHONY: FORCE
-ifeq (1,$(HAVE_DARCS))
-octopus_version.h: FORCE
-	@echo -n 'const char octopus_version_string[] = "' > $@_
-	@DARCS=$(DARCS) sh $(srcdir)/scripts/darcs-describe >> $@_
-	@echo '";' >> $@_
-	@diff -q $@ $@_ 2>/dev/null >/dev/null || (echo "GEN	$(notdir $@)"; cp $@_ $@)
-	@rm $@_
-else
 ifeq (1,$(HAVE_GIT))
 octopus_version.h: FORCE
 	@echo -n 'const char octopus_version_string[] = "' > $@_
@@ -161,7 +151,6 @@ octopus_version.h: FORCE
 	@echo '";' >> $@_
 	@diff -q $@ $@_ 2>/dev/null >/dev/null || (echo "GEN	$(notdir $@)"; cp $@_ $@)
 	@rm $@_
-endif
 endif
 
 scripts/stringify: scripts/stringify.c
@@ -233,14 +222,6 @@ config.status: $(srcdir)/configure
 
 configure: $(srcdir)/configure.ac $(srcdir)/third_party/libev/libev.m4
 	cd $(srcdir) && autoconf
-
-ifeq (1,$(HAVE_DARCS))
-dist += darcs.context
-.PHONY: darcs.context
-darcs.context:
-	$E "DARCS	$@"
-	$Q$(DARCS) changes --repodir=$(or $(REPODIR),".") --context > darcs.context
-endif
 
 .PHONY:
 dist: configure $(dist) octopus_version.h
