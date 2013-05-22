@@ -152,12 +152,16 @@ octopus_version.h: FORCE
 	@diff -q $@ $@_ 2>/dev/null >/dev/null || (echo "GEN	$(notdir $@)"; cp $@_ $@)
 	@rm $@_
 
-$(foreach mod,$(modules),mod/$(mod)/$(mod)_version.h):
+all_modules = $(foreach path,$(wildcard mod/*),$(notdir $(path)))
+
+$(foreach mod,$(all_modules),mod/$(mod)/$(mod)_version.h):
 	@echo -n 'const char $(subst .h,,$(notdir $@))_string[] = "' > $@_
 	@cd $(VPATH)/$(dir $@); $(GIT) describe --always HEAD | tr -d \\n >> $(notdir $@_)
 	@echo '";' >> $@_
 	@diff -q $@ $@_ 2>/dev/null >/dev/null || (echo "GEN	$@"; cp $@_ $@)
 	@rm $@_
+
+dist += $(foreach mod,$(all_modules),mod/$(mod)/$(mod)_version.h)
 endif
 
 scripts/stringify: scripts/stringify.c
