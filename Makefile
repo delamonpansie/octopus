@@ -6,3 +6,4 @@ cfg_tmpl += cfg/log_io.cfg_tmpl
 
 src-lua += mod/feeder/src-lua/feeder.lua
 
+mod/feeder/feeder.o: mod/feeder/feeder_version.h

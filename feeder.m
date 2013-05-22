@@ -40,6 +40,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#import <mod/feeder/feeder_version.h>
 
 @interface Feeder: Recovery {
 	int fd;
@@ -363,6 +364,7 @@ static struct tnt_module feeder = {
         .cat = NULL,
         .info = NULL,
         .exec = NULL
+	.version = feeder_version_string,
 };
 
 register_module(feeder);
