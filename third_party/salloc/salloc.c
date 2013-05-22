@@ -495,7 +495,7 @@ cache_stat(struct slab_cache *cache, struct tbuf *out)
 {
 	struct slab *slab;
 	int slabs = 0;
-	int64_t items = 0, used = 0, free = 0;
+	size_t items = 0, used = 0, free = 0;
 
 	TAILQ_FOREACH(slab, &cache->slabs, cache_link) {
 		free += SLAB_SIZE - slab->used - sizeof(struct slab);
@@ -508,8 +508,8 @@ cache_stat(struct slab_cache *cache, struct tbuf *out)
 		return 0;
 
 	tbuf_printf(out,
-		    "     - { name: %-16s, item_size: %- 5i, slabs: %- 3i, items: %- 11" PRIi64
-		    ", bytes_used: %- 12" PRIi64 ", bytes_free: %- 12" PRIi64 " }" CRLF,
+		    "     - { name: %-16s, item_size: %- 5i, slabs: %- 3i, items: %-11zu"
+		    ", bytes_used: %-12zu, bytes_free: %-12zu }" CRLF,
 		    cache->name, (int)cache->item_size, slabs, items, used, free);
 
 	return used;
@@ -534,7 +534,7 @@ slab_stat(struct tbuf *t)
 			free_slabs++;
 
 
-		tbuf_printf(t, "    - { type: %s, used: %.2f, size: %"PRIi64", free_slabs: %i }" CRLF,
+		tbuf_printf(t, "    - { type: %s, used: %.2f, size: %zu, free_slabs: %i }" CRLF,
 			    &arena[i] == fixed_arena ? "fixed" :
 			    &arena[i] == grow_arena ? "grow" : "unknown",
 			    (double)arena[i].used / arena[i].size * 100,
