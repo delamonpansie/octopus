@@ -42,7 +42,7 @@ struct tnt_object {
 
 struct tnt_module {
 	struct tnt_module *next;
-	char *name;
+	const char *name, *version;
 	void (*init)(void);
 	i32  (*check_config)(struct octopus_cfg *conf);
 	void (*reload_config)(struct octopus_cfg *old_conf, struct octopus_cfg *new_conf);

@@ -192,7 +192,34 @@ register_module_(struct tnt_module *m)
 const char *
 octopus_version(void)
 {
-	return octopus_version_string;
+	static char *version;
+	if (version)
+		return version;
+
+	size_t len = 0;
+	len += strlen("core:") + strlen(octopus_version_string) + 1;
+	foreach_module (m) {
+		if (!m->name)
+			continue;
+		len += strlen(" ") + strlen(m->name) + strlen(":");
+		len += strlen(m->version ? m->version : "UNK");
+	}
+
+	version = xmalloc(len);
+	version[0] = 0;
+
+	strcat(version, "core:");
+	strcat(version, octopus_version_string);
+	foreach_module (m) {
+		if (!m->name)
+			continue;
+		strcat(version, " ");
+		strcat(version, m->name);
+		strcat(version, ":");
+		strcat(version, m->version ? m->version : "UNK");
+	}
+
+	return version;
 }
 
 
