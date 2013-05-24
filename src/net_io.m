@@ -74,17 +74,16 @@ netmsg_tail(struct netmsg_head *h)
 static void
 netmsg_unref(struct netmsg *m, int from)
 {
-	struct tnt_object **obj = m->ref;
-
 	for (int i = from; i < m->count; i++) {
-		if (obj[i] == 0)
+		if (m->ref[i] == 0)
 			continue;
 
-		if ((uintptr_t)obj[i] & 1)
-			luaL_unref(root_L, LUA_REGISTRYINDEX, (uintptr_t)obj[i] >> 1);
+		if (m->ref[i] & 1)
+			luaL_unref(root_L, LUA_REGISTRYINDEX, m->ref[i] >> 1);
 		else
-			object_decr_ref(obj[i]);
-		obj[i] = 0;
+			object_decr_ref((struct tnt_object *)m->ref[i]);
+
+		m->ref[i] = 0;
 	}
 }
 
@@ -216,16 +215,15 @@ net_add_iov_dup(struct netmsg **m, const void *buf, size_t len)
 }
 
 void
-net_add_ref_iov(struct netmsg **m, struct tnt_object *obj, const void *buf, size_t len)
+net_add_ref_iov(struct netmsg **m, uintptr_t obj, const void *buf, size_t len)
 {
-	struct tnt_object **ref = (*m)->ref + (*m)->count;
+	uintptr_t *ref = (*m)->ref + (*m)->count;
 	struct iovec *v = (*m)->iov + (*m)->count;
 	v->iov_base = (char *)buf;
 	v->iov_len = len;
 
 	(*m)->head->bytes += len;
 	*ref = obj;
-	object_incr_ref(obj);
 
 #ifdef NET_IO_TIMESTAMPS
 	(*m)->tstamp[(*m)->count] = ev_now();
@@ -236,16 +234,24 @@ net_add_ref_iov(struct netmsg **m, struct tnt_object *obj, const void *buf, size
 }
 
 void
+net_add_obj_iov(struct netmsg **m, struct tnt_object *obj, const void *buf, size_t len)
+{
+	assert(((uintptr_t)obj & 1) == 0);
+	object_incr_ref(obj);
+	net_add_ref_iov(m, (uintptr_t)obj, buf, len);
+}
+
+void
 net_add_lua_iov(struct netmsg **m, lua_State *L, int str)
 {
-	struct tnt_object **ref = (*m)->ref + (*m)->count;
+	uintptr_t *ref = (*m)->ref + (*m)->count;
 	struct iovec *v = (*m)->iov + (*m)->count;
 
 	lua_pushvalue(L, str);
 	v->iov_base = (char *)lua_tolstring(L, -1, &v->iov_len);
 	(*m)->head->bytes += v->iov_len;
 	uintptr_t obj = luaL_ref(L, LUA_REGISTRYINDEX);
-	*ref = (void *)(obj * 2 + 1);
+	*ref = obj * 2 + 1;
 
 #ifdef NET_IO_TIMESTAMPS
 	(*m)->tstamp[(*m)->count] = ev_now();
@@ -1184,7 +1190,7 @@ luaT_add_iov(struct lua_State *L)
 			len = tuple->bsize + sizeof(tuple->bsize) + sizeof(tuple->cardinality);
 		}
 
-		net_add_ref_iov(&m, obj, obj->data + offt, len);
+		net_add_obj_iov(&m, obj, obj->data + offt, len);
 		return 0;
 	}
 	default:

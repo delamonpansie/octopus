@@ -66,7 +66,7 @@ struct netmsg {
 	struct iovec dummy; /* used to eliminate branch in net_add_iov,
 			       there is no explicit access */
 	struct iovec iov[NETMSG_MAX];
-	struct tnt_object *ref[NETMSG_MAX];
+	uintptr_t ref[NETMSG_MAX];
 #ifdef NET_IO_TIMESTAMPS
 	ev_tstamp tstamp[NETMSG_MAX];
 #endif
@@ -137,7 +137,8 @@ void netmsg_getmark(struct netmsg *m, struct netmsg_mark *mark);
 void net_add_iov(struct netmsg **m, const void *buf, size_t len);
 struct iovec *net_reserve_iov(struct netmsg **m);
 void net_add_iov_dup(struct netmsg **m, const void *buf, size_t len);
-void net_add_ref_iov(struct netmsg **m, struct tnt_object *obj, const void *buf, size_t len);
+void net_add_ref_iov(struct netmsg **m, uintptr_t ref, const void *buf, size_t len);
+void net_add_obj_iov(struct netmsg **m, struct tnt_object *obj, const void *buf, size_t len);
 void net_add_lua_iov(struct netmsg **m, lua_State *L, int str);
 void netmsg_verify_ownership(struct netmsg_head *h);
 
