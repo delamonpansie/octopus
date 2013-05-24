@@ -494,7 +494,7 @@ memcached_dispatch(struct conn *c)
 					net_add_iov(&m, key, key_len);
 					net_add_iov(&m, suffix, suffix_len);
 				}
-				net_add_ref_iov(&m, obj, value, value_len);
+				net_add_obj_iov(&m, obj, value, value_len);
 				net_add_iov(&m, "\r\n", 2);
 				stats.bytes_written += value_len + 2;
 			}
