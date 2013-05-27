@@ -20,9 +20,9 @@ done
 git remote show | while read remote_name; do
     remote_url=$(git remote show -n origin | sed '/Fetch URL:/!d; s/.*Fetch URL:[[:space:]]*//')
 
-    git branch --list --remote $remote_name/{mod,client}_* | while read branch_name; do
+    git branch --list --remote $remote_name/mod_* $remote_name/client_* | while read branch_name; do
 	branch_name=${branch_name#$remote_name/}
-	dir=${branch_name/_/\/}
+	dir=$(echo $branch_name | tr _ /)
 	if [ ! -e $dir ]; then
 	    git clone $reference -q --single-branch --branch $branch_name $remote_url $dir
 	fi
