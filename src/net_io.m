@@ -380,6 +380,7 @@ conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, st
 	c->fd = fd;
 	c->state = fd >= 0 ? CONNECTED : CLOSED;
 	c->peer_name[0] = 0;
+	c->processing_link.tqe_prev = NULL;
 
 	ev_init(&c->in, (void *)in);
 	ev_init(&c->out, (void *)out);
