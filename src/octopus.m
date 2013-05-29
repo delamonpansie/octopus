@@ -834,4 +834,5 @@ int main(int argc, char **argv)
 		panic("unknown exception %s", [[e class] name]);
 	}
 }
+
 register_source();
