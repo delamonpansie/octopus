@@ -6,10 +6,9 @@ local string, tostring, tonumber =
       string, tostring, tonumber
 
 local tou32, tofield = string.tou32, string.tofield
-local netmsg = netmsg
 
 local ffi, bit, debug = require("ffi"), require("bit"), require("debug")
-
+local net = require("net")
 module(...)
 
 user_proc = {}
@@ -124,22 +123,32 @@ function wrap(proc_body)
                 return nil
         end
 
-        local function proc(out, ...)
+        local function proc(out, request, ...)
                 local retcode, result = proc_body(...)
+		local out = net.conn(out) -- convert lightuserdata to cdata<struct conn *>
+		local header = net.add_iov_iproto_header(out, request)
+		local bytes = net.out_bytes(out)
 
                 if type(result) == "table" then
-                        netmsg.add_iov(out, tou32(#result))
+                        net.add_iov_string(out, tou32(#result))
 
                         for k, v in pairs(result) do
-                                netmsg.add_iov(out, v)
-                        end
+			   if type(v) == "string" then
+			      net.add_iov_string(out, v)
+			   elseif type(v) == "cdata" and ffi.istype(box_tuple, v) then
+			      net.add_iov_tuple(out, v)
+			   else
+			      error("unexpected type of result: " .. type(result))
+			   end
+			end
                 elseif type(result) == "number" then
-                        netmsg.add_iov(out, tou32(result))
+                        net.add_iov_string(out, tou32(result))
                 else
-                        error("unexpected type of result:" .. type(result))
+                        error("unexpected type of result: " .. type(result))
                 end
 
-                return retcode
+		header.data_len = header.data_len + net.out_bytes(out) - bytes
+		header.ret_code = retcode
         end
 
         return proc
@@ -167,18 +176,20 @@ struct box_tuple {
 
 
 local tnt_object_ref = ffi.typeof("struct tnt_object **") -- userdata holding pointer to tnt_obj, hence double ptr
-local box_tuple = ffi.typeof("struct box_tuple *")
+local tuple_t = ffi.typeof("struct box_tuple *")
 
 function ctuple(obj)
-        if obj == nil then
-                error("nil tuple")
-        end
-        obj = ffi.cast(tnt_object_ref, obj)
-        if obj[0].type == 1 then
-                return ffi.cast(box_tuple, obj[0].data)
-        else
-                error("not a box tuple")
-        end
+   assert(obj ~= nil)
+   obj = tnt_object_ref(obj)[0]
+   assert(obj.type == 1)
+   return ffi.cast(tuple_t, obj.data)
+end
+
+function net.add_iov_tuple(v)
+      local obj = tnt_object_ref(obj)[0]
+      local tuple = tuple_t(obj)
+      local len = tuple.bsize + ffi.sizeof(tuple.bsize) + ffi.sizeof(tuple.cardinality)
+      ffi.C.net_add_ref_iov(m, obj, obj.data, len)
 end
 
 function decode_varint32(ptr, offt)

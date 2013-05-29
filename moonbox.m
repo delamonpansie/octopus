@@ -297,20 +297,19 @@ box_dispach_lua(struct conn *c, struct iproto *request)
 	void *fname = read_bytes(&data, flen);
 	u32 nargs = read_u32(&data);
 
-	luaT_pushnetmsg(L);
-	struct netmsg_head *h = lua_touserdata(L, -1); /* safe: we'r keeping own ref */
-
 	if (luaT_find_proc(L, fname, flen) == 0) {
 		lua_pop(L, 1);
 		iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "no such proc: %.*s", flen, fname);
 	}
-	lua_pushvalue(L, 1); /* keep ref to netmsg_head */
+
+	lua_pushlightuserdata(L, c);
+	lua_pushlightuserdata(L, request);
 
 	for (int i = 0; i < nargs; i++)
 		read_push_field(L, &data);
 
 	/* FIXME: switch to native exceptions ? */
-	if (lua_pcall(L, 1 + nargs, 1, 0)) {
+	if (lua_pcall(L, 2 + nargs, 0, 0)) {
 		IProtoError *err = [IProtoError palloc];
 		[err init_code:ERR_CODE_ILLEGAL_PARAMS
 			  line:__LINE__
@@ -320,13 +319,6 @@ box_dispach_lua(struct conn *c, struct iproto *request)
 		lua_settop(L, 0);
 		@throw err;
 	}
-
-	struct netmsg *m = netmsg_tail(&c->out_messages);
-	struct iproto_retcode *reply = iproto_reply(&m, request);
-	reply->data_len += h->bytes;
-	netmsg_concat(&c->out_messages, h);
-	reply->ret_code = luaL_checkinteger(L, 2);
-	lua_pop(L, 2);
 }
 
 register_source();
