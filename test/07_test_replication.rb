@@ -68,6 +68,13 @@ EOD
   end
 end
 
+def wait_for(n=100)
+  n.times do
+    return if yield
+    sleep 0.05
+  end
+  raise "wait_for failed"
+end
 
 MasterEnv.clean do
   start
@@ -81,7 +88,7 @@ MasterEnv.clean do
 
   SlaveEnv.clean do
     start
-    sleep(0.5)
+
     slave = connect
     slave.select [99]
 
@@ -91,15 +98,17 @@ MasterEnv.clean do
       master.insert [i, i + 1, "ABC", "DEF"]
     end
     Process.kill("CONT", pid)
-    sleep(0.5)
+
+    wait_for { slave.select_nolog([999]).length > 0 }
     slave.select [998]
     slave.select [999]
 
     # verify that replica is able to read it's own xlog's
     stop
     start
-    sleep(0.5)
+
     slave = connect
+    wait_for { slave.select_nolog([999]) }
     slave.select [998]
     slave.select [999]
   end
