@@ -42,7 +42,13 @@ class RunEnv < TinyRakeEmbed
   end
 
   def connect(*args)
-    SilverBox.new connect_string, *args
+    20.times do
+      begin
+        return SilverBox.new connect_string, *args
+      rescue
+        sleep 0.05
+      end
+    end
   end
 
   def cd_test_root
