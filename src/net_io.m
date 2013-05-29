@@ -74,17 +74,25 @@ netmsg_tail(struct netmsg_head *h)
 static void
 netmsg_unref(struct netmsg *m, int from)
 {
+	bool have_lua_refs = 0;
 	for (int i = from; i < m->count; i++) {
 		if (m->ref[i] == 0)
 			continue;
 
 		if (m->ref[i] & 1)
-			luaL_unref(root_L, LUA_REGISTRYINDEX, m->ref[i] >> 1);
+			have_lua_refs = 1;
 		else
 			object_decr_ref((struct tnt_object *)m->ref[i]);
-
-		m->ref[i] = 0;
 	}
+
+	if (have_lua_refs) {
+		lua_State *L = fiber->L;
+		lua_getglobal(L, "__netmsg_unref");
+		lua_pushlightuserdata(L, m);
+		lua_pushinteger(L, from);
+		lua_call(L, 2, 0);
+	}
+	memset(m->ref + from, (m->count - from) * sizeof(m->ref[0]), 0);
 }
 
 void
@@ -217,13 +225,12 @@ net_add_iov_dup(struct netmsg **m, const void *buf, size_t len)
 void
 net_add_ref_iov(struct netmsg **m, uintptr_t obj, const void *buf, size_t len)
 {
-	uintptr_t *ref = (*m)->ref + (*m)->count;
 	struct iovec *v = (*m)->iov + (*m)->count;
 	v->iov_base = (char *)buf;
 	v->iov_len = len;
 
 	(*m)->head->bytes += len;
-	*ref = obj;
+	(*m)->ref[(*m)->count] = obj;
 
 #ifdef NET_IO_TIMESTAMPS
 	(*m)->tstamp[(*m)->count] = ev_now();
@@ -241,25 +248,6 @@ net_add_obj_iov(struct netmsg **m, struct tnt_object *obj, const void *buf, size
 	net_add_ref_iov(m, (uintptr_t)obj, buf, len);
 }
 
-void
-net_add_lua_iov(struct netmsg **m, lua_State *L, int str)
-{
-	uintptr_t *ref = (*m)->ref + (*m)->count;
-	struct iovec *v = (*m)->iov + (*m)->count;
-
-	lua_pushvalue(L, str);
-	v->iov_base = (char *)lua_tolstring(L, -1, &v->iov_len);
-	(*m)->head->bytes += v->iov_len;
-	uintptr_t obj = luaL_ref(L, LUA_REGISTRYINDEX);
-	*ref = obj * 2 + 1;
-
-#ifdef NET_IO_TIMESTAMPS
-	(*m)->tstamp[(*m)->count] = ev_now();
-#endif
-
-	if (unlikely(++(*m)->count == nelem((*m)->iov)))
-		enlarge(m);
-}
 
 void
 netmsg_verify_ownership(struct netmsg_head *h)
@@ -451,7 +439,7 @@ conn_reset(struct conn *c)
 	c->out_messages.bytes = 0;
 }
 
-static int
+int
 conn_unref(struct conn *c)
 {
 	int r = 0;
@@ -1067,180 +1055,6 @@ init_slab_cache(void)
 {
 	slab_cache_init(&conn_cache, sizeof(struct conn), SLAB_GROW, "net_io/conn");
 	slab_cache_init(&netmsg_cache, sizeof(struct netmsg), SLAB_GROW, "net_io/netmsg");
-}
-
-
-/// Lua
-
-const char *conn_metaname = "Octopus.conn";
-const char *netmsg_metaname = "Octopus.netmsg";
-const char *netmsgpromise_metaname = "Octopus.netmsg.promise";
-
-int
-luaT_pushconn(struct lua_State *L, struct conn *c)
-{
-	struct conn **ptr = lua_newuserdata(L, sizeof(*ptr));
-	luaL_getmetatable(L, conn_metaname);
-	lua_setmetatable(L, -2);
-	*ptr = c;
-	c->ref++;
-	return 1;
-}
-
-static int
-luaT_conn_gc(struct lua_State *L)
-{
-	struct conn **ptr = lua_touserdata(L, 1);
-	conn_unref(*ptr);
-	return 0;
-}
-
-int
-luaT_pushnetmsg(struct lua_State *L)
-{
-	struct netmsg_head *h = lua_newuserdata(L, sizeof(struct netmsg_head));
-	luaL_getmetatable(L, netmsg_metaname);
-	lua_setmetatable(L, -2);
-
-	TAILQ_INIT(&h->q);
-	h->pool = NULL;
-	h->bytes = 0;
-	return 1;
-}
-
-
-static int
-luaT_netmsg_gc(struct lua_State *L)
-{
-	struct netmsg_head *h = lua_touserdata(L, 1);
-	struct netmsg *m, *tmp;
-
-	TAILQ_FOREACH_SAFE(m, &h->q, link, tmp)
-		netmsg_release(m);
-	return 0;
-}
-
-static struct netmsg *
-luaT_checknet(struct lua_State *L, int index)
-{
-	void *ptr = lua_touserdata(L, index);
-	if (ptr == NULL || !lua_getmetatable(L, index))
-		goto error;
-
-	lua_pushstring(L, netmsg_metaname);
-	lua_rawget(L, LUA_REGISTRYINDEX);
-	if (lua_rawequal(L, -1, -2)) {
-		lua_pop(L, 2);
-		return netmsg_tail(ptr);
-	}
-	lua_pop(L, 1); /* pop netmsg metatable */
-
-	lua_pushstring(L, conn_metaname);
-	lua_rawget(L, LUA_REGISTRYINDEX);
-	if (lua_rawequal(L, -1, -2)) {
-		lua_pop(L, 2);
-		return netmsg_tail(&((struct conn *)ptr)->out_messages);
-	}
-	lua_pop(L, 2);
-
-error:
-	luaL_argerror(L, index, "expected netmsg or conn");
-	return NULL;
-
-}
-
-static int
-luaT_add_iov(struct lua_State *L)
-{
-	struct netmsg *m = luaT_checknet(L, 1);
-
-	switch (lua_type (L, 2)) {
-	case LUA_TNIL:
-		lua_createtable(L, 2, 0);
-		luaL_getmetatable(L, netmsgpromise_metaname);
-		lua_setmetatable(L, -2);
-
-		struct iovec *v = net_reserve_iov(&m);
-		lua_pushlightuserdata(L, v);
-		lua_rawseti(L, -2, 1);
-
-		lua_pushvalue(L, 1);
-		lua_rawseti(L, -2, 2);
-		return 1;
-
-	case LUA_TSTRING:
-		net_add_lua_iov(&m, L, 2);
-		return 0;
-
-	case LUA_TUSERDATA: {
-		struct tnt_object *obj = *(void **)luaL_checkudata(L, 2, objectlib_name);
-		int offt;
-		int len;
-		if (lua_type(L, 3) == LUA_TNUMBER && lua_type(L, 4) == LUA_TNUMBER) {
-			offt = lua_tonumber(L, 3);
-			len = lua_tonumber(L, 4);
-		} else {
-			const struct box_tuple {
-				u32 bsize; /* byte size of data[] */
-				u32 cardinality;
-				u8 data[0];
-			} __attribute__((packed)) *tuple = (void *)obj->data;
-
-			say_warn("call to add_iov without offset and len is deprecated");
-			offt = 0;
-			len = tuple->bsize + sizeof(tuple->bsize) + sizeof(tuple->cardinality);
-		}
-
-		net_add_obj_iov(&m, obj, obj->data + offt, len);
-		return 0;
-	}
-	default:
-		return luaL_argerror(L, 2, "expected nil, string or oct_object");
-	}
-}
-
-
-static int
-luaT_fixup_promise(struct lua_State *L)
-{
-	lua_rawgeti(L, 1, 1);
-	struct iovec *v = lua_touserdata(L, -1);
-	v->iov_base = (char *) luaL_checklstring(L, 2, &v->iov_len);
-	lua_pop(L, 1);
-	lua_rawgeti(L, 1, 2);
-	struct netmsg *m = luaT_checknet(L, -1);
-	m->head->bytes += v->iov_len;
-	return 0;
-}
-
-static const struct luaL_reg net_lib [] = {
-	{"alloc", luaT_pushnetmsg},
-	{"add_iov", luaT_add_iov},
-	{"fixup_promise", luaT_fixup_promise},
-	{NULL, NULL}
-};
-
-static const struct luaL_reg netmsg_mt [] = {
-	{"__gc", luaT_netmsg_gc},
-	{NULL, NULL}
-};
-
-static const struct luaL_reg conn_mt [] = {
-	{"__gc", luaT_conn_gc},
-	{NULL, NULL}
-};
-
-void
-luaT_opennet(struct lua_State *L)
-{
-	luaL_newmetatable(L, conn_metaname);
-	luaL_register(L, NULL, conn_mt);
-	luaL_newmetatable(L, netmsgpromise_metaname);
-	luaL_newmetatable(L, netmsg_metaname);
-	luaL_register(L, NULL, netmsg_mt);
-	luaL_register(L, "net", net_lib);
-	luaL_register(L, "netmsg", net_lib); /* compat */
-	lua_pop(L, 5);
 }
 
 

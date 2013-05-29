@@ -405,7 +405,6 @@ luaT_init()
 	lua_pop(L, 2);
 
 	luaT_openfiber(L);
-	luaT_opennet(L);
 
         lua_getglobal(L, "package");
         lua_pushstring(L, cfg.lua_path);

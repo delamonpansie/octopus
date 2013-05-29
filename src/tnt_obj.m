@@ -100,7 +100,8 @@ object_unlock(struct tnt_object *obj)
 	obj->flags &= ~WAL_WAIT;
 }
 
-const char *objectlib_name = "Tarantool.object";
+const char *objectlib_name = "Octopus.object"; /* there is a copy of this string
+						  in src/net2.lua */
 
 void
 luaT_pushobject(struct lua_State *L, struct tnt_object *obj)

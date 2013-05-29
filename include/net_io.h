@@ -139,8 +139,7 @@ struct iovec *net_reserve_iov(struct netmsg **m);
 void net_add_iov_dup(struct netmsg **m, const void *buf, size_t len);
 void net_add_ref_iov(struct netmsg **m, uintptr_t ref, const void *buf, size_t len);
 void net_add_obj_iov(struct netmsg **m, struct tnt_object *obj, const void *buf, size_t len);
-void net_add_lua_iov(struct netmsg **m, lua_State *L, int str);
-void netmsg_verify_ownership(struct netmsg_head *h);
+void netmsg_verify_ownership(struct netmsg_head *h); /* debug method */
 
 struct conn *conn_init(struct conn *c, struct palloc_pool *pool, int fd,
 		       struct fiber *in, struct fiber *out, enum conn_memory_ownership memory_ownership);
