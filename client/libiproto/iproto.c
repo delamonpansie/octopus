@@ -509,6 +509,11 @@ li_close(struct iproto_connection_t *c) {
 	TAILQ_INIT(&c->sendList);
 	TAILQ_INIT(&c->recvList);
 
+	if (c->readArena) {
+		memory_arena_decr_refcount(c->readArena);
+		c->readArena = NULL;
+	}
+
 	c->nReqInProgress = 0;
 }
 
