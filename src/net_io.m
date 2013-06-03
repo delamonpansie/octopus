@@ -919,12 +919,12 @@ loop:
 		if (c->processing_link.tqe_prev == NULL)
 			TAILQ_INSERT_HEAD(&c->service->processing, c, processing_link);
 	} else if (r == 0) {
-		say_debug("closing conn c:%p fd:%i EOF", c, c->fd);
+		say_info("%s client closed connection", service->name);
 		conn_close(c);
 	} else if (r < 0) {
 		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
 			goto loop;
-		say_debug("closing conn c:%p fd:%i r:%i errno:%i", c, c->fd, (int)r, errno);
+		say_syswarn("%s recv() failed, closing connection", service->name);
 		conn_close(c);
 	}
 
