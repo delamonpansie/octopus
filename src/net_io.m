@@ -914,6 +914,8 @@ loop:
 	r = tbuf_recv(c->rbuf, c->fd);
 
 	if (likely(r > 0)) {
+		/* trigger processing of data.
+		   c->service->processing will be traversed by wakeup_workers() */
 		if (c->processing_link.tqe_prev == NULL)
 			TAILQ_INSERT_HEAD(&c->service->processing, c, processing_link);
 	} else if (r == 0) {
