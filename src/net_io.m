@@ -491,6 +491,7 @@ conn_close(struct conn *c)
 		palloc_destroy_pool(c->pool);
 
 	c->pool = NULL;
+	c->out_messages.pool = NULL;
 
 	switch (c->memory_ownership & MO_CONN_OWNERSHIP_MASK) {
 		case MO_STATIC:
