@@ -921,7 +921,7 @@ nop_hb_writer(va_list ap)
 		wal_dir->fsync_delay = cfg.wal_fsync_delay;
 		snap_io_rate_limit = cfg.snap_io_rate_limit * 1024 * 1024;
 
-		struct fiber *wal_out = fiber_create("wal_writer/output_flusher", service_output_flusher);
+		struct fiber *wal_out = fiber_create("wal_writer/output_flusher", conn_flusher);
 		struct fiber *wal_in = fiber_create("wal_writer/input_dispatcher",
 							wal_disk_writer_input_dispatch);
 		wal_writer = spawn_child("wal_writer", wal_in, wal_out, wal_disk_writer, self);

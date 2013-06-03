@@ -1100,7 +1100,7 @@ init_snap_dir:(const char *)snap_dirname
 	if (!paxos_peer(self, self_id))
 		panic("unable to find myself among paxos peers");
 
-	output_flusher = fiber_create("paxos/output_flusher", service_output_flusher);
+	output_flusher = fiber_create("paxos/output_flusher", conn_flusher);
 
 	fiber_create("paxos/stat", paxos_stat, self);
 	return self;

@@ -590,14 +590,16 @@ conn_peer_name(struct conn *c)
 }
 
 void
-service_output_flusher(va_list ap __attribute__((unused)))
+conn_flusher(va_list ap __attribute__((unused)))
 {
 	for (;;) {
 		struct conn *c = ((struct ev_watcher *)yield())->data;
 		ssize_t r = conn_write_netmsg(c);
 
 		if (r < 0) {
-			say_syswarn("writev() failed, closing connection");
+			say_syswarn("%s%swritev() failed, closing connection",
+				    c->service ? c->service->name : "",
+				    c->service ? " " : "");
 			conn_close(c);
 			continue;
 		}
@@ -981,7 +983,7 @@ tcp_service(struct service *service, u16 port, void (*on_bind)(int fd), void (*w
 
 	palloc_register_gc_root(service->pool, service, service_gc);
 
-	service->output_flusher = fiber_create("tcp/output_flusher", service_output_flusher);
+	service->output_flusher = fiber_create("tcp/output_flusher", conn_flusher);
 	service->input_reader = fiber_create("tcp/input_reader", input_reader);
 	service->acceptor = fiber_create("tcp/acceptor", tcp_server, port, accept_client, on_bind, service);
 

@@ -153,7 +153,7 @@ ssize_t conn_write_netmsg(struct conn *c);
 ssize_t conn_flush(struct conn *c);
 char *conn_peer_name(struct conn *c);
 
-void service_output_flusher(va_list ap __attribute__((unused)));
+void conn_flusher(va_list ap __attribute__((unused)));
 
 enum tac_state {
 	tac_ok = 0,
