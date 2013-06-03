@@ -62,6 +62,8 @@ void say_ERRORno(const char *filename, unsigned line, const char *format, ...) /
     __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
 void say_WARN(const char *filename, unsigned line, const char *format, ...)
     __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
+void say_WARNno(const char *filename, unsigned line, const char *format, ...)
+    __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
 void say_DEBUG(const char *filename, unsigned line, const char *format, ...)
     __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
 void say_DEBUG2(const char *filename, unsigned line, const char *format, ...)
@@ -88,6 +90,7 @@ int say_filter(int, const char *);
 #define say(suffix, level, ...) ({ if(unlikely(max_level >= level))	\
 				say_##level##suffix(__FILE__, __LINE__, __VA_ARGS__); })
 #define say_syserror(...)	say(no, ERROR, __VA_ARGS__)
+#define say_syswarn(...)	say(no, WARN, __VA_ARGS__)
 #define say_error(...)		say(, ERROR, __VA_ARGS__)
 #define say_warn(...)		say(, WARN, __VA_ARGS__)
 #define say_info(...)		say(, INFO, __VA_ARGS__)
