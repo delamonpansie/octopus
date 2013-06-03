@@ -513,11 +513,13 @@ iproto_reply_reader(va_list ap)
 
 		tbuf_ensure(c->rbuf, 16 * 1024);
 		ssize_t r = tbuf_recv(c->rbuf, c->fd);
-		if (r == 0 || (r < 0 && errno != EAGAIN && errno != EWOULDBLOCK)) {
-			if (r < 0)
-				say_info("closing conn r:%i errno:%i", (int)r, errno);
-			else
-				say_info("peer %s disconnected, fd:%i", p->name, c->fd);
+		if (r == 0) {
+			say_info("peer %s closed connection", p->name);
+			conn_close(c);
+			continue;
+		}
+		if (r < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+			say_syswarn("peer %s recv() failed, closing connection", p->name);
 			conn_close(c);
 			continue;
 		}

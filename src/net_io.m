@@ -286,7 +286,6 @@ restart:
 			if (errno == EAGAIN || errno == EWOULDBLOCK)
 				break;
 
-			say_syserror("%s: writev", __func__);
 			if (ret == 0)
 				ret = r;
 			break;
@@ -596,8 +595,12 @@ service_output_flusher(va_list ap __attribute__((unused)))
 	for (;;) {
 		struct conn *c = ((struct ev_watcher *)yield())->data;
 		ssize_t r = conn_write_netmsg(c);
-		if (r < 0)
+
+		if (r < 0) {
+			say_syswarn("writev() failed, closing connection");
 			conn_close(c);
+			continue;
+		}
 
 		if (c->out_messages.bytes == 0)
 			ev_io_stop(&c->out);
