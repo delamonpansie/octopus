@@ -898,14 +898,12 @@ udp_server(va_list ap)
 }
 
 static void
-input_reader(va_list ap)
+input_reader(va_list ap __attribute__((unused)))
 {
-	struct service *service = va_arg(ap, struct service *);
 	struct conn *c;
 	ev_watcher *w;
 	ssize_t r;
 
-	say_info("input reader for service %s started", service->name);
 loop:
 	w = yield();
 	c = w->data;
@@ -919,12 +917,12 @@ loop:
 		if (c->processing_link.tqe_prev == NULL)
 			TAILQ_INSERT_HEAD(&c->service->processing, c, processing_link);
 	} else if (r == 0) {
-		say_info("%s client closed connection", service->name);
+		say_info("%s client closed connection", c->service->name);
 		conn_close(c);
 	} else if (r < 0) {
 		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
 			goto loop;
-		say_syswarn("%s recv() failed, closing connection", service->name);
+		say_syswarn("%s recv() failed, closing connection", c->service->name);
 		conn_close(c);
 	}
 
@@ -984,7 +982,7 @@ tcp_service(struct service *service, u16 port, void (*on_bind)(int fd), void (*w
 	palloc_register_gc_root(service->pool, service, service_gc);
 
 	service->output_flusher = fiber_create("tcp/output_flusher", service_output_flusher);
-	service->input_reader = fiber_create("tcp/input_reader", input_reader, service);
+	service->input_reader = fiber_create("tcp/input_reader", input_reader);
 	service->acceptor = fiber_create("tcp/acceptor", tcp_server, port, accept_client, on_bind, service);
 
 	ev_prepare_init(&service->wakeup, (void *)wakeup_workers);
