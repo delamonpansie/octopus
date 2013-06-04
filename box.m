@@ -58,7 +58,7 @@
 static struct service box_primary, box_secondary;
 
 static int stat_base;
-char * const ops[] = ENUM_STR_INITIALIZER(MESSAGES);
+static char * const ops[] = ENUM_STR_INITIALIZER(MESSAGES);
 
 const int MEMCACHED_OBJECT_SPACE = 23;
 
