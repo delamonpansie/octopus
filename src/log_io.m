@@ -104,323 +104,6 @@ xlog_tag_to_a(u16 tag)
 	return buf;
 }
 
-@implementation XLogDir
-- (id)
-init_dirname:(const char *)dirname_
-{
-        dirname = dirname_;
-        return self;
-}
-
-static int
-cmp_i64(const void *_a, const void *_b)
-{
-	const i64 *a = _a, *b = _b;
-	if (*a == *b)
-		return 0;
-	return (*a > *b) ? 1 : -1;
-}
-
-- (ssize_t)
-scan_dir:(i64 **)ret_lsn
-{
-	DIR *dh = NULL;
-	struct dirent *dent;
-	i64 *lsn;
-	size_t i = 0, size = 1024;
-	char *parse_suffix;
-	ssize_t result = -1;
-
-	dh = opendir(dirname);
-	if (dh == NULL)
-		goto out;
-
-	lsn = palloc(fiber->pool, sizeof(i64) * size);
-	if (lsn == NULL)
-		goto out;
-
-	errno = 0;
-	while ((dent = readdir(dh)) != NULL) {
-		char *file_suffix = strrchr(dent->d_name, '.');
-
-		if (file_suffix == NULL)
-			continue;
-
-		char *sub_suffix;
-		if (recover_from_inprogress)
-			sub_suffix = memrchr(dent->d_name, '.', file_suffix - dent->d_name);
-		else
-			sub_suffix = NULL;
-
-		/*
-		 * A valid suffix is either .xlog or * .xlog.inprogress,
-                 * given recover_from_inprogress == true && suffix == 'xlog'
-		 */
-
-		bool valid_suffix;
-		valid_suffix = (strcmp(file_suffix, suffix) == 0 ||
-				(sub_suffix != NULL &&
-				 strcmp(file_suffix, inprogress_suffix) == 0 &&
-				 strncmp(sub_suffix, suffix, strlen(suffix)) == 0));
-
-		if (!valid_suffix)
-			continue;
-
-		lsn[i] = strtoll(dent->d_name, &parse_suffix, 10);
-		if (strncmp(parse_suffix, suffix, strlen(suffix)) != 0) {
-			/* d_name doesn't parse entirely, ignore it */
-			say_warn("can't parse `%s', skipping", dent->d_name);
-			continue;
-		}
-
-		if (lsn[i] == LLONG_MAX || lsn[i] == LLONG_MIN) {
-			say_warn("can't parse `%s', skipping", dent->d_name);
-			continue;
-		}
-
-		i++;
-		if (i == size) {
-			i64 *n = palloc(fiber->pool, sizeof(i64) * size * 2);
-			if (n == NULL)
-				goto out;
-			memcpy(n, lsn, sizeof(i64) * size);
-			lsn = n;
-			size = size * 2;
-		}
-	}
-
-	qsort(lsn, i, sizeof(i64), cmp_i64);
-
-	*ret_lsn = lsn;
-	result = i;
-      out:
-	if (errno != 0)
-		say_syserror("error reading directory `%s'", dirname);
-
-	if (dh != NULL)
-		closedir(dh);
-	return result;
-}
-
-- (i64)
-greatest_lsn
-{
-	i64 *lsn;
-	ssize_t count = [self scan_dir:&lsn];
-
-	if (count <= 0)
-		return count;
-
-	return lsn[count - 1];
-}
-
-- (XLog *)
-containg_lsn:(i64)target_lsn
-{
-	i64 *lsn;
-	ssize_t count = [self scan_dir:&lsn];
-
-	if (count <= 0)
-		return nil;
-
-	if (target_lsn < *lsn) {
-		say_warn("%s: requested LSN:%"PRIi64" is missing", __func__, target_lsn);
-		return nil;
-	}
-
-	while (count > 1) {
-		if (*lsn <= target_lsn && target_lsn < *(lsn + 1))
-			goto out;
-		lsn++;
-		count--;
-	}
-
-	/*
-	 * we can't check here for sure will or will not last file
-	 * contain record with desired lsn since number of rows in file
-	 * is not known beforehand. so, we simply return the last one.
-	 */
-out:
-	say_debug("%s: target_lsn:%"PRIi64 " file_lsn:%"PRIi64, __func__, target_lsn, *lsn);
-	return [self open_for_read:*lsn];
-}
-
-- (i64)
-containg_scn:(i64)target_scn
-{
-	i64 *lsn;
-	ssize_t count = [self scan_dir:&lsn];
-	XLog *l = nil;
-	const i64 initial_lsn = 2;
-
-	/* new born master without a single commit */
-	if (count == 0 && target_scn <= 2)
-		return initial_lsn;
-
-	if (count <= 0) {
-		say_error("%s: WAL dir is either empty or unreadable", __func__);
-		return -1;
-	}
-
-	for (int i = 0; i < count; i++) {
-		l = [self open_for_read:lsn[i]];
-		i64 scn = [l respondsTo:@selector(scn)] ? [(id)l scn] : lsn[i];
-		[l fetch_row];
-		[l close];
-
-		/* handly buggy headers where "SCN: 0" :
-		   assume they were written with cfg.sync_scn_with_lsn=1 */
-		if (scn == 0)
-			scn = lsn[i];
-
-		if (scn >= target_scn)
-			return i > 0 ? lsn[i - 1] : initial_lsn;
-	}
-
-	return lsn[count - 1];
-}
-
-
-- (const char *)
-format_filename:(i64)lsn prefix:(const char *)prefix suffix:(const char *)extra_suffix
-{
-	static char filename[PATH_MAX + 1];
-	snprintf(filename, sizeof(filename),
-		 "%s%s/%020" PRIi64 "%s%s",
-		 prefix, dirname, lsn, suffix, extra_suffix);
-	return filename;
-}
-
-- (const char *)
-format_filename:(i64)lsn suffix:(const char *)extra_suffix
-{
-	return [self format_filename:lsn prefix:"" suffix:extra_suffix];
-}
-
-- (const char *)
-format_filename:(i64)lsn
-{
-	return [self format_filename:lsn suffix:""];
-}
-
-
-- (XLog *)
-open_for_read:(i64)lsn
-{
-	const char *filename = [self format_filename:lsn];
-	XLog *l = [XLog open_for_read_filename:filename dir:self];
-	if (l == nil)
-		say_syserror("[open_for_read %"PRIi64"]: filename:`%s'", lsn, filename);
-
-	return l;
-}
-
-- (XLog *)
-open_for_write:(i64)lsn scn:(i64)scn
-{
-        XLog *l = nil;
-        FILE *file = NULL;
-	int fd = -1;
-        assert(lsn > 0);
-
-
-	const char *final_filename = [self format_filename:lsn];
-	if (access(final_filename, F_OK) == 0) {
-		errno = EEXIST;
-		say_error("failed to create '%s': file already exists", final_filename);
-		goto error;
-	}
-
-	const char *filename = [self format_filename:lsn suffix:inprogress_suffix];
-	say_debug("[open_for_write `%s']", filename);
-	if (access(filename, F_OK) == 0) {
-		errno = EEXIST;
-		say_error("failed to open `%s': file already exists", filename);
-		goto error;
-	}
-
-	/*
-	 * Open the <lsn>.<suffix>.inprogress file. If it
-	 * exists, open will fail.
-	 */
-	fd = open(filename, O_WRONLY | O_CREAT | O_EXCL | O_APPEND, 0664);
-	if (fd < 0) {
-		say_syserror("failed to open `%s'", filename);
-		goto error;
-	}
-
-	file = fdopen(fd, "a");
-	if (file == NULL) {
-		say_syserror("fdopen failed");
-		goto error;
-	}
-
-	if (cfg.io_compat) {
-		l = [[XLog11 alloc] init_filename:filename fd:file dir:self];
-		[l configure_for_write:lsn];
-
-	} else {
-		l = [[XLog12 alloc] init_filename:filename fd:file dir:self];
-		[(XLog12 *)l configure_for_write:lsn next_scn:scn];
-	}
-	say_info("creating `%s'", l->filename);
-	if ([l write_header] < 0) {
-		say_syserror("failed to write header");
-		goto error;
-	}
-
-	l->inprogress = true;
-	return l;
-      error:
-	if (fd >= 0)
-		close(fd);
-        if (file != NULL)
-                fclose(file);
-        [l free];
-	return NULL;
-}
-@end
-
-@implementation WALDir
-- (XLogDir *)
-init_dirname:(const char *)dirname_
-{
-        if ((self = [super init_dirname:dirname_])) {
-		filetype = xlog_mark;
-		suffix = ".xlog";
-		recover_from_inprogress = true;
-	}
-	return self;
-}
-
-- (id)
-open_for_read:(i64)lsn
-{
-	const char *filename = [self format_filename:lsn suffix:inprogress_suffix];
-	XLog *l = [XLog open_for_read_filename:filename dir:self];
-	if (l != nil) {
-		l->inprogress = true;
-		return l;
-	}
-
-	return [super open_for_read:lsn];
-}
-@end
-
-
-@implementation SnapDir
-- (id)
-init_dirname:(const char *)dirname_
-{
-        if ((self = [super init_dirname:dirname_])) {
-		filetype = snap_mark;
-		suffix = ".snap";
-	}
-        return self;
-}
-@end
-
-
 @implementation XLog
 - (bool) eof { return eof; }
 - (u32) version { return 0; }
@@ -1166,5 +849,323 @@ append_row:(struct row_v12 *)row data:(const void *)data
 }
 
 @end
+
+@implementation XLogDir
+- (id)
+init_dirname:(const char *)dirname_
+{
+        dirname = dirname_;
+        return self;
+}
+
+static int
+cmp_i64(const void *_a, const void *_b)
+{
+	const i64 *a = _a, *b = _b;
+	if (*a == *b)
+		return 0;
+	return (*a > *b) ? 1 : -1;
+}
+
+- (ssize_t)
+scan_dir:(i64 **)ret_lsn
+{
+	DIR *dh = NULL;
+	struct dirent *dent;
+	i64 *lsn;
+	size_t i = 0, size = 1024;
+	char *parse_suffix;
+	ssize_t result = -1;
+
+	dh = opendir(dirname);
+	if (dh == NULL)
+		goto out;
+
+	lsn = palloc(fiber->pool, sizeof(i64) * size);
+	if (lsn == NULL)
+		goto out;
+
+	errno = 0;
+	while ((dent = readdir(dh)) != NULL) {
+		char *file_suffix = strrchr(dent->d_name, '.');
+
+		if (file_suffix == NULL)
+			continue;
+
+		char *sub_suffix;
+		if (recover_from_inprogress)
+			sub_suffix = memrchr(dent->d_name, '.', file_suffix - dent->d_name);
+		else
+			sub_suffix = NULL;
+
+		/*
+		 * A valid suffix is either .xlog or * .xlog.inprogress,
+                 * given recover_from_inprogress == true && suffix == 'xlog'
+		 */
+
+		bool valid_suffix;
+		valid_suffix = (strcmp(file_suffix, suffix) == 0 ||
+				(sub_suffix != NULL &&
+				 strcmp(file_suffix, inprogress_suffix) == 0 &&
+				 strncmp(sub_suffix, suffix, strlen(suffix)) == 0));
+
+		if (!valid_suffix)
+			continue;
+
+		lsn[i] = strtoll(dent->d_name, &parse_suffix, 10);
+		if (strncmp(parse_suffix, suffix, strlen(suffix)) != 0) {
+			/* d_name doesn't parse entirely, ignore it */
+			say_warn("can't parse `%s', skipping", dent->d_name);
+			continue;
+		}
+
+		if (lsn[i] == LLONG_MAX || lsn[i] == LLONG_MIN) {
+			say_warn("can't parse `%s', skipping", dent->d_name);
+			continue;
+		}
+
+		i++;
+		if (i == size) {
+			i64 *n = palloc(fiber->pool, sizeof(i64) * size * 2);
+			if (n == NULL)
+				goto out;
+			memcpy(n, lsn, sizeof(i64) * size);
+			lsn = n;
+			size = size * 2;
+		}
+	}
+
+	qsort(lsn, i, sizeof(i64), cmp_i64);
+
+	*ret_lsn = lsn;
+	result = i;
+      out:
+	if (errno != 0)
+		say_syserror("error reading directory `%s'", dirname);
+
+	if (dh != NULL)
+		closedir(dh);
+	return result;
+}
+
+- (i64)
+greatest_lsn
+{
+	i64 *lsn;
+	ssize_t count = [self scan_dir:&lsn];
+
+	if (count <= 0)
+		return count;
+
+	return lsn[count - 1];
+}
+
+- (XLog *)
+containg_lsn:(i64)target_lsn
+{
+	i64 *lsn;
+	ssize_t count = [self scan_dir:&lsn];
+
+	if (count <= 0)
+		return nil;
+
+	if (target_lsn < *lsn) {
+		say_warn("%s: requested LSN:%"PRIi64" is missing", __func__, target_lsn);
+		return nil;
+	}
+
+	while (count > 1) {
+		if (*lsn <= target_lsn && target_lsn < *(lsn + 1))
+			goto out;
+		lsn++;
+		count--;
+	}
+
+	/*
+	 * we can't check here for sure will or will not last file
+	 * contain record with desired lsn since number of rows in file
+	 * is not known beforehand. so, we simply return the last one.
+	 */
+out:
+	say_debug("%s: target_lsn:%"PRIi64 " file_lsn:%"PRIi64, __func__, target_lsn, *lsn);
+	return [self open_for_read:*lsn];
+}
+
+- (i64)
+containg_scn:(i64)target_scn
+{
+	i64 *lsn;
+	ssize_t count = [self scan_dir:&lsn];
+	XLog *l = nil;
+	const i64 initial_lsn = 2;
+
+	/* new born master without a single commit */
+	if (count == 0 && target_scn <= 2)
+		return initial_lsn;
+
+	if (count <= 0) {
+		say_error("%s: WAL dir is either empty or unreadable", __func__);
+		return -1;
+	}
+
+	for (int i = 0; i < count; i++) {
+		l = [self open_for_read:lsn[i]];
+		i64 scn = [l respondsTo:@selector(scn)] ? [(id)l scn] : lsn[i];
+		[l fetch_row];
+		[l close];
+
+		/* handly buggy headers where "SCN: 0" :
+		   assume they were written with cfg.sync_scn_with_lsn=1 */
+		if (scn == 0)
+			scn = lsn[i];
+
+		if (scn >= target_scn)
+			return i > 0 ? lsn[i - 1] : initial_lsn;
+	}
+
+	return lsn[count - 1];
+}
+
+
+- (const char *)
+format_filename:(i64)lsn prefix:(const char *)prefix suffix:(const char *)extra_suffix
+{
+	static char filename[PATH_MAX + 1];
+	snprintf(filename, sizeof(filename),
+		 "%s%s/%020" PRIi64 "%s%s",
+		 prefix, dirname, lsn, suffix, extra_suffix);
+	return filename;
+}
+
+- (const char *)
+format_filename:(i64)lsn suffix:(const char *)extra_suffix
+{
+	return [self format_filename:lsn prefix:"" suffix:extra_suffix];
+}
+
+- (const char *)
+format_filename:(i64)lsn
+{
+	return [self format_filename:lsn suffix:""];
+}
+
+
+- (XLog *)
+open_for_read:(i64)lsn
+{
+	const char *filename = [self format_filename:lsn];
+	XLog *l = [XLog open_for_read_filename:filename dir:self];
+	if (l == nil)
+		say_syserror("[open_for_read %"PRIi64"]: filename:`%s'", lsn, filename);
+
+	return l;
+}
+
+- (XLog *)
+open_for_write:(i64)lsn scn:(i64)scn
+{
+        XLog *l = nil;
+        FILE *file = NULL;
+	int fd = -1;
+        assert(lsn > 0);
+
+
+	const char *final_filename = [self format_filename:lsn];
+	if (access(final_filename, F_OK) == 0) {
+		errno = EEXIST;
+		say_error("failed to create '%s': file already exists", final_filename);
+		goto error;
+	}
+
+	const char *filename = [self format_filename:lsn suffix:inprogress_suffix];
+	say_debug("[open_for_write `%s']", filename);
+	if (access(filename, F_OK) == 0) {
+		errno = EEXIST;
+		say_error("failed to open `%s': file already exists", filename);
+		goto error;
+	}
+
+	/*
+	 * Open the <lsn>.<suffix>.inprogress file. If it
+	 * exists, open will fail.
+	 */
+	fd = open(filename, O_WRONLY | O_CREAT | O_EXCL | O_APPEND, 0664);
+	if (fd < 0) {
+		say_syserror("failed to open `%s'", filename);
+		goto error;
+	}
+
+	file = fdopen(fd, "a");
+	if (file == NULL) {
+		say_syserror("fdopen failed");
+		goto error;
+	}
+
+	if (cfg.io_compat) {
+		l = [[XLog11 alloc] init_filename:filename fd:file dir:self];
+		[l configure_for_write:lsn];
+
+	} else {
+		l = [[XLog12 alloc] init_filename:filename fd:file dir:self];
+		[(XLog12 *)l configure_for_write:lsn next_scn:scn];
+	}
+	say_info("creating `%s'", l->filename);
+	if ([l write_header] < 0) {
+		say_syserror("failed to write header");
+		goto error;
+	}
+
+	l->inprogress = true;
+	return l;
+      error:
+	if (fd >= 0)
+		close(fd);
+        if (file != NULL)
+                fclose(file);
+        [l free];
+	return NULL;
+}
+@end
+
+@implementation WALDir
+- (XLogDir *)
+init_dirname:(const char *)dirname_
+{
+        if ((self = [super init_dirname:dirname_])) {
+		filetype = xlog_mark;
+		suffix = ".xlog";
+		recover_from_inprogress = true;
+	}
+	return self;
+}
+
+- (id)
+open_for_read:(i64)lsn
+{
+	const char *filename = [self format_filename:lsn suffix:inprogress_suffix];
+	XLog *l = [XLog open_for_read_filename:filename dir:self];
+	if (l != nil) {
+		l->inprogress = true;
+		return l;
+	}
+
+	return [super open_for_read:lsn];
+}
+@end
+
+
+@implementation SnapDir
+- (id)
+init_dirname:(const char *)dirname_
+{
+        if ((self = [super init_dirname:dirname_])) {
+		filetype = snap_mark;
+		suffix = ".snap";
+	}
+        return self;
+}
+@end
+
+
 
 register_source();
