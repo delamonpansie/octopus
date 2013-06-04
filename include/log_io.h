@@ -202,9 +202,6 @@ struct row_v12 {
 + (XLog *) open_for_read_filename:(const char *)filename
 			      dir:(XLogDir *)dir;
 
-- (XLog *) init_filename:(const char *)filename_
-		      fd:(FILE *)fd_
-		     dir:(XLogDir *)dir_;
 - (const char *)final_filename;
 - (void) follow:(follow_cb *)cb;
 - (void) reset_inprogress;

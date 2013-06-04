@@ -109,6 +109,32 @@ xlog_tag_to_a(u16 tag)
 - (u32) version { return 0; }
 - (struct palloc_pool *) pool { return pool; }
 
+- (XLog *)
+init_filename:(const char *)filename_
+           fd:(FILE *)fd_
+          dir:(XLogDir *)dir_
+{
+	[super init];
+	valid = true;
+	filename = strdup(filename_);
+	pool = palloc_create_pool(filename);
+	fd = fd_;
+	mode = LOG_READ;
+	dir = dir_;
+	if (dir)
+		stat.data = dir->writer;
+
+#ifdef __GLIBC__
+	/* libc will try prepread sizeof(vbuf) bytes on every fseeko,
+	   so no reason to make vbuf particulary large */
+	const int bufsize = 64 * 1024;
+	vbuf = xmalloc(bufsize);
+	setvbuf(fd, vbuf, _IOFBF, bufsize);
+#endif
+	offset = ftello(fd);
+	return self;
+}
+
 + (XLog *)
 open_for_read_filename:(const char *)filename dir:(XLogDir *)dir
 {
@@ -161,32 +187,6 @@ error:
 	l = [XLog alloc];
 	l->valid = false;
 	return l;
-}
-
-- (XLog *)
-init_filename:(const char *)filename_
-           fd:(FILE *)fd_
-          dir:(XLogDir *)dir_
-{
-	[super init];
-	valid = true;
-	filename = strdup(filename_);
-	pool = palloc_create_pool(filename);
-	fd = fd_;
-	mode = LOG_READ;
-	dir = dir_;
-	if (dir)
-		stat.data = dir->writer;
-
-#ifdef __GLIBC__
-	/* libc will try prepread sizeof(vbuf) bytes on every fseeko,
-	   so no reason to make vbuf particulary large */
-	const int bufsize = 64 * 1024;
-	vbuf = xmalloc(bufsize);
-	setvbuf(fd, vbuf, _IOFBF, bufsize);
-#endif
-	offset = ftello(fd);
-	return self;
 }
 
 - (id)
