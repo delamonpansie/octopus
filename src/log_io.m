@@ -621,6 +621,7 @@ close
 		say_syserror("can't close");
 		result = -1;
 	}
+	fd = NULL;
 
 	[self free];
 	return result;
