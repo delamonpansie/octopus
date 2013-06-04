@@ -116,6 +116,7 @@ yield(void)
 int
 fiber_wake(struct fiber *f, void *arg)
 {
+	/* tqe_prev points to prev elem or tailq head => not null if member */
 	if (f->wake_link.tqe_prev)
 		return 0;
 	ev_timer_start(&wake_timer);
@@ -131,6 +132,7 @@ fiber_wake(struct fiber *f, void *arg)
 int
 fiber_cancel_wake(struct fiber *f)
 {
+	/* see fiber_wake() comment */
 	if (f->wake_link.tqe_prev == NULL)
 		return 0;
 	TAILQ_REMOVE(&wake_list, f, wake_link);
