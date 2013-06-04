@@ -128,6 +128,16 @@ fiber_wake(struct fiber *f, void *arg)
 	return 1;
 }
 
+int
+fiber_cancel_wake(struct fiber *f)
+{
+	if (f->wake_link.tqe_prev == NULL)
+		return 0;
+	TAILQ_REMOVE(&wake_list, f, wake_link);
+	f->wake_link.tqe_prev = NULL;
+	return 1;
+}
+
 void
 fiber_sleep(ev_tstamp delay)
 {

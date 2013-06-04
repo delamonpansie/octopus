@@ -74,6 +74,7 @@ int wait_for_child(pid_t pid);
 void resume(struct fiber *callee, void *w);
 void *yield(void);
 int fiber_wake(struct fiber *f, void *arg);
+int fiber_cancel_wake(struct fiber *f);
 
 void fiber_gc(void);
 void fiber_sleep(ev_tstamp s);
