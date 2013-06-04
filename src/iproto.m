@@ -34,6 +34,7 @@
 #import <salloc.h>
 #import <index.h>
 #import <object.h>
+#import <stat.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -49,6 +50,15 @@ const uint32_t msg_replica = 0xff01;
 static struct mhash_t *req_registry;
 
 static struct slab_cache response_cache;
+
+#define STAT(_) \
+        _(IPROTO_WORKER_STARVATION, 1)			\
+	_(IPROTO_STREAM_OP, 2)				\
+	_(IPROTO_BLOCK_OP, 3)
+
+enum iproto_stat ENUM_INITIALIZER(STAT);
+static char * const stat_ops[] = ENUM_STR_INITIALIZER(STAT);
+static int stat_base;
 
 u32
 iproto_next_sync()
@@ -184,6 +194,7 @@ process_requests(struct conn *c)
 		struct iproto_handler *ih = &service->ih[request->msg_code & 0xff];
 
 		if (ih->flags & IPROTO_NONBLOCK) {
+			stat_collect(stat_base, IPROTO_STREAM_OP, 1);
 			tbuf_ltrim(c->rbuf, sizeof(struct iproto) + request->data_len);
 			struct netmsg_mark header_mark;
 			netmsg_getmark(m, &header_mark);
@@ -203,6 +214,7 @@ process_requests(struct conn *c)
 		} else {
 			struct fiber *w = SLIST_FIRST(&service->workers);
 			if (w) {
+				stat_collect(stat_base, IPROTO_BLOCK_OP, 1);
 				size_t req_size = sizeof(struct iproto) + request->data_len;
 				void *request_copy = palloc(w->pool, req_size);
 				memcpy(request_copy, request, req_size);
@@ -216,6 +228,7 @@ process_requests(struct conn *c)
 				/* cb may modify c->out_messages before yield() */
 				m = netmsg_tail(&c->out_messages);
 			} else {
+				stat_collect(stat_base, IPROTO_WORKER_STARVATION, 1);
 				break; // FIXME: need state for this
 			}
 
@@ -648,6 +661,7 @@ code
 void __attribute__((constructor))
 iproto_init(void)
 {
+	stat_base = stat_register(stat_ops, nelem(stat_ops));
 	slab_cache_init(&response_cache, sizeof(struct iproto_req), SLAB_GROW, "iproto/req");
 }
 
