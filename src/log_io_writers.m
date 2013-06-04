@@ -560,13 +560,8 @@ snapshot_write
 	}
 	snap = nil;
 
-	if (link(filename, final_filename) == -1) {
+	if (rename(filename, final_filename) == -1) {
 		say_syserror("can't create hard link to snapshot");
-		return -1;
-	}
-
-	if (unlink(filename) == -1) {
-		say_syserror("can't unlink 'inprogress' snapshot");
 		return -1;
 	}
 
