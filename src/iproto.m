@@ -253,17 +253,10 @@ void
 iproto_wakeup_workers(ev_prepare *ev)
 {
 	struct service *service = (void *)ev - offsetof(struct service, wakeup);
-	struct conn *c;
+	struct conn *c, *last = TAILQ_LAST(&service->processing, conn_tailq);
 
-	while (!SLIST_EMPTY(&service->workers)) {
-		c = TAILQ_FIRST(&service->processing);
-		if (!c)
-			break;
-		process_requests(c);
-	}
-
-	struct conn *last = TAILQ_LAST(&service->processing, conn_tailq);
 	do {
+		/* process_requests() will move *c to the end of tailq */
 		c = TAILQ_FIRST(&service->processing);
 		if (!c)
 			break;
