@@ -135,7 +135,6 @@ typedef void (follow_cb)(ev_stat *w, int events);
 	XLogWriter *writer;
 };
 - (id) init_dirname:(const char *)dirname_;
-- (XLog *) open_for_read_filename:(const char *)filename;
 - (XLog *) open_for_read:(i64)lsn;
 - (XLog *) open_for_write:(i64)lsn scn:(i64)scn;
 - (i64) greatest_lsn;
@@ -200,6 +199,9 @@ struct row_v12 {
 	off_t sync_offset;
 #endif
 }
++ (XLog *) open_for_read_filename:(const char *)filename
+			      dir:(XLogDir *)dir;
+
 - (XLog *) init_filename:(const char *)filename_
 		      fd:(FILE *)fd_
 		     dir:(XLogDir *)dir_;

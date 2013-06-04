@@ -303,65 +303,12 @@ format_filename:(i64)lsn
 	return [self format_filename:lsn suffix:""];
 }
 
-- (XLog *)
-open_for_read_filename:(const char *)filename
-{
-	char filetype_[32], version_[32];
-	char *error = "unknown error";
-	XLog *l = nil;
-	FILE *fd = fopen(filename, "r");
-
-	if (fd == NULL)
-		return nil;
-
-	if (fgets(filetype_, sizeof(filetype_), fd) == NULL) {
-		error = "header reading failed";
-		goto error;
-	}
-
-	if (fgets(version_, sizeof(version_), fd) == NULL) {
-		error = "header reading failed";
-		goto error;
-	}
-
-	if (strcmp(version_, v11) == 0) {
-		l = [XLog11 alloc];
-	} else if (strcmp(version_, v12) == 0) {
-		l = [XLog12 alloc];
-	} else {
-		error = "unknown version";
-		goto error;
-	}
-
-        if (strncmp(filetype, filetype_, sizeof(filetype_)) != 0) {
-                error = "unknown file type";
-                goto error;
-        }
-
-	[l init_filename:filename fd:fd dir:self];
-
-        if ([l read_header] < 0) {
-                error = "header reading failed";
-                goto error;
-        }
-
-	return l;
-
-error:
-	say_warn("[open_for_read_filename `%s']: %s", filename, error);
-	[l free];
-	l = [[XLog alloc] init_filename:filename fd:fd dir:self];
-	/* FIXME: race here: we can see file with yet to be written header */
-	l->valid = false;
-	return l;
-}
-
 
 - (XLog *)
 open_for_read:(i64)lsn
 {
 	const char *filename = [self format_filename:lsn];
-	XLog *l = [self open_for_read_filename:filename];
+	XLog *l = [XLog open_for_read_filename:filename dir:self];
 	if (l == nil)
 		say_syserror("[open_for_read %"PRIi64"]: filename:`%s'", lsn, filename);
 
@@ -450,7 +397,7 @@ init_dirname:(const char *)dirname_
 open_for_read:(i64)lsn
 {
 	const char *filename = [self format_filename:lsn suffix:inprogress_suffix];
-	XLog *l = [self open_for_read_filename:filename];
+	XLog *l = [XLog open_for_read_filename:filename dir:self];
 	if (l != nil) {
 		l->inprogress = true;
 		return l;
@@ -479,6 +426,60 @@ init_dirname:(const char *)dirname_
 - (u32) version { return 0; }
 - (struct palloc_pool *) pool { return pool; }
 
++ (XLog *)
+open_for_read_filename:(const char *)filename dir:(XLogDir *)dir
+{
+	char filetype_[32], version_[32];
+	char *error = "unknown error";
+	XLog *l = nil;
+	FILE *fd = fopen(filename, "r");
+
+	if (fd == NULL)
+		return nil;
+
+	if (fgets(filetype_, sizeof(filetype_), fd) == NULL) {
+		error = "header reading failed";
+		goto error;
+	}
+
+	if (fgets(version_, sizeof(version_), fd) == NULL) {
+		error = "header reading failed";
+		goto error;
+	}
+
+	if (strcmp(version_, v11) == 0) {
+		l = [XLog11 alloc];
+	} else if (strcmp(version_, v12) == 0) {
+		l = [XLog12 alloc];
+	} else {
+		error = "unknown version";
+		goto error;
+	}
+
+	if (dir != NULL && strncmp(dir->filetype, filetype_, sizeof(filetype_)) != 0) {
+		error = "unknown file type";
+		goto error;
+	}
+
+	[l init_filename:filename fd:fd dir:dir];
+
+	if ([l read_header] < 0) {
+		error = "header reading failed";
+		goto error;
+	}
+
+	return l;
+
+error:
+	say_warn("[open_for_read_filename `%s']: %s", filename, error);
+	[l free];
+
+/* FIXME: race here: we can see file with yet to be written header */
+	l = [XLog alloc];
+	l->valid = false;
+	return l;
+}
+
 - (XLog *)
 init_filename:(const char *)filename_
            fd:(FILE *)fd_
@@ -491,7 +492,8 @@ init_filename:(const char *)filename_
 	fd = fd_;
 	mode = LOG_READ;
 	dir = dir_;
-	stat.data = dir->writer;
+	if (dir)
+		stat.data = dir->writer;
 
 #ifdef __GLIBC__
 	/* libc will try prepread sizeof(vbuf) bytes on every fseeko,

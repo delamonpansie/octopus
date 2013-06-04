@@ -1068,18 +1068,8 @@ read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, struct
 {
 	XLog *l;
 	const struct row_v12 *row;
-	XLogDir *dir;
 
-	if (strstr(filename, ".xlog")) {
-                dir = [[WALDir alloc] init_dirname:NULL];
-	} else if (strstr(filename, ".snap")) {
-                dir = [[SnapDir alloc] init_dirname:NULL];
-	} else {
-		say_error("don't know what how to read `%s'", filename);
-		return -1;
-	}
-
-	l = [dir open_for_read_filename:filename];
+	l = [XLog open_for_read_filename:filename dir:NULL];
 	if (l == nil) {
 		say_syserror("unable to open filename `%s'", filename);
 		return -1;
