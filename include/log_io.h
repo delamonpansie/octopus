@@ -203,7 +203,7 @@ struct row_v12 {
 			      dir:(XLogDir *)dir;
 
 - (void) follow:(follow_cb *)cb;
-- (void) reset_inprogress;
+- (void) inprogress_reset;
 - (int) inprogress_rename;
 - (int) inprogress_unlink;
 - (int) read_header;

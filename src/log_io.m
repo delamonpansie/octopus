@@ -232,7 +232,7 @@ inprogress_unlink
 }
 
 - (void)
-reset_inprogress
+inprogress_reset
 {
 	assert(inprogress);
 	*(strrchr(filename, '.')) = 0;
@@ -254,7 +254,7 @@ inprogress_rename
 	}
 	free(final_filename);
 
-	[self reset_inprogress];
+	[self inprogress_reset];
 	return 0;
 }
 

@@ -463,7 +463,7 @@ follow_dir(ev_timer *w, int events __attribute__((unused)))
 		return;
 
 	if (r->current_wal->inprogress && [r->current_wal rows] > 1)
-		[r->current_wal reset_inprogress];
+		[r->current_wal inprogress_reset];
 
 	[r->current_wal follow:follow_file];
 }
@@ -483,7 +483,7 @@ follow_file(ev_stat *w, int events __attribute__((unused)))
 	}
 
 	if (r->current_wal->inprogress && [r->current_wal rows] > 1) {
-		[r->current_wal reset_inprogress];
+		[r->current_wal inprogress_reset];
 		[r->current_wal follow:follow_file];
 	}
 }
