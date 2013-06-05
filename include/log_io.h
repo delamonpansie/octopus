@@ -202,7 +202,6 @@ struct row_v12 {
 + (XLog *) open_for_read_filename:(const char *)filename
 			      dir:(XLogDir *)dir;
 
-- (const char *)final_filename;
 - (void) follow:(follow_cb *)cb;
 - (void) reset_inprogress;
 - (int) inprogress_rename;
@@ -218,6 +217,7 @@ struct row_v12 {
 - (i64) append_row:(struct row_v12 *)row data:(const void *)data;
 - (void) configure_for_write:(i64)lsn;
 - (i64) confirm_write;
+- (void) append_successful:(size_t)bytes;
 @end
 
 struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);

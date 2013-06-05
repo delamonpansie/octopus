@@ -502,7 +502,6 @@ snapshot_write_rows:(XLog *)snap
 snapshot_write
 {
         XLog *snap;
-	const char *final_filename, *filename;
 
 	say_debug("%s: lsn:%"PRIi64" scn:%"PRIi64, __func__, lsn, scn);
 	snap = [snap_dir open_for_write:lsn scn:scn];
@@ -510,8 +509,9 @@ snapshot_write
 		say_syserror("can't open snap for writing");
 		return -1;
 	}
-	snap->inprogress = false; /* we do .inprogress rename ourself */
-	snap->no_wet = true; /* disable wet row tracking */;
+	snap->no_wet = true; /* We don't handle write errors here because
+				snapshot can't be partially saved.
+				so, disable wet row tracking */;
 
 	/*
 	 * While saving a snapshot, snapshot name is set to
@@ -519,10 +519,10 @@ snapshot_write
 	 * renamed to <lsn>.snap.
 	 */
 
-	final_filename = strdup([snap final_filename]);
-	filename = strdup(snap->filename);
-
-	say_info("saving snapshot `%s'", final_filename);
+	char *filename = strdup(snap->filename);
+	char *suffix = strrchr(filename, '.');
+	*suffix = 0;
+	say_info("saving snapshot `%s'", filename);
 
 	struct tbuf *snap_ini = tbuf_alloc(fiber->pool);
 	u32 rows = [self snapshot_estimate];
@@ -547,6 +547,9 @@ snapshot_write
 		say_error("unable write final row");
 		return -1;
 	}
+	if ([snap rows] == 0) /* initial snapshot in compat mode has no rows */
+		[snap append_successful:1]; /* -[XLog close] won't rename empty .inprogress, trick it */
+
 	if ([snap flush] == -1) {
 		say_syserror("snap flush failed");
 		return -1;
@@ -559,11 +562,6 @@ snapshot_write
 		return -1;
 	}
 	snap = nil;
-
-	if (rename(filename, final_filename) == -1) {
-		say_syserror("can't create hard link to snapshot");
-		return -1;
-	}
 
 	say_info("done");
 	return 0;

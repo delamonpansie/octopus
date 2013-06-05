@@ -284,9 +284,6 @@ close
 		   NB: it's ok to lose tail from last WAL. */
 		if ([self flush] == -1)
 			result = -1;
-
-		if (inprogress)
-			[self inprogress_rename];
 	} else {
 		/* file may be already unlink()'ed if it was broken */
 		if (rows == 0 && access(filename, F_OK) == 0) {
@@ -307,6 +304,9 @@ close
 		result = -1;
 	}
 	fd = NULL;
+
+	if (mode == LOG_WRITE && inprogress && rows > 0)
+		[self inprogress_rename];
 
 	[self free];
 	return result;
@@ -462,8 +462,10 @@ next_lsn
 - (void)
 append_successful:(size_t)bytes
 {
-	if (no_wet)
+	if (no_wet) {
+		rows++;
 		return;
+	}
 
 	off_t prev_offt = wet_rows == 0 ? offset : wet_rows_offset[wet_rows - 1];
 	wet_rows_offset[wet_rows] = prev_offt + bytes;
@@ -516,6 +518,8 @@ confirm_write
 {
 	assert(next_lsn != 0);
 	assert(mode == LOG_WRITE);
+	assert(!no_wet);
+
 	off_t tail;
 
 	if (fflush(fd) < 0) {
