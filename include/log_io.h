@@ -215,7 +215,6 @@ struct row_v12 {
 - (i64) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie;
 - (i64) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag;
 - (i64) append_row:(struct row_v12 *)row data:(const void *)data;
-- (void) configure_for_write:(i64)lsn;
 - (i64) confirm_write;
 - (void) append_successful:(size_t)bytes;
 @end
@@ -225,9 +224,9 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 @end
 
 @interface XLog12: XLog {
+@public
 	i64 next_scn;
 }
-- (void) configure_for_write:(i64)lsn next_scn:(i64)scn;
 @end
 
 @protocol Txn

@@ -495,13 +495,6 @@ append_row:(const void *)data len:(u32)len scn:(i64)scn tag:(u16)tag cookie:(u64
 }
 
 
-- (void)
-configure_for_write:(i64)lsn
-{
-	mode = LOG_WRITE;
-	next_lsn = lsn;
-}
-
 - (i64)
 confirm_write
 {
@@ -723,13 +716,6 @@ append_row:(struct row_v12 *)row_ data:(const void *)data
 scn
 {
 	return next_scn;
-}
-
-- (void)
-configure_for_write:(i64)lsn next_scn:(i64)scn
-{
-	[self configure_for_write:lsn];
-	next_scn = scn;
 }
 
 - (int)
@@ -1096,11 +1082,14 @@ open_for_write:(i64)lsn scn:(i64)scn
 
 	if (cfg.io_compat) {
 		l = [[XLog11 alloc] init_filename:filename fd:file dir:self];
-		[l configure_for_write:lsn];
+		l->next_lsn = lsn;
+		l->mode = LOG_WRITE;
 
 	} else {
 		l = [[XLog12 alloc] init_filename:filename fd:file dir:self];
-		[(XLog12 *)l configure_for_write:lsn next_scn:scn];
+		l->next_lsn = lsn;
+		((XLog12 *)l)->next_scn = scn;
+		l->mode = LOG_WRITE;
 	}
 	say_info("creating `%s'", l->filename);
 	if ([l write_header] < 0) {
