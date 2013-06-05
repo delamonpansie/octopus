@@ -231,41 +231,30 @@ inprogress_unlink
 	return 0;
 }
 
-- (const char *)
-final_filename
-{
-	char *final;
-	char *suffix = strrchr(filename, '.');
-
-	assert(suffix);
-	assert(strcmp(suffix, inprogress_suffix) == 0);
-
-	/* Create a new filename without '.inprogress' suffix. */
-        final = palloc(pool, suffix - filename + 1);
-        memcpy(final, filename, suffix - filename);
-        final[suffix - filename] = '\0';
-	return final;
-}
-
 - (void)
 reset_inprogress
 {
-	strcpy(filename, [self final_filename]);
+	assert(inprogress);
+	*(strrchr(filename, '.')) = 0;
 	inprogress = false;
 }
 
 - (int)
 inprogress_rename
 {
-	const char *final_filename = [self final_filename];
-	say_info("renaming %s to %s", filename, final_filename);
+	assert(inprogress);
 
+	char *final_filename = strdup(filename);
+	*(strrchr(final_filename, '.')) = 0;
+
+	say_info("renaming %s to %s", filename, final_filename);
 	if (rename(filename, final_filename) != 0) {
 		say_syserror("can't rename %s to %s", filename, final_filename);
 		return -1;
 	}
-	strcpy(filename, final_filename);
-	inprogress = false;
+	free(final_filename);
+
+	[self reset_inprogress];
 	return 0;
 }
 
