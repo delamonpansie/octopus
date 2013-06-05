@@ -211,7 +211,7 @@ struct row_v12 {
 - (int) flush;
 - (void) fadvise_dont_need;
 - (size_t) rows;
-- (size_t)wet_rows_offset_available;
+- (size_t) wet_rows_offset_available;
 - (i64) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie;
 - (i64) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag;
 - (i64) append_row:(struct row_v12 *)row data:(const void *)data;
