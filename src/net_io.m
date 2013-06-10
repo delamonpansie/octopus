@@ -919,7 +919,7 @@ loop:
 		if (c->processing_link.tqe_prev == NULL)
 			TAILQ_INSERT_HEAD(&c->service->processing, c, processing_link);
 	} else if (r == 0) {
-		say_info("%s client closed connection", c->service->name);
+		say_debug("%s client closed connection", c->service->name);
 		conn_close(c);
 	} else if (r < 0) {
 		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
