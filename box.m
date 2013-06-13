@@ -36,7 +36,7 @@
 #import <octopus.h>
 #import <tbuf.h>
 #import <util.h>
-#import <object.h>
+#import <objc.h>
 #import <assoc.h>
 #import <index.h>
 #import <paxos.h>

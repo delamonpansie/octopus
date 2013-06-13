@@ -30,7 +30,7 @@
 #include <index.h>
 #import <iproto.h>
 #import <net_io.h>
-#import <object.h>
+#import <objc.h>
 #import <log_io.h>
 
 extern bool box_updates_allowed;

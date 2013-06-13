@@ -26,7 +26,7 @@
 
 #import <util.h>
 #import <fiber.h>
-#import <object.h>
+#import <objc.h>
 #import <net_io.h>
 #import <pickle.h>
 #import <say.h>
