@@ -33,7 +33,7 @@
 #import <assoc.h>
 #import <salloc.h>
 #import <index.h>
-#import <object.h>
+#import <objc.h>
 #import <stat.h>
 
 #include <stdio.h>

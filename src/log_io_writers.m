@@ -26,7 +26,7 @@
 
 #import <util.h>
 #import <fiber.h>
-#import <object.h>
+#import <objc.h>
 #import <log_io.h>
 #import <net_io.h>
 #import <palloc.h>

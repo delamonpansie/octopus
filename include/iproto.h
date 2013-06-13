@@ -28,7 +28,7 @@
 #define IPROTO_H
 
 #include <util.h>
-#include <object.h>
+#include <objc.h>
 #include <tbuf.h>
 #include <net_io.h>
 

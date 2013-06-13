@@ -28,7 +28,7 @@
 #define INDEX_H
 
 #include <util.h>
-#include <object.h>
+#include <objc.h>
 
 #include <stdbool.h>
 

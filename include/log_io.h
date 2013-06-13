@@ -29,7 +29,7 @@
 
 #include <util.h>
 #include <net_io.h>
-#include <object.h>
+#include <objc.h>
 
 #include <stdio.h>
 #include <limits.h>

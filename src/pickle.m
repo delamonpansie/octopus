@@ -26,7 +26,7 @@
 
 #import <util.h>
 #import <fiber.h>
-#import <object.h>
+#import <objc.h>
 #import <tbuf.h>
 #import <palloc.h>
 #import <iproto.h>		/* for err codes */

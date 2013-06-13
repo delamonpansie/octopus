@@ -64,12 +64,6 @@ AS_IF([test -n $DOT], [AC_SUBST(HAVE_DOT, 1)])
 
 
 # Checks for libraries.
-AC_SEARCH_LIBS([objc_msg_lookup], [objc], [AC_DEFINE(OBJC_GNU_RUNTIME, 1, [Define if you have GNU ObjC runtime])
-                                           [objc_gnu_runtime=yes]])
-AC_SEARCH_LIBS([objc_msgSend], [objc], [AC_DEFINE(OBJC_APPLE_RUNTIME, 1, [Define if you have Apple ObjC runtime])
-                                        [objc_apple_runtime=yes]])
-AS_IF([test -z "$objc_gnu_runtime" -a -z "$objc_apple_runtime"],
-      [AC_MSG_ERROR([Unable to locate Objective C runtime library.])])
 AC_SEARCH_LIBS([dlopen], [dl dld], [], [AC_MSG_ERROR([unable to find the dlopen() function])])
 AC_SEARCH_LIBS(setproctitle, util)
 
@@ -82,20 +76,60 @@ AC_DEFINE(HAVE_THIRD_PARTY_QUEUE_H, 1, [x])
 OBJCFLAGS=$CFLAGS
 OBJC=$CC
 AC_LANG_PUSH([Objective C])
-AC_CHECK_HEADER([objc/Object.h], [], [AC_MSG_ERROR([dnl
-objc/Object.h is not found.
+
+# Check for objc runtime
+AC_SEARCH_LIBS([objc_msg_lookup], [objc], [AC_DEFINE(OBJC_GNU_RUNTIME, 1, [Define if you have GNU ObjC runtime])
+                                           [objc_gnu_runtime=yes]])
+AC_SEARCH_LIBS([objc_msgSend], [objc], [AC_DEFINE(OBJC_APPLE_RUNTIME, 1, [Define if you have Apple ObjC runtime])
+                                        [objc_apple_runtime=yes]])
+AS_IF([test -z "$objc_gnu_runtime" -a -z "$objc_apple_runtime"],
+      [AC_MSG_ERROR([Unable to locate Objective C runtime library.])])
+
+AC_CHECK_HEADERS([objc/Object.h objc/objc-api.h objc/runtime.h])
+AS_IF([test "$ac_cv_header_objc_Object_h" != "yes" -o '(' "$ac_cv_header_objc_objc_api_h" != "yes" -a "$ac_cv_header_objc_runtime_h" != "yes" ')' ],
+      [AC_MSG_ERROR([dnl
+Unable to locate Objective C runtime headers.
 You can probably fix that setting environment variable CPPFLAGS=-I/path/to/objc/runtime/headers dnl
 ])])
 
 AC_TRY_RUN([
+#include <stdlib.h>
 #include <objc/Object.h>
-@interface OneClass : Object
+#if HAVE_OBJC_RUNTIME_H
+#include <objc/runtime.h>
+#elif HAVE_OBJC_OBJC_API_H
+#include <objc/objc-api.h>
+#endif
+
+@interface OneClass : Object {
+int value;
+}
 - (int) one;
 @end
 @implementation OneClass
++ (id) alloc
+{
+	Class class = (Class)self;
+#if HAVE_OBJC_RUNTIME_H
+	id obj = calloc(1, class_getInstanceSize(class));
+	object_setClass(obj, class);
+#elif HAVE_OBJC_OBJC_API_H
+	id obj = calloc(1, class_get_instance_size(class));
+	obj->class_pointer = class;
+#else
+# error Unknown runtime
+#endif
+	return obj;
+}
+- (id) init
+{
+	value = 1;
+	return self;
+}
+
 - (int) one
 {
-        return 1;
+        return value;
 }
 @end
 

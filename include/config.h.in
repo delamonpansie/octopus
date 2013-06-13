@@ -67,6 +67,15 @@
 /* Define to 1 if you have the `nanosleep' function. */
 #undef HAVE_NANOSLEEP
 
+/* Define to 1 if you have the <objc/objc-api.h> header file. */
+#undef HAVE_OBJC_OBJC_API_H
+
+/* Define to 1 if you have the <objc/Object.h> header file. */
+#undef HAVE_OBJC_OBJECT_H
+
+/* Define to 1 if you have the <objc/runtime.h> header file. */
+#undef HAVE_OBJC_RUNTIME_H
+
 /* Define to 1 if PAGE_SIZE provided */
 #undef HAVE_PAGE_SIZE
 

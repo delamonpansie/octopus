@@ -1,6 +1,6 @@
 include $(VPATH)/src/index/Makefile
 
-obj += src/object.o
+obj += src/objc.o
 obj += src/tnt_obj.o
 obj += src/net_io.o
 obj += src/coro.o

@@ -46,8 +46,6 @@
 extern int fdatasync(int fd);
 #endif
 
-#include <objc/objc-api.h>
-
 #if !HAVE_MEMRCHR
 /* os x doesn't have memrchr */
 static void *

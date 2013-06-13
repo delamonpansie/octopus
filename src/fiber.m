@@ -35,7 +35,7 @@
 #import <pickle.h>
 #import <assoc.h>
 #import <net_io.h>
-#import <object.h>
+#import <objc.h>
 
 #include <third_party/queue.h>
 

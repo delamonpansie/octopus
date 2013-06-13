@@ -28,7 +28,7 @@
 #import <util.h>
 #import <fiber.h>
 #import <say.h>
-#import <object.h>
+#import <objc.h>
 
 #include <errno.h>
 #include <stdarg.h>

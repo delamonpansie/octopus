@@ -31,9 +31,20 @@
 #include <palloc.h>
 #include <util.h>
 
-@interface Object (Palloc)
-+ (id)palloc;
-+ (id)palloc_from:(struct palloc_pool *)pool;
+@interface Object (Octopus)
++ palloc;
++ palloc_from:(struct palloc_pool *)pool;
+#if !HAVE_OBJC_OBJC_API_H
++ alloc;
+- free;
+- init;
+- (BOOL)isMemberOf:(Class)class;
+- (BOOL)isKindOf:(Class)class;
+- (BOOL)respondsTo:(SEL)aSel;
++ (Class)class;
++ (const char *)name; /* class name */
+- perform:(SEL)aSel;
+#endif
 @end
 
 @interface Error : Object {
