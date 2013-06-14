@@ -164,15 +164,14 @@ i32_init_pattern(struct tbuf *key, int cardinality,
 {
 	pattern->obj = NULL;
 
-	i32 min = INT32_MIN;
 	u32 len;
 	switch (cardinality) {
-	case 0: memcpy(pattern->key, &min, sizeof(u32));
+	case 0: pattern->u32 = INT32_MIN;
 		break;
 	case 1: len = read_varint32(key);
 		if (len != sizeof(u32))
 			index_raise("key is not u32");
-		*(u32 *)pattern->key = read_u32(key);
+		pattern->u32 = read_u32(key);
 		break;
 	default:
 		index_raise("cardinality too big");
@@ -183,7 +182,7 @@ i32_init_pattern(struct tbuf *key, int cardinality,
 init_with_unique:(bool)_unique
 {
 	[super init_with_unique:_unique];
-	node_size = sizeof(struct index_node) + sizeof(i32);
+	node_size = sizeof(struct tnt_object *) + sizeof(i32);
 	lua_ctor = luaT_i32_ctor;
 	init_pattern = i32_init_pattern;
 	ucompare = (index_cmp)i32_compare;
@@ -200,15 +199,14 @@ i64_init_pattern(struct tbuf *key, int cardinality,
 {
 	pattern->obj = NULL;
 
-	i64 min = INT64_MIN;
 	u32 len;
 	switch (cardinality) {
+	case 0: pattern->u64 = INT64_MIN;
+		break;
 	case 1: len = read_varint32(key);
 		if (len != sizeof(u64))
 			index_raise("key is not u64");
-		*(u64 *)pattern->key = read_u64(key);
-		break;
-	case 0: memcpy(pattern->key, &min, sizeof(u64));
+		pattern->u64 = read_u64(key);
 		break;
 	default:
 		index_raise("cardinality too big");
@@ -219,7 +217,7 @@ i64_init_pattern(struct tbuf *key, int cardinality,
 init_with_unique:(bool)_unique
 {
 	[super init_with_unique:_unique];
-	node_size = sizeof(struct index_node) + sizeof(i64);
+	node_size = sizeof(struct tnt_object *) + sizeof(i64);
 	lua_ctor = luaT_i64_ctor;
 	init_pattern = i64_init_pattern;
 	ucompare = (index_cmp)i64_compare;
@@ -245,14 +243,14 @@ lstr_init_pattern(struct tbuf *key, int cardinality,
 	else
 		index_raise("cardinality too big");
 
-	memcpy(&pattern->key, &f, sizeof(void *));
+	pattern->str = f;
 }
 
 - (id)
 init_with_unique:(bool)_unique
 {
 	[super init_with_unique:_unique];
-	node_size = sizeof(struct index_node) + sizeof(void *);
+	node_size = sizeof(struct tnt_object *) + sizeof(void *);
 	lua_ctor = luaT_lstr_ctor;
 	init_pattern = lstr_init_pattern;
 	ucompare = (index_cmp)lstr_compare;
@@ -379,7 +377,7 @@ init_with_unique:(bool)_unique
 {
 	[super init_with_unique:_unique];
 	struct gen_dtor *desc = dtor_arg;
-	node_size = sizeof(struct index_node) + desc->cardinality * sizeof(struct field);
+	node_size = sizeof(struct tnt_object *) + desc->cardinality * sizeof(struct field);
 	init_pattern = gen_init_pattern;
 	ucompare = (index_cmp)tree_node_compare;
 	compare = unique ? (index_cmp)tree_node_compare : (index_cmp)tree_node_compare_with_addr;

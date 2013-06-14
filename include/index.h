@@ -36,7 +36,12 @@
 struct tnt_object;
 struct index_node {
 	struct tnt_object *obj;
-	char key[0];
+	union {
+		char key[0];
+		u32 u32;
+		u64 u64;
+		void *str;
+	};
 };
 
 struct field {

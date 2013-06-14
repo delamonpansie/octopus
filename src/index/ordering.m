@@ -31,10 +31,10 @@
 int
 i32_compare(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)))
 {
-	i32 *a = (void *)na->key, *b = (void *)nb->key;
-	if (*a > *b)
+	i32 a = na->u32, b = nb->u32;
+	if (a > b)
 		return 1;
-	else if (*a < *b)
+	else if (a < b)
 		return -1;
 	else
 		return 0;
@@ -43,10 +43,10 @@ i32_compare(struct index_node *na, struct index_node *nb, void *x __attribute__(
 int
 i32_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)))
 {
-	i32 *a = (void *)na->key, *b = (void *)nb->key;
-	if (*a > *b)
+	i32 a = na->u32, b = nb->u32;
+	if (a > b)
 		return 1;
-	else if (*a < *b)
+	else if (a < b)
 		return -1;
 
 	if (na->obj > nb->obj)
@@ -60,10 +60,10 @@ i32_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __at
 int
 i64_compare(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)))
 {
-	i64 *a = (void *)na->key, *b = (void *)nb->key;
-	if (*a > *b)
+	i64 a = na->u64, b = nb->u64;
+	if (a > b)
 		return 1;
-	else if (*a < *b)
+	else if (a < b)
 		return -1;
 	else
 		return 0;
@@ -72,10 +72,10 @@ i64_compare(struct index_node *na, struct index_node *nb, void *x __attribute__(
 int
 i64_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)))
 {
-	i64 *a = (void *)na->key, *b = (void *)nb->key;
-	if (*a > *b)
+	i64 a = na->u64, b = nb->u64;
+	if (a > b)
 		return 1;
-	else if (*a < *b)
+	else if (a < b)
 		return -1;
 
 	if (na->obj > nb->obj)
@@ -89,14 +89,14 @@ i64_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __at
 int
 lstr_compare(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)))
 {
-	return lstrcmp(*(void **)na->key, *(void **)nb->key);
+	return lstrcmp(na->str, nb->str);
 }
 
 int
 lstr_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)))
 {
 
-	int r = lstrcmp(*(void **)na->key, *(void **)nb->key);
+	int r = lstrcmp(na->str, nb->str);
 	if (r != 0)
 		return r;
 
@@ -111,13 +111,13 @@ lstr_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __a
 int
 cstr_compare(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)))
 {
-        return strcmp(*(void **)na->key, *(void **)nb->key);
+        return strcmp(na->str, nb->str);
 }
 
 int
 cstr_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)))
 {
-        int r = lstrcmp(*(void **)na->key, *(void **)nb->key);
+        int r = lstrcmp(na->str, nb->str);
 
         if (r != 0 && na->obj != nb->obj)
                 r = na->obj > nb->obj ? 1 : -1;

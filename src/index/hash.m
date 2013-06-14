@@ -122,7 +122,7 @@ init									\
 {									\
 	[super init];							\
 	h = mh_##type##_init(xrealloc);					\
-	node_size = sizeof(struct index_node) + sizeof(type);		\
+	node_size = sizeof(struct tnt_object *) + sizeof(type);		\
 	lua_ctor = luaT_##type##_ctor;					\
 	compare = ucompare = (index_cmp)type##_compare;			\
 	return self;							\
@@ -165,7 +165,7 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 {
 	struct index_node *na = GET_NODE(obj_a, node_a),
 			  *nb = GET_NODE(obj_b, node_b);
-	return *(i32 *)na->key == *(i32 *)nb->key;
+	return na->u32 == nb->u32;
 }
 
 - (struct tnt_object *)
@@ -209,7 +209,7 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 {
 	struct index_node *na = GET_NODE(obj_a, node_a),
 			  *nb = GET_NODE(obj_b, node_b);
-	return *(i64 *)na->key == *(i64 *)nb->key;
+	return na->u64 == nb->u64;
 }
 
 - (struct tnt_object *)
@@ -253,7 +253,7 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 {
 	struct index_node *na = GET_NODE(obj_a, node_a),
 			  *nb = GET_NODE(obj_b, node_b);
-	return lstrcmp(*(void **)na->key, *(void **)nb->key) == 0;
+	return lstrcmp(na->str, nb->str) == 0;
 }
 
 - (struct tnt_object *)
@@ -288,7 +288,7 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 {
 	struct index_node *na = GET_NODE(obj_a, node_a),
 			  *nb = GET_NODE(obj_b, node_b);
-	return strcmp(*(void **)na->key, *(void **)nb->key) == 0;
+	return strcmp(na->str, nb->str) == 0;
 }
 
 - (struct tnt_object *)
