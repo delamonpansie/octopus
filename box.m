@@ -1486,7 +1486,7 @@ static void
 init_second_stage(va_list ap __attribute__((unused)))
 {
 	luaT_openbox(root_L);
-	luaT_dofile("box_init.lua");
+	luaT_require("box_init");
 
 	@try {
 		i64 local_lsn = [recovery recover_start];
