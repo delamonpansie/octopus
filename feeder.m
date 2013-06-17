@@ -260,8 +260,8 @@ recover_feed_slave(int sock)
 
 	set_proc_title("feeder:client_handler%s %s", custom_proc_title, peer_name);
 
-	luaT_dofile("feeder_init.lua");
-	luaT_dofile("init.lua");
+	luaT_require("feeder_init");
+	luaT_require("init");
 
 	feeder = [[Feeder alloc] init_snap_dir:cfg.snap_dir
 				       wal_dir:cfg.wal_dir
