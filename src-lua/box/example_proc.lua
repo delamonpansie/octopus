@@ -105,7 +105,7 @@ user_proc.drop_first_tuple = box.wrap(function ()
                         print("lookin for a tuple")
                         for tuple in index.iter(idx) do
                                 print("found, killin it")
-                                box.delete(object_space, tuple[0])
+                                box.delete(0, tuple[0])
                                 break
                         end
                         print("sleepin")
@@ -148,4 +148,22 @@ user_proc.sum_u64 = box.wrap(function (n, pk)
         end
 
         return 0, {box.tuple(sum)}
+end)
+
+user_proc.truncate = box.wrap(function (n)
+
+	local object_space = box.object_space[n]
+	local pk = object_space.index[0]
+	local n = 0;
+	print("truncating object_space[".. n .. "]")
+	for tuple in index.iter(pk) do
+	   box.delete(n, tuple[0])
+	   n = n + 1
+	   if n % 1000 == 0 then
+	      print(" " .. n .. "k tuples")
+	   end
+	end
+
+	print("truncated " .. n .. "k tuples")
+        return 0, 0
 end)
