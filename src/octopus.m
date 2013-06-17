@@ -451,15 +451,12 @@ luaT_find_proc(lua_State *L, const char *fname, i32 len)
 }
 
 void
-luaT_dofile(const char *filename)
+luaT_require(const char *modname)
 {
-	if (access(filename, R_OK) == 0) {
-		lua_getglobal(root_L, "dofile");
-		lua_pushstring(root_L, filename);
-		if (lua_pcall(root_L, 1, 0, 0))
-			panic("lua_pcall() failed: %s", lua_tostring(root_L, -1));
-		say_info("%s loaded", filename);
-	}
+	lua_getglobal(root_L, "require");
+	lua_pushfstring(root_L, modname);
+	if (!lua_pcall(root_L, 1, 0, 0))
+		say_info("Lua module `%s' loaded", modname);
 }
 
 
@@ -805,7 +802,7 @@ octopus(int argc, char **argv)
 		@throw e;
 	}
 	admin_init();
-	luaT_dofile("init.lua"); /* run Lua init _after_ module init */
+	luaT_require("init"); /* run Lua init _after_ module init */
 
 	prelease(fiber->pool);
 	say_debug("entering event loop");
