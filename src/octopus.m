@@ -455,8 +455,14 @@ luaT_require(const char *modname)
 {
 	lua_getglobal(root_L, "require");
 	lua_pushfstring(root_L, modname);
-	if (!lua_pcall(root_L, 1, 0, 0))
-		say_info("Lua module `%s' loaded", modname);
+	if (!lua_pcall(root_L, 1, 0, 0)) {
+		say_info("Lua module '%s' loaded", modname);
+	} else {
+		const char *err = lua_tostring(root_L, -1);
+		if (strstr(err, "not found") != NULL)
+			return;
+		say_info("Lua %s", err);
+	}
 }
 
 
