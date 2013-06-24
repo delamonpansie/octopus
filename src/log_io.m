@@ -498,7 +498,9 @@ confirm_write
 {
 	assert(next_lsn != 0);
 	assert(mode == LOG_WRITE);
-	assert(!no_wet);
+	/* XXX teodor
+	 * assert(!no_wet);
+	 */ 
 
 	off_t tail;
 
