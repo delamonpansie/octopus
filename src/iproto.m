@@ -267,7 +267,10 @@ iproto_wakeup_workers(ev_prepare *ev)
 {
 	struct service *service = (void *)ev - offsetof(struct service, wakeup);
 	struct conn *c, *last = TAILQ_LAST(&service->processing, conn_tailq);
+	struct palloc_pool *saved_pool = fiber->pool;
+	assert(saved_pool == sched.pool);
 
+	fiber->pool = service->pool;
 	do {
 		/* process_requests() will move *c to the end of tailq */
 		c = TAILQ_FIRST(&service->processing);
@@ -275,6 +278,7 @@ iproto_wakeup_workers(ev_prepare *ev)
 			break;
 		process_requests(c);
 	} while (c != last);
+	fiber->pool = saved_pool;
 
 	if (palloc_diff_allocated(service->pool) > 64 * 1024 * 1024)
 		palloc_gc(service->pool);

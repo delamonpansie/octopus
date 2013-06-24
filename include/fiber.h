@@ -58,6 +58,7 @@ struct fiber {
 	void (*f)(va_list ap);
 	va_list ap;
 };
+extern struct fiber sched; /* fiber running ev callbacks */
 
 SLIST_HEAD(, fiber) fibers, zombie_fibers;
 
