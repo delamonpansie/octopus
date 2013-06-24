@@ -1,5 +1,11 @@
 iproto = Proto("iproto","IProto")
 
+ipro_msg = ProtoField.string("iproto.msg","Message")
+ipro_len = ProtoField.string("iproto.len","Length")
+ipro_sync = ProtoField.string("iproto.sync","Sync")
+
+iproto.fields = {ipro_msg, ipro_len, ipro_sync}
+
 function iproto.dissector(buffer, pinfo, tree)
   local buflen = buffer:len()
   local bufoff = 0
@@ -21,9 +27,9 @@ function iproto.dissector(buffer, pinfo, tree)
     local subtree_packet = tree:add(iproto, buffer(bufoff, 12 + len), "IProto packet (" ..12 + len.. ")")
     local subtree_header = subtree_packet:add_le(buffer(bufoff, 12), "IProto header (12)")
 
-    subtree_header:add_le(msg, "msg: " ..msg)
-    subtree_header:add_le(len, "len: " ..len)
-    subtree_header:add_le(sync, "sync: " ..sync)
+    subtree_header:add(ipro_msg,  msg)
+    subtree_header:add(ipro_len,  len)
+    subtree_header:add(ipro_sync, sync)
 
     if len > 0 then
       local subtree_data = subtree_packet:add_le(buffer(bufoff + 12, len), "IProto data (" ..len.. ")")
