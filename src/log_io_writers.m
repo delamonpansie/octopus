@@ -555,8 +555,6 @@ snapshot_write
 		return -1;
 	}
 
-	[snap fadvise_dont_need];
-
 	if ([snap close] == -1) {
 		say_syserror("snap close failed");
 		return -1;
