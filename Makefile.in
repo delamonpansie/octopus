@@ -86,7 +86,7 @@ octopus: third_party/luajit/src/libluajit.a
 third_party/luajit/src/libluajit.a:
 	$(E) "MAKE	$@"
 	@$(MAKE) -C third_party/luajit/src CC="$(CC)" E="$(E)" Q="$(Q)" \
-		TARGET_CFLAGS='-funwind-tables -DLUAJIT_UNWIND_EXTERNAL' libluajit.a
+		CCDEBUG=$(filter -g%,$(CFLAGS)) BUILDMODE=static TARGET_CFLAGS='-funwind-tables -DLUAJIT_UNWIND_EXTERNAL' libluajit.a
 
 $(obj): Makefile $(sub-Makefile)
 
