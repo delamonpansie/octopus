@@ -152,6 +152,7 @@ ssize_t conn_write(struct conn *c, const void *buf, size_t count);
 ssize_t conn_write_netmsg(struct conn *c);
 ssize_t conn_flush(struct conn *c);
 char *conn_peer_name(struct conn *c);
+int conn_unref(struct conn *c);
 
 void conn_flusher(va_list ap __attribute__((unused)));
 
