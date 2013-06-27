@@ -1,6 +1,7 @@
 set history save on
 set print pretty on
 set pagination off
+set confirm off
 
 handle SIGPIPE nostop noprint pass
 handle SIGUSR1 nostop noprint pass
