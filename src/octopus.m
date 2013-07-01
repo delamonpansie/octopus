@@ -389,7 +389,7 @@ static void
 luaT_init()
 {
 	struct lua_State *L;
-	L = root_L = luaL_newstate();
+	L = sched.L = root_L = luaL_newstate();
 
 	/* any lua error during initial load is fatal */
 	lua_atpanic(L, luaT_panic);
@@ -453,16 +453,19 @@ luaT_find_proc(lua_State *L, const char *fname, i32 len)
 int
 luaT_require(const char *modname)
 {
-	lua_getglobal(root_L, "require");
-	lua_pushfstring(root_L, modname);
-	if (!lua_pcall(root_L, 1, 0, 0)) {
+	struct lua_State *L = fiber->L;
+	lua_getglobal(L, "require");
+	lua_pushfstring(L, modname);
+	if (!lua_pcall(L, 1, 0, 0)) {
 		say_info("Lua module '%s' loaded", modname);
 		return 1;
 	} else {
-		const char *err = lua_tostring(root_L, -1);
-		if (strstr(err, "not found") != NULL)
+		const char *err = lua_tostring(L, -1);
+		if (strstr(err, "not found") != NULL) {
+			lua_pop(L, 1);
 			return 0;
-		say_info("Lua %s", err);
+		}
+		say_debug("luaT_require(%s): failed with `%s'", modname, err);
 		return -1;
 	}
 }
@@ -810,7 +813,10 @@ octopus(int argc, char **argv)
 		@throw e;
 	}
 	admin_init();
-	luaT_require("init"); /* run Lua init _after_ module init */
+
+	/* run Lua init _after_ module init */
+	if (luaT_require("init") == -1)
+		panic("unable to load `init' lua module: %s", lua_tostring(fiber->L, -1));
 
 	prelease(fiber->pool);
 	say_debug("entering event loop");
