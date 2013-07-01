@@ -157,7 +157,7 @@ recover_start_from_scn:(i64)initial_scn filter:(const char *)filter_name
 		lua_pushstring(fiber->L, filter_name);
 		lua_gettable(fiber->L, -2);
 		lua_remove(fiber->L, -2);
-		if (lua_isnil(fiber->L, -1)) {
+		if (!lua_isfunction(fiber->L, -1)) {
 			say_error("nonexistent filter: %s", filter_name);
 			_exit(EXIT_FAILURE);
 		}
@@ -260,8 +260,10 @@ recover_feed_slave(int sock)
 
 	set_proc_title("feeder:client_handler%s %s", custom_proc_title, peer_name);
 
-	luaT_require("feeder_init");
-	luaT_require("init");
+	if (luaT_require("feeder_init") == -1)
+		panic("unable to load `feeder_init' lua module: %s", lua_tostring(fiber->L, -1));
+	if (luaT_require("init") == -1)
+		panic("unable to load `init' lua module: %s", lua_tostring(fiber->L, -1));
 
 	feeder = [[Feeder alloc] init_snap_dir:cfg.snap_dir
 				       wal_dir:cfg.wal_dir
