@@ -438,54 +438,17 @@ conn_reset(struct conn *c)
 	c->out_messages.bytes = 0;
 }
 
-int
-conn_unref(struct conn *c)
+static void
+conn_free(struct conn *c)
 {
-	int r = 0;
-	assert(c->ref > 0);
-	if (--c->ref == 0)
-		r = conn_close(c);
-	return r;
-}
-
-int
-conn_close(struct conn *c)
-{
-	int r = 0;
-
-	if (c->fd > 0) {
-		tbuf_reset(c->rbuf);
-		ev_io_stop(&c->out);
-		ev_io_stop(&c->in);
-		c->in.fd = c->out.fd = -1;
-
-		/* the conn will either free'd or put back to pool,
-		   so next time it get used it will be configure by conn_init */
-		if ((c->memory_ownership & MO_CONN_OWNERSHIP_MASK) != MO_STATIC)
-			c->in.cb = c->out.cb = NULL;
-
-		r = close(c->fd);
-		c->fd = -1;
-		c->peer_name[0] = 0;
-
-		if (c->service && c->processing_link.tqe_prev != NULL) {
-			TAILQ_REMOVE(&c->service->processing, c, processing_link);
-			c->processing_link.tqe_prev = NULL;
-		}
-		c->state = CLOSED;
-	}
-
 	/*  as long as struct conn *C is alive, c->out_messages may be populated
 	    by callbacks even if c->fd == -1, so drop all this data */
 	conn_reset(c);
 
-	if (c->ref > 0)
-		return r;
-
 	if (c->service)
 		LIST_REMOVE(c, link);
-
 	c->service = NULL;
+
 	if (c->memory_ownership & MO_MY_OWN_POOL)
 		palloc_destroy_pool(c->pool);
 
@@ -504,6 +467,49 @@ conn_close(struct conn *c)
 		default:
 			abort();
 	}
+}
+
+void
+conn_unref(struct conn *c)
+{
+	assert(c->ref > 0);
+	if (--c->ref == 0) {
+		assert(c->state == CLOSED);
+		conn_free(c);
+	}
+}
+
+int
+conn_close(struct conn *c)
+{
+	int r = 0;
+	assert(c->fd > 0);
+
+	tbuf_reset(c->rbuf);
+	ev_io_stop(&c->out);
+	ev_io_stop(&c->in);
+	c->in.fd = c->out.fd = -1;
+
+	/* the conn will either free'd or put back to pool,
+	   so next time it get used it will be configure by conn_init */
+	if ((c->memory_ownership & MO_CONN_OWNERSHIP_MASK) != MO_STATIC)
+		c->in.cb = c->out.cb = NULL;
+
+	r = close(c->fd);
+	c->fd = -1;
+	c->state = CLOSED;
+	c->peer_name[0] = 0;
+
+	if (c->service && c->processing_link.tqe_prev != NULL) {
+		TAILQ_REMOVE(&c->service->processing, c, processing_link);
+		c->processing_link.tqe_prev = NULL;
+		c->ref--; /* call to conn_unref() will cause recurion */
+	}
+
+	/* either no refcounting used or c->service was the last owner.
+	   release memory, since conn_unref() woudn't be called in both cases. */
+	if (c->ref == 0)
+		conn_free(c);
 
 	return r;
 }
@@ -963,6 +969,7 @@ accept_client(int fd, void *data)
 	struct service *service = data;
 	struct conn *clnt = conn_init(NULL, service->pool, fd,
 				      service->input_reader, service->output_flusher, MO_SLAB);
+	clnt->ref++; /* there is special handling of this in conn_close() */
 	LIST_INSERT_HEAD(&service->conn, clnt, link);
 	clnt->service = service;
 	ev_io_start(&clnt->in);

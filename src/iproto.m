@@ -113,15 +113,10 @@ iproto_worker(va_list ap)
 			iproto_error(&m, a.r, rc, e->reason);
 		}
 
-		a.c->ref--;
-
-		if (a.c->state == CLOSED)
-			/* connection is already closed by other fiber */
-			conn_close(a.c);
-
-		if (a.c->out_messages.bytes > 0)
+		if (a.c->out_messages.bytes > 0 && a.c->state != CLOSED)
 			ev_io_start(&a.c->out);
 
+		conn_unref(a.c);
 		fiber_gc();
 	}
 }
@@ -187,6 +182,7 @@ process_requests(struct conn *c)
 	struct netmsg *m = netmsg_tail(&c->out_messages);
 	int r = 0;
 
+	c->ref++;
 	while (tbuf_len(c->rbuf) >= sizeof(struct iproto) &&
 	       tbuf_len(c->rbuf) >= sizeof(struct iproto) + iproto(c->rbuf)->data_len)
 	{
@@ -220,9 +216,7 @@ process_requests(struct conn *c)
 				memcpy(request_copy, request, req_size);
 				tbuf_ltrim(c->rbuf, req_size);
 				SLIST_REMOVE_HEAD(&service->workers, worker_link);
-				c->ref++;
 				resume(w, &(struct worker_arg){ih->cb.block, request_copy, c});
-				c->ref--;
 				r++;
 
 				/* cb may modify c->out_messages before yield() */
@@ -252,11 +246,13 @@ process_requests(struct conn *c)
 	   Otherwise output flusher will start reading,
 	   when size of output is small enought  */
 
-	if (c->out_messages.bytes > 0) {
+	if (c->out_messages.bytes > 0 && c->state != CLOSED) {
 		ev_io_start(&c->out);
 		if (c->out_messages.bytes >= cfg.output_high_watermark)
 			ev_io_stop(&c->in);
 	}
+
+	conn_unref(c);
 
 	return r;
 }

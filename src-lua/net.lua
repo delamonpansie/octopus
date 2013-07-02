@@ -133,10 +133,12 @@ local netmsg_head_t = ffi.typeof('struct netmsg_head &')
 local iproto_t = ffi.typeof('struct iproto *')
 local iproto_retcode_t = ffi.typeof('struct iproto_retcode')
 
+
+
 function conn(ptr)
-   c = conn_t(ptr)
-   ffi.gc(c, C.conn_unref)
-   return c
+   local c = conn_t(ptr)
+   c.ref = c.ref + 1
+   return ffi.gc(c, C.conn_unref)
 end
 
 function iproto(ptr)

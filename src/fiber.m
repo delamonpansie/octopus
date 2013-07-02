@@ -330,7 +330,7 @@ spawn_child(const char *name, struct fiber *in, struct fiber *out,
 		child->pid = pid;
 
 		struct palloc_pool *p = palloc_create_pool(name);
-		child->c = conn_init(NULL, p, socks[1], in, out, MO_SLAB);
+		child->c = conn_init(NULL, p, socks[1], in, out, MO_MALLOC);
 		palloc_register_gc_root(p, child->c, conn_gc);
 
 		return child;
