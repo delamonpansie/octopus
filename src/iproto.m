@@ -556,7 +556,6 @@ iproto_rendevouz(va_list ap)
 	struct iproto_peer 	*p;
 	ev_watcher		*w = NULL;
 	ev_timer		timer = { .coro=1 };
-	int			ev_own_counter = 1;
 
 	/* some warranty to be correctly initialized */
 	SLIST_FOREACH(p, group, link) {
@@ -588,11 +587,9 @@ loop:
 
 		switch(r) {
 			case tac_wait:
-				ev_own_counter++;
 				p->c.state = IN_CONNECT;
 				break; /* wait for event */
 			case tac_error:
-				ev_own_counter++;
 				p->c.state = CLOSED;
 				p->c.fd = -1;
 				if (!p->connect_err_said)
@@ -600,7 +597,6 @@ loop:
 				p->connect_err_said = true;
 				break;
 			case tac_ok:
-				ev_own_counter++;
 				conn_init(&p->c, NULL, p->c.fd, in, out, MO_STATIC | MO_MY_OWN_POOL);
 				p->c.state = CONNECTED;
 				ev_io_start(&p->c.in);
@@ -614,14 +610,11 @@ loop:
 		}
 	}
 
-	assert(ev_own_counter > 0);
 	ev_timer_stop(&timer);
 	ev_timer_init(&timer, (void *)fiber, 1.0, 0.);
 	ev_timer_start(&timer);
 	w = yield();
 	ev_timer_stop(&timer);
-
-	ev_own_counter = (w == (ev_watcher*)&timer) ? 1 : 0;
 
 	goto loop;
 }
