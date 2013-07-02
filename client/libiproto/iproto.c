@@ -313,6 +313,17 @@ li_connect_phase1(struct iproto_connection_t *c) {
 			}
 
 			if (r & POLLOUT) {
+				int err;
+				int err_size = sizeof(err);
+				getsockopt(c->fd, SOL_SOCKET, SO_ERROR,
+					   &err, &err_size);
+
+				if (err != 0) {
+					errno = err;
+					c->connectState = ConnectionError;
+					return ERR_CODE_CONNECT_ERR;
+				}
+
 				c->connectState = Connected;
 
 				return ERR_CODE_OK;
