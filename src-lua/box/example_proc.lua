@@ -85,13 +85,13 @@ user_proc.get_all_pkeys =
                         fiber.sleep(0.001)
                 end
 
-		local header = net.add_iov_iproto_header(out, request)
-                local bytes = net.out_bytes(out)
-		net.add_iov_string(out, string.tou32(key_count))
+		local header = out:add_iov_iproto_header(request)
+                local bytes = out:bytes()
+		out:add_iov_string(string.tou32(key_count))
 		for _, pack in ipairs(packs) do
-		   net.add_iov_ref_string(out, pack)
+		   out:add_iov_ref(pack, #pack)
 		end
-		bytes = net.out_bytes(out) - bytes
+		bytes = out:bytes() - bytes
 		header.data_len = header.data_len + bytes
         end
 

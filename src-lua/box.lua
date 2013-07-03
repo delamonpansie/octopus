@@ -125,29 +125,32 @@ function wrap(proc_body)
 
         local function proc(out, request, ...)
                 local retcode, result = proc_body(...)
-		local out = net.conn(out) -- convert lightuserdata to cdata<struct conn *>
-		local header = net.add_iov_iproto_header(out, request)
-		local bytes = net.out_bytes(out)
+		local out = net.conn(out)
+		local header = out:add_iov_iproto_header(request)
+		local bytes = out:bytes()
 
                 if type(result) == "table" then
-                        net.add_iov_string(out, tou32(#result))
+                        out:add_iov_string(tou32(#result))
 
                         for k, v in pairs(result) do
 			   if type(v) == "string" then
-			      net.add_iov_string(out, v)
+			      out:add_iov_string(v)
 			   elseif type(v) == "cdata" and ffi.istype(box_tuple, v) then
-			      net.add_iov_tuple(out, v)
+			      local obj = tnt_object_ref(obj)[0]
+			      local tuple = tuple_t(obj)
+			      local len = tuple.bsize + ffi.sizeof(tuple.bsize) + ffi.sizeof(tuple.cardinality)
+			      out:net_add_ref_iov(m, obj.data, len, obj)
 			   else
 			      error("unexpected type of result: " .. type(result))
 			   end
 			end
                 elseif type(result) == "number" then
-                        net.add_iov_string(out, tou32(result))
+                        out:add_iov_string(out, tou32(result))
                 else
                         error("unexpected type of result: " .. type(result))
                 end
 
-		header.data_len = header.data_len + net.out_bytes(out) - bytes
+		header.data_len = header.data_len + out:bytes() - bytes
 		header.ret_code = retcode
         end
 
@@ -185,12 +188,6 @@ function ctuple(obj)
    return ffi.cast(tuple_t, obj.data)
 end
 
-function net.add_iov_tuple(v)
-      local obj = tnt_object_ref(obj)[0]
-      local tuple = tuple_t(obj)
-      local len = tuple.bsize + ffi.sizeof(tuple.bsize) + ffi.sizeof(tuple.cardinality)
-      ffi.C.net_add_ref_iov(m, obj, obj.data, len)
-end
 
 function decode_varint32(ptr, offt)
         local initial_offt = offt
