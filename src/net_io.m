@@ -206,6 +206,13 @@ net_add_iov(struct netmsg **m, const void *buf, size_t len)
 		enlarge(m);
 }
 
+void
+conn_add_iov(struct conn *c, const void *buf, size_t len)
+{
+	struct netmsg *m = netmsg_tail(&c->out_messages);
+	net_add_iov(&m, buf, len);
+}
+
 struct iovec *
 net_reserve_iov(struct netmsg **m)
 {
@@ -220,6 +227,13 @@ net_add_iov_dup(struct netmsg **m, const void *buf, size_t len)
 	void *copy = palloc((*m)->head->pool, len);
 	memcpy(copy, buf, len);
 	return net_add_iov(m, copy, len);
+}
+
+void
+conn_add_iov_dup(struct conn *c, const void *buf, size_t len)
+{
+	struct netmsg *m = netmsg_tail(&c->out_messages);
+	net_add_iov_dup(&m, buf, len);
 }
 
 void
@@ -238,6 +252,13 @@ net_add_ref_iov(struct netmsg **m, uintptr_t obj, const void *buf, size_t len)
 
 	if (unlikely(++(*m)->count == nelem((*m)->iov)))
 		enlarge(m);
+}
+
+void
+conn_add_ref_iov(struct conn *c, uintptr_t obj, const void *buf, size_t len)
+{
+	struct netmsg *m = netmsg_tail(&c->out_messages);
+	net_add_ref_iov(&m, obj, buf, len);
 }
 
 void

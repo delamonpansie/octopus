@@ -153,6 +153,9 @@ ssize_t conn_write_netmsg(struct conn *c);
 ssize_t conn_flush(struct conn *c);
 char *conn_peer_name(struct conn *c);
 void conn_unref(struct conn *c);
+void conn_add_iov(struct conn *c, const void *buf, size_t len);
+void conn_add_iov_dup(struct conn *c, const void *buf, size_t len);
+void conn_add_ref_iov(struct conn *c, uintptr_t obj, const void *buf, size_t len);
 
 void conn_flusher(va_list ap __attribute__((unused)));
 

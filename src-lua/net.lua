@@ -47,15 +47,13 @@ struct iproto_retcode {
 	uint32_t data_len;
 	uint32_t sync;
 	uint32_t ret_code;
-	uint8_t data[];
-} __attribute__((packed));
+};
 
 struct iproto {
 	uint32_t msg_code;
 	uint32_t data_len;
 	uint32_t sync;
-	uint8_t data[];
-} __attribute__((packed));
+};
 ]]
 
 if ffi.abi('32bit') then
@@ -109,6 +107,10 @@ struct conn {
  ev_timer timer;
 };
 
+struct conn_wrap {
+ struct conn *ptr;
+};
+
 struct netmsg *netmsg_tail(struct netmsg_head *h);
 struct netmsg *netmsg_concat(struct netmsg_head *dst, struct netmsg_head *src);
 void netmsg_release(struct netmsg *m);
@@ -121,112 +123,70 @@ void net_add_iov_dup(struct netmsg **m, const void *buf, size_t len);
 void net_add_ref_iov(struct netmsg **m, uintptr_t ref, const void *buf, size_t len);
 void net_add_obj_iov(struct netmsg **m, struct tnt_object *obj, const void *buf, size_t len);
 
+
+void conn_add_iov(struct conn *c, const void *buf, size_t len);
+void conn_add_iov_dup(struct conn *c, const void *buf, size_t len);
+void conn_add_ref_iov(struct conn *c, uintptr_t obj, const void *buf, size_t len);
+
 int conn_unref(struct conn *c);
+
 ]]
 
 local C = ffi.C
 
-local conn_t = ffi.typeof('struct conn *')
-local netmsg_t = ffi.typeof('struct netmsg *')
-local netmsg_ref_t = ffi.typeof('struct netmsg *[1]') -- mutable ptr to netmsg
-local netmsg_head_t = ffi.typeof('struct netmsg_head &')
-local iproto_t = ffi.typeof('struct iproto *')
-local iproto_retcode_t = ffi.typeof('struct iproto_retcode')
+netmsg_t = ffi.typeof('struct netmsg *')
+iproto_t = ffi.typeof('struct iproto *')
+iproto_retcode_t = ffi.typeof('struct iproto_retcode')
+netmsg_ref_t = ffi.typeof('struct netmsg *[1]') -- mutable ptr to netmsg
 
+local cm = {}
+function cm:netmsg() return ffi.new(netmsg_ref_t, C.netmsg_tail(self.ptr.out_messages)) end
+function cm:bytes() return self.ptr.out_messages.bytes end
 
+function cm:add_iov_dup(obj, len) C.conn_add_iov_dup(self.ptr, obj, len) end
+function cm:add_iov_ref(obj, len, v) C.conn_add_ref_iov(self.ptr, v or ref(obj), obj, len) end
+function cm:add_iov_string(str)
+   if #str < 512 then
+      C.conn_add_iov_dup(self.ptr, str, #str)
+   else
+      C.conn_add_ref_iov(self.ptr, ref(str), str, #len)
+   end
+end
+function cm:add_iov_iproto_header(request)
+   local request = ffi.new(iproto_t, request)
+   local header = ffi.new(iproto_retcode_t, request.msg_code, 4, request.sync)
+   self:add_iov_ref(header, ffi.sizeof(iproto_retcode_t))
+   return header
+end
+
+local conn_mt = {
+   __index = cm,
+   __gc = function(c) C.conn_unref(c.ptr) end
+}
+local conn_t = ffi.metatype(ffi.typeof('struct conn_wrap'), conn_mt)
 
 function conn(ptr)
    local c = conn_t(ptr)
-   c.ref = c.ref + 1
-   return ffi.gc(c, C.conn_unref)
+   c.ptr.ref = c.ptr.ref + 1
+   return c
 end
 
 function iproto(ptr)
    return iproto_t(ptr)
 end
 
-local function ffi_type_assert(argn, want_type, arg)
-   if not ffi.istype(want_type, arg) then
-      error(format("bad argument #%i to '%s'(%s type expected, got %s)",
-		   argn, debug.getinfo(2, "n").name, want_type, ffi.typeof(arg))
-	    .. debug.traceback())
-   end
-   return true
-end
-
-function out_bytes(dst)
-   if ffi.istype(conn_t, dst) then
-      dst = dst[0].out_messages
-   end
-   ffi_type_assert(1, netmsg_head_t, dst)
-   return dst.bytes
-
-end
-
-function netmsg_tail(dst)
-   if ffi.istype(conn_t, dst) then
-      dst = dst[0].out_messages
-   else
-      error("not implemented")
-   end
-   ffi_type_assert(1, netmsg_head_t, dst)
-   return netmsg_ref_t(C.netmsg_tail(dst))
-end
-
-function add_iov_iproto_header(out, request)
-   assert(out ~= nil)
-   assert(request ~= nil)
-   local request = iproto_t(request)
-   local header = iproto_retcode_t(request.msg_code, 4, request.sync)
-   add_iov_cdata(out, net_ref(header), header, ffi.sizeof(iproto_retcode_t))
-   return header
-end
-
-function add_iov_dup_string(out, v)
-   if (ffi.istype(conn_t, out)) then
-      out = netmsg_tail(out)
-   end
-   ffi_type_assert(1, netmsg_ref_t, out)
-   C.net_add_iov_dup(out, v, #v)
-end
-
-function add_iov_ref_string(out, v)
-   if (ffi.istype(conn_t, out)) then
-      out = netmsg_tail(out)
-   end
-   ffi_type_assert(1, netmsg_ref_t, out)
-   C.net_add_ref_iov(out, net_ref(v), v, #v)
-end
-
-function add_iov_string(out, v)
-   if #v < 512 then
-      add_iov_dup_string(out, v)
-   else
-      add_iov_ref_string(out, v)
-   end
-end
-
-function add_iov_cdata(out, v, ptr, len)
-   if (ffi.istype(conn_t, out)) then
-      out = netmsg_tail(out)
-   end
-   ffi_type_assert(1, netmsg_ref_t, out)
-   -- assert(type(v) == number or ffi_type_assert(2, oct.object_t, v))
-   C.net_add_ref_iov(out, v, ptr, len)
-end
-
 
 -- gc ref's
-local net_ref_registry = {[0]=nil}
+local ref_registry = {[0]=nil}
 
-function net_ref(obj)
-   local ref = net_ref_registry[0]
+function ref(obj)
+   local ref = ref_registry[0]
    if ref then
-      net_ref_registry[0] = net_ref_registry[ref]
+      ref_registry[0] = ref_registry[ref]
    else
-      ref = #net_ref_registry + 1
+      ref = #ref_registry + 1
    end
-   net_ref_registry[ref] = obj
+   ref_registry[ref] = obj
    return ref * 2 + 1 -- ref to lua objects have lower bit set
 end
 
@@ -236,8 +196,8 @@ function G.__netmsg_unref(m, from)
       local ref = tonumber(m.ref[i])
       if bit.band(ref, 1) == 1 then
 	 ref = bit.rshift(ref, 1)
-	 net_ref_registry[ref] = net_ref_registry[0]
-	 net_ref_registry[0] = ref
+	 ref_registry[ref] = ref_registry[0]
+	 ref_registry[0] = ref
       end
    end
 end
