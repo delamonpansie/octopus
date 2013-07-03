@@ -64,10 +64,8 @@ netmsg_alloc(struct netmsg_head *h)
 struct netmsg *
 netmsg_tail(struct netmsg_head *h)
 {
-	if (!TAILQ_EMPTY(&h->q))
-		return TAILQ_LAST(&h->q, netmsg_tailq);
-	else
-		return netmsg_alloc(h);
+	struct netmsg *m = TAILQ_LAST(&h->q, netmsg_tailq);
+	return m ?: netmsg_alloc(h);
 }
 
 
@@ -121,8 +119,7 @@ netmsg_concat(struct netmsg_head *dst, struct netmsg_head *src)
 {
 	struct netmsg *m, *tmp, *tail;
 
-	tail = TAILQ_EMPTY(&dst->q) ? NULL : TAILQ_LAST(&dst->q, netmsg_tailq);
-
+	tail = TAILQ_LAST(&dst->q, netmsg_tailq);
 	dst->bytes += src->bytes;
 	src->bytes = 0;
 	TAILQ_FOREACH_SAFE(m, &src->q, link, tmp) {
