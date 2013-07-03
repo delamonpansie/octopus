@@ -42,6 +42,8 @@
 #include <third_party/luajit/src/lua.h>
 #include <third_party/luajit/src/lualib.h>
 #include <third_party/luajit/src/lauxlib.h>
+#include <third_party/luajit/src/lj_cdata.h>
+#include <third_party/luajit/src/lj_state.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -468,6 +470,18 @@ luaT_require(const char *modname)
 		say_debug("luaT_require(%s): failed with `%s'", modname, err);
 		return -1;
 	}
+}
+
+int
+luaT_pushptr(struct lua_State *L, void *p)
+{
+	GCcdata *cd = lj_cdata_new_(L, CTID_P_VOID, SIZEOF_VOID_P);
+	cdata_setptr(cdataptr(cd), SIZEOF_VOID_P, p);
+
+	TValue *o = L->top;
+	setcdataV(L, o, cd);
+	incr_top(L);
+	return 1;
 }
 
 

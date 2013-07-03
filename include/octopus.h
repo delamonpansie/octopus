@@ -110,5 +110,5 @@ void luaT_pushobject(struct lua_State *L, struct tnt_object *obj);
 int luaT_objinit(struct lua_State *L);
 int luaT_require(const char *filename);
 int luaT_find_proc(lua_State *L, const char *fname, i32 len);
-
+int luaT_pushptr(struct lua_State *L, void *p);
 #endif
