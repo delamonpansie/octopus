@@ -196,9 +196,6 @@ net_add_iov(struct netmsg **m, const void *buf, size_t len)
 
 	/* *((*m)->ref + (*m)->count) is NULL here. see netmsg_unref() */
 
-#ifdef NET_IO_TIMESTAMPS
-	(*m)->tstamp[(*m)->count] = ev_now();
-#endif
 	if (unlikely(++(*m)->count == nelem((*m)->iov)))
 		enlarge(m);
 }
@@ -242,10 +239,6 @@ net_add_ref_iov(struct netmsg **m, uintptr_t obj, const void *buf, size_t len)
 
 	(*m)->head->bytes += len;
 	(*m)->ref[(*m)->count] = obj;
-
-#ifdef NET_IO_TIMESTAMPS
-	(*m)->tstamp[(*m)->count] = ev_now();
-#endif
 
 	if (unlikely(++(*m)->count == nelem((*m)->iov)))
 		enlarge(m);
@@ -323,14 +316,6 @@ restart:
 			}
 		} while (iov_cnt > 0);
 	};
-
-#ifdef NET_IO_TIMESTAMPS
-	for (unsigned i = m->offset; i < m->count - iov_cnt; i++)
-		if (ev_now() - m->tstamp[i] > NET_IO_TIMESTAMPS)
-			say_warn("net_io c:%p out:%i delay: %.5f",
-				 c, ev_is_active(&c->out),
-				 ev_now() - m->tstamp[i]);
-#endif
 
 	if (iov_cnt > 0) {
 		m->offset = m->count - iov_cnt;
