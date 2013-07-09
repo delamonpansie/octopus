@@ -246,6 +246,17 @@ process_requests(struct conn *c)
 	   Otherwise output flusher will start reading,
 	   when size of output is small enought  */
 
+#ifndef IPROTO_PESSIMISTIC_WRITES
+	if (c->out_messages.bytes > 0 && c->state != CLOSED) {
+		ssize_t r = conn_write_netmsg(c);
+		if (r < 0) {
+			say_syswarn("%s writev() failed, closing connection",
+				    c->service->name);
+			conn_close(c);
+		}
+	}
+#endif
+
 	if (c->out_messages.bytes > 0 && c->state != CLOSED) {
 		ev_io_start(&c->out);
 		if (c->out_messages.bytes >= cfg.output_high_watermark)
