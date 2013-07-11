@@ -203,7 +203,7 @@ static struct stats {
 } stats;
 
 static void
-print_stats(struct netmsg **m)
+print_stats(struct netmsg_head *h)
 {
 	u64 bytes_used, items;
 	struct tbuf *out = tbuf_alloc(fiber->pool);
@@ -230,7 +230,7 @@ print_stats(struct netmsg **m)
 	tbuf_printf(out, "STAT limit_maxbytes %"PRIu64"\r\n", (u64)(cfg.slab_alloc_arena * (1 << 30)));
 	tbuf_printf(out, "STAT threads 1\r\n");
 	tbuf_printf(out, "END\r\n");
-	net_add_iov(m, out->ptr, tbuf_len(out));
+	net_add_iov_dup(h, out->ptr, tbuf_len(out));
 }
 
 static void
@@ -273,10 +273,8 @@ memcached_dispatch(struct conn *c)
 	say_debug("memcached_dispatch '%.*s'", MIN((int)(pe - p), 40) , p);
 
 #define ADD_IOV_LITERAL(s) ({						\
-	if (unlikely(!noreply)) {					\
-		struct netmsg *m = netmsg_tail(&c->out_messages);	\
-		net_add_iov(&m, (s), sizeof(s) - 1);			\
-	}								\
+	if (unlikely(!noreply))						\
+		net_add_iov(&c->out_messages, (s), sizeof(s) - 1);	\
 })
 
 #define STORE() ({							\
@@ -397,9 +395,9 @@ memcached_dispatch(struct conn *c)
 					if (store(key, exptime, flags, bytes, data) == 0) {
 						stats.total_items++;
 						if (!noreply) {
-							struct netmsg *m = netmsg_tail(&c->out_messages);
-							net_add_iov(&m, b->ptr, tbuf_len(b));
-							net_add_iov(&m, "\r\n", 2);
+							struct netmsg_head *h = &c->out_messages;
+							net_add_iov(h, b->ptr, tbuf_len(b));
+							ADD_IOV_LITERAL("\r\n");
 						}
 					} else {
 						ADD_IOV_LITERAL("SERVER_ERROR\r\n");
@@ -429,7 +427,7 @@ memcached_dispatch(struct conn *c)
 		action get {
 			stat_collect(stat_base, MEMC_GET, 1);
 			stats.cmd_get++;
-			struct netmsg *m = netmsg_tail(&c->out_messages);
+			struct netmsg_head *h = &c->out_messages;
 			while (keys_count-- > 0) {
 				struct tnt_object *obj;
 				struct box_tuple *tuple;
@@ -487,18 +485,18 @@ memcached_dispatch(struct conn *c)
 					struct tbuf *b = tbuf_alloc(fiber->pool);
 					tbuf_printf(b, "VALUE %.*s %"PRIu32" %"PRIu32" %"PRIu64"\r\n",
 						    (int)key_len, (u8 *)key, meta->flags, value_len, meta->cas);
-					net_add_iov(&m, b->ptr, tbuf_len(b));
+					net_add_iov(h, b->ptr, tbuf_len(b));
 					stats.bytes_written += tbuf_len(b);
 				} else {
-					net_add_iov(&m, "VALUE ", 6);
-					net_add_iov(&m, key, key_len);
-					net_add_iov(&m, suffix, suffix_len);
+					ADD_IOV_LITERAL("VALUE ");
+					net_add_iov(h, key, key_len);
+					net_add_iov(h, suffix, suffix_len);
 				}
-				net_add_obj_iov(&m, obj, value, value_len);
-				net_add_iov(&m, "\r\n", 2);
+				net_add_obj_iov(h, obj, value, value_len);
+				ADD_IOV_LITERAL("\r\n");
 				stats.bytes_written += value_len + 2;
 			}
-			net_add_iov(&m, "END\r\n", 5);
+			ADD_IOV_LITERAL("END\r\n");
 			stats.bytes_written += 5;
 		}
 
@@ -508,8 +506,7 @@ memcached_dispatch(struct conn *c)
 		}
 
 		action stats {
-			struct netmsg *m = netmsg_tail(&c->out_messages);
-			print_stats(&m);
+			print_stats(&c->out_messages);
 		}
 
 		action quit {

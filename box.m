@@ -189,7 +189,7 @@ valid_tuple(u32 cardinality, const void *data, u32 data_len)
 }
 
 static void
-tuple_add(struct netmsg **m, struct iproto_retcode *reply, struct tnt_object *obj)
+tuple_add(struct netmsg_head *h, struct iproto_retcode *reply, struct tnt_object *obj)
 {
 	struct box_tuple *tuple = box_tuple(obj);
 	size_t size = tuple->bsize +
@@ -200,10 +200,10 @@ tuple_add(struct netmsg **m, struct iproto_retcode *reply, struct tnt_object *ob
 
 	/* it's faster to copy & join small tuples into single large
 	   iov entry. join is done by net_add_iov() */
-	if (tuple->bsize < 512)
-		net_add_obj_iov(m, obj, &tuple->bsize, size);
+	if (tuple->bsize > 512)
+		net_add_obj_iov(h, obj, &tuple->bsize, size);
 	else
-		net_add_iov_dup(m, &tuple->bsize, size);
+		net_add_iov_dup(h, &tuple->bsize, size);
 }
 
 static void
@@ -582,7 +582,7 @@ prepare_update_fields(BoxTxn *txn, struct tbuf *data)
 
 
 static void __attribute__((noinline))
-process_select(struct netmsg **m, struct iproto_retcode *reply, Index<BasicIndex> *index,
+process_select(struct netmsg_head *h, struct iproto_retcode *reply, Index<BasicIndex> *index,
 	       u32 limit, u32 offset, struct tbuf *data)
 {
 	struct tnt_object *obj;
@@ -590,9 +590,9 @@ process_select(struct netmsg **m, struct iproto_retcode *reply, Index<BasicIndex
 	u32 count = read_u32(data);
 
 	say_debug("SELECT");
-	found = palloc((*m)->head->pool, sizeof(*found));
+	found = palloc(h->pool, sizeof(*found));
 	reply->data_len += sizeof(*found);
-	net_add_iov(m, found, sizeof(*found));
+	net_add_iov(h, found, sizeof(*found));
 	*found = 0;
 
 	if (index->unique) {
@@ -611,7 +611,7 @@ process_select(struct netmsg **m, struct iproto_retcode *reply, Index<BasicIndex
 			}
 
 			(*found)++;
-			tuple_add(m, reply, obj);
+			tuple_add(h, reply, obj);
 			limit--;
 		}
 	} else {
@@ -635,7 +635,7 @@ process_select(struct netmsg **m, struct iproto_retcode *reply, Index<BasicIndex
 				}
 
 				(*found)++;
-				tuple_add(m, reply, obj);
+				tuple_add(h, reply, obj);
 				--limit;
 			}
 		}
@@ -789,14 +789,14 @@ box_cb(struct iproto *request, struct conn *c)
 			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
 		[txn commit];
 
-		struct netmsg *m = netmsg_tail(&c->out_messages);
-		struct iproto_retcode *reply = iproto_reply(&m, request);
+		struct netmsg_head *h = &c->out_messages;
+		struct iproto_retcode *reply = iproto_reply(h, request);
 		reply->data_len += sizeof(u32);
-		net_add_iov_dup(&m, &txn->obj_affected, sizeof(u32));
+		net_add_iov_dup(h, &txn->obj_affected, sizeof(u32));
 		if (txn->flags & BOX_RETURN_TUPLE && txn->obj)
-			tuple_add(&m, reply, txn->obj);
+			tuple_add(h, reply, txn->obj);
 		if (request->msg_code == DELETE && txn->flags & BOX_RETURN_TUPLE && txn->old_obj)
-			tuple_add(&m, reply, txn->old_obj);
+			tuple_add(h, reply, txn->old_obj);
 
 		stop = ev_now();
 		if (stop - start > cfg.too_long_threshold)
@@ -815,10 +815,10 @@ box_cb(struct iproto *request, struct conn *c)
 }
 
 static void
-box_select_cb(struct netmsg **m, struct iproto *request, struct conn *c __attribute__((unused)))
+box_select_cb(struct netmsg_head *h, struct iproto *request, struct conn *c __attribute__((unused)))
 {
 	struct tbuf data = TBUF(request->data, request->data_len, fiber->pool);
-	struct iproto_retcode *reply = iproto_reply(m, request);
+	struct iproto_retcode *reply = iproto_reply(h, request);
 	struct object_space *object_space;
 
 	i32 n = read_u32(&data);
@@ -840,7 +840,7 @@ box_select_cb(struct netmsg **m, struct iproto *request, struct conn *c __attrib
 	if ((object_space->index[i]) == NULL)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index is invalid");
 
-	process_select(m, reply, object_space->index[i], limit, offset, &data);
+	process_select(h, reply, object_space->index[i], limit, offset, &data);
 	stat_collect(stat_base, request->msg_code, 1);
 }
 
