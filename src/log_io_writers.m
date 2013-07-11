@@ -89,10 +89,10 @@ configure_wal_writer
 {
 	say_info("Configuring WAL writer LSN:%"PRIi64" SCN:%"PRIi64, lsn, scn);
 
-	struct netmsg *n = netmsg_tail(&wal_writer->c->out_messages);
-	net_add_iov_dup(&n, &lsn, sizeof(lsn));
-	net_add_iov_dup(&n, &scn, sizeof(scn));
-	net_add_iov_dup(&n, &run_crc_log, sizeof(run_crc_log));
+	struct netmsg_head *h = &wal_writer->c->out_messages;
+	net_add_iov_dup(h, &lsn, sizeof(lsn));
+	net_add_iov_dup(h, &scn, sizeof(scn));
+	net_add_iov_dup(h, &run_crc_log, sizeof(run_crc_log));
 	ev_io_start(&wal_writer->c->out);
 	configured = true;
 }
@@ -130,12 +130,12 @@ wal_pack_prepare(XLogWriter *w, struct wal_pack *pack)
 		return 0;
 	}
 
-	pack->netmsg = netmsg_tail(&w->wal_writer->c->out_messages);
+	pack->netmsg = &w->wal_writer->c->out_messages;
 	pack->packet_len = sizeof(*pack) - offsetof(struct wal_pack, packet_len);
 	pack->fid = fiber->fid;
 	pack->sender = fiber;
 	pack->row_count = 0;
-	net_add_iov(&pack->netmsg, &pack->packet_len, pack->packet_len);
+	net_add_iov(pack->netmsg, &pack->packet_len, pack->packet_len);
 	return 1;
 }
 
@@ -147,9 +147,9 @@ wal_pack_append_row(struct wal_pack *pack, struct row_v12 *row)
 
 	pack->packet_len += sizeof(*row) + row->len;
 	pack->row_count++;
-	net_add_iov(&pack->netmsg, row, sizeof(*row));
+	net_add_iov(pack->netmsg, row, sizeof(*row));
 	if (row->len > 0)
-		net_add_iov(&pack->netmsg, row->data, row->len);
+		net_add_iov(pack->netmsg, row->data, row->len);
 	return WAL_PACK_MAX - pack->row_count;
 }
 
@@ -159,7 +159,7 @@ wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 {
 	pack->packet_len += len;
 	row->len += len;
-	net_add_iov(&pack->netmsg, data, len);
+	net_add_iov(pack->netmsg, data, len);
 }
 
 - (int)

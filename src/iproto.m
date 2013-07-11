@@ -109,8 +109,7 @@ iproto_worker(va_list ap)
 			else if ([e isMemberOf:[IndexError class]])
 				rc = ERR_CODE_ILLEGAL_PARAMS;
 
-			struct netmsg *m = netmsg_tail(&a.c->out_messages);
-			iproto_error(&m, a.r, rc, e->reason);
+			iproto_error(&a.c->out_messages, a.r, rc, e->reason);
 		}
 
 		if (a.c->out_messages.bytes > 0 && a.c->state != CLOSED)
@@ -123,7 +122,7 @@ iproto_worker(va_list ap)
 
 
 static void
-err(struct netmsg **m __attribute__((unused)),
+err(struct netmsg_head *h __attribute__((unused)),
     struct iproto *r,
     struct conn *c __attribute__((unused)))
 {
@@ -131,17 +130,17 @@ err(struct netmsg **m __attribute__((unused)),
 }
 
 static void
-iproto_ping(struct netmsg **m, struct iproto *r, struct conn *c)
+iproto_ping(struct netmsg_head *h, struct iproto *r, struct conn *c)
 {
 	if (r->msg_code != msg_ping)
-		err(m, r, c);
+		err(h, r, c);
 
-	net_add_iov_dup(m, r, sizeof(struct iproto));
+	net_add_iov_dup(h, r, sizeof(struct iproto));
 }
 
 void
 service_register_iproto_stream(struct service *s, u32 cmd,
-			       void (*cb)(struct netmsg **, struct iproto *, struct conn *),
+			       void (*cb)(struct netmsg_head *, struct iproto *, struct conn *),
 			       int flags)
 {
 	if (cmd == -1) { /* ANY */
@@ -179,7 +178,6 @@ process_requests(struct conn *c)
 {
 	struct service *service = c->service;
 	int batch = service->batch;
-	struct netmsg *m = netmsg_tail(&c->out_messages);
 	int r = 0;
 
 	c->ref++;
@@ -193,9 +191,9 @@ process_requests(struct conn *c)
 			stat_collect(stat_base, IPROTO_STREAM_OP, 1);
 			tbuf_ltrim(c->rbuf, sizeof(struct iproto) + request->data_len);
 			struct netmsg_mark header_mark;
-			netmsg_getmark(m, &header_mark);
+			netmsg_getmark(&c->out_messages, &header_mark);
 			@try {
-				ih->cb.stream(&m, request, c);
+				ih->cb.stream(&c->out_messages, request, c);
 			}
 			@catch (Error *e) {
 				u32 rc = ERR_CODE_UNKNOWN_ERROR;
@@ -204,8 +202,8 @@ process_requests(struct conn *c)
 				else if ([e isMemberOf:[IndexError class]])
 					rc = ERR_CODE_ILLEGAL_PARAMS;
 
-				netmsg_rewind(&m, &header_mark);
-				iproto_error(&m, request, rc, e->reason);
+				netmsg_rewind(&c->out_messages, &header_mark);
+				iproto_error(&c->out_messages, request, rc, e->reason);
 			}
 		} else {
 			struct fiber *w = SLIST_FIRST(&service->workers);
@@ -218,9 +216,6 @@ process_requests(struct conn *c)
 				SLIST_REMOVE_HEAD(&service->workers, worker_link);
 				resume(w, &(struct worker_arg){ih->cb.block, request_copy, c});
 				r++;
-
-				/* cb may modify c->out_messages before yield() */
-				m = netmsg_tail(&c->out_messages);
 			} else {
 				stat_collect(stat_base, IPROTO_WORKER_STARVATION, 1);
 				break; // FIXME: need state for this
@@ -241,11 +236,6 @@ process_requests(struct conn *c)
 		TAILQ_INSERT_TAIL(&service->processing, c, processing_link);
 	}
 
-	/* Prevent output owerflow by start reading if
-	   output size is below output_low_watermark.
-	   Otherwise output flusher will start reading,
-	   when size of output is small enought  */
-
 #ifndef IPROTO_PESSIMISTIC_WRITES
 	if (c->out_messages.bytes > 0 && c->state != CLOSED) {
 		ssize_t r = conn_write_netmsg(c);
@@ -259,6 +249,11 @@ process_requests(struct conn *c)
 
 	if (c->out_messages.bytes > 0 && c->state != CLOSED) {
 		ev_io_start(&c->out);
+
+		/* Prevent output owerflow by start reading if
+		   output size is below output_low_watermark.
+		   Otherwise output flusher will start reading,
+		   when size of output is small enought  */
 		if (c->out_messages.bytes >= cfg.output_high_watermark)
 			ev_io_stop(&c->in);
 	}
@@ -293,25 +288,25 @@ iproto_wakeup_workers(ev_prepare *ev)
 
 
 struct iproto_retcode *
-iproto_reply(struct netmsg **m, const struct iproto *request)
+iproto_reply(struct netmsg_head *h, const struct iproto *request)
 {
-	struct iproto_retcode *h = palloc((*m)->head->pool, sizeof(*h));
-	net_add_iov(m, h, sizeof(*h));
-	*h = (struct iproto_retcode){ .msg_code = request->msg_code,
-				      .data_len = sizeof(h->ret_code),
-				      .sync = request->sync,
-				      .ret_code = ERR_CODE_OK };
-	return h;
+	struct iproto_retcode *header = palloc(h->pool, sizeof(*h));
+	net_add_iov(h, header, sizeof(*header));
+	*header = (struct iproto_retcode){ .msg_code = request->msg_code,
+					   .data_len = sizeof(header->ret_code),
+					   .sync = request->sync,
+					   .ret_code = ERR_CODE_OK };
+	return header;
 }
 
 void
-iproto_error(struct netmsg **m, const struct iproto *request, u32 ret_code, const char *err)
+iproto_error(struct netmsg_head *h, const struct iproto *request, u32 ret_code, const char *err)
 {
-	struct iproto_retcode *header = iproto_reply(m, request);
+	struct iproto_retcode *header = iproto_reply(h, request);
 	header->ret_code = ret_code;
 	if (err && strlen(err) > 0) {
 		header->data_len += strlen(err);
-		net_add_iov_dup(m, err, strlen(err));
+		net_add_iov_dup(h, err, strlen(err));
 	}
 	say_debug("%s: op:%02x data_len:%i sync:%i ret:%i", __func__,
 		  header->msg_code, header->data_len, header->sync, header->ret_code);
@@ -477,10 +472,10 @@ broadcast(struct iproto_group *group, struct iproto_req *r)
 		if (p->c.state < CONNECTED)
 			continue;
 
-		struct netmsg *m = netmsg_tail(&p->c.out_messages);
-		net_add_iov_dup(&m, r->header, header_len);
+		struct netmsg_head *h = &p->c.out_messages;
+		net_add_iov_dup(h, r->header, header_len);
 		if (r->data)
-			net_add_iov_dup(&m, r->data, r->data_len);
+			net_add_iov_dup(h, r->data, r->data_len);
 		say_debug("|   peer:%i/%s op:0x%x len:%zu data_len:%i", p->id, p->name,
 			  r->header->msg_code, sizeof(struct iproto) + r->header->data_len,
 			  r->header->data_len);

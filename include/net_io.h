@@ -47,26 +47,24 @@ TAILQ_HEAD(netmsg_tailq, netmsg);
 struct netmsg_head {
 	struct netmsg_tailq q;
 	struct palloc_pool *pool;
-	size_t bytes;
+	ssize_t bytes;
 };
 
-#ifdef IOV_MAX
-#  define NETMSG_MAX IOV_MAX
-#else
-#  define NETMSG_MAX 1024
+#ifndef IOV_MAX
+#  define IOV_MAX 1024
 #endif
 
+
+#define NETMSG_IOV_SIZE 64
 struct netmsg {
 	struct netmsg_head *head;
-
-	unsigned offset, count;
+	unsigned count;
 
 	TAILQ_ENTRY(netmsg) link;
 
-	struct iovec dummy; /* used to eliminate branch in net_add_iov,
-			       there is no explicit access */
-	struct iovec iov[NETMSG_MAX];
-	uintptr_t ref[NETMSG_MAX];
+	struct iovec iov[NETMSG_IOV_SIZE];
+	uintptr_t ref[NETMSG_IOV_SIZE];
+	struct iovec *barrier;
 };
 
 struct netmsg_mark {
@@ -98,12 +96,16 @@ struct conn {
 	char peer_name[22]; /* aaa.bbb.ccc.ddd:xxxxx */
 
 	ev_timer 	timer;
+
+	int iov_offset;
+	struct iovec *iov_end;
+	struct iovec iov[IOV_MAX];
 };
 
 enum { IPROTO_NONBLOCK = 1 };
 struct iproto;
 typedef union {
-	void (*stream)(struct netmsg **, struct iproto *, struct conn *);
+	void (*stream)(struct netmsg_head *, struct iproto *, struct conn *);
 	void (*block)(struct iproto *, struct conn *);
 } iproto_cb;
 
@@ -125,17 +127,18 @@ struct service {
 };
 
 
-struct netmsg *netmsg_tail(struct netmsg_head *h);
+void netmsg_head_init(struct netmsg_head *h, struct palloc_pool *pool);
+
 struct netmsg *netmsg_concat(struct netmsg_head *dst, struct netmsg_head *src);
 void netmsg_release(struct netmsg *m);
-void netmsg_rewind(struct netmsg **m, struct netmsg_mark *mark);
-void netmsg_getmark(struct netmsg *m, struct netmsg_mark *mark);
+void netmsg_rewind(struct netmsg_head *h, struct netmsg_mark *mark);
+void netmsg_getmark(struct netmsg_head *h, struct netmsg_mark *mark);
 
-void net_add_iov(struct netmsg **m, const void *buf, size_t len);
-struct iovec *net_reserve_iov(struct netmsg **m);
-void net_add_iov_dup(struct netmsg **m, const void *buf, size_t len);
-void net_add_ref_iov(struct netmsg **m, uintptr_t ref, const void *buf, size_t len);
-void net_add_obj_iov(struct netmsg **m, struct tnt_object *obj, const void *buf, size_t len);
+void net_add_iov(struct netmsg_head *o, const void *buf, size_t len);
+struct iovec *net_reserve_iov(struct netmsg_head *o);
+void net_add_iov_dup(struct netmsg_head *o, const void *buf, size_t len);
+void net_add_ref_iov(struct netmsg_head *o, uintptr_t ref, const void *buf, size_t len);
+void net_add_obj_iov(struct netmsg_head *o, struct tnt_object *obj, const void *buf, size_t len);
 void netmsg_verify_ownership(struct netmsg_head *h); /* debug method */
 
 struct conn *conn_init(struct conn *c, struct palloc_pool *pool, int fd,
@@ -150,9 +153,6 @@ ssize_t conn_write_netmsg(struct conn *c);
 ssize_t conn_flush(struct conn *c);
 char *conn_peer_name(struct conn *c);
 void conn_unref(struct conn *c);
-void conn_add_iov(struct conn *c, const void *buf, size_t len);
-void conn_add_iov_dup(struct conn *c, const void *buf, size_t len);
-void conn_add_ref_iov(struct conn *c, uintptr_t obj, const void *buf, size_t len);
 
 void conn_flusher(va_list ap __attribute__((unused)));
 

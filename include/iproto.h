@@ -51,9 +51,9 @@ static inline struct iproto_retcode *iproto_retcode(const struct tbuf *t)
 
 struct tbuf *iproto_parse(struct tbuf *in);
 
-struct netmsg;
-struct iproto_retcode * iproto_reply(struct netmsg **m, const struct iproto *request);
-void iproto_error(struct netmsg **m, const struct iproto *request, u32 ret_code, const char *err);
+struct netmsg_head;
+struct iproto_retcode * iproto_reply(struct netmsg_head *h, const struct iproto *request);
+void iproto_error(struct netmsg_head *h, const struct iproto *request, u32 ret_code, const char *err);
 
 void iproto_worker(va_list ap);
 
@@ -74,7 +74,7 @@ struct iproto_peer *make_iproto_peer(int id, const char *name, const char *addr)
 
 void
 service_register_iproto_stream(struct service *s, u32 cmd,
-			       void (*cb)(struct netmsg **, struct iproto *, struct conn *),
+			       void (*cb)(struct netmsg_head *, struct iproto *, struct conn *),
 			       int flags);
 void
 service_register_iproto_block(struct service *s, u32 cmd,

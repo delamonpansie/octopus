@@ -238,7 +238,7 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 @end
 
 struct wal_pack {
-	struct netmsg *netmsg;
+	struct netmsg_head *netmsg;
 	u32 packet_len;
 	u32 row_count;
 	struct fiber *sender;

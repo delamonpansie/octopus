@@ -233,17 +233,17 @@ paxos_reply(struct paxos_request *req, enum paxos_msg_code code, u64 ballot)
 	msg->peer_id = self_id;
 	msg->version = paxos_default_version;
 
-	struct netmsg *m = netmsg_tail(&c->out_messages);
+	struct netmsg_head *h = &c->out_messages;
 
 	if (p) {
 		msg->value_len = p->value_len;
 		msg->tag = p->tag;
 
-		net_add_iov(&m, msg, sizeof(*msg));
+		net_add_iov(h, msg, sizeof(*msg));
 		if (p->value_len)
-			net_add_iov_dup(&m, p->value, p->value_len);
+			net_add_iov_dup(h, p->value, p->value_len);
 	} else {
-		net_add_iov(&m, msg, sizeof(*msg));
+		net_add_iov(h, msg, sizeof(*msg));
 	}
 
 	say_debug("%s: > peer:%i/%s %s sync:%i SCN:%"PRIi64" ballot:%"PRIu64,
@@ -425,8 +425,7 @@ leader(struct iproto *msg, struct conn *c)
 
 	say_debug("|   -> reply with %s", ret);
 
-	struct netmsg *m = netmsg_tail(&c->out_messages);
-	net_add_iov_dup(&m, pmsg, sizeof(*pmsg));
+	net_add_iov_dup(&c->out_messages, pmsg, sizeof(*pmsg));
 	ev_io_start(&c->out);
 }
 

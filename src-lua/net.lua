@@ -111,22 +111,15 @@ struct conn_wrap {
  struct conn *ptr;
 };
 
-struct netmsg *netmsg_tail(struct netmsg_head *h);
-struct netmsg *netmsg_concat(struct netmsg_head *dst, struct netmsg_head *src);
 void netmsg_release(struct netmsg *m);
-void netmsg_rewind(struct netmsg **m, struct netmsg_mark *mark);
-void netmsg_getmark(struct netmsg *m, struct netmsg_mark *mark);
+void netmsg_rewind(struct netmsg_head *h, struct netmsg_mark *mark);
+void netmsg_getmark(struct netmsg_head *h, struct netmsg_mark *mark);
 
-void net_add_iov(struct netmsg **m, const void *buf, size_t len);
-struct iovec *net_reserve_iov(struct netmsg **m);
-void net_add_iov_dup(struct netmsg **m, const void *buf, size_t len);
-void net_add_ref_iov(struct netmsg **m, uintptr_t ref, const void *buf, size_t len);
-void net_add_obj_iov(struct netmsg **m, struct tnt_object *obj, const void *buf, size_t len);
-
-
-void conn_add_iov(struct conn *c, const void *buf, size_t len);
-void conn_add_iov_dup(struct conn *c, const void *buf, size_t len);
-void conn_add_ref_iov(struct conn *c, uintptr_t obj, const void *buf, size_t len);
+void net_add_iov(struct netmsg_head *o, const void *buf, size_t len);
+struct iovec *net_reserve_iov(struct netmsg_head *o);
+void net_add_iov_dup(struct netmsg_head *o, const void *buf, size_t len);
+void net_add_ref_iov(struct netmsg_head *o, uintptr_t ref, const void *buf, size_t len);
+void net_add_obj_iov(struct netmsg_head *o, struct tnt_object *obj, const void *buf, size_t len);
 
 int conn_unref(struct conn *c);
 
@@ -137,19 +130,17 @@ local C = ffi.C
 netmsg_t = ffi.typeof('struct netmsg *')
 iproto_t = ffi.typeof('struct iproto *')
 iproto_retcode_t = ffi.typeof('struct iproto_retcode')
-netmsg_ref_t = ffi.typeof('struct netmsg *[1]') -- mutable ptr to netmsg
 
 local cm = {}
-function cm:netmsg() return ffi.new(netmsg_ref_t, C.netmsg_tail(self.ptr.out_messages)) end
 function cm:bytes() return self.ptr.out_messages.bytes end
 
-function cm:add_iov_dup(obj, len) C.conn_add_iov_dup(self.ptr, obj, len) end
-function cm:add_iov_ref(obj, len, v) C.conn_add_ref_iov(self.ptr, v or ref(obj), obj, len) end
+function cm:add_iov_dup(obj, len) C.net_add_iov_dup(self.ptr.out_messages, obj, len) end
+function cm:add_iov_ref(obj, len, v) C.net_add_ref_iov(self.ptr.out_messages, v or ref(obj), obj, len) end
 function cm:add_iov_string(str)
    if #str < 512 then
-      C.conn_add_iov_dup(self.ptr, str, #str)
+      C.net_add_iov_dup(self.ptr.out_messages, str, #str)
    else
-      C.conn_add_ref_iov(self.ptr, ref(str), str, #len)
+      C.net_add_ref_iov(self.ptr.out_messages, ref(str), str, #len)
    end
 end
 function cm:add_iov_iproto_header(request)

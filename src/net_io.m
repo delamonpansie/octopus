@@ -52,22 +52,19 @@ static struct netmsg *
 netmsg_alloc(struct netmsg_head *h)
 {
 	struct netmsg *n = slab_cache_alloc(&netmsg_cache);
-	n->count = n->offset = 0;
 	n->head = h;
-	n->dummy = (struct iovec){0, -1};
-	memset(n->ref, 0, sizeof(n->ref));
-
-	TAILQ_INSERT_TAIL(&h->q, n, link);
+	TAILQ_INSERT_HEAD(&h->q, n, link);
 	return n;
 }
 
-struct netmsg *
-netmsg_tail(struct netmsg_head *h)
+void
+netmsg_head_init(struct netmsg_head *h, struct palloc_pool *pool)
 {
-	struct netmsg *m = TAILQ_LAST(&h->q, netmsg_tailq);
-	return m ?: netmsg_alloc(h);
+	TAILQ_INIT(&h->q);
+	h->pool = pool;
+	h->bytes = 0;
+	netmsg_alloc(h);
 }
-
 
 static void
 netmsg_unref(struct netmsg *m, int from)
@@ -90,13 +87,18 @@ netmsg_unref(struct netmsg *m, int from)
 		lua_pushinteger(L, from);
 		lua_call(L, 2, 0);
 	}
-	memset(m->ref + from, (m->count - from) * sizeof(m->ref[0]), 0);
+	memset(m->ref + from, 0, (m->count - from) * sizeof(m->ref[0]));
 }
 
 void
 netmsg_release(struct netmsg *m)
 {
 	netmsg_unref(m, 0);
+	m->count = 0;
+	m->barrier = 0;
+	if (TAILQ_FIRST(&m->head->q) == m)
+		return;
+
 	TAILQ_REMOVE(&m->head->q, m, link);
 	slab_cache_free(&netmsg_cache, m);
 }
@@ -117,146 +119,119 @@ netmsg_gc(struct palloc_pool *pool, struct netmsg *m)
 struct netmsg *
 netmsg_concat(struct netmsg_head *dst, struct netmsg_head *src)
 {
-	struct netmsg *m, *tmp, *tail;
+	struct netmsg *m, *tmp;
 
-	tail = TAILQ_LAST(&dst->q, netmsg_tailq);
+	if (src->bytes == 0)
+		return TAILQ_FIRST(&dst->q);
+
+	if (dst->bytes == 0) {
+		m = TAILQ_FIRST(&dst->q);
+		assert(m->count == 0);
+		TAILQ_REMOVE(&dst->q, m, link);
+	}
+
 	dst->bytes += src->bytes;
 	src->bytes = 0;
-	TAILQ_FOREACH_SAFE(m, &src->q, link, tmp) {
-		TAILQ_REMOVE(&src->q, m, link); /* FIXME: TAILQ_INIT ? */
-		if (src->pool != dst->pool)
+
+	if (src->pool != dst->pool)
+		TAILQ_FOREACH(m, &src->q, link)
 			netmsg_gc(dst->pool, m);
 
-		if (tail && nelem(tail->iov) - tail->count > m->count) {
-			memcpy(tail->iov + tail->count, m->iov, sizeof(m->iov[0]) * m->count);
-			memcpy(tail->ref + tail->count, m->ref, sizeof(m->ref[0]) * m->count);
-			tail->count += m->count;
-
-			memset(m->ref, 0, sizeof(m->ref[0]) * m->count);
-			slab_cache_free(&netmsg_cache, m);
-		} else {
-			m->head = dst;
-			TAILQ_INSERT_TAIL(&dst->q, m, link);
-			tail = m;
-		}
+	TAILQ_FOREACH_REVERSE_SAFE(m, &src->q, netmsg_tailq, link, tmp) {
+		TAILQ_REMOVE(&src->q, m, link); // FIXME: TAILQ_INIT ?
+		m->head = dst;
+		TAILQ_INSERT_HEAD(&dst->q, m, link);
 	}
-	return tail;
+	return TAILQ_FIRST(&dst->q);
 }
 
 void
-netmsg_rewind(struct netmsg **m, struct netmsg_mark *mark)
+netmsg_rewind(struct netmsg_head *h, struct netmsg_mark *mark)
 {
-	struct netmsg *tail, *tvar;
-	struct netmsg_head *h = (*m)->head;
-
-	TAILQ_FOREACH_REVERSE_SAFE(tail, &h->q, netmsg_tailq, link, tvar) {
-		if (tail == mark->m)
+	struct netmsg *m, *tvar;
+	TAILQ_FOREACH_SAFE(m, &h->q, link, tvar) {
+		if (m == mark->m)
 			break;
-		for (int i = tail->offset; i < tail->count; i++)
-			h->bytes -= tail->iov[i].iov_len;
-		netmsg_release(tail);
-	}
 
-	for (int i = mark->offset + 1; i < mark->m->count; i++)
+		for (int i = 0; i < m->count; i++)
+			h->bytes -= m->iov[i].iov_len;
+		netmsg_release(m);
+	}
+	assert(m == mark->m);
+
+	for (int i = mark->offset; i < mark->m->count; i++)
 		h->bytes -= mark->m->iov[i].iov_len;
-	netmsg_unref(mark->m, mark->offset + 1);
-	*m = mark->m;
-	(*m)->count = mark->offset;
-	*((*m)->iov + (*m)->count - 1) = mark->iov;
+	netmsg_unref(mark->m, mark->offset);
+
+	m->count = mark->offset;
+	*(m->iov + m->count) = mark->iov;
 }
 
 void
-netmsg_getmark(struct netmsg *m, struct netmsg_mark *mark)
+netmsg_getmark(struct netmsg_head *h, struct netmsg_mark *mark)
 {
+	struct netmsg *m = TAILQ_FIRST(&h->q);
 	mark->m = m;
 	mark->offset = m->count;
-	mark->iov = *(m->iov + m->count - 1);
-}
-
-static void __attribute__((noinline))
-enlarge(struct netmsg **m)
-{
-	*m = netmsg_alloc((*m)->head);
+	mark->iov = *(m->iov + m->count);
 }
 
 
 void
-net_add_iov(struct netmsg **m, const void *buf, size_t len)
+net_add_iov(struct netmsg_head *h, const void *buf, size_t len)
 {
-	struct iovec *v = (*m)->iov + (*m)->count,
-		     *p = v - 1; /* if count == 0, then p == dummy */
+	struct netmsg *m = TAILQ_FIRST(&h->q);
+	struct iovec *v = m->iov + m->count;
 
-	(*m)->head->bytes += len;
-	if (unlikely(p->iov_base + p->iov_len == buf)) {
-		p->iov_len += len;
-		return;
-	}
+	h->bytes += len;
 	v->iov_base = (char *)buf;
 	v->iov_len = len;
 
 	/* *((*m)->ref + (*m)->count) is NULL here. see netmsg_unref() */
 
-	if (unlikely(++(*m)->count == nelem((*m)->iov)))
-		enlarge(m);
+	if (unlikely(++(m->count) == nelem(m->iov)))
+		netmsg_alloc(h);
 }
 
-void
-conn_add_iov(struct conn *c, const void *buf, size_t len)
-{
-	struct netmsg *m = netmsg_tail(&c->out_messages);
-	net_add_iov(&m, buf, len);
-}
 
 struct iovec *
-net_reserve_iov(struct netmsg **m)
+net_reserve_iov(struct netmsg_head *h)
 {
-	struct iovec *v = (*m)->iov + (*m)->count;
-	net_add_iov(m, NULL, 0);
+	struct netmsg *m = TAILQ_FIRST(&h->q);
+	struct iovec *v = m->iov + m->count;
+	net_add_iov(h, NULL, 0);
 	return v;
 }
 
 void
-net_add_iov_dup(struct netmsg **m, const void *buf, size_t len)
+net_add_iov_dup(struct netmsg_head *h, const void *buf, size_t len)
 {
-	void *copy = palloc((*m)->head->pool, len);
+	void *copy = palloc(h->pool, len);
 	memcpy(copy, buf, len);
-	return net_add_iov(m, copy, len);
+	return net_add_iov(h, copy, len);
 }
 
 void
-conn_add_iov_dup(struct conn *c, const void *buf, size_t len)
+net_add_ref_iov(struct netmsg_head *h, uintptr_t obj, const void *buf, size_t len)
 {
-	struct netmsg *m = netmsg_tail(&c->out_messages);
-	net_add_iov_dup(&m, buf, len);
-}
-
-void
-net_add_ref_iov(struct netmsg **m, uintptr_t obj, const void *buf, size_t len)
-{
-	struct iovec *v = (*m)->iov + (*m)->count;
+	struct netmsg *m = TAILQ_FIRST(&h->q);
+	struct iovec *v = m->iov + m->count;
 	v->iov_base = (char *)buf;
 	v->iov_len = len;
 
-	(*m)->head->bytes += len;
-	(*m)->ref[(*m)->count] = obj;
+	h->bytes += len;
+	m->ref[m->count] = obj;
 
-	if (unlikely(++(*m)->count == nelem((*m)->iov)))
-		enlarge(m);
+	if (unlikely(++(m->count) == nelem(m->iov)))
+		netmsg_alloc(h);
 }
 
 void
-conn_add_ref_iov(struct conn *c, uintptr_t obj, const void *buf, size_t len)
-{
-	struct netmsg *m = netmsg_tail(&c->out_messages);
-	net_add_ref_iov(&m, obj, buf, len);
-}
-
-void
-net_add_obj_iov(struct netmsg **m, struct tnt_object *obj, const void *buf, size_t len)
+net_add_obj_iov(struct netmsg_head *o, struct tnt_object *obj, const void *buf, size_t len)
 {
 	assert(((uintptr_t)obj & 1) == 0);
 	object_incr_ref(obj);
-	net_add_ref_iov(m, (uintptr_t)obj, buf, len);
+	net_add_ref_iov(o, (uintptr_t)obj, buf, len);
 }
 
 
@@ -273,36 +248,86 @@ netmsg_verify_ownership(struct netmsg_head *h)
 				assert(palloc_owner(h->pool, m->iov[i].iov_base));
 }
 
+static inline ssize_t
+iovec_joinable(const struct iovec *vec, const struct iovec *end)
+{
+	ssize_t len = 0;
+	while (vec < end && (vec->iov_len >> 9) == 0)
+		len += (vec++)->iov_len;
+	return len;
+}
+
+static inline struct iovec *
+iovec_concat(void * restrict dst, struct iovec * restrict src, ssize_t len)
+{
+	do {
+		memcpy(dst, src->iov_base, src->iov_len);
+		dst += src->iov_len;
+		len -= src->iov_len;
+		src++;
+	} while (len > 0);
+	return src;
+}
+
+struct iovec *
+netmsg2iovec(struct iovec *buf, struct netmsg *m)
+{
+	int free = IOV_MAX;
+	do {
+		struct iovec *src = m->iov,
+			     *end = src + m->count;
+
+		while (src < end) {
+			ssize_t len = iovec_joinable(src, end);
+
+			if (len > 0) {
+				buf->iov_base = palloc(m->head->pool, len);
+				buf->iov_len = len;
+				src = iovec_concat(buf->iov_base, src, len);
+			} else {
+				*buf = *src++;
+			}
+			buf++;
+			free--;
+		}
+		m->barrier = buf;
+		m = TAILQ_PREV(m, netmsg_tailq, link);
+	} while (m != NULL && free >= m->count);
+	return buf;
+}
 
 ssize_t
 conn_write_netmsg(struct conn *c)
 {
 	struct netmsg_head *head = &c->out_messages;
-	struct netmsg *m;
-	ssize_t ret = 0;
-restart:
-	m = TAILQ_FIRST(&head->q);
-	if (m == NULL)
-		return ret;
+	struct iovec *iov = c->iov, *end;
+	ssize_t result = 0;
 
-	struct iovec *iov = m->iov + m->offset;
-	unsigned iov_cnt = m->count - m->offset;
-	ssize_t r = 0;
+	if (unlikely(c->iov_offset > 0)) {
+		iov = c->iov + c->iov_offset;
+		end = c->iov_end;
+	} else {
+		if (unlikely(head->bytes == 0))
+			return result;
 
-	while (iov_cnt > 0) {
-		r = writev(c->fd, iov, iov_cnt);
+		iov = c->iov;
+		end = netmsg2iovec(iov, TAILQ_LAST(&head->q, netmsg_tailq));
+	}
+
+	while (end > iov) {
+		ssize_t r = writev(c->fd, iov, end - iov);
 		if (unlikely(r < 0)) {
 			if (errno == EINTR)
 				continue;
 			if (errno == EAGAIN || errno == EWOULDBLOCK)
 				break;
 
-			if (ret == 0)
-				ret = r;
+			if (result == 0)
+				result = r;
 			break;
 		};
 		head->bytes -= r;
-		ret += r;
+		result += r;
 
 		do {
 			if (iov->iov_len > r) {
@@ -312,18 +337,29 @@ restart:
 			} else {
 				r -= iov->iov_len;
 				iov++;
-				iov_cnt--;
 			}
-		} while (iov_cnt > 0);
+		} while (r > 0);
 	};
 
-	if (iov_cnt > 0) {
-		m->offset = m->count - iov_cnt;
-		return ret;
+
+	if (end != iov) {
+		c->iov_offset = iov - c->iov;
+		c->iov_end = end;
+		if (TAILQ_FIRST(&head->q)->barrier != NULL)
+			netmsg_alloc(head);
 	} else {
-		netmsg_release(m);
-		goto restart;
+		c->iov_offset = 0;
 	}
+
+
+	struct netmsg *m, *tmp;
+	TAILQ_FOREACH_REVERSE_SAFE(m, &head->q, netmsg_tailq, link, tmp) {
+		if (m->barrier == NULL || m->barrier > iov)
+			break;
+		netmsg_release(m);
+	}
+
+	return result;
 }
 
 ssize_t
@@ -364,13 +400,14 @@ conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, st
 		c = slab_cache_alloc(&conn_cache);
 	}
 
-	TAILQ_INIT(&c->out_messages.q);
-	c->out_messages.bytes = 0;
+	netmsg_head_init(&c->out_messages, pool);
+
 	c->ref = 0;
 	c->fd = fd;
 	c->state = fd >= 0 ? CONNECTED : CLOSED;
 	c->peer_name[0] = 0;
 	c->processing_link.tqe_prev = NULL;
+	c->iov_offset = 0;
 
 	ev_init(&c->in, (void *)in);
 	ev_init(&c->out, (void *)out);
@@ -387,7 +424,6 @@ conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, st
 	}
 
 	c->rbuf = tbuf_alloc(c->pool);
-	c->out_messages.pool = c->pool;
 
 	if (fd >= 0)
 		conn_set(c, fd);
@@ -438,6 +474,8 @@ conn_reset(struct conn *c)
 	struct netmsg *m, *tmp;
 	TAILQ_FOREACH_SAFE(m, &c->out_messages.q, link, tmp)
 		netmsg_release(m);
+
+	c->iov_offset = 0;
 	c->out_messages.bytes = 0;
 }
 
@@ -1019,7 +1057,7 @@ service_info(struct tbuf *out, struct service *service)
 		if (!TAILQ_EMPTY(&c->out_messages.q))
 			tbuf_printf(out, "      out_messages:" CRLF);
 		TAILQ_FOREACH(m, &c->out_messages.q, link)
-			tbuf_printf(out, "      - { offt: %i, count: %i }" CRLF, m->offset, m->count);
+			tbuf_printf(out, "      - { count: %i }" CRLF, m->count);
 	}
 }
 
