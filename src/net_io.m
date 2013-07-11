@@ -207,8 +207,14 @@ void
 net_add_iov_dup(struct netmsg_head *h, const void *buf, size_t len)
 {
 	void *copy = palloc(h->pool, len);
+	struct netmsg *m = TAILQ_FIRST(&h->q);
+	struct iovec *v = m->iov + m->count;
+
+	if (v->iov_base + v->iov_len == copy)
+		v->iov_len += len;
+	else
+		net_add_iov(h, copy, len);
 	memcpy(copy, buf, len);
-	return net_add_iov(h, copy, len);
 }
 
 void
