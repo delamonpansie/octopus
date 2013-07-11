@@ -5,6 +5,8 @@ local assert, error, print, type, pairs, ipairs, table, setmetatable, getmetatab
 local string, tostring, tonumber =
       string, tostring, tonumber
 
+local rawget = rawget
+
 local tou32, tofield = string.tou32, string.tofield
 
 local ffi, bit, debug = require("ffi"), require("bit"), require("debug")
@@ -18,7 +20,7 @@ space = object_space
 
 local object_space_mt = getmetatable(object_space) or {}
 assert(not object_space_mt.__index)
-object_space_mt.__index = function(table, i) return table[tonumber(i)] end
+object_space_mt.__index = function(table, i) return rawget(table, tonumber(i)) end
 setmetatable(object_space, object_space_mt)
 
 for n, v in pairs(object_space) do
@@ -145,7 +147,7 @@ function wrap(proc_body)
 			   end
 			end
                 elseif type(result) == "number" then
-                        out:add_iov_string(out, tou32(result))
+                        out:add_iov_string(tou32(result))
                 else
                         error("unexpected type of result: " .. type(result))
                 end

@@ -151,19 +151,18 @@ user_proc.sum_u64 = box.wrap(function (n, pk)
 end)
 
 user_proc.truncate = box.wrap(function (n)
-
 	local object_space = box.object_space[n]
 	local pk = object_space.index[0]
-	local n = 0;
+	local c = 0;
 	print("truncating object_space[".. n .. "]")
 	for tuple in index.iter(pk) do
 	   box.delete(n, tuple[0])
-	   n = n + 1
-	   if n % 1000 == 0 then
-	      print(" " .. n .. "k tuples")
+	   c = c + 1
+	   if c % 1000000 == 0 then
+	      print(" " .. c / 1000000 .. "M tuples")
 	   end
 	end
 
-	print("truncated " .. n .. "k tuples")
+	print("truncated " .. c .. " tuples")
         return 0, 0
 end)
