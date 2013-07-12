@@ -57,7 +57,6 @@ struct netmsg_head {
 
 #define NETMSG_IOV_SIZE 64
 struct netmsg {
-	struct netmsg_head *head;
 	unsigned count;
 
 	TAILQ_ENTRY(netmsg) link;
@@ -130,7 +129,7 @@ struct service {
 void netmsg_head_init(struct netmsg_head *h, struct palloc_pool *pool);
 
 struct netmsg *netmsg_concat(struct netmsg_head *dst, struct netmsg_head *src);
-void netmsg_release(struct netmsg *m);
+void netmsg_release(struct netmsg_head *h, struct netmsg *m);
 void netmsg_rewind(struct netmsg_head *h, struct netmsg_mark *mark);
 void netmsg_getmark(struct netmsg_head *h, struct netmsg_mark *mark);
 

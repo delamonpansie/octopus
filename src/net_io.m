@@ -52,7 +52,6 @@ static struct netmsg *
 netmsg_alloc(struct netmsg_head *h)
 {
 	struct netmsg *n = slab_cache_alloc(&netmsg_cache);
-	n->head = h;
 	TAILQ_INSERT_HEAD(&h->q, n, link);
 	return n;
 }
@@ -91,15 +90,15 @@ netmsg_unref(struct netmsg *m, int from)
 }
 
 void
-netmsg_release(struct netmsg *m)
+netmsg_release(struct netmsg_head *h, struct netmsg *m)
 {
 	netmsg_unref(m, 0);
 	m->count = 0;
 	m->barrier = 0;
-	if (TAILQ_FIRST(&m->head->q) == m)
+	if (TAILQ_FIRST(&h->q) == m)
 		return;
 
-	TAILQ_REMOVE(&m->head->q, m, link);
+	TAILQ_REMOVE(&h->q, m, link);
 	slab_cache_free(&netmsg_cache, m);
 }
 
@@ -139,7 +138,6 @@ netmsg_concat(struct netmsg_head *dst, struct netmsg_head *src)
 
 	TAILQ_FOREACH_REVERSE_SAFE(m, &src->q, netmsg_tailq, link, tmp) {
 		TAILQ_REMOVE(&src->q, m, link); // FIXME: TAILQ_INIT ?
-		m->head = dst;
 		TAILQ_INSERT_HEAD(&dst->q, m, link);
 	}
 	return TAILQ_FIRST(&dst->q);
@@ -155,7 +153,7 @@ netmsg_rewind(struct netmsg_head *h, struct netmsg_mark *mark)
 
 		for (int i = 0; i < m->count; i++)
 			h->bytes -= m->iov[i].iov_len;
-		netmsg_release(m);
+		netmsg_release(h, m);
 	}
 	assert(m == mark->m);
 
@@ -276,7 +274,7 @@ iovec_concat(void * restrict dst, struct iovec * restrict src, ssize_t len)
 }
 
 struct iovec *
-netmsg2iovec(struct iovec *buf, struct netmsg *m)
+netmsg2iovec(struct iovec *buf, struct palloc_pool *pool, struct netmsg *m)
 {
 	int free = IOV_MAX;
 	do {
@@ -287,7 +285,7 @@ netmsg2iovec(struct iovec *buf, struct netmsg *m)
 			ssize_t len = iovec_joinable(src, end);
 
 			if (len > 0) {
-				buf->iov_base = palloc(m->head->pool, len);
+				buf->iov_base = palloc(pool, len);
 				buf->iov_len = len;
 				src = iovec_concat(buf->iov_base, src, len);
 			} else {
@@ -317,7 +315,7 @@ conn_write_netmsg(struct conn *c)
 			return result;
 
 		iov = c->iov;
-		end = netmsg2iovec(iov, TAILQ_LAST(&head->q, netmsg_tailq));
+		end = netmsg2iovec(iov, head->pool, TAILQ_LAST(&head->q, netmsg_tailq));
 	}
 
 	while (end > iov) {
@@ -362,7 +360,7 @@ conn_write_netmsg(struct conn *c)
 	TAILQ_FOREACH_REVERSE_SAFE(m, &head->q, netmsg_tailq, link, tmp) {
 		if (m->barrier == NULL || m->barrier > iov)
 			break;
-		netmsg_release(m);
+		netmsg_release(head, m);
 	}
 
 	return result;
@@ -479,7 +477,7 @@ conn_reset(struct conn *c)
 {
 	struct netmsg *m, *tmp;
 	TAILQ_FOREACH_SAFE(m, &c->out_messages.q, link, tmp)
-		netmsg_release(m);
+		netmsg_release(&c->out_messages, m);
 
 	c->iov_offset = 0;
 	c->out_messages.bytes = 0;
