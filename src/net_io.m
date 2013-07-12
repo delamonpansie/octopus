@@ -205,14 +205,8 @@ void
 net_add_iov_dup(struct netmsg_head *h, const void *buf, size_t len)
 {
 	void *copy = palloc(h->pool, len);
-	struct netmsg *m = TAILQ_FIRST(&h->q);
-	struct iovec *v = m->iov + m->count;
-
-	if (v->iov_base + v->iov_len == copy)
-		v->iov_len += len;
-	else
-		net_add_iov(h, copy, len);
 	memcpy(copy, buf, len);
+	net_add_iov(h, copy, len);
 }
 
 void
@@ -252,47 +246,25 @@ netmsg_verify_ownership(struct netmsg_head *h)
 				assert(palloc_owner(h->pool, m->iov[i].iov_base));
 }
 
-static inline ssize_t
-iovec_joinable(const struct iovec *vec, const struct iovec *end)
-{
-	ssize_t len = 0;
-	while (vec < end && (vec->iov_len >> 9) == 0)
-		len += (vec++)->iov_len;
-	return len;
-}
 
-static inline struct iovec *
-iovec_concat(void * restrict dst, struct iovec * restrict src, ssize_t len)
-{
-	do {
-		memcpy(dst, src->iov_base, src->iov_len);
-		dst += src->iov_len;
-		len -= src->iov_len;
-		src++;
-	} while (len > 0);
-	return src;
-}
-
-struct iovec *
-netmsg2iovec(struct iovec *buf, struct palloc_pool *pool, struct netmsg *m)
+static struct iovec *
+netmsg2iovec(struct iovec *buf, struct netmsg *m)
 {
 	int free = IOV_MAX;
+	void *prev = NULL;
 	do {
 		struct iovec *src = m->iov,
 			     *end = src + m->count;
 
 		while (src < end) {
-			ssize_t len = iovec_joinable(src, end);
-
-			if (len > 0) {
-				buf->iov_base = palloc(pool, len);
-				buf->iov_len = len;
-				src = iovec_concat(buf->iov_base, src, len);
+			if (prev == src->iov_base) {
+				(buf - 1)->iov_len += src->iov_len;
+				prev += src->iov_len;
 			} else {
-				*buf = *src++;
+				*buf++ = *src;
+				prev = src->iov_base + src->iov_len;
 			}
-			buf++;
-			free--;
+			src++;
 		}
 		m->barrier = buf;
 		m = TAILQ_PREV(m, netmsg_tailq, link);
@@ -315,7 +287,7 @@ conn_write_netmsg(struct conn *c)
 			return result;
 
 		iov = c->iov;
-		end = netmsg2iovec(iov, head->pool, TAILQ_LAST(&head->q, netmsg_tailq));
+		end = netmsg2iovec(iov, TAILQ_LAST(&head->q, netmsg_tailq));
 	}
 
 	while (end > iov) {
