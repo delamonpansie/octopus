@@ -290,7 +290,7 @@ iproto_wakeup_workers(ev_prepare *ev)
 struct iproto_retcode *
 iproto_reply(struct netmsg_head *h, const struct iproto *request)
 {
-	struct iproto_retcode *header = palloc(h->pool, sizeof(*h));
+	struct iproto_retcode *header = palloc(h->pool, sizeof(*header));
 	net_add_iov(h, header, sizeof(*header));
 	*header = (struct iproto_retcode){ .msg_code = request->msg_code,
 					   .data_len = sizeof(header->ret_code),
