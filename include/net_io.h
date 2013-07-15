@@ -57,13 +57,12 @@ struct netmsg_head {
 
 #define NETMSG_IOV_SIZE 64
 struct netmsg {
-	unsigned count;
-
-	TAILQ_ENTRY(netmsg) link;
+	TAILQ_ENTRY(netmsg) link; /* first sizeof(void *) bytes are trashed by salloc() */
+	int count;
+	struct iovec *barrier;
 
 	struct iovec iov[NETMSG_IOV_SIZE];
 	uintptr_t ref[NETMSG_IOV_SIZE];
-	struct iovec *barrier;
 };
 
 struct netmsg_mark {
