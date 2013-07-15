@@ -262,6 +262,7 @@ netmsg2iovec(struct iovec *buf, struct netmsg *m)
 				prev += src->iov_len;
 			} else {
 				*buf++ = *src;
+				free--;
 				prev = src->iov_base + src->iov_len;
 			}
 			src++;
