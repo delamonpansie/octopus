@@ -1,3 +1,8 @@
+#######################################################################
+# LogIO PAXOS
+#
+
+
 paxos_enabled = 0, ro
 paxos_self_id = -1, ro
 paxos_peer = [

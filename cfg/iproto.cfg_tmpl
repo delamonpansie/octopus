@@ -1,0 +1,11 @@
+#######################################################################
+# IPROTO
+#
+# Primary port (where updates are accepted)
+primary_port=0, ro, required
+
+# Secondary port (where only selects are accepted)
+secondary_port=0, ro
+
+# warn about requests which take longer to process
+too_long_threshold=0.5

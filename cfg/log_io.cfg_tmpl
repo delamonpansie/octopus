@@ -1,4 +1,6 @@
-## LogIO
+#######################################################################
+#	LogIO
+#
 
 # Snapshot directory (where snapshots get saved/read)
 snap_dir=".", ro
