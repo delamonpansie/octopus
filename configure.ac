@@ -262,18 +262,12 @@ AS_IF([test "x$valgrind" == xyes],
              AC_MSG_ERROR([unable to find valgrind headers]))],
       [CFLAGS="-DNVALGRIND $CFLAGS"])
 
-AC_ARG_ENABLE([modules],
-              [AS_HELP_STRING([--enable-modules[[="box feeder"]]],
-                              [select module to build, silver(box) and feeder by default])],
-              [octopus_modules=$enableval],
-              [octopus_modules="box feeder"])
+m4_include(modules.m4)
 AC_SUBST(modules, [$octopus_modules])
-
-AC_MSG_NOTICE([Fetching modules])
-${srcdir}/scripts/fetch-modules.sh
 for module in $octopus_modules; do
     AS_IF([test -r ${srcdir}/mod/$module/Makefile], [], AC_MSG_ERROR([No such module: $module]))
 done
+
 
 AC_ARG_ENABLE([clients],
               [AS_HELP_STRING([--enable-clients[[=libiproto]]],

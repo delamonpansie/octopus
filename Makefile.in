@@ -151,6 +151,7 @@ octopus_version.h: FORCE
 	@echo -n - >> $@_
 	@cd $(VPATH); $(GIT) branch | grep  '\*' | cut -f2 -d' ' | sed 's/^master$$/experimental/' | tr -d \\n >> $@_
 	@echo '";' >> $@_
+	@echo -n 'const char octopus_bundle_string[] = "NONE";' >> $@_;
 	@diff -q $@ $@_ 2>/dev/null >/dev/null || (echo "GEN	$(notdir $@)"; cp $@_ $@)
 	@rm $@_
 
@@ -158,7 +159,7 @@ all_modules = $(foreach path,$(wildcard mod/*),$(notdir $(path)))
 
 $(foreach mod,$(all_modules),mod/$(mod)/$(mod)_version.h):
 	@echo -n 'const char $(subst .h,,$(notdir $@))_string[] = "' > $@_
-	@cd $(VPATH)/$(dir $@); $(GIT) describe --always HEAD | tr -d \\n >> $(notdir $@_)
+	@cd $(VPATH)/$(dir $@); $(GIT) describe --always HEAD | tr -d \\n | sed 's/.*-g/g/' >> $(notdir $@_)
 	@echo '";' >> $@_
 	@diff -q $@ $@_ 2>/dev/null >/dev/null || (echo "GEN	$@"; cp $@_ $@)
 	@rm $@_
