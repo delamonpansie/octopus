@@ -323,11 +323,8 @@ init_iproto_peer(struct iproto_peer *p, int id, const char *name, const char *ad
 
 	p->id = id;
 	p->name = name;
-	if (atosin(addr, &p->addr) == -1)
-		return -1;
-
 	p->c.fd = -1;
-	return 0;
+	return atosin(addr, &p->addr);
 }
 
 struct iproto_peer *
