@@ -284,6 +284,9 @@ fiber_create(const char *name, void (*f)(va_list va), ...)
 	resume(new, NULL);
 	va_end(new->ap);
 
+	if (new->fid == 0) /* f() exited without ever calling yield() */
+		return NULL;
+
 	return new;
 }
 
