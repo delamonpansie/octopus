@@ -827,6 +827,7 @@ retry_bind:
 	if (type == SOCK_STREAM)
 		if (listen(fd, cfg.backlog) == -1) {
 			say_syserror("listen");
+			close(fd);
 			return -1;
 		}
 
