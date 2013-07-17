@@ -154,7 +154,7 @@ octopus_version.h: FORCE
 	@echo -n - >> $@_
 	@cd $(VPATH); $(GIT) branch | grep  '\*' | cut -f2 -d' ' | sed 's/^master$$/experimental/' | tr -d \\n >> $@_
 	@echo '";' >> $@_
-	@echo -n 'const char octopus_bundle_string[] = "NONE";' >> $@_;
+	@echo 'const char octopus_bundle_string[] = "NONE";' >> $@_;
 	@diff -q $@ $@_ 2>/dev/null >/dev/null || (echo "GEN	$(notdir $@)"; cp $@_ $@)
 	@rm $@_
 
