@@ -32,7 +32,7 @@ endif
 $(obj): CFLAGS += -DOCTOPUS
 
 src/octopus.o: octopus_version.h
-src/octopus.o: CFLAGS += -DPRIMARY_MOD='"$(firstword $(modules))"' -D$(binary_type)
+src/octopus.o: CFLAGS += -DPRIMARY_MOD='"$(primary_module)"' -D$(binary_type)
 ifeq ($(binary_type),)
   $(error binary_type must be defined)
 endif

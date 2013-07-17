@@ -49,7 +49,10 @@ ifneq (.,$(srcdir))
   %.o: CFLAGS += -I$(srcdir) -I$(srcdir)/include
 endif
 
-%.o octopus: CFLAGS += -Wno-strict-aliasing -funwind-tables
+primary_module=$(firstword $(modules))
+binary=octopus$(if $(WITH_MODNAME),_$(primary_module),)
+
+%.o $(binary): CFLAGS += -Wno-strict-aliasing -funwind-tables
 
 ifeq ("$(origin V)", "command line")
     VERBOSE = $(V)
@@ -64,7 +67,7 @@ endif
 
 depend = $(patsubst %.o,%.d,$(1))
 
-all: octopus $(foreach client,$(clients),$(client)_all)
+all: $(binary) $(foreach client,$(clients),$(client)_all)
 
 subdirs += $(foreach dir,$(modules),mod/$(dir))
 subdirs += $(foreach dir,$(clients),client/$(dir))
@@ -76,13 +79,13 @@ subdirs += third_party cfg src src-lua
 sub-Makefile = $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
 -include $(sub-Makefile)
 
-octopus: $(obj)
+$(binary): $(obj)
 	$E "CC	$@"
 	$Q$(CC) $(LDFLAGS) $^ $(LIBS) -o $@
 
-octopus: LDFLAGS += -L$(VPATH)/third_party/luajit/src
-octopus: LIBS += -lluajit
-octopus: third_party/luajit/src/libluajit.a
+$(binary): LDFLAGS += -L$(VPATH)/third_party/luajit/src
+$(binary): LIBS += -lluajit
+$(binary): third_party/luajit/src/libluajit.a
 third_party/luajit/src/libluajit.a third_party/luajit/src/jit/vmdef.lua:
 	$(E) "MAKE	$@"
 	@$(MAKE) -C third_party/luajit/src CC="$(CC)" E="$(E)" Q="$(Q)" \
@@ -173,9 +176,9 @@ scripts/stringify: scripts/stringify.c
 
 .PHONY: distclean clean
 clean:
-	$(E) "CLEAN	octopus"
+	$(E) "CLEAN	$(binary)"
 	$(Q)rm -rf $(obj) $(patsubst %.o,%.gcno,$(obj))
-	$(Q)rm -rf $(dep) octopus lcov test/var
+	$(Q)rm -rf $(dep) $(binary) lcov test/var
 
 luaclean:
 	$(E) "CLEAN	luajit"
@@ -198,7 +201,7 @@ define run_test
 $(foreach test,$(sort $(wildcard $(foreach mod,$(modules),mod/$(mod)/test/test_*))),./$(test)
 )
 endef
-test:	octopus
+test:	$(binary)
 	@$(run_test)
 
 ifeq (1,$(COVERAGE))
