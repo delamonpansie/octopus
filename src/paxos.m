@@ -60,8 +60,8 @@ const int quorum = 2; /* FIXME: hardcoded */
 struct paxos_peer {
 	struct iproto_peer iproto;
 	int id;
-	const char *name;
-	struct sockaddr_in primary_addr, feeder_addr;
+	const char *name, *primary_addr;
+	struct sockaddr_in feeder_addr;
 	SLIST_ENTRY(paxos_peer) link;
 };
 
@@ -77,8 +77,10 @@ make_paxos_peer(int id, const char *name, const char *addr,
 		free(p);
 		return NULL;
 	}
-	p->primary_addr = p->iproto.addr;
-	p->primary_addr.sin_port = htons(primary_port);
+	struct sockaddr_in paddr = p->iproto.addr;
+	paddr.sin_port = htons(primary_port);
+	p->primary_addr = strdup(sintoa(&paddr));
+
 	p->feeder_addr = p->iproto.addr;
 	p->feeder_addr.sin_port = htons(feeder_port);
 	return p;
@@ -1178,8 +1180,8 @@ leader_redirect_raise
 		if (leader_id == self_id)
 			return;
 
-		iproto_raise_fmt(ERR_CODE_REDIRECT,
-				 "%s", sintoa(&paxos_peer(self, leader_id)->primary_addr));
+		const char *addr = paxos_peer(self, leader_id)->primary_addr;
+		iproto_raise(ERR_CODE_REDIRECT, addr);
 	} else {
 		iproto_raise(ERR_CODE_LEADER_UNKNOW, "leader unknown");
 	}
