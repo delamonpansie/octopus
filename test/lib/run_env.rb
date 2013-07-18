@@ -49,6 +49,7 @@ class RunEnv < TinyRakeEmbed
         sleep 0.05
       end
     end
+    raise "unable connect to `#{connect_string}'"
   end
 
   def cd_test_root
