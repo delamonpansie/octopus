@@ -644,6 +644,35 @@ code
 }
 @end
 
+
+int
+iproto_fixup_addr(struct octopus_cfg *cfg)
+{
+	extern void out_warning(int v, char *format, ...);
+
+	if (strchr(cfg->primary_addr, ':') == NULL && !cfg->primary_port) {
+		out_warning(0, "Option 'primary_port' is not set");
+		return -1;
+	}
+
+	if (net_fixup_addr(&cfg->primary_addr, cfg->primary_port) < 0) {
+		out_warning(0, "Option 'primary_addr' has ':port' and 'primary_port' is set");
+		return -1;
+	}
+	if (net_fixup_addr(&cfg->secondary_addr, cfg->secondary_port) < 0) {
+		out_warning(0, "Option 'secondary_addr' has ':port' and 'secondary_port' is set");
+		return -1;
+	}
+
+	return 0;
+}
+
+static struct tnt_module iproto_mod = {
+	.check_config = iproto_fixup_addr
+};
+
+register_module(iproto_mod);
+
 void __attribute__((constructor))
 iproto_init(void)
 {

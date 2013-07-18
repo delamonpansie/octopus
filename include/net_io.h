@@ -171,13 +171,15 @@ void udp_server(va_list ap);
 int server_socket(int type, struct sockaddr_in *src, int nonblock,
 		  void (*on_bind)(int fd), void (*sleep)(ev_tstamp tm));
 
-void tcp_service(struct service *s , u16 port, void (*on_bind)(int fd), void (*wakeup)(ev_prepare *));
+void tcp_service(struct service *s , const char *addr, void (*on_bind)(int fd), void (*wakeup)(ev_prepare *));
 void wakeup_workers(ev_prepare *ev);
 void service_iproto(struct service *s);
 void iproto_wakeup_workers(ev_prepare *ev);
 
 int atosin(const char *orig, struct sockaddr_in *addr);
 const char *sintoa(const struct sockaddr_in *addr);
+int net_fixup_addr(char **addr, int port);
+
 void service_info(struct tbuf *out, struct service *service);
 
 

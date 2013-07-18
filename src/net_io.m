@@ -839,17 +839,22 @@ retry_bind:
 void
 tcp_server(va_list ap)
 {
-	int port = va_arg(ap, int); /* TODO: report an error if already has server on this port */
+	const char *addr = va_arg(ap, const char *);
 	void (*handler)(int fd, void *data) = va_arg(ap, void (*)(int, void *));
 	void (*on_bind)(int fd) = va_arg(ap, void (*)(int fd));
 	void *data = va_arg(ap, void *);
 
+	struct sockaddr_in saddr;
 	int cfd, fd, one = 1;
-	struct sockaddr_in addr;
 
-	sinany(&addr, port);
-	if ((fd = server_socket(SOCK_STREAM, &addr, 1, on_bind, fiber_sleep)) < 0)
-		exit(EX_OSERR); /* TODO: better error handling */
+	if (!addr)
+		return; /* exit before yield() will prevent fiber creation */
+
+	if (atosin(addr, &saddr) < 0)
+		return;
+
+	if ((fd = server_socket(SOCK_STREAM, &saddr, 1, on_bind, fiber_sleep)) < 0)
+		return;
 
 	ev_io io = { .coro = 1 };
 	ev_io_init(&io, (void *)fiber, fd, EV_READ);
@@ -996,11 +1001,11 @@ accept_client(int fd, void *data)
 }
 
 void
-tcp_service(struct service *service, u16 port, void (*on_bind)(int fd), void (*wakeup_workers)(ev_prepare *))
+tcp_service(struct service *service, const char *addr, void (*on_bind)(int fd), void (*wakeup_workers)(ev_prepare *))
 {
 	memset(service, 0, sizeof(*service));
-	char *name = xmalloc(13);  /* strlen("iproto:xxxxx") */
-	snprintf(name, 13, "tcp:%i", port);
+	char *name = xmalloc(strlen("iproto:") + strlen(addr) + 1);
+	sprintf(name, "tcp:%s", addr);
 
 	TAILQ_INIT(&service->processing);
 	service->pool = palloc_create_pool(name);
@@ -1011,7 +1016,9 @@ tcp_service(struct service *service, u16 port, void (*on_bind)(int fd), void (*w
 
 	service->output_flusher = fiber_create("tcp/output_flusher", conn_flusher);
 	service->input_reader = fiber_create("tcp/input_reader", input_reader);
-	service->acceptor = fiber_create("tcp/acceptor", tcp_server, port, accept_client, on_bind, service);
+	service->acceptor = fiber_create("tcp/acceptor", tcp_server, addr, accept_client, on_bind, service);
+	if (service->acceptor == NULL)
+		panic("unable to start tcp_service `%s'", addr);
 
 	ev_prepare_init(&service->wakeup, (void *)wakeup_workers);
 	ev_prepare_start(&service->wakeup);
@@ -1046,30 +1053,31 @@ atosin(const char *orig, struct sockaddr_in *addr)
 	char *str = strdupa(orig);
 	char *colon = strchr(str, ':');
 
-	if (colon == NULL)
-		return -1;
+	if (colon != NULL) {
+		*colon = 0;
+		port = atoi(colon + 1); /* port is next after ':' */
+	} else {
+		port = atoi(str);
+	}
 
-	*colon = 0;
+	if (port <= 0 || port >= 0xffff) {
+		say_error("bad port in addr: %s", orig);
+		return -1;
+	}
 
 	memset(addr, 0, sizeof(*addr));
 	addr->sin_family = AF_INET;
 
-	if (strcmp(str, "ANY") != 0) {
+	if (colon == NULL || strcmp(str, "ANY") == 0) {
+		addr->sin_addr.s_addr = INADDR_ANY;
+	} else {
 		if (inet_aton(str, &addr->sin_addr) == 0) {
 			say_syserror("inet_aton");
 			return -1;
 		}
-	} else {
-		addr->sin_addr.s_addr = INADDR_ANY;
 	}
 
-	port = atoi(colon + 1); /* port is next after ':' */
-	if (port <= 0 || port >= 0xffff) {
-		say_error("bad port: %s", colon + 1);
-		return -1;
-	}
 	addr->sin_port = htons(port);
-
 	return 0;
 }
 
@@ -1080,6 +1088,31 @@ sintoa(const struct sockaddr_in *addr)
 	snprintf(buf, sizeof(buf), "%s:%i",
 		 inet_ntoa(addr->sin_addr), ntohs(addr->sin_port));
 	return buf;
+}
+
+int
+net_fixup_addr(char **addr, int port)
+{
+	assert(*addr);
+
+	if (port) {
+		if (strchr(*addr, ':')) {
+			return -1;
+		}
+
+		/* len = addr + ':' + 5 digit max + \0 */
+		char *tmp = malloc(strlen(*addr) + 7);
+		sprintf(tmp, "%s:%i", *addr, port);
+		*addr = tmp;
+		return 1;
+	}
+
+	if (port == 0 && strcmp(*addr, "ANY") == 0) {
+		*addr = NULL;
+		return 1;
+	}
+
+	return 0;
 }
 
 static void __attribute__((constructor))

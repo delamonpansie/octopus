@@ -1148,9 +1148,8 @@ exit:
 		 scn, min ? min->scn : -1, app_scn, max_scn);
 	strcpy(status, "active");
 
-	short accept_port;
-	accept_port = ntohs(paxos_peer(self, self_id)->iproto.addr.sin_port);
-	tcp_service(&service, accept_port, NULL, iproto_wakeup_workers);
+	const char *addr = sintoa(&paxos_peer(self, self_id)->iproto.addr);
+	tcp_service(&service, addr, NULL, iproto_wakeup_workers);
 	service_iproto(&service);
 	service_register_iproto_block(&service, LEADER_PROPOSE, leader, 0);
 	service_register_iproto_block(&service, PREPARE, acceptor, 0);

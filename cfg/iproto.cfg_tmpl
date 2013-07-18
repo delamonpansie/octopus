@@ -2,9 +2,11 @@
 # IPROTO
 #
 # Primary port (where updates are accepted)
-primary_port=0, ro, required
+primary_addr="ANY", ro
+primary_port=0, ro
 
 # Secondary port (where only selects are accepted)
+secondary_addr="ANY", ro
 secondary_port=0, ro
 
 # warn about requests which take longer to process

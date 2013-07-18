@@ -121,10 +121,17 @@ load_cfg(struct octopus_cfg *conf, i32 check_rdonly)
 	if (n_accepted == 0 || n_skipped != 0)
 		return -1;
 
-	if (module(NULL)->check_config)
-		return module(NULL)->check_config(conf);
-	else
-		return 0;
+	if (net_fixup_addr(&conf->admin_addr, conf->admin_port) < 0) {
+		out_warning(0, "Option 'admin_addr' has ':' and 'admin_port' is set");
+		return -1;
+	}
+
+	foreach_module (m) {
+		if (m->check_config)
+			if (m->check_config(conf) < 0)
+				return -1;
+	}
+	return 0;
 }
 
 int
@@ -178,9 +185,13 @@ module(const char *name)
 {
 	if (name == NULL)
 		name = PRIMARY_MOD;
-        for (struct tnt_module *m = modules_head; m != NULL; m = m->next)
-                if (name == NULL || strcmp(name, m->name) == 0)
-                        return m;
+
+	foreach_module (m) {
+		if (!m->name)
+			continue;
+		if (strcmp(name, m->name) == 0)
+			return m;
+	}
         return NULL;
 }
 

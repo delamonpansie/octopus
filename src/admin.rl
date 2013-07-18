@@ -355,10 +355,13 @@ admin_accept(int fd, void *data __attribute__((unused)))
 int
 admin_init(void)
 {
+	if (!cfg.admin_addr)
+		return 0;
+
 	if (fiber_create("admin/acceptor", tcp_server,
-			 cfg.admin_port, admin_accept, NULL, NULL) == NULL)
+			 cfg.admin_addr, admin_accept, NULL, NULL) == NULL)
 	{
-		say_syserror("can't bind to %d", cfg.admin_port);
+		say_syserror("can't start tcp_server on :`%s'", cfg.admin_addr);
 		return -1;
 	}
 	return 0;
