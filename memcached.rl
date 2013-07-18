@@ -33,6 +33,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <sysexits.h>
 
 #include <tbuf.h>
 #include <iproto.h>
@@ -747,8 +748,13 @@ void
 memcached_init()
 {
 	stat_base = stat_register(memcached_stat, nelem(memcached_stat));
-	fiber_create("memcached/acceptor", tcp_server,
-		     cfg.primary_port, memcached_accept, memcached_bound_to_primary, NULL);
+
+	if (fiber_create("memcached/acceptor", tcp_server, cfg.primary_addr,
+			 memcached_accept, memcached_bound_to_primary, NULL) == NULL)
+	{
+		say_error("can't start tcp_server on `%s'", cfg.primary_addr);
+		exit(EX_OSERR);
+	}
 
 	say_info("memcached initialized");
 

@@ -1,0 +1,15 @@
+# box.ping()
+:pong
+
+Option 'primary_port' is not set
+
+Option 'primary_port' is not set
+
+Option 'primary_addr' has ':port' and 'primary_port' is set
+
+# box.ping()
+:pong
+
+# box.ping()
+:pong
+
