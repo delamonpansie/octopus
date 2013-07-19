@@ -45,7 +45,11 @@ class IProto
   @@sync = 0
 
   def initialize(server, param = {})
-    host, port = server.split(/:/)
+    if server.is_a? Numeric  then
+      host, port = 0, server
+    else
+      host, port = server.split(/:/)
+    end
     @end_point = [host, port.to_i]
 
     if param[:logger] == :log4r then
