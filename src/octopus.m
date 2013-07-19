@@ -651,18 +651,13 @@ octopus(int argc, char **argv)
 		strcat(cfg_filename_fullpath, cfg_filename);
 	}
 
-	if (gopt(opt, 'k')) {
-		if (fill_default_octopus_cfg(&cfg) != 0 || load_cfg(&cfg, 0) != 0) {
-			say_error("check_config FAILED%s", cfg_err);
-
-			return 1;
-		}
-
-		return 0;
+	if (fill_default_octopus_cfg(&cfg) != 0 || load_cfg(&cfg, 0) != 0) {
+		say_error("check_config FAILED%s", cfg_err);
+		return 1;
+	} else {
+		if (gopt(opt, 'k'))
+			return 0;
 	}
-
-	if (fill_default_octopus_cfg(&cfg) != 0 || load_cfg(&cfg, 0) != 0)
-		panic("can't load config: %s", cfg_err);
 
 	if (gopt(opt, 'e'))
 		dup_to_stderr = gopt(opt, 'e') + INFO - 1;
