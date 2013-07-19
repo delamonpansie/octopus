@@ -58,7 +58,10 @@ class IProto
       logger.level = Log4r::DEBUG
       logger.outputters = Log4r::Outputter.stderr
       param[:logger] = logger
+    elsif param[:logger] and param[:logger] != :stderr then
+      raise "Unknown logger: #{param[:logger]}"
     end
+
     param[:reconnect] = true unless param.has_key?(:reconnect)
 
     [:logger, :reconnect].each do |p|
@@ -69,6 +72,14 @@ class IProto
   end
 
   attr_reader :sock
+
+  def debug
+    if @logger == :stderr then
+      STDERR.puts yield
+    elsif @logger then
+      @logger.debug yield
+    end
+  end
 
   def hexdump(string)
     string.unpack('C*').map{ |c| "%02x" % c }.join(' ')
@@ -99,23 +110,23 @@ class IProto
       payload = message[:raw] || message[:data].pack(message[:pack] || 'L*')
 
       buf = [message[:code], payload.bytesize, sync].pack('L3')
-      @logger.debug { "#{@end_point} => send hdr #{buf.unpack('L*').map{ |c| "%010i" % c }.join(' ')}" } if @logger
+      debug { "#{@end_point} => send hdr #{buf.unpack('L*').map{ |c| "%010i" % c }.join(' ')}" }
 
       buf << payload
-      @logger.debug { "#{@end_point} => send bdy #{hexdump(payload)}" } if @logger
+      debug { "#{@end_point} => send bdy #{hexdump(payload)}" }
 
       @sock.write(buf)
 
       header = @sock.read(12)
       raise IProtoError, "can't read header" unless header
       header = header.unpack('L3')
-      @logger.debug { "#{@end_point} => recv hdr #{header.map{ |c| "%010i" % c }.join(' ')}" } if @logger
+      debug { "#{@end_point} => recv hdr #{header.map{ |c| "%010i" % c }.join(' ')}" }
 
       raise IProtoError, "response.sync:#{header[2]} != message.sync:#{sync}" if header[2] != sync
       raise IProtoError, "response.code:#{header[0]} != message.code:#{message[:code]}" if header[0] != message[:code]
 
       data = @sock.read(header[1])
-      @logger.debug { "#{@end_point} => recv bdy #{hexdump(data)}" } if @logger
+      debug { "#{@end_point} => recv bdy #{hexdump(data)}" }
       data
     rescue Exception => exc
       @sock.close
