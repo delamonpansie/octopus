@@ -280,8 +280,8 @@ conn_write_netmsg(struct conn *c)
 	struct iovec *iov = c->iov, *end;
 	ssize_t result = 0;
 
-	if (unlikely(c->iov_offset > 0)) {
-		iov = c->iov + c->iov_offset;
+	if (unlikely(c->iov_offset & 1)) {
+		iov = c->iov + (c->iov_offset >> 1);
 		end = c->iov_end;
 	} else {
 		if (unlikely(head->bytes == 0))
@@ -320,7 +320,8 @@ conn_write_netmsg(struct conn *c)
 
 
 	if (end != iov) {
-		c->iov_offset = iov - c->iov;
+		/* lower bit is used as flag */
+		c->iov_offset = (iov - c->iov) << 1 | 1;
 		c->iov_end = end;
 		if (TAILQ_FIRST(&head->q)->barrier != NULL)
 			netmsg_alloc(head);
