@@ -473,7 +473,7 @@ luaT_require(const char *modname)
 {
 	struct lua_State *L = fiber->L;
 	lua_getglobal(L, "require");
-	lua_pushfstring(L, modname);
+	lua_pushstring(L, modname);
 	if (!lua_pcall(L, 1, 0, 0)) {
 		say_info("Lua module '%s' loaded", modname);
 		return 1;
