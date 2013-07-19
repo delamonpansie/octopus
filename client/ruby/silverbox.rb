@@ -159,7 +159,6 @@ class SilverBox < IProtoRetCode
 
   def select(*keys)
     param = keys[-1].is_a?(Hash) ? keys.pop : {}
-    keys = keys[0] if keys[0].is_a? Array
     return [] if keys.length == 0
     object_space = param[:object_space] || @object_space
     offset = param[:offset] || 0
