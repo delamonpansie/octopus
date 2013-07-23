@@ -655,14 +655,11 @@ iproto_fixup_addr(struct octopus_cfg *cfg)
 		return -1;
 	}
 
-	if (net_fixup_addr(&cfg->primary_addr, cfg->primary_port) < 0) {
-		out_warning(0, "Option 'primary_addr' has ':port' and 'primary_port' is set");
-		return -1;
-	}
-	if (net_fixup_addr(&cfg->secondary_addr, cfg->secondary_port) < 0) {
-		out_warning(0, "Option 'secondary_addr' has ':port' and 'secondary_port' is set");
-		return -1;
-	}
+	if (net_fixup_addr(&cfg->primary_addr, cfg->primary_port) < 0)
+		out_warning(0, "Option 'primary_addr' is overridden by 'primary_port'");
+
+	if (net_fixup_addr(&cfg->secondary_addr, cfg->secondary_port) < 0)
+		out_warning(0, "Option 'secondary_addr' is overridden by 'secondary_port'");
 
 	return 0;
 }

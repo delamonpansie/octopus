@@ -1097,15 +1097,20 @@ net_fixup_addr(char **addr, int port)
 	assert(*addr);
 
 	if (port) {
-		if (strchr(*addr, ':')) {
-			return -1;
+		int ret = 1;
+		char *c = strchr(*addr, ':');
+		if (c)  {
+			if (atoi(c + 1) == port)
+				return 0;
+			*c = 0;
+			ret = -1;
 		}
 
 		/* len = addr + ':' + 5 digit max + \0 */
 		char *tmp = malloc(strlen(*addr) + 7);
 		sprintf(tmp, "%s:%i", *addr, port);
 		*addr = tmp;
-		return 1;
+		return ret;
 	}
 
 	if (port == 0 && strcmp(*addr, "ANY") == 0) {

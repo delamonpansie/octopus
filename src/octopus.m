@@ -121,10 +121,8 @@ load_cfg(struct octopus_cfg *conf, i32 check_rdonly)
 	if (n_accepted == 0 || n_skipped != 0)
 		return -1;
 
-	if (net_fixup_addr(&conf->admin_addr, conf->admin_port) < 0) {
-		out_warning(0, "Option 'admin_addr' has ':' and 'admin_port' is set");
-		return -1;
-	}
+	if (net_fixup_addr(&conf->admin_addr, conf->admin_port) < 0)
+		out_warning(0, "Option 'admin_addr' is overridden by 'admin_port'");
 
 	foreach_module (m) {
 		if (m->check_config)
@@ -177,6 +175,9 @@ reload_cfg(void)
 			m->reload_config(&cfg, &new_cfg2);
 	destroy_octopus_cfg(&cfg);
 	cfg = new_cfg2;
+
+	if (cfg_err_len)
+		say_warn("config warnings: %.*s", cfg_err_len, cfg_err);
 	return 0;
 }
 
@@ -752,6 +753,9 @@ octopus(int argc, char **argv)
 		say_logger_init(cfg.logger_nonblock);
 		booting = false;
 	}
+
+	if (cfg_err_len)
+		say_warn("config warnings: %.*s", cfg_err_len, cfg_err);
 
 #ifdef STORAGE
 	if (gopt(opt, 'i')) {
