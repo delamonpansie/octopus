@@ -147,13 +147,17 @@ replace:(struct tnt_object *)obj					\
 	struct index_node *node_ = GET_NODE(obj, node_a);		\
         mh_##type##_put_node(h, (void *)node_);				\
 }									\
-- (void)								\
+- (int)									\
 remove:(struct tnt_object *)obj						\
 {									\
 	struct index_node *node_ = GET_NODE(obj, node_a);		\
-        u32 k = mh_##type##_get_node(h, (void *)node_);			\
-	node_->obj = NULL;						\
-        mh_##type##_del(h, k);						\
+	u32 k = mh_##type##_get_node(h, (void *)node_);			\
+	if (k != mh_end(h)) {						\
+		node_->obj = NULL;					\
+		mh_##type##_del(h, k);					\
+		return 1;						\
+	}								\
+	return 0;							\
 }
 
 

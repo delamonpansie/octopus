@@ -108,11 +108,11 @@ replace:(struct tnt_object *)obj
 	sptree_insert(tree, &node_a);
 }
 
-- (void)
+- (int)
 remove:(struct tnt_object *)obj
 {
 	dtor(obj, &node_a, dtor_arg);
-	sptree_delete(tree, &node_a);
+	return sptree_delete(tree, &node_a);
 }
 
 - (void)

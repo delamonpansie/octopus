@@ -114,10 +114,11 @@ replace:(struct tnt_object *)obj
 	(void)obj;
 }
 
-- (void)
+- (int)
 remove:(struct tnt_object *)obj
 {
 	(void)obj;
+	return 0;
 }
 
 - (struct tnt_object *)

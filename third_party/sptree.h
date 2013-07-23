@@ -335,7 +335,7 @@ sptree_insert(sptree_t *t, void *v) {
     }
 }
 
-static inline void
+static inline int
 sptree_delete(sptree_t *t, void *k) {
     spnode_t    node = t->root;
     spnode_t    parent = SPNIL;
@@ -395,13 +395,14 @@ sptree_delete(sptree_t *t, void *k) {
     }
 
     if (node == SPNIL) /* not found */
-        return;
+        return 0;
 
     t->size --;
     if ( t->size > 0 && (double)t->size < alpha * t->max_size ) {
         t->root = sptree_balance(t, t->root, t->size);
         t->max_size = t->size;
     }
+    return 1;
 }
 
 static inline spnode_t

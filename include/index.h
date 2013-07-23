@@ -82,7 +82,7 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 - (int)eq:(struct tnt_object *)a :(struct tnt_object *)b;
 - (struct tnt_object *)find_by_obj:(struct tnt_object *)obj;
 - (struct tnt_object *) find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality;
-- (void) remove: (struct tnt_object *)obj;
+- (int) remove: (struct tnt_object *)obj;
 - (void) replace: (struct tnt_object *)obj;
 - (void) valid_object: (struct tnt_object *)obj;
 
