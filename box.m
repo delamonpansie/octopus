@@ -280,14 +280,22 @@ prepare_replace(BoxTxn *txn, size_t cardinality, const void *data, u32 data_len)
 }
 
 static void
+obj_remove(struct object_space *object_space, struct tnt_object *obj)
+{
+	foreach_index(index, object_space) {
+		int deleted = [index remove: obj];
+		(void)deleted;
+		assert(deleted == 1);
+	}
+	object_decr_ref(obj);
+}
+
+static void
 commit_replace(BoxTxn *txn)
 {
 	say_debug("%s: old_obj:%p obj:%p", __func__, txn->old_obj, txn->obj);
-	if (txn->old_obj != NULL) {
-		foreach_index(index, txn->object_space)
-			[index remove: txn->old_obj];
-		object_decr_ref(txn->old_obj);
-	}
+	if (txn->old_obj != NULL)
+		obj_remove(txn->object_space, txn->old_obj);
 
 	if (txn->obj != NULL) {
 		if (txn->obj->flags & GHOST) {
@@ -306,11 +314,8 @@ rollback_replace(BoxTxn *txn)
 {
 	say_debug("rollback_replace: txn->obj:%p", txn->obj);
 
-	if (txn->obj && txn->obj->flags & GHOST) {
-		foreach_index(index, txn->object_space)
-			[index remove: txn->obj];
-		object_decr_ref(txn->obj);
-	}
+	if (txn->obj && txn->obj->flags & GHOST)
+		obj_remove(txn->object_space, txn->obj);
 }
 
 static void
@@ -658,11 +663,8 @@ prepare_delete(BoxTxn *txn, struct tbuf *key_data)
 static void
 commit_delete(BoxTxn *txn)
 {
-	if (txn->old_obj) {
-		foreach_index(index, txn->object_space)
-			[index remove: txn->old_obj];
-		object_ref(txn->old_obj, -1);
-	}
+	if (txn->old_obj)
+		obj_remove(txn->object_space, txn->old_obj);
 }
 
 
