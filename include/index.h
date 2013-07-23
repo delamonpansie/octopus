@@ -45,7 +45,7 @@ struct index_node {
 };
 
 struct field {
-	u32 len;
+	i32 len;
 	union {
 		u32 u32;
 		u64 u64;
@@ -107,7 +107,7 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 	index_lua_ctor *lua_ctor;
 
 	int (*compare)(const void *a, const void *b, void *);
-	int (*ucompare)(const void *a, const void *b, void *);
+	int (*pattern_compare)(const void *a, const void *b, void *);
 
 	struct index_node node_a;
 	char __padding_a[512]; /* FIXME: check for overflow */

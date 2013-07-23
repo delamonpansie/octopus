@@ -148,7 +148,7 @@ iterator_next_verify_pattern
 	struct index_node *r = sptree_iterator_next(iterator);
 
 	if (r != NULL) {
-		if (ucompare(&search_pattern, r, self->dtor_arg) != 0)
+		if (pattern_compare(&search_pattern, r, self->dtor_arg) != 0)
 			return NULL;
 		return r->obj;
 	}
@@ -185,7 +185,7 @@ init_with_unique:(bool)_unique
 	node_size = sizeof(struct tnt_object *) + sizeof(i32);
 	lua_ctor = luaT_i32_ctor;
 	init_pattern = i32_init_pattern;
-	ucompare = (index_cmp)i32_compare;
+	pattern_compare = (index_cmp)i32_compare;
 	compare = unique ? (index_cmp)i32_compare : (index_cmp)i32_compare_with_addr;
 	return self;
 }
@@ -220,7 +220,7 @@ init_with_unique:(bool)_unique
 	node_size = sizeof(struct tnt_object *) + sizeof(i64);
 	lua_ctor = luaT_i64_ctor;
 	init_pattern = i64_init_pattern;
-	ucompare = (index_cmp)i64_compare;
+	pattern_compare = (index_cmp)i64_compare;
 	compare = unique ? (index_cmp)i64_compare : (index_cmp)i64_compare_with_addr;
 	return self;
 }
@@ -253,7 +253,7 @@ init_with_unique:(bool)_unique
 	node_size = sizeof(struct tnt_object *) + sizeof(void *);
 	lua_ctor = luaT_lstr_ctor;
 	init_pattern = lstr_init_pattern;
-	ucompare = (index_cmp)lstr_compare;
+	pattern_compare = (index_cmp)lstr_compare;
 	compare = unique ? (index_cmp)lstr_compare : (index_cmp)lstr_compare_with_addr;
 	return self;
 }
@@ -271,38 +271,21 @@ cardinality
 static i8
 field_compare(struct field *f1, struct field *f2, enum field_data_type type)
 {
-	if (f1->len == 0 || f2->len == 0)
-		return 0;
-
-	if (type == NUM) {
-		assert(f1->len == f2->len);
-		assert(f1->len == sizeof(f1->u32));
-
-		return f1->u32 >f2->u32 ? 1 : f1->u32 == f2->u32 ? 0 : -1;
-	} else if (type == NUM64) {
-		assert(f1->len == f2->len);
-		assert(f1->len == sizeof(f1->u64));
-
-		return f1->u64 >f2->u64 ? 1 : f1->u64 == f2->u64 ? 0 : -1;
-	} else if (type == STRING) {
-		int cmp;
-		void *f1_data, *f2_data;
-
-		f1_data = f1->len <= sizeof(f1->data) ? f1->data : f1->data_ptr;
-		f2_data = f2->len <= sizeof(f2->data) ? f2->data : f2->data_ptr;
-
-		cmp = memcmp(f1_data, f2_data, MIN(f1->len, f2->len));
-
-		if (cmp > 0)
+	switch (type) {
+	case NUM:
+		return f1->u32 > f2->u32 ? 1 : f1->u32 == f2->u32 ? 0 : -1;
+	case NUM64:
+		return f1->u64 > f2->u64 ? 1 : f1->u64 == f2->u64 ? 0 : -1;
+	case STRING:
+		if (f1->len > f2->len)
 			return 1;
-		else if (cmp < 0)
+		if (f1->len < f2->len)
 			return -1;
-		else if (f1->len == f2->len)
-			return 0;
-		else if (f1->len > f2->len)
-			return 1;
-		else
-			return -1;
+
+		void *d1, *d2;
+		d1 = f1->len <= sizeof(f1->data) ? f1->data : f1->data_ptr;
+		d2 = f2->len <= sizeof(f2->data) ? f2->data : f2->data_ptr;
+		return memcmp(d1, d2, f1->len);
 	}
 
 	assert(false);
@@ -314,6 +297,18 @@ tree_node_compare(struct tree_node *na, struct tree_node *nb, struct gen_dtor *d
 {
 	for (int i = 0; i < desc->cardinality; ++i) {
 		int j = desc->cmp_order[i];
+
+		/* pattern is partialy specified. no more fields to compare.
+		   it's ok to return 0 here: sptree_iterator_init_set() will select
+		   leftmost node in case of equality.
+		   it is guaranteed that pattern is a first arg.
+		   this code is never called in case of node to node comparision
+		 */
+		if (na->key[j].len < 0) {
+			assert(na->obj == NULL);
+			return 0;
+		}
+
 		int r = field_compare(&na->key[j], &nb->key[j], desc->type[j]);
 		if (r != 0)
 			return r;
@@ -328,7 +323,7 @@ tree_node_compare_with_addr(struct tree_node *na, struct tree_node *nb, void *x)
 	if (r != 0)
 		return r;
 
-	if (na->obj == NULL || nb->obj == NULL)
+	if (na->obj == NULL) /* `na' is a pattern */
 		return r;
 
 	if (na->obj > nb->obj)
@@ -349,7 +344,7 @@ gen_init_pattern(struct tbuf *key_data, int cardinality, struct index_node *patt
                 index_raise("cardinality too big");
 
         for (int i = 0; i < desc->cardinality; i++)
-		pattern->key[i].len = 0;
+		pattern->key[i].len = -1;
 
 	for (int i = 0; i < cardinality; i++) {
 		u32 len = read_varint32(key_data);
@@ -379,7 +374,7 @@ init_with_unique:(bool)_unique
 	struct gen_dtor *desc = dtor_arg;
 	node_size = sizeof(struct tnt_object *) + desc->cardinality * sizeof(struct field);
 	init_pattern = gen_init_pattern;
-	ucompare = (index_cmp)tree_node_compare;
+	pattern_compare = (index_cmp)tree_node_compare;
 	compare = unique ? (index_cmp)tree_node_compare : (index_cmp)tree_node_compare_with_addr;
 	return self;
 }

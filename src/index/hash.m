@@ -124,7 +124,7 @@ init									\
 	h = mh_##type##_init(xrealloc);					\
 	node_size = sizeof(struct tnt_object *) + sizeof(type);		\
 	lua_ctor = luaT_##type##_ctor;					\
-	compare = ucompare = (index_cmp)type##_compare;			\
+	compare = pattern_compare = (index_cmp)type##_compare;		\
 	return self;							\
 }									\
 - (void)								\
