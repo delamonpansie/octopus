@@ -35,16 +35,16 @@ Env.clean do
 end
 
 $x = "primary_addr = \"127.0.0.1:33013\"\nprimary_port = 33013"
-Env.clean do
-  invoke :setup
-  puts `./octopus 2>&1`.match(/Option 'primary_addr' has ':port' and 'primary_port' is set/)
-  puts
-end
-
+Env.clean.with_server do ping end
 
 $x = "primary_addr = \"127.0.0.1\"\nprimary_port = 33013"
 Env.clean.with_server do ping end
 
-
 $x = 'primary_addr = "127.0.0.1:33013"'
 Env.clean.with_server do ping end
+
+$x = "primary_addr = \"127.0.0.1:13\"\nprimary_port = 33013"
+Env.clean.with_server do
+  ping
+  puts File.new('octopus.log').read.match(/Option 'primary_addr' is overridden by 'primary_port'/)
+end
