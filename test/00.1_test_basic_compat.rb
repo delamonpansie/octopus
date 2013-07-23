@@ -38,7 +38,7 @@ env.with_server do
 end
 
 env.with_server do
-  select [1, 500, 505, 999, 1001]
+  select 1, 500, 505, 999, 1001
 
   Process.kill('USR1', env.pid)
   insert [1]

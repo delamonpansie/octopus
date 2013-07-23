@@ -39,7 +39,7 @@ end
 Env.clean.with_server do
   3.times {|i| insert [i.to_s, 'x', 'y'] }
 
-  select %w{0 1 2}
+  select *%w{0 1 2}
   select 'x', :index => 1
   select ['x'], :index => 2
   select ['y'], :index => 2
