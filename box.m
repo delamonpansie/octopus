@@ -1282,7 +1282,7 @@ rollback
 	say_debug("box_rollback(op:%s)", ops[op]);
 
 	if (op == DELETE || op == DELETE_1_3)
-		return;
+		goto cleanup;
 
 	if (op == INSERT || op == UPDATE_FIELDS)
 		rollback_replace(self);
@@ -1291,6 +1291,7 @@ rollback
 		 old_obj ? old_obj->refs : 0, old_obj,
 		 obj ? obj->refs : 0, obj);
 
+cleanup:
 	txn_cleanup(self);
 }
 @end
