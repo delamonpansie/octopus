@@ -268,7 +268,7 @@ cardinality
 	return desc->cardinality;
 }
 
-static i8
+static int
 field_compare(struct field *f1, struct field *f2, enum field_data_type type)
 {
 	switch (type) {
