@@ -271,25 +271,24 @@ cardinality
 static int
 field_compare(struct field *f1, struct field *f2, enum field_data_type type)
 {
+	void *d1, *d2;
+	int r;
+
 	switch (type) {
 	case NUM:
 		return f1->u32 > f2->u32 ? 1 : f1->u32 == f2->u32 ? 0 : -1;
 	case NUM64:
 		return f1->u64 > f2->u64 ? 1 : f1->u64 == f2->u64 ? 0 : -1;
 	case STRING:
-		if (f1->len > f2->len)
-			return 1;
-		if (f1->len < f2->len)
-			return -1;
-
-		void *d1, *d2;
 		d1 = f1->len <= sizeof(f1->data) ? f1->data : f1->data_ptr;
 		d2 = f2->len <= sizeof(f2->data) ? f2->data : f2->data_ptr;
-		return memcmp(d1, d2, f1->len);
-	}
+		r = memcmp(d1, d2, MIN(f1->len, f2->len));
+		if (r != 0)
+			return r;
 
-	assert(false);
-	return 0;
+		return f1->len > f2->len ? 1 : f1->len == f2->len ? 0 : -1;
+	}
+	abort();
 }
 
 static int
