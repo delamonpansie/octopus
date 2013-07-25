@@ -1374,7 +1374,20 @@ snapshot_write_rows:(XLog *)l
 		id pk = object_space_registry[n].index[0];
 		[pk iterator_init];
 		while ((obj = [pk iterator_next])) {
+			if (obj->refs <= 0) {
+				say_error("heap invariant violation: obj->refs == %i", obj->refs);
+				errno = EINVAL;
+				ret = -1;
+				goto out;
+			}
+
 			tuple = box_tuple(obj);
+			if (!valid_tuple(tuple->cardinality, tuple->data, tuple->bsize)) {
+				say_error("heap invariant violation: invalid tuple %p", obj);
+				errno = EINVAL;
+				ret = -1;
+				goto out;
+			}
 
 			header.object_space = n;
 			header.tuple_size = tuple->cardinality;
@@ -1397,7 +1410,27 @@ snapshot_write_rows:(XLog *)l
 			if (rows % 10000 == 0)
 				[l confirm_write];
 		}
+
+		foreach_index(index, &object_space_registry[n]) {
+			if (index->n == 0)
+				continue;
+
+			set_proc_title("dumper check index:%i ((%" PRIu32 ")", index->n, getppid());
+
+			size_t index_rows = 0;
+			[index iterator_init];
+			while ([index iterator_next])
+				index_rows++;
+			if (rows != index_rows) {
+				say_error("heap invariant violation: index:%i rows:%zi != pk_rows:%zi",
+					  index->n, index_rows, rows);
+				errno = EINVAL;
+				ret = -1;
+				goto out;
+			}
+		}
 	}
+
 out:
 	palloc_destroy_pool(pool);
 	return ret;
