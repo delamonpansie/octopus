@@ -446,7 +446,7 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *row)
 	const int io_rate_limit = l->dir->writer->snap_io_rate_limit;
 
 	if ([l append_row:row->ptr len:tbuf_len(row) scn:0 tag:(tag | TAG_SNAP)] < 0) {
-		say_error("unable write row");
+		say_syserror("unable write row");
 		return -1;
 	}
 
@@ -460,7 +460,7 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *row)
 
 		while (bytes >= io_rate_limit) {
 			if ([l flush] < 0) {
-				say_error("unable to flush");
+				say_syserror("unable to flush");
 				return -1;
 			}
 
