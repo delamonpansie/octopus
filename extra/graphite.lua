@@ -1,5 +1,13 @@
 local graphite_addr = '127.0.0.1:3333'
 
+--
+--
+-- this script will periodically send stats to graphite
+-- to enable: put it to cfg.workdir, add reloadfile('graphite.lua')
+-- to init.lua and edit graphite_addr abowe
+--
+--
+
 local ffi = require 'ffi'
 local fiber = require 'fiber'
 require 'net' -- for ffi.cdef
