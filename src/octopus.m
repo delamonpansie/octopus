@@ -480,7 +480,9 @@ luaT_require(const char *modname)
 		return 1;
 	} else {
 		const char *err = lua_tostring(L, -1);
-		if (strstr(err, "not found") != NULL) {
+		char buf[64];
+		snprintf(buf, sizeof(buf), "module '%s' not found", modname);
+		if (strstr(err, buf) != NULL) {
 			lua_pop(L, 1);
 			return 0;
 		}
