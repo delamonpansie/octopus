@@ -61,7 +61,7 @@ static int stat_base;
 static char * const ops[] = ENUM_STR_INITIALIZER(MESSAGES);
 
 const int MEMCACHED_OBJECT_SPACE = 23;
-
+char *primary_addr;
 struct object_space *object_space_registry;
 const int object_space_count = 256;
 
@@ -1158,6 +1158,7 @@ initialize_service()
 	if (cfg.memcached != 0) {
 		memcached_init();
 	} else {
+		primary_addr = cfg.primary_addr;
 		tcp_service(&box_primary, cfg.primary_addr, box_bound_to_primary, iproto_wakeup_workers);
 		box_service_register(&box_primary);
 
