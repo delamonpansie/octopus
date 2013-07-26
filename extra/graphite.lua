@@ -74,7 +74,6 @@ local sock = ffi.C.socket(ffi.C.PF_INET, ffi.C.SOCK_DGRAM, 0)
 ffi.C.atosin(graphite_addr, addr)
 
 function graphite_sender ()
-   print('send')
     local msg = graphite()
     ffi.C.sendto(sock, msg, #msg, 0, addr, ffi.sizeof(addr))      
 end
