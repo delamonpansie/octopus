@@ -1,0 +1,27 @@
+# box.ping()
+:pong
+
+# box.insert([1, 2])
+1
+
+# box.insert([2, 3])
+1
+
+# box.ping()
+:pong
+
+# box.insert([1, 2])
+2
+
+# box.insert([2, 3])
+2
+
+# box.ping()
+:pong
+
+# box.insert([1, 2])
+2
+
+# box.insert([2, 3])
+2
+
