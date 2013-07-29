@@ -43,8 +43,8 @@ typedef struct sptree_node_pointers {
     u_int32_t    right;
 } sptree_node_pointers;
 
-#define GET_SPNODE_LEFT(snp)        ( (snp)->left ) 
-#define SET_SPNODE_LEFT(snp, v)        (snp)->left = (v) 
+#define GET_SPNODE_LEFT(snp)        ( (snp)->left )
+#define SET_SPNODE_LEFT(snp, v)        (snp)->left = (v)
 #define GET_SPNODE_RIGHT(snp)        ( (snp)->right )
 #define SET_SPNODE_RIGHT(snp, v)    (snp)->right = (v)
 
@@ -68,15 +68,16 @@ typedef struct sptree_node_pointers {
  *
  * Methods:
  *   void sptree_init(sptree_t *tree, size_t elemsize, void *array,
- *                    spnode_t array_len, spnode_t array_size,
- *                    int (*compar)(const void *, const void *, void *), void *arg)
+ *                         spnode_t array_len, spnode_t array_size,
+ *                         int (*compar)(const void *, const void *, void *), void *arg)
+ *   void sptree_destroy(sptree_t *tree)
  *   void* sptree_find(sptree_t *tree, void *key)
  *   void sptree_insert(sptree_t *tree, void *value)
  *   void sptree_delete(sptree_t *tree, void *value)
  *   spnode_t sptree_walk(sptree_t *t, void* array, spnode_t limit, spnode_t offset)
  *   sptree_walk_cb(sptree_t *t, int (*cb)(void* cb_arg, void* elem), void *cb_arg )
- *   sptree_iterator* sptree_iterator_init(sptree_NAME *t)
- *   void sptree_iterator_init_set(sptree_NAME *t, sptree_NAME_iterator **iterator, void *start)
+ *   void sptree_iterator_init(sptree_t *t, sptree_iterator **)
+ *   void sptree_iterator_init_set(sptree_t *t, sptree_iterator **, void *start)
  *   void* sptree_iterator_next(sptree_iterator *i)
  *   void sptree_iterator_free(sptree_iterator *i)
  */
@@ -155,13 +156,24 @@ sptree_init(sptree_t *t, size_t elemsize, void *m,
     }
 }
 
+static inline void
+sptree_destroy(sptree_t *t)
+{
+    void *null;
+
+    null = realloc(t->members, 0);
+    null = realloc(t->lrpointers, 0);
+    (void)null;
+}
+
 static inline size_t
 sptree_bytes(sptree_t *t)
 {
-	return sizeof(*t) +
-		sizeof(sptree_node_pointers) * t->ntotal +
-		t->elemsize * t->ntotal;
+       return sizeof(*t) +
+               sizeof(sptree_node_pointers) * t->ntotal +
+               t->elemsize * t->ntotal;
 }
+
 
 static inline void*
 sptree_find(sptree_t *t, void *k)    {
@@ -474,24 +486,23 @@ typedef struct sptree_iterator {
     spnode_t             stack[0];
 } sptree_iterator;
 
-static inline sptree_iterator *
-sptree_iterator_init(sptree_t *t)    {
-    sptree_iterator    *i;
+static inline void
+sptree_iterator_init(sptree_t *t, sptree_iterator **i)    {
     spnode_t node;
 
-    if (t->root == SPNIL) return NULL;
+    if (t->root == SPNIL) return;
 
-    i = realloc(NULL, sizeof(*i) + sizeof(spnode_t) * (t->max_depth + 1));
-    i->t = t;
-    i->level = 0;
-    i->stack[0] = t->root;
+    if ((*i) == NULL || t->max_depth > (*i)->max_depth)
+        *i = realloc(*i, sizeof(**i) + sizeof(spnode_t) * (t->max_depth + 1));
 
-    while( (node = _GET_SPNODE_LEFT( i->stack[i->level] )) != SPNIL ) {
-        i->level++;
-        i->stack[i->level] = node;
+    (*i)->t = t;
+    (*i)->level = 0;
+    (*i)->stack[0] = t->root;
+
+    while( (node = _GET_SPNODE_LEFT( (*i)->stack[(*i)->level] )) != SPNIL ) {
+        (*i)->level++;
+        (*i)->stack[(*i)->level] = node;
     }
-
-    return i;
 }
 
 static inline void
@@ -532,9 +543,9 @@ sptree_iterator_init_set(sptree_t *t, sptree_iterator **i, void *k) {
 }
 
 static inline void
-sptree_iterator_free(sptree_iterator *i)    {
-    if (i == NULL)    return;
-    free(i);
+sptree_iterator_free(sptree_iterator **i)    {
+    free(*i);
+    *i = NULL;
 }
 
 static inline void*
