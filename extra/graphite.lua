@@ -1,4 +1,4 @@
-local graphite_addr = '127.0.0.1:3333'
+local graphite_addr = '127.0.0.1:2003'
 
 --
 --
@@ -48,7 +48,7 @@ local function gethostname()
 	 result = result .. "@" .. proctitle
       end
    end
-   return result
+   return string.gsub(result, '[.]', '_')
 end
 
 local function graphite()
