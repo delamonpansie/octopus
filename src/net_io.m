@@ -378,7 +378,16 @@ conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, st
 		c = slab_cache_alloc(&conn_cache);
 	}
 
-	netmsg_head_init(&c->out_messages, pool);
+	c->memory_ownership = memory_ownership;
+	if (pool == NULL || memory_ownership & MO_MY_OWN_POOL) {
+		c->memory_ownership |= MO_MY_OWN_POOL;
+
+		c->pool = palloc_create_pool("connection owned pool");
+	} else {
+		c->pool = pool;
+	}
+
+	netmsg_head_init(&c->out_messages, c->pool);
 
 	c->ref = 0;
 	c->fd = fd;
@@ -392,14 +401,6 @@ conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, st
 	c->out.coro = c->in.coro = 1;
 	c->out.data = c->in.data = c;
 
-	c->memory_ownership = memory_ownership;
-	if (pool == NULL || memory_ownership & MO_MY_OWN_POOL) {
-		c->memory_ownership |= MO_MY_OWN_POOL;
-
-		c->pool = palloc_create_pool("connection owned pool");
-	} else {
-		c->pool = pool;
-	}
 
 	c->rbuf = tbuf_alloc(c->pool);
 
