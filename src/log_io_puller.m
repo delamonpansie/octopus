@@ -306,6 +306,8 @@ fetch_row
 - (int)
 close
 {
+	if (c.fd == -2)
+		return 0;
 	return conn_close(&c);
 }
 
