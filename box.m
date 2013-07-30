@@ -1366,17 +1366,18 @@ snapshot_write_rows:(XLog *)l
 	struct palloc_pool *pool = palloc_create_pool(__func__);
 	struct tbuf *row = tbuf_alloc(pool);
 	int ret = 0;
-	size_t rows = 0, total_rows = [self snapshot_estimate];
+	size_t rows = 0, pk_rows, total_rows = [self snapshot_estimate];
 
 	for (int n = 0; n < object_space_count; n++) {
 		if (!object_space_registry[n].enabled)
 			continue;
 
+		pk_rows = 0;
 		id pk = object_space_registry[n].index[0];
 		[pk iterator_init];
 		while ((obj = [pk iterator_next])) {
 			if (obj->refs <= 0) {
-				say_error("heap invariant violation: obj->refs == %i", obj->refs);
+				say_error("heap invariant violation: n:%i obj->refs == %i", n, obj->refs);
 				errno = EINVAL;
 				ret = -1;
 				goto out;
@@ -1384,7 +1385,7 @@ snapshot_write_rows:(XLog *)l
 
 			tuple = box_tuple(obj);
 			if (!valid_tuple(tuple->cardinality, tuple->data, tuple->bsize)) {
-				say_error("heap invariant violation: invalid tuple %p", obj);
+				say_error("heap invariant violation: n:%i invalid tuple %p", n, obj);
 				errno = EINVAL;
 				ret = -1;
 				goto out;
@@ -1403,6 +1404,7 @@ snapshot_write_rows:(XLog *)l
 				goto out;
 			}
 
+			pk_rows++;
 			if (++rows % 100000 == 0) {
 				float pct = (float)rows / total_rows * 100.;
 				say_info("%.1fM/%.2f%% rows written", rows / 1000000., pct);
@@ -1422,9 +1424,9 @@ snapshot_write_rows:(XLog *)l
 			[index iterator_init];
 			while ([index iterator_next])
 				index_rows++;
-			if (rows != index_rows) {
-				say_error("heap invariant violation: index:%i rows:%zi != pk_rows:%zi",
-					  index->n, index_rows, rows);
+			if (pk_rows != index_rows) {
+				say_error("heap invariant violation: n:%i index:%i rows:%zi != pk_rows:%zi",
+					  n, index->n, index_rows, pk_rows);
 				errno = EINVAL;
 				ret = -1;
 				goto out;
