@@ -1418,6 +1418,10 @@ snapshot_write_rows:(XLog *)l
 			if (index->n == 0)
 				continue;
 
+			/* during initial load of replica secondary indexes isn't configured yet */
+			if ([index isKindOf:[DummyIndex class]])
+				continue;
+
 			set_proc_title("dumper check index:%i ((%" PRIu32 ")", index->n, getppid());
 
 			size_t index_rows = 0;
