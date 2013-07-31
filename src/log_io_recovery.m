@@ -692,7 +692,7 @@ recover_follow_remote:(XLogPuller *)puller exit_on_eof:(int)exit_on_eof
 			pull_snapshot(self, puller);
 			[self configure_wal_writer];
 			if ([self snapshot_write] != 0)
-				raise("replication failure: failed save snapshot");
+				raise("failed save snapshot");
 		}
 
 		/* old version doesn's send wal_final_tag for us. */
