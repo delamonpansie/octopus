@@ -45,10 +45,10 @@ local function gethostname()
    if ffi.C.custom_proc_title ~= nil then
       local proctitle = ffi.string(ffi.C.custom_proc_title)
       if #proctitle > 0 then
-	 result = result .. "@" .. proctitle
+	 result = result .. proctitle
       end
    end
-   return string.gsub(result, '[.]', '_')
+   return string.gsub(result, '[. ]', '_')
 end
 
 local function graphite()
