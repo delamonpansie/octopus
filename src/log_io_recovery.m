@@ -691,8 +691,12 @@ recover_follow_remote:(XLogPuller *)puller exit_on_eof:(int)exit_on_eof
 
 			pull_snapshot(self, puller);
 			[self configure_wal_writer];
-			if ([self snapshot_write] != 0)
-				raise("failed save snapshot");
+
+			/* don't wait for snapshot. our goal to be replica as fast as possible */
+			if (getenv("SYNC_DUMP") == NULL)
+				[self snapshot:false];
+			else
+				[self snapshot_write];
 		}
 
 		/* old version doesn's send wal_final_tag for us. */
