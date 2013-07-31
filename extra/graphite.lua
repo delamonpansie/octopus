@@ -19,7 +19,7 @@ if not graphite_loaded then
 	 if type(graphite_sender) == 'function' then
 	    graphite_sender()
 	 end
-	 fiber.sleep(1)
+	 fiber.sleep(60)
       end
    end
    fiber.create(loop)
