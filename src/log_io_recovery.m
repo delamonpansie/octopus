@@ -560,10 +560,12 @@ pull_wal(Recovery *r, id<XLogPullerAsync> puller)
 	say_debug("%s: scn:%"PRIi64, __func__, [r scn]);
 
 	int pack_rows = 0;
-	if ([puller recv] <= 0)
-		raise("unexpected eof");
 
-	while ((row = [puller fetch_row])) {
+	while (!(row = [puller fetch_row]))
+		if ([puller recv] <= 0)
+			raise("unexpected eof");
+
+	do {
 		int tag = row->tag & TAG_MASK;
 		int tag_type = row->tag & ~TAG_MASK;
 
@@ -593,7 +595,7 @@ pull_wal(Recovery *r, id<XLogPullerAsync> puller)
 		rows[pack_rows++] = row;
 		if (pack_rows == WAL_PACK_MAX)
 			break;
-	}
+	} while ((row = [puller fetch_row]));
 
 	if (pack_rows > 0) {
 		/* we'r use our own lsn numbering */
