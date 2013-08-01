@@ -17,6 +17,12 @@ object_space[0].index[0].type = "HASH"
 object_space[0].index[0].unique = 1
 object_space[0].index[0].key_field[0].fieldno = 0
 object_space[0].index[0].key_field[0].type = "STR"
+
+object_space[1].enabled = 1
+object_space[1].index[0].type = "HASH"
+object_space[1].index[0].unique = 1
+object_space[1].index[0].key_field[0].fieldno = 0
+object_space[1].index[0].key_field[0].type = "STR"
 EOD
   end
 
@@ -34,7 +40,7 @@ EOD
 
         local box_nop = "\01\00\00\00\00\00"
 
-        if row.scn == 2198 or row.scn == 2199 then
+        if row.scn == 3296 or row.scn == 3297 or row.scn == 3298 then
                 return box_nop
         end
         return true
@@ -64,6 +70,12 @@ object_space[0].index[0].type = "HASH"
 object_space[0].index[0].unique = 1
 object_space[0].index[0].key_field[0].fieldno = 0
 object_space[0].index[0].key_field[0].type = "NUM"
+
+object_space[1].enabled = 1
+object_space[1].index[0].type = "HASH"
+object_space[1].index[0].unique = 1
+object_space[1].index[0].key_field[0].fieldno = 0
+object_space[1].index[0].key_field[0].type = "STR"
 EOD
   end
 end
@@ -84,24 +96,33 @@ MasterEnv.clean do
   100.times do |i|
     master.insert [i, i + 1, "abc", "def"]
     master.insert [i, i + 1, "abc", "def"]
+    master.insert [i, i + 1, "abc", "def"], :object_space => 1
+    if i == 50 then
+      Process.kill('USR1', pid)
+      wait_for { FileTest.readable?("00000000000000000154.snap") }
+    end
   end
 
   SlaveEnv.clean do
     start
-
     slave = connect
+    wait_for { FileTest.readable?("00000000000000000154.snap") }
     slave.select [99]
+    slave.select [99], :object_space => 1
 
     Process.kill("STOP", pid)
     1000.times do |i|
       master.insert [i, i + 1, "ABC", "DEF"]
       master.insert [i, i + 1, "ABC", "DEF"]
+      master.insert [i, i + 1, "ABC", "DEF"], :object_space => 1
     end
     Process.kill("CONT", pid)
 
     wait_for { slave.select_nolog([999]).length > 0 }
     slave.select [998]
     slave.select [999]
+    slave.select [998], :object_space => 1
+    slave.select [999], :object_space => 1
 
     # verify that replica is able to read it's own xlog's
     stop
@@ -111,6 +132,8 @@ MasterEnv.clean do
     wait_for { slave.select_nolog([999]) }
     slave.select [998]
     slave.select [999]
+    slave.select [998], :object_space => 1
+    slave.select [999], :object_space => 1
   end
 end
 
