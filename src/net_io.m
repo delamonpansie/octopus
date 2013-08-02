@@ -898,20 +898,25 @@ tcp_server(va_list ap)
 void
 udp_server(va_list ap)
 {
-	int port = va_arg(ap, int);
+	const char *addr = va_arg(ap, const char *);
 	void (*handler)(const char *buf, ssize_t len, void *data) =
 		va_arg(ap, void (*)(const char *, ssize_t, void *));
 	void (*on_bind)(int fd) = va_arg(ap, void (*)(int fd));
 	void *data = va_arg(ap, void *);
 	int fd;
-	struct sockaddr_in addr;
+	struct sockaddr_in saddr;
 
-	sinany(&addr, port);
-	if ((fd = server_socket(SOCK_DGRAM, &addr, 1, on_bind, NULL)) < 0)
-		exit(EX_OSERR); /* TODO: better error handling */
+	if (!addr)
+		return; /* exit before yield() will prevent fiber creation */
 
-	const unsigned MAXUDPPACKETLEN = 128;
-	char buf[MAXUDPPACKETLEN];
+	if (atosin(addr, &saddr) < 0)
+		return;
+
+	if ((fd = server_socket(SOCK_DGRAM, &saddr, 1, on_bind, NULL)) < 0)
+		return;
+
+	const unsigned MAXUDPPACKETLEN = 65527 + 1; /* +1 for \0 */
+	char *buf = xmalloc(MAXUDPPACKETLEN);
 	ssize_t sz;
 	ev_io io = { .coro = 1};
 	ev_io_init(&io, (void *)fiber, fd, EV_READ);
