@@ -186,20 +186,25 @@ wal_pack_submit
 	return reply->row_count;
 }
 
-
 - (i64)
 append_row:(const void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag cookie:(u64)cookie
 {
-        if ([current_wal rows] == 1) {
-		assert(current_wal->inprogress == true);
-		/* rename wal after first successfull write to name without inprogress suffix*/
+	i64 r = [current_wal append_row:data len:data_len scn:scn_ tag:tag cookie:cookie];
+
+	if ([current_wal rows] == 1) {
 		if ([current_wal inprogress_rename] != 0) {
-			say_error("can't rename inprogress wal");
+			unlink(current_wal->filename);
+			[current_wal free];
+			current_wal = nil;
 			return -1;
 		}
-	}
 
-	return [current_wal append_row:data len:data_len scn:scn_ tag:tag cookie:cookie];
+		say_info("created `%s'", current_wal->filename);
+
+		[wal_to_close close];
+		wal_to_close = nil;
+	}
+	return r;
 }
 
 - (int)
@@ -213,10 +218,6 @@ prepare_write:(i64)scn_
                 return -1;
         }
 
-	if (wal_to_close != nil) {
-		[wal_to_close close];
-		wal_to_close = nil;
-	}
 	return 0;
 }
 
@@ -552,6 +553,11 @@ snapshot_write
 
 	if ([snap flush] == -1) {
 		say_syserror("snap flush failed");
+		return -1;
+	}
+
+	if ([snap inprogress_rename] == -1) {
+		say_syserror("snap inprogress rename failed");
 		return -1;
 	}
 
