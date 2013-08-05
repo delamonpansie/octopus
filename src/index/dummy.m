@@ -118,7 +118,11 @@ replace:(struct tnt_object *)obj
 remove:(struct tnt_object *)obj
 {
 	(void)obj;
-	return 0;
+	/* During initial loading all Tree indexes are DummyIndex.
+	   This trick speedup initial loading.
+	   Because of assertion check in box.m:obj_remove()
+	   We have to pretend that we're deleted one row */
+	return 1;
 }
 
 - (struct tnt_object *)

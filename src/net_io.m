@@ -378,7 +378,16 @@ conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, st
 		c = slab_cache_alloc(&conn_cache);
 	}
 
-	netmsg_head_init(&c->out_messages, pool);
+	c->memory_ownership = memory_ownership;
+	if (pool == NULL || memory_ownership & MO_MY_OWN_POOL) {
+		c->memory_ownership |= MO_MY_OWN_POOL;
+
+		c->pool = palloc_create_pool("connection owned pool");
+	} else {
+		c->pool = pool;
+	}
+
+	netmsg_head_init(&c->out_messages, c->pool);
 
 	c->ref = 0;
 	c->fd = fd;
@@ -392,14 +401,6 @@ conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, st
 	c->out.coro = c->in.coro = 1;
 	c->out.data = c->in.data = c;
 
-	c->memory_ownership = memory_ownership;
-	if (pool == NULL || memory_ownership & MO_MY_OWN_POOL) {
-		c->memory_ownership |= MO_MY_OWN_POOL;
-
-		c->pool = palloc_create_pool("connection owned pool");
-	} else {
-		c->pool = pool;
-	}
 
 	c->rbuf = tbuf_alloc(c->pool);
 
@@ -897,20 +898,25 @@ tcp_server(va_list ap)
 void
 udp_server(va_list ap)
 {
-	int port = va_arg(ap, int);
+	const char *addr = va_arg(ap, const char *);
 	void (*handler)(const char *buf, ssize_t len, void *data) =
 		va_arg(ap, void (*)(const char *, ssize_t, void *));
 	void (*on_bind)(int fd) = va_arg(ap, void (*)(int fd));
 	void *data = va_arg(ap, void *);
 	int fd;
-	struct sockaddr_in addr;
+	struct sockaddr_in saddr;
 
-	sinany(&addr, port);
-	if ((fd = server_socket(SOCK_DGRAM, &addr, 1, on_bind, NULL)) < 0)
-		exit(EX_OSERR); /* TODO: better error handling */
+	if (!addr)
+		return; /* exit before yield() will prevent fiber creation */
 
-	const unsigned MAXUDPPACKETLEN = 128;
-	char buf[MAXUDPPACKETLEN];
+	if (atosin(addr, &saddr) < 0)
+		return;
+
+	if ((fd = server_socket(SOCK_DGRAM, &saddr, 1, on_bind, NULL)) < 0)
+		return;
+
+	const unsigned MAXUDPPACKETLEN = 65527 + 1; /* +1 for \0 */
+	char *buf = xmalloc(MAXUDPPACKETLEN);
 	ssize_t sz;
 	ev_io io = { .coro = 1};
 	ev_io_init(&io, (void *)fiber, fd, EV_READ);
@@ -1069,7 +1075,7 @@ atosin(const char *orig, struct sockaddr_in *addr)
 	memset(addr, 0, sizeof(*addr));
 	addr->sin_family = AF_INET;
 
-	if (colon == NULL || strcmp(str, "ANY") == 0) {
+	if (colon == NULL || colon == str) { /* "33013" ":33013" */
 		addr->sin_addr.s_addr = INADDR_ANY;
 	} else {
 		if (inet_aton(str, &addr->sin_addr) == 0) {
@@ -1097,12 +1103,28 @@ net_fixup_addr(char **addr, int port)
 	assert(*addr);
 
 	if (port) {
+		if (strlen(*addr) == 0) { /* special case for INADDR_ANY, compat with prev. versions */
+			char *tmp = malloc(6);
+			sprintf(tmp, "%i", port);
+			*addr = tmp;
+			return 1;
+		}
+
 		int ret = 1;
 		char *c = strchr(*addr, ':');
 		if (c)  {
-			if (atoi(c + 1) == port)
+			if (atoi(c + 1) == port) /* already fixed */
 				return 0;
 			*c = 0;
+			ret = -1;
+		}
+
+		char *end;
+		int aport = strtol(*addr, &end, 10);
+		if (*end == 0) {
+			if (aport == port) /* already fixed, INADDR_ANY special case */
+				return 0;
+			*addr = "";
 			ret = -1;
 		}
 
@@ -1113,7 +1135,7 @@ net_fixup_addr(char **addr, int port)
 		return ret;
 	}
 
-	if (port == 0 && strcmp(*addr, "ANY") == 0) {
+	if (port == 0 && strlen(*addr) == 0) {
 		*addr = NULL;
 		return 1;
 	}

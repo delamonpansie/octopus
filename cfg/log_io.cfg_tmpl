@@ -42,6 +42,7 @@ wal_dir_rescan_delay=0.1, ro
 
 # Remote hot standby (if wal_feeder_addr configured server will run in
 # hot standby mode continuously fetching WAL records from it
+# setting env var SYNC_DUMP=1 will force replica do initial dump without forking.
 wal_feeder_addr=NULL, rw
 wal_feeder_filter=NULL, rw
 

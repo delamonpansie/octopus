@@ -360,13 +360,6 @@ recover_remaining_wals
 	if (wal_greatest_lsn == -1)
 		raise("wal_dir reading failed");
 
-	/* there is a race in open_for_read. the file may exists
-	   but not yet have valid header */
-	if (current_wal != nil && !current_wal->valid) {
-		[current_wal close];
-		current_wal = nil;
-	}
-
 	/* if the caller already opened WAL for us, recover from it first */
 	if (current_wal != nil) {
 		say_debug("%s: current_wal:%s", __func__, current_wal->filename);
@@ -381,16 +374,12 @@ recover_remaining_wals
 		}
 
 		current_wal = [self next_wal];
-		if (current_wal == nil)
-			break;
-		if (!current_wal->valid) /* unable to read & parse header */
+		if (current_wal == nil) /* either no more WALs or current one is broken */
 			break;
 
 		say_info("recover from `%s'", current_wal->filename);
 	recover_current_wal:
 		[self recover_wal:current_wal];
-		if ([current_wal rows] == 0) /* either broken wal or empty inprogress */
-			break;
 
 		if ([current_wal eof]) {
 			say_info("done `%s' lsn:%"PRIi64" scn:%"PRIi64,
@@ -403,11 +392,8 @@ recover_remaining_wals
 	}
 	fiber_gc();
 
-	/*
-	 * It's not a fatal error when last WAL is empty,
-	 * but if it's in the middle then we lost some logs.
-	 */
-	if (wal_greatest_lsn > lsn + 1)
+	/* empty WAL or borken header encountered: unable to parse remaining WALs */
+	if (wal_greatest_lsn > lsn)
 		raise("not all WALs have been successfully read! "
 		      "greatest_lsn:%"PRIi64" lsn:%"PRIi64" diff:%"PRIi64,
 		      wal_greatest_lsn, lsn, wal_greatest_lsn - lsn);
@@ -458,13 +444,8 @@ follow_dir(ev_timer *w, int events __attribute__((unused)))
 {
 	Recovery *r = w->data;
 	[r recover_remaining_wals];
-
 	if (r->current_wal == nil)
 		return;
-
-	if (r->current_wal->inprogress && [r->current_wal rows] > 1)
-		[r->current_wal inprogress_reset];
-
 	[r->current_wal follow:follow_file];
 }
 
@@ -480,11 +461,6 @@ follow_file(ev_stat *w, int events __attribute__((unused)))
 		r->current_wal = nil;
 		follow_dir((ev_timer *)w, 0);
 		return;
-	}
-
-	if (r->current_wal->inprogress && [r->current_wal rows] > 1) {
-		[r->current_wal inprogress_reset];
-		[r->current_wal follow:follow_file];
 	}
 }
 
@@ -506,15 +482,6 @@ recover_finalize
 		ev_stat_stop(&current_wal->stat);
 
 	[self recover_remaining_wals];
-
-	if (current_wal != nil && current_wal->inprogress) {
-		if ([current_wal rows] < 1) {
-			say_warn("%s: Removed broken WAL %s", __func__, current_wal->filename);
-			[current_wal inprogress_unlink];
-			[current_wal close];
-			current_wal = nil;
-		}
-	}
 
 	if (current_wal != nil)
                 say_warn("wal `%s' wasn't correctly closed", current_wal->filename);
@@ -560,10 +527,12 @@ pull_wal(Recovery *r, id<XLogPullerAsync> puller)
 	say_debug("%s: scn:%"PRIi64, __func__, [r scn]);
 
 	int pack_rows = 0;
-	if ([puller recv] <= 0)
-		raise("unexpected eof");
 
-	while ((row = [puller fetch_row])) {
+	while (!(row = [puller fetch_row]))
+		if ([puller recv] <= 0)
+			raise("unexpected eof");
+
+	do {
 		int tag = row->tag & TAG_MASK;
 		int tag_type = row->tag & ~TAG_MASK;
 
@@ -593,7 +562,7 @@ pull_wal(Recovery *r, id<XLogPullerAsync> puller)
 		rows[pack_rows++] = row;
 		if (pack_rows == WAL_PACK_MAX)
 			break;
-	}
+	} while ((row = [puller fetch_row]));
 
 	if (pack_rows > 0) {
 		/* we'r use our own lsn numbering */
@@ -691,8 +660,12 @@ recover_follow_remote:(XLogPuller *)puller exit_on_eof:(int)exit_on_eof
 
 			pull_snapshot(self, puller);
 			[self configure_wal_writer];
-			if ([self snapshot_write] != 0)
-				raise("replication failure: failed save snapshot");
+
+			/* don't wait for snapshot. our goal to be replica as fast as possible */
+			if (getenv("SYNC_DUMP") == NULL)
+				[self snapshot:false];
+			else
+				[self snapshot_write];
 		}
 
 		/* old version doesn's send wal_final_tag for us. */

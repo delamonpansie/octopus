@@ -113,7 +113,6 @@ init_filename:(const char *)filename_
           dir:(XLogDir *)dir_
 {
 	[super init];
-	valid = true;
 	filename = strdup(filename_);
 	pool = palloc_create_pool(filename);
 	fd = fd_;
@@ -137,21 +136,27 @@ init_filename:(const char *)filename_
 open_for_read_filename:(const char *)filename dir:(XLogDir *)dir
 {
 	char filetype_[32], version_[32];
-	char *error = "unknown error";
 	XLog *l = nil;
-	FILE *fd = fopen(filename, "r");
+	FILE *fd;
 
-	if (fd == NULL)
+	if ((fd = fopen(filename, "r")) == NULL)
 		return nil;
 
-	if (fgets(filetype_, sizeof(filetype_), fd) == NULL) {
-		error = "header reading failed";
-		goto error;
+	if (fgets(filetype_, sizeof(filetype_), fd) == NULL ||
+	    fgets(version_, sizeof(version_), fd) == NULL)
+	{
+		if (feof(fd))
+			say_error("unexpected EOF reading %s", filename);
+		else
+			say_syserror("can't read header of %s", filename);
+		fclose(fd);
+		return nil;
 	}
 
-	if (fgets(version_, sizeof(version_), fd) == NULL) {
-		error = "header reading failed";
-		goto error;
+	if (dir != NULL && strncmp(dir->filetype, filetype_, sizeof(filetype_)) != 0) {
+		say_error("filetype mismatch of %s", filename);
+		fclose(fd);
+		return nil;
 	}
 
 	if (strcmp(version_, v11) == 0) {
@@ -159,37 +164,31 @@ open_for_read_filename:(const char *)filename dir:(XLogDir *)dir
 	} else if (strcmp(version_, v12) == 0) {
 		l = [XLog12 alloc];
 	} else {
-		error = "unknown version";
-		goto error;
-	}
-
-	if (dir != NULL && strncmp(dir->filetype, filetype_, sizeof(filetype_)) != 0) {
-		error = "unknown file type";
-		goto error;
+		say_error("bad version `%s' of %s", version_, filename);
+		fclose(fd);
+		return nil;
 	}
 
 	[l init_filename:filename fd:fd dir:dir];
-
 	if ([l read_header] < 0) {
-		error = "header reading failed";
-		goto error;
+		if (feof(fd))
+			say_error("unexpected EOF reading %s", filename);
+		else
+			say_syserror("can't read header of %s", filename);
+		[l free];
+		return nil;
 	}
 
-	return l;
-
-error:
-	say_warn("[open_for_read_filename `%s']: %s", filename, error);
-	[l free];
-
-/* FIXME: race here: we can see file with yet to be written header */
-	l = [XLog alloc];
-	l->valid = false;
 	return l;
 }
 
 - (id)
 free
 {
+	if (fclose(fd) < 0)
+		say_syserror("can't close");
+	fd = NULL;
+
 	free(filename);
 	free(vbuf);
 	palloc_destroy_pool(pool);
@@ -209,51 +208,24 @@ wet_rows_offset_available
 }
 
 - (int)
-inprogress_unlink
-{
-#ifndef NDEBUG
-	char *suffix = strrchr(filename, '.');
-	assert(suffix);
-	assert(strcmp(suffix, inprogress_suffix) == 0);
-#endif
-        say_warn("unlink broken %s wal", filename);
-
-	if (unlink(filename) != 0) {
-		if (errno == ENOENT)
-			return 0;
-
-		say_syserror("can't unlink %s", filename);
-		return -1;
-	}
-
-	return 0;
-}
-
-- (void)
-inprogress_reset
-{
-	assert(inprogress);
-	*(strrchr(filename, '.')) = 0;
-	inprogress = false;
-}
-
-- (int)
 inprogress_rename
 {
-	assert(inprogress);
+	int result = 0;
 
 	char *final_filename = strdup(filename);
-	*(strrchr(final_filename, '.')) = 0;
+	char *suffix = strrchr(final_filename, '.');
+	assert(strcmp(suffix, inprogress_suffix) == 0);
+	*suffix = 0;
 
-	say_info("renaming %s to %s", filename, final_filename);
 	if (rename(filename, final_filename) != 0) {
 		say_syserror("can't rename %s to %s", filename, final_filename);
-		return -1;
+		result = -1;
+	} else {
+		*(strrchr(filename, '.')) = 0;
 	}
-	free(final_filename);
 
-	[self inprogress_reset];
-	return 0;
+	free(final_filename);
+	return result;
 }
 
 - (int)
@@ -272,9 +244,9 @@ close
 		if ([self flush] == -1)
 			result = -1;
 	} else {
-		/* file may be already unlink()'ed if it was broken */
 		if (rows == 0 && access(filename, F_OK) == 0) {
-			bool legacy_snap = [self isMemberOf:[XLog11 class]] && [dir isMemberOf:[SnapDir class]];
+			bool legacy_snap = [self isMemberOf:[XLog11 class]] &&
+					   [dir isMemberOf:[SnapDir class]];
 			if (!legacy_snap)
 				panic("no valid rows were read");
 		}
@@ -285,15 +257,6 @@ close
 	}
 
 	ev_stat_stop(&stat);
-
-	if (fclose(fd) < 0) {
-		say_syserror("can't close");
-		result = -1;
-	}
-	fd = NULL;
-
-	if (mode == LOG_WRITE && inprogress && rows > 0)
-		[self inprogress_rename];
 
 	[self free];
 	return result;
@@ -871,23 +834,7 @@ scan_dir:(i64 **)ret_lsn
 		if (file_suffix == NULL)
 			continue;
 
-		char *sub_suffix;
-		if (recover_from_inprogress)
-			sub_suffix = memrchr(dent->d_name, '.', file_suffix - dent->d_name);
-		else
-			sub_suffix = NULL;
-
-		/*
-		 * A valid suffix is either .xlog or * .xlog.inprogress,
-                 * given recover_from_inprogress == true && suffix == 'xlog'
-		 */
-
-		bool valid_suffix;
-		valid_suffix = (strcmp(file_suffix, suffix) == 0 ||
-				(sub_suffix != NULL &&
-				 strcmp(file_suffix, inprogress_suffix) == 0 &&
-				 strncmp(sub_suffix, suffix, strlen(suffix)) == 0));
-
+		bool valid_suffix = strcmp(file_suffix, suffix) == 0;
 		if (!valid_suffix)
 			continue;
 
@@ -1033,11 +980,7 @@ format_filename:(i64)lsn
 open_for_read:(i64)lsn
 {
 	const char *filename = [self format_filename:lsn];
-	XLog *l = [XLog open_for_read_filename:filename dir:self];
-	if (l == nil)
-		say_syserror("[open_for_read %"PRIi64"]: filename:`%s'", lsn, filename);
-
-	return l;
+	return [XLog open_for_read_filename:filename dir:self];
 }
 
 - (XLog *)
@@ -1057,26 +1000,11 @@ open_for_write:(i64)lsn scn:(i64)scn
 	}
 
 	const char *filename = [self format_filename:lsn suffix:inprogress_suffix];
-	say_debug("[open_for_write `%s']", filename);
-	if (access(filename, F_OK) == 0) {
-		errno = EEXIST;
-		say_error("failed to open `%s': file already exists", filename);
-		goto error;
-	}
 
-	/*
-	 * Open the <lsn>.<suffix>.inprogress file. If it
-	 * exists, open will fail.
-	 */
-	fd = open(filename, O_WRONLY | O_CREAT | O_EXCL | O_APPEND, 0664);
-	if (fd < 0) {
-		say_syserror("failed to open `%s'", filename);
-		goto error;
-	}
-
-	file = fdopen(fd, "a");
+	/* .inprogress file can't contain confirmed records, overwrite it silently */
+	file = fopen(filename, "w");
 	if (file == NULL) {
-		say_syserror("fdopen failed");
+		say_syserror("fopen failed");
 		goto error;
 	}
 
@@ -1091,13 +1019,11 @@ open_for_write:(i64)lsn scn:(i64)scn
 		((XLog12 *)l)->next_scn = scn;
 		l->mode = LOG_WRITE;
 	}
-	say_info("creating `%s'", l->filename);
 	if ([l write_header] < 0) {
 		say_syserror("failed to write header");
 		goto error;
 	}
 
-	l->inprogress = true;
 	return l;
       error:
 	if (fd >= 0)
@@ -1116,22 +1042,8 @@ init_dirname:(const char *)dirname_
         if ((self = [super init_dirname:dirname_])) {
 		filetype = xlog_mark;
 		suffix = ".xlog";
-		recover_from_inprogress = true;
 	}
 	return self;
-}
-
-- (id)
-open_for_read:(i64)lsn
-{
-	const char *filename = [self format_filename:lsn suffix:inprogress_suffix];
-	XLog *l = [XLog open_for_read_filename:filename dir:self];
-	if (l != nil) {
-		l->inprogress = true;
-		return l;
-	}
-
-	return [super open_for_read:lsn];
 }
 @end
 

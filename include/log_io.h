@@ -126,7 +126,6 @@ typedef void (follow_cb)(ev_stat *w, int events);
 @public
 	size_t rows_per_file;
 	double fsync_delay;
-	bool recover_from_inprogress;
 
 	const char *filetype;
 	const char *suffix;
@@ -138,8 +137,6 @@ typedef void (follow_cb)(ev_stat *w, int events);
 - (XLog *) open_for_read:(i64)lsn;
 - (XLog *) open_for_write:(i64)lsn scn:(i64)scn;
 - (i64) greatest_lsn;
-- (const char *) format_filename:(i64)lsn suffix:(const char *)extra_suffix;
-- (const char *) format_filename:(i64)lsn;
 - (XLog *) containg_lsn:(i64)target_lsn;
 - (i64) containg_scn:(i64)target_scn;
 @end
@@ -189,7 +186,7 @@ struct row_v12 {
 		LOG_WRITE
 	} mode;
 
-	bool valid, inprogress, no_wet;
+	bool no_wet;
 
 	size_t bytes_written;
 	off_t offset, wet_rows_offset[WAL_PACK_MAX * 8];
@@ -203,9 +200,7 @@ struct row_v12 {
 			      dir:(XLogDir *)dir;
 
 - (void) follow:(follow_cb *)cb;
-- (void) inprogress_reset;
 - (int) inprogress_rename;
-- (int) inprogress_unlink;
 - (int) read_header;
 - (int) write_header;
 - (int) flush;

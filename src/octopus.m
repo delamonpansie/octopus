@@ -176,8 +176,8 @@ reload_cfg(void)
 	destroy_octopus_cfg(&cfg);
 	cfg = new_cfg2;
 
-	if (cfg_err_len)
-		say_warn("config warnings: %.*s", cfg_err_len, cfg_err);
+	if (cfg_err_offt)
+		say_warn("config warnings: %s", cfg_err);
 	return 0;
 }
 
@@ -480,7 +480,9 @@ luaT_require(const char *modname)
 		return 1;
 	} else {
 		const char *err = lua_tostring(L, -1);
-		if (strstr(err, "not found") != NULL) {
+		char buf[64];
+		snprintf(buf, sizeof(buf), "module '%s' not found", modname);
+		if (strstr(err, buf) != NULL) {
 			lua_pop(L, 1);
 			return 0;
 		}
@@ -754,8 +756,8 @@ octopus(int argc, char **argv)
 		booting = false;
 	}
 
-	if (cfg_err_len)
-		say_warn("config warnings: %.*s", cfg_err_len, cfg_err);
+	if (cfg_err_offt)
+		say_warn("config warnings: %s", cfg_err);
 
 #ifdef STORAGE
 	if (gopt(opt, 'i')) {
