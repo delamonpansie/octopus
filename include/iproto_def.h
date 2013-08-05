@@ -92,11 +92,11 @@ union iproto_any_header {
 	_(ERR_CODE_NO_SUCH_NAMESPACE,	  0x00003902, "there is no such namespace") \
 	_(ERR_CODE_NAUTH_OK,              0x00004000, "non authoritative ok") \
 	_(ERR_CODE_REDIRECT,              0x00004102, "redirect")	\
-	_(ERR_CODE_LEADER_UNKNOW,         0x00004202, "leader unknown") \
-	_(ERR_CODE_TIMEOUT,               0x00004301, "server timeout") \
-	_(ERR_CODE_BAD_CONNECTION,        0x00004402, "connect to other server is bad") \
-       /* rlimit error codes */ \
-	_(ERR_CODE_RATE_LIMIT_REACHED,    0x00005002, "rate limit is reached")
+	_(ERR_CODE_LEADER_UNKNOW,	  0x00004202, "leader unknown") \
+	_(ERR_CODE_TIMEOUT,	  	  0x00004301, "server timeout") \
+ 	_(ERR_CODE_BAD_CONNECTION,        0x00004402, "connect to other server is bad") \
+	/* rlimit error codes */ \
+	_(ERR_CODE_RATE_LIMIT_REACHED,	  0x00005002, "rate limit is reached")
 
 
 /* Macros to define enum and corresponding strings. */
@@ -109,8 +109,8 @@ union iproto_any_header {
 #  define ENUM_STR_INITIALIZER(define) { define(ENUM_STR_DEF) }
 #endif
 
-extern void errcode_add_desc(u_int32_t errcode, char *desc);
-extern char* errcode_desc(u_int32_t errcode);
+extern void errcode_add_desc(u_int32_t errcode, const char *desc);
+extern const char* errcode_desc(u_int32_t errcode);
 #ifndef ERRCODE_ADD
 #  define ERRCODE_DESCRIPTION(s, v, d ...) errcode_add_desc((v), (d));
 #  define ERRCODE_STRINGIFY(s, v) errcode_add_desc((v), #s);

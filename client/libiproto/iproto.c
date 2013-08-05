@@ -45,6 +45,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdbool.h>
+#include <time.h>
 
 #ifdef LIBIPROTO_OCTOPUS
 #include <client/libiproto/libiproto.h>
@@ -61,6 +62,11 @@ enum li_error_codes ENUM_INITIALIZER(SUM_ERROR_CODES);
 #ifndef offsetof
 #define offsetof(type, field)   ((int) (uintptr_t)&((type *)0)->field)
 #endif   /* offsetof */
+
+#define TIMESPEC_DIFF(tp1_, tp2_) (			\
+	((tp1_).tv_sec - (tp2_).tv_sec) * 1000 +	\
+	((tp1_).tv_nsec - (tp2_).tv_nsec) / 1000000	\
+)
 
 #define MH_STATIC
 #define mh_name _sp_request
@@ -246,12 +252,11 @@ struct iproto_request_t {
 	struct memory_arena_t		*readArena;
 
 	TAILQ_ENTRY(iproto_request_t)   link;
+	void				*assocData;
 
 	size_t				dataSendSize;
 	char				*dataSend;
 	struct iproto			headerSend; /* clang wants it at the end */
-
-	void				*assocData;
 };
 
 struct iproto_connection_t*
@@ -277,7 +282,7 @@ li_conn_init(memalloc sp_alloc, struct memory_arena_pool_t *rap, struct memory_a
 }
 
 static int
-libpoll(int fd, int event) {
+libpoll(int fd, int event, u_int32_t timeout) {
 	struct pollfd	pfd;
 	int		ret;
 
@@ -285,7 +290,7 @@ libpoll(int fd, int event) {
 	pfd.events = event;
 	pfd.revents = 0;
 
-	ret = poll( &pfd, 1, 0);
+	ret = poll( &pfd, 1, timeout);
 	if (ret < 0 || (pfd.revents & (POLLHUP | POLLNVAL | POLLERR)) != 0)
 		return (pfd.revents | POLLERR);
 
@@ -293,7 +298,7 @@ libpoll(int fd, int event) {
 }
 
 static u_int32_t
-li_connect_phase1(struct iproto_connection_t *c) {
+li_connect_phase1(struct iproto_connection_t *c, u_int32_t timeout) {
 	u_int32_t	r;
 
 	if (c->fd < 0)
@@ -305,7 +310,7 @@ li_connect_phase1(struct iproto_connection_t *c) {
 		case ConnectionError:
 			return ERR_CODE_CONNECT_ERR;
 		case ConnectInProgress:
-			r = libpoll(c->fd, POLLOUT);
+			r = libpoll(c->fd, POLLOUT, timeout);
 
 			if (r & POLLERR) {
 				c->connectState = ConnectionError;
@@ -314,7 +319,7 @@ li_connect_phase1(struct iproto_connection_t *c) {
 
 			if (r & POLLOUT) {
 				int err;
-				int err_size = sizeof(err);
+				socklen_t err_size = sizeof(err);
 				getsockopt(c->fd, SOL_SOCKET, SO_ERROR,
 					   &err, &err_size);
 
@@ -383,7 +388,7 @@ li_connect(struct iproto_connection_t *c, const char *server, int port, u_int32_
 	int		flags;
 	u_int32_t	r;
 
-	r = li_connect_phase1(c);
+	r = li_connect_phase1(c, 0);
 	if (r != ERR_CODE_OK)
 		return r;
 	if (c->connectState == Connected)
@@ -440,7 +445,7 @@ u_int32_t
 li_uconnect(struct iproto_connection_t *c, const char *path, u_int32_t opt) {
 	u_int32_t	r;
 
-	r = li_connect_phase1(c);
+	r = li_connect_phase1(c, 0);
 	if (r != ERR_CODE_OK)
 		return r;
 	if (c->connectState == Connected)
@@ -463,6 +468,44 @@ li_uconnect(struct iproto_connection_t *c, const char *path, u_int32_t opt) {
 	c->connectState = ConnectInProgress;
 
 	return li_connect_phase2(c, opt);
+}
+
+u_int32_t
+li_connect_timeout(struct iproto_connection_t *c, const char *server, int port, u_int32_t opt, u_int32_t timeout)
+{
+	u_int32_t r;
+
+	if (!(opt & LIBIPROTO_OPT_NONBLOCK))
+		return ERR_CODE_CONNECT_NON_BLOCK;
+
+	r = li_connect(c, server, port, opt);
+	if (r != ERR_CODE_CONNECT_IN_PROGRESS)
+		return r;
+
+	r = li_connect_phase1(c, timeout);
+	if (r == ERR_CODE_CONNECT_IN_PROGRESS)
+		return ERR_CODE_OPERATION_TIMEOUT;
+
+	return r;
+}
+
+u_int32_t
+li_uconnect_timeout(struct iproto_connection_t *c, const char *path, u_int32_t opt, u_int32_t timeout)
+{
+	u_int32_t r;
+
+	if (!(opt & LIBIPROTO_OPT_NONBLOCK))
+		return ERR_CODE_CONNECT_NON_BLOCK;
+
+	r = li_uconnect(c, path, opt);
+	if (r != ERR_CODE_CONNECT_IN_PROGRESS)
+		return r;
+
+	r = li_connect_phase1(c, timeout);
+	if (r == ERR_CODE_CONNECT_IN_PROGRESS)
+		return ERR_CODE_OPERATION_TIMEOUT;
+
+	return r;
 }
 
 int
@@ -905,6 +948,83 @@ begin:
 		}
 
 		c->neededSize = MINNEEDEDSIZE;
+	}
+
+	return ERR_CODE_OK;
+}
+
+static void
+li_gettime(struct timespec *ts)
+{
+#ifdef __MACH__
+	struct timeval tv;
+
+	gettimeofday(&tv, NULL);
+	TIMEVAL_TO_TIMESPEC(&tv, ts);
+#else
+	clock_gettime(CLOCK_MONOTONIC, ts);
+#endif
+}
+
+u_int32_t
+li_write_timeout(struct iproto_connection_t *c, u_int32_t timeout)
+{
+	struct timespec start_ts, ts;
+	u_int32_t spent = 0;
+	u_int32_t r;
+
+	li_gettime(&start_ts);
+
+	for (;;) {
+		r = li_write(c);
+		if (r != ERR_CODE_OK)
+			return r;
+
+		li_gettime(&ts);
+		spent = TIMESPEC_DIFF(ts, start_ts);
+		if (spent >= timeout)
+			return ERR_CODE_OPERATION_TIMEOUT;
+
+		r = libpoll(c->fd, POLLOUT, timeout - spent);
+		if (r & POLLERR) {
+			c->connectState = ConnectionError;
+			return ERR_CODE_CONNECT_ERR;
+		}
+		if (!(r & POLLOUT))
+			return ERR_CODE_OPERATION_TIMEOUT;
+
+	}
+
+	return ERR_CODE_OK;
+}
+
+u_int32_t
+li_read_timeout(struct iproto_connection_t *c, u_int32_t timeout)
+{
+	struct timespec start_ts, ts;
+	u_int32_t spent = 0;
+	u_int32_t r;
+
+	li_gettime(&start_ts);
+
+	for (;;) {
+		r = li_read(c);
+		if (r != ERR_CODE_OK)
+			return r;
+
+		li_gettime(&ts);
+		spent = TIMESPEC_DIFF(ts, start_ts);
+		if (spent >= timeout)
+			return ERR_CODE_OPERATION_TIMEOUT;
+
+		r = libpoll(c->fd, POLLIN, timeout - spent);
+		if (r & POLLERR) {
+			c->connectState = ConnectionError;
+			return ERR_CODE_CONNECT_ERR;
+		}
+		if (!(r & POLLIN))
+			return ERR_CODE_OPERATION_TIMEOUT;
+
 	}
 
 	return ERR_CODE_OK;

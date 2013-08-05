@@ -126,7 +126,11 @@ void   				map_free(struct memory_arena_pool_t *rap);
     _(ERR_CODE_REQUEST_IN_RECV,		((0x09) << 16) | LIBIPROTO_ERR_CODE_FLAG, 				\
       					"request is on recieving")    						\
     _(ERR_CODE_REQUEST_READY,		((0x0a) << 16) | LIBIPROTO_ERR_CODE_FLAG, 				\
-      					"request is ready")
+      					"request is ready")							\
+    _(ERR_CODE_CONNECT_NON_BLOCK,	((0x0b) << 16) | LIBIPROTO_ERR_CODE_FLAG,				\
+    					"connect is non blocking")						\
+    _(ERR_CODE_OPERATION_TIMEOUT,	((0x0c) << 16) | LIBIPROTO_ERR_CODE_FLAG,				\
+    					"operation timeout")
 
 /* Macros to define enum and corresponding strings. */
 #ifndef ENUM_INITIALIZER
@@ -138,8 +142,8 @@ void   				map_free(struct memory_arena_pool_t *rap);
 #  define ENUM_STR_INITIALIZER(define) { define(ENUM_STR_DEF) }
 #endif
 
-extern void errcode_add_desc(u_int32_t errcode, char *desc);
-extern char* errcode_desc(u_int32_t errcode);
+extern void errcode_add_desc(u_int32_t errcode, const char *desc);
+extern const char* errcode_desc(u_int32_t errcode);
 #ifndef ERRCODE_ADD
 #  define ERRCODE_DESCRIPTION(s, v, d ...) errcode_add_desc((v), (d));
 #  define ERRCODE_STRINGIFY(s, v) errcode_add_desc((v), #s);
@@ -157,6 +161,9 @@ struct iproto_connection_t*	li_conn_init(memalloc sp_alloc, struct memory_arena_
 					     struct memory_arena_pool_t *reqap /* optional, request arena */ );
 u_int32_t			li_connect(struct iproto_connection_t *c, const char *server, int port, u_int32_t opt);
 u_int32_t			li_uconnect(struct iproto_connection_t *c, const char *path, u_int32_t opt);
+// connect with timeout (msec)
+u_int32_t			li_connect_timeout(struct iproto_connection_t *c, const char *server, int port, u_int32_t opt, u_int32_t timeout);
+u_int32_t			li_uconnect_timeout(struct iproto_connection_t *c, const char *path, u_int32_t opt, u_int32_t timeout);
 int				li_get_fd(struct iproto_connection_t *c);
 void				li_close(struct iproto_connection_t *c);
 void				li_free(struct iproto_connection_t *c);
@@ -178,6 +185,9 @@ LiConnectionState		li_io_state(struct iproto_connection_t *c);
 
 u_int32_t			li_write(struct iproto_connection_t *c);
 u_int32_t			li_read(struct iproto_connection_t *c);
+// read and write with timeout (msec)
+u_int32_t			li_write_timeout(struct iproto_connection_t *c, u_int32_t timeout);
+u_int32_t			li_read_timeout(struct iproto_connection_t *c, u_int32_t timeout);
 
 struct iproto_request_t*	li_get_ready_reqs(struct iproto_connection_t *c);
 

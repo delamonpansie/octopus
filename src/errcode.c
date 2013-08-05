@@ -24,7 +24,9 @@
  * SUCH DAMAGE.
  */
 
+#ifdef LIBIPROTO_OCTOPUS
 #include <config.h>
+#endif
 #include <sys/types.h>
 #include <stdlib.h>
 #include <string.h>
@@ -54,7 +56,7 @@ errStorageCmp(const void *a, const void *b) {
 }
 
 static void
-_errcode_add_desc(u_int32_t errcode, char *desc) {
+_errcode_add_desc(u_int32_t errcode, const char *desc) {
 	errStorage = realloc(errStorage, sizeof(*errStorage) * (nErr + 1));
 
 	errStorage[nErr].errcode = errcode;
@@ -101,7 +103,7 @@ errcode_init() {
 }
 
 void
-errcode_add_desc(u_int32_t errcode, char *desc) {
+errcode_add_desc(u_int32_t errcode, const char *desc) {
 	struct storage	*e;
 
 	errcode_init();
@@ -114,9 +116,9 @@ errcode_add_desc(u_int32_t errcode, char *desc) {
 	}
 }
 
-char *
+const char *
 errcode_desc(u_int32_t errcode) {
-	static char *unknown = "Unknown error";
+	static const char *unknown = "Unknown error";
 	struct storage  *e;
 
 	errcode_init();
