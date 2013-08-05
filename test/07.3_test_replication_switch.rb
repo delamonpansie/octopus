@@ -30,7 +30,7 @@ class MasterEnv1 < StandAloneEnv
 
   def config
     super + <<EOD
-wal_feeder_bind_addr = "ANY:#@feeder_port"
+wal_feeder_bind_addr = "0.0.0.0:#@feeder_port"
 #{OBJ_SPACE_CFG}
 EOD
   end

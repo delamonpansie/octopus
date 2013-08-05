@@ -10,7 +10,7 @@ class MasterEnv < StandAloneEnv
 
   def config
     super + <<EOD
-wal_feeder_bind_addr = "ANY:33034"
+wal_feeder_bind_addr = "0:33034"
 object_space[0].enabled = 1
 object_space[0].index[0].type = "HASH"
 object_space[0].index[0].unique = 1
