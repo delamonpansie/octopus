@@ -1075,7 +1075,7 @@ atosin(const char *orig, struct sockaddr_in *addr)
 	memset(addr, 0, sizeof(*addr));
 	addr->sin_family = AF_INET;
 
-	if (colon == NULL || strcmp(str, "ANY") == 0) {
+	if (colon == NULL || colon == str) { /* "33013" ":33013" */
 		addr->sin_addr.s_addr = INADDR_ANY;
 	} else {
 		if (inet_aton(str, &addr->sin_addr) == 0) {
@@ -1103,12 +1103,28 @@ net_fixup_addr(char **addr, int port)
 	assert(*addr);
 
 	if (port) {
+		if (strlen(*addr) == 0) { /* special case for INADDR_ANY, compat with prev. versions */
+			char *tmp = malloc(6);
+			sprintf(tmp, "%i", port);
+			*addr = tmp;
+			return 1;
+		}
+
 		int ret = 1;
 		char *c = strchr(*addr, ':');
 		if (c)  {
-			if (atoi(c + 1) == port)
+			if (atoi(c + 1) == port) /* already fixed */
 				return 0;
 			*c = 0;
+			ret = -1;
+		}
+
+		char *end;
+		int aport = strtol(*addr, &end, 10);
+		if (*end == 0) {
+			if (aport == port) /* already fixed, INADDR_ANY special case */
+				return 0;
+			*addr = "";
 			ret = -1;
 		}
 
@@ -1119,7 +1135,7 @@ net_fixup_addr(char **addr, int port)
 		return ret;
 	}
 
-	if (port == 0 && strcmp(*addr, "ANY") == 0) {
+	if (port == 0 && strlen(*addr) == 0) {
 		*addr = NULL;
 		return 1;
 	}
