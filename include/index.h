@@ -47,6 +47,7 @@ struct index_node {
 struct field {
 	i32 len;
 	union {
+		u16 u16;
 		u32 u32;
 		u64 u64;
 		u8 data[sizeof(u64)];
@@ -54,7 +55,7 @@ struct field {
 	};
 };
 
-enum field_data_type { NUM, NUM64, STRING };
+enum field_data_type { NUM16, NUM32, NUM64, STRING };
 struct gen_dtor {
 	int min_tuple_cardinality;
 	int index_field[8];

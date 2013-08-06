@@ -275,7 +275,9 @@ field_compare(struct field *f1, struct field *f2, enum field_data_type type)
 	int r;
 
 	switch (type) {
-	case NUM:
+	case NUM16:
+		return f1->u16 > f2->u16 ? 1 : f1->u16 == f2->u16 ? 0 : -1;
+	case NUM32:
 		return f1->u32 > f2->u32 ? 1 : f1->u32 == f2->u32 ? 0 : -1;
 	case NUM64:
 		return f1->u64 > f2->u64 ? 1 : f1->u64 == f2->u64 ? 0 : -1;
@@ -350,7 +352,9 @@ gen_init_pattern(struct tbuf *key_data, int cardinality, struct index_node *patt
                 void *key = read_bytes(key_data, len);
 		int j = desc->cmp_order[i];
 
-		if (desc->type[j] == NUM && len != sizeof(u32))
+		if (desc->type[j] == NUM16 && len != sizeof(u16))
+			index_raise("key size mismatch, expected u16");
+		else if (desc->type[j] == NUM32 && len != sizeof(u32))
 			index_raise("key size mismatch, expected u32");
 		else if (desc->type[j] == NUM64 && len != sizeof(u64))
 			index_raise("key size mismatch, expected u64");
