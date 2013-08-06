@@ -137,8 +137,12 @@ luaT_index_hashget(struct lua_State *L)
 {
 	id<HashIndex> index = luaT_checkindex_hash(L, 1);
 	u32 i = luaL_checkinteger(L, 2);
-	luaT_pushobject(L, [index get:i]);
-	return 1;
+	struct tnt_object *obj = [index get:i];
+	if (obj != NULL && !ghost(obj)) {
+		luaT_pushobject(L, obj);
+		return 1;
+	}
+	return 0;
 }
 
 static int
