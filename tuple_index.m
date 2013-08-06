@@ -96,7 +96,9 @@ box_tuple_gen_dtor(struct tnt_object *obj, struct index_node *node_, void *arg)
 		assert(tuple_data < (void *)tuple->data + tuple->bsize);
 		u32 len = LOAD_VARINT32(tuple_data);
 		if (desc->index_field[i] == j) {
-			if (desc->type[i] == NUM && len != sizeof(u32))
+			if (desc->type[i] == NUM16 && len != sizeof(u16))
+				index_raise("key size mismatch, expected u16");
+			else if (desc->type[i] == NUM32 && len != sizeof(u32))
 				index_raise("key size mismatch, expected u32");
 			else if (desc->type[i] == NUM64 && len != sizeof(u64))
 				index_raise("key size mismatch, expected u64");
@@ -130,7 +132,11 @@ cfg_box_tuple_gen_dtor(struct octopus_cfg_object_space_index *c)
 		d->index_field[d->cardinality] = c->key_field[k]->fieldno;
 
 		if (strcmp(c->key_field[k]->type, "NUM") == 0)
-			d->type[d->cardinality] = NUM;
+			d->type[d->cardinality] = NUM32;
+		else if (strcmp(c->key_field[k]->type, "NUM16") == 0)
+			d->type[d->cardinality] = NUM16;
+		else if (strcmp(c->key_field[k]->type, "NUM32") == 0)
+			d->type[d->cardinality] = NUM32;
 		else if (strcmp(c->key_field[k]->type, "NUM64") == 0)
 			d->type[d->cardinality] = NUM64;
 		else if (strcmp(c->key_field[k]->type, "STR") == 0)
