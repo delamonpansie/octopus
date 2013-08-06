@@ -177,8 +177,8 @@ find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
 {
         if (key_cardinality != 1)
 		index_raise("hashed key has cardinality != 1");
-	u32 key_size = read_varint32(key_data);
-	if (key_size != sizeof(u32))
+	u32 key_size = read_u8(key_data); /* key_size is actually varint */
+	if (key_size != sizeof(i32))
 		index_raise("key is not i32");
 
 	i32 num = read_u32(key_data);
@@ -221,7 +221,7 @@ find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
 {
         if (key_cardinality != 1)
                 index_raise("hashed key has cardinality != 1");
-	u32 key_size = read_varint32(key_data);
+	u32 key_size = read_u8(key_data); /* key_size is actually varint */
 	if (key_size != sizeof(i64))
 		index_raise("key is not i64");
 
