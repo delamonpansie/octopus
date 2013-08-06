@@ -16,6 +16,7 @@ src-lua += mod/box/src-lua/box.lua
 src-lua += mod/box/src-lua/box_prelude.lua
 src-lua += mod/box/src-lua/box/object_space_info.lua
 src-lua += mod/box/src-lua/box/example_proc.lua
+src-lua += mod/box/src-lua/box/expire.lua
 
 
 ifeq (1,$(HAVE_RAGEL))

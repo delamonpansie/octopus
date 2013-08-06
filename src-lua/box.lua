@@ -274,3 +274,11 @@ function decode.u32(obj, offt)
         end
         return ffi.cast(u32_ptr , tuple.data + offt)[0]
 end
+
+cast = {}
+function cast.u32(str)
+   if type(str) ~= 'string' then
+      error('string expected')
+   end
+   return ffi.cast('uint32_t *', str)[0]
+end
