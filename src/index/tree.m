@@ -296,20 +296,16 @@ field_compare(struct field *f1, struct field *f2, enum field_data_type type)
 static int
 tree_node_compare(struct tree_node *na, struct tree_node *nb, struct gen_dtor *desc)
 {
-	for (int i = 0; i < desc->cardinality; ++i) {
+	/* if pattern is partialy specified compare only significant fields.
+	   it's ok to return 0 here: sptree_iterator_init_set() will select
+	   leftmost node in case of equality.
+	   it is guaranteed that pattern is a first arg.
+	*/
+
+	int n = (uintptr_t)na->obj < nelem(desc->index_field) ? (uintptr_t)na->obj : desc->cardinality;
+
+	for (int i = 0; i < n; ++i) {
 		int j = desc->cmp_order[i];
-
-		/* pattern is partialy specified. no more fields to compare.
-		   it's ok to return 0 here: sptree_iterator_init_set() will select
-		   leftmost node in case of equality.
-		   it is guaranteed that pattern is a first arg.
-		   this code is never called in case of node to node comparision
-		 */
-		if (na->key[j].len < 0) {
-			assert(na->obj == NULL);
-			return 0;
-		}
-
 		int r = field_compare(&na->key[j], &nb->key[j], desc->type[j]);
 		if (r != 0)
 			return r;
@@ -318,13 +314,13 @@ tree_node_compare(struct tree_node *na, struct tree_node *nb, struct gen_dtor *d
 }
 
 static int
-tree_node_compare_with_addr(struct tree_node *na, struct tree_node *nb, void *x)
+tree_node_compare_with_addr(struct tree_node *na, struct tree_node *nb, struct gen_dtor *desc)
 {
-	int r = tree_node_compare(na, nb, x);
+	int r = tree_node_compare(na, nb, desc);
 	if (r != 0)
 		return r;
 
-	if (na->obj == NULL) /* `na' is a pattern */
+	if ((uintptr_t)na->obj < nelem(desc->index_field)) /* `na' is a pattern */
 		return r;
 
 	if (na->obj > nb->obj)
@@ -341,7 +337,7 @@ gen_init_pattern(struct tbuf *key_data, int cardinality, struct index_node *patt
 	struct tree_node *pattern = (void *)pattern_;
 	struct gen_dtor *desc = arg;
 
-	if (cardinality > desc->cardinality)
+	if (cardinality > desc->cardinality || cardinality > nelem(desc->index_field))
                 index_raise("cardinality too big");
 
         for (int i = 0; i < desc->cardinality; i++)
@@ -367,7 +363,7 @@ gen_init_pattern(struct tbuf *key_data, int cardinality, struct index_node *patt
 		key += len;
 	}
 
-	pattern->obj = NULL;
+	pattern->obj = (void *)(uintptr_t)cardinality;
 }
 
 - (id)
