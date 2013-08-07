@@ -523,8 +523,10 @@ conn_close(struct conn *c)
 	if (c->service && c->processing_link.tqe_prev != NULL) {
 		TAILQ_REMOVE(&c->service->processing, c, processing_link);
 		c->processing_link.tqe_prev = NULL;
-		c->ref--; /* call to conn_unref() will cause recurion */
 	}
+
+	if (c->service)
+		c->ref--; /* call to conn_unref() will cause recurion */
 
 	/* either no refcounting used or c->service was the last owner.
 	   release memory, since conn_unref() woudn't be called in both cases. */
