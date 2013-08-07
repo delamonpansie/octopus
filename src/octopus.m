@@ -776,7 +776,7 @@ octopus(int argc, char **argv)
 #endif
 
 #if defined(UTILITY)
-	initialize_minimal();
+	salloc_init(0, 0, 0);
 	fiber_init();
 	luaT_init();
 	signal_init();
