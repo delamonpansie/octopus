@@ -45,13 +45,17 @@ struct index_node {
 };
 
 struct field {
-	i32 len;
 	union {
 		u16 u16;
 		u32 u32;
 		u64 u64;
-		u8 data[sizeof(u64)];
-		void *data_ptr;
+		struct {
+			i16 len;
+			union {
+				u8 bytes[sizeof(u64)];
+				void *ptr;
+			} data;
+		} str;
 	};
 };
 
@@ -60,13 +64,14 @@ struct gen_dtor {
 	int min_tuple_cardinality;
 	int index_field[8];
 	int cmp_order[8];
+	int offset[8];
 	int cardinality;
 	enum field_data_type type[8];
 };
 
 struct tree_node {
 	struct tnt_object *obj;
-	struct field key[];
+	unsigned char key[];
 };
 
 union {
@@ -187,6 +192,7 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 
 @interface GenTree: Tree
 @end
+void gen_set_field(struct field *f, enum field_data_type type, int len, void *data);
 
 #define foreach_index(ivar, obj_space)					\
 	for (Index<BasicIndex>						\

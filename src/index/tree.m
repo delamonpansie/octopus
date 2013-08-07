@@ -282,13 +282,13 @@ field_compare(struct field *f1, struct field *f2, enum field_data_type type)
 	case NUM64:
 		return f1->u64 > f2->u64 ? 1 : f1->u64 == f2->u64 ? 0 : -1;
 	case STRING:
-		d1 = f1->len <= sizeof(f1->data) ? f1->data : f1->data_ptr;
-		d2 = f2->len <= sizeof(f2->data) ? f2->data : f2->data_ptr;
-		r = memcmp(d1, d2, MIN(f1->len, f2->len));
+		d1 = f1->str.len <= sizeof(f1->str.data) ? f1->str.data.bytes : f1->str.data.ptr;
+		d2 = f2->str.len <= sizeof(f2->str.data) ? f2->str.data.bytes : f2->str.data.ptr;
+		r = memcmp(d1, d2, MIN(f1->str.len, f2->str.len));
 		if (r != 0)
 			return r;
 
-		return f1->len > f2->len ? 1 : f1->len == f2->len ? 0 : -1;
+		return f1->str.len > f2->str.len ? 1 : f1->str.len == f2->str.len ? 0 : -1;
 	}
 	abort();
 }
@@ -306,7 +306,9 @@ tree_node_compare(struct tree_node *na, struct tree_node *nb, struct gen_dtor *d
 
 	for (int i = 0; i < n; ++i) {
 		int j = desc->cmp_order[i];
-		int r = field_compare(&na->key[j], &nb->key[j], desc->type[j]);
+		struct field *akey = (void *)na->key + desc->offset[j];
+		struct field *bkey = (void *)nb->key + desc->offset[j];
+		int r = field_compare(akey, bkey, desc->type[j]);
 		if (r != 0)
 			return r;
 	}
@@ -331,6 +333,36 @@ tree_node_compare_with_addr(struct tree_node *na, struct tree_node *nb, struct g
 		return 0;
 }
 
+void
+gen_set_field(struct field *f, enum field_data_type type, int len, void *data)
+{
+	switch (type) {
+	case NUM16:
+		if (len != sizeof(u16))
+			index_raise("key size mismatch, expected u16");
+		f->u16 = *(u16 *)data;
+		break;
+	case NUM32:
+		if (len != sizeof(u32))
+			index_raise("key size mismatch, expected u32");
+		f->u32 = *(u32 *)data;
+		break;
+	case NUM64:
+		if (len != sizeof(u64))
+			index_raise("key size mismatch, expected u64");
+		f->u64 = *(u64 *)data;
+		break;
+	case STRING:
+		if (len > 0xffff)
+			index_raise("string key too long");
+		f->str.len = len;
+		if (len <= sizeof(f->str.data))
+			memcpy(f->str.data.bytes, data, len);
+		else
+			f->str.data.ptr = data;
+		break;
+	}
+}
 static void
 gen_init_pattern(struct tbuf *key_data, int cardinality, struct index_node *pattern_, void *arg)
 {
@@ -340,26 +372,13 @@ gen_init_pattern(struct tbuf *key_data, int cardinality, struct index_node *patt
 	if (cardinality > desc->cardinality || cardinality > nelem(desc->index_field))
                 index_raise("cardinality too big");
 
-        for (int i = 0; i < desc->cardinality; i++)
-		pattern->key[i].len = -1;
-
 	for (int i = 0; i < cardinality; i++) {
 		u32 len = read_varint32(key_data);
-                void *key = read_bytes(key_data, len);
+		void *key = read_bytes(key_data, len);
 		int j = desc->cmp_order[i];
 
-		if (desc->type[j] == NUM16 && len != sizeof(u16))
-			index_raise("key size mismatch, expected u16");
-		else if (desc->type[j] == NUM32 && len != sizeof(u32))
-			index_raise("key size mismatch, expected u32");
-		else if (desc->type[j] == NUM64 && len != sizeof(u64))
-			index_raise("key size mismatch, expected u64");
-
-		pattern->key[j].len = len;
-		if (len <= sizeof(pattern->key[j].data))
-			memcpy(pattern->key[j].data, key, len);
-		else
-			pattern->key[j].data_ptr = key;
+		struct field *f = (void *)pattern->key + desc->offset[j];
+		gen_set_field(f, desc->type[j], len, key);
 		key += len;
 	}
 
