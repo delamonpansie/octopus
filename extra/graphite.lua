@@ -48,7 +48,7 @@ local function gethostname()
 	 result = result .. proctitle
       end
    end
-   return string.gsub(result, '[. ]', '_')
+   return string.gsub(result, '[. ()]', '_')
 end
 
 local function graphite()
