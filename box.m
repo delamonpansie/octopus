@@ -1158,7 +1158,6 @@ initialize_service()
 	if (cfg.memcached != 0) {
 		memcached_init();
 	} else {
-		primary_addr = cfg.primary_addr;
 		tcp_service(&box_primary, cfg.primary_addr, box_bound_to_primary, iproto_wakeup_workers);
 		box_service_register(&box_primary);
 
@@ -1452,6 +1451,7 @@ static void
 init(void)
 {
 	stat_base = stat_register(ops, nelem(ops));
+	primary_addr = cfg.primary_addr;
 
 	object_space_registry = xcalloc(object_space_count, sizeof(struct object_space));
 	for (int i = 0; i < object_space_count; i++)
