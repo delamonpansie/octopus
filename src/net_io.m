@@ -464,6 +464,7 @@ conn_free(struct conn *c)
 	/*  as long as struct conn *C is alive, c->out_messages may be populated
 	    by callbacks even if c->fd == -1, so drop all this data */
 	conn_reset(c);
+	slab_cache_free(&netmsg_cache, TAILQ_FIRST(&c->out_messages.q));
 
 	if (c->service)
 		LIST_REMOVE(c, link);
