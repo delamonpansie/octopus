@@ -16,10 +16,10 @@ if not graphite_loaded then
    graphite_loaded = true
    local loop = function ()
       while true do
+	 fiber.sleep(60)
 	 if type(graphite_sender) == 'function' then
 	    graphite_sender()
 	 end
-	 fiber.sleep(60)
       end
    end
    fiber.create(loop)
@@ -78,3 +78,4 @@ function graphite_sender ()
     ffi.C.sendto(sock, msg, #msg, 0, addr, ffi.sizeof(addr))      
 end
 
+print('Graphite sender loaded')
