@@ -269,7 +269,7 @@ cardinality
 }
 
 static int
-field_compare(struct field *f1, struct field *f2, enum field_data_type type)
+field_compare(union field *f1, union field *f2, enum field_data_type type)
 {
 	void *d1, *d2;
 	int r;
@@ -306,8 +306,8 @@ tree_node_compare(struct tree_node *na, struct tree_node *nb, struct gen_dtor *d
 
 	for (int i = 0; i < n; ++i) {
 		int j = desc->cmp_order[i];
-		struct field *akey = (void *)na->key + desc->offset[j];
-		struct field *bkey = (void *)nb->key + desc->offset[j];
+		union field *akey = (void *)na->key + desc->offset[j];
+		union field *bkey = (void *)nb->key + desc->offset[j];
 		int r = field_compare(akey, bkey, desc->type[j]);
 		if (r != 0)
 			return r;
@@ -334,7 +334,7 @@ tree_node_compare_with_addr(struct tree_node *na, struct tree_node *nb, struct g
 }
 
 void
-gen_set_field(struct field *f, enum field_data_type type, int len, void *data)
+gen_set_field(union field *f, enum field_data_type type, int len, void *data)
 {
 	switch (type) {
 	case NUM16:
@@ -377,7 +377,7 @@ gen_init_pattern(struct tbuf *key_data, int cardinality, struct index_node *patt
 		void *key = read_bytes(key_data, len);
 		int j = desc->cmp_order[i];
 
-		struct field *f = (void *)pattern->key + desc->offset[j];
+		union field *f = (void *)pattern->key + desc->offset[j];
 		gen_set_field(f, desc->type[j], len, key);
 		key += len;
 	}
@@ -390,7 +390,15 @@ init_with_unique:(bool)_unique
 {
 	[super init_with_unique:_unique];
 	struct gen_dtor *desc = dtor_arg;
-	node_size = sizeof(struct tnt_object *) + desc->cardinality * sizeof(struct field);
+	node_size = sizeof(struct tnt_object *);
+	for (int i = 0; i < desc->cardinality; i++)
+		switch (desc->type[i]) {
+		case NUM16: node_size += field_sizeof(union field, u16); break;
+		case NUM32: node_size += field_sizeof(union field, u32); break;
+		case NUM64: node_size += field_sizeof(union field, u64); break;
+		case STRING: node_size += field_sizeof(union field, str); break;
+		}
+
 	init_pattern = gen_init_pattern;
 	pattern_compare = (index_cmp)tree_node_compare;
 	compare = unique ? (index_cmp)tree_node_compare : (index_cmp)tree_node_compare_with_addr;

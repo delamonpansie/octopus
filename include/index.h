@@ -44,19 +44,17 @@ struct index_node {
 	};
 };
 
-struct field {
-	union {
-		u16 u16;
-		u32 u32;
-		u64 u64;
-		struct {
-			i16 len;
-			union {
-				u8 bytes[sizeof(u64)];
-				void *ptr;
-			} data;
-		} str;
-	};
+union field {
+	u16 u16;
+	u32 u32;
+	u64 u64;
+	struct {
+		i16 len;
+		union {
+			u8 bytes[sizeof(u64)];
+			void *ptr;
+		} data;
+	} str __attribute__((packed));
 };
 
 enum field_data_type { NUM16, NUM32, NUM64, STRING };
@@ -192,7 +190,7 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 
 @interface GenTree: Tree
 @end
-void gen_set_field(struct field *f, enum field_data_type type, int len, void *data);
+void gen_set_field(union field *f, enum field_data_type type, int len, void *data);
 
 #define foreach_index(ivar, obj_space)					\
 	for (Index<BasicIndex>						\
