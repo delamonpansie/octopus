@@ -96,7 +96,7 @@ box_tuple_gen_dtor(struct tnt_object *obj, struct index_node *node_, void *arg)
 		assert(tuple_data < (void *)tuple->data + tuple->bsize);
 		u32 len = LOAD_VARINT32(tuple_data);
 		if (desc->index_field[i] == j) {
-			struct field *f = (void *)node->key + desc->offset[i];
+			union field *f = (void *)node->key + desc->offset[i];
 			gen_set_field(f, desc->type[i], len, tuple_data);
 			i++;
 		}
@@ -123,19 +123,19 @@ cfg_box_tuple_gen_dtor(struct octopus_cfg_object_space_index *c)
 
 		if (strcmp(c->key_field[k]->type, "NUM") == 0) {
 			d->type[d->cardinality] = NUM32;
-			offset += field_sizeof(struct field, u32);
+			offset += field_sizeof(union field, u32);
 		} else if (strcmp(c->key_field[k]->type, "NUM16") == 0) {
 			d->type[d->cardinality] = NUM16;
-			offset += field_sizeof(struct field, u16);
+			offset += field_sizeof(union field, u16);
 		} else if (strcmp(c->key_field[k]->type, "NUM32") == 0) {
 			d->type[d->cardinality] = NUM32;
-			offset += field_sizeof(struct field, u32);
+			offset += field_sizeof(union field, u32);
 		} else if (strcmp(c->key_field[k]->type, "NUM64") == 0) {
 			d->type[d->cardinality] = NUM64;
-			offset += field_sizeof(struct field, u64);
+			offset += field_sizeof(union field, u64);
 		} else if (strcmp(c->key_field[k]->type, "STR") == 0) {
 			d->type[d->cardinality] = STRING;
-			offset += field_sizeof(struct field, str);
+			offset += field_sizeof(union field, str);
 		} else
 			panic("unknown field data type: `%s'", c->key_field[k]->type);
 
