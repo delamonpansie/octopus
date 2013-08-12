@@ -110,14 +110,14 @@ luaT_pushobject(struct lua_State *L, struct tnt_object *obj)
 	luaL_getmetatable(L, objectlib_name);
 	lua_setmetatable(L, -2);
 	*ptr = obj;
-	object_ref(obj, 1);
+	object_incr_ref(obj);
 }
 
 static int
 object_gc_(struct lua_State *L)
 {
 	struct tnt_object *obj = *(void **)luaL_checkudata(L, 1, objectlib_name);
-	object_ref(obj, -1);
+	object_decr_ref(obj);
 	return 0;
 }
 
