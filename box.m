@@ -752,7 +752,7 @@ box_lua_cb(struct iproto *request, struct conn *c)
 			say_warn("too long %s: %.3f sec", ops[request->msg_code], stop - start);
 	}
 	@catch (Error *e) {
-		say_warn("aborting txn, [%s reason:\"%s\"] at %s:%d peer:%s",
+		say_warn("aborting lua request, [%s reason:\"%s\"] at %s:%d peer:%s",
 			 [[e class] name], e->reason, e->file, e->line, conn_peer_name(c));
 		if (e->backtrace)
 			say_debug("backtrace:\n%s", e->backtrace);
