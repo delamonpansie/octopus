@@ -358,9 +358,20 @@ init(void)
 	_exit(EXIT_FAILURE);
 }
 
+static int
+feeder_fixup_addr(struct octopus_cfg *cfg)
+{
+	extern void out_warning(int v, char *format, ...);
+	if (net_fixup_addr(&cfg->wal_feeder_bind_addr, cfg->wal_feeder_bind_port) < 0)
+		out_warning(0, "Option 'wal_feeder_bind_addr' is overridden by 'wal_feeder_bind_port'");
+
+	return 0;
+}
+
 static struct tnt_module feeder = {
 	.name = "feeder",
 	.version = feeder_version_string,
+	.check_config = feeder_fixup_addr,
 	.init = init
 };
 

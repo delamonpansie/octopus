@@ -3,6 +3,8 @@
 #
 # feed WAL to remote replicas
 # feeder accepts it's clients on wal_feeder_bind_addr, format "addr:port"
-# for INADDR_ANY use "ANY:port"
+# for INADDR_ANY use wal_feeder_bind_port = port or wal_feeder_bind_addr = "0.0.0.0:port"
 
-wal_feeder_bind_addr=NULL, ro
+wal_feeder_bind_addr="", ro
+wal_feeder_bind_port=0, ro
+
