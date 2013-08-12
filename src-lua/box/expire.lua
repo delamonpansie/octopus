@@ -1,7 +1,7 @@
 local box = require 'box'
 local index = require 'index'
 local fiber = require 'fiber'
-local print, pcall = print, pcall
+local print, pcall, error = print, pcall, error
 
 
 -- example usage
