@@ -158,7 +158,15 @@ remove:(struct tnt_object *)obj						\
 		return 1;						\
 	}								\
 	return 0;							\
+}									\
+- (void)								\
+iterator_init_with_object:(struct tnt_object *)obj			\
+{									\
+	struct index_node *node_ = GET_NODE(obj, node_a);		\
+	iter = mh_##type##_get_node(h, (void *)node_);			\
 }
+
+
 
 
 @implementation Int32Hash
@@ -201,6 +209,17 @@ find:(void *)key
 	if (k != mh_end(h))
 		return mh_i32_value(h, k);
 	return NULL;
+}
+
+- (void)
+iterator_init:(struct tbuf *)key_data with_cardinalty:(u32)cardinality
+{
+	if (cardinality != 1)
+		index_raise("cardinality too big");
+	u32 len = read_varint32(key_data);
+	if (len != sizeof(i32))
+		index_raise("key is not u32");
+	iter = mh_i32_get(h, read_u32(key_data));
 }
 
 @end
@@ -247,6 +266,17 @@ find:(void *)key
 	return NULL;
 }
 
+- (void)
+iterator_init:(struct tbuf *)key_data with_cardinalty:(u32)cardinality
+{
+	if (cardinality != 1)
+		index_raise("cardinality too big");
+	u32 len = read_varint32(key_data);
+	if (len != sizeof(i64))
+		index_raise("key is not i64");
+	iter = mh_i32_get(h, read_u64(key_data));
+}
+
 @end
 
 @implementation LStringHash
@@ -282,6 +312,14 @@ find:(void *)key
 	return NULL;
 }
 
+- (void)
+iterator_init:(struct tbuf *)key_data with_cardinalty:(u32)cardinality
+{
+	if (cardinality != 1)
+		index_raise("cardinality too big");
+	iter = mh_lstr_get(h, read_field(key_data));
+}
+
 @end
 
 @implementation CStringHash
@@ -315,6 +353,14 @@ find:(void *)key
 	if (k != mh_end(h))
 		return mh_cstr_value(h, k);
 	return NULL;
+}
+
+- (void)
+iterator_init:(struct tbuf *)key_data with_cardinalty:(u32)cardinality
+{
+	if (cardinality != 1)
+		index_raise("cardinality too big");
+	iter = mh_cstr_get(h, read_field(key_data));
 }
 
 @end

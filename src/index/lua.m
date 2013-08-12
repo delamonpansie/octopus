@@ -190,35 +190,26 @@ luaT_iter_next(struct lua_State *L)
 static int
 luaT_index_iter(struct lua_State *L)
 {
-	Index *index = luaT_checkindex(L, 1);
+	Index<BasicIndex> *index = luaT_checkindex(L, 1);
 
 	if ([index cardinality] != 1) {
 		lua_pushliteral(L, "multi column indexes unsupported");
 		lua_error(L);
 	}
 
-	if (index->type == HASH) {
-		Hash<HashIndex> *hash = (id<HashIndex>)index;
-		if (!lua_isnone(L, 2)) {
-			lua_pushliteral(L, "hash index iterator does not accept any args");
-			lua_error(L);
-		}
-		[hash iterator_init];
+	if (lua_isnumber(L, 2) || lua_isstring(L, 2)) {
+		struct tbuf *key = index->lua_ctor(L, 2);
+		[index iterator_init:key with_cardinalty:1];
+	} else if (lua_isnil(L, 2)) {
+		[index iterator_init];
+	} else if (lua_isuserdata(L, 2)) {
+		struct tnt_object *obj = *(void **)luaL_checkudata(L, 2, objectlib_name);
+		[index iterator_init_with_object:obj];
 	} else {
-		Tree *tree = (id)index;
-		if (lua_isnumber(L, 2) || lua_isstring(L, 2)) {
-			struct tbuf *key = index->lua_ctor(L, 2);
-			[tree iterator_init:key with_cardinalty:1];
-		} else if (lua_isnil(L, 2)) {
-			[tree iterator_init:NULL with_cardinalty:0];
-		} else if (lua_isuserdata(L, 2)) {
-			struct tnt_object *obj = *(void **)luaL_checkudata(L, 2, objectlib_name);
-			[tree iterator_init_with_object:obj];
-		} else {
-			lua_pushliteral(L, "wrong key type");
-			lua_error(L);
-		}
+		lua_pushliteral(L, "wrong key type");
+		lua_error(L);
 	}
+
 	lua_pushcfunction(L, luaT_iter_next);
 	lua_pushvalue(L, 1);
 	return 2;

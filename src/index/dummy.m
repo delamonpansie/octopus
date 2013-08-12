@@ -66,6 +66,29 @@ eq:(struct tnt_object *)a :(struct tnt_object *)b
 	return 0;
 }
 
+- (void)
+iterator_init
+{
+}
+
+- (void)
+iterator_init:(struct tbuf *)key_data with_cardinalty:(u32)cardinality
+{
+	(void)key_data; (void)cardinality;
+}
+
+- (void)
+iterator_init_with_object:(struct tnt_object *)obj
+{
+	(void)obj;
+}
+
+- (struct tnt_object *)
+iterator_next
+{
+	return NULL;
+}
+
 - (struct tnt_object *)
 iterator_next_verify_pattern
 {
@@ -88,24 +111,6 @@ slots
 bytes
 {
 	return 0;
-}
-
-- (void)
-iterator_init
-{
-}
-
-- (void)
-iterator_init:(struct tbuf *)key_data with_cardinalty:(u32)cardinality
-{
-        (void)key_data;
-	(void)cardinality;
-}
-
-- (struct tnt_object *)
-iterator_next
-{
-	return NULL;
 }
 
 - (void)

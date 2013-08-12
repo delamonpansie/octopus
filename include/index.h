@@ -91,6 +91,8 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 - (void) valid_object: (struct tnt_object *)obj;
 
 - (void)iterator_init;
+- (void)iterator_init:(struct tbuf *)key_data with_cardinalty:(u32)cardinality;
+- (void)iterator_init_with_object:(struct tnt_object *)obj;
 - (struct tnt_object *)iterator_next;
 - (u32)size;
 - (u32)slots;
@@ -175,8 +177,6 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 - (Tree *)init_with_unique:(bool)_unque;
 - (void)set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated;
 
-- (void)iterator_init:(struct tbuf *)key_data with_cardinalty:(u32)cardinality;
-- (void)iterator_init_with_object:(struct tnt_object *)obj;
 - (struct tnt_object *)iterator_next_verify_pattern;
 @end
 
