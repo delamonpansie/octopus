@@ -117,6 +117,28 @@ function update(n, key, ...)
         return dispatch(19, table.concat(req))
 end
 
+ffi.cdef[[
+struct box_tuple {
+	uint32_t bsize;
+	uint32_t cardinality;
+	uint8_t data[0];
+} __attribute__((packed));
+]]
+
+
+ffi.cdef [[void object_incr_ref(struct tnt_object *obj);]]
+local tnt_object_ref = ffi.typeof("struct tnt_object **") -- userdata holding pointer to tnt_obj, hence double ptr
+local tuple_t = ffi.typeof("struct box_tuple *")
+
+
+function ctuple(obj)
+   assert(obj ~= nil)
+   obj = tnt_object_ref(obj)[0]
+   assert(obj.type == 1)
+   return ffi.cast(tuple_t, obj.data)
+end
+
+
 function wrap(proc_body)
         if type(proc_body) == "string" then
                 proc_body = loadstring(code)
@@ -137,13 +159,13 @@ function wrap(proc_body)
                         for k, v in pairs(result) do
 			   if type(v) == "string" then
 			      out:add_iov_string(v)
-			   elseif type(v) == "cdata" and ffi.istype(box_tuple, v) then
-			      local obj = tnt_object_ref(obj)[0]
-			      local tuple = tuple_t(obj)
-			      local len = tuple.bsize + ffi.sizeof(tuple.bsize) + ffi.sizeof(tuple.cardinality)
-			      out:net_add_ref_iov(m, obj.data, len, obj)
+			   elseif type(v) == "userdata" then
+			      local obj = tnt_object_ref(v)[0]
+			      local tuple = ffi.cast(tuple_t, obj.data)
+			      ffi.C.object_incr_ref(obj)
+			      out:add_iov_ref(obj.data, tuple.bsize + 8, ffi.cast('uintptr_t', obj))
 			   else
-			      error("unexpected type of result: " .. type(result))
+			      error("unexpected type of result: " .. type(v))
 			   end
 			end
                 elseif type(result) == "number" then
@@ -170,25 +192,6 @@ function tuple(...)
         return table.concat(f)
 end
 
-
-ffi.cdef[[
-struct box_tuple {
-	uint32_t bsize;
-	uint32_t cardinality;
-	uint8_t data[0];
-} __attribute__((packed));
-]]
-
-
-local tnt_object_ref = ffi.typeof("struct tnt_object **") -- userdata holding pointer to tnt_obj, hence double ptr
-local tuple_t = ffi.typeof("struct box_tuple *")
-
-function ctuple(obj)
-   assert(obj ~= nil)
-   obj = tnt_object_ref(obj)[0]
-   assert(obj.type == 1)
-   return ffi.cast(tuple_t, obj.data)
-end
 
 
 function decode_varint32(ptr, offt)

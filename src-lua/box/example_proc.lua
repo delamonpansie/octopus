@@ -166,3 +166,26 @@ user_proc.truncate = box.wrap(function (n)
 	print("truncated " .. c .. " tuples")
         return 0, 0
 end)
+
+
+user_proc.iterator = box.wrap(function (n, key, limit)
+	local object_space = box.object_space[n]
+	local pk = object_space.index[0]
+	local result = {}
+
+	if limit == nil then
+	   limit = 1024
+	else
+	   limit = tonumber(limit)
+	end
+
+	for tuple in index.iter(pk, key) do
+	   table.insert(result, tuple)
+	   limit = limit - 1
+	   if limit == 0 then
+	      break
+	   end
+	end
+
+        return 0, result
+end)
