@@ -644,8 +644,7 @@ code
 }
 @end
 
-
-int
+static int
 iproto_fixup_addr(struct octopus_cfg *cfg)
 {
 	extern void out_warning(int v, char *format, ...);
