@@ -1143,7 +1143,6 @@ box_service_register(struct service *s)
 	service_register_iproto_stream(s, NOP, box_select_cb, 0);
 	service_register_iproto_stream(s, SELECT, box_select_cb, 0);
 	service_register_iproto_stream(s, SELECT_LIMIT, box_select_cb, 0);
-	service_register_iproto_stream(s, SELECT_LIMIT, box_select_cb, 0);
 	service_register_iproto_block(s, INSERT, box_cb, 0);
 	service_register_iproto_block(s, UPDATE_FIELDS, box_cb, 0);
 	service_register_iproto_block(s, DELETE, box_cb, 0);
