@@ -52,6 +52,29 @@ static struct netmsg *
 netmsg_alloc(struct netmsg_head *h)
 {
 	struct netmsg *n = slab_cache_alloc(&netmsg_cache);
+
+	for (;;) {
+		int err = 0;
+		if (n->barrier != 0)
+			err = 1;
+		if (n->count != 0)
+			err = 1;
+		for (int i = 0; i < 64; i++) {
+			if (n->ref[i] != 0)
+				err = 1;
+			if (n->iov[i].iov_base != NULL)
+				err = 1;
+			if (n->iov[i].iov_len != 0)
+				err = 1;
+		}
+
+		if (err == 0)
+			break;
+
+		say_error("netmsg corrupt");
+		n = slab_cache_alloc(&netmsg_cache);
+	}
+
 	TAILQ_INSERT_HEAD(&h->q, n, link);
 	return n;
 }
@@ -87,6 +110,7 @@ netmsg_unref(struct netmsg *m, int from)
 		lua_call(L, 2, 0);
 	}
 	memset(m->ref + from, 0, (m->count - from) * sizeof(m->ref[0]));
+	memset(m->iov + from, 0, (m->count - from) * sizeof(m->iov[0]));
 }
 
 void
