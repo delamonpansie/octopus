@@ -649,6 +649,11 @@ iproto_fixup_addr(struct octopus_cfg *cfg)
 {
 	extern void out_warning(int v, char *format, ...);
 
+	if (cfg->primary_addr == NULL) {
+		out_warning(0, "Option 'primary_addr' can't be NULL");
+		return -1;
+	}
+
 	if (strchr(cfg->primary_addr, ':') == NULL && !cfg->primary_port) {
 		out_warning(0, "Option 'primary_port' is not set");
 		return -1;

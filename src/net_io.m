@@ -1127,6 +1127,12 @@ sintoa(const struct sockaddr_in *addr)
 int
 net_fixup_addr(char **addr, int port)
 {
+	if (*addr == NULL && port == 0)
+		return 0;
+
+	if (*addr == NULL && port > 0) /* port override disabled addr */
+		*addr = "";
+
 	assert(*addr);
 
 	if (port) {
