@@ -52,6 +52,10 @@ local function gethostname()
 end
 
 local function graphite()
+   if type(stat) ~= 'table' or type(stat.records) ~= 'table' then
+      -- stat module either not loaded or disabled
+      return nil
+   end
    local hostname = gethostname()
    local time = tostring(tonumber(ffi.C.time(nil)))
    local msg = {}
@@ -75,7 +79,9 @@ ffi.C.atosin(graphite_addr, addr)
 
 function graphite_sender ()
     local msg = graphite()
-    ffi.C.sendto(sock, msg, #msg, 0, addr, ffi.sizeof(addr))      
+    if msg then
+       ffi.C.sendto(sock, msg, #msg, 0, addr, ffi.sizeof(addr))
+    end
 end
 
 print('Graphite sender loaded')
