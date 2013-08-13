@@ -186,7 +186,7 @@ struct row_v12 {
 		LOG_WRITE
 	} mode;
 
-	bool no_wet;
+	bool no_wet, inprogress;
 
 	size_t bytes_written;
 	off_t offset, wet_rows_offset[WAL_PACK_MAX * 8];

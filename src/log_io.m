@@ -221,6 +221,8 @@ inprogress_rename
 		say_syserror("can't rename %s to %s", filename, final_filename);
 		result = -1;
 	} else {
+		assert(inprogress);
+		inprogress = 0;
 		*(strrchr(filename, '.')) = 0;
 	}
 
@@ -463,7 +465,7 @@ confirm_write
 	assert(mode == LOG_WRITE);
 	/* XXX teodor
 	 * assert(!no_wet);
-	 */ 
+	 */
 
 	off_t tail;
 
@@ -1011,14 +1013,16 @@ open_for_write:(i64)lsn scn:(i64)scn
 	if (cfg.io_compat) {
 		l = [[XLog11 alloc] init_filename:filename fd:file dir:self];
 		l->next_lsn = lsn;
-		l->mode = LOG_WRITE;
 
 	} else {
 		l = [[XLog12 alloc] init_filename:filename fd:file dir:self];
 		l->next_lsn = lsn;
 		((XLog12 *)l)->next_scn = scn;
-		l->mode = LOG_WRITE;
 	}
+
+	l->mode = LOG_WRITE;
+	l->inprogress = 1;
+
 	if ([l write_header] < 0) {
 		say_syserror("failed to write header");
 		goto error;

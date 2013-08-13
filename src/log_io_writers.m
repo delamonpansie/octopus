@@ -189,22 +189,7 @@ wal_pack_submit
 - (i64)
 append_row:(const void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag cookie:(u64)cookie
 {
-	i64 r = [current_wal append_row:data len:data_len scn:scn_ tag:tag cookie:cookie];
-
-	if ([current_wal rows] == 1) {
-		if ([current_wal inprogress_rename] != 0) {
-			unlink(current_wal->filename);
-			[current_wal free];
-			current_wal = nil;
-			return -1;
-		}
-
-		say_info("created `%s'", current_wal->filename);
-
-		[wal_to_close close];
-		wal_to_close = nil;
-	}
-	return r;
+	return [current_wal append_row:data len:data_len scn:scn_ tag:tag cookie:cookie];
 }
 
 - (int)
@@ -227,7 +212,27 @@ confirm_write
 	static ev_tstamp last_flush;
 
 	if (current_wal != nil) {
-		lsn = [current_wal confirm_write];
+		i64 confirmed_lsn = [current_wal confirm_write];
+
+		if (current_wal->inprogress && [current_wal rows] > 0) {
+			/* invariant: .xlog must have at least one valid row
+			   rename .xlog.inprogress to .xlog only after [confirm_write]
+			   successfully writes some rows.
+			   it's ok to discard rows on rename failure: they are not confirmed yet */
+
+			if ([current_wal inprogress_rename] != 0) {
+				unlink(current_wal->filename);
+				[current_wal free];
+				current_wal = nil;
+				return lsn;
+			}
+
+			say_info("created `%s'", current_wal->filename);
+			[wal_to_close close];
+			wal_to_close = nil;
+		}
+
+		lsn = confirmed_lsn;
 
 		ev_tstamp fsync_delay = current_wal->dir->fsync_delay;
 		if (fsync_delay >= 0 && ev_now() - last_flush >= fsync_delay) {
