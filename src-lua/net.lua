@@ -218,8 +218,8 @@ struct netmsg {
  unsigned offset, count;
  struct { struct netmsg *tqe_next; struct netmsg **tqe_prev; } link;
  struct iovec dummy;
- struct iovec iov[1024];
- uintptr_t ref[1024];
+ struct iovec iov[64];
+ uintptr_t ref[64];
 };
 
 enum conn_memory_ownership {
