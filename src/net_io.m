@@ -53,24 +53,10 @@ netmsg_alloc(struct netmsg_head *h)
 {
 	struct netmsg *n = slab_cache_alloc(&netmsg_cache);
 
-	int err = 0;
-	if (n->barrier != 0)
-		err = 1;
-	if (n->count != 0)
-		err = 1;
-	for (int i = 0; i < 64; i++) {
-		if (n->ref[i] != 0)
-			err = 1;
-		if (n->iov[i].iov_base != NULL || n->iov[i].iov_len != 0)
-			err = 1;
-	}
-	if (err) {
-		say_error("netmsg corrupt");
-		memset(n->ref, 0, NETMSG_IOV_SIZE * sizeof(n->ref[0]));
-		memset(n->iov, 0, NETMSG_IOV_SIZE * sizeof(n->iov[0]));
-		n->count = 0;
-		n->barrier = 0;
-	}
+	memset(n->ref, 0, NETMSG_IOV_SIZE * sizeof(n->ref[0]));
+	memset(n->iov, 0, NETMSG_IOV_SIZE * sizeof(n->iov[0]));
+	n->count = 0;
+	n->barrier = 0;
 
 	TAILQ_INSERT_HEAD(&h->q, n, link);
 	return n;
