@@ -433,6 +433,18 @@ conn_gc(struct palloc_pool *pool, void *ptr)
 	}
 
 	c->rbuf = tbuf_clone(pool, c->rbuf);
+
+	if (unlikely(c->iov_offset & 1)) {
+		for (struct iovec *iov = c->iov + (c->iov_offset >> 1);
+		     iov < c->iov_end;
+		     iov++)
+		{
+			void *ptr = palloc(pool, iov->iov_len);
+			memcpy(ptr, iov->iov_base, iov->iov_len);
+			iov->iov_base = ptr;
+		}
+	}
+
 	TAILQ_FOREACH(m, &c->out_messages.q, link)
 		netmsg_gc(pool, m);
 
