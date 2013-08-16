@@ -329,7 +329,7 @@ format_slab(struct slab_cache *cache, struct slab *slab)
 static bool
 fully_populated(const struct slab *slab)
 {
-	return slab->brk + slab->cache->item_size >= (void *)slab + SLAB_SIZE &&
+	return slab->brk + slab->cache->item_size + sizeof(red_zone) >= (void *)slab + SLAB_SIZE &&
 	       slab->free == NULL;
 }
 
