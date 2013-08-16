@@ -38,6 +38,11 @@
 #include <sys/uio.h>
 #include <netinet/in.h>
 
+/* macro for generating laujit's cdefs*/
+#ifndef LUA_DEF
+# define LUA_DEF
+#endif
+
 struct fiber;
 struct service;
 
@@ -128,15 +133,15 @@ struct service {
 void netmsg_head_init(struct netmsg_head *h, struct palloc_pool *pool);
 
 struct netmsg *netmsg_concat(struct netmsg_head *dst, struct netmsg_head *src);
-void netmsg_release(struct netmsg_head *h, struct netmsg *m);
-void netmsg_rewind(struct netmsg_head *h, struct netmsg_mark *mark);
-void netmsg_getmark(struct netmsg_head *h, struct netmsg_mark *mark);
+void netmsg_release(struct netmsg_head *h, struct netmsg *m) LUA_DEF;
+void netmsg_rewind(struct netmsg_head *h, struct netmsg_mark *mark) LUA_DEF;
+void netmsg_getmark(struct netmsg_head *h, struct netmsg_mark *mark) LUA_DEF;
 
-void net_add_iov(struct netmsg_head *o, const void *buf, size_t len);
-struct iovec *net_reserve_iov(struct netmsg_head *o);
-void net_add_iov_dup(struct netmsg_head *o, const void *buf, size_t len);
-void net_add_ref_iov(struct netmsg_head *o, uintptr_t ref, const void *buf, size_t len);
-void net_add_obj_iov(struct netmsg_head *o, struct tnt_object *obj, const void *buf, size_t len);
+void net_add_iov(struct netmsg_head *o, const void *buf, size_t len) LUA_DEF;
+struct iovec *net_reserve_iov(struct netmsg_head *o) LUA_DEF;
+void net_add_iov_dup(struct netmsg_head *o, const void *buf, size_t len) LUA_DEF;
+void net_add_ref_iov(struct netmsg_head *o, uintptr_t ref, const void *buf, size_t len) LUA_DEF;
+void net_add_obj_iov(struct netmsg_head *o, struct tnt_object *obj, const void *buf, size_t len) LUA_DEF;
 void netmsg_verify_ownership(struct netmsg_head *h); /* debug method */
 
 struct conn *conn_init(struct conn *c, struct palloc_pool *pool, int fd,
@@ -150,7 +155,7 @@ ssize_t conn_write(struct conn *c, const void *buf, size_t count);
 ssize_t conn_write_netmsg(struct conn *c);
 ssize_t conn_flush(struct conn *c);
 char *conn_peer_name(struct conn *c);
-void conn_unref(struct conn *c);
+void conn_unref(struct conn *c) LUA_DEF;
 
 void conn_flusher(va_list ap __attribute__((unused)));
 
@@ -176,7 +181,7 @@ void wakeup_workers(ev_prepare *ev);
 void service_iproto(struct service *s);
 void iproto_wakeup_workers(ev_prepare *ev);
 
-int atosin(const char *orig, struct sockaddr_in *addr);
+int atosin(const char *orig, struct sockaddr_in *addr) LUA_DEF;
 const char *sintoa(const struct sockaddr_in *addr);
 int net_fixup_addr(char **addr, int port);
 

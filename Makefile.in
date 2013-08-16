@@ -45,9 +45,10 @@ VPATH := @srcdir@
 
 MAKEFLAGS += --no-print-directory
 
-%.o: CFLAGS += -I. -Iinclude
+# some lua files are generated with CPP, they also need CPPFLAGS
+%.o %.lua: CPPFLAGS += -I. -Iinclude
 ifneq (.,$(srcdir))
-  %.o: CFLAGS += -I$(srcdir) -I$(srcdir)/include
+  %.o %.lua: CPPFLAGS += -I$(srcdir) -I$(srcdir)/include
 endif
 
 primary_module=$(firstword $(modules))
