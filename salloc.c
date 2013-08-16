@@ -411,6 +411,8 @@ slab_cache_alloc(struct slab_cache *cache)
 		item = slab->brk;
 		memcpy((void *)item + cache->item_size, red_zone, sizeof(red_zone));
 		slab->brk += cache->item_size + sizeof(red_zone);
+		if (cache->ctor)
+			cache->ctor(item);
 	} else {
 		assert(valid_item(slab, slab->free));
 		item = slab->free;
@@ -484,8 +486,10 @@ sfree(void *ptr)
 }
 
 void
-slab_cache_free(struct slab_cache *cache __attribute__((unused)), void *ptr)
+slab_cache_free(struct slab_cache *cache, void *ptr)
 {
+	if (cache->dtor)
+		cache->dtor(ptr);
 	sfree(ptr);
 }
 
