@@ -55,6 +55,16 @@
 # define VALGRIND_FREELIKE_BLOCK(addr, rzB) (void)0
 #endif
 
+#if defined(__SANITIZE_ADDRESS__)
+void __asan_poison_memory_region(void const volatile *addr, size_t size, int magic);
+void __asan_unpoison_memory_region(void const volatile *addr, size_t size);
+#define ASAN_POISON_MEMORY_REGION(addr, size, magic) __asan_poison_memory_region((addr), (size), (magic))
+#define ASAN_UNPOISON_MEMORY_REGION(addr, size) __asan_unpoison_memory_region((addr), (size))
+#else
+#define ASAN_POISON_MEMORY_REGION(addr, size, magic) ((void)(addr), (void)(size), (void)(magic))
+#define ASAN_UNPOISON_MEMORY_REGION(addr, size) ((void)(addr), (void)(size))
+#endif
+
 #ifndef MMAP_HINT_ADDR
 # define MMAP_HINT_ADDR NULL
 #endif
@@ -85,7 +95,7 @@
 
 #ifdef SLAB_DEBUG
 #undef NDEBUG
-uint8_t red_zone[4] = { 0xfa, 0xfa, 0xfa, 0xfa };
+uint8_t red_zone[8] = { 0xfa, 0xfa, 0xfa, 0xfa, 0xfa, 0xfa, 0xfa, 0xfa };
 #else
 uint8_t red_zone[0] = { };
 #endif
@@ -322,6 +332,7 @@ format_slab(struct slab_cache *cache, struct slab *slab)
 	slab->used = 0;
 	slab->brk = (void *)CACHEALIGN((void *)slab + sizeof(struct slab));
 
+	ASAN_POISON_MEMORY_REGION(slab->brk, SLAB_SIZE - (slab->brk - (void *)slab), 0xfa);
 	TAILQ_INSERT_HEAD(&cache->slabs, slab, cache_link);
 	TAILQ_INSERT_HEAD(&cache->partial_populated_slabs, slab, cache_partial_link);
 }
@@ -329,7 +340,7 @@ format_slab(struct slab_cache *cache, struct slab *slab)
 static bool
 fully_populated(const struct slab *slab)
 {
-	return slab->brk + slab->cache->item_size >= (void *)slab + SLAB_SIZE &&
+	return slab->brk + slab->cache->item_size + sizeof(red_zone) >= (void *)slab + SLAB_SIZE &&
 	       slab->free == NULL;
 }
 
@@ -409,13 +420,18 @@ slab_cache_alloc(struct slab_cache *cache)
 	if (slab->free == NULL) {
 		assert(valid_item(slab, slab->brk));
 		item = slab->brk;
+		ASAN_UNPOISON_MEMORY_REGION(item, cache->item_size + sizeof(red_zone));
 		memcpy((void *)item + cache->item_size, red_zone, sizeof(red_zone));
+		ASAN_POISON_MEMORY_REGION((void *)item + cache->item_size, sizeof(red_zone), 0xfb);
 		slab->brk += cache->item_size + sizeof(red_zone);
+		if (cache->ctor)
+			cache->ctor(item);
 	} else {
 		assert(valid_item(slab, slab->free));
 		item = slab->free;
 
 		(void)VALGRIND_MAKE_MEM_DEFINED(item, sizeof(void *));
+		ASAN_UNPOISON_MEMORY_REGION(item, sizeof(void *));
 		slab->free = item->next;
 		(void)VALGRIND_MAKE_MEM_UNDEFINED(item, sizeof(void *));
 	}
@@ -430,6 +446,7 @@ slab_cache_alloc(struct slab_cache *cache)
 	slab->used += cache->item_size + sizeof(red_zone);
 	slab->items += 1;
 
+	ASAN_UNPOISON_MEMORY_REGION(item, cache->item_size);
 	VALGRIND_MALLOCLIKE_BLOCK(item, cache->item_size, sizeof(red_zone), 0);
 	return (void *)item;
 }
@@ -480,12 +497,15 @@ sfree(void *ptr)
 #endif
 	}
 
-	VALGRIND_FREELIKE_BLOCK(item, sizeof(red_zone));
+	ASAN_POISON_MEMORY_REGION(item, cache->item_size, 0xfd);
+	VALGRIND_FREELIKE_BLOCK(iqtem, sizeof(red_zone));
 }
 
 void
-slab_cache_free(struct slab_cache *cache __attribute__((unused)), void *ptr)
+slab_cache_free(struct slab_cache *cache, void *ptr)
 {
+	if (cache->dtor)
+		cache->dtor(ptr);
 	sfree(ptr);
 }
 

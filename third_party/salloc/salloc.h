@@ -48,6 +48,8 @@ struct slab_cache {
 	struct slab_tailq_head slabs, partial_populated_slabs;
 	struct arena *arena;
 	const char *name;
+	void (*ctor)(void *);
+	void (*dtor)(void *);
 	SLIST_ENTRY(slab_cache) link;
 };
 
