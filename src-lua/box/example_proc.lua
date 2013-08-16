@@ -14,7 +14,7 @@ local user_proc = user_proc
 module(...)
 
 -- simple definition via  box.defproc
-user_proc.get_all_tuples = box.wrap(function (n)
+user_proc.get_all_tuples = box.wrap(function (n, i)
 	local result = {}
         local object_space = box.object_space[n]
         local function next_chunk(idx, start)
@@ -31,8 +31,10 @@ user_proc.get_all_tuples = box.wrap(function (n)
                 return nil
         end
 
+	if i == nil then i = 0 end
+
         -- iterate over all chunks
-        for restart in next_chunk, object_space.index[1] do
+        for restart in next_chunk, object_space.index[i] do
                 fiber.sleep(0.001)
         end
 
