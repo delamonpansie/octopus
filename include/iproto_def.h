@@ -27,7 +27,8 @@
 #ifndef IPROTO_DEF_H
 #define IPROTO_DEF_H
 
-#include <sys/types.h>
+#include <stdint.h>
+
 /*
  * This file is shared between libiproto and octopus, C and Objective-C
  */
@@ -39,18 +40,18 @@
  */
 
 struct iproto {
-	u_int32_t msg_code;
-	u_int32_t data_len;						/* not including header */
-	u_int32_t sync;
-	u_int8_t data[];
+	uint32_t msg_code;
+	uint32_t data_len;						/* not including header */
+	uint32_t sync;
+	uint8_t data[];
 } __attribute__((packed));
 
 struct iproto_retcode {
-	u_int32_t msg_code;
-	u_int32_t data_len;
-	u_int32_t sync;
-	u_int32_t ret_code;
-	u_int8_t data[];
+	uint32_t msg_code;
+	uint32_t data_len;
+	uint32_t sync;
+	uint32_t ret_code;
+	uint8_t data[];
 } __attribute__((packed));
 
 union iproto_any_header {
