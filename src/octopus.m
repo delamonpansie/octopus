@@ -443,6 +443,16 @@ luaT_init()
 	if (lua_pcall(L, 1, 0, 0))
 		panic("lua_pcall() failed: %s", lua_tostring(L, -1));
 
+	/* autoload bundled graphite module */
+	for (struct lua_src *s = lua_src; s->name; s++) {
+		if (strcmp("graphite", s->name) == 0) {
+			lua_getglobal(L, "require");
+			lua_pushliteral(L, "graphite");
+			lua_pcall(L, 1, 0, 0);
+			break;
+		}
+	}
+
 	lua_atpanic(L, luaT_error);
 }
 

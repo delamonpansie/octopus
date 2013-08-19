@@ -1,4 +1,4 @@
-local graphite_addr = '127.0.0.1:2003'
+local addr = graphite_addr or '127.0.0.1:2003'
 
 --
 --
@@ -73,14 +73,18 @@ local function graphite()
    return table.concat(msg)
 end
 
-local addr = ffi.new('struct sockaddr')
+local sockaddr = ffi.new('struct sockaddr_in')
 local sock = ffi.C.socket(ffi.C.PF_INET, ffi.C.SOCK_DGRAM, 0)
-ffi.C.atosin(graphite_addr, addr)
 
 function graphite_sender ()
     local msg = graphite()
+    if (graphite_addr ~= addr) then
+       ffi.C.atosin(addr, sockaddr)
+       addr = graphite_addr
+    end
     if msg then
-       ffi.C.sendto(sock, msg, #msg, 0, addr, ffi.sizeof(addr))
+       ffi.C.sendto(sock, msg, #msg, 0,
+		    ffi.cast('struct sockaddr *', sockaddr), ffi.sizeof(sockaddr))
     end
 end
 
