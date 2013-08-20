@@ -81,6 +81,7 @@ function graphite_sender ()
     if (graphite_addr ~= addr) then
        ffi.C.atosin(addr, sockaddr)
        addr = graphite_addr
+       print('Graphite export to ' .. addr)
     end
     if msg then
        ffi.C.sendto(sock, msg, #msg, 0,
