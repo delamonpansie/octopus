@@ -88,4 +88,4 @@ function graphite_sender ()
     end
 end
 
-print('Graphite sender loaded')
+print('Graphite export to ' .. addr)
