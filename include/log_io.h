@@ -38,6 +38,8 @@
 #define RECOVER_READONLY 1
 #define WAL_PACK_MAX 1024
 
+/* despite having type encoding tag must be unique */
+
 enum { snap_initial_tag = 1,  /* SNAP */
        snap_tag,              /* SNAP */
        wal_tag,               /* WAL */
