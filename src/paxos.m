@@ -1391,7 +1391,8 @@ paxos_print(struct tbuf *out,
 		(void)value_len;
 		assert(value_len == tbuf_len(&b));
 		tbuf_printf(out, "ballot:%"PRIi64" it:%s ", ballot, xlog_tag_to_a(inner_tag));
-		switch(inner_tag) {
+
+		switch(inner_tag & TAG_MASK) {
 		case run_crc: {
 			i64 scn = read_u64(&b);
 			u32 log = read_u32(&b);
