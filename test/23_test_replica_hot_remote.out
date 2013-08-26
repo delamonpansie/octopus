@@ -1,0 +1,14 @@
+start
+connect
+# box.ping()
+:pong
+
+# box.insert(["0", "a", "b", "c", "d"])
+1
+
+# box.select(["0"])
+[["0", "a", "b", "c", "d"]]
+
+# box.select(["0"])
+[["0", "a", "b", "c", "d"]]
+

@@ -1543,6 +1543,15 @@ init_second_stage(va_list ap __attribute__((unused)))
 						 "storage with --init-storage switch?");
 					exit(EX_USAGE);
 				}
+
+				/* Break circular dependency.
+				   Remote recovery depends on [enable_local_writes] wich itself
+				   depends on binding to primary port.
+				   Binding to primary port depends on wal_final_row from
+				   remote replication. (There is no data in local WALs yet)
+				 */
+				if (cfg.wal_feeder_addr && cfg.local_hot_standby)
+					[recovery wal_final_row];
 			}
 			if (!cfg.local_hot_standby)
 				[recovery enable_local_writes];
