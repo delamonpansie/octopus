@@ -136,7 +136,10 @@ luaT_box_dispatch(struct lua_State *L)
 	}
 	@catch (Error *e) {
 		[txn rollback];
-		lua_pushstring(L, e->reason);
+		if ([e respondsTo:@selector(code)])
+			lua_pushfstring(L, "code:%d reason:%s", [(id)e code], e->reason);
+		else
+			lua_pushstring(L, e->reason);
 		lua_error(L);
 	}
 	return 0;
@@ -313,11 +316,19 @@ box_dispach_lua(struct conn *c, struct iproto *request)
 	/* FIXME: switch to native exceptions ? */
 	if (lua_pcall(L, 2 + nargs, 0, 0)) {
 		IProtoError *err = [IProtoError palloc];
-		[err init_code:ERR_CODE_ILLEGAL_PARAMS
-			  line:__LINE__
-			  file:__FILE__
-		     backtrace:NULL
-			format:"%s", lua_tostring(L, -1)];
+		const char *reason = lua_tostring(L, -1);
+		int code = ERR_CODE_ILLEGAL_PARAMS;
+
+		if (strncmp(reason, "code:", 5) == 0) {
+			char *r = strchr(reason, 'r');
+			if (r && strncmp(r, "reason:", 7) == 0) {
+				code = atoi(reason + 5);
+				reason = r + 7;
+			}
+		}
+
+		[err init_code:code line:__LINE__ file:__FILE__
+		     backtrace:NULL format:"%s", reason];
 		lua_settop(L, 0);
 		@throw err;
 	}
