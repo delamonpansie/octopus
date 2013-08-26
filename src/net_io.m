@@ -134,6 +134,7 @@ netmsg_concat(struct netmsg_head *dst, struct netmsg_head *src)
 		m = TAILQ_FIRST(&dst->q);
 		assert(m->count == 0);
 		TAILQ_REMOVE(&dst->q, m, link);
+		slab_cache_free(&netmsg_cache, m);
 	}
 
 	dst->bytes += src->bytes;
