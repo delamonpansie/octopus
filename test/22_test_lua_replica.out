@@ -1,0 +1,25 @@
+# box.ping()
+:pong
+
+# box.insert(["0", "a", "b", "c", "d"])
+1
+
+# box.select(["0"])
+[["0", "a", "b", "c", "d"]]
+
+# box.select(["0"])
+[["0", "a", "b", "c", "d"]]
+
+# box.lua("user_proc.select", "0")
+[["0", "a", "b", "c", "d"]]
+
+# box.lua("user_proc.select", "0")
+[["0", "a", "b", "c", "d"]]
+
+# box.lua("user_proc.update", "0")
+[["0", "a", "c", "d"]]
+
+# box.lua("user_proc.update", "0")
+Failed with: {code: 0x102, message: 'replica is readonly'}
+# box.lua("user_proc.error", "0")
+Failed with: {code: 0x202, message: 'box_init.lua:16: fooo'}
