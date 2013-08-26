@@ -147,35 +147,44 @@ function wrap(proc_body)
                 return nil
         end
 
+	local function append(out, request, ret_code, result)
+	   local header = out:add_iov_iproto_header(request)
+	   local bytes = out:bytes()
+
+	   if type(result) == "table" then
+	      out:add_iov_string(tou32(#result))
+
+	      for k, v in pairs(result) do
+		 if type(v) == "string" then
+		    out:add_iov_string(v)
+		 elseif type(v) == "userdata" then
+		    local obj = tnt_object_ref(v)[0]
+		    local tuple = ffi.cast(tuple_t, obj.data)
+		    ffi.C.object_incr_ref(obj)
+		    out:add_iov_ref(obj.data, tuple.bsize + 8, ffi.cast('uintptr_t', obj))
+		 else
+		    error("unexpected type of result: " .. type(v))
+		 end
+	      end
+	   elseif type(result) == "number" then
+	      out:add_iov_string(tou32(result))
+	   else
+	      error("unexpected type of result: " .. type(result))
+	   end
+
+	   header.data_len = header.data_len + out:bytes() - bytes
+	   header.ret_code = ret_code
+	end
+
         local function proc(out, request, ...)
-                local retcode, result = proc_body(...)
-		local out = net.conn(out)
-		local header = out:add_iov_iproto_header(request)
-		local bytes = out:bytes()
+	   -- proc_body may fail and may block in core
+	   -- it's unsafe to modify 'struct conn' while blocking in core,
+	   -- because of possible concurent updates
+	   -- so, append to conn in atomically via out:pcall
 
-                if type(result) == "table" then
-                        out:add_iov_string(tou32(#result))
-
-                        for k, v in pairs(result) do
-			   if type(v) == "string" then
-			      out:add_iov_string(v)
-			   elseif type(v) == "userdata" then
-			      local obj = tnt_object_ref(v)[0]
-			      local tuple = ffi.cast(tuple_t, obj.data)
-			      ffi.C.object_incr_ref(obj)
-			      out:add_iov_ref(obj.data, tuple.bsize + 8, ffi.cast('uintptr_t', obj))
-			   else
-			      error("unexpected type of result: " .. type(v))
-			   end
-			end
-                elseif type(result) == "number" then
-                        out:add_iov_string(tou32(result))
-                else
-                        error("unexpected type of result: " .. type(result))
-                end
-
-		header.data_len = header.data_len + out:bytes() - bytes
-		header.ret_code = retcode
+	   local ret_code, result = proc_body(...)
+	   local out = net.conn(out)
+	   out:pcall(append, request, ret_code, result)
         end
 
         return proc

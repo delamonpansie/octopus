@@ -302,9 +302,6 @@ box_dispach_lua(struct conn *c, struct iproto *request)
 		iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "no such proc: %.*s", flen, fname);
 	}
 
-	struct netmsg_mark mark;
-	netmsg_getmark(&c->out_messages, &mark);
-
 	lua_pushlightuserdata(L, c);
 	lua_pushlightuserdata(L, request);
 
@@ -313,7 +310,6 @@ box_dispach_lua(struct conn *c, struct iproto *request)
 
 	/* FIXME: switch to native exceptions ? */
 	if (lua_pcall(L, 2 + nargs, 0, 0)) {
-		netmsg_rewind(&c->out_messages, &mark);
 		IProtoError *err = [IProtoError palloc];
 		[err init_code:ERR_CODE_ILLEGAL_PARAMS
 			  line:__LINE__
