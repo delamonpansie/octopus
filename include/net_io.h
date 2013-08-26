@@ -130,9 +130,10 @@ struct service {
 };
 
 
-void netmsg_head_init(struct netmsg_head *h, struct palloc_pool *pool);
+void netmsg_head_init(struct netmsg_head *h, struct palloc_pool *pool) LUA_DEF;
+void netmsg_head_release(struct netmsg_head *h) LUA_DEF;
 
-struct netmsg *netmsg_concat(struct netmsg_head *dst, struct netmsg_head *src);
+struct netmsg *netmsg_concat(struct netmsg_head *dst, struct netmsg_head *src) LUA_DEF;
 void netmsg_release(struct netmsg_head *h, struct netmsg *m) LUA_DEF;
 void netmsg_rewind(struct netmsg_head *h, struct netmsg_mark *mark) LUA_DEF;
 void netmsg_getmark(struct netmsg_head *h, struct netmsg_mark *mark) LUA_DEF;

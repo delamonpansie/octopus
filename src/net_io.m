@@ -468,14 +468,13 @@ conn_recv(struct conn *c)
 }
 
 void
-conn_reset(struct conn *c)
+netmsg_head_release(struct netmsg_head *h)
 {
 	struct netmsg *m, *tmp;
-	TAILQ_FOREACH_SAFE(m, &c->out_messages.q, link, tmp)
-		netmsg_release(&c->out_messages, m);
-
-	c->iov_offset = 0;
-	c->out_messages.bytes = 0;
+	TAILQ_FOREACH_SAFE(m, &h->q, link, tmp) {
+		netmsg_unref(m, 0);
+		slab_cache_free(&netmsg_cache, m);
+	}
 }
 
 static void
@@ -483,8 +482,8 @@ conn_free(struct conn *c)
 {
 	/*  as long as struct conn *C is alive, c->out_messages may be populated
 	    by callbacks even if c->fd == -1, so drop all this data */
-	conn_reset(c);
-	slab_cache_free(&netmsg_cache, TAILQ_FIRST(&c->out_messages.q));
+
+	netmsg_head_release(&c->out_messages);
 
 	if (c->service)
 		LIST_REMOVE(c, link);

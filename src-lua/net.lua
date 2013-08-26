@@ -7,6 +7,7 @@ local assert = assert
 local error = error
 local tonumber = tonumber
 local require = require
+local pcall = pcall
 
 module(...)
 
@@ -168,31 +169,59 @@ netmsg_t = ffi.typeof('struct netmsg *')
 iproto_t = ffi.typeof('struct iproto *')
 iproto_retcode_t = ffi.typeof('struct iproto_retcode')
 
-local cm = {}
-function cm:bytes() return self.ptr.out_messages.bytes end
 
-function cm:add_iov_dup(obj, len) C.net_add_iov_dup(self.ptr.out_messages, obj, len) end
-function cm:add_iov_ref(obj, len, v) C.net_add_ref_iov(self.ptr.out_messages, v or ref(obj), obj, len) end
-function cm:add_iov_string(str)
-   if #str < 512 then
-      C.net_add_iov_dup(self.ptr.out_messages, str, #str)
-   else
-      C.net_add_ref_iov(self.ptr.out_messages, ref(str), str, #len)
-   end
-end
-function cm:add_iov_iproto_header(request)
+local netmsg_op = {}
+function netmsg_op:add_iov_ref(obj, len, v) C.net_add_ref_iov(self, v or ref(obj), obj, len) end
+function netmsg_op:add_iov_string(str) C.net_add_ref_iov(self, ref(str), str, #str) end
+function netmsg_op:add_iov_iproto_header(request)
+   assert(request ~= nil)
    local request = ffi.new(iproto_t, request)
    local header = ffi.new(iproto_retcode_t, request.msg_code, 4, request.sync)
    self:add_iov_ref(header, ffi.sizeof(iproto_retcode_t))
    return header
 end
 
-local conn_mt = {
-   __index = cm,
-   __gc = function(c) C.conn_unref(c.ptr) end
-}
-local conn_t = ffi.metatype(ffi.typeof('struct conn_wrap'), conn_mt)
+local netmsg_head_t = ffi.metatype(ffi.typeof('struct netmsg_head'), { __index = netmsg_op,
+								       __gc = C.netmsg_head_release })
+function netmsg()
+   local h = netmsg_head_t()
+   ffi.C.netmsg_head_init(h, nil)
+   return h
+end
 
+
+local conn_op = {}
+function conn_op:bytes() return self.ptr.out_messages.bytes end
+function conn_op:add_iov_dup(obj, len) C.net_add_iov_dup(self.ptr.out_messages, obj, len) end
+function conn_op:add_iov_ref(obj, len, v) C.net_add_ref_iov(self.ptr.out_messages, v or ref(obj), obj, len) end
+function conn_op:add_iov_string(str)
+   if #str < 512 then
+      C.net_add_iov_dup(self.ptr.out_messages, str, #str)
+   else
+      C.net_add_ref_iov(self.ptr.out_messages, ref(str), str, #str)
+   end
+end
+function conn_op:add_iov_iproto_header(request)
+   assert(request ~= nil)
+   local request = ffi.new(iproto_t, request)
+   local header = ffi.new(iproto_retcode_t, request.msg_code, 4, request.sync)
+   self:add_iov_ref(header, ffi.sizeof(iproto_retcode_t))
+   return header
+end
+local netmsg_mark_t = ffi.typeof('struct netmsg_mark')
+function conn_op:pcall(f, ...)
+   local mark = ffi.new(netmsg_mark_t)
+   ffi.C.netmsg_getmark(self.ptr.out_messages, mark)
+   local ok, errmsg = pcall(f, self, ...)
+   if not ok then
+      ffi.C.netmsg_rewind(self.ptr.out_messages, mark)
+      error(errmsg)
+   end
+end
+
+local conn_t = ffi.metatype(ffi.typeof('struct conn_wrap'), { __index = conn_op,
+							      __gc = function(c) C.conn_unref(c.ptr) end
+							    })
 function conn(ptr)
    local c = conn_t(ptr)
    c.ptr.ref = c.ptr.ref + 1
