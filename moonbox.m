@@ -122,6 +122,8 @@ luaT_box_dispatch(struct lua_State *L)
 	struct BoxTxn *txn = [BoxTxn palloc];
 
 	@try {
+		[recovery check_replica];
+
 		[txn prepare:op data:req len:len];
 		if ([recovery submit:txn] != 1)
 			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write row");
