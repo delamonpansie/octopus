@@ -433,10 +433,18 @@ luaT_fiber_sleep(struct lua_State *L)
 	return 0;
 }
 
+static int
+luaT_fiber_gc(struct lua_State *L __attribute__((unused)))
+{
+	fiber_gc();
+	return 0;
+}
+
 
 static const struct luaL_reg fiberlib [] = {
 	{"create", luaT_fiber_create},
 	{"sleep", luaT_fiber_sleep},
+	{"gc", luaT_fiber_gc},
 	{NULL, NULL}
 };
 
