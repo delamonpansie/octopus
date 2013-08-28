@@ -17,8 +17,7 @@ cat <<EOF
 EOF
 
 for i in $*; do
-    # handle out of source build by
-    ${0%%gen-lua-registry.sh}stringify lua_static_module_`cname $i` < $i
+    ./scripts/stringify lua_static_module_`cname $i` < $i
 done
 
 cat <<EOF

@@ -83,17 +83,19 @@ sub-Makefile = $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
 
 $(binary): $(obj)
 	$E "CC	$@"
-	$Q$(CC) $(LDFLAGS) $^ $(LIBS) -o $@
+	$Q$(CC) $(LDFLAGS) $(filter-out .%,$^) $(LIBS) -o $@
 
-$(binary): LDFLAGS += -L$(VPATH)/third_party/luajit/src
+$(binary): LDFLAGS += -L$(srcdir)/third_party/luajit/src
 $(binary): LIBS += -lluajit
-$(binary): third_party/luajit/src/libluajit.a
-third_party/luajit/src/libluajit.a third_party/luajit/src/jit/vmdef.lua:
+$(binary): .luajit
+
+.luajit:
 	$(E) "MAKE	$@"
-	@$(MAKE) -C third_party/luajit/src CC="$(CC)" E="$(E)" Q="$(Q)" \
+	@$(MAKE) -C $(srcdir)/third_party/luajit/src CC="$(CC)" E="$(E)" Q="$(Q)" \
 		CCDEBUG=$(filter -g%,$(CFLAGS)) BUILDMODE=static \
 		TARGET_CFLAGS='-funwind-tables -DLUAJIT_UNWIND_EXTERNAL' \
-		$(subst third_party/luajit/src/,,$@)
+		libluajit.a jit/vmdef.lua
+	@touch .luajit
 
 $(obj): Makefile $(sub-Makefile)
 
@@ -152,9 +154,9 @@ FORCE:
 ifeq (1,$(HAVE_GIT))
 octopus_version.h: FORCE
 	@echo -n 'const char octopus_version_string[] = "' > $@_
-	@cd $(VPATH); $(GIT) describe --always HEAD | tr -d \\n >> $@_
+	@cd $(srcdir); $(GIT) describe --always HEAD | tr -d \\n >> $@_
 	@echo -n - >> $@_
-	@cd $(VPATH); $(GIT) branch | grep  '\*' | cut -f2 -d' ' | sed 's/^master$$/experimental/' | tr -d \\n >> $@_
+	@cd $(srcdir); $(GIT) branch | grep  '\*' | cut -f2 -d' ' | sed 's/^master$$/experimental/' | tr -d \\n >> $@_
 	@echo '";' >> $@_
 	@echo 'const char octopus_bundle_string[] = "NONE";' >> $@_;
 	@diff -q $@ $@_ 2>/dev/null >/dev/null || (echo "GEN	$(notdir $@)"; cp $@_ $@)
@@ -164,7 +166,7 @@ all_modules = $(foreach path,$(wildcard mod/*),$(notdir $(path)))
 
 $(foreach mod,$(all_modules),mod/$(mod)/$(mod)_version.h):
 	@echo -n 'const char $(subst .h,,$(notdir $@))_string[] = "' > $@_
-	@cd $(VPATH)/$(dir $@); $(GIT) describe --always HEAD | tr -d \\n | sed 's/.*-g/g/' >> $(notdir $@_)
+	@cd $(srcdir)/$(dir $@); $(GIT) describe --always HEAD | tr -d \\n | sed 's/.*-g/g/' >> $(notdir $@_)
 	@echo '";' >> $@_
 	@diff -q $@ $@_ 2>/dev/null >/dev/null || (echo "GEN	$@"; cp $@_ $@)
 	@rm $@_
@@ -173,6 +175,7 @@ dist += $(foreach mod,$(all_modules),mod/$(mod)/$(mod)_version.h)
 endif
 
 scripts/stringify: scripts/stringify.c
+	@mkdir -p $(dir $@)
 	$(Q)$(CC) $< -o $@
 	$(E) "CC	$@"
 
@@ -184,6 +187,7 @@ clean:
 
 luaclean:
 	$(E) "CLEAN	luajit"
+	$(Q)rm -f .luajit
 	$(Q)$(MAKE) -C third_party/luajit/src clean
 
 configure-byproducts += autom4te.cache config.log config.status
@@ -233,7 +237,7 @@ clean-coverage:
 endif
 
 
-Makefile: $(srcdir)/config.status $(srcdir)/include/config.h.in $(srcdir)/Makefile.in $(sub-Makefile)
+Makefile: config.status $(srcdir)/include/config.h.in $(srcdir)/Makefile.in $(sub-Makefile)
 	./config.status
 
 config.status: $(srcdir)/configure

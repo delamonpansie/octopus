@@ -5,9 +5,12 @@ src-lua += src-lua/net.lua
 src-lua += src-lua/net_cdef.lua
 src-lua += src-lua/jit/v.lua
 src-lua += src-lua/jit/dump.lua
+src-lua += src-lua/jit/bc.lua
 src-lua += src-lua/jit/vmdef.lua
 
-src-lua/jit/vmdef.lua: third_party/luajit/src/jit/vmdef.lua
+src-lua/jit/vmdef.lua: .luajit
+	@mkdir -p $(dir $@)
+	@test -f $@ || ln -s ../../$(srcdir)/third_party/luajit/src/jit/vmdef.lua $@
 
 
 # this dependency is required for $(CPP) calls below
@@ -35,8 +38,9 @@ endif
 
 obj += src-lua/registry.o
 dist-clean += src-lua/registry.m
+
 src-lua/registry.m: $(src-lua) scripts/stringify Makefile
 	@mkdir -p $(dir $@)
 	$(E) "GEN	$@"
-	$(Q)sh $(srcdir)/scripts/gen-lua-registry.sh $(foreach src,$(src-lua),$(srcdir)/$(src)) > $@.tmp
+	$(Q)sh $(srcdir)/scripts/gen-lua-registry.sh $(filter %.lua,$^) > $@.tmp
 	$(Q)mv $@.tmp $@
