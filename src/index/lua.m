@@ -43,10 +43,9 @@ luaT_i32_ctor(struct lua_State *L, int i)
 {
 	struct tbuf *key = tbuf_alloc(fiber->pool);
 	if (lua_isnumber(L, i) || lua_isstring(L, i)) {
-		size_t len;
+		char len = 4;
 		i32 val = lua_tointeger(L, i);
-		len = sizeof(val);
-		write_varint32(key, len);
+		tbuf_append(key, &len, sizeof(len)); /* varint repr of 4 */
 		tbuf_append(key, &val, len);
 	} else {
 		lua_pushliteral(L, "can't convert to u32");
@@ -60,10 +59,9 @@ luaT_i64_ctor(struct lua_State *L, int i)
 {
 	struct tbuf *key = tbuf_alloc(fiber->pool);
 	if (lua_isnumber(L, i) || lua_isstring(L, i)) {
-		size_t len;
+		char len = 8;
 		i64 val = lua_tointeger(L, i); /* FIXME: on x86 platforms this will overflow */
-		len = sizeof(val);
-		write_varint32(key, len);
+		tbuf_append(key, &len, sizeof(len)); /* varint repr of 8 */
 		tbuf_append(key, &val, len);
 	} else {
 		lua_pushliteral(L, "can't convert to u64");
