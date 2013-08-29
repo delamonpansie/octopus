@@ -75,13 +75,19 @@ local function loop(n)
 
    if pcall(index.hashsize, pk) then
       for _ in next_hash_chunk, pk, 0 do
+	 fiber.gc()
 	 fiber.sleep(batch_size / expires_per_second)
       end   
    else
       for _ in next_tree_chunk, pk do
+	 fiber.gc()
 	 fiber.sleep(batch_size / expires_per_second)
       end   
    end
+
+   -- the above for loops won't run if object_space is empty,
+   -- so in order to prevent busyloop, sleep at least once per loop()
+   fiber.sleep(batch_size / expires_per_second)
 end
 
 function start(n, func)
