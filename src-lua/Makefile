@@ -24,7 +24,7 @@ src-lua/net_cdef.lua: include/octopus_ev.h include/net_io.h include/iproto_def.h
 	$(Q)echo "ffi.cdef [[ " >> $@
 	$(Q)echo "struct palloc_pool;" >> $@
 	$(Q)$(CPP) -P $(CPPFLAGS) $(srcdir)/include/octopus_ev.h | $(SED) -n '/^typedef [a-z]\+ ev_tstamp/p; /typedef struct ev_\(io\|timer\)/,/^}/p;' >> $@
-	$(Q)$(CPP) -P $(CPPFLAGS) $(srcdir)/include/iproto_def.h | $(SED) -n '/^struct iproto\(_retcode\)\? \+{/,/^}/p;' >> $@
+	$(Q)$(CPP) -P $(CPPFLAGS) $(srcdir)/include/iproto_def.h | $(SED) -n '/^struct iproto\(_retcode\)\? \+{/,/^}/{s/\[\]/[?]/;p;}'  >> $@
 	$(Q)$(CPP) -P $(CPPFLAGS) $(srcdir)/include/net_io.h | $(SED) -n '/^struct netmsg\(_mark\|_head\|_tailq\)\? \+{/,/^}/p; /^enum conn_memory_ownership \+{/,/^}/p; /^struct conn \+{/,/^}/p' >> $@
 	$(Q)$(CPP) -P $(CPPFLAGS) -DLUA_DEF='@@@' $(srcdir)/include/net_io.h | $(SED) -n '/@@@/!d; s/@@@//; p' >> $@
 	$(Q)echo "]]" >> $@

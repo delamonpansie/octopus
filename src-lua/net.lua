@@ -166,7 +166,8 @@ ffi.cdef 'struct conn_wrap { struct conn *ptr; };'
 local C = ffi.C
 
 netmsg_t = ffi.typeof('struct netmsg *')
-iproto_t = ffi.typeof('struct iproto *')
+iproto_ptr_t = ffi.typeof('struct iproto *')
+iproto_t = ffi.typeof('struct iproto')
 iproto_retcode_t = ffi.typeof('struct iproto_retcode')
 
 
@@ -175,8 +176,8 @@ function netmsg_op:add_iov_ref(obj, len, v) C.net_add_ref_iov(self, v or ref(obj
 function netmsg_op:add_iov_string(str) C.net_add_ref_iov(self, ref(str), str, #str) end
 function netmsg_op:add_iov_iproto_header(request)
    assert(request ~= nil)
-   local request = ffi.new(iproto_t, request)
-   local header = ffi.new(iproto_retcode_t, request.msg_code, 4, request.sync)
+   local request = ffi.new(iproto_ptr_t, request)
+   local header = ffi.new(iproto_retcode_t, 0, request.msg_code, 4, request.sync)
    self:add_iov_ref(header, ffi.sizeof(iproto_retcode_t))
    return header
 end
@@ -203,9 +204,9 @@ function conn_op:add_iov_string(str)
 end
 function conn_op:add_iov_iproto_header(request)
    assert(request ~= nil)
-   local request = ffi.new(iproto_t, request)
-   local header = ffi.new(iproto_retcode_t, request.msg_code, 4, request.sync)
-   self:add_iov_ref(header, ffi.sizeof(iproto_retcode_t))
+   local request = ffi.new(iproto_ptr_t, request)
+   local header = ffi.new(iproto_retcode_t, 0, request.msg_code, 4, request.sync)
+   self:add_iov_ref(header, ffi.sizeof(header))
    return header
 end
 local netmsg_mark_t = ffi.typeof('struct netmsg_mark')
@@ -229,9 +230,14 @@ function conn(ptr)
 end
 
 function iproto(ptr)
-   return iproto_t(ptr)
+   return iproto_ptr_t(ptr)
 end
 
+function iproto_copy(req)
+   local c = ffi.new(iproto_t, req.data_len)
+   ffi.copy(c, req, ffi.sizeof(c))
+   return c
+end
 
 -- gc ref's
 local ref_registry = {[0]=0}
