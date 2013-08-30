@@ -327,9 +327,21 @@ recover_wal:(id<XLogPuller>)l
 		const struct row_v12 *r;
 		while ((r = [l fetch_row])) {
 			if (r->scn == next_skip_scn) {
-				say_info("SKIP SCN:%"PRIi64, next_skip_scn);
-				next_skip_scn = tbuf_len(&skip_scn) > 0 ?
-						read_u64(&skip_scn) : 0;
+				say_info("skip SCN:%"PRIi64 " tag:%s", next_skip_scn, xlog_tag_to_a(r->tag));
+				int tag = r->tag & TAG_MASK;
+				int tag_type = r->tag & ~TAG_MASK;
+
+				/* there are multiply rows with same SCN in paxos mode.
+				   the last one is WAL row */
+				if (tag_type == TAG_WAL)
+					next_skip_scn = tbuf_len(&skip_scn) > 0 ?
+							read_u64(&skip_scn) : 0;
+
+				if (tag_type == TAG_WAL && (tag == wal_tag || tag > user_tag))
+					run_crc_log = crc32c(run_crc_log, r->data, r->len);
+
+				if (r->lsn > lsn)
+					last_wal_lsn = lsn = r->lsn;
 				continue;
 			}
 			if (r->lsn > lsn) {
