@@ -219,18 +219,19 @@ recover_row:(struct row_v12 *)r
 
 		[self fixup:r];
 
+		/* note: it's to late to raise here: txn is already commited */
 		if (unlikely(r->lsn - lsn > 1 && cfg.panic_on_lsn_gap))
-			raise("LSN sequence has gap after %"PRIi64 " -> %"PRIi64, lsn, r->lsn);
+			panic("LSN sequence has gap after %"PRIi64 " -> %"PRIi64, lsn, r->lsn);
 
 		if (cfg.sync_scn_with_lsn && r->lsn != r->scn)
-			raise("out of sync SCN:%"PRIi64 " != LSN:%"PRIi64, r->scn, r->lsn);
+			panic("out of sync SCN:%"PRIi64 " != LSN:%"PRIi64, r->scn, r->lsn);
 
 		lsn = r->lsn;
 
 		if (tag == snap_final_tag || tag_type == TAG_WAL) {
 			if (unlikely(tag != snap_final_tag && r->scn - scn != 1 &&
 				     cfg.panic_on_scn_gap && [[self class] name] == [Recovery name]))
-				raise("non consecutive SCN %"PRIi64 " -> %"PRIi64, scn, r->scn);
+				panic("non consecutive SCN %"PRIi64 " -> %"PRIi64, scn, r->scn);
 
 			scn = r->scn;
 			say_debug("save crc_hist SCN:%"PRIi64" log:0x%08x", scn, run_crc_log);
