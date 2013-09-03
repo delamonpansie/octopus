@@ -29,30 +29,25 @@ ifeq (1,$(HAVE_RAGEL))
 	dist += src/admin.m
 endif
 
-$(obj): CFLAGS += -DOCTOPUS
+$(obj): CFLAGS_EXTRA += -DOCTOPUS
 
 src/octopus.o: octopus_version.h
-src/octopus.o: CFLAGS += -DPRIMARY_MOD='"$(primary_module)"' -D$(binary_type)
+src/octopus.o: CFLAGS_EXTRA += -DPRIMARY_MOD='"$(primary_module)"' -D$(binary_type)
 ifeq ($(binary_type),)
   $(error binary_type must be defined)
 endif
 
 # some modules might be built without paxos
 ifneq ($(findstring src/paxos.o,$(obj)),)
-  src/log_io_recovery.o: CFLAGS += -DPAXOS
+  src/log_io_recovery.o: CFLAGS_EXTRA += -DPAXOS
 endif
 
-disable-warns-obj += src/octopus_ev.o
-src/octopus_ev.o: CFLAGS += -U_FORTIFY_SOURCE
-ifeq (1,$(HAVE_CC_FLAG_W_NO_COMMENT))
-  src/octopus_ev.o: CFLAGS += -Wno-comment
-endif
-ifeq (1,$(HAVE_CC_FLAG_W_NO_UNUSED_VALUE))
-  src/octopus_ev.o: CFLAGS += -Wno-unused-value
-endif
+# no warns at all: it complains even with -Wall
+no-extra-warns += src/octopus_ev.o
+src/octopus_ev.o: CFLAGS_EXTRA := -U_FORTIFY_SOURCE $(filter-out -W%,$(CFLAGS_EXTRA))
 
 ifneq (,$(TRACE))
 	obj += src/trace.o
-	$(TRACE): CFLAGS += -finstrument-functions
+	$(TRACE): CFLAGS_EXTRA += -finstrument-functions
 	LDFLAGS += -Wl,-Map=octopus.map
 endif

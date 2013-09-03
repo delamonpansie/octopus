@@ -13,33 +13,32 @@ CORO_IMPL ?= ASM
 @SET_MAKE@
 CC := @CC@
 CPP := @CPP@
-unexport CFLAGS
-CFLAGS := @CFLAGS@
-CFLAGS_WARNS := @CFLAGS_WARNS@
-unexport CPPFLAGS
-CPPFLAGS := @CPPFLAGS@
-unexport LDFLAGS
-LDFLAGS := @LDFLAGS@
-RANLIB := @RANLIB@
-AR := ar
-unexport ARFLAGS
+CFLAGS ?= @CFLAGS@
+CFLAGS_EXTRA ?= @CFLAGS_EXTRA@
+# no -Wextra & -Werror on bundled builds: compiler is unknown
+ifeq (@BUNDLE@,)
+CFLAGS_WARNS ?= @CFLAGS_WARNS@
+endif
+CPPFLAGS ?= @CPPFLAGS@
+LDFLAGS ?= @LDFLAGS@
+RANLIB ?= @RANLIB@
 ARFLAGS := rc
 RAGEL := @RAGEL@
 RAGELFLAGS := @RAGELFLAGS@
-DOT := @DOT@
-CONFETTI := @CONFETTI@
-GIT := @GIT@
+DOT ?= @DOT@
+CONFETTI ?= @CONFETTI@
+GIT ?= @GIT@
 HAVE_GIT := @HAVE_GIT@
-ECHO := @ECHO@
-CAT := cat
-SED := @SED@
-NM := @NM@
-OBJCOPY := @OBJCOPY@
+ECHO ?= @ECHO@
+CAT ?= cat
+SED ?= @SED@
+NM ?= @NM@
+OBJCOPY ?= @OBJCOPY@
 HAVE_RAGEL := @HAVE_RAGEL@
 HAVE_CONFETTI := @HAVE_CONFETTI@
 HAVE_LCOV := @HAVE_LCOV@
 COVERAGE := @COVERAGE@
-LIBS := @LIBS@
+LIBS ?= @LIBS@
 HAVE_CC_FLAG_W_NO_COMMENT := @HAVE_CC_FLAG_W_NO_COMMENT@
 HAVE_CC_FLAG_W_NO_UNUSED_VALUE := @HAVE_CC_FLAG_W_NO_UNUSED_VALUE@
 modules := @modules@
@@ -58,7 +57,7 @@ endif
 primary_module=$(firstword $(modules))
 binary=octopus$(if $(WITH_MODNAME),_$(primary_module),)
 
-%.o $(binary): CFLAGS += -Wno-strict-aliasing -funwind-tables
+%.o: CFLAGS_EXTRA += -Wno-strict-aliasing -funwind-tables
 
 ifeq ("$(origin V)", "command line")
     VERBOSE = $(V)
@@ -85,16 +84,11 @@ subdirs += third_party cfg src src-lua
 sub-Makefile = $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
 -include $(sub-Makefile)
 
-$(binary): $(obj)
+$(binary): $(obj) .luajit
 	$E "CC	$@"
-	$Q$(CC) $(LDFLAGS) $(filter-out .%,$^) $(LIBS) -o $@
-
-$(binary): LDFLAGS += -L$(srcdir)/third_party/luajit/src
-$(binary): LIBS += -lluajit
-$(binary): .luajit
+	$Q$(CC) $(LDFLAGS) -L$(srcdir)/third_party/luajit/src $(filter-out .%,$^) $(LIBS) -lluajit -o $@
 
 .luajit:
-	$(E) "MAKE	$@"
 	@$(MAKE) -C $(srcdir)/third_party/luajit/src CC="$(CC)" E="$(E)" Q="$(Q)" \
 		CCDEBUG=$(filter -g%,$(CFLAGS)) BUILDMODE=static \
 		TARGET_CFLAGS='-funwind-tables -DLUAJIT_UNWIND_EXTERNAL' \
@@ -106,17 +100,17 @@ $(obj): Makefile $(sub-Makefile)
 dep += $(call depend,$(obj))
 -include $(dep)
 
-$(filter-out $(disable-warns-obj),$(obj)): CFLAGS += $(CFLAGS_WARNS)
+$(filter-out $(no-extra-warns),$(obj)): CFLAGS_EXTRA += $(CFLAGS_WARNS)
 
 %.o: %.m
 	@mkdir -p $(dir $@)
 	$(E) "CC	$@"
-	$(Q)$(CC) $(CPPFLAGS) $(CFLAGS) -Wno-protocol -fobjc-exceptions -c $< -o $@
+	$(Q)$(CC) $(CPPFLAGS) $(CFLAGS_EXTRA) $(CFLAGS) -Wno-protocol -fobjc-exceptions -c $< -o $@
 
 %.o: %.c
 	@mkdir -p $(dir $@)
 	$(E) "CC	$@"
-	$(Q)$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+	$(Q)$(CC) $(CPPFLAGS) $(CFLAGS_EXTRA) $(CFLAGS) -c $< -o $@
 
 ifeq (1,$(HAVE_RAGEL))
 %.m: %.rl

@@ -2,8 +2,8 @@ obj += cfg/warning.o
 obj += cfg/prscfg.o
 obj += cfg/octopus.o
 
-disable-warns-obj += cfg/octopus.o
-disable-warns-obj += cfg/prscfg.o
+no-extra-warns += cfg/octopus.o
+no-extra-warns += cfg/prscfg.o
 
 cfg/warning.o: cfg/prscfg.h
 

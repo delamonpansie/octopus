@@ -1,3 +1,4 @@
+AC_SUBST([BUNDLE])
 AC_ARG_ENABLE([modules],
               [AS_HELP_STRING([--enable-modules[[="box feeder"]]],
                               [select module to build, silver(box) and feeder by default])],

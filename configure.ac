@@ -205,42 +205,33 @@ AC_COMPILE_IFELSE(
    AC_DEFINE([HAVE__BUILTIN_EXPECT], [1], [Define to 1 if the C compiler supports __builtin_expect])])
 AC_MSG_RESULT($ac_cv__builtin_expect)
 
-AC_MSG_CHECKING([whether the compiler supports __attribute__((cold))])
-ac_cv__attribute_cold=no
-CFLAGS_saved="$CFLAGS"
-CFLAGS="$CFLAGS -Werror"
-AC_COMPILE_IFELSE(
-  [AC_LANG_SOURCE([int __attribute__((cold)) x() { return 0;}])],
-  [ac_cv__attribute_cold=yes
-   AC_DEFINE([HAVE__ATTRIBUTE_COLD], [1], [Define to 1 if the C compiler supports __attribute__((cold))])])
-AC_MSG_RESULT($ac_cv__attribute_cold)
-CFLAGS="$CFLAGS_saved"
-
-AC_CC_FLAG_CHECK([-fno-stack-protector])
-AS_IF([test "x$ac_cv_no_stack_protector" == xyes]
-      [CFLAGS="$CFLAGS -fno-stack-protector"])
-AC_CC_FLAG_CHECK([-pipe])
-AS_IF([test "x$ac_cv_pipe" == xyes]
-      [CFLAGS="$CFLAGS -pipe"])
-
 AC_CC_FLAG_CHECK([-Werror], [CFLAGS_WARNS="-Werror $CFLAGS_WARNS"])
 AC_CC_FLAG_CHECK([-Wno-sign-compare], [CFLAGS_WARNS="-Wno-sign-compare $CFLAGS_WARNS"])
 AC_CC_FLAG_CHECK([-Wextra], [CFLAGS_WARNS="-Wextra $CFLAGS_WARNS"])
-AC_CC_FLAG_CHECK([-Wall], [CFLAGS_WARNS="-Wall $CFLAGS_WARNS"])
 AC_SUBST(CFLAGS_WARNS)
 
-AC_CC_FLAG_CHECK([-MD -MP])
-AS_IF([test $ac_cv_MD__MP == yes],
-      [CFLAGS="-MD -MP $CFLAGS"])
+CFLAGS_EXTRA=-Wall
+AC_CC_FLAG_CHECK([-fno-stack-protector], [CFLAGS_EXTRA="-fno-stack-protector $CFLAGS_EXTRA"])
+AC_CC_FLAG_CHECK([-pipe], [CFLAGS_EXTRA="-pipe $CFLAGS_EXTRA"])
+AC_CC_FLAG_CHECK([-MD -MP], [CFLAGS_EXTRA="-MD -MP $CFLAGS_EXTRA"])
+AC_SUBST(CFLAGS_EXTRA)
+
+AS_IF([test "x$ac_cv_werror" == xyes],
+      [AC_MSG_CHECKING([whether the compiler supports __attribute__((cold))])
+       ac_cv__attribute_cold=no
+       CFLAGS_saved="$CFLAGS"
+       CFLAGS="$CFLAGS -Werror"
+       AC_COMPILE_IFELSE(
+         [AC_LANG_SOURCE([int __attribute__((cold)) x() { return 0;}])],
+	 [ac_cv__attribute_cold=yes
+	 AC_DEFINE([HAVE__ATTRIBUTE_COLD], [1], [Define to 1 if the C compiler supports __attribute__((cold))])])
+       AC_MSG_RESULT($ac_cv__attribute_cold)
+       CFLAGS="$CFLAGS_saved"])
 
 dnl internal backtrace facility will resolve all dynamic symbols
 AC_CC_FLAG_CHECK([-Wl,--export-dynamic])
 AS_IF([test $ac_cv_Wl___export_dynamic == yes],
       [LDFLAGS="-Wl,--export-dynamic $LDFLAGS"])
-
-AC_CC_FLAG_CHECK([-Wno-comment], [AC_SUBST(HAVE_CC_FLAG_W_NO_COMMENT, 1)])
-AC_CC_FLAG_CHECK([-Wno-unused-value], [AC_SUBST(HAVE_CC_FLAG_W_NO_UNUSED_VALUE, 1)])
-AC_CC_FLAG_CHECK([-Wno-unused-parameter], [AC_SUBST(HAVE_CC_FLAG_W_NO_UNUSED_PARAMETER, 1)])
 
 AC_ARG_ENABLE([coverage],
               [AS_HELP_STRING([--enable-coverage],
@@ -260,7 +251,7 @@ AC_ARG_ENABLE([valgrind],
 AS_IF([test "x$valgrind" == xyes],
       [AS_IF([test $ac_cv_header_valgrind_valgrind_h == no],
              AC_MSG_ERROR([unable to find valgrind headers]))],
-      [CFLAGS="-DNVALGRIND $CFLAGS"])
+      [CFLAGS_EXTRA="-DNVALGRIND $CFLAGS_EXTRA"])
 
 m4_include(modules.m4)
 AC_SUBST(modules, [$octopus_modules])
@@ -290,6 +281,7 @@ Clients enabled........$octopus_clients
 Objective C compiler...$CC
 CPPFLAGS...............$CPPFLAGS
 CFLAGS.................$CFLAGS
+CFLAGS_EXTRA...........$CFLAGS_EXTRA
 CFLAGS_WARNS...........$CFLAGS_WARNS
 LDFLAGS................$LDFLAGS
 LIBS...................$LIBS
