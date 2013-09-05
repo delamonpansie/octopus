@@ -16,8 +16,9 @@ cat <<EOF
 
 EOF
 
+stringify=$1; shift
 for i in $*; do
-    ./scripts/stringify lua_static_module_`cname $i` < $i
+     ./$stringify lua_static_module_`cname $i` < $i
 done
 
 cat <<EOF

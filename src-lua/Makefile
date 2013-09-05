@@ -39,8 +39,8 @@ endif
 obj += src-lua/registry.o
 dist-clean += src-lua/registry.m
 
-src-lua/registry.m: $(src-lua) scripts/stringify Makefile
+src-lua/registry.m: scripts/stringify $(src-lua) Makefile
 	@mkdir -p $(dir $@)
 	$(E) "GEN	$@"
-	$(Q)sh $(srcdir)/scripts/gen-lua-registry.sh $(filter %.lua,$^) > $@.tmp
+	$(Q)sh $(srcdir)/scripts/gen-lua-registry.sh $< $(filter %.lua,$^) > $@.tmp
 	$(Q)mv $@.tmp $@
