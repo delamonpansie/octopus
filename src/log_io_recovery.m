@@ -507,8 +507,8 @@ recover_finalize
 }
 
 
-static void
-pull_snapshot(Recovery *r, id<XLogPullerAsync> puller)
+- (void)
+pull_snapshot:(id<XLogPullerAsync>)puller
 {
 	for (;;) {
 		const struct row_v12 *row;
@@ -520,7 +520,7 @@ pull_snapshot(Recovery *r, id<XLogPullerAsync> puller)
 			int tag_type = row->tag & ~TAG_MASK;
 
 			if (tag_type == TAG_SNAP) {
-				[r recover_row:row];
+				[self recover_row:row];
 				if (tag == snap_final_tag)
 					return;
 			} else {
@@ -532,12 +532,12 @@ pull_snapshot(Recovery *r, id<XLogPullerAsync> puller)
 	}
 }
 
-static int
-pull_wal(Recovery *r, id<XLogPullerAsync> puller)
+- (int)
+pull_wal:(id<XLogPullerAsync>)puller
 {
 	struct row_v12 *row, *final_row = NULL, *rows[WAL_PACK_MAX];
 	/* TODO: use designated palloc_pool */
-	say_debug("%s: scn:%"PRIi64, __func__, [r scn]);
+	say_debug("%s: scn:%"PRIi64, __func__, scn);
 
 	int pack_rows = 0;
 
@@ -566,7 +566,7 @@ pull_wal(Recovery *r, id<XLogPullerAsync> puller)
 		if (cfg.io12_hack)
 			fix_scn(row);
 
-		if (row->scn <= [r scn])
+		if (row->scn <= scn)
 			continue;
 
 		if (cfg.io_compat && tag == run_crc)
@@ -580,18 +580,18 @@ pull_wal(Recovery *r, id<XLogPullerAsync> puller)
 	if (pack_rows > 0) {
 		/* we'r use our own lsn numbering */
 		for (int j = 0; j < pack_rows; j++)
-			rows[j]->lsn = [r lsn] + 1 + j;
+			rows[j]->lsn = lsn + 1 + j;
 
 #ifndef NDEBUG
 		i64 pack_min_scn = rows[0]->scn,
 		    pack_max_scn = rows[pack_rows - 1]->scn,
 		    pack_max_lsn = rows[pack_rows - 1]->lsn;
 #endif
-		assert(!cfg.sync_scn_with_lsn || [r scn] == pack_min_scn - 1);
+		assert(!cfg.sync_scn_with_lsn || scn == pack_min_scn - 1);
 		@try {
 			for (int j = 0; j < pack_rows; j++) {
 				row = rows[j]; /* this pointer required for catch below */
-				[r recover_row:row];
+				[self recover_row:row];
 			}
 		}
 		@catch (Error *e) {
@@ -605,14 +605,14 @@ pull_wal(Recovery *r, id<XLogPullerAsync> puller)
 		while (confirmed != pack_rows) {
 			struct wal_pack pack;
 
-			if (!wal_pack_prepare(r, &pack)) {
+			if (!wal_pack_prepare(self, &pack)) {
 				fiber_sleep(0.1);
 				continue;
 			}
 			for (int i = confirmed; i < pack_rows; i++)
 				wal_pack_append_row(&pack, rows[i]);
 
-			confirmed += [r wal_pack_submit];
+			confirmed += [self wal_pack_submit];
 			if (confirmed != pack_rows) {
 				say_warn("WAL write failed confirmed:%i != sent:%i",
 					 confirmed, pack_rows);
@@ -620,12 +620,14 @@ pull_wal(Recovery *r, id<XLogPullerAsync> puller)
 			}
 		}
 
-		assert([r scn] == pack_max_scn);
-		assert([r lsn] == pack_max_lsn);
+		assert(scn == pack_max_scn);
+		assert(lsn == pack_max_lsn);
 	}
 
+	fiber_gc();
+
 	if (final_row) {
-		[r wal_final_row];
+		[self wal_final_row];
 		return 1;
 	}
 
@@ -633,36 +635,10 @@ pull_wal(Recovery *r, id<XLogPullerAsync> puller)
 }
 
 - (int)
-recover_follow_remote:(XLogPuller *)puller exit_on_eof:(int)exit_on_eof
+load_from_remote:(XLogPuller *)puller
 {
 	bool revert_io_collect_interval = false;
 	@try {
-		const char *err;
-		bool warning_said = false;
-		i64 want_scn = scn;
-		if (want_scn > 0) {
-			want_scn -= 1024;
-			if (want_scn < 1)
-				want_scn = 1;
-		}
-		while ([puller handshake:want_scn err:&err] <= 0) {
-			if (exit_on_eof) {
-				say_info("exit on handshake");
-				return -1;
-			}
-
-			/* no more WAL rows in near future, notify module about that */
-			[self wal_final_row];
-
-			ev_tstamp reconnect_delay = 0.5;
-			if (!warning_said) {
-				say_error("replication failure: %s", err);
-				say_info("will retry every %.2f second", reconnect_delay);
-				warning_said = true;
-			}
-			fiber_sleep(reconnect_delay);
-		}
-
 		if (lsn == 0) {
 			/* there is only one connection during initial load,
 			   so io_collect_interval is useless */
@@ -671,7 +647,7 @@ recover_follow_remote:(XLogPuller *)puller exit_on_eof:(int)exit_on_eof
 				revert_io_collect_interval = true;
 			}
 
-			pull_snapshot(self, puller);
+			[self pull_snapshot:puller];
 			[self configure_wal_writer];
 
 			/* don't wait for snapshot. our goal to be replica as fast as possible */
@@ -685,20 +661,7 @@ recover_follow_remote:(XLogPuller *)puller exit_on_eof:(int)exit_on_eof
 		if ([puller version] == 11)
 			[self wal_final_row];
 
-		for (;;) {
-			int final_row = pull_wal(self, puller);
-			fiber_gc();
-
-			if (final_row && revert_io_collect_interval) {
-				revert_io_collect_interval = false;
-				ev_set_io_collect_interval(cfg.io_collect_interval);
-			}
-
-			if (final_row && exit_on_eof) {
-				say_info("exit on final row");
-				return 0;
-			}
-		}
+		while ([self pull_wal:puller] != 1);
 	}
 	@catch (Error *e) {
 		say_error("replication failure: %s", e->reason);
@@ -716,6 +679,9 @@ remote_hot_standby(va_list ap)
 {
 	Recovery *r = va_arg(ap, Recovery *);
 	struct sockaddr_in sin;
+	ev_tstamp reconnect_delay = 0.1;
+
+	r->remote_puller = [[XLogPuller alloc] init];
 
 	for (;;) {
 		if (!r->feeder_addr)
@@ -726,11 +692,33 @@ remote_hot_standby(va_list ap)
 		if (sin.sin_addr.s_addr == INADDR_ANY)
 			goto sleep;
 
-		[r->remote_puller init_addr:&sin];
-		[r recover_follow_remote:r->remote_puller exit_on_eof:false];
+		const char *err;
+		bool warning_said = false;
 
+		while ([r->remote_puller handshake:&sin scn:[r scn] err:&err] <= 0) {
+			/* no more WAL rows in near future, notify module about that */
+			[r wal_final_row];
+
+			if (!warning_said) {
+				say_error("replication failure: %s", err);
+				say_info("will retry every %.2f second", reconnect_delay);
+				warning_said = true;
+			}
+			goto sleep;
+		}
+
+		@try {
+			if ([r lsn] == 0)
+				[r load_from_remote:r->remote_puller];
+
+			for (;;)
+				[r pull_wal:r->remote_puller];
+		}
+		@catch (Error *e) {
+			say_error("replication failure: %s", e->reason);
+		}
 	sleep:
-		fiber_sleep(0.1);
+		fiber_sleep(reconnect_delay);
 	}
 }
 
@@ -893,7 +881,6 @@ nop_hb_writer(va_list ap)
 	txn_class = txn_class_;
 	snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
 	wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
-	remote_puller = [XLogPuller alloc];
 
 	snap_dir->writer = self;
 	wal_dir->writer = self;

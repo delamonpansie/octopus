@@ -52,11 +52,10 @@ init
 	return [super init];
 }
 
-- (XLogPuller *)
-init_addr:(struct sockaddr_in *)addr_
+- (void)
+set_addr:(struct sockaddr_in *)addr_
 {
 	memcpy(&addr, addr_, sizeof(addr));
-	return [self init];
 }
 
 - (int)
@@ -82,6 +81,14 @@ handshake:(i64)scn err:(const char **)err_ptr
 	abort = 0; /* must be set before connect */
 
 	assert(scn >= 0);
+
+	/* FIXME: do we need this ? */
+	if (scn > 0) {
+		scn -= 1024;
+		if (scn < 1)
+			scn = 1;
+	}
+
 	say_debug("%s: connect", __func__);
 	if ((fd = tcp_connect(&addr, NULL, 5)) < 0) {
 		err = "can't connect to feeder";

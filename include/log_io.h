@@ -311,7 +311,7 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 - (void) abort_recv;
 
 - (XLogPuller *) init;
-- (XLogPuller *) init_addr:(struct sockaddr_in *)addr_;
+- (void) set_addr:(struct sockaddr_in *)addr_;
 - (int) handshake:(i64)scn err:(const char **)err_ptr;
 - (int) handshake:(struct sockaddr_in *)addr_ scn:(i64)scn;
 - (int) handshake:(struct sockaddr_in *)addr_ scn:(i64)scn err:(const char **)err_ptr;
@@ -349,7 +349,8 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 - (i64) recover_snap;
 - (i64) recover_cont;
 - (void) wal_final_row;
-- (int) recover_follow_remote:(XLogPuller *)puller exit_on_eof:(int)exit_on_eof;
+- (int) pull_wal:(id<XLogPullerAsync>)puller;
+- (int) load_from_remote:(XLogPuller *)puller;
 - (void) enable_local_writes;
 - (bool) is_replica;
 - (void) check_replica;

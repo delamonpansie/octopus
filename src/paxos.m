@@ -833,16 +833,19 @@ retry:
 			goto decide;
 		case STALE: {
 			struct paxos_peer *p;
+			XLogPuller *puller = [[XLogPuller alloc] init];
+
 			SLIST_FOREACH(p, &r->group, link) {
 				if (p->id == self_id)
 					continue;
 
 				say_debug("feeding from %s", p->name);
-				XLogPuller *puller = [[XLogPuller alloc] init_addr:&p->feeder_addr];
-				[r recover_follow_remote:puller exit_on_eof:true];
-				[puller free];
+				if ([puller handshake:&p->feeder_addr scn:[r scn] err:NULL] <= 0)
+					continue;
+				while ([r pull_wal:puller] != 1);
 				break;
 			}
+			[puller free];
 			return 0;
 		}
 		default:
@@ -1117,22 +1120,25 @@ enable_local_writes
 	if (scn != 0)
 		[self configure_wal_writer];
 
+	XLogPuller *puller = [[XLogPuller alloc] init];
 	for (;;) {
 		struct paxos_peer *p;
 		SLIST_FOREACH(p, &group, link) {
 			if (p->id == self_id)
 				continue;
 
-			say_debug("feeding from %s", p->name);
-			XLogPuller *puller = [[XLogPuller alloc] init_addr:&p->feeder_addr];
-			[self recover_follow_remote:puller exit_on_eof:true];
-			[puller free];
+			if ([puller handshake:&p->feeder_addr scn:scn err:NULL] <= 0)
+				continue;
+
+			say_debug("loading from %s", p->name);
+			[self load_from_remote:puller];
 			if ([self scn] > 0)
 				goto exit;
 		}
 		fiber_sleep(1);
 	}
 exit:
+	[puller free];
 	if (!configured)
 		[self configure_wal_writer];
 
