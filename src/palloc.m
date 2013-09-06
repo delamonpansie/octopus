@@ -139,7 +139,7 @@ SLIST_HEAD(cut_list, cut_root);
 struct palloc_pool {
 	struct chunk_list_head chunks;
 	SLIST_ENTRY(palloc_pool) link;
-	size_t allocated, size_after_gc;
+	size_t allocated;
 	const char *name;
 	struct gc_list gc_list;
 	struct cut_list cut_list;
@@ -372,7 +372,7 @@ prelease(struct palloc_pool *pool)
 	release_chunks(&pool->chunks);
 	TAILQ_INIT(&pool->chunks);
 	VALGRIND_MEMPOOL_TRIM(pool, NULL, 0);
-	pool->allocated = pool->size_after_gc = 0;
+	pool->allocated = 0;
 }
 
 void
@@ -469,7 +469,6 @@ palloc_gc(struct palloc_pool *pool)
 		root->copy(pool, root->ptr);
 
 	release_chunks(&old_chunks);
-	pool->size_after_gc = pool->allocated;
 }
 
 void
@@ -584,12 +583,6 @@ size_t
 palloc_allocated(struct palloc_pool *pool)
 {
 	return pool->allocated;
-}
-
-size_t
-palloc_diff_allocated(struct palloc_pool *pool)
-{
-	return pool->allocated - pool->size_after_gc;
 }
 
 bool

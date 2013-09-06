@@ -119,6 +119,7 @@ struct iproto_handler {
 
 struct service {
 	struct palloc_pool *pool;
+	size_t pool_allocated; /* used for differential calls to palloc_gc */
 	const char *name;
 	TAILQ_HEAD(conn_tailq, conn) processing;
 	LIST_HEAD(, conn) conn;
