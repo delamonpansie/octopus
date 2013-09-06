@@ -244,7 +244,7 @@ config.status: $(srcdir)/configure
 configure: $(srcdir)/configure.ac $(srcdir)/third_party/libev/libev.m4
 	cd $(srcdir) && autoconf
 
-.PHONY:
+.PHONY: dist
 dist: configure $(dist) octopus_version.h
 	@rm -rf $(configure-byproducts)
 
