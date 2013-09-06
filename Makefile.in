@@ -86,7 +86,7 @@ sub-Makefile = $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
 
 $(binary): $(obj) .luajit
 	$E "CC	$@"
-	$Q$(CC) $(LDFLAGS) -L$(srcdir)/third_party/luajit/src $(filter-out .%,$^) $(LIBS) -lluajit -o $@
+	$Q$(CC) $(LDFLAGS) -L$(srcdir)/third_party/luajit/src $(filter-out .%,$^) -lluajit $(LIBS) -o $@
 
 .luajit:
 	@$(MAKE) -C $(srcdir)/third_party/luajit/src CC="$(CC)" E="$(E)" Q="$(Q)" \
