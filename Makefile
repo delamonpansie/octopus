@@ -30,4 +30,11 @@ cfg_tmpl += cfg/log_io.cfg_tmpl
 cfg_tmpl += cfg/paxos.cfg_tmpl
 cfg_tmpl += mod/box/box.cfg_tmpl
 
+
+test: box_test
+
+.PHONY: box_test
+box_test:
+	@cd mod/box && ./test/run.rb
+
 -include ../../jumproot.mk
