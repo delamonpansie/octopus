@@ -105,7 +105,6 @@ xlog_tag_to_a(u16 tag)
 @implementation XLog
 - (bool) eof { return eof; }
 - (u32) version { return 0; }
-- (struct palloc_pool *) pool { return pool; }
 
 - (XLog *)
 init_filename:(const char *)filename_
@@ -114,7 +113,6 @@ init_filename:(const char *)filename_
 {
 	[super init];
 	filename = strdup(filename_);
-	pool = palloc_create_pool(filename);
 	fd = fd_;
 	mode = LOG_READ;
 	dir = dir_;
@@ -191,7 +189,6 @@ free
 
 	free(filename);
 	free(vbuf);
-	palloc_destroy_pool(pool);
 	return [super free];
 }
 
@@ -557,7 +554,7 @@ write_header
 - (struct row_v12 *)
 read_row
 {
-	struct tbuf *m = tbuf_alloc(pool);
+	struct tbuf *m = tbuf_alloc(fiber->pool);
 
 	u32 header_crc, data_crc;
 
@@ -723,7 +720,7 @@ write_header
 - (struct row_v12 *)
 read_row
 {
-	struct tbuf *m = tbuf_alloc(pool);
+	struct tbuf *m = tbuf_alloc(fiber->pool);
 
 	u32 header_crc, data_crc;
 

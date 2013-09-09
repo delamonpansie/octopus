@@ -111,7 +111,6 @@ struct tbuf;
 - (u32) version;
 - (bool) eof;
 - (int) close;
-- (struct palloc_pool *) pool;
 @end
 
 @protocol XLogPullerAsync <XLogPuller>
@@ -182,7 +181,6 @@ struct row_v12 {
 	XLogDir *dir;
 	i64 next_lsn;
 
-	struct palloc_pool *pool;
 	enum log_mode {
 		LOG_READ,
 		LOG_WRITE

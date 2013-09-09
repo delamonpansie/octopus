@@ -266,8 +266,9 @@ recover_snap
 	XLog *snap = nil;
 	struct row_v12 *r;
 
-	struct palloc_pool *saved_pool = fiber->pool;
 	@try {
+		palloc_register_cut_point(fiber->pool);
+
 		i64 snap_lsn = [self snap_lsn];
 		if (snap_lsn == -1)
 			raise("snap_dir reading failed");
@@ -281,8 +282,6 @@ recover_snap
 
 		say_info("recover from `%s'", snap->filename);
 
-		fiber->pool = [snap pool];
-
 		bool legacy_snap = [snap isKindOf:[XLog11 class]];
 
 		if (legacy_snap && !cfg.sync_scn_with_lsn)
@@ -291,6 +290,7 @@ recover_snap
 		if (legacy_snap)
 			[self recover_row:[self dummy_row_lsn:snap_lsn scn:snap_lsn tag:(snap_initial_tag | TAG_SNAP)]];
 
+		int row_count = 0;
 		while ((r = [snap fetch_row])) {
 			/* some of old tarantool snapshots has all rows with lsn == 0,
 			   so using lsn from record will reset recovery lsn set by snap_initial_tag to 0,
@@ -299,7 +299,11 @@ recover_snap
 				r->scn = r->lsn = lsn;
 
 			[self recover_row:r];
-			prelease_after(fiber->pool, 128 * 1024);
+			if (row_count++ > 1024) {
+				palloc_cutoff(fiber->pool);
+				palloc_register_cut_point(fiber->pool);
+				row_count = 0;
+			}
 		}
 
 		/* old v11 snapshot, scn == lsn from filename */
@@ -310,7 +314,7 @@ recover_snap
 			raise("unable to fully read snapshot");
 	}
 	@finally {
-		fiber->pool = saved_pool;
+		palloc_cutoff(fiber->pool);
 		[snap close];
 		snap = nil;
 	}
@@ -321,10 +325,10 @@ recover_snap
 - (void)
 recover_wal:(id<XLogPuller>)l
 {
-	struct palloc_pool *saved_pool = fiber->pool;
-	fiber->pool = [l pool];
 	@try {
+		palloc_register_cut_point(fiber->pool);
 		const struct row_v12 *r;
+		int row_count = 0;
 		while ((r = [l fetch_row])) {
 			if (r->scn == next_skip_scn) {
 				say_info("skip SCN:%"PRIi64 " tag:%s", next_skip_scn, xlog_tag_to_a(r->tag));
@@ -348,11 +352,15 @@ recover_wal:(id<XLogPuller>)l
 				last_wal_lsn = r->lsn;
 				[self recover_row:r];
 			}
-			prelease_after(fiber->pool, 128 * 1024);
+			if (row_count++ > 1024) {
+				palloc_cutoff(fiber->pool);
+				palloc_register_cut_point(fiber->pool);
+				row_count = 0;
+			}
 		}
 	}
 	@finally {
-		fiber->pool = saved_pool;
+		palloc_cutoff(fiber->pool);
 	}
 }
 
@@ -1041,19 +1049,26 @@ read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, struct
 {
 	XLog *l;
 	const struct row_v12 *row;
-
+	int row_count;
 	l = [XLog open_for_read_filename:filename dir:NULL];
 	if (l == nil) {
 		say_syserror("unable to open filename `%s'", filename);
 		return -1;
 	}
-	fiber->pool = l->pool;
+
+	palloc_register_cut_point(fiber->pool);
 	while ((row = [l fetch_row])) {
-		struct tbuf *out = tbuf_alloc(l->pool);
+		struct tbuf *out = tbuf_alloc(fiber->pool);
 		print_gen_row(out, row, handler);
 		printf("%.*s\n", tbuf_len(out), (char *)out->ptr);
-		prelease_after(l->pool, 128 * 1024);
+
+		if (row_count++ > 1024) {
+			palloc_cutoff(fiber->pool);
+			palloc_register_cut_point(fiber->pool);
+			row_count = 0;
+		}
 	}
+	palloc_cutoff(fiber->pool);
 
 	if (![l eof]) {
 		say_error("binary log `%s' wasn't correctly closed", filename);
