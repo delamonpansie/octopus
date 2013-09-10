@@ -264,8 +264,12 @@ close
 - (int)
 flush
 {
-	if (fflush(fd) < 0)
+	if (fflush(fd) < 0) {
+		/* prevent silent drop of wet rows.
+		   it's required to call [confirm_write] in case of wet file */
+		assert(wet_rows == 0);
 		return -1;
+	}
 
 #if HAVE_FDATASYNC
 	if (fdatasync(fileno(fd)) < 0) {
@@ -467,6 +471,8 @@ confirm_write
 	off_t tail;
 
 	if (fflush(fd) < 0) {
+		say_syserror("fflush");
+
 		tail = ftello(fd);
 
 		say_debug("%s offset:%llu tail:%lli", __func__, (long long)offset, (long long)tail);
