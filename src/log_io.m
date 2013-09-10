@@ -425,35 +425,37 @@ append_successful:(size_t)bytes
 	wet_rows++;
 }
 
-- (i64)
+- (const struct row_v12 *)
 append_row:(struct row_v12 *)row data:(const void *)data
 {
 	(void)row; (void)data;
 	panic("%s: virtual", __func__);
 }
 
-- (i64)
+- (const struct row_v12 *)
 append_row:(void *)data len:(u32)len scn:(i64)scn tag:(u16)tag
 {
 	assert(wet_rows < nelem(wet_rows_offset));
-	struct row_v12 row = { .scn = scn ?: 0,
-			       .tm = ev_now(),
-			       .tag = tag,
-			       .cookie = default_cookie,
-			       .len = len };
+	static struct row_v12 row;
+	row = (struct row_v12){ .scn = scn,
+				.tm = ev_now(),
+				.tag = tag,
+				.cookie = default_cookie,
+				.len = len };
 
 	return [self append_row:&row data:data];
 }
 
-- (i64)
+- (const struct row_v12 *)
 append_row:(const void *)data len:(u32)len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie
 {
 	assert(wet_rows < nelem(wet_rows_offset));
-	struct row_v12 row = { .scn = scn ?: 0,
-			       .tm = ev_now(),
-			       .tag = tag,
-			       .cookie = cookie,
-			       .len = len };
+	static struct row_v12 row;
+	row = (struct row_v12){ .scn = scn,
+				.tm = ev_now(),
+				.tag = tag,
+				.cookie = cookie,
+				.len = len };
 
 	return [self append_row:&row data:data];
 }
@@ -608,15 +610,14 @@ read_row
 }
 
 
-- (i64)
-append_row:(struct row_v12 *)row_ data:(const void *)data
+- (const struct row_v12 *)
+append_row:(struct row_v12 *)row12 data:(const void *)data
 {
-	assert(row_->tag & ~TAG_MASK);
+	assert(row12->tag & ~TAG_MASK);
 	struct _row_v11 row;
-	u16 tag = row_->tag & TAG_MASK;
-	i64 scn = row_->scn;
-	u32 data_len = row_->len;
-	u64 cookie = row_->cookie;
+	u16 tag = row12->tag & TAG_MASK;
+	u32 data_len = row12->len;
+	u64 cookie = row12->cookie;
 
 	assert(wet_rows < nelem(wet_rows_offset));
 	if (tag == snap_tag) {
@@ -627,26 +628,30 @@ append_row:(struct row_v12 *)row_ data:(const void *)data
 		   tag == snap_final_tag ||
 		   tag == wal_final_tag)
 	{
-		return 0;
+		/* SEGV value non equal to NULL */
+		return (const struct row_v12 *)(intptr_t)1;
 	} else {
 		say_error("unknown tag %i", (int)tag);
 		errno = EINVAL;
-		return -1;
+		return NULL;
 	}
 
 
-	row.lsn = [self next_lsn];
+	row12->lsn = row.lsn = [self next_lsn];
+	if (row12->scn == 0)
+		row12->scn = row.lsn;
 
 	/* When running remote recovery of octopus (read: we'r replica) remote rows
 	   come in v12 format with SCN != 0.
 	   If cfg.io_compat enabled, ensure invariant LSN == SCN, since in this mode
 	   rows doesn't have distinct SCN field. */
 
-	if (scn != 0 && scn != row.lsn) {
+	if (row12->scn != row12->lsn) {
 		say_error("io_compat mode doesn't support SCN tagged rows");
 		errno = EINVAL;
-		return -1;
+		return NULL;
 	}
+
 
 	row.tm = ev_now();
 	row.len = sizeof(tag) + sizeof(cookie) + data_len;
@@ -665,13 +670,13 @@ append_row:(struct row_v12 *)row_ data:(const void *)data
 	    fwrite(data, data_len, 1, fd) != 1)
 	{
 		say_syserror("fwrite");
-		return -1;
+		return NULL;
 	}
 
 	[self append_successful:sizeof(marker) + sizeof(row) +
 				sizeof(tag) + sizeof(cookie) +
 	                        data_len];
-	return 1;
+	return row12;
 }
 
 @end
@@ -773,7 +778,7 @@ read_row
 	return m->ptr;
 }
 
-- (i64)
+- (const struct row_v12 *)
 append_row:(struct row_v12 *)row data:(const void *)data
 {
 	assert(row->tag & ~TAG_MASK);
@@ -788,11 +793,11 @@ append_row:(struct row_v12 *)row data:(const void *)data
 	    fwrite(data, row->len, 1, fd) != 1)
 	{
 		say_syserror("fwrite");
-		return -1;
+		return NULL;
 	}
 
 	[self append_successful:sizeof(marker) + sizeof(*row) + row->len];
-	return row->scn;
+	return row;
 }
 
 @end

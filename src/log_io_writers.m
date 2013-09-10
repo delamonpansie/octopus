@@ -186,10 +186,11 @@ wal_pack_submit
 	return reply->row_count;
 }
 
-- (i64)
-append_row:(const void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag cookie:(u64)cookie
+- (const struct row_v12 *)
+append_row:(struct row_v12 *)row data:(const void *)data
 {
-	return [current_wal append_row:data len:data_len scn:scn_ tag:tag cookie:cookie];
+	row->tm = ev_now();
+	return [current_wal append_row:row data:data];
 }
 
 - (int)
@@ -353,13 +354,8 @@ wal_disk_writer(int fd, void *state)
 				say_debug("%s: SCN:%"PRIi64" tag:%s data_len:%u", __func__,
 					  h->scn, xlog_tag_to_a(h->tag), h->len);
 
-				/* FIXME: use packed repr! */
-				i64 ret = [writer append_row:data
-							 len:h->len
-							 scn:h->scn
-							 tag:h->tag
-						      cookie:h->cookie];
-				if (ret <= 0) {
+				const struct row_v12 *ret = [writer append_row:h data:data];
+				if (ret == NULL) {
 					say_error("append_row failed");
 					io_failure = true;
 					continue;
@@ -442,7 +438,7 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *row)
 	static ev_tstamp last = 0;
 	const int io_rate_limit = l->dir->writer->snap_io_rate_limit;
 
-	if ([l append_row:row->ptr len:tbuf_len(row) scn:0 tag:(tag | TAG_SNAP)] < 0) {
+	if ([l append_row:row->ptr len:tbuf_len(row) scn:0 tag:(tag | TAG_SNAP)] == NULL) {
 		say_syserror("unable write row");
 		return -1;
 	}
@@ -528,7 +524,7 @@ snapshot_write
 	u32 run_crc_mod = 0;
 	tbuf_append(snap_ini, &run_crc_mod, sizeof(run_crc_mod));
 
-	if ([snap append_row:snap_ini->ptr len:tbuf_len(snap_ini) scn:scn tag:(snap_initial_tag | TAG_SNAP)] < 0) {
+	if ([snap append_row:snap_ini->ptr len:tbuf_len(snap_ini) scn:scn tag:(snap_initial_tag | TAG_SNAP)] == NULL) {
 		say_error("unable write initial row");
 		return -1;
 	}
@@ -540,7 +536,7 @@ snapshot_write
 		return -1;
 
 	const char end[] = "END";
-	if ([snap append_row:end len:strlen(end) scn:scn tag:(snap_final_tag | TAG_SNAP)] < 0) {
+	if ([snap append_row:end len:strlen(end) scn:scn tag:(snap_final_tag | TAG_SNAP)] == NULL) {
 		say_error("unable write final row");
 		return -1;
 	}

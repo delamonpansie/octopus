@@ -1273,7 +1273,7 @@ snapshot_write_header_rows:(XLog *)snap
 	if (tbuf_len(buf) == 0)
 		return 0;
 
-	if ([snap append_row:buf->ptr len:tbuf_len(buf) scn:scn tag:(snap_skip_scn | TAG_SNAP)] < 0) {
+	if ([snap append_row:buf->ptr len:tbuf_len(buf) scn:scn tag:(snap_skip_scn | TAG_SNAP)] == NULL) {
 		say_error("unable write snap_applied_scn");
 		return -1;
 	}
