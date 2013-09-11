@@ -262,7 +262,7 @@ int
 wal_disk_writer(int fd, void *state)
 {
 	XLogWriter *writer = state;
-	struct tbuf *wbuf, rbuf = TBUF(NULL, 0, fiber->pool);
+	struct tbuf rbuf = TBUF(NULL, 0, fiber->pool);
 	int result = EXIT_FAILURE;
 	i64 start_lsn, next_scn = 0;
 	u32 crc, requests_processed;
@@ -391,33 +391,30 @@ wal_disk_writer(int fd, void *state)
 		assert(start_lsn > 0);
 		u32 rows_confirmed = [writer confirm_write] - start_lsn;
 
-		wbuf = tbuf_alloc(fiber->pool);
+
+		size_t reply_len = sizeof(struct wal_reply) * requests_processed;
+		struct wal_reply *reply = palloc(fiber->pool, reply_len);
 		for (int i = 0; i < requests_processed; i++) {
-			struct wal_reply reply = { .packet_len = sizeof(reply),
-						   .row_count = 0,
-						   .sender = request[i].sender,
-						   .fid = request[i].fid,
-						   .lsn = 0,
-						   .scn = 0,
-						   .run_crc = request[i].run_crc };
+			reply[i] = (struct wal_reply){ .packet_len = sizeof(struct wal_reply),
+						       .row_count = 0,
+						       .sender = request[i].sender,
+						       .fid = request[i].fid,
+						       .lsn = 0,
+						       .scn = 0,
+						       .run_crc = request[i].run_crc };
 
 			if (rows_confirmed > 0) {
-				reply.row_count = MIN(rows_confirmed, request[i].row_count);
-				rows_confirmed -= reply.row_count;
-				start_lsn += reply.row_count;
-				reply.lsn = start_lsn;
-				reply.scn = request[i].scn ?: reply.lsn;
+				reply[i].row_count = MIN(rows_confirmed, request[i].row_count);
+				rows_confirmed -= reply[i].row_count;
+				start_lsn += reply[i].row_count;
+				reply[i].lsn = start_lsn;
+				reply[i].scn = request[i].scn ?: reply[i].lsn;
 			}
-
-			tbuf_append(wbuf, &reply, sizeof(reply));
-
 			say_debug("%s: wrote rows:%i  maxLSN:%"PRIi64,
-				  __func__, reply.row_count, reply.lsn);
+				  __func__, reply[i].row_count, reply[i].lsn);
 		}
-
-
 		do {
-			ssize_t r = write(fd, wbuf->ptr, tbuf_len(wbuf));
+			ssize_t r = write(fd, reply, reply_len);
 			if (r < 0) {
 				if (errno == EINTR)
 					continue;
@@ -425,8 +422,9 @@ wal_disk_writer(int fd, void *state)
 				result = EX_OK;
 				goto exit;
 			}
-			tbuf_ltrim(wbuf, r);
-		} while (tbuf_len(wbuf) > 0);
+			reply = (void *)reply + r;
+			reply_len -= r;
+		} while (reply_len > 0);
 
 		fiber_gc();
 	}
