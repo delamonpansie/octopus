@@ -668,10 +668,17 @@ learn(PaxosRecovery *r, struct proposal *p)
 		struct row_v12 row = { .scn = p->scn,
 				       .tag = p->tag,
 				       .len = p->value_len };
-		[txn prepare:&row data:p->value];
-		[txn commit];
-
-		mark_applied(r, p);
+		@try {
+			[txn prepare:&row data:p->value];
+			[txn commit];
+			mark_applied(r, p);
+		}
+		@catch (Error *e) {
+			say_warn("aborting txn, [%s reason:\"%s\"] at %s:%d",
+				 [[e class] name], e->reason, e->file, e->line);
+			[txn rollback];
+			break;
+		}
 	}
 }
 
