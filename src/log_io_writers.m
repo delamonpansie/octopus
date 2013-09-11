@@ -169,8 +169,11 @@ wal_pack_submit
 	ev_io_start(&wal_writer->c->out);
 	struct wal_reply *reply = yield();
 	assert(reply->lsn != -1);
-	if (reply->lsn == 0)
+	if (reply->lsn == 0) {
 		say_warn("wal writer returned error status");
+		assert(reply->row_count == 0);
+		return 0;
+	}
 
 	if (cfg.sync_scn_with_lsn && reply->lsn != reply->scn)
 		panic("out ouf sync SCN:%"PRIi64 " != LSN:%"PRIi64,
@@ -266,16 +269,19 @@ wal_disk_writer(int fd, void *state)
 	struct tbuf rbuf = TBUF(NULL, 0, fiber->pool);
 	int result = EXIT_FAILURE;
 	i64 start_lsn, next_scn = 0;
-	u32 crc, requests_processed;
-	bool io_failure = false, have_unwritten_rows = false;
+	u32 crc;
+	bool io_failure = false, delay_read = false;
 	ssize_t r;
+	int requests_processed, rows_processed;
 	struct {
 		struct fiber *sender;
 		u32 fid;
 		u32 row_count;
-		u32 run_crc; /* run_crc is computed */
-		i64 scn;
-	} *request = xmalloc(sizeof(*request) * 1024);
+	} request[1024];
+	struct {
+		i64 lsn, scn;
+		u32 crc;
+	} row[nelem(request) * 8];
 
 	ev_tstamp start_time = ev_now();
 	palloc_register_gc_root(fiber->pool, &rbuf, tbuf_gc);
@@ -301,9 +307,9 @@ wal_disk_writer(int fd, void *state)
 	signal(SIGPIPE, SIG_IGN);
 
 	for (;;) {
-		if (!have_unwritten_rows) {
+		if (!delay_read) {
 			tbuf_ensure(&rbuf, 16 * 1024);
-			r = recv(fd, rbuf.end, tbuf_free(&rbuf), 0);
+			r = tbuf_recv(&rbuf, fd);
 			if (r < 0 && (errno == EINTR))
 				continue;
 			else if (r < 0) {
@@ -314,7 +320,6 @@ wal_disk_writer(int fd, void *state)
 				result = EX_OK;
 				goto exit;
 			}
-			tbuf_append(&rbuf, NULL, r);
 		}
 
 
@@ -325,26 +330,35 @@ wal_disk_writer(int fd, void *state)
 
 		start_lsn = [writer lsn];
 		requests_processed = 0;
-		have_unwritten_rows = false;
-		io_failure = [writer prepare_write:next_scn] == -1;
+		rows_processed = 0;
+		delay_read = false;
+		io_failure = [writer prepare_write:next_scn + 1] == -1;
 
 		/* we're not running inside ev_loop, so update ev_now manually just before write */
 		ev_now_update();
 
-		while (tbuf_len(&rbuf) > sizeof(u32) && tbuf_len(&rbuf) >= *(u32 *)rbuf.ptr) {
+		for (int i = 0; i < nelem(request); i++) {
+			if (tbuf_len(&rbuf) < sizeof(u32) ||
+			    tbuf_len(&rbuf) < *(u32 *)rbuf.ptr)
+				break;
+
 			u32 row_count = ((u32 *)rbuf.ptr)[1];
-			if (!io_failure && row_count > [writer->current_wal wet_rows_offset_available]) {
+			u32 rows_available = MIN([writer->current_wal wet_rows_offset_available],
+						 nelem(row) - rows_processed);
+			if (!io_failure && row_count > rows_available) {
 				assert(requests_processed != 0);
-				have_unwritten_rows = true;
+				delay_read = true;
 				break;
 			}
 
 			tbuf_ltrim(&rbuf, sizeof(u32)); /* drop packet_len */
-			request[requests_processed].row_count = read_u32(&rbuf);
-			request[requests_processed].sender = read_ptr(&rbuf);
-			request[requests_processed].fid = read_u32(&rbuf);
+			request[i].row_count = read_u32(&rbuf);
+			request[i].sender = read_ptr(&rbuf);
+			request[i].fid = read_u32(&rbuf);
 
-			for (int i = 0; i < request[requests_processed].row_count; i++) {
+			assert(request[i].row_count > 0);
+
+			for (int j = 0; j < request[i].row_count; j++) {
 				struct row_v12 *h = read_bytes(&rbuf, sizeof(*h));
 				void *data = read_bytes(&rbuf, h->len);
 
@@ -370,14 +384,16 @@ wal_disk_writer(int fd, void *state)
 				   find correct file for replication replay.
 				   so, next_scn should be updated only when data modification occurs */
 				if (tag_type == TAG_WAL) {
-					if (h->scn > 100 && h->scn - next_scn != 1 && cfg.panic_on_scn_gap)
-						panic("GAP %i rows:%i", (int)(h->scn - next_scn),
+					if (cfg.panic_on_scn_gap && ret->scn - next_scn != 1)
+						panic("GAP %"PRIi64" rows:%i", ret->scn - next_scn,
 						      request[requests_processed].row_count);
-					next_scn = h->scn;
+					next_scn = ret->scn;
 				}
 
-				request[requests_processed].run_crc = crc;
-				request[requests_processed].scn = next_scn;
+				row[rows_processed].lsn = ret->lsn;
+				row[rows_processed].scn = next_scn;
+				row[rows_processed].crc = crc;
+				rows_processed++;
 			}
 			requests_processed++;
 		}
@@ -387,30 +403,30 @@ wal_disk_writer(int fd, void *state)
 		assert(start_lsn > 0);
 		u32 rows_confirmed = [writer confirm_write] - start_lsn;
 
-
 		size_t reply_len = sizeof(struct wal_reply) * requests_processed;
 		struct wal_reply *reply = palloc(fiber->pool, reply_len);
-		for (int i = 0; i < requests_processed; i++) {
+		for (int i = 0, j = 0; i < requests_processed; i++) {
 			reply[i] = (struct wal_reply){ .packet_len = sizeof(struct wal_reply),
 						       .row_count = 0,
 						       .sender = request[i].sender,
 						       .fid = request[i].fid,
 						       .lsn = 0,
-						       .scn = 0,
-						       .run_crc = request[i].run_crc };
+						       .scn = 0};
 
 			if (rows_confirmed > 0) {
 				reply[i].row_count = MIN(rows_confirmed, request[i].row_count);
 				rows_confirmed -= reply[i].row_count;
-				start_lsn += reply[i].row_count;
-				reply[i].lsn = start_lsn;
-				reply[i].scn = request[i].scn ?: reply[i].lsn;
+				j += reply[i].row_count;
+				/* row[j - 1] is the last written row in the request */
+				reply[i].lsn = row[j - 1].lsn;
+				reply[i].scn = row[j - 1].scn;
+				reply[i].run_crc = row[j - 1].crc;
 			}
-			say_debug("%s: wrote rows:%i  maxLSN:%"PRIi64,
-				  __func__, reply[i].row_count, reply[i].lsn);
+			say_debug("%s: reply[%i] rows:%i LSN:%"PRIi64" SCN:%"PRIi64,
+				  __func__, i, reply[i].row_count, reply[i].lsn, reply[i].scn);
 		}
 		do {
-			ssize_t r = write(fd, reply, reply_len);
+			r = write(fd, reply, reply_len);
 			if (r < 0) {
 				if (errno == EINTR)
 					continue;
