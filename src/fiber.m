@@ -342,6 +342,7 @@ spawn_child(const char *name, struct fiber *in, struct fiber *out,
 		close_all_xcpt(3, socks[0], stderrfd, sayfd);
 		child_name = xmalloc(64);
 		snprintf(child_name, 64, "%s/child", name);
+		assert(fiber == &sched);
 		sched.name = child_name;
 		set_proc_title("%s%s", name, custom_proc_title);
 		say_info("%s initialized", name);
