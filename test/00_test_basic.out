@@ -3040,7 +3040,7 @@ SCN: 1001
 XLOG
 0.12
 Created-by: octopus
-SCN: 1001
+SCN: 1002
 
 lsn:500 scn:500 t:2/wal_tag 0.0.0.0:0 INSERT n:0 <498:"\xF2\x01\x00\x00", 499:"\xF3\x01\x00\x00", 500:"\xF4\x01\x00\x00">
 lsn:501 scn:501 t:2/wal_tag 0.0.0.0:0 INSERT n:0 <499:"\xF3\x01\x00\x00", 500:"\xF4\x01\x00\x00", 501:"\xF5\x01\x00\x00">
