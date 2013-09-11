@@ -275,7 +275,6 @@ wal_disk_writer(int fd, void *state)
 		u32 run_crc; /* run_crc is computed */
 		i64 scn;
 	} *request = xmalloc(sizeof(*request) * 1024);
-	bool broken[1024];
 
 	ev_tstamp start_time = ev_now();
 	palloc_register_gc_root(fiber->pool, &rbuf, tbuf_gc);
@@ -340,7 +339,6 @@ wal_disk_writer(int fd, void *state)
 			}
 
 			tbuf_ltrim(&rbuf, sizeof(u32)); /* drop packet_len */
-			broken[requests_processed] = 0;
 			request[requests_processed].row_count = read_u32(&rbuf);
 			request[requests_processed].sender = read_ptr(&rbuf);
 			request[requests_processed].fid = read_u32(&rbuf);
@@ -376,11 +374,9 @@ wal_disk_writer(int fd, void *state)
 				   find correct file for replication replay.
 				   so, next_scn should be updated only when data modification occurs */
 				if (tag_type == TAG_WAL) {
-					if (h->scn > 100 && h->scn - next_scn != 1) {
-						say_warn("GAP %i rows:%i", (int)(h->scn - next_scn),
-							 request[requests_processed].row_count);
-						broken[requests_processed] = true;
-					}
+					if (h->scn > 100 && h->scn - next_scn != 1 && cfg.panic_on_scn_gap)
+						panic("GAP %i rows:%i", (int)(h->scn - next_scn),
+						      request[requests_processed].row_count);
 					next_scn = h->scn;
 				}
 
@@ -411,11 +407,6 @@ wal_disk_writer(int fd, void *state)
 				start_lsn += reply.row_count;
 				reply.lsn = start_lsn;
 				reply.scn = request[i].scn ?: reply.lsn;
-
-				if (broken[i]) {
-					reply.lsn = -1;
-					reply.scn = -1;
-				}
 			}
 
 			tbuf_append(wbuf, &reply, sizeof(reply));
