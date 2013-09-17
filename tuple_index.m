@@ -82,9 +82,8 @@ box_tuple_lstr_dtor(struct tnt_object *obj, struct index_node *node, void  *arg)
 	return node;
 }
 static struct index_node *
-box_tuple_gen_dtor(struct tnt_object *obj, struct index_node *node_, void *arg)
+box_tuple_gen_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
 {
-	struct tree_node *node = (void *)node_;
 	struct gen_dtor *desc = arg;
 	struct box_tuple *tuple = box_tuple(obj);
 	void *tuple_data = tuple->data;
