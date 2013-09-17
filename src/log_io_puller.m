@@ -223,7 +223,6 @@ contains_full_row_v11(const struct tbuf *b)
 - (ssize_t)
 recv
 {
-	in_recv = fiber;
 	if (abort) {
 		conn_close(&c);
 		return -1;
@@ -235,17 +234,18 @@ recv
 		ev_io io = { .coro = 1 };
 		ev_io_init(&io, (void *)fiber, c.fd, EV_READ);
 		ev_io_start(&io);
+		in_recv = fiber;
 		yield();
+		in_recv = NULL;
 		ev_io_stop(&io);
+
+		if (abort) {
+			conn_close(&c);
+			errno = 0;
+			return -1;
+		}
+
 		r = tbuf_recv(c.rbuf, c.fd);
-	}
-
-	in_recv = NULL;
-	if (abort) {
-		conn_close(&c);
-		errno = 0;
-		return -1;
-
 	}
 
 	return r;
