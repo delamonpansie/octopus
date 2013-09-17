@@ -254,8 +254,6 @@ fiber_create(const char *name, void (*f)(va_list va), ...)
 		SLIST_REMOVE_HEAD(&zombie_fibers, zombie_link);
 	} else {
 		new = xcalloc(1, sizeof(*fiber));
-		if (new == NULL)
-			return NULL;
 
 		if (octopus_coro_create(&new->coro, fiber_loop, NULL) == NULL)
 			return NULL;
