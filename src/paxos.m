@@ -274,9 +274,16 @@ notify_leadership_change(PaxosRecovery *r)
 		if (prev_leader != leader_id) {
 			say_info("I am leader, %i -> %i", prev_leader, leader_id);
 			catchup_done = 0;
-			while (r->app_scn < r->max_scn)
-				catchup(r, r->max_scn);
+
+			catchup(r, r->max_scn);
 			catchup_done = 1;
+			if (r->app_scn < r->max_scn) {
+				say_warn("leader catchup failed AppSCN:%"PRIi64" MaxSCN:%"PRIi64,
+					 r->app_scn, r->max_scn);
+				leader_id = -2;
+				title("paxos_catchup_fail");
+				return;
+			}
 		}
 		title("paxos_leader");
 	}
@@ -646,6 +653,11 @@ mark_applied(PaxosRecovery *r, struct proposal *p)
 static void
 learn(PaxosRecovery *r, struct proposal *p)
 {
+	if (p == NULL && r->app_scn < r->max_scn)
+		p = proposal(r, r->app_scn + 1);
+
+	say_debug("%s: from SCN:%"PRIi64, __func__, p ? p->scn : -1);
+
 	for (; p != NULL; p = RB_NEXT(ptree, &r->proposals, p)) {
 		assert([r scn] <= r->app_scn);
 		assert(r->app_scn <= r->max_scn);
@@ -1018,26 +1030,34 @@ loop:
 }
 
 
-static void
+static u64
 close_with_nop(PaxosRecovery *r, struct proposal *p)
 {
 	say_debug("%s: SCN:%"PRIi64, __func__, p->scn);
 	assert(p->ballot != ULLONG_MAX);
-	run_protocol(r, p, "\0\0", 2, TAG_WAL | nop);
+	return run_protocol(r, p, "\0\0", 2, TAG_WAL | nop);
 }
 
 
 static void
 catchup(PaxosRecovery *r, i64 upto_scn)
 {
-	say_debug("%s: SCN:%"PRIi64 " upte_scn:%"PRIi64, __func__, [r scn], upto_scn);
+	say_debug("%s: SCN:%"PRIi64 " upto_scn:%"PRIi64, __func__, [r scn], upto_scn);
 
 	for (i64 i = r->app_scn + 1; i <= upto_scn; i++) {
 		struct proposal *p = proposal(r, i);
-		if (p->ballot != ULLONG_MAX)
-			close_with_nop(r, p);
-		learn(r, p);
+		say_debug("|	SCN:%"PRIi64" ballot:%"PRIi64, p->scn, p->ballot);
+		if (p->ballot == ULLONG_MAX)
+			continue;
+
+		if (close_with_nop(r, p) != ULLONG_MAX) {
+			say_warn("can't close SCN:%"PRIi64, p->scn);
+			/* undecided proposal between app_scn and max_scn:
+			   learning upto max_scn is impossible */
+			return;
+		}
 	}
+	learn(r, NULL);
 }
 
 void
