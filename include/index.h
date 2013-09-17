@@ -67,16 +67,6 @@ struct gen_dtor {
 	enum field_data_type type[8];
 };
 
-struct tree_node {
-	struct tnt_object *obj;
-	unsigned char key[];
-};
-
-union {
-	struct index_node index;
-	struct tree_node tree;
-} index_nodes;
-
 typedef struct index_node *(index_dtor)(struct tnt_object *obj, struct index_node *node, void *arg);
 struct lua_State;
 typedef struct tbuf *(index_lua_ctor)(struct lua_State *L, int i);

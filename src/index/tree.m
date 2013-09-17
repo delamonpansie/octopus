@@ -294,7 +294,7 @@ field_compare(union field *f1, union field *f2, enum field_data_type type)
 }
 
 static int
-tree_node_compare(struct tree_node *na, struct tree_node *nb, struct gen_dtor *desc)
+tree_node_compare(struct index_node *na, struct index_node *nb, struct gen_dtor *desc)
 {
 	/* if pattern is partialy specified compare only significant fields.
 	   it's ok to return 0 here: sptree_iterator_init_set() will select
@@ -316,7 +316,7 @@ tree_node_compare(struct tree_node *na, struct tree_node *nb, struct gen_dtor *d
 }
 
 static int
-tree_node_compare_with_addr(struct tree_node *na, struct tree_node *nb, struct gen_dtor *desc)
+tree_node_compare_with_addr(struct index_node *na, struct index_node *nb, struct gen_dtor *desc)
 {
 	int r = tree_node_compare(na, nb, desc);
 	if (r != 0)
@@ -366,7 +366,7 @@ gen_set_field(union field *f, enum field_data_type type, int len, void *data)
 static void
 gen_init_pattern(struct tbuf *key_data, int cardinality, struct index_node *pattern_, void *arg)
 {
-	struct tree_node *pattern = (void *)pattern_;
+	struct index_node *pattern = (void *)pattern_;
 	struct gen_dtor *desc = arg;
 
 	if (cardinality > desc->cardinality || cardinality > nelem(desc->index_field))
