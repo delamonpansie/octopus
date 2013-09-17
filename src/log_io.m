@@ -353,7 +353,7 @@ restart:
 	if (good_offset != marker_offset)
 		say_warn("skipped %" PRIofft " bytes after %08" PRIofft " offset",
 			 marker_offset - good_offset, good_offset);
-	say_debug("magic found at %08" PRIofft, marker_offset);
+	say_debug("	magic found at %08" PRIofft, marker_offset);
 
 	row = [self read_row];
 

@@ -77,8 +77,10 @@ object_decr_ref(struct tnt_object *obj)
 	assert(obj->refs - 1 >= 0);
 	obj->refs--;
 
-	if (obj->refs == 0)
+	if (obj->refs == 0) {
+		say_debug("object_decr_ref(%p) free", obj);
 		sfree(obj);
+	}
 }
 
 void
