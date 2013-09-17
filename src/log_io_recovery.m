@@ -551,7 +551,7 @@ pull_wal:(id<XLogPullerAsync>)puller
 
 	while (!(row = [puller fetch_row]))
 		if ([puller recv] <= 0)
-			raise("unexpected eof");
+			raise("unexpected EOF from remote feeder");
 
 	do {
 		int tag = row->tag & TAG_MASK;
