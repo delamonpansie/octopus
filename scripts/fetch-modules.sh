@@ -22,7 +22,7 @@ git branch -a | sed 's/^..//' | grep '^mod_' | while read branch_name; do
     if [ -e mod/${branch_name##mod_} ]; then
 	continue;
     fi
-    if nofetch $branch_name ; then
+    if ! need_fetch $branch_name ; then
 	continue
     fi
 
