@@ -49,27 +49,33 @@ Recovery *recovery;
 - (void)
 apply:(struct tbuf *)op tag:(u16)tag
 {
-	/* row format is dead simple: mc_obj itself.
-	   for DELETE tag only key stored  */
+	/* row format is dead simple:
+	   STORE -> op is mc_obj itself.
+	   DELETE -> op is key array  */
 
 	struct tnt_object *obj;
-	struct mc_obj *m = op->ptr;
-	int mlen = mc_len(m);
+	struct mc_obj *m;
+	char *key;
 
 	switch(tag & TAG_MASK) {
 	case STORE:
-		obj = object_alloc(MC_OBJ, mlen);
+		m = op->ptr;
+		obj = object_alloc(MC_OBJ, mc_len(m));
 		object_incr_ref(obj);
-		memcpy(obj->data, m, mlen);
+		memcpy(obj->data, m, mc_len(m));
 		[mc_index replace:obj];
 		if (m->cas > cas)
 			cas = m->cas + 1;
 		break;
 	case DELETE:
-		obj = [mc_index find:m->data];
-		if (obj) {
-			[mc_index remove:obj];
-			object_decr_ref(obj);
+		while (tbuf_len(op) > 0) {
+			key = op->ptr;
+			obj = [mc_index find:key];
+			if (obj) {
+				[mc_index remove:obj];
+				object_decr_ref(obj);
+			}
+			tbuf_ltrim(op, strlen(key) + 1);
 		}
 		break;
 	default:
@@ -119,6 +125,9 @@ store(char *key, u32 exptime, u32 flags, u32 value_len, char *value)
 	int key_len = strlen(key) + 1;
 
 	struct tnt_object *old_obj = NULL, *obj = NULL;
+
+	if ([recovery is_replica])
+		return 0;
 
 	@try {
 		obj = object_alloc(MC_OBJ, sizeof(struct mc_obj) +
@@ -170,29 +179,94 @@ store(char *key, u32 exptime, u32 flags, u32 value_len, char *value)
 }
 
 int
-delete(char *key)
+delete(char **keys, int n)
 {
-	struct tnt_object *obj =  NULL;
-	@try {
-		obj = [mc_index find:key];
-		if (obj == NULL)
-			return 0;
-		object_lock(obj);
+	struct tnt_object **obj = palloc(fiber->pool, sizeof(*obj) * n);
+	int k = 0;
+	int ret = 0;
 
-		struct mc_obj *m = mc_obj(obj);
-		int mlen = sizeof(*m) + m->key_len;
-		if ([recovery submit:m len:mlen tag:DELETE|TAG_WAL] == 1) {
-			[mc_index remove:obj];
-			object_decr_ref(obj);
-			obj = NULL;
-			return 1;
+	if ([recovery is_replica])
+		return 0;
+
+	for (int i = 0; i < n; i++) {
+		obj[k] = [mc_index find:*keys++];
+		if (obj[k] == NULL)
+			continue;
+		@try {
+			object_lock(obj[k]);
 		}
+		@catch (id e) {
+			continue;
+		}
+		k++;
 	}
-	@catch (id e) {
-		object_unlock(obj);
+
+	if (k == 0)
+		return 0;
+
+	struct tbuf *b = tbuf_alloc(fiber->pool);
+	for (int i = 0; i < k; i++) {
+		struct mc_obj *m = mc_obj(obj[i]);
+		tbuf_append(b, m->data, m->key_len);
 	}
-	return 0;
+
+	if ([recovery submit:b->ptr len:tbuf_len(b) tag:DELETE|TAG_WAL] == 1) {
+		for (int i = 0; i < k; i++) {
+			[mc_index remove:obj[i]];
+			object_unlock(obj[i]);
+			object_decr_ref(obj[i]);
+		}
+		ret += k;
+	}
+	return ret;
 }
+
+#ifndef MEMCACHE_NO_EXPIRE
+static void
+memcached_expire(va_list va __attribute__((unused)))
+{
+	u32 i = 0;
+	say_info("memcached expire fiber started");
+	char **keys = malloc(cfg.memcached_expire_per_loop * sizeof(void *));
+
+	for (;;) {
+		double delay = (double)cfg.memcached_expire_per_loop *
+				       cfg.memcached_expire_full_sweep /
+			       ([mc_index slots] + 1);
+		if (delay > 1)
+			delay = 1;
+		fiber_sleep(delay);
+
+		say_info("expire loop");
+		if ([recovery is_replica])
+			continue;
+
+		if (i >= [mc_index slots])
+			i = 0;
+
+		int k = 0;
+		for (int j = 0; j < cfg.memcached_expire_per_loop; j++, i++) {
+			struct tnt_object *obj = [mc_index get:i];
+			if (obj == NULL || ghost(obj))
+				continue;
+
+			if (!expired(obj))
+				continue;
+
+			struct mc_obj *m = mc_obj(obj);
+
+			keys[k] = palloc(fiber->pool, m->key_len);
+			strcpy(keys[k], m->data);
+			k++;
+		}
+
+		delete(keys, k);
+		say_info("expired %i keys", k);
+
+		fiber_gc();
+	}
+}
+#endif
 
 
 void
@@ -244,7 +318,28 @@ flush_all(va_list ap)
 static void
 memcached_bound_to_primary(int fd)
 {
-	(void)fd;
+	if (fd < 0) {
+		if (!cfg.local_hot_standby)
+			panic("unable bind to %s", cfg.primary_addr);
+		return;
+	}
+
+	if (cfg.local_hot_standby) {
+		@try {
+			[recovery enable_local_writes];
+			set_proc_title("memcached:%s%s pri:%s adm:%s",
+				       [recovery status], custom_proc_title,
+				       cfg.primary_addr, cfg.admin_addr);
+		}
+		@catch (Error *e) {
+			panic("Recovery failure: %s", e->reason);
+		}
+	}
+
+#ifndef MEMCACHE_NO_EXPIRE
+	if (fd > 0 && fiber_create("memecached_expire", memcached_expire) == NULL)
+		panic("can't start the expire fiber");
+#endif
 }
 
 static void
@@ -366,20 +461,25 @@ init()
 static void
 print_row(struct tbuf *out, u16 tag, struct tbuf *op)
 {
-	struct mc_obj *m = op->ptr;
-	char *key = m->data;
-	char *value = m->data + m->key_len + m->value_len;
-
 	switch(tag & TAG_MASK) {
-		case STORE:
-			tbuf_printf(out, "STORE %.*s %.*s", m->key_len, key, m->value_len, value);
-			break;
-		case DELETE:
-			tbuf_printf(out, "DELETE %.*s", m->key_len, key);
-			break;
-		default:
-			tbuf_printf(out, "++UNKNOWN++");
-			return;
+	case STORE: {
+		struct mc_obj *m = op->ptr;
+		const char *key = m->data;
+		tbuf_printf(out, "STORE %.*s %.*s", m->key_len, key, m->value_len, mc_value(m));
+		break;
+	}
+
+	case DELETE:
+		tbuf_printf(out, "DELETE");
+		while (tbuf_len(op) > 0) {
+			const char *key = op->ptr;
+			tbuf_printf(out, " %s", key);
+			tbuf_ltrim(op, strlen(key) + 1);
+		}
+		break;
+	default:
+		tbuf_printf(out, "++UNKNOWN++");
+		return;
 	}
 }
 

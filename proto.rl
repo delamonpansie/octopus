@@ -256,7 +256,7 @@ memcached_dispatch(struct conn *c)
 			if (obj == NULL || ghost(obj) || expired(obj)) {
 				ADD_IOV_LITERAL("NOT_FOUND\r\n");
 			} else {
-				if (delete(key) == 1) {
+				if (delete(&key, 1)) {
 					ADD_IOV_LITERAL("DELETED\r\n");
 				} else {
 					ADD_IOV_LITERAL("SERVER_ERROR\r\n");

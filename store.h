@@ -40,10 +40,10 @@ struct mc_obj {
 	u32 exptime;
 	u32 flags;
 	u64 cas;
-	u16 key_len;
+	u16 key_len; /* including \0 */
 	u16 suffix_len;
 	u32 value_len;
-	char data[0]; /* key + '\n' + suffix + '\n' +  data + '\n' */
+	char data[0]; /* key + '\0' + suffix + '\n' +  data + '\n' */
 } __attribute__((packed));
 
 static inline struct mc_obj * __attribute__((always_inline))
@@ -73,7 +73,7 @@ expired(struct tnt_object *obj)
 }
 
 int store(char *key, u32 exptime, u32 flags, u32 value_len, char *value);
-int delete(char *key);
+int delete(char **keys, int n);
 void flush_all(va_list ap);
 
 extern struct mc_stats {
