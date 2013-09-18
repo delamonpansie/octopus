@@ -921,9 +921,6 @@ nop_hb_writer(va_list ap)
 	}
 
 	if (feeder_addr_ != NULL) {
-		if ([self respondsTo:@selector(apply:tag:)])
-			panic("No replication supported in legacy WAL mode");
-
 		feeder_addr = feeder_addr_;
 		say_info("configuring remote hot standby, WAL feeder %s", feeder_addr);
 	}
