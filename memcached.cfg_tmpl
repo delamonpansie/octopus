@@ -1,0 +1,11 @@
+#######################################################################
+# MEMCACHED
+#
+
+primary_addr = ""
+primary_port = 11211
+
+# these are required because of src/iproto.o
+# TODO: remove this dependency
+secondary_addr = ""
+secondary_port = 0
