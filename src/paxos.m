@@ -222,7 +222,7 @@ paxos_reply(struct paxos_request *req, enum paxos_msg_code code, u64 ballot)
 	struct conn *c = req->c;
 
 	if (c->state < CONNECTED) {
-		say_debug("not connected: ignoring fd:%i start:%i", c->fd, c->state);
+		say_debug("not connected: ignoring fd:%i state:%i", c->fd, c->state);
 		return;
 	}
 
@@ -868,7 +868,7 @@ retry:
 			return 0;
 		}
 		default:
-			assert(false);
+			abort();
 		}
 	}
 	if (reply_count == 0)
