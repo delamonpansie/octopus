@@ -620,6 +620,8 @@ append_row:(struct row_v12 *)row12 data:(const void *)data
 	u64 cookie = row12->cookie;
 
 	assert(wet_rows < nelem(wet_rows_offset));
+	assert(row12->len > 0);
+
 	if (tag == snap_tag) {
 		tag = (u16)-1;
 	} else if (tag == wal_tag) {
@@ -782,6 +784,8 @@ read_row
 append_row:(struct row_v12 *)row data:(const void *)data
 {
 	assert(row->tag & ~TAG_MASK);
+	assert(row->len > 0); /* fwrite() has funny behavior if size == 0 */
+
 	row->lsn = [self next_lsn];
 	row->scn = row->scn ?: row->lsn;
 	row->data_crc32c = crc32c(0, data, row->len);
