@@ -30,6 +30,7 @@
 
 struct palloc_pool;
 void *palloc(struct palloc_pool *pool, size_t size);
+void *prealloc(struct palloc_pool *pool, void *oldptr, size_t oldsize, size_t size);
 void *p0alloc(struct palloc_pool *pool, size_t size);
 void *palloca(struct palloc_pool *pool, size_t size, size_t align);
 void prelease(struct palloc_pool *pool);

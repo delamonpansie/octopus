@@ -323,6 +323,34 @@ palloc(struct palloc_pool *pool, size_t size)
 }
 
 void *
+prealloc(struct palloc_pool *pool, void *oldptr, size_t oldsize, size_t size)
+{
+	if (unlikely(size <= oldsize))
+		return size == 0 ? NULL : oldptr;
+	if (unlikely(oldptr == NULL))
+		return palloc(pool, size);
+
+	const size_t diff_size = size - oldsize;
+	struct chunk *chunk = TAILQ_FIRST(&pool->chunks);
+	if (likely(chunk != NULL && chunk->free >= diff_size &&
+		   oldptr + oldsize == chunk->brk - PALLOC_REDZONE)) {
+#ifdef PALLOC_STAT
+		stat_collect(stat_base, PALLOC_CALL, 1);
+		stat_collect(stat_base, PALLOC_BYTES, diff_size);
+#endif
+		poison_verify(chunk->brk, diff_size);
+		VALGRIND_MEMPOOL_CHANGE(chunk, oldptr, oldptr, size);
+		chunk->brk += diff_size;
+		chunk->free -= diff_size;
+		return oldptr;
+	} else {
+		void *ptr = palloc(pool, size);
+		memcpy(ptr, oldptr, oldsize);
+		return ptr;
+	}
+}
+
+void *
 p0alloc(struct palloc_pool *pool, size_t size)
 {
 	void *ptr;
