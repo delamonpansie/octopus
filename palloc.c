@@ -92,12 +92,13 @@
 
 #ifdef PALLOC_STAT
 #include <stat.h>
+#include <util.h>
 #define STAT(_)					\
-        _(PALLOC_CALL, 1)			\
+	_(PALLOC_CALL, 1)			\
 	_(PALLOC_BYTES, 2)
 
-ENUM(palloc_stat, STAT);
-STRS(palloc_stat, STAT);
+enum stat_op ENUM_INITIALIZER(STAT);
+static char * const stat_op[] = ENUM_STR_INITIALIZER(STAT);
 static __thread int stat_base;
 #endif
 
@@ -187,7 +188,7 @@ palloc_init(void)
 		return;
 
 #ifdef PALLOC_STAT
-	stat_base = stat_register(palloc_stat_strs, palloc_stat_MAX);
+	stat_base = stat_register(stat_op, nelem(stat_op));
 #endif
 
 	for (uint32_t i = 0; i < nelem(classes); i++)
