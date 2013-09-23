@@ -7,6 +7,7 @@ src-lua += src-lua/jit/v.lua
 src-lua += src-lua/jit/dump.lua
 src-lua += src-lua/jit/bc.lua
 src-lua += src-lua/jit/vmdef.lua
+src-lua += src-lua/jit/p.lua
 
 src-lua/jit/vmdef.lua: .luajit
 	@mkdir -p $(dir $@)
