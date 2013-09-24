@@ -96,8 +96,11 @@ store_compat(struct tbuf *op)
 	object_incr_ref(obj);
 	[mc_index replace:obj];
 
-	if (mc_obj(obj)->cas > cas)
-		cas = mc_obj(obj)->cas + 1;
+	struct mc_obj *m = mc_obj(obj);
+	if (m->cas > cas)
+		cas = m->cas + 1;
+
+	say_info("STORE(c)	%s", m->data);
 }
 
 - (void)
@@ -120,6 +123,7 @@ apply:(struct tbuf *)op tag:(u16)tag
 		[mc_index replace:obj];
 		if (m->cas > cas)
 			cas = m->cas + 1;
+		say_debug("STORE	%s", m->data);
 		break;
 	case DELETE:
 		while (tbuf_len(op) > 0) {
@@ -130,6 +134,7 @@ apply:(struct tbuf *)op tag:(u16)tag
 				object_decr_ref(obj);
 			}
 			tbuf_ltrim(op, strlen(key) + 1);
+			say_debug("DELETE	%s", key);
 		}
 		break;
 
@@ -155,6 +160,7 @@ apply:(struct tbuf *)op tag:(u16)tag
 				[mc_index remove:obj];
 				object_decr_ref(obj);
 			}
+			say_debug("DELETE(c)	%s", key);
 			break;
 		}
 		default:
