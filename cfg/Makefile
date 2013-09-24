@@ -4,6 +4,8 @@ obj += cfg/octopus.o
 
 no-extra-warns += cfg/octopus.o
 no-extra-warns += cfg/prscfg.o
+# no warns at all: it complains even with -Wall
+cfg/octopus.o: CFLAGS_EXTRA := $(filter-out -W%,$(CFLAGS_EXTRA))
 
 cfg/warning.o: cfg/prscfg.h
 
