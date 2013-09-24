@@ -518,6 +518,9 @@ init()
 				     flags:init_storage ? RECOVER_READONLY : 0
 				 txn_class:nil];
 
+	if (init_storage)
+		return;
+
 	i64 local_lsn = [recovery recover_start];
 	if (local_lsn == 0) {
 		if (!cfg.wal_feeder_addr) {
