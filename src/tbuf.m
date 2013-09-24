@@ -82,12 +82,9 @@ tbuf_ensure_resize(struct tbuf *e, size_t required)
 	while (new_size - tbuf_len(e) < required)
 		new_size *= 2;
 
-	void *p = palloc(e->pool, new_size);
+	void *p = prealloc(e->pool, e->ptr, tbuf_size(e), new_size);
 	int len = tbuf_len(e);
 
-	poison(p, new_size);
-	memcpy(p, e->ptr, len);
-	poison(e->ptr, len);
 	e->ptr = p;
 	e->end = p + len;
 	e->free = new_size - len;
