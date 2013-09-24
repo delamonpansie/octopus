@@ -31,6 +31,7 @@
 #import <say.h>
 #include <stat.h>
 #include <salloc.h>
+#import <pickle.h>
 
 #include <sysexits.h>
 
@@ -42,9 +43,62 @@ static u64 cas;
 
 struct mc_stats mc_stats;
 
+struct tnt_object *
+mc_alloc(char *key, u32 exptime, u32 flags, u32 value_len, char *value)
+{
+	char suffix[43];
+	sprintf(suffix, " %"PRIu32" %"PRIu32"\r\n", flags, value_len);
+	int suffix_len = strlen(suffix);
+	int key_len = strlen(key) + 1;
+
+	struct tnt_object *obj = NULL;
+
+	obj = object_alloc(MC_OBJ, sizeof(struct mc_obj) +
+			   key_len + suffix_len + value_len);
+
+	struct mc_obj *m = mc_obj(obj);
+	*m = (struct mc_obj){ .exptime = exptime,
+			      .flags = flags,
+			      .cas = ++cas,
+			      .key_len = key_len,
+			      .suffix_len = suffix_len,
+			      .value_len = value_len };
+	memcpy(m->data, key, key_len);
+	memcpy(m->data + key_len, suffix, suffix_len);
+	memcpy(m->data + key_len + suffix_len, value, value_len);
+	return obj;
+}
+
+
 enum tag { STORE = user_tag, DELETE };
 Recovery *recovery;
 @implementation Recovery (Memcached)
+
+static void
+store_compat(struct tbuf *op)
+{
+	int key_len = read_varint32(op);
+	char *key = read_bytes(op, key_len);
+
+	int meta_len = read_varint32(op);
+	assert(meta_len == 16);
+	u32 exptime = read_u32(op);
+	u32 flags = read_u32(op);
+	u64 cas = read_u64(op);
+
+	int suffix_len = read_varint32(op);
+	read_bytes(op, suffix_len);
+
+	int value_len = read_varint32(op);
+	char *value = read_bytes(op, value_len);
+
+	struct tnt_object *obj = mc_alloc(key, exptime, flags, value_len, value);
+	object_incr_ref(obj);
+	[mc_index replace:obj];
+
+	if (mc_obj(obj)->cas > cas)
+		cas = mc_obj(obj)->cas + 1;
+}
 
 - (void)
 apply:(struct tbuf *)op tag:(u16)tag
@@ -78,6 +132,44 @@ apply:(struct tbuf *)op tag:(u16)tag
 			tbuf_ltrim(op, strlen(key) + 1);
 		}
 		break;
+
+	/* compat with box emulation */
+	case wal_tag: {
+		u16 code = read_u16(op);
+		read_u32(op); /* obj_space */
+		switch(code) {
+		case 13: {
+			read_u32(op); /* flags */
+			read_u32(op); /* cardinality */
+			store_compat(op);
+			break;
+		}
+		case 20: {
+			read_u32(op); /* key cardinality */
+			int key_len = read_varint32(op);
+			char *key = palloc(fiber->pool, key_len + 1);
+			memcpy(key, op->ptr, key_len);
+			key[key_len] = 0;
+			obj = [mc_index find:key];
+			if (obj) {
+				[mc_index remove:obj];
+				object_decr_ref(obj);
+			}
+			break;
+		}
+		default:
+			abort();
+		}
+		assert(tbuf_len(op) == 0);
+		break;
+	}
+	case snap_tag:
+		read_u32(op); /* obj_space */
+		read_u32(op); /* cardinality */
+		read_u32(op);  /* data_size */
+		store_compat(op);
+		break;
+
 	default:
 		break;
 	}
@@ -119,30 +211,14 @@ snapshot_write_rows: (XLog *)l
 int
 store(char *key, u32 exptime, u32 flags, u32 value_len, char *value)
 {
-	char suffix[43];
-	sprintf(suffix, " %"PRIu32" %"PRIu32"\r\n", flags, value_len);
-	int suffix_len = strlen(suffix);
-	int key_len = strlen(key) + 1;
-
 	struct tnt_object *old_obj = NULL, *obj = NULL;
 
 	if ([recovery is_replica])
 		return 0;
 
 	@try {
-		obj = object_alloc(MC_OBJ, sizeof(struct mc_obj) +
-				   key_len + suffix_len + value_len);
-
+		obj = mc_alloc(key, exptime, flags, value_len, value);
 		struct mc_obj *m = mc_obj(obj);
-		*m = (struct mc_obj){ .exptime = exptime,
-					     .flags = flags,
-					     .cas = ++cas,
-					     .key_len = key_len,
-					     .suffix_len = suffix_len,
-					     .value_len = value_len };
-		memcpy(m->data, key, key_len);
-		memcpy(m->data + key_len, suffix, suffix_len);
-		memcpy(m->data + key_len + suffix_len, value, value_len);
 
 		old_obj = [mc_index find_by_obj:obj];
 		if (old_obj) {
@@ -476,6 +552,9 @@ print_row(struct tbuf *out, u16 tag, struct tbuf *op)
 			tbuf_printf(out, " %s", key);
 			tbuf_ltrim(op, strlen(key) + 1);
 		}
+		break;
+
+	case snap_final_tag:
 		break;
 	default:
 		tbuf_printf(out, "++UNKNOWN++");
