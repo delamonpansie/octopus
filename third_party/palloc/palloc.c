@@ -44,6 +44,7 @@
 # define VALGRIND_DESTROY_MEMPOOL(pool) (void)0
 # define VALGRIND_MEMPOOL_ALLOC(pool, addr, size) (void)0
 # define VALGRIND_MEMPOOL_TRIM(pool, addr, size) (void)0
+# define VALGRIND_MEMPOOL_CHANGE(pool, addrA, addrB, size) (void)0
 #endif
 
 #if HAVE_THIRD_PARTY_QUEUE_H
@@ -92,12 +93,13 @@
 
 #ifdef PALLOC_STAT
 #include <stat.h>
+#include <util.h>
 #define STAT(_)					\
-        _(PALLOC_CALL, 1)			\
+	_(PALLOC_CALL, 1)			\
 	_(PALLOC_BYTES, 2)
 
-ENUM(palloc_stat, STAT);
-STRS(palloc_stat, STAT);
+enum stat_op ENUM_INITIALIZER(STAT);
+static char * const stat_op[] = ENUM_STR_INITIALIZER(STAT);
 static __thread int stat_base;
 #endif
 
@@ -187,7 +189,7 @@ palloc_init(void)
 		return;
 
 #ifdef PALLOC_STAT
-	stat_base = stat_register(palloc_stat_strs, palloc_stat_MAX);
+	stat_base = stat_register(stat_op, nelem(stat_op));
 #endif
 
 	for (uint32_t i = 0; i < nelem(classes); i++)
@@ -198,15 +200,29 @@ palloc_init(void)
 }
 
 static void
-poison_chunk(struct chunk *chunk)
+poison_chunk(const struct chunk *chunk)
 {
 	(void)chunk;
 	assert(chunk->magic == chunk_magic);
-#ifdef PALLOC_POISON
-	(void)VALGRIND_MAKE_MEM_DEFINED((void *)chunk + sizeof(struct chunk), chunk->data_size);
-	memset((void *)chunk + sizeof(struct chunk), poison_char, chunk->data_size);
+#if !defined(NDEBUG) && defined(PALLOC_POISON)
+	(void)VALGRIND_MAKE_MEM_DEFINED(chunk->brk, chunk->free);
+	memset(chunk->brk, poison_char, chunk->free);
+	(void)VALGRIND_MAKE_MEM_NOACCESS(chunk->brk, chunk->free);
 #endif
-	(void)VALGRIND_MAKE_MEM_NOACCESS((void *)chunk + sizeof(struct chunk), chunk->data_size);
+}
+
+static void
+poison_verify(const char *ptr, size_t size)
+{
+#if !defined(NDEBUG) && defined(PALLOC_POISON)
+	(void)VALGRIND_MAKE_MEM_DEFINED(ptr, size);
+	for (int i = 0; i < (size); i++)
+		assert(ptr[i] == poison_char);
+	(void)VALGRIND_MAKE_MEM_NOACCESS(ptr, size);
+#else
+	(void)ptr;
+	(void)size;
+#endif
 }
 
 static struct chunk *
@@ -258,21 +274,27 @@ found:
 	assert(chunk != NULL && chunk->magic == chunk_magic);
 	TAILQ_INSERT_HEAD(&pool->chunks, chunk, busy_link);
 	pool->allocated += chunk->data_size;
+	VALGRIND_CREATE_MEMPOOL(chunk, PALLOC_REDZONE, 0);
 	return chunk;
 }
 
 void * __regparam
 palloc_slow_path(struct palloc_pool *pool, size_t size)
 {
+	const size_t rz_size = size + PALLOC_REDZONE * 2;
 	struct chunk *chunk;
-	chunk = next_chunk_for(pool, size);
+	void *ptr;
+
+	chunk = next_chunk_for(pool, rz_size);
 	if (chunk == NULL)
 		abort();
+	assert(chunk->free >= rz_size);
 
-	assert(chunk->free >= size);
-	void *ptr = chunk->brk;
-	chunk->brk += size;
-	chunk->free -= size;
+	poison_verify(chunk->brk, rz_size);
+	ptr = chunk->brk + PALLOC_REDZONE;
+	VALGRIND_MEMPOOL_ALLOC(chunk, ptr, size);
+	chunk->brk += rz_size;
+	chunk->free -= rz_size;
 	return ptr;
 }
 
@@ -289,23 +311,43 @@ palloc(struct palloc_pool *pool, size_t size)
 #endif
 
 	if (likely(chunk != NULL && chunk->free >= rz_size)) {
-		ptr = chunk->brk;
+		poison_verify(chunk->brk, rz_size);
+		ptr = chunk->brk + PALLOC_REDZONE;
+		VALGRIND_MEMPOOL_ALLOC(chunk, ptr, size);
 		chunk->brk += rz_size;
 		chunk->free -= rz_size;
+		return ptr;
 	} else {
-		ptr = palloc_slow_path(pool, rz_size);
+		return palloc_slow_path(pool, size);
 	}
+}
 
-#if !defined(NDEBUG) && defined(PALLOC_POISON)
-	const char *data_byte = ptr + PALLOC_REDZONE;
-	(void)VALGRIND_MAKE_MEM_DEFINED(data_byte, size);
-	for (int i = 0; i < size; i++)
-		assert(data_byte[i] == poison_char);
-	(void)VALGRIND_MAKE_MEM_UNDEFINED(data_byte, size);
+void *
+prealloc(struct palloc_pool *pool, void *oldptr, size_t oldsize, size_t size)
+{
+	if (unlikely(size <= oldsize))
+		return size == 0 ? NULL : oldptr;
+	if (unlikely(oldptr == NULL))
+		return palloc(pool, size);
+
+	const size_t diff_size = size - oldsize;
+	struct chunk *chunk = TAILQ_FIRST(&pool->chunks);
+	if (likely(chunk != NULL && chunk->free >= diff_size &&
+		   oldptr + oldsize == chunk->brk - PALLOC_REDZONE)) {
+#ifdef PALLOC_STAT
+		stat_collect(stat_base, PALLOC_CALL, 1);
+		stat_collect(stat_base, PALLOC_BYTES, diff_size);
 #endif
-
-	VALGRIND_MEMPOOL_ALLOC(pool, ptr + PALLOC_REDZONE, size);
-	return ptr + PALLOC_REDZONE;
+		poison_verify(chunk->brk, diff_size);
+		VALGRIND_MEMPOOL_CHANGE(chunk, oldptr, oldptr, size);
+		chunk->brk += diff_size;
+		chunk->free -= diff_size;
+		return oldptr;
+	} else {
+		void *ptr = palloc(pool, size);
+		memcpy(ptr, oldptr, oldsize);
+		return ptr;
+	}
 }
 
 void *
@@ -330,7 +372,7 @@ palloca(struct palloc_pool *pool, size_t size, size_t align)
 static void
 release_chunk(struct chunk *chunk)
 {
-	(void)VALGRIND_MAKE_MEM_UNDEFINED((void *)chunk + sizeof(struct chunk), chunk->data_size);
+	VALGRIND_DESTROY_MEMPOOL(chunk);
 	if (chunk->class->size != malloc_fallback) {
 		chunk->free = chunk->data_size;
 		chunk->brk = (void *)chunk + sizeof(struct chunk);
@@ -378,7 +420,6 @@ prelease(struct palloc_pool *pool)
 {
 	release_chunks(&pool->chunks);
 	TAILQ_INIT(&pool->chunks);
-	VALGRIND_MEMPOOL_TRIM(pool, NULL, 0);
 	pool->allocated = 0;
 }
 
@@ -402,7 +443,6 @@ palloc_create_pool(const char *name)
 	pool->name = name;
 	TAILQ_INIT(&pool->chunks);
 	SLIST_INSERT_HEAD(&pools, pool, link);
-	VALGRIND_CREATE_MEMPOOL(pool, PALLOC_REDZONE, 0);
 	return pool;
 }
 
@@ -411,7 +451,6 @@ palloc_destroy_pool(struct palloc_pool *pool)
 {
 	SLIST_REMOVE(&pools, pool, palloc_pool, link);
 	prelease(pool);
-	VALGRIND_DESTROY_MEMPOOL(pool);
 	free(pool);
 }
 
@@ -458,13 +497,6 @@ palloc_gc(struct palloc_pool *pool)
 
 	TAILQ_INIT(&pool->chunks);
 	pool->allocated = 0;
-	VALGRIND_MEMPOOL_TRIM(pool, NULL, 0);
-
-#ifndef NVALGRIND
-	struct chunk *chunk;
-	TAILQ_FOREACH(chunk, &old_chunks, busy_link)
-		(void)VALGRIND_MAKE_MEM_DEFINED((void *)chunk + sizeof(struct chunk),  chunk->data_size);
-#endif
 
 	struct gc_list new_list = SLIST_HEAD_INITIALIZER(list);
 	struct gc_root *old, *new;
@@ -523,11 +555,12 @@ palloc_cutoff(struct palloc_pool *pool)
 
 	assert(root->chunk_free >= chunk->free);
 	chunk->brk -= root->chunk_free - chunk->free;
-	(void)VALGRIND_MAKE_MEM_UNDEFINED(chunk->brk, root->chunk_free - chunk->free);
 	chunk->free = root->chunk_free;
+	pool->allocated = root->allocated;
 
 	SLIST_REMOVE_HEAD(&pool->cut_list, link);
-	pool->allocated = root->allocated;
+	poison_chunk(chunk);
+	VALGRIND_MEMPOOL_TRIM(chunk, (void *)chunk + sizeof(*chunk), chunk->data_size - chunk->free);
 }
 
 #ifdef OCTOPUS
