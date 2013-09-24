@@ -60,7 +60,6 @@ static struct service box_primary, box_secondary;
 static int stat_base;
 static char * const ops[] = ENUM_STR_INITIALIZER(MESSAGES);
 
-const int MEMCACHED_OBJECT_SPACE = 23;
 char *primary_addr;
 struct object_space *object_space_registry;
 const int object_space_count = 256;
@@ -1028,13 +1027,9 @@ title(const char *fmt, ...)
 	vsnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
 
-	if (cfg.memcached)
-		set_proc_title("memcached:%s%s pri:%s adm:%s",
-			       buf, custom_proc_title, cfg.primary_addr, cfg.admin_addr);
-	else
-		set_proc_title("box:%s%s pri:%s sec:%s adm:%s",
-			       buf, custom_proc_title,
-			       cfg.primary_addr, cfg.secondary_addr, cfg.admin_addr);
+	set_proc_title("box:%s%s pri:%s sec:%s adm:%s",
+		       buf, custom_proc_title,
+		       cfg.primary_addr, cfg.secondary_addr, cfg.admin_addr);
 }
 
 static void
@@ -1154,22 +1149,18 @@ box_service_register(struct service *s)
 static void
 initialize_service()
 {
-	if (cfg.memcached != 0) {
-		memcached_init();
-	} else {
-		tcp_service(&box_primary, cfg.primary_addr, box_bound_to_primary, iproto_wakeup_workers);
-		box_service_register(&box_primary);
+	tcp_service(&box_primary, cfg.primary_addr, box_bound_to_primary, iproto_wakeup_workers);
+	box_service_register(&box_primary);
 
-		for (int i = 0; i < MAX(1, cfg.wal_writer_inbox_size); i++)
-			fiber_create("box_worker", iproto_worker, &box_primary);
+	for (int i = 0; i < MAX(1, cfg.wal_writer_inbox_size); i++)
+		fiber_create("box_worker", iproto_worker, &box_primary);
 
-		if (cfg.secondary_addr != NULL && strcmp(cfg.secondary_addr, cfg.primary_addr) != 0) {
-			tcp_service(&box_secondary, cfg.secondary_addr, NULL, iproto_wakeup_workers);
-			box_service_register(&box_secondary);
-			fiber_create("box_secondary_worker", iproto_worker, &box_secondary);
-		}
-		say_info("(silver)box initialized (%i workers)", cfg.wal_writer_inbox_size);
+	if (cfg.secondary_addr != NULL && strcmp(cfg.secondary_addr, cfg.primary_addr) != 0) {
+		tcp_service(&box_secondary, cfg.secondary_addr, NULL, iproto_wakeup_workers);
+		box_service_register(&box_secondary);
+		fiber_create("box_secondary_worker", iproto_worker, &box_secondary);
 	}
+	say_info("(silver)box initialized (%i workers)", cfg.wal_writer_inbox_size);
 }
 
 
@@ -1456,26 +1447,12 @@ init(void)
 	for (int i = 0; i < object_space_count; i++)
 		object_space_registry[i].n = i;
 
-	if (cfg.memcached != 0) {
-		if (cfg.secondary_addr != NULL)
-			panic("in memcached mode secondary_addr must be NULL");
-		if (cfg.wal_feeder_addr)
-			panic("remote replication is not supported in memcached mode.");
-		if (cfg.paxos_enabled)
-			panic("paxos failover is not supported in memcached mode");
-	}
-
 	title("loading");
 	if (cfg.paxos_enabled) {
 		if (cfg.wal_feeder_addr)
 			panic("wal_feeder_addr is incompatible with paxos");
 		if (cfg.local_hot_standby)
 			panic("wal_hot_standby is incompatible with paxos");
-	}
-
-	if (cfg.memcached) {
-		cfg.run_crc_delay = 0;
-		cfg.nop_hb_delay = 0;
 	}
 
 	recovery = [[Recovery alloc] init_snap_dir:cfg.snap_dir
@@ -1486,34 +1463,6 @@ init(void)
 					 txn_class:[BoxTxn class]];
 
 	/* initialize hashes _after_ starting wal writer */
-
-	if (cfg.memcached != 0) {
-		int n = cfg.memcached_object_space > 0 ? cfg.memcached_object_space : MEMCACHED_OBJECT_SPACE;
-
-		cfg.object_space = xcalloc(n + 2, sizeof(cfg.object_space[0]));
-		for (u32 i = 0; i <= n; ++i) {
-			cfg.object_space[i] = xcalloc(1, sizeof(cfg.object_space[0][0]));
-			cfg.object_space[i]->enabled = false;
-		}
-
-		cfg.object_space[n]->enabled = true;
-		cfg.object_space[n]->cardinality = 4;
-		cfg.object_space[n]->estimated_rows = 0;
-		cfg.object_space[n]->index = xcalloc(2, sizeof(cfg.object_space[n]->index[0]));
-		cfg.object_space[n]->index[0] = xcalloc(1, sizeof(cfg.object_space[n]->index[0][0]));
-		cfg.object_space[n]->index[1] = NULL;
-		cfg.object_space[n]->index[0]->type = "HASH";
-		cfg.object_space[n]->index[0]->unique = 1;
-		cfg.object_space[n]->index[0]->key_field =
-			xcalloc(2, sizeof(cfg.object_space[n]->index[0]->key_field[0]));
-		cfg.object_space[n]->index[0]->key_field[0] =
-			xcalloc(1, sizeof(cfg.object_space[n]->index[0]->key_field[0][0]));
-		cfg.object_space[n]->index[0]->key_field[1] = NULL;
-		cfg.object_space[n]->index[0]->key_field[0]->fieldno = 0;
-		cfg.object_space[n]->index[0]->key_field[0]->type = "STR";
-
-		memcached_index = (LStringHash *)object_space_registry[n].index[0];
-	}
 
 	configure();
 

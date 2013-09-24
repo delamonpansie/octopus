@@ -1,14 +1,6 @@
 #######################################################################
 # BOX
 #
-# Memcached emulation is enabled if memcached == 1
-memcached=0, ro
-# object space used for memcached emulation
-memcached_object_space=23, ro
-# maximum rows to consider per expire loop iteration
-memcached_expire_per_loop=1024
-# octopus will try iterate all rows within this time
-memcached_expire_full_sweep=3600
 
 object_space = [
   {
