@@ -16,4 +16,15 @@ endif
 cfg_tmpl += cfg/log_io.cfg_tmpl
 cfg_tmpl += mod/memcached/memcached.cfg_tmpl
 
+
+test: test_memcached $(binary)
+
+00000000000000000001.snap:
+	./$(binary) -c mod/memcached/test/octopus.cfg -i
+
+test_memcached: 00000000000000000001.snap
+	./$(binary) -D -c mod/memcached/test/octopus.cfg && sleep 1
+	T_MEMD_USE_DAEMON="127.0.0.1:11211" prove mod/memcached/test/memcached/t
+	kill `cat octopus.pid`
+
 -include ../../jumproot.mk
