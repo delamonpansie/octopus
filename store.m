@@ -319,7 +319,7 @@ memcached_expire(va_list va __attribute__((unused)))
 			delay = 1;
 		fiber_sleep(delay);
 
-		say_info("expire loop");
+		say_debug("expire loop");
 		if ([recovery is_replica])
 			continue;
 
@@ -343,7 +343,7 @@ memcached_expire(va_list va __attribute__((unused)))
 		}
 
 		delete(keys, k);
-		say_info("expired %i keys", k);
+		say_debug("expired %i keys", k);
 
 		fiber_gc();
 	}
