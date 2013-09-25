@@ -92,7 +92,7 @@ $(binary): $(obj) .luajit
 	@$(MAKE) -C $(srcdir)/third_party/luajit/src CC="$(CC)" E="$(E)" Q="$(Q)" \
 		CCDEBUG=$(filter -g%,$(CFLAGS)) BUILDMODE=static \
 		TARGET_CFLAGS='-funwind-tables -DLUAJIT_UNWIND_EXTERNAL' \
-		libluajit.a jit/vmdef.lua
+		libluajit.a jit/vmdef.lua luajit
 	@touch .luajit
 
 $(obj): Makefile $(sub-Makefile)
@@ -111,6 +111,14 @@ $(filter-out $(no-extra-warns),$(obj)): CFLAGS_EXTRA += $(CFLAGS_WARNS)
 	@mkdir -p $(dir $@)
 	$(E) "CC	$@"
 	$(Q)$(CC) $(CPPFLAGS) $(CFLAGS_EXTRA) $(CFLAGS) -c $< -o $@
+
+%.o: %.lua .luajit
+	@mkdir -p $(dir $@)
+	$(E) "LUAJIT	$@"
+	$(Q)$(srcdir)/third_party/luajit/src/luajit -b \
+		$(if $(filter -g%,$(CFLAGS)),-g) \
+		-n $(subst /,.,$(basename $(lastword $(subst src-lua/, ,$<)))) \
+		$< $@
 
 ifeq (1,$(HAVE_RAGEL))
 %.m: %.rl
@@ -171,11 +179,6 @@ $(foreach mod,$(all_modules),mod/$(mod)/$(mod)_version.h):
 
 dist += $(foreach mod,$(all_modules),mod/$(mod)/$(mod)_version.h)
 endif
-
-scripts/stringify: scripts/stringify.c
-	@mkdir -p $(dir $@)
-	$(Q)$(CC) $< -o $@
-	$(E) "CC	$@"
 
 .PHONY: distclean clean
 clean:

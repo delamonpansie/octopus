@@ -370,29 +370,6 @@ luaT_error(struct lua_State *L)
 
 
 static int
-luaT_static_module(lua_State *L)
-{
-    const char *_name = luaL_checkstring(L, 1);
-    char *name = alloca(strlen(_name) + 1);
-    strcpy(name, _name);
-
-    for (char *p = name; *p; p++)
-	    if (*p == '.')
-		    *p = '_';
-
-    for (struct lua_src *s = lua_src; s->name; s++)
-	    if (strcmp(name, s->name) == 0) {
-		    if (luaL_loadbuffer(L, s->start, s->size, name) != 0)
-			    panic("luaL_loadbuffer: %s", lua_tostring(L, 2));
-		    return 1;
-	    }
-
-
-    lua_pushnil(L);
-    return 1;
-}
-
-static int
 luaT_os_ctime(lua_State *L)
 {
 	const char *filename = luaL_checkstring(L, 1);
@@ -416,13 +393,6 @@ luaT_init()
 	luaL_openlibs(L);
 	lua_register(L, "print", luaT_print);
 
-	lua_getglobal(L, "package");
-	lua_getfield(L, -1, "loaders");
-	lua_pushinteger(L, lua_objlen(L, -1));
-	lua_pushcfunction(L, luaT_static_module);
-	lua_settable(L, -3);
-	lua_pop(L, 2);
-
 	luaT_openfiber(L);
 
         lua_getglobal(L, "package");
@@ -444,14 +414,9 @@ luaT_init()
 		panic("lua_pcall() failed: %s", lua_tostring(L, -1));
 
 	/* autoload bundled graphite module */
-	for (struct lua_src *s = lua_src; s->name; s++) {
-		if (strcmp("graphite", s->name) == 0) {
-			lua_getglobal(L, "require");
-			lua_pushliteral(L, "graphite");
-			lua_pcall(L, 1, 0, 0);
-			break;
-		}
-	}
+	lua_getglobal(L, "require");
+	lua_pushliteral(L, "graphite");
+	lua_pcall(L, 1, 0, 0);
 
 	lua_atpanic(L, luaT_error);
 }

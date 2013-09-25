@@ -18,6 +18,12 @@ function print (...)
         end
 end
 
+-- prefer external files over bundled ones
+package.loaders[2], package.loaders[1] = package.loaders[1], package.loaders[2]
+-- .so exensions are currently unused - do not load them.
+package.loaders[3] = nil
+package.loaders[4] = nil
+
 function reloadfile(filename)
         if not filename then
                 error("reloadfile: bad arguments")

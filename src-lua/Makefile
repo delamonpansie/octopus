@@ -1,13 +1,13 @@
-src-lua += src-lua/prelude.lua
-src-lua += src-lua/index.lua
-src-lua += src-lua/stat.lua
-src-lua += src-lua/net.lua
-src-lua += src-lua/net_cdef.lua
-src-lua += src-lua/jit/v.lua
-src-lua += src-lua/jit/dump.lua
-src-lua += src-lua/jit/bc.lua
-src-lua += src-lua/jit/vmdef.lua
-src-lua += src-lua/jit/p.lua
+obj += src-lua/prelude.o
+obj += src-lua/index.o
+obj += src-lua/stat.o
+obj += src-lua/net.o
+obj += src-lua/net_cdef.o
+obj += src-lua/jit/v.o
+obj += src-lua/jit/dump.o
+obj += src-lua/jit/bc.o
+obj += src-lua/jit/vmdef.o
+obj += src-lua/jit/p.o
 
 src-lua/jit/vmdef.lua: .luajit
 	@mkdir -p $(dir $@)
@@ -31,17 +31,8 @@ src-lua/net_cdef.lua: include/octopus_ev.h include/net_io.h include/iproto_def.h
 	$(Q)echo "]]" >> $@
 
 ifneq (,$(GRAPHITE_ADDR))
-src-lua += src-lua/graphite.lua
+obj += src-lua/graphite.o
 src-lua/graphite.lua: extra/graphite.lua
 	$(E) "SED	$@"
 	$(Q)$(SED) 's/127\.0\.0\.1:2003/$(GRAPHITE_ADDR)/' < $^ > $@
 endif
-
-obj += src-lua/registry.o
-dist-clean += src-lua/registry.m
-
-src-lua/registry.m: scripts/stringify $(src-lua) Makefile
-	@mkdir -p $(dir $@)
-	$(E) "GEN	$@"
-	$(Q)sh $(srcdir)/scripts/gen-lua-registry.sh $< $(filter %.lua,$^) > $@.tmp
-	$(Q)mv $@.tmp $@
