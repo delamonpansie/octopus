@@ -11,11 +11,11 @@ obj += third_party/qsort_arg.o
 
 mod/box/box.o: mod/box/box_version.h
 
-src-lua += mod/box/src-lua/box.lua
-src-lua += mod/box/src-lua/box_prelude.lua
-src-lua += mod/box/src-lua/box/object_space_info.lua
-src-lua += mod/box/src-lua/box/example_proc.lua
-src-lua += mod/box/src-lua/box/expire.lua
+obj += mod/box/src-lua/box.o
+obj += mod/box/src-lua/box_prelude.o
+obj += mod/box/src-lua/box/object_space_info.o
+obj += mod/box/src-lua/box/example_proc.o
+obj += mod/box/src-lua/box/expire.o
 
 cfg_tmpl += cfg/iproto.cfg_tmpl
 cfg_tmpl += cfg/log_io.cfg_tmpl
