@@ -115,7 +115,8 @@ $(filter-out $(no-extra-warns),$(obj)): CFLAGS_EXTRA += $(CFLAGS_WARNS)
 %.o: %.lua .luajit
 	@mkdir -p $(dir $@)
 	$(E) "LUAJIT	$@"
-	$(Q)$(srcdir)/third_party/luajit/src/luajit -b \
+	$(Q) LUA_PATH='$(srcdir)/third_party/luajit/src/?.lua' \
+	     $(srcdir)/third_party/luajit/src/luajit -b \
 		$(if $(filter -g%,$(CFLAGS)),-g) \
 		-n $(subst /,.,$(basename $(lastword $(subst src-lua/, ,$<)))) \
 		$< $@
