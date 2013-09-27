@@ -199,6 +199,9 @@
 /* Define if you have GNU ObjC runtime */
 #undef OBJC_GNU_RUNTIME
 
+/* A string containing C compiler and patform info */
+#undef OCT_BUILD_INFO
+
 /* Define to the address where bug reports for this package should be sent. */
 #undef PACKAGE_BUGREPORT
 

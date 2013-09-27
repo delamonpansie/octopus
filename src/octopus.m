@@ -62,6 +62,7 @@
 #if HAVE_SYS_PRCTL_H
 # include <sys/prctl.h>
 #endif
+#include <sys/utsname.h>
 
 #define DEFAULT_CFG_FILENAME "octopus.cfg"
 const char *cfg_filename = DEFAULT_CFG_FILENAME;
@@ -757,6 +758,15 @@ octopus(int argc, char **argv)
 	module(NULL)->init();
 #elif defined(STORAGE)
 	say_info("octopus version: %s", octopus_version());
+	say_info("%s", OCT_BUILD_INFO);
+	struct utsname utsn;
+	if (uname(&utsn) == 0)
+		say_info("running on %s %s %s %s",
+			 utsn.nodename, utsn.sysname,
+			 utsn.release, utsn.machine);
+	else
+		say_syserror("uname");
+
 	signal_init();
 	ev_set_syserr_cb(ev_panic);
 	ev_default_loop(ev_recommended_backends() | EVFLAG_SIGNALFD);

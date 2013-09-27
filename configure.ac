@@ -233,6 +233,20 @@ AC_CC_FLAG_CHECK([-Wl,--export-dynamic])
 AS_IF([test $ac_cv_Wl___export_dynamic == yes],
       [LDFLAGS="-Wl,--export-dynamic $LDFLAGS"])
 
+host="`uname -n` `uname -s` `uname -r` `uname -m`"
+if test x"$GCC" = x"yes" ; then
+  cc_string=`${CC} --version | sed q`
+  case $cc_string in [[A-Za-z]]*) ;; *) cc_string="GCC $cc_string";; esac
+elif test x"$SUN_STUDIO_CC" = x"yes" ; then
+  cc_string=`${CC} -V 2>&1 | sed q`
+else
+  cc_string=$CC
+fi
+
+AC_DEFINE_UNQUOTED(OCT_BUILD_INFO,
+                   ["compiled by $cc_string on $host"],
+                   [A string containing C compiler and patform info])
+
 AC_ARG_ENABLE([coverage],
               [AS_HELP_STRING([--enable-coverage],
                               [compile with code coverage])],
