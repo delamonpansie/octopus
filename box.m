@@ -677,6 +677,10 @@ txn_common_parser(BoxTxn *txn, struct tbuf *data)
 	if (!object_space_registry[n].enabled)
 		iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "object_space %i is not enabled", n);
 
+	if (object_space_registry[n].ignored)
+		/* txn->object_space == NULL means this txn will be ignored */
+		return;
+
 	txn->object_space = &object_space_registry[n];
 	txn->index = txn->object_space->index[0];
 }
@@ -688,6 +692,9 @@ box_prepare_update(BoxTxn *txn)
 	struct tbuf data = TBUF(txn->body, txn->body_len, NULL);
 	say_debug("box_prepare_update(%i)", txn->op);
 	txn_common_parser(txn, &data);
+
+	if (!txn->object_space)
+		return;
 
 	switch (txn->op) {
 	case INSERT:
@@ -786,6 +793,10 @@ box_cb(struct iproto *request, struct conn *c)
 		[txn prepare:request->msg_code
 			data:request->data
 			 len:request->data_len];
+
+		if (!txn->object_space)
+			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "ignored object space");
+
 		if ([recovery submit:txn] != 1)
 			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
 		[txn commit];
@@ -983,6 +994,7 @@ configure(void)
 		if (!object_space_registry[i].enabled)
 			continue;
 
+		object_space_registry[i].ignored = !!cfg.object_space[i]->ignored;
 		object_space_registry[i].cardinality = cfg.object_space[i]->cardinality;
 
 		if (cfg.object_space[i]->index == NULL)
@@ -1219,6 +1231,10 @@ prepare:(const struct row_v12 *)row data:(const void *)data
 		object_space = &object_space_registry[snap->object_space];
 		if (!object_space->enabled)
 			raise("object_space %i is not configured", object_space->n);
+		if (object_space->ignored) {
+			object_space = NULL;
+			return;
+		}
 		index = object_space->index[0];
 		assert(index != nil);
 
@@ -1254,6 +1270,9 @@ row
 - (void)
 commit
 {
+	if (!object_space)
+		goto cleanup;
+
 	if (op == DELETE || op == DELETE_1_3)
 		commit_delete(self);
 	else
@@ -1263,12 +1282,16 @@ commit
 	say_debug("%s: old_obj:refs=%i,%p obj:ref=%i,%p", __func__,
 		 old_obj ? old_obj->refs : 0, old_obj,
 		 obj ? obj->refs : 0, obj);
+cleanup:
 	txn_cleanup(self);
 }
 
 - (void)
 rollback
 {
+	if (!object_space)
+		goto cleanup;
+
 	say_debug("box_rollback(op:%s)", ops[op]);
 
 	if (op == DELETE || op == DELETE_1_3)

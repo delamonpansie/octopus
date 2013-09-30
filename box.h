@@ -42,7 +42,7 @@ struct index;
 #define MAX_IDX 10
 struct object_space {
 	int n;
-	bool enabled;
+	bool enabled, ignored;
 	int cardinality;
 	Index<BasicIndex> *index[MAX_IDX];
 };
