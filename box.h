@@ -137,8 +137,4 @@ void *next_field(void *f);
 void append_field(struct tbuf *b, void *f);
 void *tuple_field(struct box_tuple *tuple, size_t i);
 
-void box_bound_to_primary(int fd);
-void memcached_init(void);
-
-extern LStringHash *memcached_index;
 #endif
