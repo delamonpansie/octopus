@@ -1,0 +1,18 @@
+# box.insert(["a", "b"])
+1
+
+# box.insert(["a"])
+Failed with: {code: 0x202, message: 'tuple cardinality must match object_space cardinality'}
+# box.insert(["a", "b", "c"])
+Failed with: {code: 0x202, message: 'tuple cardinality must match object_space cardinality'}
+# box.select("a")
+[["a", "b"]]
+
+# box.update_fields("a", [1, :delete])
+Failed with: {code: 0x202, message: 'tuple cardinality must match object_space cardinality'}
+# box.update_fields("a", [1, :delete], [1, :insert, "c"])
+1
+
+# box.select("a")
+[["a", "c"]]
+
