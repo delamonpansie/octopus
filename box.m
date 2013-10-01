@@ -1485,7 +1485,8 @@ init(void)
 					     flags:init_storage ? RECOVER_READONLY : 0
 					 txn_class:[BoxTxn class]];
 
-	/* initialize hashes _after_ starting wal writer */
+	/* initialize hashes _after_ starting wal writer,
+	   avoid extra memory sharing */
 
 	configure();
 
