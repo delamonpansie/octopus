@@ -33,7 +33,6 @@
 #include <stdbool.h>
 
 
-struct tnt_object;
 struct index_node {
 	struct tnt_object *obj;
 	union {
@@ -44,7 +43,7 @@ struct index_node {
 	};
 };
 
-union field {
+union index_field {
 	u16 u16;
 	u32 u32;
 	u64 u64;
@@ -57,14 +56,14 @@ union field {
 	} str __attribute__((packed));
 };
 
-enum field_data_type { NUM16, NUM32, NUM64, STRING };
-struct gen_dtor {
-	int min_tuple_cardinality;
-	int index_field[8];
+struct index_conf {
+	int field_index[8];
 	int cmp_order[8];
 	int offset[8];
-	int cardinality;
-	enum field_data_type type[8];
+	enum index_field_type { NUM16, NUM32, NUM64, STRING } field_type[8];
+	int min_tuple_cardinality, cardinality;
+	enum index_type { HASH, TREE } type;
+	bool unique;
 };
 
 typedef struct index_node *(index_dtor)(struct tnt_object *obj, struct index_node *node, void *arg);
@@ -95,7 +94,7 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 @public
 	unsigned n;
 	bool unique;
-	enum { HASH, TREE } type;
+	enum index_type type;
 
 	size_t node_size;
 	index_dtor *dtor;
@@ -180,7 +179,7 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 
 @interface GenTree: Tree
 @end
-void gen_set_field(union field *f, enum field_data_type type, int len, void *data);
+void gen_set_field(union index_field *f, enum index_field_type type, int len, void *data);
 
 #define foreach_index(ivar, obj_space)					\
 	for (Index<BasicIndex>						\
