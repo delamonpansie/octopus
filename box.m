@@ -667,10 +667,13 @@ commit_delete(BoxTxn *txn)
 }
 
 
-static void
-txn_common_parser(BoxTxn *txn, struct tbuf *data)
+void
+box_prepare_update(BoxTxn *txn)
 {
-	i32 n = read_u32(data);
+	struct tbuf data = TBUF(txn->body, txn->body_len, NULL);
+	say_debug("box_prepare_update(%i)", txn->op);
+
+	i32 n = read_u32(&data);
 	if (n < 0 || n > object_space_count - 1)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "bad namespace number");
 
@@ -683,18 +686,6 @@ txn_common_parser(BoxTxn *txn, struct tbuf *data)
 
 	txn->object_space = &object_space_registry[n];
 	txn->index = txn->object_space->index[0];
-}
-
-
-void
-box_prepare_update(BoxTxn *txn)
-{
-	struct tbuf data = TBUF(txn->body, txn->body_len, NULL);
-	say_debug("box_prepare_update(%i)", txn->op);
-	txn_common_parser(txn, &data);
-
-	if (!txn->object_space)
-		return;
 
 	switch (txn->op) {
 	case INSERT:
