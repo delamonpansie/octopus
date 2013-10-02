@@ -1309,8 +1309,14 @@ wal_final_row
 	if (box_primary.name == NULL) {
 		build_secondary_indexes();
 		initialize_service();
-		title("%s", [recovery status]);
 	}
+
+	/* recovery of empty local_hot_standby & remote_hot_standby replica done in reverse:
+	   first: primary port bound & service initialized (and proctitle set)
+	   second: pull rows from remote (ans proctitle set to "loading %xx.yy")
+	   in order to avoid stuck proctitle set it after every pull done,
+	   not after service initialization */
+	title("%s", [recovery status]);
 }
 
 - (u32)
