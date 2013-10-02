@@ -144,7 +144,7 @@ service_register_iproto_stream(struct service *s, u32 cmd,
 			       int flags)
 {
 	if (cmd == -1) { /* ANY */
-		for (int i = 0; i < 0xff; i++)
+		for (int i = 0; i <= 0xff; i++)
 			service_register_iproto_stream(s, i, cb, flags);
 	} else {
 		s->ih[cmd & 0xff].cb.stream = cb;
@@ -158,7 +158,7 @@ service_register_iproto_block(struct service *s, u32 cmd,
 			      int flags)
 {
 	if (cmd == -1) { /* ANY */
-		for (int i = 0; i < 0xff; i++)
+		for (int i = 0; i <= 0xff; i++)
 			service_register_iproto_block(s, i, cb, flags);
 	} else {
 		s->ih[cmd & 0xff].cb.block = cb;
