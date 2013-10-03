@@ -1476,8 +1476,8 @@ init(void)
 			panic("wal_hot_standby is incompatible with paxos");
 	}
 
-	recovery = [[Recovery alloc] init_snap_dir:cfg.snap_dir
-					   wal_dir:cfg.wal_dir
+	recovery = [[Recovery alloc] init_snap_dir:strdup(cfg.snap_dir)
+					   wal_dir:strdup(cfg.wal_dir)
 				      rows_per_wal:cfg.rows_per_wal
 				       feeder_addr:cfg.wal_feeder_addr
 					     flags:init_storage ? RECOVER_READONLY : 0
