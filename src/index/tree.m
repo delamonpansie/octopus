@@ -264,12 +264,12 @@ init_with_unique:(bool)_unique
 - (u32)
 cardinality
 {
-	struct gen_dtor *desc = dtor_arg;
-	return desc->cardinality;
+	struct index_conf *ic = dtor_arg;
+	return ic->cardinality;
 }
 
 static int
-field_compare(union field *f1, union field *f2, enum field_data_type type)
+field_compare(union index_field *f1, union index_field *f2, enum index_field_type type)
 {
 	void *d1, *d2;
 	int r;
@@ -294,7 +294,7 @@ field_compare(union field *f1, union field *f2, enum field_data_type type)
 }
 
 static int
-tree_node_compare(struct index_node *na, struct index_node *nb, struct gen_dtor *desc)
+tree_node_compare(struct index_node *na, struct index_node *nb, struct index_conf *ic)
 {
 	/* if pattern is partialy specified compare only significant fields.
 	   it's ok to return 0 here: sptree_iterator_init_set() will select
@@ -302,13 +302,13 @@ tree_node_compare(struct index_node *na, struct index_node *nb, struct gen_dtor 
 	   it is guaranteed that pattern is a first arg.
 	*/
 
-	int n = (uintptr_t)na->obj < nelem(desc->index_field) ? (uintptr_t)na->obj : desc->cardinality;
+	int n = (uintptr_t)na->obj < nelem(ic->field_index) ? (uintptr_t)na->obj : ic->cardinality;
 
 	for (int i = 0; i < n; ++i) {
-		int j = desc->cmp_order[i];
-		union field *akey = (void *)na->key + desc->offset[j];
-		union field *bkey = (void *)nb->key + desc->offset[j];
-		int r = field_compare(akey, bkey, desc->type[j]);
+		int j = ic->cmp_order[i];
+		union index_field *akey = (void *)na->key + ic->offset[j];
+		union index_field *bkey = (void *)nb->key + ic->offset[j];
+		int r = field_compare(akey, bkey, ic->field_type[j]);
 		if (r != 0)
 			return r;
 	}
@@ -316,13 +316,13 @@ tree_node_compare(struct index_node *na, struct index_node *nb, struct gen_dtor 
 }
 
 static int
-tree_node_compare_with_addr(struct index_node *na, struct index_node *nb, struct gen_dtor *desc)
+tree_node_compare_with_addr(struct index_node *na, struct index_node *nb, struct index_conf *ic)
 {
-	int r = tree_node_compare(na, nb, desc);
+	int r = tree_node_compare(na, nb, ic);
 	if (r != 0)
 		return r;
 
-	if ((uintptr_t)na->obj < nelem(desc->index_field)) /* `na' is a pattern */
+	if ((uintptr_t)na->obj < nelem(ic->field_index)) /* `na' is a pattern */
 		return r;
 
 	if (na->obj > nb->obj)
@@ -334,7 +334,7 @@ tree_node_compare_with_addr(struct index_node *na, struct index_node *nb, struct
 }
 
 void
-gen_set_field(union field *f, enum field_data_type type, int len, void *data)
+gen_set_field(union index_field *f, enum index_field_type type, int len, void *data)
 {
 	switch (type) {
 	case NUM16:
@@ -367,18 +367,18 @@ static void
 gen_init_pattern(struct tbuf *key_data, int cardinality, struct index_node *pattern_, void *arg)
 {
 	struct index_node *pattern = (void *)pattern_;
-	struct gen_dtor *desc = arg;
+	struct index_conf *ic = arg;
 
-	if (cardinality > desc->cardinality || cardinality > nelem(desc->index_field))
+	if (cardinality > ic->cardinality || cardinality > nelem(ic->field_index))
                 index_raise("cardinality too big");
 
 	for (int i = 0; i < cardinality; i++) {
 		u32 len = read_varint32(key_data);
 		void *key = read_bytes(key_data, len);
-		int j = desc->cmp_order[i];
+		int j = ic->cmp_order[i];
 
-		union field *f = (void *)pattern->key + desc->offset[j];
-		gen_set_field(f, desc->type[j], len, key);
+		union index_field *f = (void *)pattern->key + ic->offset[j];
+		gen_set_field(f, ic->field_type[j], len, key);
 		key += len;
 	}
 
@@ -389,14 +389,14 @@ gen_init_pattern(struct tbuf *key_data, int cardinality, struct index_node *patt
 init_with_unique:(bool)_unique
 {
 	[super init_with_unique:_unique];
-	struct gen_dtor *desc = dtor_arg;
+	struct index_conf *ic = dtor_arg;
 	node_size = sizeof(struct tnt_object *);
-	for (int i = 0; i < desc->cardinality; i++)
-		switch (desc->type[i]) {
-		case NUM16: node_size += field_sizeof(union field, u16); break;
-		case NUM32: node_size += field_sizeof(union field, u32); break;
-		case NUM64: node_size += field_sizeof(union field, u64); break;
-		case STRING: node_size += field_sizeof(union field, str); break;
+	for (int i = 0; i < ic->cardinality; i++)
+		switch (ic->field_type[i]) {
+		case NUM16: node_size += field_sizeof(union index_field, u16); break;
+		case NUM32: node_size += field_sizeof(union index_field, u32); break;
+		case NUM64: node_size += field_sizeof(union index_field, u64); break;
+		case STRING: node_size += field_sizeof(union index_field, str); break;
 		}
 
 	init_pattern = gen_init_pattern;
