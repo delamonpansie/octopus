@@ -723,6 +723,11 @@ octopus(int argc, char **argv)
 			master_pid = getpid();
 		}
 
+		if (getenv("OCTOPUS_NO_PID")) {
+			say_warn("WARNING: PID file disabled by OCTOPUS_NO_PID var");
+			cfg.pid_file = NULL;
+		}
+
 		if (cfg.pid_file != NULL) {
 			create_pid();
 			atexit(remove_pid);
