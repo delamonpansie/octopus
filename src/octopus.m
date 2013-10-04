@@ -576,6 +576,10 @@ octopus(int argc, char **argv)
 		fiber_init();
 		set_proc_title("cat %s", cat_filename);
 
+		gopt_arg(opt, 'c', &cfg_filename);
+		if (fill_default_octopus_cfg(&cfg) != 0 || load_cfg(&cfg, 0) != 0)
+			panic("can't load config: %s", cfg_err);
+
 		if (strchr(cat_filename, '.') || strchr(cat_filename, '/')) {
 			if (access(cat_filename, R_OK) == -1) {
 				say_syserror("access(\"%s\")", cat_filename);
@@ -593,9 +597,6 @@ octopus(int argc, char **argv)
 				exit(EX_USAGE);
 			}
 
-			gopt_arg(opt, 'c', &cfg_filename);
-			if (fill_default_octopus_cfg(&cfg) != 0 || load_cfg(&cfg, 0) != 0)
-				panic("can't load config: %s", cfg_err);
 			if (cfg.work_dir != NULL && chdir(cfg.work_dir) == -1)
 				say_syserror("can't chdir to `%s'", cfg.work_dir);
 
