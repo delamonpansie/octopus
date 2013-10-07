@@ -1046,7 +1046,7 @@ read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, struct
 {
 	XLog *l;
 	const struct row_v12 *row;
-	int row_count;
+	int row_count = 0;
 	l = [XLog open_for_read_filename:filename dir:NULL];
 	if (l == nil) {
 		say_syserror("unable to open filename `%s'", filename);
