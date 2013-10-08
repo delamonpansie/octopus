@@ -414,11 +414,6 @@ luaT_init()
 	if (lua_pcall(L, 1, 0, 0))
 		panic("lua_pcall() failed: %s", lua_tostring(L, -1));
 
-	/* autoload bundled graphite module */
-	lua_getglobal(L, "require");
-	lua_pushliteral(L, "graphite");
-	lua_pcall(L, 1, 0, 0);
-
 	lua_atpanic(L, luaT_error);
 }
 
@@ -838,6 +833,12 @@ octopus(int argc, char **argv)
 	/* run Lua init _after_ module init */
 	if (luaT_require("init") == -1)
 		panic("unable to load `init' lua module: %s", lua_tostring(fiber->L, -1));
+
+	/* try autoload bundled graphite module */
+	lua_getglobal(fiber->L, "require");
+	lua_pushliteral(fiber->L, "graphite");
+	lua_pcall(fiber->L, 1, 1, 0);
+	lua_pop(fiber->L, 1); /* pop off either module or error */
 
 	prelease(fiber->pool);
 	say_debug("entering event loop");
