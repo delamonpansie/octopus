@@ -1,0 +1,8 @@
+# box.ping()
+:pong
+
+Recovery failure: not all WALs have been successfully read! greatest_lsn:2 lsn:1 diff:1
+# box.insert([1, 2, 3])
+1
+
+no valid rows were read
