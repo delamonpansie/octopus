@@ -787,7 +787,7 @@ octopus(int argc, char **argv)
 		default:                    evb = "unknown";
 	}
 
-	say_info("ev_loop initialized using '%s' backend, libev version is %d.%d", 
+	say_info("ev_loop initialized using '%s' backend, libev version is %d.%d",
 		 evb, ev_version_major(), ev_version_minor());
 
 	ev_timer coredump_timer = { .coro = 0 };
