@@ -599,7 +599,7 @@ process_select(struct netmsg_head *h, struct iproto_retcode *reply, Index<BasicI
 	net_add_iov(h, found, sizeof(*found));
 	*found = 0;
 
-	if (index->unique) {
+	if (index->conf.type == HASH || (index->conf.unique && index->conf.cardinality == 1)) {
 		for (u32 i = 0; i < count; i++) {
 			u32 c = read_u32(data);
 			obj = [index find_key:data with_cardinalty:c];
