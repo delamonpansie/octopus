@@ -82,9 +82,17 @@ tbuf_ensure_resize(struct tbuf *e, size_t required)
 	while (new_size - tbuf_len(e) < required)
 		new_size *= 2;
 
-	void *p = prealloc(e->pool, e->ptr, tbuf_size(e), new_size);
-	int len = tbuf_len(e);
+	void *p;
+#if HAVE_VALGRIND_VALGRIND_H && !defined(NVALGRIND)
+	if (e->ptr == (char *)e + sizeof(*e)) {
+		int hsz = sizeof(*e);
+		p = prealloc(e->pool, e->ptr - hsz, tbuf_size(e) + hsz, new_size + hsz);
+		p += hsz;
+	} else
+#endif
+	p = prealloc(e->pool, e->ptr, tbuf_size(e), new_size);
 
+	int len = tbuf_len(e);
 	e->ptr = p;
 	e->end = p + len;
 	e->free = new_size - len;
