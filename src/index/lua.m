@@ -125,7 +125,7 @@ static Index<HashIndex> *
 luaT_checkindex_hash(struct lua_State *L, int i)
 {
 	Index *index = luaT_checkindex(L, i);
-	if (index->type != HASH) {
+	if (index->conf.type != HASH) {
 		lua_pushliteral(L, "index type must be hash");
 		lua_error(L);
 	}

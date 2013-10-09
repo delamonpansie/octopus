@@ -64,12 +64,17 @@ struct index_conf {
 	int min_tuple_cardinality, cardinality;
 	enum index_type { HASH, TREE } type;
 	bool unique;
+	int n;
 };
 
 typedef struct index_node *(index_dtor)(struct tnt_object *obj, struct index_node *node, void *arg);
 struct lua_State;
 typedef struct tbuf *(index_lua_ctor)(struct lua_State *L, int i);
 typedef int (*index_cmp)(const void *, const void *, void *);
+
+struct dtor_conf {
+	index_dtor *u32, *u64, *lstr, *generic;
+};
 
 @protocol BasicIndex
 - (int)eq:(struct tnt_object *)a :(struct tnt_object *)b;
@@ -92,9 +97,7 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 #define GET_NODE(obj, node) ({ dtor(obj, &node, dtor_arg); &node; })
 @interface Index: Object {
 @public
-	unsigned n;
-	bool unique;
-	enum index_type type;
+	struct index_conf conf;
 
 	size_t node_size;
 	index_dtor *dtor;
@@ -110,6 +113,8 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 	char __padding_b[512];
 }
 
++ (Index *)new_conf:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc;
+- (Index *)init:(struct index_conf *)ic;
 - (void) valid_object:(struct tnt_object*)obj;
 - (u32)cardinality;
 @end
@@ -121,11 +126,6 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 - (id) init_with_index:(Index *)_index;
 - (bool) is_wrapper_of:(Class)some_class;
 - (id) unwrap;
-@end
-
-@interface Index (Tuple)
-+ (Index *)new_with_n:(int)n_
-		  cfg:(struct octopus_cfg_object_space_index *)cfg;
 @end
 
 @protocol HashIndex <BasicIndex>
@@ -163,7 +163,6 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 	struct index_node search_pattern;
 	char __tree_padding[256]; /* FIXME: overflow */
 }
-- (Tree *)init_with_unique:(bool)_unque;
 - (void)set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated;
 
 - (struct tnt_object *)iterator_next_verify_pattern;

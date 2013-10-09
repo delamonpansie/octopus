@@ -34,13 +34,6 @@
 #include <third_party/qsort_arg.h>
 
 @implementation Hash
-- (Hash *)init
-{
-	[super init];
-	type = HASH;
-	unique = true;
-	return self;
-}
 
 - (struct tnt_object *)
 get:(u32)i
@@ -118,9 +111,9 @@ ordered_iterator_init
 
 #define DEFINE_METHODS(type)						\
 - (id)									\
-init									\
+init:(struct index_conf *)ic						\
 {									\
-	[super init];							\
+	[super init:ic];						\
 	h = mh_##type##_init(xrealloc);					\
 	node_size = sizeof(struct tnt_object *) + sizeof(type);		\
 	lua_ctor = luaT_##type##_ctor;					\

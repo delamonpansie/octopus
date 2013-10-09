@@ -39,7 +39,7 @@ init_with_index:(Index *)_index
 {
 	[super init];
 	index = _index;
-	n = index->n;
+	memcpy(&conf, &_index->conf, sizeof(conf));
 	dtor = index->dtor;
 	dtor_arg = index->dtor_arg;
 	return self;

@@ -35,8 +35,12 @@
 - (void)
 set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated
 {
-	assert(nodes == NULL);
+	/* WARNING: set_nodes will drop any previously allocated data
+	   and reinitialize tree */
 
+	assert(node_size > 0);
+
+	free(nodes);
 	if (nodes_ == NULL) {
 		if (allocated == 0)
 			allocated = 64;
@@ -50,12 +54,10 @@ set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated
 }
 
 - (Tree *)
-init_with_unique:(bool)_unique
+init:(struct index_conf *)ic
 {
-	[super init];
-	type = TREE;
+	[super init:ic];
 	tree = xmalloc(sizeof(*tree));
-	unique = _unique;
 	return self;
 }
 
@@ -179,14 +181,15 @@ i32_init_pattern(struct tbuf *key, int cardinality,
 }
 
 - (id)
-init_with_unique:(bool)_unique
+init:(struct index_conf *)ic
 {
-	[super init_with_unique:_unique];
+	[super init:ic];
 	node_size = sizeof(struct tnt_object *) + sizeof(i32);
 	lua_ctor = luaT_i32_ctor;
 	init_pattern = i32_init_pattern;
 	pattern_compare = (index_cmp)i32_compare;
-	compare = unique ? (index_cmp)i32_compare : (index_cmp)i32_compare_with_addr;
+	compare = conf.unique ? (index_cmp)i32_compare : (index_cmp)i32_compare_with_addr;
+	[self set_nodes:NULL count:0 allocated:0];
 	return self;
 }
 @end
@@ -214,14 +217,15 @@ i64_init_pattern(struct tbuf *key, int cardinality,
 }
 
 - (id)
-init_with_unique:(bool)_unique
+init:(struct index_conf *)ic
 {
-	[super init_with_unique:_unique];
+	[super init:ic];
 	node_size = sizeof(struct tnt_object *) + sizeof(i64);
 	lua_ctor = luaT_i64_ctor;
 	init_pattern = i64_init_pattern;
 	pattern_compare = (index_cmp)i64_compare;
-	compare = unique ? (index_cmp)i64_compare : (index_cmp)i64_compare_with_addr;
+	compare = conf.unique ? (index_cmp)i64_compare : (index_cmp)i64_compare_with_addr;
+	[self set_nodes:NULL count:0 allocated:0];
 	return self;
 }
 @end
@@ -247,14 +251,15 @@ lstr_init_pattern(struct tbuf *key, int cardinality,
 }
 
 - (id)
-init_with_unique:(bool)_unique
+init:(struct index_conf *)ic
 {
-	[super init_with_unique:_unique];
+	[super init:ic];
 	node_size = sizeof(struct tnt_object *) + sizeof(void *);
 	lua_ctor = luaT_lstr_ctor;
 	init_pattern = lstr_init_pattern;
 	pattern_compare = (index_cmp)lstr_compare;
-	compare = unique ? (index_cmp)lstr_compare : (index_cmp)lstr_compare_with_addr;
+	compare = conf.unique ? (index_cmp)lstr_compare : (index_cmp)lstr_compare_with_addr;
+	[self set_nodes:NULL count:0 allocated:0];
 	return self;
 }
 @end
@@ -386,10 +391,9 @@ gen_init_pattern(struct tbuf *key_data, int cardinality, struct index_node *patt
 }
 
 - (id)
-init_with_unique:(bool)_unique
+init:(struct index_conf *)ic
 {
-	[super init_with_unique:_unique];
-	struct index_conf *ic = dtor_arg;
+	[super init:ic];
 	node_size = sizeof(struct tnt_object *);
 	for (int i = 0; i < ic->cardinality; i++)
 		switch (ic->field_type[i]) {
@@ -401,7 +405,8 @@ init_with_unique:(bool)_unique
 
 	init_pattern = gen_init_pattern;
 	pattern_compare = (index_cmp)tree_node_compare;
-	compare = unique ? (index_cmp)tree_node_compare : (index_cmp)tree_node_compare_with_addr;
+	compare = conf.unique ? (index_cmp)tree_node_compare : (index_cmp)tree_node_compare_with_addr;
+	[self set_nodes:NULL count:0 allocated:0];
 	return self;
 }
 @end

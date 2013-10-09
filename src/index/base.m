@@ -38,6 +38,50 @@
 
 @implementation Index
 
++ (Index *)
+new_conf:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
+{
+	Index *i;
+	if (ic->cardinality == 1) {
+		if (ic->type == HASH && ic->unique == false)
+			return nil;
+
+		switch (ic->field_type[0]) {
+		case NUM32:
+			i = ic->type == HASH ? [Int32Hash alloc] : [Int32Tree alloc];
+			i->dtor = dc->u32;
+			break;
+		case NUM64:
+			i = ic->type == HASH ? [Int64Hash alloc] : [Int64Tree alloc];
+			i->dtor = dc->u64;
+			break;
+		case STRING:
+			i = ic->type == HASH ? [LStringHash alloc] : [StringTree alloc];
+			i->dtor = dc->lstr;
+			break;
+		default:
+			abort();
+		}
+
+		i->dtor_arg = (void *)(uintptr_t)ic->field_index[0];
+	} else {
+		assert(ic->type == TREE);
+		i = [GenTree alloc];
+		i->dtor = dc->generic;
+		i->dtor_arg = (void *)&i->conf;
+	}
+
+	return [i init:ic];
+}
+
+- (Index *)
+init:(struct index_conf *)ic
+{
+	[super init];
+	memcpy(&conf, ic, sizeof(*ic));
+	return self;
+}
+
 - (void)
 valid_object:(struct tnt_object*)obj
 {
