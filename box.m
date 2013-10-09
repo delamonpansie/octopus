@@ -211,13 +211,13 @@ validate_indexes(BoxTxn *txn)
 	foreach_index(index, txn->object_space) {
                 [index valid_object:txn->obj];
 
-		if (index->unique) {
+		if (index->conf.unique) {
                         struct tnt_object *obj = [index find_by_obj:txn->obj];
 
                         if (obj != NULL && obj != txn->old_obj)
 				iproto_raise_fmt(ERR_CODE_INDEX_VIOLATION,
 						 "duplicate key value violates unique index %i:%s",
-						 index->n, [[index class] name]);
+						 index->conf.n, [[index class] name]);
                 }
 	}
 }
@@ -997,27 +997,37 @@ configure(void)
 			if (cfg.object_space[i]->index[j] == NULL)
 				break;
 
-                        typeof(cfg.object_space[i]->index[j]) index_cfg = cfg.object_space[i]->index[j];
-			Index *index = [Index new_with_n:j cfg:index_cfg];
-			object_space_registry[i].index[j] = (Index<BasicIndex> *)index;
+			struct index_conf *ic = cfg_box2index_conf(cfg.object_space[i]->index[j]);
+			if (ic == NULL)
+				panic("(object_space = %" PRIu32 " index = %" PRIu32 ") "
+				      "unknown index type `%s'", i, j, cfg.object_space[i]->index[j]->type);
+
+			ic->n = j;
+			Index *index = [Index new_conf:ic dtor:&box_tuple_dtor];
 
 			if (index == nil)
-				panic("object_space = %" PRIu32 " index = %" PRIu32 ") "
-				      "unknown index type `%s'", i, j, index_cfg->type);
+				panic("(object_space = %" PRIu32 " index = %" PRIu32 ") "
+				      "XXX unknown index type `%s'", i, j, cfg.object_space[i]->index[j]->type);
 
+			/* FIXME: only reasonable for HASH indexes */
 			if ([index respondsTo:@selector(resize:)])
 				[(id)index resize:cfg.object_space[i]->estimated_rows];
+
+			if (index->conf.type == TREE && j > 0)
+				index = [[DummyIndex alloc] init_with_index:index];
+
+			object_space_registry[i].index[j] = (Index<BasicIndex> *)index;
 		}
 
 		Index *pk = object_space_registry[i].index[0];
 
-		if (pk->unique == false)
+		if (pk->conf.unique == false)
 			panic("(object_space = %" PRIu32 ") object_space PK index must be unique", i);
 
 		object_space_registry[i].enabled = true;
 
 		say_info("object space %i successfully configured", i);
-		say_info("  PK %i:%s", pk->n, [[pk class] name]);
+		say_info("  PK %i:%s", pk->conf.n, [[pk class] name]);
 	}
 }
 
@@ -1081,7 +1091,7 @@ build_object_space_trees(struct object_space *object_space)
 	}
 
 	for (int i = 0; i < tree_count; i++) {
-		say_info("  %i:%s", ts[i]->n, [[ts[i] class] name]);
+		say_info("  %i:%s", ts[i]->conf.n, [[ts[i] class] name]);
 		[ts[i] set_nodes:nodes[i]
 			   count:n_tuples
 		       allocated:estimated_tuples];
@@ -1108,7 +1118,7 @@ build_secondary_indexes()
 
 		struct tbuf *i = tbuf_alloc(fiber->pool);
 		foreach_index(index, &object_space_registry[n])
-			tbuf_printf(i, " %i:%s", index->n, [[index class] name]);
+			tbuf_printf(i, " %i:%s", index->conf.n, [[index class] name]);
 
 		say_info("Object space %i indexes:%.*s", n, tbuf_len(i), (char *)i->ptr);
 	}
@@ -1425,14 +1435,14 @@ snapshot_write_rows:(XLog *)l
 		}
 
 		foreach_index(index, &object_space_registry[n]) {
-			if (index->n == 0)
+			if (index->conf.n == 0)
 				continue;
 
 			/* during initial load of replica secondary indexes isn't configured yet */
 			if ([index isKindOf:[DummyIndex class]])
 				continue;
 
-			set_proc_title("dumper check index:%i ((%" PRIu32 ")", index->n, getppid());
+			set_proc_title("dumper check index:%i ((%" PRIu32 ")", index->conf.n, getppid());
 
 			size_t index_rows = 0;
 			[index iterator_init];
@@ -1440,7 +1450,7 @@ snapshot_write_rows:(XLog *)l
 				index_rows++;
 			if (pk_rows != index_rows) {
 				say_error("heap invariant violation: n:%i index:%i rows:%zi != pk_rows:%zi",
-					  n, index->n, index_rows, pk_rows);
+					  n, index->conf.n, index_rows, pk_rows);
 				errno = EINVAL;
 				ret = -1;
 				goto out;
@@ -1641,7 +1651,7 @@ info(struct tbuf *out, const char *what)
 			tbuf_printf(out, "    indexes:"CRLF);
 			foreach_index(index, &object_space_registry[n])
 				tbuf_printf(out, "    - { index: %i, slots: %i, bytes: %zi }" CRLF,
-					    index->n, [index slots], [index bytes]);
+					    index->conf.n, [index slots], [index bytes]);
 		}
 		return;
 	}

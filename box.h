@@ -69,6 +69,9 @@ box_tuple(struct tnt_object *obj)
 	return (struct box_tuple *)obj->data;
 }
 
+extern struct dtor_conf box_tuple_dtor;
+struct index_conf * cfg_box2index_conf(struct octopus_cfg_object_space_index *c);
+
 @interface BoxTxn : Object <Txn> {
 @public
 	struct row_v12 wal;
