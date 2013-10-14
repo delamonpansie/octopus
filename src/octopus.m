@@ -508,7 +508,12 @@ octopus(int argc, char **argv)
 	master_pid = getpid();
 	srand(master_pid);
 #ifdef HAVE_LIBELF
-	load_symbols(argv[0]);
+	if (access(argv[0], R_OK) == 0 && strchr(argv[0], '/') != NULL)
+		load_symbols(argv[0]);
+	else if (access("/proc/self/exe", R_OK) == 0)
+		load_symbols("/proc/self/exe");
+	else
+		say_warn("unable to load symbols");
 #endif
 	argv = init_set_proc_title(argc, argv);
 
