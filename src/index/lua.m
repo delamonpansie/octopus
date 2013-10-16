@@ -203,7 +203,7 @@ luaT_index_iter(struct lua_State *L)
 	if (lua_isnumber(L, 2) || lua_isstring(L, 2)) {
 		struct tbuf *key = index->lua_ctor(L, 2);
 		[index iterator_init:key with_cardinalty:1];
-	} else if (lua_isnil(L, 2)) {
+	} else if (lua_isnil(L, 2) || lua_isnone(L, 2)) {
 		[index iterator_init];
 	} else if (lua_isuserdata(L, 2)) {
 		struct tnt_object *obj = *(void **)luaL_checkudata(L, 2, objectlib_name);
