@@ -1493,11 +1493,6 @@ init(void)
 					     flags:init_storage ? RECOVER_READONLY : 0
 					 txn_class:[BoxTxn class]];
 
-	/* initialize hashes _after_ starting wal writer,
-	   avoid extra memory sharing */
-
-	configure();
-
 	if (init_storage)
 		return;
 
@@ -1511,6 +1506,8 @@ init_second_stage(va_list ap __attribute__((unused)))
 	luaT_openbox(root_L);
 	if (luaT_require("box_init") == -1)
 		panic("unable to load `box_init' lua module: %s", lua_tostring(fiber->L, -1));
+
+	configure();
 
 	@try {
 		i64 local_lsn = [recovery recover_start];

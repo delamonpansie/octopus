@@ -32,7 +32,6 @@ user_proc.get_all_tuples = box.wrap(function (n, i)
         end
 
 	if i == nil then i = 0 end
-
         -- iterate over all chunks
         for restart in next_chunk, object_space.index[i] do
                 fiber.sleep(0.001)
