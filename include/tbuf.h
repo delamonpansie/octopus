@@ -37,7 +37,7 @@
 
 struct tbuf {
 	void *ptr, *end;
-	u32 free;
+	uint32_t free;
 	struct palloc_pool *pool;
 };
 

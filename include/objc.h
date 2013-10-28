@@ -27,7 +27,7 @@
 #ifndef OBJECT_H
 #define OBJECT_H
 
-#import <objc/Object.h>
+#include <objc/Object.h>
 #include <palloc.h>
 #include <util.h>
 

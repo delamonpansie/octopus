@@ -131,6 +131,13 @@ remove:(struct tnt_object *)obj
 }
 
 - (struct tnt_object *)
+find:(u8 *)key
+{
+	(void)key;
+	return NULL;
+}
+
+- (struct tnt_object *)
 find_key:(struct tbuf *)key_data with_cardinalty:(u32)cardinality
 {
 	(void)key_data;

@@ -370,7 +370,7 @@ luaT_error(struct lua_State *L)
 }
 
 
-static int
+static int /* FIXME: FFFI! */
 luaT_os_ctime(lua_State *L)
 {
 	const char *filename = luaL_checkstring(L, 1);
@@ -407,7 +407,6 @@ luaT_init()
 	lua_pop(L, 1);
 
 	luaT_objinit(L);
-	luaT_indexinit(L);
 
         lua_getglobal(L, "require");
         lua_pushliteral(L, "prelude");

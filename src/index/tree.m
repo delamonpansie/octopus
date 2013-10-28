@@ -70,6 +70,16 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 }
 
 - (struct tnt_object *)
+find:(u8 *)key
+{
+	u8 *p = key;
+	int len = load_varint32((void **)&p);
+	init_pattern(&TBUF(key, p - key + len, NULL), 1, &node_a, dtor_arg);
+	struct index_node *r = sptree_find(tree, &node_a);
+	return r != NULL ? r->obj : NULL;
+}
+
+- (struct tnt_object *)
 find_key:(struct tbuf *)key_data with_cardinalty:(u32)cardinality
 {
 	init_pattern(key_data, cardinality, &node_a, dtor_arg);
@@ -180,12 +190,22 @@ i32_init_pattern(struct tbuf *key, int cardinality,
 	}
 }
 
+- (struct tnt_object *)
+find:(void *)key
+{
+	u32 key_size = ((u8 *)key)[0];
+	if (key_size != sizeof(i32))
+		index_raise("key is not i32");
+	init_pattern(key, 1, &node_a, dtor_arg);
+	struct index_node *r = sptree_find(tree, &node_a);
+	return r != NULL ? r->obj : NULL;
+}
+
 - (id)
 init:(struct index_conf *)ic
 {
 	[super init:ic];
 	node_size = sizeof(struct tnt_object *) + sizeof(i32);
-	lua_ctor = luaT_i32_ctor;
 	init_pattern = i32_init_pattern;
 	pattern_compare = (index_cmp)i32_compare;
 	compare = conf.unique ? (index_cmp)i32_compare : (index_cmp)i32_compare_with_addr;
@@ -216,12 +236,22 @@ i64_init_pattern(struct tbuf *key, int cardinality,
 	}
 }
 
+- (struct tnt_object *)
+find:(void *)key
+{
+	u32 key_size = ((u8 *)key)[0];
+	if (key_size != sizeof(i64))
+		index_raise("key is not i64");
+	init_pattern(key, 1, &node_a, dtor_arg);
+	struct index_node *r = sptree_find(tree, &node_a);
+	return r != NULL ? r->obj : NULL;
+}
+
 - (id)
 init:(struct index_conf *)ic
 {
 	[super init:ic];
 	node_size = sizeof(struct tnt_object *) + sizeof(i64);
-	lua_ctor = luaT_i64_ctor;
 	init_pattern = i64_init_pattern;
 	pattern_compare = (index_cmp)i64_compare;
 	compare = conf.unique ? (index_cmp)i64_compare : (index_cmp)i64_compare_with_addr;
@@ -255,7 +285,6 @@ init:(struct index_conf *)ic
 {
 	[super init:ic];
 	node_size = sizeof(struct tnt_object *) + sizeof(void *);
-	lua_ctor = luaT_lstr_ctor;
 	init_pattern = lstr_init_pattern;
 	pattern_compare = (index_cmp)lstr_compare;
 	compare = conf.unique ? (index_cmp)lstr_compare : (index_cmp)lstr_compare_with_addr;

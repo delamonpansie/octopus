@@ -52,7 +52,7 @@ struct fiber {
 	TAILQ_ENTRY(fiber) wake_link;
 	void *wake;
 
-	lua_State *L;
+	struct lua_State *L;
 
 	const char *name;
 	void (*f)(va_list ap);

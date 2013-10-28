@@ -34,10 +34,10 @@
 #include <stdbool.h>
 
 struct tnt_object {
-	i32 refs;
-	u8 type;
-	u8 flags;
-	u8 data[0];
+	int32_t refs;
+	uint8_t type;
+	uint8_t flags;
+	uint8_t data[0];
 } __attribute__((packed));
 
 struct tnt_module {

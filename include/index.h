@@ -69,7 +69,6 @@ struct index_conf {
 
 typedef struct index_node *(index_dtor)(struct tnt_object *obj, struct index_node *node, void *arg);
 struct lua_State;
-typedef struct tbuf *(index_lua_ctor)(struct lua_State *L, int i);
 typedef int (*index_cmp)(const void *, const void *, void *);
 
 struct dtor_conf {
@@ -78,6 +77,7 @@ struct dtor_conf {
 
 @protocol BasicIndex
 - (int)eq:(struct tnt_object *)a :(struct tnt_object *)b;
+- (struct tnt_object *)find:(u8 *)key;
 - (struct tnt_object *)find_by_obj:(struct tnt_object *)obj;
 - (struct tnt_object *) find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality;
 - (int) remove: (struct tnt_object *)obj;
@@ -102,7 +102,6 @@ struct dtor_conf {
 	size_t node_size;
 	index_dtor *dtor;
 	void *dtor_arg;
-	index_lua_ctor *lua_ctor;
 
 	int (*compare)(const void *a, const void *b, void *);
 	int (*pattern_compare)(const void *a, const void *b, void *);
@@ -131,7 +130,6 @@ struct dtor_conf {
 @protocol HashIndex <BasicIndex>
 - (void) resize:(u32)buckets;
 - (struct tnt_object *) get:(u32)i;
-- (struct tnt_object *) find:(void *)key;
 - (void) ordered_iterator_init; /* WARNING! after this the index become corrupt! */
 @end
 
