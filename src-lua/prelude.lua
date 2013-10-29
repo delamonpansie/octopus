@@ -139,4 +139,63 @@ function object(ptr)
    end
 end
 
+local pack_mt = {
+   __index = {
+      u8 = function(self, i)
+	 table.insert(self, ffi.new('uint8_t[1]', tonumber(i)))
+	 table.insert(self, 1)
+	 self.len = self.len + 1
+      end,
+      u16 = function(self, i)
+	 table.insert(self, ffi.new('uint16_t[1]', tonumber(i)))
+	 table.insert(self, 2)
+	 self.len = self.len + 2
+      end,
+      u32 = function(self, i)
+	 table.insert(self, ffi.new('uint32_t[1]', tonumber(i)))
+	 table.insert(self, 4)
+	 self.len = self.len + 4
+      end,
+      u64 = function(self, i)
+	 table.insert(self, ffi.new('uint64_t[1]', tonumber(i)))
+	 table.insert(self, 8)
+	 self.len = self.len + 8
+      end,
+      varint32 = function(self, i)
+	 local buf = ffi.new('char[5]')
+	 local len = varint32.write(buf, tonumber(i))
+	 table.insert(self, buf)
+	 table.insert(self, len)
+	 self.len = self.len + len
+      end,
+      string = function(self, s)
+	 table.insert(self, s)
+	 table.insert(self, #s)
+	 self.len = self.len + #s
+      end,
+      field = function(self, s)
+	 self:varint32(#s)
+	 self:string(s)
+      end,
+      raw = function(self, v, l)
+	 table.insert(self, v)
+	 table.insert(self, l)
+	 self.len = self.len + l
+      end,
+      pack = function(self)
+	 local buf = ffi.new('char[?]', self.len)
+	 local offt = 0
+	 for i=1,#self, 2 do
+	    ffi.copy(buf + offt, self[i], self[i+1])
+	    offt = offt + self[i+1]
+	 end
+	 return buf, self.len
+      end
+   }
+}
+
+function packer ()
+   return setmetatable({["len"] = 0}, pack_mt)
+end
+
 print("Lua prelude initialized.")
