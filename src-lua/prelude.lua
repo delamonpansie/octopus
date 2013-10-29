@@ -93,7 +93,7 @@ end
 
 local safeptr_mt = {
    __index = function(self, i)
-      if i < 0 or i > self.nelem then
+      if i < 0 or i >= self.nelem then
 	 error('out of bounds access')
       end
       return self.ptr[i]
@@ -102,14 +102,16 @@ local safeptr_mt = {
       ffi.C.object_decr_ref(self.obj)
    end
 }
-local typecache = {}
+local safeptr_ctcache =
+   setmetatable({}, {__index = function(t, k)
+			t[k] = ffi.typeof('struct { struct tnt_object *obj; $ ptr; int nelem; }', k)
+			ffi.metatype(t[k], safeptr_mt)
+			return t[k]
+			end
+		    })
+
 function safeptr(object, ptr, nelem)
-   local ctype = typecache[ffi.typeof(ptr)]
-   if not ctype then
-      ctype = ffi.typeof('struct { struct tnt_object *obj; $ ptr; int nelem; }', xx)
-      ffi.metatype(ctype, safeptr_mt)
-      typecache[ffi.typeof(ptr)] = ctype
-   end
+   local ctype = safeptr_ctcache[typeof(ptr)]
    ffi.C.object_incr_ref(object)
    return ffi.new(ctype, object, ptr, nelem)
 end
@@ -194,6 +196,7 @@ local pack_mt = {
    }
 }
 
+local setmetatable = setmetatable
 function packer ()
    return setmetatable({["len"] = 0}, pack_mt)
 end
