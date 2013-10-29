@@ -17,10 +17,26 @@ package.loaders[2], package.loaders[1] = package.loaders[1], package.loaders[2]
 package.loaders[3] = nil
 package.loaders[4] = nil
 
+local type = type
+local function assertarg(arg, atype, n)
+   if type(arg) == 'cdata' then
+      if ffi.typeof(arg) == atype then
+	 return
+      end
+   else
+      if type(arg) == atype then
+	 return
+      end
+   end
+   local fname = debug.getinfo(2, "n").name
+   local etype = type(arg) ~= 'cdata' and type(arg) or tostring(ffi.typeof(arg))
+   local msg = string.format("bad argument #%s to '%s' (%s expected, got %s)",
+			     n and tostring(n) or '?', fname, atype, etype)
+   error(msg, 3)
+end
+
 function reloadfile(filename)
-        if not filename then
-                error("reloadfile: bad arguments")
-        end
+	assertarg(filename, 'string', 1)
 
         local function print_warn(msg)
                 print(string.format("reloadfile(\"%s\"): %s", filename, msg))
