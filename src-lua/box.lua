@@ -93,7 +93,7 @@ local object_space_mt = {
 object_space_registry = setmetatable({}, {
    __index = function(table, i)
       -- string and starts from digit
-      if type(i) == 'string' and i:byte(1) <= 48 and i:byte(1) <= 57 then
+      if type(i) == 'string' and 48 <= i:byte(1) and i:byte(1) <= 57 then
 	 i = tonumber(i)
       end
 
