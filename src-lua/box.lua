@@ -109,8 +109,9 @@ object_space_registry = setmetatable({}, {
 -- make useful aliases
 space, object_space = object_space_registry, object_space_registry
 
-local u8_ptr, u16_ptr, u32_ptr, u64_ptr = ffi.typeof("uint8_t *"), ffi.typeof("uint16_t *"),
-					  ffi.typeof("uint32_t *"), ffi.typeof("uint64_t *")
+local u16_ptr = ffi.typeof("uint16_t *")
+local u32_ptr = ffi.typeof("uint32_t *")
+local u64_ptr = ffi.typeof("uint64_t *")
 
 
 local datacast_type_cache = setmetatable({}, {
