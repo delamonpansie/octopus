@@ -9,7 +9,7 @@ local rawget, rawset = rawget, rawset
 
 local ffi, bit, debug = require("ffi"), require("bit"), require("debug")
 local net, index = require("net"), require('index')
-local object, object_cast, varint32 = object, object_cast, varint32
+local object, object_cast, varint32, packer = object, object_cast, varint32, packer
 
 -- legacy, slow because of string interning
 string.tou8 = function(i) return ffi.string(ffi.new('uint8_t[1]', tonumber(i)), 1) end
@@ -225,7 +225,6 @@ object_cast[ffi.C.BOX_TUPLE] = function(obj)
 end
 
 
-local packer -- forward decl
 function select(n, ...)
         local index = object_space[n].index[0]
         local result = {}
@@ -405,72 +404,4 @@ function cast.u32(str)
       error('string expected')
    end
    return ffi.cast('uint32_t *', str)[0]
-end
-
-
-pack_mt = {
-   __index = {
-      u8 = function(self, i)
-	 table.insert(self, ffi.new('uint8_t[1]', tonumber(i)))
-	 table.insert(self, 1)
-	 self.len = self.len + 1
-      end,
-      u16 = function(self, i)
-	 table.insert(self, ffi.new('uint16_t[1]', tonumber(i)))
-	 table.insert(self, 2)
-	 self.len = self.len + 2
-      end,
-      u32 = function(self, i)
-	 table.insert(self, ffi.new('uint32_t[1]', tonumber(i)))
-	 table.insert(self, 4)
-	 self.len = self.len + 4
-      end,
-      u64 = function(self, i)
-	 table.insert(self, ffi.new('uint64_t[1]', tonumber(i)))
-	 table.insert(self, 8)
-	 self.len = self.len + 8
-      end,
-      varint32 = function(self, i)
-	 local buf = ffi.new('char[5]')
-	 local len = varint32.write(buf, tonumber(i))
-	 table.insert(self, buf)
-	 table.insert(self, len)
-	 self.len = self.len + len
-      end,
-      string = function(self, s)
-	 table.insert(self, s)
-	 table.insert(self, #s)
-	 self.len = self.len + #s
-      end,
-      field = function(self, s)
-	 self:varint32(#s)
-	 self:string(s)
-      end,
-      raw = function(self, v, l)
-	 table.insert(self, v)
-	 table.insert(self, l)
-	 self.len = self.len + l
-      end,
-      pack = function(self)
-	 local buf = ffi.new('char[?]', self.len)
-	 local function iter2 (a, i)
-	    local v1, v2 = a[i + 1], a[i + 2]
-	    i = i + 2
-	    if v2 then
-	       return i, v1, v2
-	    end
-	 end
-	 local offt = 0
-	 for _, v, l in iter2, self, 0 do
-	    ffi.copy(buf + offt, v, l)
-	    offt = offt + l
-	 end
-
-	 return buf, self.len
-      end
-   }
-}
-
-packer = function ()
-   return setmetatable({["len"] = 0}, pack_mt)
 end
