@@ -128,12 +128,13 @@ local index_mt = {
    __metatable = {}
 }
 
+local int32_t = ffi.typeof('int32_t')
 local hash_mt = {
    __index = {
       find = index_mt.__index.find,
       get = function(index, i)
 	 assert(type(i) == 'number')
-	 return object(get(index, i))
+	 return object(get(index, ffi.cast(int32_t, i)))
       end,
       slots = function(index)
 	 return tonumber(obj.msg_send("slots", index))
