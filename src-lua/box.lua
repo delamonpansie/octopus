@@ -55,9 +55,6 @@ struct box_tuple {
 ]]
 
 local index_registry_mt = {
-   __newindex = function()
-      error("'index_registry' is readonly")
-   end,
    __index = function (table, i)
       i = tonumber(i)
       if i < 0 or i >= 10 then -- FIXME: MAX_IDX
@@ -70,14 +67,10 @@ local index_registry_mt = {
       local legacy, new = index.cast(table.__object_space.index[i])
       rawset(table, i, {legacy, new})
       return legacy
-   end,
-   __metatable = {}
+   end
 }
 
 local object_space_mt = {
-   __newindex = function()
-      error("'object_space' is readonly")
-   end,
    __index = function (table, key)
       if key == "n" or key == "cardinality" or key == "enabled" then
 	 return rawget(table, '__ptr')[key]
@@ -86,8 +79,7 @@ local object_space_mt = {
    end,
    __tostring = function(self)
       return tostring(self.__ptr)
-   end,
---   __metatable = {}
+   end
 }
 
 object_space_registry = setmetatable({}, {
@@ -110,11 +102,7 @@ object_space_registry = setmetatable({}, {
       local object_space = setmetatable({ __ptr = ptr, index = index_registry }, object_space_mt)
       rawset(table, i, object_space)
       return object_space
-   end,
-   __newindex = function()
-      error("disabled")
-   end,
-   __metatable = {}
+   end
 })
 
 
