@@ -113,8 +113,9 @@ function safeptr(object, ptr, nelem)
    ffi.C.object_incr_ref(object)
    return ffi.new(ctype, object, ptr, nelem)
 end
-require('stat')
 
+
+require('stat')
 
 object_cast = {}
 local object_t = ffi.typeof('struct tnt_object *')

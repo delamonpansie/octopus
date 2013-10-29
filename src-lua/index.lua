@@ -4,7 +4,6 @@ local object, varint32 = object, varint32
 
 local setmetatable = setmetatable
 local assert = assert
-local rawget = rawget
 local tonumber = tonumber
 local error = error
 local type = type
@@ -34,6 +33,7 @@ local iterator_next = objc.msg_lookup("iterator_next")
 
 local index = ffi.typeof('struct Index *')
 local hash = ffi.typeof('struct HashIndex *')
+local opaque = ffi.typeof('struct OpaqueIndex *')
 
 local charbuf = ffi.typeof('unsigned char[?]')
 local ptr = setmetatable({}, {__index = function(t, k) t[k] = ffi.typeof('$ *', k); return t[k]; end})
@@ -99,6 +99,7 @@ local function xkey(index, key)
 end
 
 local function unlegacy(self)
+   assert(ffi.typeof(self) == opaque)
    self = ffi.cast(hash, self)
    if self.conf.type ~= ffi.C.HASH then
       self = ffi.cast(index, self)
@@ -114,6 +115,10 @@ local legacy_mt = {
    __metatable = {}
 }
 
+local function iter_next(index)
+   return object(iterator_next(index))
+end
+
 local index_mt = {
    __index = {
       find = function(index, ...)
@@ -123,6 +128,23 @@ local index_mt = {
 
 	 local key = xkey(index, ...)
 	 return object(find(index, key))
+      end,
+      iter = function(index, init)
+	 if type(init) == 'nil' then
+	    iterator_init(index)
+	 elseif type(init) == 'number' or type(init) == 'string' then
+	    if index.conf.cardinality ~= 1 then
+	       error('cardinality mismatch', 2)
+	    end
+	    local key, len = xkey(index, init)
+	    local t = ffi.new('struct tbuf', key, ffi.cast('uint8_t *', key) + len)
+	    iterator_init_with_cardinality(index, t, ffi.cast('int', 1))
+	 elseif type(init) == 'table' and init.__obj then
+	    iterator_init_with_object(index, init.__obj)
+	 else
+	    error("wrong key type", 2)
+	 end
+	 return iter_next, index
       end
    },
    __metatable = {}
@@ -132,6 +154,7 @@ local int32_t = ffi.typeof('int32_t')
 local hash_mt = {
    __index = {
       find = index_mt.__index.find,
+      iter = index_mt.__index.iter,
       get = function(index, i)
 	 assert(type(i) == 'number')
 	 return object(get(index, ffi.cast(int32_t, i)))
@@ -155,31 +178,9 @@ function cast(ptr)
    return legacy, index
 end
 
-
-local function iter_next(index)
-   return object(iterator_next(index))
-end
-
 function iter(index, init)
-   if index == nil then error("index is nil", 2) end
-   index = unlegacy(index)
-
-   if type(init) == 'nil' then
-      iterator_init(index)
-   elseif type(init) == 'number' or type(init) == 'string' then
-      print(tostring(index))
-      if index.conf.cardinality ~= 1 then
-	 error('cardinality mismatch', 2)
-      end
-      local key, len = xkey(index, init)
-      local t = ffi.new('struct tbuf')
-      t.ptr = key
-      t['end'] = ffi.cast('uint8_t *', t.ptr) + len
-      iterator_init_with_cardinality(index, t, ffi.cast('int', 1))
-   elseif type(init) == 'table' and init.__obj then
-      iterator_init_with_object(index, init.__obj)
-   else
-      error("wrong key type", 2)
+   if ffi.typeof(index) == opaque then
+      index = unlegacy(index)
    end
-   return iter_next, index
+   return index:iter(init)
 end
