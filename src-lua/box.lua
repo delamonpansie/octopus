@@ -309,11 +309,6 @@ function update(n, key, ...)
 end
 
 
-ffi.cdef [[void object_incr_ref(struct tnt_object *obj);]]
-local tnt_object_ref = ffi.typeof("struct tnt_object **") -- userdata holding pointer to tnt_obj, hence double ptr
-local tuple_t = ffi.typeof("struct box_tuple *")
-
-
 function ctuple(obj)
    assert(obj ~= nil)
    return obj
