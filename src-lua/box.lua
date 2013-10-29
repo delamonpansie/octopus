@@ -10,6 +10,7 @@ local rawget, rawset = rawget, rawset
 local ffi, bit, debug = require("ffi"), require("bit"), require("debug")
 local net, index = require("net"), require('index')
 local object, object_cast, varint32, packer = object, object_cast, varint32, packer
+local safeptr = safeptr
 
 -- legacy, slow because of string interning
 string.tou8 = function(i) return ffi.string(ffi.new('uint8_t[1]', tonumber(i)), 1) end
@@ -114,11 +115,13 @@ local u32_ptr = ffi.typeof("uint32_t *")
 local u64_ptr = ffi.typeof("uint64_t *")
 
 
+local ptrof = setmetatable({}, {__index = function (t, k) t[k] = ffi.typeof('$ *', k); return t[k]; end})
+
 local datacast_type_cache = setmetatable({}, {
    __index = function(t, k)
       -- k either 'uintXX_t' or ctype<unsigned XX>
       local ctype = ffi.typeof(k)
-      t[k] = { ffi.typeof("$ *", ctype), ffi.sizeof(ctype) }
+      t[k] = { ptrof[ctype], ffi.sizeof(ctype) }
       return t[k]
    end
 })
@@ -158,11 +161,13 @@ local tuple_index = {
       end
    end,
    arrfield = function(self, i, ctype)
+      ctype = ffi.typeof(ctype)
       local len, offt = self:field(i)
       if len % ffi.sizeof(ctype) ~= 0 then
-	 error('field length not ... ')
+	 error('bad field len')
       end
-      return object_cdef
+      local ptr = ffi.cast(ptrof[ctype], self.__tuple.data + offt)
+      return safeptr(self.__obj, ptr, len / ffi.sizeof(ctype))
    end,
    datacast = function(self, ctype, offt, len)
       if ctype == 'string' then
