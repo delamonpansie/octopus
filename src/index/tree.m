@@ -191,12 +191,12 @@ i32_init_pattern(struct tbuf *key, int cardinality,
 }
 
 - (struct tnt_object *)
-find:(void *)key
+find:(u8 *)key
 {
-	u32 key_size = ((u8 *)key)[0];
+	u32 key_size = key[0];
 	if (key_size != sizeof(i32))
 		index_raise("key is not i32");
-	init_pattern(key, 1, &node_a, dtor_arg);
+	init_pattern(&TBUF(key, 1 + sizeof(i32), NULL), 1, &node_a, dtor_arg);
 	struct index_node *r = sptree_find(tree, &node_a);
 	return r != NULL ? r->obj : NULL;
 }
@@ -237,12 +237,12 @@ i64_init_pattern(struct tbuf *key, int cardinality,
 }
 
 - (struct tnt_object *)
-find:(void *)key
+find:(u8 *)key
 {
-	u32 key_size = ((u8 *)key)[0];
+	u32 key_size = key[0];
 	if (key_size != sizeof(i64))
 		index_raise("key is not i64");
-	init_pattern(key, 1, &node_a, dtor_arg);
+	init_pattern(&TBUF(key, 1 + sizeof(i64), NULL), 1, &node_a, dtor_arg);
 	struct index_node *r = sptree_find(tree, &node_a);
 	return r != NULL ? r->obj : NULL;
 }
