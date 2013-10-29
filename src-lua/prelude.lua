@@ -110,7 +110,7 @@ end
 local safeptr_mt = {
    __index = function(self, i)
       if i < 0 or i >= self.nelem then
-	 error('out of bounds access')
+	 error('index out of bounds', 2)
       end
       return self.ptr[i]
    end,
