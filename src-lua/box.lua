@@ -10,7 +10,8 @@ local rawget, rawset = rawget, rawset
 local ffi, bit, debug = require("ffi"), require("bit"), require("debug")
 local net, index = require("net"), require('index')
 local object, object_cast, varint32, packer = object, object_cast, varint32, packer
-local safeptr = safeptr
+local safeptr, assertarg = safeptr, assertarg
+local lselect = select
 
 -- legacy, slow because of string interning
 string.tou8 = function(i) return ffi.string(ffi.new('uint8_t[1]', tonumber(i)), 1) end
@@ -137,10 +138,10 @@ local datacast_type_cache = setmetatable({}, {
 })
 
 local tuple_index = {
-   field = function(self, i)
-      assert(type(i) == 'number')
+   field = function(self, i, level)
+      assertarg(i, 'number', 1, level or 0)
       if i < 0 or i >= self.cardinality then
-	 error('invalid field index')
+	 error('invalid field index', 2 + level or 0)
       end
       i = i * 2
       local j = #self.__cache - 1
@@ -154,12 +155,13 @@ local tuple_index = {
       return self.__cache[i], self.__cache[i + 1]
    end,
    strfield = function(self, i)
-      local len, offt = self:field(i)
+      -- fixme: add check
+      local len, offt = self:field(i, 1)
       self[i] = ffi.string(self.__tuple.data + offt, len)
       return self[i]
    end,
    numfield = function(self, i)
-      local len, offt = self:field(i)
+      local len, offt = self:field(i, 1)
       if len == 2 then
 	 return tonumber(ffi.cast(u16_ptr, self.__tuple.data + offt)[0])
       elseif len == 4 then
@@ -167,14 +169,14 @@ local tuple_index = {
       elseif len == 8 then
 	 return ffi.cast(u64_ptr, self.__tuple.data + offt)[0]
       else
-	 error('field length not equal to 2, 4 or 8')
+	 error('field length not equal to 2, 4 or 8', 2)
       end
    end,
    arrfield = function(self, i, ctype)
+      local len, offt = self:field(i, 1)
       ctype = ffi.typeof(ctype)
-      local len, offt = self:field(i)
       if len % ffi.sizeof(ctype) ~= 0 then
-	 error('bad field len')
+	 error('bad field len', 2)
       end
       local ptr = ffi.cast(ptrof[ctype], self.__tuple.data + offt)
       return safeptr(self.__obj, ptr, len / ffi.sizeof(ctype))
@@ -182,18 +184,18 @@ local tuple_index = {
    datacast = function(self, ctype, offt, len)
       if ctype == 'string' then
 	 if (offt < 0 or offt + len > self.__tuple.bsize) then
-	    error("out of bounds")
+	    error("out of bounds", 2)
 	 end
 	 return ffi.string(self.__tuple.data + offt, len)
       elseif ctype == 'varint' then
 	 if (offt < 0 or offt + 1 > self.__tuple.bsize) then
-	    error("out of bounds")
+	    error("out of bounds", 2)
 	 end
 	 return varint32.read(self.__tuple.data + offt)
       else
 	 local ctinfo = datacast_type_cache[ctype]
 	 if offt < 0 or offt + ctinfo[2] > self.__tuple.bsize then
-	    error("out of bounds")
+	    error("out of bounds", 2)
 	 end
 	 return ffi.cast(ctinfo[1], self.__tuple.data + offt)[0]
       end
@@ -346,13 +348,13 @@ function wrap(proc_body)
 		    ffi.C.object_incr_ref(v.__obj)
 		    out:add_iov_ref(v.__tuple, v.bsize + 8, ffi.cast('uintptr_t', v.__obj))
 		 else
-		    error("unexpected type of result: " .. type(v))
+		    error("unexpected type of result: " .. type(v), 2)
 		 end
 	      end
 	   elseif type(result) == "number" then
 	      out:add_iov_string(string.tou32(result))
 	   else
-	      error("unexpected type of result: " .. type(result))
+	      error("unexpected type of result: " .. type(result), 2)
 	   end
 
 	   header.data_len = header.data_len + out:bytes() - bytes
@@ -399,8 +401,6 @@ function decode.u32(obj, offt) return obj:datacast('uint32_t', offt) end
 
 cast = {}
 function cast.u32(str)
-   if type(str) ~= 'string' then
-      error('string expected')
-   end
+   assertarg(str, 'string', 1)
    return ffi.cast('uint32_t *', str)[0]
 end
