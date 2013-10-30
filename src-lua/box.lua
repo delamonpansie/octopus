@@ -39,10 +39,10 @@ struct object_space {
 	int n;
 	bool enabled, ignored;
 	int cardinality;
-	struct Index *index[10]; // FIXME: MAX_IDX
+	struct Index *index[];
 };
 extern struct object_space *object_space_registry;
-extern const int object_space_count;
+extern const int object_space_count, object_space_max_idx;
 
 enum object_type {
 	BOX_TUPLE = 1
@@ -55,19 +55,29 @@ struct box_tuple {
 } __attribute__((packed));
 ]]
 
+local maxidx = ffi.C.object_space_max_idx
 local index_registry_mt = {
    __index = function (table, i)
       i = tonumber(i)
-      if i < 0 or i >= 10 then -- FIXME: MAX_IDX
+      if i < 0 or i >= maxidx or table.__object_space.index[i] == nil then
 	 return nil
       end
-      if table.__object_space.index[i] == nil then
+      if not rawget(table, i) then
+	 local legacy, new = index.cast(table.__object_space.index[i])
+	 table[i] = legacy
+      end
+      return rawget(table, i)
+   end,
+   __call = function (t, object_space, i)
+      i = tonumber(i)
+      if i < 0 or i >= maxidx or object_space.__ptr.index[i] == nil then
 	 return nil
       end
-
-      local legacy, new = index.cast(table.__object_space.index[i])
-      rawset(table, i, {legacy, new})
-      return legacy
+      if not rawget(table, i + maxidx) then
+	 local legacy, new = index.cast(object_space.__ptr.index[i])
+	 table[i + maxidx] = new
+      end
+      return rawget(table, i + maxidx)
    end
 }
 

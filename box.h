@@ -48,7 +48,7 @@ struct object_space {
 };
 
 extern struct object_space *object_space_registry;
-extern const int object_space_count;
+extern const int object_space_count, object_space_max_idx;
 
 enum object_type {
 	BOX_TUPLE = 1

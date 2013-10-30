@@ -62,7 +62,7 @@ static char * const ops[] = ENUM_STR_INITIALIZER(MESSAGES);
 
 char *primary_addr;
 struct object_space *object_space_registry;
-const int object_space_count = 256;
+const int object_space_count = 256, object_space_max_idx = MAX_IDX;
 
 struct box_snap_row {
 	u32 object_space;
