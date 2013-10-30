@@ -18,7 +18,7 @@ package.loaders[3] = nil
 package.loaders[4] = nil
 
 local type = type
-local function assertarg(arg, atype, n)
+function assertarg(arg, atype, n, level)
    if type(arg) == 'cdata' then
       if ffi.typeof(arg) == atype then
 	 return
@@ -28,11 +28,11 @@ local function assertarg(arg, atype, n)
 	 return
       end
    end
-   local fname = debug.getinfo(2, "n").name
+   local fname = debug.getinfo(2 + level or 0, "n").name
    local etype = type(arg) ~= 'cdata' and type(arg) or tostring(ffi.typeof(arg))
    local msg = string.format("bad argument #%s to '%s' (%s expected, got %s)",
 			     n and tostring(n) or '?', fname, atype, etype)
-   error(msg, 3)
+   error(msg, 3 + level or 0)
 end
 
 function reloadfile(filename)
