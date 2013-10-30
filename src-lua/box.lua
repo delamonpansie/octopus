@@ -378,13 +378,13 @@ end
 function tuple(...)
    local p = packer()
    p:string("....----") -- placeholder for bsize, cardinality
-   for _, v in ipairs(...) do
-      p:field(v)
+   for i = 1, lselect('#', ...) do
+      p:field(lselect(i, ...))
    end
    local buf, len = p:pack()
    local u32 = ffi.cast('uint32_t *', buf)
-   buf[0] = #{...}
-   buf[1] = len - 8 -- bsize adjust
+   u32[0] = len - 8 -- bsize adjust
+   u32[1] = lselect('#', ...)
    return ffi.string(buf, len)
 end
 
