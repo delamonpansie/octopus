@@ -190,3 +190,36 @@ user_proc.iterator = box.wrap(function (n, key, limit)
 
         return 0, result
 end)
+
+
+local function test1()
+   return 0, {box.tuple("abc", "defg", "foobar"),
+	      box.tuple("abc", "defg"),
+	      box.tuple("abc")}
+end
+
+local function tos(s)
+   return tostring(s):gsub("0x%w+", "0xPTR")
+end
+
+local function test2()
+   local os = box.object_space[0]
+   local legacy_pk = os.index[0]
+   local new_pk = os:index(0)
+
+   local a = tos(legacy_pk)
+   local b = tos(new_pk)
+   return 0, {box.tuple(a, b)}
+end
+
+local function test3()
+   local os = box.object_space[0]
+   local pk = os:index(0)
+
+   local t = pk:find("11")
+   return 0, {box.tuple(tos(t), t:strfield(0), t[0])}
+end
+
+for i, f in ipairs({test1, test2, test3}) do
+   user_proc["test" .. tostring(i)] = box.wrap(f)
+end

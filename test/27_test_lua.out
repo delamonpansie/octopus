@@ -1,0 +1,309 @@
+# box.insert(["0"])
+1
+
+# box.insert(["1"])
+1
+
+# box.insert(["2"])
+1
+
+# box.insert(["3"])
+1
+
+# box.insert(["4"])
+1
+
+# box.insert(["5"])
+1
+
+# box.insert(["6"])
+1
+
+# box.insert(["7"])
+1
+
+# box.insert(["8"])
+1
+
+# box.insert(["9"])
+1
+
+# box.insert(["10"])
+1
+
+# box.insert(["11"])
+1
+
+# box.insert(["12"])
+1
+
+# box.insert(["13"])
+1
+
+# box.insert(["14"])
+1
+
+# box.insert(["15"])
+1
+
+# box.insert(["16"])
+1
+
+# box.insert(["17"])
+1
+
+# box.insert(["18"])
+1
+
+# box.insert(["19"])
+1
+
+# box.insert(["20"])
+1
+
+# box.insert(["21"])
+1
+
+# box.insert(["22"])
+1
+
+# box.insert(["23"])
+1
+
+# box.insert(["24"])
+1
+
+# box.insert(["25"])
+1
+
+# box.insert(["26"])
+1
+
+# box.insert(["27"])
+1
+
+# box.insert(["28"])
+1
+
+# box.insert(["29"])
+1
+
+# box.insert(["30"])
+1
+
+# box.insert(["31"])
+1
+
+# box.insert(["32"])
+1
+
+# box.insert(["33"])
+1
+
+# box.insert(["34"])
+1
+
+# box.insert(["35"])
+1
+
+# box.insert(["36"])
+1
+
+# box.insert(["37"])
+1
+
+# box.insert(["38"])
+1
+
+# box.insert(["39"])
+1
+
+# box.insert(["40"])
+1
+
+# box.insert(["41"])
+1
+
+# box.insert(["42"])
+1
+
+# box.insert(["43"])
+1
+
+# box.insert(["44"])
+1
+
+# box.insert(["45"])
+1
+
+# box.insert(["46"])
+1
+
+# box.insert(["47"])
+1
+
+# box.insert(["48"])
+1
+
+# box.insert(["49"])
+1
+
+# box.insert(["50"])
+1
+
+# box.insert(["51"])
+1
+
+# box.insert(["52"])
+1
+
+# box.insert(["53"])
+1
+
+# box.insert(["54"])
+1
+
+# box.insert(["55"])
+1
+
+# box.insert(["56"])
+1
+
+# box.insert(["57"])
+1
+
+# box.insert(["58"])
+1
+
+# box.insert(["59"])
+1
+
+# box.insert(["60"])
+1
+
+# box.insert(["61"])
+1
+
+# box.insert(["62"])
+1
+
+# box.insert(["63"])
+1
+
+# box.insert(["64"])
+1
+
+# box.insert(["65"])
+1
+
+# box.insert(["66"])
+1
+
+# box.insert(["67"])
+1
+
+# box.insert(["68"])
+1
+
+# box.insert(["69"])
+1
+
+# box.insert(["70"])
+1
+
+# box.insert(["71"])
+1
+
+# box.insert(["72"])
+1
+
+# box.insert(["73"])
+1
+
+# box.insert(["74"])
+1
+
+# box.insert(["75"])
+1
+
+# box.insert(["76"])
+1
+
+# box.insert(["77"])
+1
+
+# box.insert(["78"])
+1
+
+# box.insert(["79"])
+1
+
+# box.insert(["80"])
+1
+
+# box.insert(["81"])
+1
+
+# box.insert(["82"])
+1
+
+# box.insert(["83"])
+1
+
+# box.insert(["84"])
+1
+
+# box.insert(["85"])
+1
+
+# box.insert(["86"])
+1
+
+# box.insert(["87"])
+1
+
+# box.insert(["88"])
+1
+
+# box.insert(["89"])
+1
+
+# box.insert(["90"])
+1
+
+# box.insert(["91"])
+1
+
+# box.insert(["92"])
+1
+
+# box.insert(["93"])
+1
+
+# box.insert(["94"])
+1
+
+# box.insert(["95"])
+1
+
+# box.insert(["96"])
+1
+
+# box.insert(["97"])
+1
+
+# box.insert(["98"])
+1
+
+# box.insert(["99"])
+1
+
+# box.lua("user_proc.test1")
+[["abc", "defg", "foobar"], ["abc", "defg"], ["abc"]]
+
+# box.lua("user_proc.test2")
+[["cdata<struct OpaqueIndex *>: 0xPTR", "cdata<struct HashIndex *>: 0xPTR"]]
+
+# box.lua("user_proc.test3")
+[["cdata<struct box_tuple *>: 0xPTR", "11", "11"]]
+
