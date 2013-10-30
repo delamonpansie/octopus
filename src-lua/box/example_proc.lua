@@ -125,10 +125,10 @@ user_proc.sum_u64 = box.wrap(function (n, pk)
         if not obj then
                 return 0, {"not found"}
         end
-        
+
         local t = box.ctuple(obj);
         local f, offt, len = {}, 0
-        for i = 0,t[0].cardinality - 1 do 
+        for i = 0,t[0].cardinality - 1 do
                 len, offt = box.decode_varint32(t[0].data, offt)
                 if len == 8 then
                         table.insert(f, ffi.cast("uint64_t *", t[0].data + offt)[0])
