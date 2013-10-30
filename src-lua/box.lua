@@ -83,22 +83,19 @@ local index_registry_mt = {
 }
 
 local object_space_mt = {
-   __index = function (table, key)
-      if key == "n" or key == "cardinality" or key == "enabled" then
-	 return rawget(table, '__ptr')[key]
-      end
-      error("'object_space' has no member named '" .. key .. "'")
-   end,
    __tostring = function(self)
       return tostring(self.__ptr)
    end
 }
 
 object_space_registry = setmetatable({}, {
-   __index = function(table, i)
+   __index = function(table, k)
+      local i
       -- string and starts from digit
-      if type(i) == 'string' and 48 <= i:byte(1) and i:byte(1) <= 57 then
-	 i = tonumber(i)
+      if type(k) == 'string' and 48 <= k:byte(1) and k:byte(1) <= 57 then
+	 i = tonumber(k)
+      else
+	 i = k
       end
 
       if type(i) ~= 'number' or
@@ -111,8 +108,11 @@ object_space_registry = setmetatable({}, {
 
       local ptr = ffi.C.object_space_registry[i]
       local index_registry = setmetatable({ __object_space = ptr }, index_registry_mt)
-      local object_space = setmetatable({ __ptr = ptr, index = index_registry }, object_space_mt)
-      rawset(table, i, object_space)
+      local object_space = setmetatable({ __ptr = ptr,
+					  n = ptr.n,
+					  cardinality = ptr.cardinality,
+					  index = index_registry }, object_space_mt)
+      table[k] = object_space
       return object_space
    end
 })
