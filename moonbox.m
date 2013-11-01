@@ -53,7 +53,8 @@ luaT_box_dispatch(struct lua_State *L)
 	struct BoxTxn *txn = [BoxTxn palloc];
 
 	if (lua_type(L, 2) == ~LJ_TCDATA) {
-		req = lua_topointer(L, 2);
+		char * const *p = lua_topointer(L, 2);
+		req = *p;
 		len = luaL_checkinteger(L, 3);
 	} else {
 		req = luaL_checklstring(L, 2, &len);
