@@ -1,5 +1,5 @@
 local ffi = require('ffi')
-
+local setmetatable = setmetatable
 module(...)
 
 ffi.cdef[[
@@ -13,25 +13,19 @@ IMP objc_msg_lookup (id receiver, SEL op);
 ]]
 
 local id = ffi.typeof('id')
-local cache = {}
-
-local function selcache(selectorname)
-   local sel = cache[selectorname]
-   if not sel then
-      sel = ffi.C.sel_registerName(selectorname)
-      cache[selectorname] = sel
-   end
-   return sel
-end
+local cache = setmetatable({}, {__index = function(t,k)
+				   t[k] = ffi.C.sel_registerName(k)
+				   return t[k]
+				end})
 
 function msg_send(receiver, selector, ...)
-   local sel = selcache(selector)
+   local sel = cache[selector]
    receiver = ffi.cast(id, receiver)
    return ffi.C.objc_msg_lookup(receiver, sel)(receiver, sel, ...)
 end
 
 function msg_lookup(selector)
-   local sel = selcache(selector)
+   local sel = cache[selector]
    return function (receiver, ...)
       receiver = ffi.cast(id, receiver)
       return ffi.C.objc_msg_lookup(receiver, sel)(receiver, sel, ...)
