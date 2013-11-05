@@ -198,13 +198,13 @@ void index_raise_(const char *file, int line, const char *msg)
 #define index_raise(msg) index_raise_(__FILE__, __LINE__, (msg))
 
 
-int i32_compare(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)));
-int i32_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)));
-int i64_compare(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)));
-int i64_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)));
-int lstr_compare(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)));
-int lstr_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)));
-int cstr_compare(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)));
-int cstr_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)));
+int i32_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int i32_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int i64_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int i64_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int lstr_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int lstr_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int cstr_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int cstr_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
 
 #endif

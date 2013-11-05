@@ -29,7 +29,7 @@
 #import <assoc.h>
 
 int
-i32_compare(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)))
+i32_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
 	i32 a = na->key.u32, b = nb->key.u32;
 	if (a > b)
@@ -41,7 +41,7 @@ i32_compare(struct index_node *na, struct index_node *nb, void *x __attribute__(
 }
 
 int
-i32_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)))
+i32_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
 	i32 a = na->key.u32, b = nb->key.u32;
 	if (a > b)
@@ -58,7 +58,7 @@ i32_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __at
 }
 
 int
-i64_compare(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)))
+i64_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
 	i64 a = na->key.u64, b = nb->key.u64;
 	if (a > b)
@@ -70,7 +70,7 @@ i64_compare(struct index_node *na, struct index_node *nb, void *x __attribute__(
 }
 
 int
-i64_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)))
+i64_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
 	i64 a = na->key.u64, b = nb->key.u64;
 	if (a > b)
@@ -87,13 +87,13 @@ i64_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __at
 }
 
 int
-lstr_compare(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)))
+lstr_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
 	return lstrcmp(na->key.ptr, nb->key.ptr);
 }
 
 int
-lstr_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)))
+lstr_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
 
 	int r = lstrcmp(na->key.ptr, nb->key.ptr);
@@ -109,13 +109,13 @@ lstr_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __a
 }
 
 int
-cstr_compare(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)))
+cstr_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
         return strcmp(na->key.ptr, nb->key.ptr);
 }
 
 int
-cstr_compare_with_addr(struct index_node *na, struct index_node *nb, void *x __attribute__((unused)))
+cstr_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
         int r = strcmp(na->key.ptr, nb->key.ptr);
 
