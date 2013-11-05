@@ -50,11 +50,17 @@ u32 pick_u32(void *data, void **rest);
 size_t varint32_sizeof(u32);
 u32 load_varint32(void **data);
 
-#define LOAD_VARINT32(data) ({		\
-	u8* __load_ptr = (data);	\
-	(*__load_ptr & 0x80) == 0 ?	\
-	((data)++, *__load_ptr) :	\
-	load_varint32(&(data));		\
+/* WARNING: this macro will decode BER intergers not larger than 2048383 */
+#define LOAD_VARINT32(ptr) ({				\
+	const unsigned char *p = (ptr);			\
+	int v = *p & 0x7f;				\
+	if (*p & 0x80) {				\
+		v = (v << 7) | (*++p & 0x7f);		\
+		if (*p & 0x80)				\
+			v = (v << 7) | (*++p & 0x7f);	\
+	}						\
+	ptr = (typeof(ptr))(p + 1);			\
+	v;						\
 })
 
 #endif

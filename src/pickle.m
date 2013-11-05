@@ -106,31 +106,21 @@ u32
 read_varint32(struct tbuf *buf)
 {
 	void *p = buf->ptr;
-	u32 r = load_varint32(&p);
+	u32 r = LOAD_VARINT32(buf->ptr);
 
-	if (unlikely(p - buf->ptr > 4))
-	    iproto_raise(ERR_CODE_UNKNOWN_ERROR, "bad varint32");
-	if (unlikely(p >= buf->end))
+	if (unlikely(buf->ptr > buf->end)) {
+		buf->ptr = (void *)p;
 		tbuf_too_short();
+	}
 
-	buf->ptr = p;
 	return r;
-}
-
-u32
-pick_u32(void *data, void **rest)
-{
-	u32 *b = data;
-	if (rest != NULL)
-		*rest = b + 1;
-	return *b;
 }
 
 void *
 read_field(struct tbuf *buf)
 {
 	void *p = buf->ptr;
-	u32 data_len = load_varint32(&buf->ptr);
+	u32 data_len = LOAD_VARINT32(buf->ptr);
 	buf->ptr += data_len;
 	if (unlikely(buf->ptr > buf->end)) {
 		buf->ptr = p;
@@ -144,7 +134,7 @@ void
 read_push_field(lua_State *L, struct tbuf *buf)
 {
 	void *p = buf->ptr;
-	u32 data_len = load_varint32(&buf->ptr);
+	u32 data_len = LOAD_VARINT32(buf->ptr);
 
 	if (unlikely(buf->ptr + data_len > buf->end)) {
 		buf->ptr = p;

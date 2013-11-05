@@ -59,24 +59,17 @@ typedef void* cstr;
 
 static inline int lstrcmp(void *a, void *b)
 {
-	unsigned int al, bl;
-	u8 ac, bc;
+	int al, bl;
 	int r;
 
-	ac = *(u8 *)a;
-	bc = *(u8 *)b;
+	al = LOAD_VARINT32(a);
+	bl = LOAD_VARINT32(b);
 
-	if (((ac & 0x80) == 0 || (bc & 0x80) == 0) && ac != bc) {
-		r = ac - bc;
-	} else {
-		al = LOAD_VARINT32(a);
-		bl = LOAD_VARINT32(b);
+	if (al != bl)
+		r = al - bl;
+	else
+		r = memcmp(a, b, al);
 
-		if (al != bl)
-			r = al - bl;
-		else
-			r = memcmp(a, b, al);
-	}
 	return r;
 }
 
