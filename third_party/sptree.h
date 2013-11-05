@@ -176,7 +176,7 @@ sptree_bytes(sptree_t *t)
 
 
 static inline void*
-sptree_find(sptree_t *t, void *k)    {
+sptree_find(sptree_t *t, const void *k)    {
     spnode_t    node = t->root;
     while(node != SPNIL) {
         int r = t->compare(k, ITHELEM(t, node), t->arg);
