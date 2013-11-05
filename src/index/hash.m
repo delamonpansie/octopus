@@ -169,7 +169,7 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 {
 	struct index_node *na = GET_NODE(obj_a, node_a),
 			  *nb = GET_NODE(obj_b, node_b);
-	return na->u32 == nb->u32;
+	return na->key.u32 == nb->key.u32;
 }
 
 - (struct tnt_object *)
@@ -224,7 +224,7 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 {
 	struct index_node *na = GET_NODE(obj_a, node_a),
 			  *nb = GET_NODE(obj_b, node_b);
-	return na->u64 == nb->u64;
+	return na->key.u64 == nb->key.u64;
 }
 
 - (struct tnt_object *)
@@ -279,7 +279,7 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 {
 	struct index_node *na = GET_NODE(obj_a, node_a),
 			  *nb = GET_NODE(obj_b, node_b);
-	return lstrcmp(na->str, nb->str) == 0;
+	return lstrcmp(na->key.ptr, nb->key.ptr) == 0;
 }
 
 - (struct tnt_object *)
@@ -322,7 +322,7 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 {
 	struct index_node *na = GET_NODE(obj_a, node_a),
 			  *nb = GET_NODE(obj_b, node_b);
-	return strcmp(na->str, nb->str) == 0;
+	return strcmp(na->key.ptr, nb->key.ptr) == 0;
 }
 
 - (struct tnt_object *)

@@ -178,12 +178,12 @@ i32_init_pattern(struct tbuf *key, int cardinality,
 
 	u32 len;
 	switch (cardinality) {
-	case 0: pattern->u32 = INT32_MIN;
+	case 0: pattern->key.u32 = INT32_MIN;
 		break;
 	case 1: len = read_varint32(key);
 		if (len != sizeof(u32))
 			index_raise("key is not u32");
-		pattern->u32 = read_u32(key);
+		pattern->key.u32 = read_u32(key);
 		break;
 	default:
 		index_raise("cardinality too big");
@@ -224,12 +224,12 @@ i64_init_pattern(struct tbuf *key, int cardinality,
 
 	u32 len;
 	switch (cardinality) {
-	case 0: pattern->u64 = INT64_MIN;
+	case 0: pattern->key.u64 = INT64_MIN;
 		break;
 	case 1: len = read_varint32(key);
 		if (len != sizeof(u64))
 			index_raise("key is not u64");
-		pattern->u64 = read_u64(key);
+		pattern->key.u64 = read_u64(key);
 		break;
 	default:
 		index_raise("cardinality too big");
@@ -277,7 +277,7 @@ lstr_init_pattern(struct tbuf *key, int cardinality,
 	else
 		index_raise("cardinality too big");
 
-	pattern->str = f;
+	pattern->key.ptr = f;
 }
 
 - (id)
@@ -340,8 +340,8 @@ tree_node_compare(struct index_node *na, struct index_node *nb, struct index_con
 
 	for (int i = 0; i < n; ++i) {
 		int j = ic->cmp_order[i];
-		union index_field *akey = (void *)na->key + ic->offset[j];
-		union index_field *bkey = (void *)nb->key + ic->offset[j];
+		union index_field *akey = (void *)&na->key + ic->offset[j];
+		union index_field *bkey = (void *)&nb->key + ic->offset[j];
 		int r = field_compare(akey, bkey, ic->field_type[j]);
 		if (r != 0)
 			return r;
@@ -411,7 +411,7 @@ gen_init_pattern(struct tbuf *key_data, int cardinality, struct index_node *patt
 		void *key = read_bytes(key_data, len);
 		int j = ic->cmp_order[i];
 
-		union index_field *f = (void *)pattern->key + ic->offset[j];
+		union index_field *f = (void *)&pattern->key + ic->offset[j];
 		gen_set_field(f, ic->field_type[j], len, key);
 		key += len;
 	}

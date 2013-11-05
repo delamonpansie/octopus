@@ -33,20 +33,11 @@
 #include <stdbool.h>
 
 
-struct index_node {
-	struct tnt_object *obj;
-	union {
-		char key[0];
-		u32 u32;
-		u64 u64;
-		void *str;
-	};
-};
-
 union index_field {
 	u16 u16;
 	u32 u32;
 	u64 u64;
+	const void *ptr;
 	struct {
 		i16 len;
 		union {
@@ -55,6 +46,12 @@ union index_field {
 		} data;
 	} str __attribute__((packed));
 };
+
+struct index_node {
+	struct tnt_object *obj;
+	union index_field key;
+};
+
 
 struct index_conf {
 	int field_index[8];

@@ -99,7 +99,7 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 {
 	dtor(obj_a, &node_a, dtor_arg);
 	dtor(obj_b, &node_b, dtor_arg);
-	return memcmp(node_a.key, node_b.key, node_size - sizeof(struct tnt_object *)) == 0;
+	return memcmp(&node_a.key, &node_b.key, node_size - sizeof(struct tnt_object *)) == 0;
 }
 
 @end
