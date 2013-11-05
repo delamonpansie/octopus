@@ -186,13 +186,6 @@ void gen_set_field(union index_field *f, enum index_field_type type, int len, co
 @end
 
 
-int luaT_indexinit(struct lua_State *L);
-void luaT_pushindex(struct lua_State *L, Index *index);
-struct tbuf *luaT_i32_ctor(struct lua_State *L, int i);
-struct tbuf *luaT_i64_ctor(struct lua_State *L, int i);
-struct tbuf *luaT_lstr_ctor(struct lua_State *L, int i);
-struct tbuf *luaT_cstr_ctor(struct lua_State *L, int i);
-
 void index_raise_(const char *file, int line, const char *msg)
 	__attribute__((noreturn)) oct_cold;
 #define index_raise(msg) index_raise_(__FILE__, __LINE__, (msg))
