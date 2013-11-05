@@ -51,7 +51,7 @@ union index_field {
 		i16 len;
 		union {
 			u8 bytes[sizeof(u64)];
-			void *ptr;
+			const void *ptr;
 		} data;
 	} str __attribute__((packed));
 };
@@ -77,7 +77,7 @@ struct dtor_conf {
 
 @protocol BasicIndex
 - (int)eq:(struct tnt_object *)a :(struct tnt_object *)b;
-- (struct tnt_object *)find:(u8 *)key;
+- (struct tnt_object *)find:(const u8 *)key;
 - (struct tnt_object *)find_by_obj:(struct tnt_object *)obj;
 - (struct tnt_object *) find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality;
 - (int) remove: (struct tnt_object *)obj;
@@ -176,7 +176,7 @@ struct dtor_conf {
 
 @interface GenTree: Tree
 @end
-void gen_set_field(union index_field *f, enum index_field_type type, int len, void *data);
+void gen_set_field(union index_field *f, enum index_field_type type, int len, const void *data);
 
 #define foreach_index(ivar, obj_space)					\
 	for (Index<BasicIndex>						\

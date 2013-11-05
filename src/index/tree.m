@@ -70,10 +70,10 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 }
 
 - (struct tnt_object *)
-find:(u8 *)key
+find:(const u8 *)key
 {
-	u8 *p = key;
-	int len = load_varint32((void **)&p);
+	const u8 *p = key;
+	int len = LOAD_VARINT32(p);
 	init_pattern(&TBUF(key, p - key + len, NULL), 1, &node_a, dtor_arg);
 	struct index_node *r = sptree_find(tree, &node_a);
 	return r != NULL ? r->obj : NULL;
@@ -305,7 +305,7 @@ cardinality
 static int
 field_compare(union index_field *f1, union index_field *f2, enum index_field_type type)
 {
-	void *d1, *d2;
+	const void *d1, *d2;
 	int r;
 
 	switch (type) {
@@ -368,7 +368,7 @@ tree_node_compare_with_addr(struct index_node *na, struct index_node *nb, struct
 }
 
 void
-gen_set_field(union index_field *f, enum index_field_type type, int len, void *data)
+gen_set_field(union index_field *f, enum index_field_type type, int len, const void *data)
 {
 	switch (type) {
 	case NUM16:

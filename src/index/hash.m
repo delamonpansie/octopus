@@ -190,7 +190,7 @@ find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
 }
 
 - (struct tnt_object *)
-find:(u8 *)key
+find:(const u8 *)key
 {
 	u32 key_size = key[0];
 	if (key_size != sizeof(i32))
@@ -245,7 +245,7 @@ find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
 }
 
 - (struct tnt_object *)
-find:(u8 *)key
+find:(const u8 *)key
 {
 	u32 key_size = key[0];
 	if (key_size != sizeof(i64))
@@ -296,7 +296,7 @@ find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
 }
 
 - (struct tnt_object *)
-find:(u8 *)key
+find:(const u8 *)key
 {
 	u32 k = mh_lstr_get(h, key);
 	if (k != mh_end(h))
@@ -339,7 +339,7 @@ find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
 }
 
 - (struct tnt_object *)
-find:(u8 *)key
+find:(const u8 *)key
 {
 	u32 k = mh_cstr_get(h, key);
 	if (k != mh_end(h))

@@ -33,8 +33,8 @@
 #include <stdlib.h>
 
 typedef void* ptr_t;
-typedef void* lstr;
-typedef void* cstr;
+typedef const void* lstr;
+typedef const void* cstr;
 
 /* All hashes use same layout
    {
@@ -57,7 +57,7 @@ typedef void* cstr;
 #define mh_eq(a, b) ({ *(mh_key_t *)((a) + sizeof(mh_val_t)) == (b); })
 #include <mhash.h>
 
-static inline int lstrcmp(void *a, void *b)
+static inline int lstrcmp(const void *a, const void *b)
 {
 	int al, bl;
 	int r;
@@ -77,7 +77,7 @@ static inline int lstrcmp(void *a, void *b)
 #define mh_name _lstr
 #define mh_key_t lstr
 #define mh_val_t ptr_t
-#define mh_hash(key) ({ void *_k = (key); unsigned l = LOAD_VARINT32(_k); MurmurHash2(_k, l, 13); })
+#define mh_hash(key) ({ const void *_k = (const void *)(key); int l = LOAD_VARINT32(_k); MurmurHash2(_k, l, 13); })
 #define mh_eq(a, b) ({ lstrcmp(*(mh_key_t *)((a) + sizeof(mh_val_t)), (b)) == 0; })
 #include <mhash.h>
 
