@@ -43,7 +43,7 @@ box_tuple_u32_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
 	struct box_tuple *tuple = box_tuple(obj);
 	if (tuple->cardinality <= n)
 		index_raise("cardinality too small");
-	void *f = tuple_field(tuple, n);
+	u8 *f = tuple_field(tuple, n);
 	u32 size = LOAD_VARINT32(f);
 	if (size != sizeof(u32))
 		index_raise("expected u32");
@@ -59,7 +59,7 @@ box_tuple_u64_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
 	struct box_tuple *tuple = box_tuple(obj);
 	if (tuple->cardinality <= n)
 		index_raise("cardinality too small");
-	void *f = tuple_field(tuple, n);
+	const u8 *f = tuple_field(tuple, n);
 	u32 size = LOAD_VARINT32(f);
 	if (size != sizeof(u64))
 		index_raise("expected u64");
@@ -85,13 +85,13 @@ box_tuple_gen_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
 {
 	struct index_conf *desc = arg;
 	struct box_tuple *tuple = box_tuple(obj);
-	void *tuple_data = tuple->data;
+	const u8 *tuple_data = tuple->data;
 
 	if (tuple->cardinality < desc->min_tuple_cardinality)
 		index_raise("tuple cardinality too small");
 
 	for (int i = 0, j = 0; i < desc->cardinality; j++) {
-		assert(tuple_data < (void *)tuple->data + tuple->bsize);
+		assert(tuple_data < (const u8 *)tuple->data + tuple->bsize);
 		u32 len = LOAD_VARINT32(tuple_data);
 		if (desc->field_index[i] == j) {
 			union index_field *f = (void *)node->key + desc->offset[i];

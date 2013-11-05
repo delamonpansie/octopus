@@ -318,7 +318,7 @@ rollback_replace(BoxTxn *txn)
 }
 
 static void
-do_field_arith(u8 op, struct tbuf *field, void *arg, u32 arg_size)
+do_field_arith(u8 op, struct tbuf *field, const void *arg, u32 arg_size)
 {
 	if (tbuf_len(field) != 4)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "num op on field with length != 4");
@@ -342,11 +342,11 @@ do_field_arith(u8 op, struct tbuf *field, void *arg, u32 arg_size)
 }
 
 static size_t
-do_field_splice(struct tbuf *field, void *args_data, u32 args_data_size)
+do_field_splice(struct tbuf *field, const void *args_data, u32 args_data_size)
 {
 	struct tbuf args = TBUF(args_data, args_data_size, NULL);
 	struct tbuf *new_field = NULL;
-	void *offset_field, *length_field, *list_field;
+	const u8 *offset_field, *length_field, *list_field;
 	u32 offset_size, length_size, list_size;
 	i32 offset, length;
 	u32 noffset, nlength;	/* normalized values */
@@ -363,7 +363,7 @@ do_field_splice(struct tbuf *field, void *args_data, u32 args_data_size)
 	if (offset_size == 0)
 		noffset = 0;
 	else if (offset_size == sizeof(offset)) {
-		offset = pick_u32(offset_field, &offset_field);
+		offset = *(u32 *)offset_field;
 		if (offset < 0) {
 			if (tbuf_len(field) < -offset)
 				iproto_raise(ERR_CODE_ILLEGAL_PARAMS,
@@ -384,7 +384,7 @@ do_field_splice(struct tbuf *field, void *args_data, u32 args_data_size)
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS,
 				  "do_field_splice: offset field is empty but length is not");
 
-		length = pick_u32(length_field, &length_field);
+		length = *(u32 *)length_field;
 		if (length < 0) {
 			if ((tbuf_len(field) - noffset) < -length)
 				nlength = 0;
@@ -429,7 +429,7 @@ static void __attribute__((noinline))
 prepare_update_fields(BoxTxn *txn, struct tbuf *data)
 {
 	struct tbuf *fields;
-	void *field;
+	const u8 *field;
 	int i;
 	u32 op_cnt;
 
@@ -456,19 +456,20 @@ prepare_update_fields(BoxTxn *txn, struct tbuf *data)
 	fields = palloc(fiber->pool, field_count * sizeof(struct tbuf));
 
 	for (i = 0, field = old_tuple->data; i < cardinality; i++) {
-		void *src = field;
+		const void *src = field;
 		int len = LOAD_VARINT32(field);
 		/* .ptr  - start of varint
 		   .end  - start of data
 		   .free - len(data) */
-		fields[i] = (struct tbuf){ .ptr = src, .end = field, .free = len, .pool = NULL };
+		fields[i] = (struct tbuf){ .ptr = (void *)src, .end = (void *)field,
+					   .free = len, .pool = NULL };
 		field += len;
 	}
 
 	while (op_cnt-- > 0) {
 		u8 op;
 		u32 field_no, arg_size;
-		void *arg;
+		const u8 *arg;
 		struct tbuf *field = NULL;
 
 		field_no = read_u32(data);
