@@ -49,7 +49,7 @@ box_tuple_u32_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
 		index_raise("expected u32");
 
 	node->obj = obj;
-	memcpy(node->key, f, sizeof(u32));
+	memcpy(&node->key, f, sizeof(u32));
 	return node;
 }
 static struct index_node *
@@ -65,7 +65,7 @@ box_tuple_u64_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
 		index_raise("expected u64");
 
 	node->obj = obj;
-	memcpy(node->key, f, sizeof(u64));
+	memcpy(&node->key, f, sizeof(u64));
 	return node;
 }
 static struct index_node *
@@ -77,7 +77,7 @@ box_tuple_lstr_dtor(struct tnt_object *obj, struct index_node *node, void  *arg)
 		index_raise("cardinality too small");
 	void *f = tuple_field(tuple, n);
 	node->obj = obj;
-	memcpy(node->key, &f, sizeof(void *));
+	memcpy(&node->key, &f, sizeof(void *));
 	return node;
 }
 static struct index_node *
@@ -94,7 +94,7 @@ box_tuple_gen_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
 		assert(tuple_data < (const u8 *)tuple->data + tuple->bsize);
 		u32 len = LOAD_VARINT32(tuple_data);
 		if (desc->field_index[i] == j) {
-			union index_field *f = (void *)node->key + desc->offset[i];
+			union index_field *f = (void *)&node->key + desc->offset[i];
 			gen_set_field(f, desc->field_type[i], len, tuple_data);
 			i++;
 		}
