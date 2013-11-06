@@ -422,6 +422,19 @@ static void LJ_FASTCALL recff_xpcall(jit_State *J, RecordFFData *rd)
   }  /* else: Interpreter will throw. */
 }
 
+static void LJ_FASTCALL recff_getfenv(jit_State *J, RecordFFData *rd)
+{
+  TRef tr = J->base[0];
+  /* Only support getfenv(0) for now. */
+  if (tref_isint(tr) && tref_isk(tr) && IR(tref_ref(tr))->i == 0) {
+    TRef trl = emitir(IRT(IR_LREF, IRT_THREAD), 0, 0);
+    J->base[0] = emitir(IRT(IR_FLOAD, IRT_TAB), trl, IRFL_THREAD_ENV);
+    return;
+  }
+  recff_nyiu(J);
+  UNUSED(rd);
+}
+
 /* -- Math library fast functions ----------------------------------------- */
 
 static void LJ_FASTCALL recff_math_abs(jit_State *J, RecordFFData *rd)
@@ -1000,6 +1013,14 @@ static void LJ_FASTCALL recff_table_concat(jit_State *J, RecordFFData *rd)
     emitir(IRTG(IR_NE, IRT_PTR), tr, lj_ir_kptr(J, NULL));
     J->base[0] = emitir(IRT(IR_BUFSTR, IRT_STR), tr, hdr);
   }  /* else: Interpreter will throw. */
+  UNUSED(rd);
+}
+
+static void LJ_FASTCALL recff_table_new(jit_State *J, RecordFFData *rd)
+{
+  TRef tra = lj_opt_narrow_toint(J, J->base[0]);
+  TRef trh = lj_opt_narrow_toint(J, J->base[1]);
+  J->base[0] = lj_ir_call(J, IRCALL_lj_tab_new_ah, tra, trh);
   UNUSED(rd);
 }
 

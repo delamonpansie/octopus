@@ -97,6 +97,7 @@
   _(UREFC,	LW, ref, lit) \
   _(FREF,	R , ref, lit) \
   _(STRREF,	N , ref, ref) \
+  _(LREF,	L , ___, ___) \
   \
   /* Loads and Stores. These must be in the same order. */ \
   _(ALOAD,	L , ref, ___) \
@@ -139,6 +140,7 @@
   \
   /* Calls. */ \
   _(CALLN,	N , ref, lit) \
+  _(CALLA,	A , ref, lit) \
   _(CALLL,	L , ref, lit) \
   _(CALLS,	S , ref, lit) \
   _(CALLXS,	S , ref, ref) \
@@ -192,6 +194,7 @@ IRFPMDEF(FPMENUM)
   _(STR_LEN,	offsetof(GCstr, len)) \
   _(FUNC_ENV,	offsetof(GCfunc, l.env)) \
   _(FUNC_PC,	offsetof(GCfunc, l.pc)) \
+  _(THREAD_ENV,	offsetof(lua_State, env)) \
   _(TAB_META,	offsetof(GCtab, metatable)) \
   _(TAB_ARRAY,	offsetof(GCtab, array)) \
   _(TAB_NODE,	offsetof(GCtab, node)) \
@@ -478,6 +481,7 @@ typedef uint32_t TRef;
 #define tref_isnil(tr)		(tref_istype((tr), IRT_NIL))
 #define tref_isfalse(tr)	(tref_istype((tr), IRT_FALSE))
 #define tref_istrue(tr)		(tref_istype((tr), IRT_TRUE))
+#define tref_islightud(tr)	(tref_istype((tr), IRT_LIGHTUD))
 #define tref_isstr(tr)		(tref_istype((tr), IRT_STR))
 #define tref_isfunc(tr)		(tref_istype((tr), IRT_FUNC))
 #define tref_iscdata(tr)	(tref_istype((tr), IRT_CDATA))
