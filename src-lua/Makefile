@@ -10,6 +10,8 @@ obj += src-lua/jit/dump.o
 obj += src-lua/jit/bc.o
 obj += src-lua/jit/vmdef.o
 obj += src-lua/jit/p.o
+obj += src-lua/jit/dis_x86.o
+obj += src-lua/jit/dis_x64.o
 
 src-lua/jit/vmdef.lua: .luajit
 	@mkdir -p $(dir $@)
