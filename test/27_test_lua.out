@@ -1,309 +1,312 @@
-# box.insert(["0"])
+# box.insert(["0", 0, "0"])
 1
 
-# box.insert(["1"])
+# box.insert(["1", 1, "1"])
 1
 
-# box.insert(["2"])
+# box.insert(["2", 2, "2"])
 1
 
-# box.insert(["3"])
+# box.insert(["3", 3, "3"])
 1
 
-# box.insert(["4"])
+# box.insert(["4", 4, "4"])
 1
 
-# box.insert(["5"])
+# box.insert(["5", 5, "5"])
 1
 
-# box.insert(["6"])
+# box.insert(["6", 6, "6"])
 1
 
-# box.insert(["7"])
+# box.insert(["7", 7, "7"])
 1
 
-# box.insert(["8"])
+# box.insert(["8", 8, "8"])
 1
 
-# box.insert(["9"])
+# box.insert(["9", 9, "9"])
 1
 
-# box.insert(["10"])
+# box.insert(["10", 10, "10"])
 1
 
-# box.insert(["11"])
+# box.insert(["11", 11, "11"])
 1
 
-# box.insert(["12"])
+# box.insert(["12", 12, "12"])
 1
 
-# box.insert(["13"])
+# box.insert(["13", 13, "13"])
 1
 
-# box.insert(["14"])
+# box.insert(["14", 14, "14"])
 1
 
-# box.insert(["15"])
+# box.insert(["15", 15, "15"])
 1
 
-# box.insert(["16"])
+# box.insert(["16", 16, "16"])
 1
 
-# box.insert(["17"])
+# box.insert(["17", 17, "17"])
 1
 
-# box.insert(["18"])
+# box.insert(["18", 18, "18"])
 1
 
-# box.insert(["19"])
+# box.insert(["19", 19, "19"])
 1
 
-# box.insert(["20"])
+# box.insert(["20", 20, "20"])
 1
 
-# box.insert(["21"])
+# box.insert(["21", 21, "21"])
 1
 
-# box.insert(["22"])
+# box.insert(["22", 22, "22"])
 1
 
-# box.insert(["23"])
+# box.insert(["23", 23, "23"])
 1
 
-# box.insert(["24"])
+# box.insert(["24", 24, "24"])
 1
 
-# box.insert(["25"])
+# box.insert(["25", 25, "25"])
 1
 
-# box.insert(["26"])
+# box.insert(["26", 26, "26"])
 1
 
-# box.insert(["27"])
+# box.insert(["27", 27, "27"])
 1
 
-# box.insert(["28"])
+# box.insert(["28", 28, "28"])
 1
 
-# box.insert(["29"])
+# box.insert(["29", 29, "29"])
 1
 
-# box.insert(["30"])
+# box.insert(["30", 30, "30"])
 1
 
-# box.insert(["31"])
+# box.insert(["31", 31, "31"])
 1
 
-# box.insert(["32"])
+# box.insert(["32", 32, "32"])
 1
 
-# box.insert(["33"])
+# box.insert(["33", 33, "33"])
 1
 
-# box.insert(["34"])
+# box.insert(["34", 34, "34"])
 1
 
-# box.insert(["35"])
+# box.insert(["35", 35, "35"])
 1
 
-# box.insert(["36"])
+# box.insert(["36", 36, "36"])
 1
 
-# box.insert(["37"])
+# box.insert(["37", 37, "37"])
 1
 
-# box.insert(["38"])
+# box.insert(["38", 38, "38"])
 1
 
-# box.insert(["39"])
+# box.insert(["39", 39, "39"])
 1
 
-# box.insert(["40"])
+# box.insert(["40", 40, "40"])
 1
 
-# box.insert(["41"])
+# box.insert(["41", 41, "41"])
 1
 
-# box.insert(["42"])
+# box.insert(["42", 42, "42"])
 1
 
-# box.insert(["43"])
+# box.insert(["43", 43, "43"])
 1
 
-# box.insert(["44"])
+# box.insert(["44", 44, "44"])
 1
 
-# box.insert(["45"])
+# box.insert(["45", 45, "45"])
 1
 
-# box.insert(["46"])
+# box.insert(["46", 46, "46"])
 1
 
-# box.insert(["47"])
+# box.insert(["47", 47, "47"])
 1
 
-# box.insert(["48"])
+# box.insert(["48", 48, "48"])
 1
 
-# box.insert(["49"])
+# box.insert(["49", 49, "49"])
 1
 
-# box.insert(["50"])
+# box.insert(["50", 50, "50"])
 1
 
-# box.insert(["51"])
+# box.insert(["51", 51, "51"])
 1
 
-# box.insert(["52"])
+# box.insert(["52", 52, "52"])
 1
 
-# box.insert(["53"])
+# box.insert(["53", 53, "53"])
 1
 
-# box.insert(["54"])
+# box.insert(["54", 54, "54"])
 1
 
-# box.insert(["55"])
+# box.insert(["55", 55, "55"])
 1
 
-# box.insert(["56"])
+# box.insert(["56", 56, "56"])
 1
 
-# box.insert(["57"])
+# box.insert(["57", 57, "57"])
 1
 
-# box.insert(["58"])
+# box.insert(["58", 58, "58"])
 1
 
-# box.insert(["59"])
+# box.insert(["59", 59, "59"])
 1
 
-# box.insert(["60"])
+# box.insert(["60", 60, "60"])
 1
 
-# box.insert(["61"])
+# box.insert(["61", 61, "61"])
 1
 
-# box.insert(["62"])
+# box.insert(["62", 62, "62"])
 1
 
-# box.insert(["63"])
+# box.insert(["63", 63, "63"])
 1
 
-# box.insert(["64"])
+# box.insert(["64", 64, "64"])
 1
 
-# box.insert(["65"])
+# box.insert(["65", 65, "65"])
 1
 
-# box.insert(["66"])
+# box.insert(["66", 66, "66"])
 1
 
-# box.insert(["67"])
+# box.insert(["67", 67, "67"])
 1
 
-# box.insert(["68"])
+# box.insert(["68", 68, "68"])
 1
 
-# box.insert(["69"])
+# box.insert(["69", 69, "69"])
 1
 
-# box.insert(["70"])
+# box.insert(["70", 70, "70"])
 1
 
-# box.insert(["71"])
+# box.insert(["71", 71, "71"])
 1
 
-# box.insert(["72"])
+# box.insert(["72", 72, "72"])
 1
 
-# box.insert(["73"])
+# box.insert(["73", 73, "73"])
 1
 
-# box.insert(["74"])
+# box.insert(["74", 74, "74"])
 1
 
-# box.insert(["75"])
+# box.insert(["75", 75, "75"])
 1
 
-# box.insert(["76"])
+# box.insert(["76", 76, "76"])
 1
 
-# box.insert(["77"])
+# box.insert(["77", 77, "77"])
 1
 
-# box.insert(["78"])
+# box.insert(["78", 78, "78"])
 1
 
-# box.insert(["79"])
+# box.insert(["79", 79, "79"])
 1
 
-# box.insert(["80"])
+# box.insert(["80", 80, "80"])
 1
 
-# box.insert(["81"])
+# box.insert(["81", 81, "81"])
 1
 
-# box.insert(["82"])
+# box.insert(["82", 82, "82"])
 1
 
-# box.insert(["83"])
+# box.insert(["83", 83, "83"])
 1
 
-# box.insert(["84"])
+# box.insert(["84", 84, "84"])
 1
 
-# box.insert(["85"])
+# box.insert(["85", 85, "85"])
 1
 
-# box.insert(["86"])
+# box.insert(["86", 86, "86"])
 1
 
-# box.insert(["87"])
+# box.insert(["87", 87, "87"])
 1
 
-# box.insert(["88"])
+# box.insert(["88", 88, "88"])
 1
 
-# box.insert(["89"])
+# box.insert(["89", 89, "89"])
 1
 
-# box.insert(["90"])
+# box.insert(["90", 90, "90"])
 1
 
-# box.insert(["91"])
+# box.insert(["91", 91, "91"])
 1
 
-# box.insert(["92"])
+# box.insert(["92", 92, "92"])
 1
 
-# box.insert(["93"])
+# box.insert(["93", 93, "93"])
 1
 
-# box.insert(["94"])
+# box.insert(["94", 94, "94"])
 1
 
-# box.insert(["95"])
+# box.insert(["95", 95, "95"])
 1
 
-# box.insert(["96"])
+# box.insert(["96", 96, "96"])
 1
 
-# box.insert(["97"])
+# box.insert(["97", 97, "97"])
 1
 
-# box.insert(["98"])
+# box.insert(["98", 98, "98"])
 1
 
-# box.insert(["99"])
+# box.insert(["99", 99, "99"])
 1
 
 # box.lua("user_proc.test1")
 [["abc", "defg", "foobar"], ["abc", "defg"], ["abc"]]
 
 # box.lua("user_proc.test2")
-[["cdata<struct OpaqueIndex *>: 0xPTR", "cdata<struct HashIndex *>: 0xPTR"]]
+[["cdata<struct OpaqueIndex *>: 0xPTR", "cdata<struct Index *>: 0xPTR"]]
 
 # box.lua("user_proc.test3")
 [["cdata<struct box_tuple *>: 0xPTR", "11", "11"]]
+
+# box.lua("user_proc.test4")
+[["300"]]
 

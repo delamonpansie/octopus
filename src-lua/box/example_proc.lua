@@ -220,6 +220,43 @@ local function test3()
    return 0, {box.tuple(tos(t), t:strfield(0), t[0])}
 end
 
-for i, f in ipairs({test1, test2, test3}) do
+local function test4()
+    local os = box.object_space[0]
+    local pk = os:index(0)
+
+    local k = {}
+    for i = 0,1000 do
+	k[i] = tostring(i)
+    end
+
+    local n = 0
+    for i = 0,1000 do
+	local t = pk:find(k[i])
+	if t ~= nil then
+	    n = n + 1
+	end
+    end
+
+    local idx = os:index(1)
+    for i = 0,1000 do
+	local t = pk:find(k[i], k, k[i])
+	if t ~= nil then
+	    n = n + 1
+	end
+    end
+
+    for i = 0,1000 do
+	local t = pk:find(k[i], k)
+	if t ~= nil then
+	    n = n + 1
+	end
+    end
+
+    return 0, {box.tuple(tostring(n))}
+end
+
+
+
+for i, f in ipairs({test1, test2, test3, test4}) do
    user_proc["test" .. tostring(i)] = box.wrap(f)
 end
