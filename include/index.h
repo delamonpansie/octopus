@@ -38,6 +38,7 @@ union index_field {
 	u32 u32;
 	u64 u64;
 	const void *ptr;
+	char chr[0]; /* for LuaJIT casts */
 	struct {
 		i16 len;
 		union {
@@ -72,10 +73,21 @@ struct dtor_conf {
 	index_dtor *u32, *u64, *lstr, *generic;
 };
 
+/* Following selectors used by LuaJIT bindings and MUST NOT throw exceptions:
+   find:
+   find_by_node:
+   get:
+   iterator_init
+   iterator_init_with_node:
+   iterator_init_with_object:
+   iterator_next
+*/
+
 @protocol BasicIndex
 - (int)eq:(struct tnt_object *)a :(struct tnt_object *)b;
 - (struct tnt_object *)find:(const u8 *)key;
 - (struct tnt_object *)find_by_obj:(struct tnt_object *)obj;
+- (struct tnt_object *)find_by_node:(const struct index_node *)obj;
 - (struct tnt_object *) find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality;
 - (int) remove: (struct tnt_object *)obj;
 - (void) replace: (struct tnt_object *)obj;
@@ -84,6 +96,7 @@ struct dtor_conf {
 - (void)iterator_init;
 - (void)iterator_init:(struct tbuf *)key_data with_cardinalty:(u32)cardinality;
 - (void)iterator_init_with_object:(struct tnt_object *)obj;
+- (void)iterator_init_with_node:(const struct index_node *)node;
 - (struct tnt_object *)iterator_next;
 - (u32)size;
 - (u32)slots;

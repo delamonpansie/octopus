@@ -83,6 +83,12 @@ iterator_init_with_object:(struct tnt_object *)obj
 	(void)obj;
 }
 
+- (void)
+iterator_init_with_node:(const struct index_node *)node
+{
+	(void)node;
+}
+
 - (struct tnt_object *)
 iterator_next
 {
@@ -149,6 +155,13 @@ find_key:(struct tbuf *)key_data with_cardinalty:(u32)cardinality
 find_by_obj:(struct tnt_object *)obj
 {
 	(void)obj;
+	return NULL;
+}
+
+- (struct tnt_object *)
+find_by_node:(const struct index_node *)node
+{
+	(void)node;
 	return NULL;
 }
 @end

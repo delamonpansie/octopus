@@ -100,6 +100,13 @@ find_by_obj:(struct tnt_object *)obj
 	return r != NULL ? r->obj : NULL;
 }
 
+- (struct tnt_object *)
+find_by_node:(const struct index_node *)node
+{
+	struct index_node *r = sptree_find(tree, node);
+	return r != NULL ? r->obj : NULL;
+}
+
 - (u32)
 size
 {
@@ -149,6 +156,13 @@ iterator_init:(struct tbuf *)key_data with_cardinalty:(u32)cardinality
 iterator_init_with_object:(struct tnt_object *)obj
 {
         dtor(obj, &search_pattern, dtor_arg);
+	sptree_iterator_init_set(tree, &iterator, &search_pattern);
+}
+
+- (void)
+iterator_init_with_node:(const struct index_node *)node
+{
+	memcpy(&search_pattern, node, node_size);
 	sptree_iterator_init_set(tree, &iterator, &search_pattern);
 }
 

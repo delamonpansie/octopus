@@ -133,6 +133,14 @@ find_by_obj:(struct tnt_object *)obj					\
 		return mh_##type##_value(h, k);				\
 	return NULL;							\
 }									\
+- (struct tnt_object *)							\
+find_by_node:(const struct index_node *)node				\
+{									\
+	u32 k = mh_##type##_get_node(h, (void *)node);			\
+	if (k != mh_end(h)) 						\
+		return mh_##type##_value(h, k);				\
+	return NULL;							\
+}									\
 - (void)								\
 replace:(struct tnt_object *)obj					\
 {									\
@@ -156,6 +164,11 @@ iterator_init_with_object:(struct tnt_object *)obj			\
 {									\
 	struct index_node *node_ = GET_NODE(obj, node_a);		\
 	iter = mh_##type##_get_node(h, (void *)node_);			\
+}									\
+- (void)								\
+iterator_init_with_node:(const struct index_node *)node			\
+{									\
+	iter = mh_##type##_get_node(h, node);				\
 }
 
 

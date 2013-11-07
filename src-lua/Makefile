@@ -32,7 +32,7 @@ src-lua/cdef.lua: include/octopus.h include/index.h include/fiber.h include/octo
 	$(Q)echo "struct palloc_pool;" >> $@
 	$(Q)$(CPP) -P $(CPPFLAGS) $(srcdir)/include/octopus.h | $(SED) -n '/^\(enum tnt_object_flags\|struct tnt_object\) \+{/,/^}/{s/\[\]/[?]/;p;} ' >> $@
 	$(Q)$(CPP) -P $(CPPFLAGS) $(srcdir)/include/octopus.h | $(SED) -n '/^void object_/p ' >> $@
-	$(Q)$(CPP) -P $(CPPFLAGS) $(srcdir)/include/index.h | $(SED) -n '/^struct index_conf \+{/,/^}/{s/\[\]/[?]/;p;}' >> $@
+	$(Q)$(CPP) -P $(CPPFLAGS) $(srcdir)/include/index.h | $(SED) -n '/^\(struct\|union\) index_[a-z]\+ \+{/,/^}/{s/\[\]/[?]/;p;}' >> $@
 	$(Q)$(CPP) -P $(CPPFLAGS) $(srcdir)/include/fiber.h | $(SED) -n '/^typedef struct coro_context/p;' >> $@
 	$(Q)$(CPP) -P $(CPPFLAGS) $(srcdir)/include/fiber.h | $(SED) -n '/^struct \(fiber\|octopus_coro\|coro_context\) \+{/,/^}/{s/\[\]/[?]/;p;}' >> $@
 	$(Q)$(CPP) -P $(CPPFLAGS) $(srcdir)/include/octopus_ev.h | $(SED) -n '/^typedef [a-z]\+ ev_tstamp/p; /typedef struct ev_\(io\|timer\)/,/^}/p;' >> $@
