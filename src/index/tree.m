@@ -72,9 +72,14 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 - (struct tnt_object *)
 find:(const u8 *)key
 {
-	const u8 *p = key;
-	int len = LOAD_VARINT32(p);
-	init_pattern(&TBUF(key, p - key + len, NULL), 1, &node_a, dtor_arg);
+	switch (conf.field_type[0]) {
+	case NUM16: node_a.key.u16 = *(u16 *)key; break;
+	case NUM32: node_a.key.u32 = *(u32 *)key; break;
+	case NUM64: node_a.key.u64 = *(u64 *)key; break;
+	case STRING: node_a.key.ptr = key; break;
+	default: abort();
+	}
+	node_a.obj = (void *)(uintptr_t)1; /* cardinality */
 	struct index_node *r = sptree_find(tree, &node_a);
 	return r != NULL ? r->obj : NULL;
 }
@@ -190,16 +195,6 @@ i32_init_pattern(struct tbuf *key, int cardinality,
 	}
 }
 
-- (struct tnt_object *)
-find:(u8 *)key
-{
-	u32 key_size = key[0];
-	if (key_size != sizeof(i32))
-		index_raise("key is not i32");
-	init_pattern(&TBUF(key, 1 + sizeof(i32), NULL), 1, &node_a, dtor_arg);
-	struct index_node *r = sptree_find(tree, &node_a);
-	return r != NULL ? r->obj : NULL;
-}
 
 - (id)
 init:(struct index_conf *)ic
@@ -234,17 +229,6 @@ i64_init_pattern(struct tbuf *key, int cardinality,
 	default:
 		index_raise("cardinality too big");
 	}
-}
-
-- (struct tnt_object *)
-find:(u8 *)key
-{
-	u32 key_size = key[0];
-	if (key_size != sizeof(i64))
-		index_raise("key is not i64");
-	init_pattern(&TBUF(key, 1 + sizeof(i64), NULL), 1, &node_a, dtor_arg);
-	struct index_node *r = sptree_find(tree, &node_a);
-	return r != NULL ? r->obj : NULL;
 }
 
 - (id)

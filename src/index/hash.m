@@ -192,11 +192,7 @@ find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
 - (struct tnt_object *)
 find:(const u8 *)key
 {
-	u32 key_size = key[0];
-	if (key_size != sizeof(i32))
-		index_raise("key is not i32");
-
-	i32 num = *(i32 *)(key + 1);
+	i32 num = *(i32 *)key;
 	u32 k = mh_i32_get(h, num);
 	if (k != mh_end(h))
 		return mh_i32_value(h, k);
@@ -247,11 +243,7 @@ find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
 - (struct tnt_object *)
 find:(const u8 *)key
 {
-	u32 key_size = key[0];
-	if (key_size != sizeof(i64))
-		index_raise("key is not i64");
-
-	i64 num = *(i64 *)(key + 1);
+	i64 num = *(i64 *)key;
 	u32 k = mh_i64_get(h, num);
 	if (k != mh_end(h))
 		return mh_i64_value(h, k);
