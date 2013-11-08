@@ -88,7 +88,7 @@ netmsg_unref(struct netmsg *m, int from)
 	if (have_lua_refs) {
 		lua_State *L = fiber->L;
 		lua_getglobal(L, "__netmsg_unref");
-		lua_pushlightuserdata(L, m);
+		luaT_pushptr(L, m);
 		lua_pushinteger(L, from);
 		lua_call(L, 2, 0);
 	}
