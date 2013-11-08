@@ -270,7 +270,7 @@ function update(n, key, ...)
         local flags, key_cardinality = 0, 1
         local req = packer()
 
-        req:u32(n)
+        req:u32(tonumber(n))
         req:u32(flags)
         req:u32(key_cardinality)
         req:field(key)
@@ -278,34 +278,32 @@ function update(n, key, ...)
         for k, op in ipairs(ops) do
                 req:u32(op[1])
                 if (op[2] == "set") then
-                        req:string("\000")
+                        req:u8(0)
                         req:field(op[3])
                 elseif (op[2] == "add") then
-                        req:string("\001\004")
-                        req:u32(op[3])
+                        req:u8(1)
+                        req:field_u32(op[3])
                 elseif (op[2] == "and") then
-                        req:string("\002\004")
-                        req:u32(op[3])
+                        req:u8(2)
+                        req:field_u32(op[3])
                 elseif (op[2] == "or") then
-                        req:string("\003\004")
-                        req:u32(op[3])
+                        req:u8(3)
+                        req:field_u32(op[3])
                 elseif (op[2] == "xor") then
-                        req:string("\004\004")
-                        req:u32(op[3])
+                        req:u8(4)
+                        req:field_u32(op[3])
                 elseif (op[2] == "splice") then
-                        req:string("\005")
+                        req:u8(5)
                         local s = packer()
                         if (op[3] ~= nil) then
-                                s:string("\004")
-                                s:u32(op[3])
+                                s:field_u32(op[3])
                         else
-                                s:string("\000")
+                                s:u8(0)
                         end
                         if (op[4] ~= nil) then
-                                s:string("\004")
-                                s:u32(op[4])
+                                s:field_u32(op[4])
                         else
-                                s:string("\000")
+                                s:u8(0)
                         end
 			s:field(op[5])
 			local buf, len = s:pack()
@@ -314,7 +312,7 @@ function update(n, key, ...)
                 elseif (op[2] == "delete") then
                         req:string("\006\000")
                 elseif (op[2] == "insert") then
-                        req:string("\007")
+                        req:u8(7)
                         req:field(op[3])
                 end
         end
