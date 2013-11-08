@@ -152,7 +152,7 @@ netmsg_concat(struct netmsg_head *dst, struct netmsg_head *src)
 }
 
 void
-netmsg_rewind(struct netmsg_head *h, struct netmsg_mark *mark)
+netmsg_rewind(struct netmsg_head *h, const struct netmsg_mark *mark)
 {
 	struct netmsg *m, *tvar;
 	TAILQ_FOREACH_SAFE(m, &h->q, link, tvar) {
