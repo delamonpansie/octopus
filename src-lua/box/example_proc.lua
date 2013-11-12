@@ -239,7 +239,7 @@ local function test4()
 
     local idx = os:index(1)
     for i = 0,1000 do
-	local t = pk:find(k[i], k, k[i])
+	local t = idx:find(k[i], i, k[i])
 	if t ~= nil then
 	    n = n + 1
 	end
