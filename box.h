@@ -39,6 +39,7 @@ struct namespace;
 struct box_tuple;
 struct index;
 
+/* also defined by box.lua */
 #define MAX_IDX 10
 struct object_space {
 	int n;

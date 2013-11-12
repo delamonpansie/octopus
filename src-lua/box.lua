@@ -40,7 +40,7 @@ struct object_space {
 	int n;
 	bool enabled, ignored;
 	int cardinality;
-	struct Index *index[];
+	struct Index *index[10];
 };
 extern struct object_space *object_space_registry;
 extern const int object_space_count, object_space_max_idx;
