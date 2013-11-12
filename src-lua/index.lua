@@ -46,9 +46,9 @@ local function packfield(ftype, field, key)
 	end
 	field.str.len = #key
 	if #key <= 8 then
-	    ffi.copy(field.str.data, key, #key)
+	    ffi.copy(field.str.data.bytes, key, #key)
 	else
-	    field.str.ptr = key
+	    field.str.data.ptr = key
 	end
     else
 	error("unknown index field_type:" .. tostring(ftype), 4)
