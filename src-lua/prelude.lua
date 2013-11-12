@@ -9,7 +9,7 @@ function print (...)
                 print_(tostring(v))
         end
 end
-function printf(...) return print_(string.format(...)) end
+function printf(...) print_(string.format(...)) end
 
 -- prefer external files over bundled ones
 package.loaders[2], package.loaders[1] = package.loaders[1], package.loaders[2]
