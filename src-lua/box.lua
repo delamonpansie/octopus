@@ -70,15 +70,16 @@ local index_registry_mt = {
       return rawget(table, i)
    end,
    __call = function (t, object_space, i)
-      i = tonumber(i)
-      if i < 0 or i >= maxidx or object_space.__ptr.index[i] == nil then
-	 return nil
-      end
-      if not rawget(table, i + maxidx) then
-	 local legacy, new = index.cast(object_space.__ptr.index[i])
-	 table[i + maxidx] = new
-      end
-      return rawget(table, i + maxidx)
+       i = tonumber(i)
+       if i < 0 or i >= maxidx or object_space.__ptr.index[i] == nil then
+	   return nil
+       end
+       if not rawget(t, i + maxidx) then
+	   local legacy, new = index.cast(object_space.__ptr.index[i])
+	   t[i + maxidx] = new
+       end
+
+       return rawget(t, i + maxidx)
    end
 }
 
