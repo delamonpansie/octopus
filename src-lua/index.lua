@@ -30,8 +30,7 @@ local iterator_next = objc.msg_lookup("iterator_next")
 local get = objc.msg_lookup('get:')
 
 local maxnodesize = ffi.sizeof('struct index_node') + 8 * ffi.sizeof('union index_field')
-local nodebuf = ffi.new('char[?]', maxnodesize) -- keep this pointer live
-local node = ffi.cast('struct index_node *', nodebuf)
+local node = ffi.cast('struct index_node *', ffi.C.malloc(maxnodesize))
 local strbuf = ffi.new('char[?]', 5 + 0xffff)
 
 local function packfield(ftype, field, key)
