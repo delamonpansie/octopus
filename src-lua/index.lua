@@ -38,7 +38,7 @@ local function packfield(ftype, field, key)
     if ftype == ffi.C.NUM16 then
 	field.u16 = key
     elseif ftype == ffi.C.NUM32 then
-	field.u32 = key + 1
+	field.u32 = key
     elseif ftype == ffi.C.NUM64 then
 	field.u64 = key
     elseif ftype == ffi.C.STRING then
