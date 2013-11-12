@@ -255,8 +255,15 @@ local function test4()
     return 0, {box.tuple(tostring(n))}
 end
 
+local function test5()
+    local os = box.object_space[1]
+    local a = os:index(0):find(0)
+    local b = os:index(1):find(0)
+    local c = os:index(2):find(0)
+    return 0, {a,b,c}
+end
 
 
-for i, f in ipairs({test1, test2, test3, test4}) do
+for i, f in ipairs({test1, test2, test3, test4, test5}) do
    user_proc["test" .. tostring(i)] = box.wrap(f)
 end
