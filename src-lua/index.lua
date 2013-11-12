@@ -8,10 +8,14 @@ local tonumber = tonumber
 local error = error
 local type = type
 local tostring = tostring
+local format = string.format
 local select = select
+local pcall = pcall
+local table = table
 local assertarg = assertarg
 
 local printf = printf
+
 module(...)
 
 ffi.cdef[[
@@ -57,12 +61,11 @@ end
 
 local index_field = ffi.typeof('union index_field *')
 local void = ffi.typeof('void *')
--- local uintptr = ffi.typeof('intptr_t')
 local function packnode(index, ...)
     if index.conf.cardinality == 1 and index.conf.field_type[0] == ffi.C.STRING then
 	local key = ...
 	if #key > 0xffff then
-	    error("key too big", 3)
+	    error("key too big")
 	end
 	local n = varint32.write(strbuf, #key)
 	ffi.copy(strbuf + n, key, #key)
@@ -76,6 +79,33 @@ local function packnode(index, ...)
 	node.obj = ffi.cast(void, select('#', ...))
     end
     return node
+end
+local function packerr(err, fname, index, ...)
+    local itype = {}
+    local atype = {}
+    for i = 0, index.conf.cardinality - 1 do
+	local t = "UNKNOWN"
+	if index.conf.field_type[i] == ffi.C.NUM16 then
+	    t = "NUM16"
+	elseif index.conf.field_type[i] == ffi.C.NUM32 then
+	    t = "NUM32"
+	elseif index.conf.field_type[i] == ffi.C.NUM64 then
+	    t = "NUM64"
+	elseif index.conf.field_type[i] == ffi.C.STRING then
+	    t = "STRING"
+	else
+	    t = tostring(index.conf.field_type[i])
+	end
+	table.insert(itype, t)
+    end
+    for i = 1, select('#', ...) do
+	table.insert(atype, tostring(type(select(i, ...))))
+	-- TODO: check string size
+    end
+    local msg = format("bad argument #? to method '%s' ({%s} expected, got {%s}) <%s> %s %s",
+		       fname, table.concat(itype, ', '), table.concat(atype, ', '),
+		       err, tostring(index), tostring(index.conf))
+    error(msg, 3)
 end
 
 local opaquet = ffi.typeof('struct OpaqueIndex *')
@@ -111,7 +141,10 @@ local int32_t = ffi.typeof('int32_t')
 local index_mt = {
     __index = {
 	find = function(index, ...)
-	    local node = packnode(index, ...)
+	    local ok, node = pcall(packnode, index, ...)
+	    if not ok then
+		packerr(node, "find", index, ...)
+	    end
 	    return object(find_by_node(index, node))
 	end,
 	iter = function(index, ...)
@@ -122,7 +155,10 @@ local index_mt = {
 		assert(init.__obj)
 		iterator_init_with_object(index, init.__obj)
 	    else
-		local node = packnode(index, ...)
+		local ok, node = pcall(packnode, index, ...)
+		if not ok then
+		    packerr(node, "find", index, ...)
+		end
 		iterator_init_with_node(index, node)
 	    end
 	 return iter_next, index
