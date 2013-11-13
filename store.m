@@ -248,10 +248,12 @@ store(const char *key, u32 exptime, u32 flags, u32 value_len, char *value)
 			obj = NULL;
 			return 1;
 		} else {
+			say_warn("can't write WAL row");
 			return 0;
 		}
 	}
-	@catch (id e) {
+	@catch (Error *e) {
+		say_warn("got exception: %s", e->reason);
 		return 0;
 	}
 	@finally {
