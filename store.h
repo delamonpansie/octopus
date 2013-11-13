@@ -72,7 +72,7 @@ expired(struct tnt_object *obj)
 #endif
 }
 
-int store(char *key, u32 exptime, u32 flags, u32 value_len, char *value);
+int store(const char *key, u32 exptime, u32 flags, u32 value_len, char *value);
 int delete(char **keys, int n);
 void flush_all(va_list ap);
 

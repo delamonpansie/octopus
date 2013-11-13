@@ -43,8 +43,8 @@ static u64 cas;
 
 struct mc_stats mc_stats;
 
-struct tnt_object *
-mc_alloc(char *key, u32 exptime, u32 flags, u32 value_len, char *value)
+static struct tnt_object *
+mc_alloc(const char *key, u32 exptime, u32 flags, u32 value_len, const char *value)
 {
 	char suffix[43];
 	sprintf(suffix, " %"PRIu32" %"PRIu32"\r\n", flags, value_len);
@@ -112,7 +112,7 @@ apply:(struct tbuf *)op tag:(u16)tag
 
 	struct tnt_object *obj;
 	struct mc_obj *m;
-	char *key;
+	const char *key;
 
 	switch(tag & TAG_MASK) {
 	case STORE:
@@ -215,7 +215,7 @@ snapshot_write_rows: (XLog *)l
 @end
 
 int
-store(char *key, u32 exptime, u32 flags, u32 value_len, char *value)
+store(const char *key, u32 exptime, u32 flags, u32 value_len, char *value)
 {
 	struct tnt_object *old_obj = NULL, *obj = NULL;
 
@@ -500,7 +500,7 @@ dtor(struct tnt_object *obj, struct index_node *node, void *arg __attribute__((u
 {
 	struct mc_obj *m = mc_obj(obj);
 	node->obj = obj;
-	node->str = m->data;
+	node->key.ptr = m->data;
 	return node;
 }
 

@@ -153,7 +153,7 @@ memcached_dispatch(struct conn *c)
 		}
 
 		action add {
-			char *key = next_key(&kstart);
+			const char *key = next_key(&kstart);
 			struct tnt_object *obj = [mc_index find:key];
 			if (obj != NULL && !ghost(obj) && !expired(obj))
 				ADD_IOV_LITERAL("NOT_STORED\r\n");
