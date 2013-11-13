@@ -246,7 +246,7 @@ local function test4()
     end
 
     for i = 0,1000 do
-	local t = pk:find(k[i], k)
+	local t = idx:find(k[i], i)
 	if t ~= nil then
 	    n = n + 1
 	end
