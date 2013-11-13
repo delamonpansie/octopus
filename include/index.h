@@ -85,7 +85,7 @@ struct dtor_conf {
 
 @protocol BasicIndex
 - (int)eq:(struct tnt_object *)a :(struct tnt_object *)b;
-- (struct tnt_object *)find:(const u8 *)key;
+- (struct tnt_object *)find:(const char *)key;
 - (struct tnt_object *)find_by_obj:(struct tnt_object *)obj;
 - (struct tnt_object *)find_by_node:(const struct index_node *)obj;
 - (struct tnt_object *) find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality;

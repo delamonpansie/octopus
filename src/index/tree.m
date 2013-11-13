@@ -70,7 +70,7 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 }
 
 - (struct tnt_object *)
-find:(const u8 *)key
+find:(const char *)key
 {
 	switch (conf.field_type[0]) {
 	case NUM16: node_a.key.u16 = *(u16 *)key; break;

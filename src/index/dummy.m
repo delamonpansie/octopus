@@ -137,7 +137,7 @@ remove:(struct tnt_object *)obj
 }
 
 - (struct tnt_object *)
-find:(u8 *)key
+find:(const char *)key
 {
 	(void)key;
 	return NULL;
