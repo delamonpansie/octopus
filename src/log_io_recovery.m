@@ -521,7 +521,7 @@ pull_snapshot:(id<XLogPullerAsync>)puller
 	for (;;) {
 		const struct row_v12 *row;
 		if ([puller recv] <= 0)
-			raise("unexpected eof");
+			raise("unexpected EOF");
 
 		while ((row = [puller fetch_row])) {
 			int tag = row->tag & TAG_MASK;
@@ -551,7 +551,7 @@ pull_wal:(id<XLogPullerAsync>)puller
 
 	while (!(row = [puller fetch_row]))
 		if ([puller recv] <= 0)
-			raise("unexpected EOF from remote feeder");
+			raise("unexpected EOF");
 
 	do {
 		int tag = row->tag & TAG_MASK;
@@ -671,10 +671,6 @@ load_from_remote:(XLogPuller *)puller
 
 		while ([self pull_wal:puller] != 1);
 	}
-	@catch (Error *e) {
-		say_error("replication failure: %s", e->reason);
-		return -1;
-	}
 	@finally {
 		if (revert_io_collect_interval)
 			ev_set_io_collect_interval(cfg.io_collect_interval);
@@ -688,6 +684,7 @@ remote_hot_standby(va_list ap)
 	Recovery *r = va_arg(ap, Recovery *);
 	struct sockaddr_in sin;
 	ev_tstamp reconnect_delay = 0.1;
+	bool warning_said = false;
 
 	r->remote_puller = [[XLogPuller alloc] init];
 
@@ -701,7 +698,6 @@ remote_hot_standby(va_list ap)
 			goto sleep;
 
 		const char *err;
-		bool warning_said = false;
 
 		while ([r->remote_puller handshake:&sin scn:[r scn] err:&err] <= 0) {
 			/* no more WAL rows in near future, notify module about that */
@@ -714,6 +710,7 @@ remote_hot_standby(va_list ap)
 			}
 			goto sleep;
 		}
+		warning_said = false;
 
 		@try {
 			if ([r lsn] == 0)
@@ -723,6 +720,7 @@ remote_hot_standby(va_list ap)
 				[r pull_wal:r->remote_puller];
 		}
 		@catch (Error *e) {
+			[r->remote_puller close];
 			say_error("replication failure: %s", e->reason);
 		}
 	sleep:

@@ -311,6 +311,8 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 
 - (XLogPuller *) init;
 - (void) set_addr:(struct sockaddr_in *)addr_;
+
+/* returns -1 in case of handshake failure. puller is closed.  */
 - (int) handshake:(i64)scn err:(const char **)err_ptr;
 - (int) handshake:(struct sockaddr_in *)addr_ scn:(i64)scn;
 - (int) handshake:(struct sockaddr_in *)addr_ scn:(i64)scn err:(const char **)err_ptr;
@@ -348,6 +350,7 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 - (i64) recover_snap;
 - (i64) recover_cont;
 - (void) wal_final_row;
+/* pull_wal & load_from_remote throws exceptions on failure */
 - (int) pull_wal:(id<XLogPullerAsync>)puller;
 - (int) load_from_remote:(XLogPuller *)puller;
 - (void) enable_local_writes;

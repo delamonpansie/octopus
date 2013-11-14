@@ -47,7 +47,7 @@
 init
 {
 	say_debug("%s", __func__);
-	conn_init(&c, fiber->pool, -2, fiber, fiber, MO_STATIC);
+	conn_init(&c, fiber->pool, -1, fiber, fiber, MO_STATIC);
 	palloc_register_gc_root(fiber->pool, &c, conn_gc);
 	return [super init];
 }
@@ -199,10 +199,8 @@ handshake:(i64)scn err:(const char **)err_ptr
 err:
 	if (err_ptr)
 		*err_ptr = err;
-	if (c.fd != -2) {
-		palloc_unregister_gc_root(fiber->pool, &c);
+	if (c.fd >= 0)
 		conn_close(&c);
-	}
 	return -1;
 }
 
@@ -313,7 +311,7 @@ fetch_row
 - (int)
 close
 {
-	if (c.fd == -2)
+	if (c.fd < 0)
 		return 0;
 	return conn_close(&c);
 }

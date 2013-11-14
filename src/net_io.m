@@ -497,6 +497,9 @@ conn_free(struct conn *c)
 
 	switch (c->memory_ownership & MO_CONN_OWNERSHIP_MASK) {
 		case MO_STATIC:
+			/* restore state for possible later use */
+			netmsg_head_init(&c->out_messages, c->pool);
+			netmsg_alloc(&c->out_messages);
 			break;
 		case MO_MALLOC:
 			free(c);

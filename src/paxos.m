@@ -1158,7 +1158,13 @@ enable_local_writes
 				continue;
 
 			say_debug("loading from %s", p->name);
-			[self load_from_remote:puller];
+			@try {
+				[self load_from_remote:puller];
+			}
+			@finally {
+				[puller close];
+			}
+
 			if ([self scn] > 0)
 				goto exit;
 		}
