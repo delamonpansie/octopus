@@ -498,7 +498,7 @@ sfree(void *ptr)
 	}
 
 	ASAN_POISON_MEMORY_REGION(item, cache->item_size, 0xfd);
-	VALGRIND_FREELIKE_BLOCK(iqtem, sizeof(red_zone));
+	VALGRIND_FREELIKE_BLOCK(item, sizeof(red_zone));
 }
 
 void
