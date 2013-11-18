@@ -186,7 +186,7 @@ slab_cache_series_init(enum arena_type arena_type, size_t minimal, double factor
 	     i < nelem(slab_caches) - 1 && size <= MAX_SLAB_ITEM;
 	     i++)
 	{
-		slab_cache_init(&slab_caches[i], size - sizeof(red_zone), arena_type, NULL);
+		slab_cache_init(&slab_caches[i], size, arena_type, NULL);
 
 		size = MAX((size_t)(size * factor) & ~(ptr_size - 1),
 			   (size + ptr_size) & ~(ptr_size - 1));
