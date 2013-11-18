@@ -159,6 +159,7 @@ slab_cache_init(struct slab_cache *cache, size_t item_size, enum arena_type type
 	assert(item_size <= MAX_SLAB_ITEM);
 	cache->item_size = item_size > sizeof(void *) ? item_size : sizeof(void *);
 	cache->name = name;
+	cache->ctor = cache->dtor = NULL;
 
 	switch (type) {
 	case SLAB_FIXED:
@@ -185,7 +186,7 @@ slab_cache_series_init(enum arena_type arena_type, size_t minimal, double factor
 	     i < nelem(slab_caches) - 1 && size <= MAX_SLAB_ITEM;
 	     i++)
 	{
-		slab_cache_init(&slab_caches[i], size - sizeof(red_zone), arena_type, NULL);
+		slab_cache_init(&slab_caches[i], size, arena_type, NULL);
 
 		size = MAX((size_t)(size * factor) & ~(ptr_size - 1),
 			   (size + ptr_size) & ~(ptr_size - 1));
