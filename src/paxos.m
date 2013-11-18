@@ -1315,7 +1315,7 @@ snapshot_write_header_rows:(XLog *)snap
 }
 
 - (void)
-recover_row:(const struct row_v12 *)r
+recover_row:(struct row_v12 *)r
 {
 	say_debug("%s: lsn:%"PRIi64" SCN:%"PRIi64" tag:%s", __func__,
 		  r->lsn, r->scn, xlog_tag_to_a(r->tag));

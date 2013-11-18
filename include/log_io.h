@@ -342,7 +342,7 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 - (ev_tstamp) run_crc_lag;
 - (const char *) run_crc_status;
 
-- (void) recover_row:(const struct row_v12 *)row;
+- (void) recover_row:(struct row_v12 *)row;
 - (void) verify_run_crc:(struct tbuf *)buf;
 - (void) recover_finalize;
 - (i64) recover_start;
@@ -361,7 +361,7 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 
 - (int) submit_run_crc;
 
-- (const struct row_v12 *)dummy_row_lsn:(i64)lsn_ scn:(i64)scn_ tag:(u16)tag;
+- (struct row_v12 *)dummy_row_lsn:(i64)lsn_ scn:(i64)scn_ tag:(u16)tag;
 
 - (id) init_snap_dir:(const char *)snap_dir
              wal_dir:(const char *)wal_dir;

@@ -74,7 +74,7 @@ ours:
 - (ev_tstamp) lag { return lag; }
 - (ev_tstamp) last_update_tstamp { return last_update_tstamp; }
 
-- (const struct row_v12 *)
+- (struct row_v12 *)
 dummy_row_lsn:(i64)lsn_ scn:(i64)scn_ tag:(u16)tag
 {
 	struct row_v12 *r = palloc(fiber->pool, sizeof(struct row_v12));
@@ -327,7 +327,7 @@ recover_wal:(id<XLogPuller>)l
 {
 	@try {
 		palloc_register_cut_point(fiber->pool);
-		const struct row_v12 *r;
+		struct row_v12 *r;
 		int row_count = 0;
 		while ((r = [l fetch_row])) {
 			if (r->scn == next_skip_scn) {
@@ -519,7 +519,7 @@ recover_finalize
 pull_snapshot:(id<XLogPullerAsync>)puller
 {
 	for (;;) {
-		const struct row_v12 *row;
+		struct row_v12 *row;
 		if ([puller recv] <= 0)
 			raise("unexpected EOF");
 
