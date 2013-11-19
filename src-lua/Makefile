@@ -41,6 +41,8 @@ src-lua/cdef.lua: include/octopus.h include/index.h include/fiber.h include/octo
 	$(Q)$(CPP) -P $(CPPFLAGS) -DLUA_DEF='@@@' $(srcdir)/include/net_io.h | $(SED) -n '/@@@/!d; s/@@@//; p' >> $@
 	$(Q)$(CPP) -P $(CPPFLAGS) $(srcdir)/include/tbuf.h | $(SED) -n '/^struct tbuf \+{/,/^}/p' >> $@
 	$(Q)echo "]]" >> $@
+	$(Q)echo "autoconf = {}" >> $@
+	$(Q)cat $(srcdir)/include/config.h  | $(SED) '/^#define [^ ]* ["0-9]/!d; s/#define \([^ ]*\) \(.*\)/autoconf.\1 = \2/;' >> $@
 
 
 ifneq (,$(GRAPHITE_ADDR))
