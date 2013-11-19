@@ -104,7 +104,7 @@ void __asan_unpoison_memory_region(void const volatile *addr, size_t size);
 #endif
 
 #if defined(__SANITIZE_ADDRESS__)
-# define PALLOC_ALIGN(ptr) (void *)TYPEALIGN(8, (uintptr_t)ptr)
+# define PALLOC_ALIGN(ptr) (void *)TYPEALIGN(8, ptr)
 #else
 # define PALLOC_ALIGN(ptr) ptr
 #endif
@@ -198,6 +198,12 @@ static __thread uint64_t release_count = 0;
 #define PALLOC_POISON
 #endif
 
+#define MEMPOOL_ALLOC(pool, addr, size)					\
+	unpoison(addr, size);						\
+	VALGRIND_MEMPOOL_ALLOC(chunk, addr, size);			\
+	ASAN_POISON_MEMORY_REGION(addr - PALLOC_REDZONE, PALLOC_REDZONE, 0xfa);	\
+	ASAN_POISON_MEMORY_REGION(addr + size + PALLOC_REDZONE, PALLOC_REDZONE, 0xfb);
+
 static void
 palloc_init(void)
 {
@@ -228,6 +234,7 @@ poison_chunk(const struct chunk *chunk)
 	memset(chunk->brk, poison_char, chunk->free);
 	(void)VALGRIND_MAKE_MEM_NOACCESS(chunk->brk, chunk->free);
 #endif
+	VALGRIND_MAKE_MEM_NOACCESS(chunk->brk, chunk->free);
 	ASAN_POISON_MEMORY_REGION(chunk->brk, chunk->free, 0xf7);
 }
 
@@ -238,14 +245,13 @@ unpoison(const char *ptr, size_t size)
 	(void)size;
 
 	ASAN_UNPOISON_MEMORY_REGION(ptr, size);
+	VALGRIND_MAKE_MEM_UNDEFINED(ptr, size);
 #if !defined(NDEBUG) && defined(PALLOC_POISON)
 	(void)VALGRIND_MAKE_MEM_DEFINED(ptr, size);
 	for (int i = 0; i < (size); i++)
 		assert(ptr[i] == poison_char);
 	(void)VALGRIND_MAKE_MEM_NOACCESS(ptr, size);
 #endif
-	ASAN_POISON_MEMORY_REGION(ptr - PALLOC_REDZONE, PALLOC_REDZONE, 0xfa);
-	ASAN_POISON_MEMORY_REGION(ptr + size + PALLOC_REDZONE, PALLOC_REDZONE, 0xfb);
 }
 
 static struct chunk *
@@ -297,7 +303,7 @@ found:
 	assert(chunk != NULL && chunk->magic == chunk_magic);
 	TAILQ_INSERT_HEAD(&pool->chunks, chunk, busy_link);
 	pool->allocated += chunk->data_size;
-	VALGRIND_CREATE_MEMPOOL(chunk, PALLOC_REDZONE, 0);
+	VALGRIND_CREATE_MEMPOOL(chunk, PALLOC_REDZONE, 0); /* NOACCESS mark is set by poison_chunk() */
 	return chunk;
 }
 
@@ -313,10 +319,8 @@ palloc_slow_path(struct palloc_pool *pool, size_t size)
 		abort();
 	assert(chunk->free >= rz_size);
 
-	ptr = chunk->brk + PALLOC_REDZONE;
-	ptr = PALLOC_ALIGN(ptr);
-	unpoison(ptr, size);
-	VALGRIND_MEMPOOL_ALLOC(chunk, ptr, size);
+	ptr = PALLOC_ALIGN(chunk->brk + PALLOC_REDZONE);
+	MEMPOOL_ALLOC(chunk, ptr, size);
 	chunk->free -= ptr - chunk->brk + size + PALLOC_REDZONE;
 	chunk->brk = ptr + size + PALLOC_REDZONE;
 	return ptr;
@@ -335,10 +339,8 @@ palloc(struct palloc_pool *pool, size_t size)
 #endif
 
 	if (likely(chunk != NULL && chunk->free >= rz_size)) {
-		ptr = chunk->brk;
-		ptr = PALLOC_ALIGN(ptr);
-		unpoison(ptr, size);
-		VALGRIND_MEMPOOL_ALLOC(chunk, ptr, size);
+		ptr = PALLOC_ALIGN(chunk->brk);
+		MEMPOOL_ALLOC(chunk, ptr, size);
 		chunk->free -= ptr - chunk->brk + size + PALLOC_REDZONE;
 		chunk->brk = ptr + size + PALLOC_REDZONE;
 		return ptr;
@@ -365,6 +367,7 @@ prealloc(struct palloc_pool *pool, void *oldptr, size_t oldsize, size_t size)
 #endif
 		unpoison(chunk->brk - PALLOC_REDZONE, diff_size);
 		VALGRIND_MEMPOOL_CHANGE(chunk, oldptr, oldptr, size);
+		ASAN_POISON_MEMORY_REGION(oldptr + size, PALLOC_REDZONE, 0xfb);
 		chunk->brk += diff_size;
 		chunk->free -= diff_size;
 		return oldptr;
