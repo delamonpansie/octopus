@@ -202,7 +202,7 @@ static __thread uint64_t release_count = 0;
 	unpoison(addr, size);						\
 	VALGRIND_MEMPOOL_ALLOC(chunk, addr, size);			\
 	ASAN_POISON_MEMORY_REGION(addr - PALLOC_REDZONE, PALLOC_REDZONE, 0xfa);	\
-	ASAN_POISON_MEMORY_REGION(addr + size + PALLOC_REDZONE, PALLOC_REDZONE, 0xfb);
+	ASAN_POISON_MEMORY_REGION(addr + size, PALLOC_REDZONE, 0xfb);
 
 static void
 palloc_init(void)
@@ -224,7 +224,7 @@ palloc_init(void)
 }
 
 static void
-poison_chunk(const struct chunk *chunk)
+chunk_poison(const struct chunk *chunk)
 {
 	(void)chunk;
 
@@ -253,6 +253,23 @@ unpoison(const char *ptr, size_t size)
 	(void)VALGRIND_MAKE_MEM_NOACCESS(ptr, size);
 #endif
 }
+
+static void *
+chunk_alloc(struct chunk *chunk, size_t size)
+{
+	void *ptr;
+
+	ptr = chunk->brk;
+	chunk->brk = PALLOC_ALIGN(chunk->brk + size + PALLOC_REDZONE);
+	size = PALLOC_ALIGN(chunk->brk + size + PALLOC_REDZONE) - chunk->brk;
+	if (size > chunk->free)
+		chunk->free = 0;
+	else
+		chunk->free -= size;
+
+	return ptr;
+}
+
 
 static struct chunk *
 next_chunk_for(struct palloc_pool *pool, size_t size)
@@ -298,19 +315,22 @@ next_chunk_for(struct palloc_pool *pool, size_t size)
 	chunk->brk = (void *)chunk + sizeof(struct chunk);
 	chunk->class = class;
 
-	poison_chunk(chunk);
+	chunk_poison(chunk);
 found:
 	assert(chunk != NULL && chunk->magic == chunk_magic);
 	TAILQ_INSERT_HEAD(&pool->chunks, chunk, busy_link);
 	pool->allocated += chunk->data_size;
-	VALGRIND_CREATE_MEMPOOL(chunk, PALLOC_REDZONE, 0); /* NOACCESS mark is set by poison_chunk() */
+	VALGRIND_CREATE_MEMPOOL(chunk, PALLOC_REDZONE, 0); /* NOACCESS mark is set by chunk_poison() */
+
+	(void)chunk_alloc(chunk, 0); /* initial brk alignment */
+
 	return chunk;
 }
 
 void * __regparam
 palloc_slow_path(struct palloc_pool *pool, size_t size)
 {
-	const size_t rz_size = size + PALLOC_REDZONE * 2;
+	const size_t rz_size = size + PALLOC_REDZONE;
 	struct chunk *chunk;
 	void *ptr;
 
@@ -319,10 +339,8 @@ palloc_slow_path(struct palloc_pool *pool, size_t size)
 		abort();
 	assert(chunk->free >= rz_size);
 
-	ptr = PALLOC_ALIGN(chunk->brk + PALLOC_REDZONE);
+	ptr = chunk_alloc(chunk, size);
 	MEMPOOL_ALLOC(chunk, ptr, size);
-	chunk->free -= ptr - chunk->brk + size + PALLOC_REDZONE;
-	chunk->brk = ptr + size + PALLOC_REDZONE;
 	return ptr;
 }
 
@@ -339,10 +357,8 @@ palloc(struct palloc_pool *pool, size_t size)
 #endif
 
 	if (likely(chunk != NULL && chunk->free >= rz_size)) {
-		ptr = PALLOC_ALIGN(chunk->brk);
+		ptr = chunk_alloc(chunk, size);
 		MEMPOOL_ALLOC(chunk, ptr, size);
-		chunk->free -= ptr - chunk->brk + size + PALLOC_REDZONE;
-		chunk->brk = ptr + size + PALLOC_REDZONE;
 		return ptr;
 	} else {
 		return palloc_slow_path(pool, size);
@@ -360,16 +376,18 @@ prealloc(struct palloc_pool *pool, void *oldptr, size_t oldsize, size_t size)
 	const size_t diff_size = size - oldsize;
 	struct chunk *chunk = TAILQ_FIRST(&pool->chunks);
 	if (likely(chunk != NULL && chunk->free >= diff_size &&
-		   oldptr + oldsize == chunk->brk - PALLOC_REDZONE)) {
+		   PALLOC_ALIGN(oldptr + oldsize + PALLOC_REDZONE) == chunk->brk)) {
+		void *oldbrk = chunk->brk;
+
 #ifdef PALLOC_STAT
 		stat_collect(stat_base, PALLOC_CALL, 1);
 		stat_collect(stat_base, PALLOC_BYTES, diff_size);
 #endif
-		unpoison(chunk->brk - PALLOC_REDZONE, diff_size);
+		unpoison(oldptr + oldsize, diff_size);
 		VALGRIND_MEMPOOL_CHANGE(chunk, oldptr, oldptr, size);
 		ASAN_POISON_MEMORY_REGION(oldptr + size, PALLOC_REDZONE, 0xfb);
-		chunk->brk += diff_size;
-		chunk->free -= diff_size;
+		chunk->brk = PALLOC_ALIGN(oldptr + size + PALLOC_REDZONE);
+		chunk->free -= chunk->brk - oldbrk;
 		return oldptr;
 	} else {
 		void *ptr = palloc(pool, size);
@@ -405,7 +423,7 @@ release_chunk(struct chunk *chunk)
 		chunk->free = chunk->data_size;
 		chunk->brk = (void *)chunk + sizeof(struct chunk);
 		TAILQ_INSERT_HEAD(&chunk->class->chunks, chunk, free_link);
-		poison_chunk(chunk);
+		chunk_poison(chunk);
 		chunk->last_use = release_count;
 	} else {
 		assert(chunk->class->chunks_count > 0);
@@ -587,7 +605,7 @@ palloc_cutoff(struct palloc_pool *pool)
 	pool->allocated = root->allocated;
 
 	SLIST_REMOVE_HEAD(&pool->cut_list, link);
-	poison_chunk(chunk);
+	chunk_poison(chunk);
 	VALGRIND_MEMPOOL_TRIM(chunk, (void *)chunk + sizeof(*chunk), chunk->data_size - chunk->free);
 }
 
