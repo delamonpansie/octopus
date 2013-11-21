@@ -455,6 +455,7 @@ release_chunks(struct chunk_list_head *chunks)
 				break;
 
 			TAILQ_REMOVE(&class->chunks, chunk, free_link);
+			ASAN_UNPOISON_MEMORY_REGION(chunk->brk, chunk->free);
 			munmap(chunk, class->size + sizeof(struct chunk));
 			class->chunks_count--;
 		}
@@ -508,6 +509,7 @@ palloc_unmap_unused(void)
 		struct chunk *chunk, *tvar;
 
 		TAILQ_FOREACH_SAFE(chunk, &class->chunks, free_link, tvar) {
+			ASAN_UNPOISON_MEMORY_REGION(chunk->brk, chunk->free);
 			munmap(chunk, class->size + sizeof(struct chunk));
 			class->chunks_count--;
 		}
