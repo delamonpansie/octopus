@@ -77,7 +77,14 @@ void __asan_unpoison_memory_region(void const volatile *addr, size_t size);
 #ifndef TYPEALIGN
 #define TYPEALIGN(ALIGNVAL,LEN)  \
         (((uintptr_t) (LEN) + ((ALIGNVAL) - 1)) & ~((uintptr_t) ((ALIGNVAL) - 1)))
-#define CACHEALIGN(LEN)			TYPEALIGN(32, (LEN))
+#endif
+
+#define CACHEALIGN(LEN)	TYPEALIGN(32, (LEN))
+
+#if defined(__SANITIZE_ADDRESS__)
+# define SALLOC_ALIGN(ptr) (void *)TYPEALIGN(8, ptr)
+#else
+# define SALLOC_ALIGN(ptr) ptr
 #endif
 
 #ifndef OCTOPUS
@@ -334,6 +341,9 @@ format_slab(struct slab_cache *cache, struct slab *slab)
 	slab->brk = (void *)CACHEALIGN((void *)slab + sizeof(struct slab));
 
 	ASAN_POISON_MEMORY_REGION(slab->brk, SLAB_SIZE - (slab->brk - (void *)slab), 0xfa);
+
+	slab->brk = SALLOC_ALIGN(slab->brk + sizeof(red_zone));
+
 	TAILQ_INSERT_HEAD(&cache->slabs, slab, cache_link);
 	TAILQ_INSERT_HEAD(&cache->partial_populated_slabs, slab, cache_partial_link);
 }
@@ -424,7 +434,9 @@ slab_cache_alloc(struct slab_cache *cache)
 		ASAN_UNPOISON_MEMORY_REGION(item, cache->item_size + sizeof(red_zone));
 		memcpy((void *)item + cache->item_size, red_zone, sizeof(red_zone));
 		ASAN_POISON_MEMORY_REGION((void *)item + cache->item_size, sizeof(red_zone), 0xfb);
-		slab->brk += cache->item_size + sizeof(red_zone);
+		/* we can leave slab here in case of last item has been allocated
+		    and align has been occured */
+		slab->brk = SALLOC_ALIGN(slab->brk + cache->item_size + sizeof(red_zone));
 		if (cache->ctor)
 			cache->ctor(item);
 	} else {
