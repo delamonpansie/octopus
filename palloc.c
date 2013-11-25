@@ -131,6 +131,9 @@ struct chunk {
 	struct chunk_class *class;
 	TAILQ_ENTRY(chunk) busy_link;
 	TAILQ_ENTRY(chunk) free_link;
+
+	/* initial chunk->brk must be 8-aligned (for asan) */
+	char redzone[8] __attribute__ ((aligned (8)));
 };
 
 TAILQ_HEAD(chunk_list_head, chunk);
@@ -316,13 +319,15 @@ next_chunk_for(struct palloc_pool *pool, size_t size)
 	chunk->class = class;
 
 	chunk_poison(chunk);
+	VALGRIND_MAKE_MEM_NOACCESS(chunk->redzone, sizeof(chunk->redzone));
+	ASAN_POISON_MEMORY_REGION(chunk->redzone, sizeof(chunk->redzone), 0xf9);
 found:
 	assert(chunk != NULL && chunk->magic == chunk_magic);
 	TAILQ_INSERT_HEAD(&pool->chunks, chunk, busy_link);
 	pool->allocated += chunk->data_size;
 	VALGRIND_CREATE_MEMPOOL(chunk, PALLOC_REDZONE, 0); /* NOACCESS mark is set by chunk_poison() */
 
-	(void)chunk_alloc(chunk, 0); /* initial brk alignment */
+	assert(((uintptr_t)chunk->brk & 7) == 0); /* verify intial brk alignment */
 
 	return chunk;
 }
@@ -509,7 +514,7 @@ palloc_unmap_unused(void)
 		struct chunk *chunk, *tvar;
 
 		TAILQ_FOREACH_SAFE(chunk, &class->chunks, free_link, tvar) {
-			ASAN_UNPOISON_MEMORY_REGION(chunk->brk, chunk->free);
+			ASAN_UNPOISON_MEMORY_REGION(chunk, sizeof(struct chunk) + chunk->data_size);
 			munmap(chunk, class->size + sizeof(struct chunk));
 			class->chunks_count--;
 		}
