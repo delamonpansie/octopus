@@ -248,13 +248,12 @@ unpoison(const char *ptr, size_t size)
 	(void)size;
 
 	ASAN_UNPOISON_MEMORY_REGION(ptr, size);
-	VALGRIND_MAKE_MEM_UNDEFINED(ptr, size);
 #if !defined(NDEBUG) && defined(PALLOC_POISON)
 	(void)VALGRIND_MAKE_MEM_DEFINED(ptr, size);
 	for (int i = 0; i < (size); i++)
 		assert(ptr[i] == poison_char);
-	(void)VALGRIND_MAKE_MEM_NOACCESS(ptr, size);
 #endif
+	VALGRIND_MAKE_MEM_UNDEFINED(ptr, size);
 }
 
 static void *
