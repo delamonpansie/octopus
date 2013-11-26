@@ -44,7 +44,7 @@
 
 @interface Feeder: Recovery {
 	int fd;
-	const struct row_v12 *(*filter)(const struct row_v12 *r);
+	struct row_v12 *(*filter)(struct row_v12 *r);
 }
 @end
 
@@ -74,65 +74,48 @@ writef(int fd, const char *b, size_t len)
 }
 
 
-static struct row_v12 *
-construct_row(const struct row_v12 *old, u16 tag, const char *data, size_t len)
-{
-	struct row_v12 *new = palloc(fiber->pool, sizeof(*new) + len);
-	memcpy(new, old, sizeof(*new));
-	if (tag)
-		new->tag = tag;
-
-	memcpy(new->data, data, len);
-	new->len = len;
-	new->data_crc32c = crc32c(0, new->data, new->len);
-	new->header_crc32c = crc32c(0, (u8 *)new + sizeof(new->header_crc32c),
-				    sizeof(new) - sizeof(new->header_crc32c));
-	return new;
-}
-
-const struct row_v12 *
-id_filter(const struct row_v12 *r)
+struct row_v12 *
+id_filter(struct row_v12 *r)
 {
 	return r;
 }
 
-const struct row_v12 *
-lua_filter(const struct row_v12 *r)
+struct row_v12 *
+lua_filter(struct row_v12 *r)
 {
 	struct lua_State *L = fiber->L;
 
+	assert(r != NULL);
 	lua_pushvalue(L, 1);
-	lua_pushlstring(L, (const char *)r, sizeof(*r) + r->len);
+	lua_pushvalue(L, 2);
+	luaT_pushptr(L, r);
 
-	if (lua_pcall(L, 1, 2, 0) != 0) {
+	if (lua_pcall(L, 2, 1, 0) != 0) {
 		say_error("lua filter error: %s", lua_tostring(L, -1));
 		_exit(EXIT_FAILURE);
 	}
-	if (lua_isnumber(L, -2)) {
-		u16 tag = lua_tointeger(L, -1);
-		size_t len;
-		const char *new_data = lua_tolstring(L, -2, &len);
 
-		r = construct_row(r, tag, new_data, len);
-	} else if (lua_isstring(L, -2)) {
-		size_t len;
-		const char *new_data = lua_tolstring(L, -2, &len);
-		r = construct_row(r, 0, new_data, len);
-	} else if (lua_isboolean(L, -2) || lua_isnil(L, -2)) {
-		if (!lua_toboolean(L, -2))
+	if (lua_isboolean(L, -1) || lua_isnil(L, -1)) {
+		if (!lua_toboolean(L, -1))
 			r = NULL;
 	} else {
-		say_warn("bad replication_filter return type");
+		r = *(struct row_v12 **)lua_topointer(L, -1);
 	}
-	lua_pop(L, 2);
+	lua_pop(L, 1);
+
+	if (r != NULL) {
+		r->data_crc32c = crc32c(0, r->data, r->len);
+		r->header_crc32c = crc32c(0, (u8 *)r + sizeof(r->header_crc32c),
+					  sizeof(r) - sizeof(r->header_crc32c));
+	}
 
 	return r;
 }
 
 - (void)
-recover_row:(const struct row_v12 *)r
+recover_row:(struct row_v12 *)r
 {
-	const struct row_v12 *n = filter(r);
+	struct row_v12 *n = filter(r);
 
 	/* FIXME: we should buffer writes */
 	if (n)
@@ -153,6 +136,7 @@ recover_start_from_scn:(i64)initial_scn filter:(const char *)filter_name
 {
 	say_debug("%s initial_scn:%"PRIi64" filter:%s", __func__, initial_scn, filter_name);
 	if (strlen(filter_name) > 0) {
+		lua_getglobal(fiber->L, "__feederentrypoint");
 		lua_getglobal(fiber->L, "replication_filter");
 		lua_pushstring(fiber->L, filter_name);
 		lua_gettable(fiber->L, -2);
