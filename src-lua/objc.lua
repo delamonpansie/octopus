@@ -1,6 +1,7 @@
 local ffi = require('ffi')
 local ac = require('cdef').autoconf
 local setmetatable = setmetatable
+local error = error
 module(...)
 
 ffi.cdef[[

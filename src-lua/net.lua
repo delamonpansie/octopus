@@ -15,11 +15,12 @@ ffi.cdef 'struct conn_wrap { struct conn *ptr; };'
 
 local C = ffi.C
 
-netmsg_t = ffi.typeof('struct netmsg *')
-iproto_ptr_t = ffi.typeof('struct iproto *')
-iproto_t = ffi.typeof('struct iproto')
-iproto_retcode_t = ffi.typeof('struct iproto_retcode')
+local netmsg_t = ffi.typeof('struct netmsg *')
+local iproto_ptr_t = ffi.typeof('struct iproto *')
+local iproto_t = ffi.typeof('struct iproto')
+local iproto_retcode_t = ffi.typeof('struct iproto_retcode')
 
+local ref -- forward decl
 
 local netmsg_op = {}
 function netmsg_op:add_iov_ref(obj, len, v) C.net_add_ref_iov(self, v or ref(obj), obj, len) end
@@ -92,7 +93,7 @@ end
 -- gc ref's
 local ref_registry = {[0]=0}
 
-function ref(obj)
+ref = function(obj)
    local ref = ref_registry[0]
    if ref > 0 then
       ref_registry[0] = ref_registry[ref]
@@ -103,6 +104,7 @@ function ref(obj)
    return ref * 2 + 1 -- ref to lua objects have lower bit set
 end
 
+G.ref = ref
 function G.__netmsg_unref(m, from)
    local m = netmsg_t(m)
    for i = from, m.count do

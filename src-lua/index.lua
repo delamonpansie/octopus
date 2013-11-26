@@ -2,7 +2,6 @@ local ffi = require('ffi')
 local objc = require('objc')
 local object, varint32 = object, varint32
 
-local setmetatable = setmetatable
 local assert = assert
 local tonumber = tonumber
 local error = error
@@ -164,7 +163,7 @@ local index_mt = {
 	 return iter_next, index
 	end,
 	slots = function(index)
-	    return tonumber(obj.msg_send(index, "slots"))
+	    return tonumber(objc.msg_send(index, "slots"))
 	end,
 	get = function(index, i)
 	    assert(index.conf.type == ffi.C.HASH)
