@@ -23,22 +23,22 @@ EOD
   file "feeder_init.lua" do
     f = open("feeder_init.lua", "w")
     f.write <<-EOD
-      function replication_filter.test_filter(obj)
-        local row = feeder.crow(obj)
-        print("row lsn:" .. tostring(row.lsn) ..
-              " scn:" .. tostring(row.scn) ..
-              " tag:" .. row.tag ..
-              " cookie:" .. tostring(row.cookie) ..
-              " tm:" .. row.tm)
+pass_tag = { [feeder.tag.snap_initial_tag] = 1,
+             [feeder.tag.snap_tag] = 1,
+             [feeder.tag.snap_final_tag] = 1,
+             [feeder.tag.wal_final_tag] = 1 }
 
-        if feeder.pass_tag[row.tag] then
-        	return true
-	end
-	if row.scn % 2 == 0 then
-         	return false
-        end
-        return true
-      end
+function replication_filter.test_filter(row)
+  print(row)
+
+  if pass_tag[row:unmasktag()] then
+  	return true
+  end
+  if row.scn % 2 == 0 then
+   	return false
+  end
+  return true
+end
     EOD
     f.close
   end
