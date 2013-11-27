@@ -82,6 +82,9 @@ void __asan_unpoison_memory_region(void const volatile *addr, size_t size);
 #define CACHEALIGN(LEN)	TYPEALIGN(32, (LEN))
 
 #if defined(__SANITIZE_ADDRESS__)
+#ifndef SLAB_DEBUG
+# define SLAB_DEBUG
+#endif
 # define SALLOC_ALIGN(ptr) (void *)TYPEALIGN(8, ptr)
 #else
 # define SALLOC_ALIGN(ptr) ptr
