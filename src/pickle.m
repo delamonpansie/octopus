@@ -129,25 +129,52 @@ read_i(16)
 read_i(32)
 read_i(64)
 
+static u32
+_safe_load_varint32(struct tbuf *buf)
+{
+	u8 *p = buf->ptr;
+	u32 v = 0;
+	for (;p < (u8*)buf->end && p - (u8*)buf->ptr < 5; v<<=7, p++) {
+		v |= *p & 0x7f;
+		if ((*p & 0x80) == 0) {
+			buf->ptr = p + 1;
+			return v;
+		}
+	}
+	if (p == buf->end) {
+		tbuf_too_short();
+	}
+	if (v > ((u32)0xffffffff >> 7) || ((*p & 0x80) != 0)) {
+		iproto_raise(ERR_CODE_UNKNOWN_ERROR, "bad varint32");
+	}
+	v |= *p & 0x7f;
+	buf->ptr = p + 1;
+	return v;
+}
+
+static __attribute__((always_inline)) inline u32
+safe_load_varint32(struct tbuf *buf)
+{
+	u8 *p = buf->ptr;
+	if (buf->end > buf->ptr && (*p & 0x80) == 0) {
+		buf->ptr++;
+		return *p;
+	} else {
+		return _safe_load_varint32(buf);
+	}
+}
+
 u32
 read_varint32(struct tbuf *buf)
 {
-	void *p = buf->ptr;
-	u32 r = LOAD_VARINT32(buf->ptr);
-
-	if (unlikely(buf->ptr > buf->end)) {
-		buf->ptr = (void *)p;
-		tbuf_too_short();
-	}
-
-	return r;
+	return safe_load_varint32(buf);
 }
 
 void *
 read_field(struct tbuf *buf)
 {
 	void *p = buf->ptr;
-	u32 data_len = LOAD_VARINT32(buf->ptr);
+	u32 data_len = safe_load_varint32(buf);
 	buf->ptr += data_len;
 	if (unlikely(buf->ptr > buf->end)) {
 		buf->ptr = p;
@@ -161,7 +188,7 @@ void
 read_push_field(lua_State *L, struct tbuf *buf)
 {
 	void *p = buf->ptr;
-	u32 data_len = LOAD_VARINT32(buf->ptr);
+	u32 data_len = safe_load_varint32(buf);
 
 	if (unlikely(buf->ptr + data_len > buf->end)) {
 		buf->ptr = p;
