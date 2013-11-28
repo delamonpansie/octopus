@@ -159,6 +159,7 @@ extern uint32_t ntohl(uint32_t netlong);
 extern uint16_t ntohs(uint16_t netshort);
 extern uint32_t htonl(uint32_t hostlong);
 extern uint16_t htons(uint16_t hostshort);
+extern int64_t atoll(const char *);
 ]]
 
 

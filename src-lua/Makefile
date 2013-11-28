@@ -1,4 +1,6 @@
 obj += src-lua/prelude.o
+obj += src-lua/packer.o
+obj += src-lua/pp.o
 obj += src-lua/objc.o
 obj += src-lua/index.o
 obj += src-lua/stat.o
@@ -22,28 +24,10 @@ src-lua/jit/vmdef.lua: .luajit
 include/net_io.h: cfg/octopus.h
 
 dist-clean += src-lua/cdef.lua
-src-lua/cdef.lua: include/octopus.h include/index.h include/fiber.h include/octopus_ev.h include/net_io.h include/iproto_def.h Makefile
+src-lua/cdef.lua: include/octopus.h include/index.h include/fiber.h include/octopus_ev.h include/net_io.h include/iproto_def.h include/pickle.h src-lua/gen_cdef.sh
 	@mkdir -p $(dir $@)
 	$(E) "GEN	$@"
-	$(Q)echo "local ffi = require 'ffi'" > $@
-	$(Q)echo "require('cdef_base')" >> $@
-	$(Q)echo "module (...)" >> $@
-	$(Q)echo "ffi.cdef [[ " >> $@
-	$(Q)echo "struct palloc_pool;" >> $@
-	$(Q)$(CPP) -P $(CPPFLAGS) $(srcdir)/include/octopus.h | $(SED) -n '/^\(enum tnt_object_flags\|struct tnt_object\) \+{/,/^}/{s/\[\]/[?]/;p;} ' >> $@
-	$(Q)$(CPP) -P $(CPPFLAGS) $(srcdir)/include/octopus.h | $(SED) -n '/^void object_/p ' >> $@
-	$(Q)$(CPP) -P $(CPPFLAGS) $(srcdir)/include/index.h | $(SED) -n '/^\(struct\|union\) index_[a-z]\+ \+{/,/^}/{s/\[\]/[?]/;p;}' >> $@
-	$(Q)$(CPP) -P $(CPPFLAGS) $(srcdir)/include/fiber.h | $(SED) -n '/^typedef struct coro_context/p;' >> $@
-	$(Q)$(CPP) -P $(CPPFLAGS) $(srcdir)/include/fiber.h | $(SED) -n '/^struct \(fiber\|octopus_coro\|coro_context\) \+{/,/^}/{s/\[\]/[?]/;p;}' >> $@
-	$(Q)$(CPP) -P $(CPPFLAGS) $(srcdir)/include/octopus_ev.h | $(SED) -n '/^typedef [a-z]\+ ev_tstamp/p; /typedef struct ev_\(io\|timer\)/,/^}/p;' >> $@
-	$(Q)$(CPP) -P $(CPPFLAGS) $(srcdir)/include/iproto_def.h | $(SED) -n '/^struct iproto\(_retcode\)\? \+{/,/^}/{s/\[\]/[?]/;p;}'  >> $@
-	$(Q)$(CPP) -P $(CPPFLAGS) $(srcdir)/include/net_io.h | $(SED) -n '/^struct netmsg\(_mark\|_head\|_tailq\)\? \+{/,/^}/p; /^enum conn_memory_ownership \+{/,/^}/p; /^struct conn \+{/,/^}/p' >> $@
-	$(Q)$(CPP) -P $(CPPFLAGS) -DLUA_DEF='@@@' $(srcdir)/include/net_io.h | $(SED) -n '/@@@/!d; s/@@@//; p' >> $@
-	$(Q)$(CPP) -P $(CPPFLAGS) $(srcdir)/include/tbuf.h | $(SED) -n '/^struct tbuf \+{/,/^}/p' >> $@
-	$(Q)echo "]]" >> $@
-	$(Q)echo "autoconf = {}" >> $@
-	$(Q)cat $(srcdir)/include/config.h  | $(SED) '/^#define [^ ]* ["0-9]/!d; s/#define \([^ ]*\) \(.*\)/autoconf.\1 = \2/;' >> $@
-
+	$(Q)CPP="$(CPP)" CPPFLAGS="$(CPPFLAGS)" srcdir="$(srcdir)" SED="$(SED)" CDEF="$@" sh $(srcdir)/src-lua/gen_cdef.sh
 
 ifneq (,$(GRAPHITE_ADDR))
 obj += src-lua/graphite.o

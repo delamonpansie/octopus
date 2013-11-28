@@ -73,10 +73,14 @@ tbuf_ensure_resize(struct tbuf *e, size_t bytes_required);
 static __attribute__((always_inline)) inline void
 tbuf_ensure(struct tbuf *e, size_t required)
 {
+#ifdef TBUF_PARANOIA
 	assert(tbuf_len(e) <= tbuf_size(e));
+#endif
 	if (unlikely(tbuf_free(e) < required))
 		tbuf_ensure_resize(e, required);
 }
+
+void tbuf_willneed(struct tbuf *e, size_t required);
 
 struct tbuf *tbuf_clone(struct palloc_pool *pool, const struct tbuf *orig);
 void tbuf_gc(struct palloc_pool *pool, void *ptr);

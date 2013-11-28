@@ -1,3 +1,4 @@
+// vim: set sts=8 sw=8 noexpandtab:
 /*
  * Copyright (C) 2010, 2011 Mail.RU
  * Copyright (C) 2010, 2011 Yuriy Vostrikov
@@ -39,6 +40,20 @@ void __attribute__((noreturn))
 tbuf_too_short()
 {
 	iproto_raise(ERR_CODE_UNKNOWN_ERROR, "tbuf too short");
+}
+
+static __attribute__((always_inline)) inline void
+_read_must_have(struct tbuf *b, i32 n)
+{
+	if (unlikely(tbuf_len(b) < n)) {
+		tbuf_too_short();
+	}
+}
+
+void
+read_must_have(struct tbuf *b, i32 n)
+{
+	_read_must_have(b, n);
 }
 
 /* caller must ensure that there is space in target */
@@ -90,9 +105,17 @@ write_varint32(struct tbuf *b, u32 value)
 #define read_u(bits)							\
 	u##bits read_u##bits(struct tbuf *b)				\
 	{								\
-		if (unlikely(tbuf_len(b) < bits/8))			\
-			tbuf_too_short();				\
+		_read_must_have(b, bits/8);				\
 		u##bits r = *(u##bits *)b->ptr;				\
+		b->ptr += bits/8;					\
+		return r;						\
+	}
+
+#define read_i(bits)							\
+	i##bits read_i##bits(struct tbuf *b)				\
+	{								\
+		_read_must_have(b, bits/8);				\
+		i##bits r = *(i##bits *)b->ptr;				\
 		b->ptr += bits/8;					\
 		return r;						\
 	}
@@ -101,6 +124,10 @@ read_u(8)
 read_u(16)
 read_u(32)
 read_u(64)
+read_i(8)
+read_i(16)
+read_i(32)
+read_i(64)
 
 u32
 read_varint32(struct tbuf *buf)
@@ -149,9 +176,7 @@ read_push_field(lua_State *L, struct tbuf *buf)
 void *
 read_bytes(struct tbuf *buf, u32 data_len)
 {
-	if (unlikely(data_len > tbuf_len(buf)))
-		tbuf_too_short();
-
+	_read_must_have(buf, data_len);
 	void *p = buf->ptr;
 	buf->ptr += data_len;
 	return p;
@@ -161,6 +186,49 @@ void *
 read_ptr(struct tbuf *buf)
 {
 	return *(void **)read_bytes(buf, sizeof(void *));
+}
+
+#define read_field_u(bits)						\
+	u##bits read_field_u##bits(struct tbuf *b)			\
+	{								\
+		_read_must_have(b, bits/8 + 1);				\
+		if (unlikely(*(u8*)b->ptr != bits/8))			\
+			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "bad field"); \
+		u##bits r = *(u##bits *)(b->ptr + 1);			\
+		b->ptr += bits/8 + 1;					\
+		return r;						\
+	}
+
+#define read_field_i(bits)						\
+	i##bits read_field_i##bits(struct tbuf *b)			\
+	{								\
+		_read_must_have(b, bits/8 + 1);				\
+		if (unlikely(*(u8*)b->ptr != bits/8))			\
+			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "bad field"); \
+		i##bits r = *(i##bits *)(b->ptr + 1);			\
+		b->ptr += bits/8 + 1;					\
+		return r;						\
+	}
+
+read_field_u(8)
+read_field_u(16)
+read_field_u(32)
+read_field_u(64)
+read_field_i(8)
+read_field_i(16)
+read_field_i(32)
+read_field_i(64)
+
+struct tbuf *
+read_field_s(struct tbuf *b)
+{
+	void *p = b->ptr;
+	u32 len = safe_load_varint32(b);
+	if (b->end - b->ptr < len) {
+		b->ptr = p;
+		tbuf_too_short();
+	}
+	return tbuf_split(b, len);
 }
 
 size_t
@@ -182,6 +250,41 @@ load_varint32(void **pp)
 	do v = (v << 7) | (*p & 0x7f); while (*p++ & 0x80 && p - (u8 *)*pp < 5);
 	*pp = p;
 	return v;
+}
+
+#define write_i(bits)							\
+	void write_i##bits(struct tbuf *b, i##bits i)			\
+	{								\
+		tbuf_ensure(b, bits/8);					\
+		*(i##bits *)b->end = i;					\
+		b->end += bits/8;					\
+		b->free -= bits/8;					\
+	}
+
+#define write_field_i(bits)						\
+	void write_field_i##bits(struct tbuf *b, i##bits i)		\
+	{								\
+		tbuf_ensure(b, bits/8 + 1);				\
+		*(u8*)b->end = bits/8;					\
+		*(i##bits *)(b->end+1) = i;				\
+		b->end += bits/8 + 1;					\
+		b->free -= bits/8 + 1;					\
+	}
+
+write_i(8)
+write_i(16)
+write_i(32)
+write_i(64)
+write_field_i(8)
+write_field_i(16)
+write_field_i(32)
+write_field_i(64)
+
+void
+write_field_s(struct tbuf *b, const u8* s, u32 l)
+{
+	write_varint32(b, l);
+	tbuf_append(b, s, l);
 }
 
 register_source();

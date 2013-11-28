@@ -1,7 +1,9 @@
 local ffi = require("ffi")
 local bit = require('bit')
+local C = ffi.C
 require('cdef_base')
 require('cdef')
+require('packer')
 
 local print_ = print
 function print (...)
@@ -91,49 +93,30 @@ end
 local charptr = ffi.typeof('uint8_t *')
 function varint32.write(ptr, value)
    ptr = ffi.cast(charptr, ptr)
-   local n = 1
-   local c = bit.rshift(value, 7)
-   while c > 0 do
-      c = bit.rshift(c, 7)
-      n = n + 1
-   end
-
-   ptr[n - 1] = bit.band(value, 0x7f)
-   value = bit.rshift(value, 7)
-   for i = n - 2, 0, -1 do
-      ptr[i] = bit.bor(bit.band(value, 0x7f), 0x80)
-      value = bit.rshift(value, 7)
-   end
-   return n
-end
-
-local safeptr_mt = {
-   __index = function(self, i)
-      if i < 0 or i >= self.nelem then
-	 error('index out of bounds', 2)
+   if value < 128 then
+      ptr[0] = value
+      return 1
+   elseif value < 128*128 then
+      ptr[0] = bit.bor(bit.rshift(value, 7), 0x80)
+      ptr[1] = bit.band(value, 0x7f)
+      return 2
+   else
+      local n = 3
+      local c = bit.rshift(value, 21)
+      while c > 0 do
+         c = bit.rshift(c, 7)
+         n = n + 1
       end
-      return self.ptr[i]
-   end,
-   __gc = function(self)
-      ffi.C.object_decr_ref(self.obj)
+
+      ptr[n - 1] = bit.band(value, 0x7f)
+      value = bit.rshift(value, 7)
+      for i = n - 2, 0, -1 do
+         ptr[i] = bit.bor(bit.band(value, 0x7f), 0x80)
+         value = bit.rshift(value, 7)
+      end
+      return n
    end
-}
-local safeptr_ctcache =
-   setmetatable({}, {__index = function(t, k)
-			t[k] = ffi.typeof('struct { struct tnt_object *obj; $ ptr; int nelem; }', k)
-			ffi.metatype(t[k], safeptr_mt)
-			return t[k]
-			end
-		    })
-
-function safeptr(object, ptr, nelem)
-   local ctype = safeptr_ctcache[typeof(ptr)]
-   ffi.C.object_incr_ref(object)
-   return ffi.new(ctype, object, ptr, nelem)
 end
-
-
-require('stat')
 
 object_cast = {}
 local object_t = ffi.typeof('struct tnt_object *')
@@ -157,64 +140,21 @@ function object(ptr)
    end
 end
 
-local pack_mt = {
-   __index = {
-      u8 = function(self, i)
-	 table.insert(self, ffi.new('uint8_t[1]', tonumber(i)))
-	 table.insert(self, 1)
-	 self.len = self.len + 1
-      end,
-      u16 = function(self, i)
-	 table.insert(self, ffi.new('uint16_t[1]', tonumber(i)))
-	 table.insert(self, 2)
-	 self.len = self.len + 2
-      end,
-      u32 = function(self, i)
-	 table.insert(self, ffi.new('uint32_t[1]', tonumber(i)))
-	 table.insert(self, 4)
-	 self.len = self.len + 4
-      end,
-      u64 = function(self, i)
-	 table.insert(self, ffi.new('uint64_t[1]', tonumber(i)))
-	 table.insert(self, 8)
-	 self.len = self.len + 8
-      end,
-      varint32 = function(self, i)
-	 local buf = ffi.new('char[5]')
-	 local len = varint32.write(buf, tonumber(i))
-	 table.insert(self, buf)
-	 table.insert(self, len)
-	 self.len = self.len + len
-      end,
-      string = function(self, s)
-	 table.insert(self, s)
-	 table.insert(self, #s)
-	 self.len = self.len + #s
-      end,
-      field = function(self, s)
-	 self:varint32(#s)
-	 self:string(s)
-      end,
-      raw = function(self, v, l)
-	 table.insert(self, v)
-	 table.insert(self, l)
-	 self.len = self.len + l
-      end,
-      pack = function(self)
-	 local buf = ffi.new('char[?]', self.len)
-	 local offt = 0
-	 for i=1,#self, 2 do
-	    ffi.copy(buf + offt, self[i], self[i+1])
-	    offt = offt + self[i+1]
-	 end
-	 return buf, self.len
-      end
-   }
+local safeptr_mt = {
+    __index = function(self, i)
+        if i < 1 or i > self.nelem then
+            error('index out of bounds', 2)
+        end
+        return self.ptr[i-1]
+    end,
+    __len = function(self)
+        return self.nelem
+    end
 }
 
-local setmetatable = setmetatable
-function packer ()
-   return setmetatable({["len"] = 0}, pack_mt)
+function safeptr(object, ptr, nelem)
+    return setmetatable({[0] = object, ptr = ptr, nelem = nelem}, safeptr_mt)
 end
 
+require('stat')
 print("Lua prelude initialized.")

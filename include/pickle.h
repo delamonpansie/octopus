@@ -30,24 +30,51 @@
 #include <util.h>
 
 struct tbuf;
-u8 *save_varint32(u8 *target, u32 value);
-void write_varint32(struct tbuf *b, u32 value);
 
+void read_must_have(struct tbuf *b, i32 len);
 u8 read_u8(struct tbuf *b);
 u16 read_u16(struct tbuf *b);
 u32 read_u32(struct tbuf *b);
 u64 read_u64(struct tbuf *b);
+i8 read_i8(struct tbuf *b);
+i16 read_i16(struct tbuf *b);
+i32 read_i32(struct tbuf *b);
+i64 read_i64(struct tbuf *b);
 
 u32 read_varint32(struct tbuf *buf);
 void *read_field(struct tbuf *buf);
-struct lua_State;
-void read_push_field(struct lua_State *L, struct tbuf *buf);
 void *read_bytes(struct tbuf *buf, u32 data_len);
 void *read_ptr(struct tbuf *buf);
+
+u8 read_field_u8(struct tbuf *b);
+u16 read_field_u16(struct tbuf *b);
+u32 read_field_u32(struct tbuf *b);
+u64 read_field_u64(struct tbuf *b);
+i8 read_field_i8(struct tbuf *b);
+i16 read_field_i16(struct tbuf *b);
+i32 read_field_i32(struct tbuf *b);
+i64 read_field_i64(struct tbuf *b);
+struct tbuf* read_field_s(struct tbuf *b);
+
+void write_i8(struct tbuf *b, i8 i);
+void write_i16(struct tbuf *b, i16 i);
+void write_i32(struct tbuf *b, i32 i);
+void write_i64(struct tbuf *b, i64 i);
+
+void write_varint32(struct tbuf *b, u32 value);
+void write_field_i8(struct tbuf *b, i8 i);
+void write_field_i16(struct tbuf *b, i16 i);
+void write_field_i32(struct tbuf *b, i32 i);
+void write_field_i64(struct tbuf *b, i64 i);
+void write_field_s(struct tbuf *b, const u8* s, u32 l);
+
+struct lua_State;
+void read_push_field(struct lua_State *L, struct tbuf *buf);
 
 u32 pick_u32(void *data, void **rest);
 
 size_t varint32_sizeof(u32);
+u8 *save_varint32(u8 *target, u32 value);
 u32 load_varint32(void **data);
 
 /* WARNING: this macro will decode BER intergers not larger than 2048383 */
