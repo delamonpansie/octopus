@@ -270,7 +270,7 @@ varint32_sizeof(u32 value)
 }
 
 u32
-load_varint32(void **pp)
+_load_varint32(void **pp)
 {
 	u8 *p = *pp;
 	u32 v = 0;

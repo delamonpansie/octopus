@@ -75,7 +75,17 @@ u32 pick_u32(void *data, void **rest);
 
 size_t varint32_sizeof(u32);
 u8 *save_varint32(u8 *target, u32 value);
-u32 load_varint32(void **data);
+u32 _load_varint32(void **data);
+static inline u32 load_varint32(void **data)
+{
+	const u8* p = *data;
+	if ((*p & 0x80) == 0) {
+		(*data)++;
+		return *p;
+	} else {
+		return _load_varint32(data);
+	}
+}
 
 /* WARNING: this macro will decode BER intergers not larger than 2048383 */
 #define LOAD_VARINT32(ptr) ({				\
