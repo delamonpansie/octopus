@@ -1,6 +1,5 @@
 local ffi = require'ffi'
 local bit = require'bit'
-local lpeg = require'lpeg'
 local C = ffi.C
 local setmetatable = setmetatable
 local type, tonumber = type, tonumber
