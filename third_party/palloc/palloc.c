@@ -147,7 +147,7 @@ struct chunk {
 	TAILQ_ENTRY(chunk) busy_link;
 	TAILQ_ENTRY(chunk) free_link;
 
-#if PALLOC_REDZONE > 0
+#if PALLOC_REDZONE > 0 || (HAVE_VALGRIND_VALGRIND_H && !defined(NVALGRIND))
 	/* initial chunk->brk must be 8-aligned (for asan) */
 	char redzone[PALLOC_REDZONE] __attribute__ ((aligned (8)));
 #endif
@@ -366,10 +366,18 @@ palloc(struct palloc_pool *pool, size_t size)
 }
 
 void *
+prealloc_slow_path(struct palloc_pool *pool, void *oldptr, size_t oldsize, size_t size)
+{
+	void *ptr = palloc(pool, size);
+	memcpy(ptr, oldptr, oldsize);
+	return ptr;
+}
+
+void *
 prealloc(struct palloc_pool *pool, void *oldptr, size_t oldsize, size_t size)
 {
 	if (unlikely(size <= oldsize))
-		return size == 0 ? NULL : oldptr;
+		return oldptr;
 	if (unlikely(oldptr == NULL))
 		return palloc(pool, size);
 
@@ -396,9 +404,7 @@ prealloc(struct palloc_pool *pool, void *oldptr, size_t oldsize, size_t size)
 		ASAN_POISON_MEMORY_REGION(oldptr + size, chunk->brk - oldptr - size, 0xfb);
 		return oldptr;
 	} else {
-		void *ptr = palloc(pool, size);
-		memcpy(ptr, oldptr, oldsize);
-		return ptr;
+		return prealloc_slow_path(pool, oldptr, oldsize, size);
 	}
 }
 
