@@ -3,6 +3,10 @@ binary_type = STORAGE
 obj += src/admin.o
 obj += $(obj-log-io)
 obj += src/paxos.o
+obj += src/tnt_obj.o
+obj += src/iproto.o
+
+src/octopus.o src/net_io.o: CFLAGS += -DOCT_OBJECT
 
 obj += mod/box/box.o
 obj += mod/box/moonbox.o
