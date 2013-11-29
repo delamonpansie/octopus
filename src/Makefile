@@ -1,11 +1,9 @@
 include $(VPATH)/src/index/Makefile
 
 obj += src/objc.o
-obj += src/tnt_obj.o
 obj += src/net_io.o
 obj += src/coro.o
 obj += src/fiber.o
-obj += src/iproto.o
 
 obj += src/palloc.o
 obj += src/pickle.o

@@ -406,8 +406,9 @@ luaT_init()
 	lua_setfield(L, -2, "ctime");
 	lua_pop(L, 1);
 
+#ifdef OCT_OBJECT
 	luaT_objinit(L);
-
+#endif
         lua_getglobal(L, "require");
         lua_pushliteral(L, "prelude");
 	if (lua_pcall(L, 1, 0, 0))

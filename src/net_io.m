@@ -81,8 +81,13 @@ netmsg_unref(struct netmsg *m, int from)
 
 		if (m->ref[i] & 1)
 			have_lua_refs = 1;
-		else
+		else {
+#ifdef OCT_OBJECT
 			object_decr_ref((struct tnt_object *)m->ref[i]);
+#else
+			abort();
+#endif
+		}
 	}
 
 	if (have_lua_refs) {
@@ -217,6 +222,7 @@ net_add_iov_dup(struct netmsg_head *h, const void *buf, size_t len)
 	net_add_iov(h, copy, len);
 }
 
+#ifdef OCT_OBJECT
 void
 net_add_ref_iov(struct netmsg_head *h, uintptr_t obj, const void *buf, size_t len)
 {
@@ -239,7 +245,7 @@ net_add_obj_iov(struct netmsg_head *o, struct tnt_object *obj, const void *buf, 
 	object_incr_ref(obj);
 	net_add_ref_iov(o, (uintptr_t)obj, buf, len);
 }
-
+#endif
 
 void
 netmsg_verify_ownership(struct netmsg_head *h)
