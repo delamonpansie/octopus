@@ -985,7 +985,7 @@ loop:
 		/* trigger processing of data.
 		   c->service->processing will be traversed by wakeup_workers() */
 		if (c->processing_link.tqe_prev == NULL)
-			TAILQ_INSERT_HEAD(&c->service->processing, c, processing_link);
+			TAILQ_INSERT_TAIL(&c->service->processing, c, processing_link);
 	} else if (r == 0) {
 		say_debug("%s client closed connection", c->service->name);
 		conn_close(c);
@@ -1048,7 +1048,7 @@ tcp_service(struct service *service, const char *addr, void (*on_bind)(int fd), 
 	TAILQ_INIT(&service->processing);
 	service->pool = palloc_create_pool(name);
 	service->name = name;
-	service->batch = 64;
+	service->batch = 32;
 
 	palloc_register_gc_root(service->pool, service, service_gc);
 
