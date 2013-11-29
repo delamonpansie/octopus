@@ -5,6 +5,7 @@ local string, tostring, tonumber =
       string, tostring, tonumber
 
 local rawget, rawset = rawget, rawset
+local printf = printf
 
 
 local ffi, bit, debug = require("ffi"), require("bit"), require("debug")
@@ -30,7 +31,6 @@ string.tofield = function(s)
    return ffi.string(buf, n + #s)
 end
 
-local printf = printf
 module(...)
 
 user_proc = {}
@@ -326,9 +326,6 @@ function ctuple(obj)
 end
 
 function wrap(proc_body)
-        if type(proc_body) == "string" then
-                proc_body = loadstring(code)
-        end
         if type(proc_body) ~= "function" then
                 return nil
         end
