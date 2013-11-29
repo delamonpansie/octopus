@@ -49,13 +49,13 @@
 
 @interface Error : Object {
 @public
-	char *reason;
+	const char *reason;
 	char buf[1024];
 	unsigned line;
 	const char *file;
 	char *backtrace;
 }
-- (Error *)init:(char *)reason;
+- (Error *)init:(const char *)reason;
 - (Error *)init_line:(unsigned)line_
 		file:(const char *)file_
 	   backtrace:(const char *)backtrace_

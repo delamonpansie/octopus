@@ -156,7 +156,7 @@ alloc
 }
 
 - (Error *)
-init:(char *)reason_
+init:(const char *)reason_
 {
 	reason = reason_;
 	return self;
