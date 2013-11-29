@@ -147,7 +147,7 @@ struct chunk {
 	TAILQ_ENTRY(chunk) busy_link;
 	TAILQ_ENTRY(chunk) free_link;
 
-#if PALLOC_REDZONE > 0
+#if PALLOC_REDZONE > 0 || (HAVE_VALGRIND_VALGRIND_H && !defined(NVALGRIND))
 	/* initial chunk->brk must be 8-aligned (for asan) */
 	char redzone[PALLOC_REDZONE] __attribute__ ((aligned (8)));
 #endif
