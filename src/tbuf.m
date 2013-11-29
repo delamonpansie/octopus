@@ -60,14 +60,30 @@ tbuf_assert(const struct tbuf *b)
 struct tbuf *
 tbuf_alloc(struct palloc_pool *pool)
 {
-	const size_t initial_size = 128 - sizeof(struct tbuf);
-	struct tbuf *e = palloc(pool, sizeof(*e) + initial_size);
-	e->free = initial_size;
-	e->ptr = e->end = (char *)e + sizeof(*e);
+	struct tbuf *e = palloc(pool, sizeof(*e));
+	e->free = 16;
+	e->ptr = palloc(pool, 16);
+	e->end = e->ptr;
 	e->pool = pool;
-	poison(e->ptr, e->free);
-	tbuf_assert(e);
 	return e;
+}
+
+void
+tbuf_ensure_resize(struct tbuf *e, size_t required)
+{
+	tbuf_assert(e);
+	assert(e->pool != NULL); /* attemp to resize fixed size tbuf */
+
+	size_t size = tbuf_size(e);
+	size_t len = tbuf_len(e);
+	size_t diff = MAX(size / 2, required);
+
+	void *p = prealloc(e->pool, e->ptr, size, size + diff);
+
+	e->ptr = p;
+	e->end = p + len;
+	e->free += diff;
+	tbuf_assert(e);
 }
 
 void
@@ -76,35 +92,6 @@ tbuf_willneed(struct tbuf *e, size_t required)
 	assert(tbuf_len(e) <= tbuf_size(e));
 	if (unlikely(tbuf_free(e) < required))
 		tbuf_ensure_resize(e, required);
-}
-
-void __attribute__((regparm(2)))
-tbuf_ensure_resize(struct tbuf *e, size_t required)
-{
-	tbuf_assert(e);
-	assert(e->pool != NULL); /* attemp to resize fixed size tbuf */
-
-	const size_t initial_size = MAX(tbuf_size(e), 128 - sizeof(*e));
-	size_t new_size = initial_size * 2;
-
-	while (new_size - tbuf_len(e) < required)
-		new_size *= 2;
-
-	void *p;
-#if HAVE_VALGRIND_VALGRIND_H && !defined(NVALGRIND)
-	if (e->ptr == (char *)e + sizeof(*e)) {
-		int hsz = sizeof(*e);
-		p = prealloc(e->pool, e->ptr - hsz, tbuf_size(e) + hsz, new_size + hsz);
-		p += hsz;
-	} else
-#endif
-	p = prealloc(e->pool, e->ptr, tbuf_size(e), new_size);
-
-	int len = tbuf_len(e);
-	e->ptr = p;
-	e->end = p + len;
-	e->free = new_size - len;
-	tbuf_assert(e);
 }
 
 struct tbuf *
