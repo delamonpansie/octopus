@@ -28,6 +28,14 @@
 #import <index.h>
 #import <assoc.h>
 
+/*
+  Note about *_addr() compare functions:
+  it's ok to return 0: sptree_iterator_init_set() will select
+  leftmost node in case of equality.
+  it is guaranteed that pattern is a first arg.
+*/
+
+
 int
 i32_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
@@ -48,6 +56,9 @@ i32_compare_with_addr(const struct index_node *na, const struct index_node *nb, 
 		return 1;
 	else if (a < b)
 		return -1;
+
+	if ((uintptr_t)na->obj <= 1)
+		return 0;
 
 	if (na->obj > nb->obj)
 		return 1;
@@ -78,6 +89,9 @@ i64_compare_with_addr(const struct index_node *na, const struct index_node *nb, 
 	else if (a < b)
 		return -1;
 
+	if ((uintptr_t)na->obj <= 1)
+		return 0;
+
 	if (na->obj > nb->obj)
 		return 1;
 	else if (na->obj < nb->obj)
@@ -100,6 +114,9 @@ lstr_compare_with_addr(const struct index_node *na, const struct index_node *nb,
 	if (r != 0)
 		return r;
 
+	if ((uintptr_t)na->obj <= 1)
+		return 0;
+
 	if (na->obj > nb->obj)
 		return 1;
 	else if (na->obj < nb->obj)
@@ -118,9 +135,16 @@ int
 cstr_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
         int r = strcmp(na->key.ptr, nb->key.ptr);
+	if (r != 0)
+		return r;
 
-        if (r != 0 && na->obj != nb->obj)
-                r = na->obj > nb->obj ? 1 : -1;
+	if ((uintptr_t)na->obj <= 1)
+		return 0;
 
-        return r;
+	if (na->obj > nb->obj)
+		return 1;
+	else if (na->obj < nb->obj)
+		return -1;
+	else
+		return 0;
 }
