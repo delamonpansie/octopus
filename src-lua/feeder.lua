@@ -3,6 +3,8 @@ local bit = require("bit")
 local print, tostring = print, tostring
 local ipairs = ipairs
 local format = string.format
+local assert = assert
+local type = type
 
 replication_filter = replication_filter or {}
 local replication_filter = replication_filter
@@ -62,6 +64,6 @@ end
 ffi.metatype('struct row_v12', mt)
 
 function replication_filter.id_log(obj)
-        print(row)
+        print(obj)
         return true
 end
