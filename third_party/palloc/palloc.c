@@ -1,7 +1,7 @@
 /*
- * Copyright (C) 2010, 2011, 2012 Mail.RU
- * Copyright (C) 2010, 2011, 2012 Yuriy Vostrikov
- * Copyright (C) 2012 Roman Tokarev
+ * Copyright (C) 2010, 2011, 2012, 2013 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013 Yuriy Vostrikov
+ * Copyright (C) 2012, 2013 Roman Tokarev
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,20 +33,6 @@
 # import <stat.h>
 #endif
 
-#if HAVE_VALGRIND_VALGRIND_H && !defined(NVALGRIND)
-# include <valgrind/valgrind.h>
-# include <valgrind/memcheck.h>
-#else
-# define VALGRIND_MAKE_MEM_DEFINED(_qzz_addr,_qzz_len) (void)0
-# define VALGRIND_MAKE_MEM_NOACCESS(_qzz_addr,_qzz_len) (void)0
-# define VALGRIND_MAKE_MEM_UNDEFINED(_qzz_addr,_qzz_len) (void)0
-# define VALGRIND_CREATE_MEMPOOL(pool, rzB, is_zeroed) (void)0
-# define VALGRIND_DESTROY_MEMPOOL(pool) (void)0
-# define VALGRIND_MEMPOOL_ALLOC(pool, addr, size) (void)0
-# define VALGRIND_MEMPOOL_TRIM(pool, addr, size) (void)0
-# define VALGRIND_MEMPOOL_CHANGE(pool, addrA, addrB, size) (void)0
-#endif
-
 #if HAVE_THIRD_PARTY_QUEUE_H
 # include <third_party/queue.h>
 #else
@@ -61,6 +47,30 @@
 #include <string.h>
 #include <stdio.h>
 #include <sys/mman.h>
+
+#if HAVE_VALGRIND_VALGRIND_H && !defined(NVALGRIND)
+# include <valgrind/valgrind.h>
+# include <valgrind/memcheck.h>
+#else
+# define VALGRIND_MAKE_MEM_DEFINED(_qzz_addr,_qzz_len) (void)0
+# define VALGRIND_MAKE_MEM_NOACCESS(_qzz_addr,_qzz_len) (void)0
+# define VALGRIND_MAKE_MEM_UNDEFINED(_qzz_addr,_qzz_len) (void)0
+# define VALGRIND_CREATE_MEMPOOL(pool, rzB, is_zeroed) (void)0
+# define VALGRIND_DESTROY_MEMPOOL(pool) (void)0
+# define VALGRIND_MEMPOOL_ALLOC(pool, addr, size) (void)0
+# define VALGRIND_MEMPOOL_TRIM(pool, addr, size) (void)0
+# define VALGRIND_MEMPOOL_CHANGE(pool, addrA, addrB, size) (void)0
+#endif
+
+#if defined(__SANITIZE_ADDRESS__)
+void __asan_poison_memory_region(void const volatile *addr, size_t size, int magic);
+void __asan_unpoison_memory_region(void const volatile *addr, size_t size);
+#define ASAN_POISON_MEMORY_REGION(addr, size, magic) __asan_poison_memory_region((addr), (size), (magic))
+#define ASAN_UNPOISON_MEMORY_REGION(addr, size) __asan_unpoison_memory_region((addr), (size))
+#else
+#define ASAN_POISON_MEMORY_REGION(addr, size, magic) (void)0
+#define ASAN_UNPOISON_MEMORY_REGION(addr, size) (void)0
+#endif
 
 #ifndef PALLOC_CHUNK_TTL
 # define PALLOC_CHUNK_TTL 4096
@@ -77,8 +87,10 @@
 #ifndef likely
 # if HAVE__BUILTIN_EXPECT
 #  define likely(x)	__builtin_expect((x),1)
+#  define unlikely(x)  __builtin_expect((x),0)
 # else
 #  define likely(x)	(x)
+#  define unlikely(x)  (x)
 # endif
 #endif
 
@@ -89,6 +101,17 @@
 #ifndef TYPEALIGN
 # define TYPEALIGN(ALIGNVAL,LEN)  \
         (((uintptr_t) (LEN) + ((ALIGNVAL) - 1)) & ~((uintptr_t) ((ALIGNVAL) - 1)))
+#endif
+
+#if defined(__SANITIZE_ADDRESS__)
+# ifndef REDZONE
+#  define REDZONE
+# endif
+# define PALLOC_ALIGN(ptr) (void *)TYPEALIGN(8, ptr)
+# define RZMAX (PALLOC_REDZONE + (uintptr_t)PALLOC_ALIGN((void *)1))
+#else
+# define PALLOC_ALIGN(ptr) ptr
+# define RZMAX 0
 #endif
 
 #ifdef PALLOC_STAT
@@ -103,6 +126,16 @@ static char * const stat_op[] = ENUM_STR_INITIALIZER(STAT);
 static __thread int stat_base;
 #endif
 
+#ifdef REDZONE
+#define PALLOC_REDZONE 8
+#endif
+#ifndef PALLOC_REDZONE
+#define PALLOC_REDZONE 0
+#endif
+#ifdef POISON
+#define PALLOC_POISON
+#endif
+
 struct chunk {
 	uint32_t magic;
 	void *brk;
@@ -113,6 +146,11 @@ struct chunk {
 	struct chunk_class *class;
 	TAILQ_ENTRY(chunk) busy_link;
 	TAILQ_ENTRY(chunk) free_link;
+
+#if PALLOC_REDZONE > 0
+	/* initial chunk->brk must be 8-aligned (for asan) */
+	char redzone[PALLOC_REDZONE] __attribute__ ((aligned (8)));
+#endif
 };
 
 TAILQ_HEAD(chunk_list_head, chunk);
@@ -170,16 +208,6 @@ static const char poison_char = 'P';
 
 static __thread uint64_t release_count = 0;
 
-#ifdef REDZONE
-#define PALLOC_REDZONE 4
-#endif
-#ifndef PALLOC_REDZONE
-#define PALLOC_REDZONE 0
-#endif
-#ifdef POISON
-#define PALLOC_POISON
-#endif
-
 static void
 palloc_init(void)
 {
@@ -200,30 +228,59 @@ palloc_init(void)
 }
 
 static void
-poison_chunk(const struct chunk *chunk)
+chunk_poison(const struct chunk *chunk)
 {
 	(void)chunk;
+
 	assert(chunk->magic == chunk_magic);
 #if !defined(NDEBUG) && defined(PALLOC_POISON)
 	(void)VALGRIND_MAKE_MEM_DEFINED(chunk->brk, chunk->free);
 	memset(chunk->brk, poison_char, chunk->free);
 	(void)VALGRIND_MAKE_MEM_NOACCESS(chunk->brk, chunk->free);
 #endif
+	VALGRIND_MAKE_MEM_NOACCESS(chunk->brk, chunk->free);
+	ASAN_POISON_MEMORY_REGION(chunk->brk, chunk->free, 0xf7);
 }
 
 static void
-poison_verify(const char *ptr, size_t size)
+unpoison(const char *ptr, size_t size)
 {
+	(void)ptr;
+	(void)size;
+
+	ASAN_UNPOISON_MEMORY_REGION(ptr, size);
 #if !defined(NDEBUG) && defined(PALLOC_POISON)
 	(void)VALGRIND_MAKE_MEM_DEFINED(ptr, size);
 	for (int i = 0; i < (size); i++)
 		assert(ptr[i] == poison_char);
-	(void)VALGRIND_MAKE_MEM_NOACCESS(ptr, size);
-#else
-	(void)ptr;
-	(void)size;
 #endif
+	VALGRIND_MAKE_MEM_UNDEFINED(ptr, size);
 }
+
+/* WARNING: may use extra RZMAX bytes for REDZONE and padding */
+static inline void *
+chunk_alloc(struct chunk *chunk, size_t size)
+{
+	void *brk = chunk->brk,
+	     *ptr = brk;
+
+	brk = PALLOC_ALIGN(brk + size + PALLOC_REDZONE);
+	chunk->free -= brk - ptr;
+	chunk->brk = brk;
+
+#ifdef PALLOC_PARANOIA
+	assert(chunk->free < chunk->data_size);
+#endif
+	assert(PALLOC_ALIGN(chunk->brk) == chunk->brk);
+	assert(PALLOC_ALIGN(ptr) == ptr);
+
+	unpoison(ptr, size);
+	VALGRIND_MEMPOOL_ALLOC(chunk, ptr, size);
+	ASAN_POISON_MEMORY_REGION(ptr + size, chunk->brk - ptr - size, 0xfb);
+
+	return ptr;
+}
+
 
 static struct chunk *
 next_chunk_for(struct palloc_pool *pool, size_t size)
@@ -269,57 +326,43 @@ next_chunk_for(struct palloc_pool *pool, size_t size)
 	chunk->brk = (void *)chunk + sizeof(struct chunk);
 	chunk->class = class;
 
-	poison_chunk(chunk);
+	chunk_poison(chunk);
+	VALGRIND_MAKE_MEM_NOACCESS(chunk->redzone, sizeof(chunk->redzone));
+	ASAN_POISON_MEMORY_REGION(chunk->redzone, sizeof(chunk->redzone), 0xfa);
 found:
 	assert(chunk != NULL && chunk->magic == chunk_magic);
 	TAILQ_INSERT_HEAD(&pool->chunks, chunk, busy_link);
 	pool->allocated += chunk->data_size;
-	VALGRIND_CREATE_MEMPOOL(chunk, PALLOC_REDZONE, 0);
+	VALGRIND_CREATE_MEMPOOL(chunk, PALLOC_REDZONE, 0); /* NOACCESS mark is set by chunk_poison() */
+
 	return chunk;
 }
 
 void * __regparam
 palloc_slow_path(struct palloc_pool *pool, size_t size)
 {
-	const size_t rz_size = size + PALLOC_REDZONE * 2;
 	struct chunk *chunk;
-	void *ptr;
 
-	chunk = next_chunk_for(pool, rz_size);
+	chunk = next_chunk_for(pool, size + RZMAX);
 	if (chunk == NULL)
 		abort();
-	assert(chunk->free >= rz_size);
 
-	poison_verify(chunk->brk, rz_size);
-	ptr = chunk->brk + PALLOC_REDZONE;
-	VALGRIND_MEMPOOL_ALLOC(chunk, ptr, size);
-	chunk->brk += rz_size;
-	chunk->free -= rz_size;
-	return ptr;
+	return chunk_alloc(chunk, size);
 }
 
 void * __regparam
 palloc(struct palloc_pool *pool, size_t size)
 {
-	const size_t rz_size = size + PALLOC_REDZONE * 2;
 	struct chunk *chunk = TAILQ_FIRST(&pool->chunks);
-	void *ptr;
 
 #ifdef PALLOC_STAT
 	stat_collect(stat_base, PALLOC_CALL, 1);
 	stat_collect(stat_base, PALLOC_BYTES, size);
 #endif
 
-	if (likely(chunk != NULL && chunk->free >= rz_size)) {
-		poison_verify(chunk->brk, rz_size);
-		ptr = chunk->brk + PALLOC_REDZONE;
-		VALGRIND_MEMPOOL_ALLOC(chunk, ptr, size);
-		chunk->brk += rz_size;
-		chunk->free -= rz_size;
-		return ptr;
-	} else {
-		return palloc_slow_path(pool, size);
-	}
+	if (likely(chunk != NULL && chunk->free >= size + RZMAX))
+		return chunk_alloc(chunk, size);
+	return palloc_slow_path(pool, size);
 }
 
 void *
@@ -332,16 +375,25 @@ prealloc(struct palloc_pool *pool, void *oldptr, size_t oldsize, size_t size)
 
 	const size_t diff_size = size - oldsize;
 	struct chunk *chunk = TAILQ_FIRST(&pool->chunks);
+	/* sizeof(redzone) >= 8 (sizeof(redzone) == PALLOC_REDZONE + align)
+	   sizeof(chunk->free) >= 8 (chunk->brk is aligned when redzones enabled),
+	   so there is always enough space to make new aligned redzone */
 	if (likely(chunk != NULL && chunk->free >= diff_size &&
-		   oldptr + oldsize == chunk->brk - PALLOC_REDZONE)) {
+		   PALLOC_ALIGN(oldptr + oldsize + PALLOC_REDZONE) == chunk->brk)) {
+		void *oldbrk = chunk->brk;
+
 #ifdef PALLOC_STAT
 		stat_collect(stat_base, PALLOC_CALL, 1);
 		stat_collect(stat_base, PALLOC_BYTES, diff_size);
 #endif
-		poison_verify(chunk->brk, diff_size);
+		chunk->brk = PALLOC_ALIGN(oldptr + size + PALLOC_REDZONE);
+		chunk->free -= chunk->brk - oldbrk;
+#ifdef PALLOC_PARANOIA
+		assert(chunk->free < chunk->data_size);
+#endif
+		unpoison(oldptr + oldsize, diff_size);
 		VALGRIND_MEMPOOL_CHANGE(chunk, oldptr, oldptr, size);
-		chunk->brk += diff_size;
-		chunk->free -= diff_size;
+		ASAN_POISON_MEMORY_REGION(oldptr + size, chunk->brk - oldptr - size, 0xfb);
 		return oldptr;
 	} else {
 		void *ptr = palloc(pool, size);
@@ -377,7 +429,7 @@ release_chunk(struct chunk *chunk)
 		chunk->free = chunk->data_size;
 		chunk->brk = (void *)chunk + sizeof(struct chunk);
 		TAILQ_INSERT_HEAD(&chunk->class->chunks, chunk, free_link);
-		poison_chunk(chunk);
+		chunk_poison(chunk);
 		chunk->last_use = release_count;
 	} else {
 		assert(chunk->class->chunks_count > 0);
@@ -409,6 +461,8 @@ release_chunks(struct chunk_list_head *chunks)
 				break;
 
 			TAILQ_REMOVE(&class->chunks, chunk, free_link);
+			ASAN_UNPOISON_MEMORY_REGION(chunk->redzone, sizeof(chunk->redzone));
+			ASAN_UNPOISON_MEMORY_REGION(chunk->brk, chunk->free);
 			munmap(chunk, class->size + sizeof(struct chunk));
 			class->chunks_count--;
 		}
@@ -462,6 +516,7 @@ palloc_unmap_unused(void)
 		struct chunk *chunk, *tvar;
 
 		TAILQ_FOREACH_SAFE(chunk, &class->chunks, free_link, tvar) {
+			ASAN_UNPOISON_MEMORY_REGION(chunk, sizeof(struct chunk) + chunk->data_size);
 			munmap(chunk, class->size + sizeof(struct chunk));
 			class->chunks_count--;
 		}
@@ -559,7 +614,7 @@ palloc_cutoff(struct palloc_pool *pool)
 	pool->allocated = root->allocated;
 
 	SLIST_REMOVE_HEAD(&pool->cut_list, link);
-	poison_chunk(chunk);
+	chunk_poison(chunk);
 	VALGRIND_MEMPOOL_TRIM(chunk, (void *)chunk + sizeof(*chunk), chunk->data_size - chunk->free);
 }
 
