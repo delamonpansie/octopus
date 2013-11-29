@@ -76,7 +76,13 @@ tbuf_ensure_resize(struct tbuf *e, size_t required)
 
 	size_t size = tbuf_size(e);
 	size_t len = tbuf_len(e);
-	size_t diff = MAX(size / 2, required);
+	size_t req = required - (size - len);
+	size_t diff = size / 2;
+	if (diff < req) {
+		diff = 1 << (31 - __builtin_clz(req));
+		size_t d = diff | (diff >> 1);
+		diff = ((req & d) == d) ? diff << 1 : d;
+	}
 
 	void *p = prealloc(e->pool, e->ptr, size, size + diff);
 
