@@ -366,7 +366,7 @@ luaT_error(struct lua_State *L)
 		err = lua_tostring(L, -1);
 
 	/* FIXME: use native exceptions ? */
-	iproto_raise_fmt(ERR_CODE_UNKNOWN_ERROR, "%s", err);
+	@throw [[Error palloc] init:err];
 }
 
 

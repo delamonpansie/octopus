@@ -39,7 +39,7 @@
 void __attribute__((noreturn))
 tbuf_too_short()
 {
-	iproto_raise(ERR_CODE_UNKNOWN_ERROR, "tbuf too short");
+	@throw [[Error palloc] init:"tbuf too short"];
 }
 
 static __attribute__((always_inline)) inline void
