@@ -35,6 +35,10 @@ object_space[1].index[2].type = "HASH"
 object_space[1].index[2].unique = 1
 object_space[1].index[2].key_field[0].fieldno = 2
 object_space[1].index[2].key_field[0].type = "NUM64"
+object_space[1].index[3].type = "TREE"
+object_space[1].index[3].unique = 0
+object_space[1].index[3].key_field[0].fieldno = 0
+object_space[1].index[3].key_field[0].type = "NUM32"
 
 EOD
   end

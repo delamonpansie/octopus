@@ -260,7 +260,8 @@ local function test5()
     local a = os:index(0):find(0)
     local b = os:index(1):find(0)
     local c = os:index(2):find(0)
-    return 0, {a,b,c}
+    local d = os:index(3):find(0)
+    return 0, {a,b,c,d}
 end
 
 
