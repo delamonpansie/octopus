@@ -162,8 +162,8 @@ void
 tbuf_append(struct tbuf *b, const void *data, size_t len)
 {
 	tbuf_assert(b);
+	tbuf_ensure(b, len + 1);
 	if (likely(data != NULL)) {
-		tbuf_ensure(b, len + 1);
 		memcpy(b->end, data, len);
 		*(((char *)b->end) + len) = '\0';
 	}
