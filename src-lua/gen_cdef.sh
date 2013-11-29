@@ -20,5 +20,5 @@ extern struct fiber *fiber;
 `$CPP -P $CPPFLAGS $srcdir/include/pickle.h | $SED -n '/write.*(.*struct tbuf/p'`
 ]]
 autoconf = {}
-`cat $srcdir/include/config.h  | $SED '/^#define [^ ]* ["0-9]/!d; s/#define \([^ ]*\) \(.*\)/autoconf.\1 = \2/;'`
+`cat include/config.h  | $SED '/^#define [^ ]* ["0-9]/!d; s/#define \([^ ]*\) \(.*\)/autoconf.\1 = \2/;'`
 EOF
