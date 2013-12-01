@@ -113,6 +113,9 @@ local pack_meths = {
     _raw = function(self, v, l)
         ffi.copy(self:_need(l), v, l)
     end,
+    len = function(self)
+        return self.stop - self.ptr
+    end,
     pack = function(self)
         local ptr = self.ptr
         local len = self.stop - ptr
@@ -163,7 +166,7 @@ local function reader_func(name)
     local fab = loadstring(([[
         local ffi, type = ...
         return function (self)
-            if self.haserror ~= 0 then
+            if self.haserror == 1 then
                 return 0
             end
             if self.len < %d then
@@ -182,7 +185,7 @@ local function reader_func_n(name, conv)
     local fab = loadstring(([[
         local ffi, unpacker = ...
         return function (self, n)
-            if self.haserror ~= 0 then
+            if self.haserror == 1 then
                 return nil
             end
             if self.len < n then
@@ -209,7 +212,7 @@ local function reader_field(name)
     local fab = loadstring(([[
         local ffi, type = ...
         return function (self)
-            if self.haserror ~= 0 then
+            if self.haserror == 1 then
                 return 0
             end
             if self.len < %d then
@@ -233,7 +236,7 @@ local function reader_field_n(name, conv)
         local ffi, unpacker = ...
         return function (self)
             local n = self:ber()
-            if self.haserror ~= 0 then
+            if self.haserror == 1 then
                 return nil
             end
             if self.len < n then
@@ -254,24 +257,40 @@ unpack_meths = {
         self.len = self.len - n
     end,
     set_error = function(self, err, ...)
-        if self.haserror == 0 then
-            self.haserror = 1
+        if self.haserror == 0 or self.haserror == 2 then
             local pos = ("(cur pos %d)"):format(self:pos())
             if select('#', ...) == 0 then
-                unpack_errors[self] = err .. pos
+                err = err .. pos
             else
+                err = err:format(...) .. pos
+            end
+            if self.haserror == 0 then
+                self.haserror = 1
                 unpack_errors[self] = err:format(...) .. pos
+            else
+                error(err)
             end
         end
     end,
+    raise_on_error = function(self)
+        if self.haserror == 0 then
+            self.haserror = 2
+        elseif self.haserror == 1 then
+            error(self:error())
+        end
+    end,
     error = function(self)
-        if self.haserror ~= 0 then
+        if self.haserror == 1 then
             return unpack_errors[self]
         end
         return nil
     end,
     pos = function(self)
         return self.ptr - self.beg
+    end,
+    set_pos = function(self, n)
+        self.len = self.len + (self:pos() - n)
+        self.ptr = self.beg + n
     end,
     reset = function(self)
         self.len = self.len + (self.ptr - self.beg)
@@ -289,7 +308,7 @@ unpack_meths = {
     skip = reader_func_n('skip', 'nil'),
     unpacker = reader_func_n('unpacker', 'unpacker(self.ptr, n)'),
     ber = function(self)
-        if self.haserror ~= 0 then
+        if self.haserror == 1 then
             return 0
         end
         if self.len < 1 then
@@ -328,7 +347,7 @@ unpack_meths = {
         return 0
     end,
     berconst = function(self, n)
-        if self.haserror ~= 0 then
+        if self.haserror == 1 then
             return
         end
         if n < 128 then
@@ -356,7 +375,7 @@ unpack_meths = {
     field_i32 = reader_field('i32'),
     field_i64 = reader_field('i64'),
     field_ber = function(self)
-        if self.haserror ~= 0 then
+        if self.haserror == 1 then
             return 0
         end
         if self.len < 2 then
