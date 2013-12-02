@@ -232,6 +232,8 @@ process_requests(struct conn *c)
 		TAILQ_REMOVE(&service->processing, c, processing_link);
 		c->processing_link.tqe_prev = NULL;
 	} else if (batch < service->batch) {
+		/* avoid unfair scheduling in case of absense of stream requests
+		   and all workers being busy */
 		TAILQ_REMOVE(&service->processing, c, processing_link);
 		TAILQ_INSERT_TAIL(&service->processing, c, processing_link);
 	}
@@ -268,19 +270,19 @@ void
 iproto_wakeup_workers(ev_prepare *ev)
 {
 	struct service *service = (void *)ev - offsetof(struct service, wakeup);
-	struct conn *c, *next, *last = TAILQ_LAST(&service->processing, conn_tailq);
+	struct conn *c, *tmp, *last;
 	struct palloc_pool *saved_pool = fiber->pool;
 	assert(saved_pool == sched.pool);
 
 	fiber->pool = service->pool;
-	c = TAILQ_FIRST(&service->processing);
-	while (c) {
-		next = TAILQ_NEXT(c, processing_link);
+
+	last = TAILQ_LAST(&service->processing, conn_tailq);
+	TAILQ_FOREACH_SAFE(c, &service->processing, processing_link, tmp) {
 		process_requests(c);
-		/* process_requests() will move *c to the end of tailq */
+		/* process_requests() may move *c to the end of tailq */
 		if (c == last) break;
-		c = next;
 	}
+
 	fiber->pool = saved_pool;
 
 	if (palloc_allocated(service->pool) - service->pool_allocated > 64 * 1024 * 1024) {
