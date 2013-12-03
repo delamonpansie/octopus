@@ -163,6 +163,9 @@ local index_mt = {
 	    end
 	 return iter_next, index
 	end,
+        size = function(index)
+            return tonumber(ffi.cast(uint32_t, objc.msg_send(index, "size")))
+        end,
 	slots = function(index)
 	    return tonumber(ffi.cast(uint32_t, objc.msg_send(index, "slots")))
 	end,
