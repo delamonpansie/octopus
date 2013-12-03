@@ -178,16 +178,9 @@ class SilverBox < IProtoRetCode
     ops.map! do |op|
       fail "op must be Array" unless op.is_a? Array
       case op[1]
-      when :set
-        op = [op[0], 0x00, pack_field(op[2])].pack("LCa*")
-      when :add
-        op = [op[0], 0x01, 4, op[2]].pack("LCwI")
-      when :and
-        op = [op[0], 0x02, 4, op[2]].pack("LCwL")
-      when :or
-        op = [op[0], 0x03, 4, op[2]].pack("LCwL")
-      when :xor
-        op = [op[0], 0x04, 4, op[2]].pack("LCwL")
+      when :set, :add, :and, :or, :xor
+        ar = {:set => 0, :add => 1, :and => 2, :or => 3, :xor => 4}
+        op = [op[0], ar[op[1]], pack_field(op[2])].pack("LCa*")
       when :splice
         op = [op[0], 0x05, pack_field([4, op[2], 4, op[3], pack_field(op[4])].pack("wLwLa*"))].pack("LCa*")
       when :delete

@@ -320,24 +320,38 @@ rollback_replace(BoxTxn *txn)
 static void
 do_field_arith(u8 op, struct tbuf *field, const void *arg, u32 arg_size)
 {
-	if (tbuf_len(field) != 4)
-		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "num op on field with length != 4");
-	if (arg_size != 4)
-		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "num op with arg not u32");
+	if (tbuf_len(field) != arg_size)
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "num op arg size not equal to field size");
 
-	switch (op) {
-	case 1:
-		*(i32 *)field->ptr += *(i32 *)arg;
-		break;
+	switch (arg_size) {
 	case 2:
-		*(u32 *)field->ptr &= *(u32 *)arg;
-		break;
-	case 3:
-		*(u32 *)field->ptr ^= *(u32 *)arg;
+		switch (op) {
+		case 1: *(u16 *)field->ptr += *(u16 *)arg; break;
+		case 2: *(u16 *)field->ptr &= *(u16 *)arg; break;
+		case 3: *(u16 *)field->ptr ^= *(u16 *)arg; break;
+		case 4: *(u16 *)field->ptr |= *(u16 *)arg; break;
+		default: iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "unknown num op");
+		}
 		break;
 	case 4:
-		*(u32 *)field->ptr |= *(u32 *)arg;
+		switch (op) {
+		case 1: *(u32 *)field->ptr += *(u32 *)arg; break;
+		case 2: *(u32 *)field->ptr &= *(u32 *)arg; break;
+		case 3: *(u32 *)field->ptr ^= *(u32 *)arg; break;
+		case 4: *(u32 *)field->ptr |= *(u32 *)arg; break;
+		default: iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "unknown num op");
+		}
 		break;
+	case 8:
+		switch (op) {
+		case 1: *(u64 *)field->ptr += *(u64 *)arg; break;
+		case 2: *(u64 *)field->ptr &= *(u64 *)arg; break;
+		case 3: *(u64 *)field->ptr ^= *(u64 *)arg; break;
+		case 4: *(u64 *)field->ptr |= *(u64 *)arg; break;
+		default: iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "unknown num op");
+		}
+		break;
+	default: iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "bad num op size");
 	}
 }
 

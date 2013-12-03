@@ -1,0 +1,9 @@
+# box.insert([1, "\x00\x01", "\x00\x00\x00\x01", "\x00\x00\x00\x00\x00\x00\x00\x01"])
+1
+
+# box.update_fields(1, [1, :add, "aa"], [2, :add, "aaaa"], [3, :add, "aaaaaaaa"])
+1
+
+# box.select(1)
+[["\x01\x00\x00\x00", "ab", "aaab", "aaaaaaab"]]
+
