@@ -790,8 +790,10 @@ box_cb(struct iproto *request, struct conn *c)
 		if (!txn->object_space)
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "ignored object space");
 
-		if ([recovery submit:txn] != 1)
-			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
+		if (txn->obj_affected > 0) {
+			if ([recovery submit:txn] != 1)
+				iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
+		}
 		[txn commit];
 
 		struct netmsg_head *h = &c->out_messages;
