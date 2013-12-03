@@ -137,6 +137,7 @@ local function iter_next(index)
    return object(iterator_next(index))
 end
 local int32_t = ffi.typeof('int32_t')
+local uint32_t = ffi.typeof('uint32_t')
 local index_mt = {
     __index = {
 	find = function(index, ...)
@@ -163,7 +164,7 @@ local index_mt = {
 	 return iter_next, index
 	end,
 	slots = function(index)
-	    return tonumber(objc.msg_send(index, "slots"))
+	    return tonumber(ffi.cast(uint32_t, objc.msg_send(index, "slots")))
 	end,
 	get = function(index, i)
 	    assert(index.conf.type == ffi.C.HASH)
