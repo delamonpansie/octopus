@@ -810,7 +810,7 @@ box_cb(struct iproto *request, struct conn *c)
 			say_warn("too long %s: %.3f sec", ops[txn->op], stop - start);
 	}
 	@catch (Error *e) {
-		if (strcmp(e->file, "src/paxos.m") != 0) {
+		if (e->file && strcmp(e->file, "src/paxos.m") != 0) {
 			say_warn("aborting txn, [%s reason:\"%s\"] at %s:%d peer:%s",
 				 [[e class] name], e->reason, e->file, e->line, conn_peer_name(c));
 			if (e->backtrace)
