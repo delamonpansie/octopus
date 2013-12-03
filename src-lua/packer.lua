@@ -32,6 +32,7 @@ local pack_meths = {
     raw = C.tbuf_append,
     string = function(self, s) C.tbuf_append(self, s, #s) end,
     field = function(self, s) C.write_field_s(self, s, #s) end,
+    field_raw = function(self, s, ln) C.write_field_s(self, s, ln) end,
     field_u8 = function(self, i) C.write_field_i8(self, tonumber(i)) end,
     field_u16 = function(self, i) C.write_field_i16(self, tonumber(i)) end,
     field_u32 = function(self, i) C.write_field_i32(self, tonumber(i)) end,
