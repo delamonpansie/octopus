@@ -698,7 +698,7 @@ box_prepare_update(BoxTxn *txn)
 		break;
 
 	case DELETE:
-		txn->flags = read_u32(&data); /* not used */
+		txn->flags = read_u32(&data); /* RETURN_TUPLE */
 	case DELETE_1_3:
 		prepare_delete(txn, &data);
 		break;
