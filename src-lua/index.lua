@@ -172,7 +172,16 @@ local index_mt = {
 	get = function(index, i)
 	    assert(index.conf.type == ffi.C.HASH)
 	    return object(get(index, ffi.cast(int32_t, i)))
-	end
+	end,
+        type = function(index)
+            if index.conf.type == ffi.C.HASH then
+                return "HASH"
+            elseif index.conf.type == ffi.C.TREE then
+                return "TREE"
+            else
+                error("bad index type", 2)
+            end
+        end
    }
 }
 ffi.metatype('struct Index', index_mt)
