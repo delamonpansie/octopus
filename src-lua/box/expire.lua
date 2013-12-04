@@ -1,4 +1,3 @@
-local ffi = require 'ffi'
 local box = require 'box'
 local fiber = require 'fiber'
 local print, pcall, error = print, pcall, error
@@ -46,7 +45,7 @@ local function loop(n)
        end
    end
 
-   if pk.conf.type == ffi.C.HASH then
+   if pk:type() == "HASH" then
        local i = 0
        while i < pk:slots() do
            local batch = {}
