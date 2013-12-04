@@ -155,14 +155,14 @@ alloc
 	abort(); /* + palloc should be used */
 }
 
-- (Error *)
+-
 init:(const char *)reason_
 {
 	reason = reason_;
 	return self;
 }
 
-- (Error *)
+-
 init_line:(unsigned)line_
      file:(const char *)file_
 backtrace:(const char *)backtrace_
@@ -178,7 +178,7 @@ backtrace:(const char *)backtrace_
 	return self;
 }
 
-- (Error *)
+-
 init_line:(unsigned)line_
      file:(const char *)file_
 backtrace:(const char *)backtrace_
