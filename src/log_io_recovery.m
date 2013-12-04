@@ -903,7 +903,7 @@ nop_hb_writer(va_list ap)
 		struct fiber *wal_out = fiber_create("wal_writer/output_flusher", conn_flusher);
 		struct fiber *wal_in = fiber_create("wal_writer/input_dispatcher",
 							wal_disk_writer_input_dispatch);
-		wal_writer = spawn_child("wal_writer", wal_in, wal_out, wal_disk_writer, self);
+		wal_writer = spawn_child("wal_writer", wal_in, wal_out, wal_disk_writer, wal_dir);
 		if (!wal_writer)
 			panic("unable to start WAL writer");
 
