@@ -257,7 +257,7 @@ tnt_uptime(void)
 static void
 save_snapshot(void *ev __attribute__((unused)), int events __attribute__((unused)))
 {
-	[recovery snapshot:false];
+	[[recovery snap_writer] snapshot:false];
 }
 #endif
 
@@ -752,7 +752,7 @@ octopus(int argc, char **argv)
 		}
 
 		module(NULL)->init();
-		exit([recovery snapshot_initial]);
+		exit([recovery write_initial_state]);
 	}
 #endif
 

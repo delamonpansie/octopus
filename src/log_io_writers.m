@@ -469,6 +469,33 @@ wal_pack_submit
 	return reply->row_count;
 }
 
+- (SnapWriter *)
+snap_writer
+{
+	if (snap_writer)
+		return snap_writer;
+	snap_writer = [[SnapWriter alloc] init_state:self snap_dir:snap_dir];
+	return snap_writer;
+}
+
+- (int)
+write_initial_state
+{
+	lsn = scn = 1;
+	return [[self snap_writer] snapshot_write];
+}
+@end
+
+@implementation SnapWriter
+
+- (id)
+init_state:(id<RecoveryState>)state_ snap_dir:(XLogDir *)snap_dir_
+{
+	[super init];
+	state = state_;
+	snap_dir = snap_dir_;
+	return self;
+}
 
 int
 snapshot_write_row(XLog *l, u16 tag, struct tbuf *row)
@@ -476,7 +503,7 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *row)
 	static int bytes;
 	ev_tstamp elapsed;
 	static ev_tstamp last = 0;
-	const int io_rate_limit = l->dir->writer->snap_io_rate_limit;
+	const int io_rate_limit = cfg.snap_io_rate_limit * 1024 * 1024;
 
 	if ([l append_row:row->ptr len:tbuf_len(row) scn:0 tag:(tag | TAG_SNAP)] == NULL) {
 		say_syserror("unable write row");
@@ -536,8 +563,8 @@ snapshot_write
 {
         XLog *snap;
 
-	say_debug("%s: lsn:%"PRIi64" scn:%"PRIi64, __func__, lsn, scn);
-	snap = [snap_dir open_for_write:lsn scn:scn];
+	say_debug("%s: lsn:%"PRIi64" scn:%"PRIi64, __func__, [state lsn], [state scn]);
+	snap = [snap_dir open_for_write:[state lsn] scn:[state scn]];
 	if (snap == nil) {
 		say_syserror("can't open snap for writing");
 		return -1;
@@ -560,11 +587,12 @@ snapshot_write
 	struct tbuf *snap_ini = tbuf_alloc(fiber->pool);
 	u32 rows = [self snapshot_estimate];
 	tbuf_append(snap_ini, &rows, sizeof(rows));
+	u32 run_crc_log = [state run_crc_log];
 	tbuf_append(snap_ini, &run_crc_log, sizeof(run_crc_log));
 	u32 run_crc_mod = 0;
 	tbuf_append(snap_ini, &run_crc_mod, sizeof(run_crc_mod));
 
-	if ([snap append_row:snap_ini->ptr len:tbuf_len(snap_ini) scn:scn tag:(snap_initial_tag | TAG_SNAP)] == NULL) {
+	if ([snap append_row:snap_ini->ptr len:tbuf_len(snap_ini) scn:[state scn] tag:(snap_initial_tag | TAG_SNAP)] == NULL) {
 		say_error("unable write initial row");
 		return -1;
 	}
@@ -576,7 +604,7 @@ snapshot_write
 		return -1;
 
 	const char end[] = "END";
-	if ([snap append_row:end len:strlen(end) scn:scn tag:(snap_final_tag | TAG_SNAP)] == NULL) {
+	if ([snap append_row:end len:strlen(end) scn:[state scn] tag:(snap_final_tag | TAG_SNAP)] == NULL) {
 		say_error("unable write final row");
 		return -1;
 	}
@@ -632,12 +660,6 @@ snapshot:(bool)sync
 	}
 }
 
-- (int)
-snapshot_initial
-{
-	lsn = scn = 1;
-	return [self snapshot_write];
-}
 
 @end
 

@@ -660,9 +660,9 @@ load_from_remote:(XLogPuller *)puller
 
 			/* don't wait for snapshot. our goal to be replica as fast as possible */
 			if (getenv("SYNC_DUMP") == NULL)
-				[self snapshot:false];
+				[[self snap_writer] snapshot:false];
 			else
-				[self snapshot_write];
+				[[self snap_writer] snapshot_write];
 		}
 
 		/* old version doesn's send wal_final_tag for us. */
@@ -898,7 +898,6 @@ nop_hb_writer(va_list ap)
 
 		wal_dir->rows_per_file = wal_rows_per_file;
 		wal_dir->fsync_delay = cfg.wal_fsync_delay;
-		snap_io_rate_limit = cfg.snap_io_rate_limit * 1024 * 1024;
 
 		struct fiber *wal_out = fiber_create("wal_writer/output_flusher", conn_flusher);
 		struct fiber *wal_in = fiber_create("wal_writer/input_dispatcher",
@@ -973,7 +972,7 @@ recover_row:(struct row_v12 *)r
 	if (r->scn == fold_scn && (r->tag & ~TAG_MASK) == TAG_WAL) {
 		if ([self respondsTo:@selector(snapshot_fold)])
 			exit([self snapshot_fold]);
-		exit([self snapshot_write]);
+		exit([[self snap_writer] snapshot_write]);
 	}
 }
 

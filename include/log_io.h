@@ -257,12 +257,21 @@ u32 wal_pack_append_row(struct wal_pack *pack, struct row_v12 *row);
 void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 			  const void *data, size_t len);
 
-@interface XLogWriter: Object {
-
 @protocol RecoveryState
 - (i64) lsn;
 - (i64) scn;
 - (u32) run_crc_log;
+@end
+
+@interface SnapWriter: Object {
+	id<RecoveryState> state;
+	XLogDir *snap_dir;
+}
+- (id) init_state:(id<RecoveryState>)state snap_dir:(XLogDir *)snap_dir;
+- (int) snapshot:(bool)sync;
+- (int) snapshot_write;
+- (u32) snapshot_estimate;
+- (int) snapshot_write_rows:(XLog *)snap;
 @end
 
 @interface XLogWriter: Object <RecoveryState> {
@@ -270,11 +279,12 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 	XLogDir *wal_dir, *snap_dir;
 	ev_timer wal_timer;
 	bool configured;
+	SnapWriter *snap_writer;
 @public
 	bool local_writes;
 	struct child *wal_writer;
 	XLog *current_wal;	/* the WAL we'r currently reading/writing from/to */
-	int snap_io_rate_limit;
+
 	u32 run_crc_log;
 	struct crc_hist { i64 scn; u32 log; } crc_hist[512]; /* should be larger than
 								cfg.wal_writer_inbox_size */
@@ -294,11 +304,8 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 - (int) submit:(id<Txn>)txn;
 - (int) submit:(const void *)data len:(u32)len tag:(u16)tag;
 
-- (int) snapshot:(bool)sync;
-- (int) snapshot_write;
-- (int) snapshot_initial;
-- (u32) snapshot_estimate;
-- (int) snapshot_write_rows:(XLog *)snap;
+- (SnapWriter *) snap_writer;
+- (int) write_initial_state;
 @end
 
 @interface XLogWriter (Fold)

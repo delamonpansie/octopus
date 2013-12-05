@@ -247,7 +247,7 @@ admin_dispatch(struct conn *c)
 		}
 
 		action save_snapshot {
-			int ret = [recovery snapshot:true];
+			int ret = [[recovery snap_writer] snapshot:true];
 
 			if (ret == 0)
 				ok(out);
