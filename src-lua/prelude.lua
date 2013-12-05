@@ -11,7 +11,8 @@ function print (...)
                 print_(tostring(v))
         end
 end
-function printf(...) print_(string.format(...)) end
+local format = string.format
+function printf(...) print_(format(...)) end
 
 -- prefer external files over bundled ones
 package.loaders[2], package.loaders[1] = package.loaders[1], package.loaders[2]
