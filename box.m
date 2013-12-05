@@ -1394,6 +1394,9 @@ snapshot_fold
 	return 0;
 }
 
+@end
+
+@implementation SnapWriter (Box)
 - (int)
 snapshot_write_rows:(XLog *)l
 {
