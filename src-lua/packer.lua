@@ -167,7 +167,7 @@ local function reader_func(name)
     local fab = loadstring(([[
         local ffi, type = ...
         return function (self)
-            if self.haserror == 1 then
+            if self.haserror == HAS_ERROR then
                 return 0
             end
             if self.len < %d then
@@ -186,7 +186,7 @@ local function reader_func_n(name, conv)
     local fab = loadstring(([[
         local ffi, unpacker = ...
         return function (self, n)
-            if self.haserror == 1 then
+            if self.haserror == HAS_ERROR then
                 return nil
             end
             if self.len < n then
@@ -213,7 +213,7 @@ local function reader_field(name)
     local fab = loadstring(([[
         local ffi, type = ...
         return function (self)
-            if self.haserror == 1 then
+            if self.haserror == HAS_ERROR then
                 return 0
             end
             if self.len < %d then
@@ -237,7 +237,7 @@ local function reader_field_n(name, conv)
         local ffi, unpacker = ...
         return function (self)
             local n = self:ber()
-            if self.haserror == 1 then
+            if self.haserror == HAS_ERROR then
                 return nil
             end
             if self.len < n then
@@ -252,21 +252,24 @@ local function reader_field_n(name, conv)
     return fab(ffi, unpacker)
 end
 
+local NO_ERROR = 0
+local HAS_ERROR = 1
+local RAISE_ON_ERROR = 2
 unpack_meths = {
     _inc = function(self, n)
         self.ptr = self.ptr + n
         self.len = self.len - n
     end,
     set_error = function(self, err, ...)
-        if self.haserror == 0 or self.haserror == 2 then
+        if self.haserror == NO_ERROR or self.haserror == RAISE_ON_ERROR then
             local pos = ("(cur pos %d)"):format(self:pos())
             if select('#', ...) == 0 then
                 err = err .. pos
             else
                 err = err:format(...) .. pos
             end
-            if self.haserror == 0 then
-                self.haserror = 1
+            if self.haserror == NO_ERROR then
+                self.haserror = HAS_ERROR
                 unpack_errors[self] = err:format(...) .. pos
             else
                 error(err)
@@ -274,17 +277,22 @@ unpack_meths = {
         end
     end,
     raise_on_error = function(self)
-        if self.haserror == 0 then
-            self.haserror = 2
-        elseif self.haserror == 1 then
+        if self.haserror == NO_ERROR then
+            self.haserror = RAISE_ON_ERROR
+        elseif self.haserror == HAS_ERROR then
             error(self:error())
         end
     end,
     error = function(self)
-        if self.haserror == 1 then
+        if self.haserror == HAS_ERROR then
             return unpack_errors[self]
         end
         return nil
+    end,
+    clear_error = function(self)
+        if self.haserror == HAS_ERROR then
+            self.haserror = NO_ERROR
+        end
     end,
     pos = function(self)
         return self.ptr - self.beg
@@ -296,6 +304,9 @@ unpack_meths = {
     reset = function(self)
         self.len = self.len + (self.ptr - self.beg)
         self.ptr = self.beg
+        if self.haserror == HAS_ERROR then
+            self.haserror = NO_ERROR
+        end
     end,
     u8  = reader_func('u8'),
     u16 = reader_func('u16'),
@@ -309,7 +320,7 @@ unpack_meths = {
     skip = reader_func_n('skip', 'nil'),
     unpacker = reader_func_n('unpacker', 'unpacker(self.ptr, n)'),
     ber = function(self)
-        if self.haserror == 1 then
+        if self.haserror == HAS_ERROR then
             return 0
         end
         if self.len < 1 then
@@ -348,7 +359,7 @@ unpack_meths = {
         return 0
     end,
     berconst = function(self, n)
-        if self.haserror == 1 then
+        if self.haserror == HAS_ERROR then
             return
         end
         if n < 128 then
@@ -376,7 +387,7 @@ unpack_meths = {
     field_i32 = reader_field('i32'),
     field_i64 = reader_field('i64'),
     field_ber = function(self)
-        if self.haserror == 1 then
+        if self.haserror == HAS_ERROR then
             return 0
         end
         if self.len < 2 then
