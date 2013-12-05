@@ -131,8 +131,6 @@ typedef void (follow_cb)(ev_stat *w, int events);
 	const char *filetype;
 	const char *suffix;
 	const char *dirname;
-
-	XLogWriter *writer;
 };
 - (id) init_dirname:(const char *)dirname_;
 - (XLog *) open_for_read:(i64)lsn;
@@ -199,7 +197,7 @@ struct row_v12 {
 + (XLog *) open_for_read_filename:(const char *)filename
 			      dir:(XLogDir *)dir;
 
-- (void) follow:(follow_cb *)cb;
+- (void) follow:(follow_cb *)cb data:(void *)data;
 - (int) inprogress_rename;
 - (int) read_header;
 - (int) write_header;

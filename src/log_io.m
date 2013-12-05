@@ -116,8 +116,6 @@ init_filename:(const char *)filename_
 	fd = fd_;
 	mode = LOG_READ;
 	dir = dir_;
-	if (dir)
-		stat.data = dir->writer;
 
 #ifdef __GLIBC__
 	/* libc will try prepread sizeof(vbuf) bytes on every fseeko,
@@ -396,10 +394,11 @@ eof:
 }
 
 - (void)
-follow:(follow_cb *)cb
+follow:(follow_cb *)cb data:(void *)data
 {
 	ev_stat_stop(&stat);
 	ev_stat_init(&stat, cb, filename, 0.);
+	stat.data = data;
 	ev_stat_start(&stat);
 }
 

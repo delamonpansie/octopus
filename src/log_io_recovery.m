@@ -467,7 +467,7 @@ follow_dir(ev_timer *w, int events __attribute__((unused)))
 	[r recover_remaining_wals];
 	if (r->current_wal == nil)
 		return;
-	[r->current_wal follow:follow_file];
+	[r->current_wal follow:follow_file data:r];
 }
 
 static void
@@ -492,7 +492,7 @@ recover_follow:(ev_tstamp)wal_dir_rescan_delay
 		      wal_dir_rescan_delay, wal_dir_rescan_delay);
 	ev_timer_start(&wal_timer);
 	if (current_wal != nil)
-		[current_wal follow:follow_file];
+		[current_wal follow:follow_file data:self];
 }
 
 - (void)
@@ -804,8 +804,6 @@ submit_run_crc
 	snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
 	wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
 
-	snap_dir->writer = self;
-	wal_dir->writer = self;
 	wal_timer.data = self;
 
 	return self;
@@ -888,8 +886,6 @@ nop_hb_writer(va_list ap)
 	snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
 	wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
 
-	snap_dir->writer = self;
-	wal_dir->writer = self;
 	wal_timer.data = self;
 
 	if ((flags & RECOVER_READONLY) == 0) {
