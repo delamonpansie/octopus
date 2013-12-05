@@ -181,6 +181,9 @@ apply:(struct tbuf *)op tag:(u16)tag
 	}
 }
 
+@end
+
+@implementation SnapWriter (Memcached)
 - (int)
 snapshot_write_rows: (XLog *)l
 {
