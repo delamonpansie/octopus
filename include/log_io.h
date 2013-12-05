@@ -258,6 +258,14 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 			  const void *data, size_t len);
 
 @interface XLogWriter: Object {
+
+@protocol RecoveryState
+- (i64) lsn;
+- (i64) scn;
+- (u32) run_crc_log;
+@end
+
+@interface XLogWriter: Object <RecoveryState> {
 	i64 lsn, scn, last_scn;
 	XLogDir *wal_dir, *snap_dir;
 	ev_timer wal_timer;

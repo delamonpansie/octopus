@@ -358,6 +358,7 @@ exit:
 
 - (i64) lsn { return lsn; }
 - (i64) scn { return scn; }
+- (u32) run_crc_log { return run_crc_log; }
 - (struct child *) wal_writer { return wal_writer; };
 
 - (void) set_lsn:(i64)lsn_ { lsn = lsn_; }
