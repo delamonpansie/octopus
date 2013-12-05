@@ -7,9 +7,12 @@ require('packer')
 
 local print_ = print
 function print (...)
-        for k, v in pairs({...}) do
-                print_(tostring(v))
-        end
+    local s = {}
+    for i=1,select('#', ...) do
+        local v = select(i, ...)
+        s[#s+1] = tostring(v) or 'nil'
+    end
+    print_(table.concat(s, '\t'))
 end
 local format = string.format
 function printf(...) print_(format(...)) end
