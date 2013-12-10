@@ -171,7 +171,8 @@ recover_start_from_scn:(i64)initial_scn filter:(const char *)filter_name
 static i64
 handshake(int sock, char *filter)
 {
-	struct tbuf *rep, *input, *req;
+	struct tbuf *rep, *input;
+	struct iproto *req;
 	i64 scn;
 
 	input = tbuf_alloc(fiber->pool);
@@ -193,12 +194,12 @@ handshake(int sock, char *filter)
 			break;
 	}
 
-	if (iproto(req)->data_len != sizeof(struct replication_handshake)) {
+	if (req->data_len != sizeof(struct replication_handshake)) {
 		say_error("bad handshake len");
 		_exit(EXIT_FAILURE);
 	}
 
-	struct replication_handshake *hshake = (void *)&iproto(req)->data;
+	struct replication_handshake *hshake = (void *)&req->data;
 	if (hshake->ver != 1) {
 		say_error("bad replication version");
 		_exit(EXIT_FAILURE);
@@ -207,10 +208,10 @@ handshake(int sock, char *filter)
 	memcpy(filter, hshake->filter, sizeof(hshake->filter));
 
 	tbuf_append(rep, &(struct iproto_retcode)
-			 { .msg_code = iproto(req)->msg_code,
+			 { .msg_code = req->msg_code,
 			   .data_len = sizeof(default_version) +
 				       field_sizeof(struct iproto_retcode, ret_code),
-			   .sync = iproto(req)->sync,
+			   .sync = req->sync,
 			   .ret_code = 0 },
 		    sizeof(struct iproto_retcode));
 
