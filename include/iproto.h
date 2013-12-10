@@ -49,7 +49,17 @@ static inline struct iproto_retcode *iproto_retcode(const struct tbuf *t)
 	return (struct iproto_retcode *)t->ptr;
 }
 
-struct tbuf *iproto_parse(struct tbuf *in);
+static inline struct iproto *iproto_parse(struct tbuf *t)
+{
+	if (tbuf_len(t) < sizeof(struct iproto) ||
+	    tbuf_len(t) < sizeof(struct iproto) + iproto(t)->data_len)
+		return NULL;
+
+	struct iproto *ret = iproto(t);
+	tbuf_ltrim(t, sizeof(struct iproto) + ret->data_len);
+	return ret;
+}
+
 
 struct netmsg_head;
 struct iproto_retcode * iproto_reply(struct netmsg_head *h, const struct iproto *request);

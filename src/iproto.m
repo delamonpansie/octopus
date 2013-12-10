@@ -70,16 +70,6 @@ iproto_next_sync()
 	return iproto_sync;
 }
 
-struct tbuf *
-iproto_parse(struct tbuf *in)
-{
-	if (tbuf_len(in) < sizeof(struct iproto))
-		return NULL;
-	if (tbuf_len(in) < sizeof(struct iproto) + iproto(in)->data_len)
-		return NULL;
-
-	return tbuf_split(in, sizeof(struct iproto) + iproto(in)->data_len);
-}
 
 struct worker_arg {
 	void (*cb)(struct iproto *, struct conn *c);

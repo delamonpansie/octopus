@@ -75,7 +75,6 @@ handshake:(struct sockaddr_in *)addr_ scn:(i64)scn
 handshake:(i64)scn err:(const char **)err_ptr
 {
 	const char *err;
-	struct tbuf *rep;
 	int fd;
 
 	abort = 0; /* must be set before connect */
@@ -141,9 +140,6 @@ handshake:(i64)scn err:(const char **)err_ptr
 			    sizeof(struct iproto));
 		tbuf_append(req, &hshake, sizeof(hshake));
 
-		rep = tbuf_alloc(fiber->pool);
-		tbuf_ensure(rep, sizeof(struct iproto_retcode));
-
 		say_debug("%s: send handshake, %u bytes", __func__, tbuf_len(req));
 		if (conn_write(&c, req->ptr, tbuf_len(req)) != tbuf_len(req)) {
 			err = "can't write initial handshake";
@@ -167,25 +163,25 @@ handshake:(i64)scn err:(const char **)err_ptr
 			say_debug("%s: recv handshake part, %u bytes", __func__, tbuf_len(c.rbuf));
 		} while (tbuf_len(c.rbuf) < sizeof(struct iproto_retcode) + sizeof(version));
 
-		rep = iproto_parse(c.rbuf);
-		if (rep == NULL) {
+		struct iproto_retcode *reply = (void *)iproto_parse(c.rbuf);
+		if (reply == NULL) {
 			err = "can't read reply";
 			goto err;
 		}
 
-		if (iproto_retcode(rep)->ret_code != 0 ||
-		    iproto_retcode(rep)->sync != iproto(req)->sync ||
-		    iproto_retcode(rep)->msg_code != iproto(req)->msg_code ||
-		    iproto_retcode(rep)->data_len != sizeof(iproto_retcode(rep)->ret_code) + sizeof(version))
+		if (reply->ret_code != 0 ||
+		    reply->sync != iproto(req)->sync ||
+		    reply->msg_code != iproto(req)->msg_code ||
+		    reply->data_len != sizeof(reply->ret_code) + sizeof(version))
 		{
 			err = "bad reply";
 			goto err;
 		}
 
 		say_debug("%s: iproto_reply data_len:%i, rbuf len:%i", __func__,
-			  iproto_retcode(rep)->data_len, tbuf_len(c.rbuf));
+			  reply->data_len, tbuf_len(c.rbuf));
 
-		memcpy(&version, iproto_retcode(rep)->data, sizeof(version));
+		memcpy(&version, reply->data, sizeof(version));
 	}
 
 	if (version != default_version && version != version_11) {
