@@ -35,7 +35,6 @@
 #import <net_io.h>
 #import <assoc.h>
 #import <paxos.h>
-#import <iproto.h>
 
 #include <third_party/crc32.h>
 
@@ -795,7 +794,7 @@ is_replica
 check_replica
 {
 	if ([self is_replica])
-		iproto_raise(ERR_CODE_NONMASTER, "replica is readonly");
+		raise("replica is readonly");
 }
 
 - (int)
