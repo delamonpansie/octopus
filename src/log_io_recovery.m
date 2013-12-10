@@ -643,7 +643,7 @@ pull_wal:(id<XLogPullerAsync>)puller
 }
 
 - (int)
-load_from_remote:(XLogPuller *)puller
+load_from_remote:(id<XLogPullerAsync>)puller
 {
 	bool revert_io_collect_interval = false;
 	@try {
