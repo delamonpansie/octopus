@@ -285,8 +285,9 @@ init(void)
 		return;
 	}
 
-	if (tnt_fork() != 0)
-		return;
+	if (cfg.wal_feeder_fork_before_init)
+		if (tnt_fork() != 0)
+			return;
 
 	signal(SIGCHLD, SIG_IGN);
 

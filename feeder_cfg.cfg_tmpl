@@ -8,3 +8,5 @@
 wal_feeder_bind_addr="", ro
 wal_feeder_bind_port=0, ro
 
+# it's advisable to fork before initialization of memory storage
+wal_feeder_fork_before_init=1, ro
