@@ -122,9 +122,6 @@ load_cfg(struct octopus_cfg *conf, i32 check_rdonly)
 	if (n_accepted == 0 || n_skipped != 0)
 		return -1;
 
-	if (net_fixup_addr(&conf->admin_addr, conf->admin_port) < 0)
-		out_warning(0, "Option 'admin_addr' is overridden by 'admin_port'");
-
 	foreach_module (m) {
 		if (m->check_config)
 			if (m->check_config(conf) < 0)
@@ -824,7 +821,14 @@ octopus(int argc, char **argv)
 
 	stat_init();
 	@try {
-		module(NULL)->init();
+		struct tnt_module *primary = module(NULL),
+				   *feeder = module("feeder");
+		primary->init();
+		foreach_module(m) {
+			if (!m->init || m == primary || m == feeder)
+				continue;
+			m->init();
+		}
 	}
 	@catch (id e) {
 		if ([e respondsTo:@selector(code)] && [e code] == ERR_CODE_MEMORY_ISSUE) {
@@ -833,7 +837,6 @@ octopus(int argc, char **argv)
 		}
 		@throw e;
 	}
-	admin_init();
 
 	/* run Lua init _after_ module init */
 	if (luaT_require("init") == -1)

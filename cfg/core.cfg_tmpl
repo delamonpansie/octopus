@@ -9,10 +9,6 @@ username=NULL, ro
 # setting to 0 disables saving coredumps completly
 coredump=0.0, ro
 
-# admin port
-# used for admin's connections
-admin_addr="", ro
-admin_port=0, ro
 
 # Log verbosity, possible values: ERROR=1, CRIT=2, WARN=3, INFO=4(default), DEBUG=5
 log_level=4
@@ -54,8 +50,6 @@ input_low_watermark = 4096
 
 # path for search scripts
 lua_path = "src-lua/?.lua;?.lua", ro
-
-admin_exec_lua = 0, rw
 
 # custom proc title is appended after normal
 custom_proc_title=NULL, ro

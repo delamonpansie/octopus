@@ -352,21 +352,35 @@ admin_accept(int fd, void *data __attribute__((unused)))
 	}
 }
 
-int
+static void
 admin_init(void)
 {
 	if (!cfg.admin_addr)
-		return 0;
+		return;
 
 	if (fiber_create("admin/acceptor", tcp_server,
 			 cfg.admin_addr, admin_accept, NULL, NULL) == NULL)
 	{
 		say_syserror("can't start tcp_server on :`%s'", cfg.admin_addr);
-		return -1;
 	}
+}
+
+static int
+admin_fixup_addr(struct octopus_cfg *conf)
+{
+	extern void out_warning(int v, char *format, ...);
+	if (net_fixup_addr(&conf->admin_addr, conf->admin_port) < 0)
+		out_warning(0, "Option 'admin_addr' is overridden by 'admin_port'");
+
 	return 0;
 }
 
+static struct tnt_module admin_mod = {
+	.init = admin_init,
+	.check_config = admin_fixup_addr
+};
+
+register_module(admin_mod);
 
 
 /*
