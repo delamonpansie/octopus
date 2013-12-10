@@ -21,6 +21,7 @@ obj += mod/box/src-lua/box/object_space_info.o
 obj += mod/box/src-lua/box/example_proc.o
 obj += mod/box/src-lua/box/expire.o
 
+cfg_tmpl += cfg/admin.cfg_tmpl
 cfg_tmpl += cfg/iproto.cfg_tmpl
 cfg_tmpl += cfg/log_io.cfg_tmpl
 cfg_tmpl += cfg/paxos.cfg_tmpl
