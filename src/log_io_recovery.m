@@ -48,6 +48,18 @@
 #include <unistd.h>
 #include <sysexits.h>
 
+
+#if HAVE_OBJC_RUNTIME_H
+#include <objc/runtime.h>
+#elif HAVE_OBJC_OBJC_API_H
+#include <objc/objc-api.h>
+#endif
+
+#if HAVE_OBJC_OBJC_API_H
+#define objc_lookUpClass objc_lookup_class
+#endif
+
+
 @implementation Recovery
 + (id)
 alloc
@@ -686,7 +698,7 @@ remote_hot_standby(va_list ap)
 	ev_tstamp reconnect_delay = 0.1;
 	bool warning_said = false;
 
-	r->remote_puller = [[XLogPuller alloc] init];
+	r->remote_puller = [[objc_lookUpClass("XLogPuller") alloc] init];
 
 	for (;;) {
 		if (!r->feeder_addr)
