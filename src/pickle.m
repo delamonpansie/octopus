@@ -30,7 +30,6 @@
 #import <objc.h>
 #import <tbuf.h>
 #import <palloc.h>
-#import <iproto.h>		/* for err codes */
 #import <pickle.h>
 #import <say.h>
 
@@ -145,7 +144,7 @@ _safe_load_varint32(struct tbuf *buf)
 		tbuf_too_short();
 	}
 	if (v > ((u32)0xffffffff >> 7) || ((*p & 0x80) != 0)) {
-		iproto_raise(ERR_CODE_UNKNOWN_ERROR, "bad varint32");
+		raise("bad varint32");
 	}
 	v |= *p & 0x7f;
 	buf->ptr = p + 1;
@@ -220,7 +219,7 @@ read_ptr(struct tbuf *buf)
 	{								\
 		_read_must_have(b, bits/8 + 1);				\
 		if (unlikely(*(u8*)b->ptr != bits/8))			\
-			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "bad field"); \
+			raise("bad field");				\
 		u##bits r = *(u##bits *)(b->ptr + 1);			\
 		b->ptr += bits/8 + 1;					\
 		return r;						\
@@ -231,7 +230,7 @@ read_ptr(struct tbuf *buf)
 	{								\
 		_read_must_have(b, bits/8 + 1);				\
 		if (unlikely(*(u8*)b->ptr != bits/8))			\
-			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "bad field"); \
+			raise("bad field");				\
 		i##bits r = *(i##bits *)(b->ptr + 1);			\
 		b->ptr += bits/8 + 1;					\
 		return r;						\
