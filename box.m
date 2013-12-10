@@ -1331,6 +1331,13 @@ cleanup:
 @implementation Recovery (Box)
 
 - (void)
+check_replica
+{
+	if ([self is_replica])
+		iproto_raise(ERR_CODE_NONMASTER, "replica is readonly");
+}
+
+- (void)
 wal_final_row
 {
 	if (box_primary.name == NULL) {
