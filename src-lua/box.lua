@@ -15,18 +15,32 @@ local safeptr, assertarg = safeptr, assertarg
 local lselect = select
 
 -- legacy, slow because of string interning
-string.tou8 = function(i) return ffi.string(ffi.new('uint8_t[1]', tonumber(i)), 1) end
-string.tou16 = function(i) return ffi.string(ffi.new('uint16_t[1]', tonumber(i)), 2) end
-string.tou32 = function(i) return ffi.string(ffi.new('uint32_t[1]', tonumber(i)), 4) end
-string.tou64 = function(i) return ffi.string(ffi.new('uint64_t[1]', tonumber(i)), 8) end
-string.tovarint32 = function(i)
-   local buf = ffi.new('char[5]')
-   local n = varint32.write(buf, tonumber(i))
-   return ffi.string(buf, n)
+ffi.cdef[[ typedef union { char ch[8]; u8 u8; u16 u16; u32 u32; u64 u64;} pack_it_gently ]]
+local ptg = ffi.new 'pack_it_gently'
+string.tou8 = function(i) ptg.u8 = tonumber(i); return ffi.string(ptg.ch, 1) end
+string.tou16 = function(i) ptg.u16 = tonumber(i); return ffi.string(ptg.ch, 2) end
+string.tou32 = function(i) ptg.u32 = tonumber(i); return ffi.string(ptg.ch, 4) end
+string.tou64 = function(i)
+    if type(i) == 'string' then
+        ptg.u64 = ffi.C.atoll(i)
+    else
+        ptg.u64 = i
+    end
+    return ffi.string(ptg.ch, 8)
 end
+string.tovarint32 = function(i)
+   local n = varint32.write(ptg.ch, tonumber(i))
+   return ffi.string(ptg.ch, n)
+end
+local bufn = 1024
+local buf = ffi.new('char[?]', bufn)
 string.tofield = function(s)
-   local buf = ffi.new('char[?]', 5 + #s)
-   local n = varint32.write(buf, tonumber(#s))
+   local need = 5 + #s
+   if bufn < need then
+       bufn = need
+       buf = ffi.new('char[?]', bufn)
+   end
+   local n = varint32.write(buf, #s)
    ffi.copy(buf + n, s, #s)
    return ffi.string(buf, n + #s)
 end
