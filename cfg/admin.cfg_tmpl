@@ -1,0 +1,6 @@
+# admin port
+# used for admin's connections
+admin_addr="", ro
+admin_port=0, ro
+admin_exec_lua = 0, rw
+
