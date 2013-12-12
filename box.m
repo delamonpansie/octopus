@@ -496,7 +496,8 @@ prepare_update_fields(BoxTxn *txn, struct tbuf *data)
 				iproto_raise(ERR_CODE_ILLEGAL_PARAMS,
 					     "update of field beyond tuple cardinality");
 			field = &fields[field_no];
-
+		}
+		if (op < 6) {
 			if (field->pool == NULL) {
 				void *field_data = field->end;
 				int field_len = field->free;
@@ -528,7 +529,11 @@ prepare_update_fields(BoxTxn *txn, struct tbuf *data)
 			if (field_no == 0)
 				iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "unabled to delete PK");
 
-			bsize -= varint32_sizeof(tbuf_len(field)) + tbuf_len(field);
+			if (field->pool == NULL) {
+				bsize -= tbuf_len(field) + tbuf_free(field);
+			} else {
+				bsize -= varint32_sizeof(tbuf_len(field)) + tbuf_len(field);
+			}
 			for (int i = field_no; i < cardinality - 1; i++)
 				fields[i] = fields[i + 1];
 			cardinality--;
