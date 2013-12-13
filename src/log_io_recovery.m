@@ -52,12 +52,8 @@
 #include <objc/runtime.h>
 #elif HAVE_OBJC_OBJC_API_H
 #include <objc/objc-api.h>
-#endif
-
-#if HAVE_OBJC_OBJC_API_H
 #define objc_lookUpClass objc_lookup_class
 #endif
-
 
 @implementation Recovery
 + (id)
