@@ -27,7 +27,7 @@ dist-clean += src-lua/cdef.lua
 src-lua/cdef.lua: include/octopus.h include/index.h include/fiber.h include/octopus_ev.h include/net_io.h include/iproto_def.h include/pickle.h src-lua/gen_cdef.sh
 	@mkdir -p $(dir $@)
 	$(E) "GEN	$@"
-	$(Q)CPP="$(CPP)" CPPFLAGS="$(CPPFLAGS)" srcdir="$(srcdir)" SED="$(SED)" CDEF="$@" sh $(srcdir)/src-lua/gen_cdef.sh
+	$(Q)CPP="$(CPP) -P $(CPPFLAGS)" SED="$(SED)" srcdir="$(srcdir)" sh $(srcdir)/src-lua/gen_cdef.sh > $@
 
 ifneq (,$(GRAPHITE_ADDR))
 obj += src-lua/graphite.o
