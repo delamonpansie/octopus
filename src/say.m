@@ -66,6 +66,13 @@ int dup_to_stderr = 0;
 int max_level, default_level = INFO;
 int nonblocking;
 
+#define HIST_SIZE (128 * 1024)
+static char buf1[HIST_SIZE], buf2[HIST_SIZE];
+struct {
+	int count, free;
+	char *tail, *lines[];
+} *say_hist_a = (void *)buf1, *say_hist_b = (void *)buf2, *say_hist;
+
 static char
 level_to_char(int level)
 {
@@ -182,6 +189,28 @@ out:
 	setvbuf(stderr, NULL, _IONBF, 0);
 }
 
+static void
+say_hist_append(const char *line, ssize_t len)
+{
+	if (!say_hist || say_hist->free < len) {
+		if (say_hist == say_hist_a)
+			say_hist = say_hist_b;
+		else
+			say_hist = say_hist_a;
+		say_hist->count = 0;
+		say_hist->tail = (char *)say_hist + HIST_SIZE;
+		say_hist->free = HIST_SIZE - sizeof(*say_hist) - sizeof(void *);
+	}
+
+	char *ptr = say_hist->tail - len - 1;
+	memcpy(ptr, line, len);
+	ptr[len] = 0;
+	say_hist->lines[say_hist->count] = ptr;
+	say_hist->count++;
+	say_hist->tail -= len + 1;
+	say_hist->free -= len + 1 + sizeof(void *);
+}
+
 void
 vsay(int level, const char *filename, unsigned line,
      const char *error, const char *format, va_list ap)
@@ -224,18 +253,21 @@ vsay(int level, const char *filename, unsigned line,
 	if (p >= len - 1)
 		p = len - 1;
 	*(buf + p) = '\n';
+	p++;
 
 	int r, one = 1, zero = 0;
 	if (level <= ERROR)
 		ioctl(sayfd, FIONBIO, &zero);
-	r = write(sayfd, buf, p + 1);
+	r = write(sayfd, buf, p);
 	(void)r;
 	if (nonblocking && level <= ERROR)
 		ioctl(sayfd, FIONBIO, &one);
 
 	if (sayfd != STDERR_FILENO && (level <= dup_to_stderr || level == FATAL)) {
-		r = write(stderrfd, buf, p + 1);
+		r = write(stderrfd, buf, p);
 	}
+
+	say_hist_append(buf, p);
 }
 
 void
