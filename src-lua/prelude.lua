@@ -160,5 +160,23 @@ function safeptr(object, ptr, nelem)
     return setmetatable({[0] = object, ptr = ptr, nelem = nelem}, safeptr_mt)
 end
 
+function say(level, filename, line, fmt, ...)
+    if level < say_level.ERROR or level > say_level.DEBUG3 then
+        error('bad log level', 2)
+    end
+    ffi.C._say(level, filename, line, "%s", format(fmt, ...))
+end
+for _, levelstr in ipairs({"ERROR", "WARN", "INFO", "DEBUG", "DEBUG2", "DEBUG3"}) do
+    local level = ffi.C[levelstr]
+    _G[("say_%s"):format(levelstr:lower())] = function (fmt, ...)
+        -- 'if' required because debug.getinfo disables JIT
+        if ffi.C.max_level >= level then
+            local dinfo = debug.getinfo(2, "Sl")
+            local filename, line = dinfo.short_src, dinfo.currentline
+            ffi.C._say(level, filename, line, "%s", format(fmt, ...))
+        end
+    end
+end
+
 require('stat')
 print("Lua prelude initialized.")

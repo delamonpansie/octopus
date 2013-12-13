@@ -28,6 +28,7 @@ $CPP -DLUA_DEF='@@@' include/net_io.h | $SED -n '/@@@/!d; s/@@@//; p'
 $CPP include/tbuf.h | $SED -n '/^struct tbuf \+{/,/^}/{s/end/stop/;s/void/u8/;p}'
 $CPP include/tbuf.h | $SED -n '/^void tbuf_\(willneed\|append\|printf\).*/{s/void \*/u8 */;s/).*/);/;p}'
 $CPP include/pickle.h | $SED -n '/write.*(.*struct tbuf/p'
+$CPP include/say.h | $SED -n '/^extern int.*max_level/p; /^enum say_level {/,/^}/p; /^void _say(/{s/$/;/;p;}'
 echo "]]"
 echo "autoconf = {}"
 cat include/config.h  | $SED '/^#define [^ ]* ["0-9]/!d; s/#define \([^ ]*\) \(.*\)/autoconf.\1 = \2/;'
