@@ -355,6 +355,12 @@ do_field_arith(u8 op, struct tbuf *field, const void *arg, u32 arg_size)
 	}
 }
 
+static inline size_t __attribute__((pure))
+field_len(const struct tbuf *b)
+{
+	return varint32_sizeof(tbuf_len(b)) + tbuf_len(b);
+}
+
 static size_t
 do_field_splice(struct tbuf *field, const void *args_data, u32 args_data_size)
 {
@@ -426,17 +432,10 @@ do_field_splice(struct tbuf *field, const void *args_data, u32 args_data_size)
 	tbuf_append(new_field, list_field, list_size);
 	tbuf_append(new_field, field->ptr + noffset + nlength, tbuf_len(field) - (noffset + nlength));
 
-	size_t diff = (varint32_sizeof(tbuf_len(new_field)) + tbuf_len(new_field)) -
-		      (varint32_sizeof(tbuf_len(field)) + tbuf_len(field));
+	size_t diff = field_len(new_field) - field_len(field);
 
 	*field = *new_field;
 	return diff;
-}
-
-int __attribute__((pure))
-field_len(const struct tbuf *b)
-{
-	return varint32_sizeof(tbuf_len(b)) + tbuf_len(b);
 }
 
 static void __attribute__((noinline))
@@ -532,7 +531,7 @@ prepare_update_fields(BoxTxn *txn, struct tbuf *data)
 			if (field->pool == NULL) {
 				bsize -= tbuf_len(field) + tbuf_free(field);
 			} else {
-				bsize -= varint32_sizeof(tbuf_len(field)) + tbuf_len(field);
+				bsize -= field_len(field);
 			}
 			for (int i = field_no; i < cardinality - 1; i++)
 				fields[i] = fields[i + 1];
