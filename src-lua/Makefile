@@ -32,6 +32,7 @@ src-lua/cdef.lua: include/octopus.h include/index.h include/fiber.h include/octo
 ifneq (,$(GRAPHITE_ADDR))
 obj += src-lua/graphite.o
 src-lua/graphite.lua: extra/graphite.lua
-	$(E) "SED	$@"
-	$(Q)$(SED) 's/127\.0\.0\.1:2003/$(GRAPHITE_ADDR)/' < $^ > $@
+	$(E) "GEN	$@"
+	$(Q)echo "local graphite_addr = '$(GRAPHITE_ADDR)'" > $@
+	$(Q)$(CAT) $^ >> $@
 endif
