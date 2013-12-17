@@ -126,7 +126,7 @@ end
 
 add_cb("stat", statcb)
 add_cb("gc", gccb)
-local version = tonumber(tostring(ffi.C.octopus_version):match('bundle:([0-9]+)'))
+local version = tonumber(ffi.string(ffi.C.octopus_version()):match('bundle:([0-9]+)'))
 if version then
     add_cb("version", function () return {["version"] = version} end)
 end
