@@ -147,7 +147,24 @@ handshake:(i64)scn err:(const char **)err_ptr
 		}
 
 		do {
-			ssize_t r = conn_recv(&c);
+			ev_tstamp timeout = 5;
+			ev_timer timer = { .coro = 1 };
+			ev_io io = { .coro = 1 };
+			ev_io_init(&io, (void *)fiber, c.fd, EV_READ);
+			ev_io_start(&io);
+			ev_timer_init(&timer, (void *)fiber, timeout, 0.);
+			ev_timer_start(&timer);
+			void *w = yield();
+			ev_io_stop(&io);
+			ev_timer_stop(&timer);
+			if (w == &timer) {
+				err = "timeout";
+				goto err;
+			}
+			tbuf_ensure(c.rbuf, 16 * 1024);
+
+			ssize_t r = tbuf_recv(c.rbuf, c.fd);
+
 			if (r < 0) {
 				if (errno == EAGAIN ||
 				    errno == EWOULDBLOCK ||
