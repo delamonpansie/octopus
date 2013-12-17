@@ -1427,6 +1427,9 @@ snapshot_write_rows:(XLog *)l
 		id pk = object_space_registry[n].index[0];
 		[pk iterator_init];
 		while ((obj = [pk iterator_next])) {
+			if (unlikely(ghost(obj)))
+				continue;
+
 			if (obj->refs <= 0) {
 				say_error("heap invariant violation: n:%i obj->refs == %i", n, obj->refs);
 				errno = EINVAL;
