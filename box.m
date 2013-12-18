@@ -177,14 +177,14 @@ tuple_alloc(unsigned cardinality, unsigned size)
 	return obj;
 }
 
-static bool
-valid_tuple(u32 cardinality, const void *data, u32 data_len)
+static ssize_t
+tuple_bsize(u32 cardinality, const void *data, u32 max_len)
 {
-	struct tbuf tmp = TBUF(data, data_len, NULL);
+	struct tbuf tmp = TBUF(data, max_len, NULL);
 	for (int i = 0; i < cardinality; i++)
 		read_field(&tmp);
 
-	return tbuf_len(&tmp) == 0;
+	return tmp.ptr - data;
 }
 
 static void
@@ -245,7 +245,7 @@ prepare_replace(BoxTxn *txn, size_t cardinality, const void *data, u32 data_len)
 {
 	if (cardinality == 0)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "cardinality can't be equal to 0");
-	if (data_len == 0 || !valid_tuple(cardinality, data, data_len))
+	if (data_len == 0 || tuple_bsize(cardinality, data, data_len) != data_len)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "tuple encoding error");
 
 	txn->obj = txn_acquire(txn, tuple_alloc(cardinality, data_len));
@@ -742,7 +742,7 @@ box_prepare_update(BoxTxn *txn)
 				     "tuple cardinality must match object_space cardinality");
 		}
 
-		if (!valid_tuple(tuple->cardinality, tuple->data, tuple->bsize))
+		if (tuple_bsize(tuple->cardinality, tuple->data, tuple->bsize) != tuple->bsize)
 			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "internal error");
 	}
 	if (tbuf_len(&data) != 0)
@@ -888,7 +888,7 @@ xlog_print(struct tbuf *out, u16 op, struct tbuf *b)
 		u32 data_len = tbuf_len(b);
 		void *data= read_bytes(b, data_len);
 
-		if (!valid_tuple(cardinality, data, data_len))
+		if (tuple_bsize(cardinality, data, data_len) != data_len)
 			abort();
 		tuple_print(out, cardinality, data);
 		break;
@@ -1438,7 +1438,7 @@ snapshot_write_rows:(XLog *)l
 			}
 
 			tuple = box_tuple(obj);
-			if (!valid_tuple(tuple->cardinality, tuple->data, tuple->bsize)) {
+			if (tuple_bsize(tuple->cardinality, tuple->data, tuple->bsize) != tuple->bsize) {
 				say_error("heap invariant violation: n:%i invalid tuple %p", n, obj);
 				errno = EINVAL;
 				ret = -1;
