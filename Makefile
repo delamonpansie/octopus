@@ -2,6 +2,10 @@ binary_type = STORAGE
 
 obj += src/admin.o
 obj += $(obj-log-io)
+obj += src/tnt_obj.o
+obj += src/iproto.o
+
+src/octopus.o src/net_io.o: CFLAGS += -DOCT_OBJECT
 
 obj += mod/memcached/store.o
 obj += mod/memcached/proto.o
@@ -14,6 +18,7 @@ dist += mod/memcached/proto.m
 endif
 
 cfg_tmpl += cfg/log_io.cfg_tmpl
+cfg_tmpl += cfg/admin.cfg_tmpl
 cfg_tmpl += mod/memcached/memcached.cfg_tmpl
 
 
