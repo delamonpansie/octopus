@@ -179,6 +179,8 @@ slab_cache_init(struct slab_cache *cache, size_t item_size, enum arena_type type
 		cache->arena = fixed_arena; break;
 	case SLAB_GROW:
 		cache->arena = grow_arena; break;
+	default:
+		abort();
 	}
 
 	TAILQ_INIT(&cache->slabs);
