@@ -58,6 +58,13 @@ enum arena_type {
 	SLAB_GROW
 };
 
+enum salloc_error {
+	ESALLOC_NOCACHE,
+	ESALLOC_NOMEM
+};
+
+extern int salloc_error;
+
 void salloc_init(size_t size, size_t minimal, double factor);
 void salloc_destroy(void);
 void slab_cache_init(struct slab_cache *cache, size_t item_size, enum arena_type type, const char *name);

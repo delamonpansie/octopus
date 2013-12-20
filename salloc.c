@@ -110,6 +110,8 @@ uint8_t red_zone[8] = { 0xfa, 0xfa, 0xfa, 0xfa, 0xfa, 0xfa, 0xfa, 0xfa };
 uint8_t red_zone[0] = { };
 #endif
 
+int salloc_error;
+
 static const uint32_t SLAB_MAGIC = 0x51abface;
 static const size_t MAX_SLAB_ITEM = 1 << 20;
 static size_t page_size;
@@ -382,6 +384,7 @@ cache_for(size_t size)
 		if (slab_caches[i].item_size >= size)
 			return &slab_caches[i];
 
+	salloc_error = ESALLOC_NOCACHE;
 	return NULL;
 }
 
@@ -410,6 +413,7 @@ slab_of(struct slab_cache *cache)
 		return slab;
 	}
 
+	salloc_error = ESALLOC_NOMEM;
 	return NULL;
 }
 
