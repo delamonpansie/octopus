@@ -78,7 +78,8 @@ new_conf:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 init:(struct index_conf *)ic
 {
 	[super init];
-	memcpy(&conf, ic, sizeof(*ic));
+	if (ic != NULL)
+		memcpy(&conf, ic, sizeof(*ic));
 	return self;
 }
 
