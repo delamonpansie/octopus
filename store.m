@@ -510,9 +510,9 @@ dtor(struct tnt_object *obj, struct index_node *node, void *arg __attribute__((u
 }
 
 void
-init()
+memcached_init()
 {
-	mc_index = [[CStringHash alloc] init];
+	mc_index = [[CStringHash alloc] init:NULL];
 	mc_index->dtor = dtor;
 
 	recovery = [Recovery alloc];
@@ -577,7 +577,7 @@ print_row(struct tbuf *out, u16 tag, struct tbuf *op)
 }
 
 static int
-cat(const char *filename)
+memcached_cat(const char *filename)
 {
 	read_log(filename, print_row);
 	return 0; /* ignore return status of read_log */
@@ -587,8 +587,8 @@ cat(const char *filename)
 static struct tnt_module memcached = {
 	.name = "memcached",
 	.version = memcached_version_string,
-	.init = init,
-	.cat = cat,
+	.init = memcached_init,
+	.cat = memcached_cat,
 };
 
 register_module(memcached);
