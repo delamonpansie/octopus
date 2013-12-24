@@ -117,6 +117,9 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 {
 	struct index_conf *d = xcalloc(1, sizeof(*d));
 
+	for (int i = 0; i < nelem(d->field_index); i++)
+		d->field_index[i] = d->cmp_order[i] = d->offset[i] = -1;
+
 	d->unique = c->unique;
 
 	if (strcmp(c->type, "HASH") == 0)
@@ -130,6 +133,9 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 	for (int k = 0; c->key_field[k] != NULL; k++) {
 		if (c->key_field[k]->fieldno == -1)
 			break;
+
+		assert(d->cmp_order[d->cardinality] == -1);
+		assert(d->field_index[d->cardinality] == -1);
 
 		d->cmp_order[d->cardinality] = d->cardinality;
 		d->field_index[d->cardinality] = c->key_field[k]->fieldno;
