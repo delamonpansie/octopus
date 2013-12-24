@@ -93,7 +93,7 @@ box_tuple_gen_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
 	for (int i = 0, j = 0; i < desc->cardinality; j++) {
 		assert(tuple_data < (const u8 *)tuple->data + tuple->bsize);
 		u32 len = LOAD_VARINT32(tuple_data);
-		if (desc->field_index[i] == j) {
+		while (desc->field_index[i] == j) {
 			union index_field *f = (void *)&node->key + desc->offset[i];
 			gen_set_field(f, desc->field_type[i], len, tuple_data);
 			i++;
