@@ -195,7 +195,6 @@ recover_row:(struct row_v12 *)r
 
 	int tag = r->tag & TAG_MASK;
 	int tag_type = r->tag & ~TAG_MASK;
-	id<Txn> txn = nil;
 
 	@try {
 		say_debug("%s: LSN:%"PRIi64" SCN:%"PRIi64" tag:%s",
@@ -215,15 +214,7 @@ recover_row:(struct row_v12 *)r
 		if (tag_type == TAG_WAL && (tag == wal_tag || tag > user_tag))
 			run_crc_log = crc32c(run_crc_log, r->data, r->len);
 
-		if (txn_class) {
-			txn = [txn_class palloc];
-			[txn prepare:r data:r->data];
-			[txn commit];
-		} else {
-			struct tbuf op = TBUF(r->data, r->len, fiber->pool);
-			[self apply:&op tag:r->tag];
-		}
-
+		[self apply:&TBUF(r->data, r->len, fiber->pool) tag:r->tag];
 		[self fixup:r];
 
 		/* note: it's to late to raise here: txn is already commited */
@@ -247,7 +238,6 @@ recover_row:(struct row_v12 *)r
 		}
 	}
 	@catch (Error *e) {
-		[txn rollback];
 		say_error("Recovery: %s at %s:%i", e->reason, e->file, e->line);
 		@throw;
 	}
@@ -885,11 +875,9 @@ nop_hb_writer(va_list ap)
 	rows_per_wal:(int)wal_rows_per_file
 	 feeder_addr:(const char *)feeder_addr_
                flags:(int)flags
-	   txn_class:(Class)txn_class_
 {
 	/* Recovery object is never released */
 
-	txn_class = txn_class_;
 	snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
 	wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
 
@@ -1091,15 +1079,13 @@ init_snap_dir:(const char *)snap_dirname
         rows_per_wal:(int)wal_rows_per_file
 	 feeder_addr:(const char *)feeder_addr_
                flags:(int)flags
-	   txn_class:(Class)txn_class_
 {
 	say_info("WAL disabled");
 	return [super init_snap_dir:snap_dirname
 			    wal_dir:wal_dirname
 		       rows_per_wal:wal_rows_per_file
 			feeder_addr:feeder_addr_
-			      flags:flags | RECOVER_READONLY
-			  txn_class:txn_class_];
+			      flags:flags | RECOVER_READONLY];
 }
 
 
@@ -1110,9 +1096,9 @@ configure_wal_writer
 
 
 - (int)
-submit:(id<Txn>)txn
+submit:(const void *)data len:(size_t)len tag:(u16)tag
 {
-	(void)txn;
+	(void)data; (void)len; (void)tag;
 	scn++;
 	lsn++;
 	return 1;

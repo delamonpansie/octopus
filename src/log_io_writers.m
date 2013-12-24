@@ -377,15 +377,6 @@ configure_wal_writer
 	configured = true;
 }
 
-- (int)
-submit:(id<Txn>)txn
-{
-	struct wal_pack pack;
-	wal_pack_prepare(self, &pack);
-	[txn append:&pack];
-	return [self wal_pack_submit];
-}
-
 
 - (int)
 submit:(const void *)data len:(u32)data_len tag:(u16)tag

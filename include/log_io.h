@@ -223,14 +223,6 @@ struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
 }
 @end
 
-@protocol Txn
-- (void) prepare:(struct row_v12 *)row data:(const void *)data;
-- (void) commit;
-- (void) rollback;
-- (void) append:(struct wal_pack *)pack;
-- (struct row_v12 *)row;
-@end
-
 struct wal_pack {
 	struct netmsg_head *netmsg;
 	u32 packet_len;
@@ -299,7 +291,6 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 - (int) wal_pack_submit;
 
 /* entry points: modules should call this */
-- (int) submit:(id<Txn>)txn;
 - (int) submit:(const void *)data len:(u32)len tag:(u16)tag;
 
 - (SnapWriter *) snap_writer;
@@ -343,9 +334,6 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 
 	i64 next_skip_scn;
 	struct tbuf skip_scn;
-
-@public
-	Class txn_class;
 }
 
 - (const char *) status;
@@ -382,8 +370,7 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
              wal_dir:(const char *)wal_dir
         rows_per_wal:(int)rows_per_wal
 	 feeder_addr:(const char *)feeder_addr
-               flags:(int)flags
-	   txn_class:(Class)txn_class;
+               flags:(int)flags;
 @end
 
 @interface Recovery (Deprecated)

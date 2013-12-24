@@ -676,19 +676,13 @@ learn(PaxosRecovery *r, struct proposal *p)
 			   p->value_len, tbuf_to_hex(&TBUF(p->value, p->value_len, fiber->pool)));
 
 
-		id<Txn> txn = [r->txn_class palloc];
-		struct row_v12 row = { .scn = p->scn,
-				       .tag = p->tag,
-				       .len = p->value_len };
 		@try {
-			[txn prepare:&row data:p->value];
-			[txn commit];
+			[r apply:&TBUF(p->value, p->value_len, fiber->pool) tag:p->tag];
 			mark_applied(r, p);
 		}
 		@catch (Error *e) {
 			say_warn("aborting txn, [%s reason:\"%s\"] at %s:%d",
 				 [[e class] name], e->reason, e->file, e->line);
-			[txn rollback];
 			break;
 		}
 	}
@@ -1084,7 +1078,6 @@ init_snap_dir:(const char *)snap_dirname
  rows_per_wal:(int)wal_rows_per_file
   feeder_addr:(const char *)feeder_addr_
 	flags:(int)flags
-    txn_class:(Class)txn_class_
 {
 	struct octopus_cfg_paxos_peer *c;
 
@@ -1092,8 +1085,7 @@ init_snap_dir:(const char *)snap_dirname
 		     wal_dir:wal_dirname
 		rows_per_wal:wal_rows_per_file
 		 feeder_addr:feeder_addr_
-		       flags:flags
-		   txn_class:txn_class_];
+		       flags:flags];
 
 	SLIST_INIT(&group);
 	RB_INIT(&proposals);
@@ -1248,15 +1240,6 @@ check_replica
 
 	if (!catchup_done)
 		iproto_raise(ERR_CODE_LEADER_UNKNOW, "leader not ready");
-}
-
-- (int)
-submit:(id<Txn>)txn
-{
-	if (!configured)
-		return 0;
-	struct row_v12 *r = [txn row];
-	return [self submit:r->data len:r->len tag:r->tag];
 }
 
 - (int)
