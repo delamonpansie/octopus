@@ -447,6 +447,9 @@ prepare_update_fields(BoxTxn *txn, struct tbuf *data)
 	u32 op_cnt;
 
 	u32 key_cardinality = read_u32(data);
+	if (key_cardinality < txn->object_space->index[0]->conf.min_tuple_cardinality)
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "key isn't fully specified");
+
 	txn->old_obj = txn_acquire(txn, [txn->index find_key:data with_cardinalty:key_cardinality]);
 
 	op_cnt = read_u32(data);
