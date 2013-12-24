@@ -520,8 +520,7 @@ memcached_init()
 				   wal_dir:cfg.wal_dir
 			      rows_per_wal:cfg.rows_per_wal
 			       feeder_addr:cfg.wal_feeder_addr
-				     flags:init_storage ? RECOVER_READONLY : 0
-				 txn_class:nil];
+				     flags:init_storage ? RECOVER_READONLY : 0];
 
 	if (init_storage)
 		return;
