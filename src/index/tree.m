@@ -321,6 +321,8 @@ field_compare(union index_field *f1, union index_field *f2, enum index_field_typ
 			return r;
 
 		return f1->str.len > f2->str.len ? 1 : f1->str.len == f2->str.len ? 0 : -1;
+	case UNDEF:
+		abort();
 	}
 	abort();
 }
@@ -373,17 +375,17 @@ gen_set_field(union index_field *f, enum index_field_type type, int len, const v
 		if (len != sizeof(u16))
 			index_raise("key size mismatch, expected u16");
 		f->u16 = *(u16 *)data;
-		break;
+		return;
 	case NUM32:
 		if (len != sizeof(u32))
 			index_raise("key size mismatch, expected u32");
 		f->u32 = *(u32 *)data;
-		break;
+		return;
 	case NUM64:
 		if (len != sizeof(u64))
 			index_raise("key size mismatch, expected u64");
 		f->u64 = *(u64 *)data;
-		break;
+		return;
 	case STRING:
 		if (len > 0xffff)
 			index_raise("string key too long");
@@ -392,8 +394,11 @@ gen_set_field(union index_field *f, enum index_field_type type, int len, const v
 			memcpy(f->str.data.bytes, data, len);
 		else
 			f->str.data.ptr = data;
-		break;
+		return;
+	case UNDEF:
+		abort();
 	}
+	abort();
 }
 static void
 gen_init_pattern(struct tbuf *key_data, int cardinality, struct index_node *pattern_, void *arg)
@@ -428,6 +433,7 @@ init:(struct index_conf *)ic
 		case NUM32: node_size += field_sizeof(union index_field, u32); break;
 		case NUM64: node_size += field_sizeof(union index_field, u64); break;
 		case STRING: node_size += field_sizeof(union index_field, str); break;
+		case UNDEF: abort();
 		}
 
 	init_pattern = gen_init_pattern;
