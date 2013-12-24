@@ -690,12 +690,11 @@ commit_delete(BoxTxn *txn)
 
 
 void
-box_prepare_update(BoxTxn *txn)
+box_prepare_update(BoxTxn *txn, struct tbuf *data)
 {
-	struct tbuf data = TBUF(txn->body, txn->body_len, NULL);
 	say_debug("box_prepare_update(%i)", txn->op);
 
-	i32 n = read_u32(&data);
+	i32 n = read_u32(data);
 	if (n < 0 || n > object_space_count - 1)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "bad namespace number");
 
@@ -711,22 +710,22 @@ box_prepare_update(BoxTxn *txn)
 
 	switch (txn->op) {
 	case INSERT:
-		txn->flags = read_u32(&data);
-		u32 cardinality = read_u32(&data);
-		u32 data_len = tbuf_len(&data);
-		void *tuple_bytes = read_bytes(&data, data_len);
+		txn->flags = read_u32(data);
+		u32 cardinality = read_u32(data);
+		u32 data_len = tbuf_len(data);
+		void *tuple_bytes = read_bytes(data, data_len);
 		prepare_replace(txn, cardinality, tuple_bytes, data_len);
 		break;
 
 	case DELETE:
-		txn->flags = read_u32(&data); /* RETURN_TUPLE */
+		txn->flags = read_u32(data); /* RETURN_TUPLE */
 	case DELETE_1_3:
-		prepare_delete(txn, &data);
+		prepare_delete(txn, data);
 		break;
 
 	case UPDATE_FIELDS:
-		txn->flags = read_u32(&data);
-		prepare_update_fields(txn, &data);
+		txn->flags = read_u32(data);
+		prepare_update_fields(txn, data);
 		break;
 
 	case NOP:
@@ -748,7 +747,7 @@ box_prepare_update(BoxTxn *txn)
 		if (tuple_bsize(tuple->cardinality, tuple->data, tuple->bsize) != tuple->bsize)
 			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "internal error");
 	}
-	if (tbuf_len(&data) != 0)
+	if (tbuf_len(data) != 0)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
 }
 
@@ -804,15 +803,15 @@ box_cb(struct iproto *request, struct conn *c)
 			iproto_raise(ERR_CODE_NONMASTER, "updates forbiden on secondary port");
 
 		[recovery check_replica];
-		[txn prepare:request->msg_code
-			data:request->data
-			 len:request->data_len];
+		struct tbuf *cmd = [txn prepare:request->msg_code
+					   data:request->data
+					    len:request->data_len];
 
 		if (!txn->object_space)
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "ignored object space");
 
 		if (txn->obj_affected > 0) {
-			if ([recovery submit:txn] != 1)
+			if ([recovery submit:cmd->ptr len:tbuf_len(cmd) tag:wal_tag|TAG_WAL] != 1)
 				iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
 		}
 		[txn commit];
@@ -1230,40 +1229,36 @@ txn_cleanup(BoxTxn *txn)
 	}
 }
 
-- (void)
+- (struct tbuf *)
 prepare:(u16)op_ data:(const void *)data len:(u32)len
 {
-	wal.tag = wal_tag;
 	op = op_;
-	body = data;
-	body_len = len;
-	box_prepare_update(self);
+	box_prepare_update(self, &TBUF(data, len, NULL));
+
+	struct tbuf *cmd = tbuf_alloc(fiber->pool);
+	tbuf_append(cmd, &op, sizeof(op));
+	tbuf_append(cmd, data, len);
+	return cmd;
 }
 
 
 - (void)
-prepare:(const struct row_v12 *)row data:(const void *)data
+prepare:(struct tbuf *)data tag:(u16)tag
 {
-	memcpy(&wal, row, sizeof(wal));
-	wal.len = 0;
+	say_debug("%s tag:%s data:%s", __func__,
+		  xlog_tag_to_a(tag), tbuf_to_hex(data));
 
-	say_debug("%s tag:%s data:%s", __func__, xlog_tag_to_a(row->tag),
-		 tbuf_to_hex(&TBUF(data, row->len, fiber->pool)));
-
-	switch (row->tag & TAG_MASK) {
+	switch (tag & TAG_MASK) {
 	case wal_tag:
-		op = *(u16 *)data;
-		body = data + sizeof(u16);
-		body_len = row->len - sizeof(u16);
+		op = read_u16(data);
+
 		assert(op != 0);
-		box_prepare_update(self);
+		box_prepare_update(self, data);
 		break;
 	case snap_tag:
 		op = INSERT;
-		body = data;
-		body_len = row->len;
 
-		const struct box_snap_row *snap = body;
+		const struct box_snap_row *snap = box_snap_row(data);
 		object_space = &object_space_registry[snap->object_space];
 		if (!object_space->enabled)
 			raise("object_space %i is not configured", object_space->n);
@@ -1279,29 +1274,6 @@ prepare:(const struct row_v12 *)row data:(const void *)data
 	}
 }
 
-- (void)
-append:(struct wal_pack *)pack
-{
-	wal.tag |= TAG_WAL;
-	wal_pack_append_row(pack, &wal);
-	if (wal.len == 0) {
-		wal_pack_append_data(pack, &wal, &op, sizeof(op));
-		wal_pack_append_data(pack, &wal, body, body_len);
-	}
-}
-
-- (struct row_v12 *)
-row
-{
-	assert(wal.len == 0);
-	wal.tag |= TAG_WAL;
-	struct row_v12 *r = palloc(fiber->pool, sizeof(*r) + sizeof(op) + body_len);
-	memcpy(r, &wal, sizeof(*r));
-	r->len += sizeof(op) + body_len;
-	memcpy(r->data, &op, sizeof(op));
-	memcpy(r->data + sizeof(op), body, body_len);
-	return r;
-}
 
 - (void)
 commit
@@ -1346,6 +1318,21 @@ cleanup:
 @end
 
 @implementation Recovery (Box)
+
+- (void)
+apply:(struct tbuf *)op tag:(u16)tag
+{
+	BoxTxn *txn = [BoxTxn palloc];
+	@try {
+		[txn prepare:op tag:tag];
+		[txn commit];
+	}
+	@catch (id e) {
+		[txn rollback];
+		@throw;
+	}
+}
+
 
 - (void)
 check_replica
@@ -1537,8 +1524,7 @@ init(void)
 					   wal_dir:strdup(cfg.wal_dir)
 				      rows_per_wal:cfg.rows_per_wal
 				       feeder_addr:cfg.wal_feeder_addr
-					     flags:init_storage ? RECOVER_READONLY : 0
-					 txn_class:[BoxTxn class]];
+					     flags:init_storage ? RECOVER_READONLY : 0];
 
 	if (init_storage)
 		return;

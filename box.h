@@ -73,9 +73,8 @@ box_tuple(struct tnt_object *obj)
 extern struct dtor_conf box_tuple_dtor;
 struct index_conf * cfg_box2index_conf(struct octopus_cfg_object_space_index *c);
 
-@interface BoxTxn : Object <Txn> {
+@interface BoxTxn : Object {
 @public
-	struct row_v12 wal;
 	u16 op;
 	u32 flags;
 
@@ -87,13 +86,11 @@ struct index_conf * cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 	u32 obj_affected;
 
 	bool closed;
-
-	const void *body;
-	u32 body_len;
 };
 
-- (void) prepare:(u16)op_ data:(const void *)data len:(u32)len;
-
+- (struct tbuf *) prepare:(u16)op_ data:(const void *)data len:(u32)len;
+- (void) commit;
+- (void) rollback;
 @end
 
 #define BOX_RETURN_TUPLE 1
