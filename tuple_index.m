@@ -159,7 +159,7 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 		} else
 			panic("unknown field data type: `%s'", c->key_field[k]->type);
 
-		if (c->key_field[k]->fieldno > d->min_tuple_cardinality)
+		if (c->key_field[k]->fieldno + 1 > d->min_tuple_cardinality)
 			d->min_tuple_cardinality = c->key_field[k]->fieldno + 1;
 		d->cardinality++;
 	}
