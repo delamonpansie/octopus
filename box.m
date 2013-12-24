@@ -872,7 +872,7 @@ box_select_cb(struct netmsg_head *h, struct iproto *request, struct conn *c __at
 static void
 xlog_print(struct tbuf *out, u16 op, struct tbuf *b)
 {
-	u32 n, key_len;
+	u32 n, key_cardinality, key_bsize;
 	void *key;
 	u32 cardinality, field_no;
 	u32 flags;
@@ -886,7 +886,7 @@ xlog_print(struct tbuf *out, u16 op, struct tbuf *b)
 		flags = read_u32(b);
 		cardinality = read_u32(b);
 		u32 data_len = tbuf_len(b);
-		void *data= read_bytes(b, data_len);
+		void *data = read_bytes(b, data_len);
 
 		if (tuple_bsize(cardinality, data, data_len) != data_len)
 			abort();
@@ -894,25 +894,32 @@ xlog_print(struct tbuf *out, u16 op, struct tbuf *b)
 		break;
 
 	case DELETE:
-		(void)read_u32(b); /* drop unused flags */
+		flags = read_u32(b);
 	case DELETE_1_3:
 		tbuf_printf(out, "%s n:%i ", ops[op], n);
-		key_len = read_u32(b);
-		key = read_field(b);
-		if (tbuf_len(b) != 0)
+		key_cardinality = read_u32(b);
+		key_bsize = tbuf_len(b);
+		key = read_bytes(b, key_bsize);
+
+		if (tuple_bsize(key_cardinality, key, key_bsize) != key_bsize)
 			abort();
-		tuple_print(out, key_len, key);
+
+		if (op == DELETE)
+			tbuf_printf(out, "flags:%08X ", flags);
+		tuple_print(out, key_cardinality, key);
 		break;
 
 	case UPDATE_FIELDS:
 		tbuf_printf(out, "%s n:%i ", ops[op], n);
 		flags = read_u32(b);
-		key_len = read_u32(b);
-		key = read_field(b);
+		key_cardinality = read_u32(b);
+		key_bsize = tuple_bsize(key_cardinality, b->ptr, tbuf_len(b));
+		key = read_bytes(b, key_bsize);
+
 		op_cnt = read_u32(b);
 
 		tbuf_printf(out, "flags:%08X ", flags);
-		tuple_print(out, key_len, key);
+		tuple_print(out, key_cardinality, key);
 
 		while (op_cnt-- > 0) {
 			field_no = read_u32(b);
@@ -957,6 +964,9 @@ xlog_print(struct tbuf *out, u16 op, struct tbuf *b)
 	default:
 		tbuf_printf(out, "unknown wal op %" PRIi32, op);
 	}
+
+	if (tbuf_len(b) > 0)
+		abort();
 }
 
 static void
