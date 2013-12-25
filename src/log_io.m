@@ -424,6 +424,14 @@ append_successful:(size_t)bytes
 	wet_rows++;
 }
 
+static void
+assert_row(const struct row_v12 *row)
+{
+	(void)row;
+	assert(row->tag & ~TAG_MASK);
+	assert(row->len > 0); /* fwrite() has funny behavior if size == 0 */
+}
+
 - (const struct row_v12 *)
 append_row:(struct row_v12 *)row data:(const void *)data
 {
@@ -612,14 +620,13 @@ read_row
 - (const struct row_v12 *)
 append_row:(struct row_v12 *)row12 data:(const void *)data
 {
-	assert(row12->tag & ~TAG_MASK);
+	assert_row(row12);
 	struct _row_v11 row;
 	u16 tag = row12->tag & TAG_MASK;
 	u32 data_len = row12->len;
 	u64 cookie = row12->cookie;
 
 	assert(wet_rows < nelem(wet_rows_offset));
-	assert(row12->len > 0);
 
 	if (tag == snap_tag) {
 		tag = (u16)-1;
@@ -782,8 +789,7 @@ read_row
 - (const struct row_v12 *)
 append_row:(struct row_v12 *)row data:(const void *)data
 {
-	assert(row->tag & ~TAG_MASK);
-	assert(row->len > 0); /* fwrite() has funny behavior if size == 0 */
+	assert_row(row);
 
 	row->lsn = [self next_lsn];
 	row->scn = row->scn ?: row->lsn;
