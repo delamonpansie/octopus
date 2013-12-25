@@ -529,8 +529,7 @@ pull_snapshot:(id<XLogPullerAsync>)puller
 				if (tag == snap_final_tag)
 					return;
 			} else {
-				raise("unexpected tag %i/%s",
-				      row->tag, xlog_tag_to_a(row->tag));
+				raise("unexpected tag %s", xlog_tag_to_a(row->tag));
 			}
 		}
 		fiber_gc();
@@ -566,7 +565,7 @@ pull_wal:(id<XLogPullerAsync>)puller
 		}
 
 		if (tag_type != TAG_WAL)
-			raise("unexpected tag 0x%x/%s", row->tag, xlog_tag_to_a(row->tag));
+			raise("unexpected tag %s", xlog_tag_to_a(row->tag));
 
 		if (cfg.io12_hack)
 			fix_scn(row);
@@ -981,15 +980,14 @@ void
 print_gen_row(struct tbuf *out, const struct row_v12 *row,
 	      void (*handler)(struct tbuf *out, u16 tag, struct tbuf *row))
 {
-	int tag = row->tag & TAG_MASK;
-	int tag_type = row->tag & ~TAG_MASK;
-	tbuf_printf(out, "lsn:%" PRIi64 " scn:%" PRIi64 " tm:%.3f t:%i/%s %s ",
+	tbuf_printf(out, "lsn:%" PRIi64 " scn:%" PRIi64 " tm:%.3f t:%s %s ",
 		    row->lsn, row->scn, row->tm,
-		    tag_type >> TAG_SIZE, xlog_tag_to_a(tag),
+		    xlog_tag_to_a(row->tag),
 		    sintoa((void *)&row->cookie));
 
 	struct tbuf row_data = TBUF(row->data, row->len, NULL);
 
+	int tag = row->tag & TAG_MASK;
 	switch (tag) {
 	case snap_initial_tag:
 		if (tbuf_len(&row_data) == sizeof(u32) * 3) {

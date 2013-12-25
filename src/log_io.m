@@ -79,26 +79,36 @@ const char *
 xlog_tag_to_a(u16 tag)
 {
 	static char buf[16];
-	u16 tag_type = (tag & ~TAG_MASK) >> TAG_SIZE;
+	char *p = buf;
+	u16 tag_type = tag & ~TAG_MASK;
 	tag &= TAG_MASK;
-	switch (tag) {
-	case snap_initial_tag:	return "snap_initial_tag";
-	case snap_tag:		return "snap_tag";
-	case wal_tag:		return "wal_tag";
-	case snap_final_tag:	return "snap_final_tag";
-	case wal_final_tag:	return "wal_final_tag";
-	case run_crc:		return "run_crc";
-	case nop:		return "nop";
-	case paxos_prepare:	return "paxos_prepare";
-	case paxos_promise:	return "paxos_promise";
-	case paxos_propose:	return "paxos_propose";
-	case paxos_accept:	return "paxos_accept";
-	case snap_skip_scn:	return "snap_skip_scn";
+
+	switch (tag_type) {
+	case TAG_SNAP: p += sprintf(p, "snap/"); break;
+	case TAG_WAL: p += sprintf(p, "wal/"); break;
+	case TAG_SYS: p += sprintf(p, "sys/"); break;
+	default: p += sprintf(p, "%i/", tag_type >> TAG_SIZE);
 	}
-	if (tag < user_tag)
-		snprintf(buf, sizeof(buf), "0x%x/sys%i", tag_type, tag);
-	else
-		snprintf(buf, sizeof(buf), "0x%x/usr%i", tag_type, tag - user_tag);
+
+	switch (tag) {
+	case snap_initial_tag:	strcat(p, "snap_initial_tag"); break;
+	case snap_tag:		strcat(p, "snap_tag"); break;
+	case wal_tag:		strcat(p, "wal_tag"); break;
+	case snap_final_tag:	strcat(p, "snap_final_tag"); break;
+	case wal_final_tag:	strcat(p, "wal_final_tag"); break;
+	case run_crc:		strcat(p, "run_crc"); break;
+	case nop:		strcat(p, "nop"); break;
+	case paxos_prepare:	strcat(p, "paxos_prepare"); break;
+	case paxos_promise:	strcat(p, "paxos_promise"); break;
+	case paxos_propose:	strcat(p, "paxos_propose"); break;
+	case paxos_accept:	strcat(p, "paxos_accept"); break;
+	case snap_skip_scn:	strcat(p, "snap_skip_scn"); break;
+	default:
+		if (tag < user_tag)
+			sprintf(p, "sys%i", tag);
+		else
+			sprintf(p, "usr%i", tag >> 5);
+	}
 	return buf;
 }
 
