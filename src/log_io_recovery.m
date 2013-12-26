@@ -586,6 +586,23 @@ pull_wal:(id<XLogPullerAsync>)puller
 		for (int j = 0; j < pack_rows; j++)
 			rows[j]->lsn = lsn + 1 + j;
 
+		if (cfg.io_compat) {
+			for (int j = 0; j < pack_rows; j++) {
+				u16 tag = rows[j]->tag & TAG_MASK;
+				u16 tag_type = rows[j]->tag & ~TAG_MASK;
+
+				if (tag_type != TAG_WAL)
+					continue;
+
+				switch (tag) {
+				case wal_tag:
+				case wal_final_tag:
+					continue;
+				default:
+					panic("can't replicate from non io_compat master");
+				}
+			}
+		}
 #ifndef NDEBUG
 		i64 pack_min_scn = rows[0]->scn,
 		    pack_max_scn = rows[pack_rows - 1]->scn,
