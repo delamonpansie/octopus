@@ -199,6 +199,7 @@ recover_row:(struct row_v12 *)r
 	@try {
 		say_debug("%s: LSN:%"PRIi64" SCN:%"PRIi64" tag:%s",
 			  __func__, r->lsn, r->scn, xlog_tag_to_a(r->tag));
+		say_debug2("	%s", tbuf_to_hex(&TBUF(r->data, r->len, fiber->pool)));
 
 		if (++processed_rows % 100000 == 0) {
 			if (estimated_snap_rows && processed_rows <= estimated_snap_rows) {
