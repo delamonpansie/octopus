@@ -803,15 +803,16 @@ box_cb(struct iproto *request, struct conn *c)
 			iproto_raise(ERR_CODE_NONMASTER, "updates forbiden on secondary port");
 
 		[recovery check_replica];
-		struct tbuf *cmd = [txn prepare:request->msg_code
-					   data:request->data
-					    len:request->data_len];
+		[txn prepare:request->msg_code
+			data:request->data
+			 len:request->data_len];
 
 		if (!txn->object_space)
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "ignored object space");
 
 		if (txn->obj_affected > 0) {
-			if ([recovery submit:cmd->ptr len:tbuf_len(cmd) tag:wal_tag|TAG_WAL] != 1)
+			if ([recovery submit:request->data len:request->data_len
+					 tag:request->msg_code<<5|TAG_WAL] != 1)
 				iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
 		}
 		[txn commit];
@@ -1248,15 +1249,24 @@ prepare:(struct tbuf *)data tag:(u16)tag
 	say_debug("%s tag:%s data:%s", __func__,
 		  xlog_tag_to_a(tag), tbuf_to_hex(data));
 
-	switch (tag & TAG_MASK) {
-	case wal_tag:
-		op = read_u16(data);
+	int tag_type = tag & ~TAG_MASK;
+	tag &= TAG_MASK;
 
-		assert(op != 0);
+	switch (tag_type) {
+	case TAG_WAL:
+		if (tag < user_tag && tag != wal_tag) {
+			if (tag != wal_tag)
+				return;
+			op = read_u16(data);
+		} else {
+			op = tag >> 5;
+		}
+		op = tag == wal_tag ? read_u16(data) : tag >> 5;
 		box_prepare_update(self, data);
-		break;
-	case snap_tag:
-		op = INSERT;
+		return;
+	case TAG_SNAP:
+		if (tag != snap_tag)
+			return;
 
 		const struct box_snap_row *snap = box_snap_row(data);
 		object_space = &object_space_registry[snap->object_space];
@@ -1266,12 +1276,17 @@ prepare:(struct tbuf *)data tag:(u16)tag
 			object_space = NULL;
 			return;
 		}
+
+		op = INSERT;
 		index = object_space->index[0];
 		assert(index != nil);
 
 		prepare_replace(self, snap->tuple_size, snap->data, snap->data_size);
-		break;
+		return;
+	case TAG_SYS:
+		return;
 	}
+	abort();
 }
 
 

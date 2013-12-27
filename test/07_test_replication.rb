@@ -31,7 +31,8 @@ EOD
     f = open("feeder_init.lua", "w")
     f.write <<-EOD
 local ffi = require('ffi')
-local box_nop = "\1\0\0\0\0\0"
+local box_old_nop = "\1\0\0\0\0\0"
+local box_nop = "\0\0\0\0"
 ffi.cdef 'void *malloc(int)'
 local buf = ffi.C.malloc(1024)
 function replication_filter.id_xlog(row)
@@ -40,8 +41,14 @@ function replication_filter.id_xlog(row)
     if row.scn == 3296 or row.scn == 3297 or row.scn == 3298 then
 	local new = ffi.new('struct row_v12 *', buf)
 	ffi.copy(new, row, ffi.sizeof('struct row_v12'))
-	new.len = #box_nop
-	ffi.copy(new.data, box_nop, #box_nop)
+	if row.tag == 0x8003 then
+            new.len = #box_old_nop
+            ffi.copy(new.data, box_old_nop, #box_old_nop)
+        else
+            new.tag = 0x8033 -- NOP|TAG_WAL
+	    new.len = #box_nop
+	    ffi.copy(new.data, box_nop, #box_nop)
+        end
 	return new
     end
     return true

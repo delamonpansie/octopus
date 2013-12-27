@@ -48,12 +48,12 @@
 
 lsn:1 scn:1 t:snap/snap_initial_tag 0.0.0.0:0 count:0 run_crc_log:0x00000000 run_crc_mod:0x00000000
 lsn:1 scn:1 t:snap/snap_final_tag 0.0.0.0:0 
-lsn:2 scn:2 t:wal/wal_tag 0.0.0.0:0 INSERT n:0 <0:"\x00\x00\x00\x00", 0:"\x00\x00\x00\x00">
-lsn:3 scn:3 t:wal/wal_tag 0.0.0.0:0 INSERT n:0 <1:"\x01\x00\x00\x00", 1:"\x01\x00\x00\x00">
-lsn:4 scn:4 t:wal/wal_tag 0.0.0.0:0 INSERT n:0 <2:"\x02\x00\x00\x00", 2:"\x02\x00\x00\x00">
-lsn:5 scn:5 t:wal/wal_tag 0.0.0.0:0 INSERT n:0 <3:"\x03\x00\x00\x00", 3:"\x03\x00\x00\x00">
-lsn:6 scn:6 t:wal/wal_tag 0.0.0.0:0 INSERT n:0 <4:"\x04\x00\x00\x00", 4:"\x04\x00\x00\x00">
-lsn:7 scn:7 t:wal/wal_tag 0.0.0.0:0 INSERT n:0 <5:"\x05\x00\x00\x00", 5:"\x05\x00\x00\x00">
-lsn:8 scn:8 t:wal/wal_tag 0.0.0.0:0 INSERT n:0 <6:"\x06\x00\x00\x00", 6:"\x06\x00\x00\x00">
-lsn:9 scn:9 t:wal/wal_tag 0.0.0.0:0 INSERT n:0 <7:"\x07\x00\x00\x00", 7:"\x07\x00\x00\x00">
-lsn:10 scn:10 t:wal/wal_tag 0.0.0.0:0 INSERT n:0 <8:"\x08\x00\x00\x00", 8:"\x08\x00\x00\x00">
+lsn:2 scn:2 t:wal/usr13 0.0.0.0:0 INSERT n:0 <0:"\x00\x00\x00\x00", 0:"\x00\x00\x00\x00">
+lsn:3 scn:3 t:wal/usr13 0.0.0.0:0 INSERT n:0 <1:"\x01\x00\x00\x00", 1:"\x01\x00\x00\x00">
+lsn:4 scn:4 t:wal/usr13 0.0.0.0:0 INSERT n:0 <2:"\x02\x00\x00\x00", 2:"\x02\x00\x00\x00">
+lsn:5 scn:5 t:wal/usr13 0.0.0.0:0 INSERT n:0 <3:"\x03\x00\x00\x00", 3:"\x03\x00\x00\x00">
+lsn:6 scn:6 t:wal/usr13 0.0.0.0:0 INSERT n:0 <4:"\x04\x00\x00\x00", 4:"\x04\x00\x00\x00">
+lsn:7 scn:7 t:wal/usr13 0.0.0.0:0 INSERT n:0 <5:"\x05\x00\x00\x00", 5:"\x05\x00\x00\x00">
+lsn:8 scn:8 t:wal/usr13 0.0.0.0:0 INSERT n:0 <6:"\x06\x00\x00\x00", 6:"\x06\x00\x00\x00">
+lsn:9 scn:9 t:wal/usr13 0.0.0.0:0 INSERT n:0 <7:"\x07\x00\x00\x00", 7:"\x07\x00\x00\x00">
+lsn:10 scn:10 t:wal/usr13 0.0.0.0:0 INSERT n:0 <8:"\x08\x00\x00\x00", 8:"\x08\x00\x00\x00">

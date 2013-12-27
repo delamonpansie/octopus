@@ -62,8 +62,8 @@ luaT_box_dispatch(struct lua_State *L)
 	@try {
 		[recovery check_replica];
 
-		struct tbuf *cmd = [txn prepare:op data:req len:len];
-		if ([recovery submit:cmd->ptr len:tbuf_len(cmd) tag:wal_tag|TAG_WAL] != 1)
+		[txn prepare:op data:req len:len];
+		if ([recovery submit:req len:len tag:op<<5|TAG_WAL] != 1)
 			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write row");
 		[txn commit];
 
