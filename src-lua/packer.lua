@@ -168,11 +168,11 @@ local function reader_func(name)
         local ffi, type = ...
         return function (self)
             if self.haserror == HAS_ERROR then
-                return 0
+                return nil
             end
             if self.len < %d then
                 self:set_error("Not enough data for %s at pos %%d", self:pos())
-                return 0
+                return nil
             end
             local v = %s
             self:_inc(%d)
@@ -214,15 +214,15 @@ local function reader_field(name)
         local ffi, type = ...
         return function (self)
             if self.haserror == HAS_ERROR then
-                return 0
+                return nil
             end
             if self.len < %d then
                 self:set_error("Not enough data for field %s")
-                return 0
+                return nil
             end
             if self.ptr[0] ~= %d then
                 self:set_error("Size should be %d for field %s")
-                return 0
+                return nil
             end
             local v = %s
             self:_inc(%d)
@@ -321,11 +321,11 @@ unpack_meths = {
     unpacker = reader_func_n('unpacker', 'unpacker(self.ptr, n)'),
     ber = function(self)
         if self.haserror == HAS_ERROR then
-            return 0
+            return nil
         end
         if self.len < 1 then
             self:set_error("Not enough data for ber")
-            return 0
+            return nil
         end
         if self.ptr[0] < 128 then
             local v = self.ptr[0]
@@ -334,7 +334,7 @@ unpack_meths = {
         end
         if self.len < 2 then
             self:set_error("Wrong ber at %d", self:pos())
-            return 0
+            return nil
         end
         local v = bit.bor(bit.band(self.ptr[0], 0x7f) * 128, bit.band(self.ptr[1], 0x7f))
         if self.ptr[1] < 128 then
@@ -356,7 +356,7 @@ unpack_meths = {
             i = i + 1
         end
         self:set_error("Wrong ber at %d", self:pos())
-        return 0
+        return nil
     end,
     berconst = function(self, n)
         if self.haserror == HAS_ERROR then
@@ -388,18 +388,18 @@ unpack_meths = {
     field_i64 = reader_field('i64'),
     field_ber = function(self)
         if self.haserror == HAS_ERROR then
-            return 0
+            return nil
         end
         if self.len < 2 then
-            self:set_error("Not enough data for field u8")
-            return 0
+            self:set_error("Not enough data for field ber")
+            return nil
         end
         local bs = self.ptr[0]
         local ptr = self.ptr
         local v
         if bs > 5 then
             self:set_error("Could not parse ber with size %d > 5", bs)
-            return 0
+            return nil
         end
         self:_inc(bs)
         if bs == 1 then
