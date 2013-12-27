@@ -199,8 +199,6 @@ snapshot_write_rows: (XLog *)l
 		if (snapshot_write_row(l, STORE, &TBUF(m, mc_len(m), NULL)) < 0)
 			return -1;
 
-		prelease_after(fiber->pool, 128 * 1024);
-
 		if ((++i)% 100000 == 0) {
 			say_info("%.1fM rows written", i / 1000000. );
 			set_proc_title("dumper of pid %" PRIu32 ": dumping actions (%.1fM  rows )",
