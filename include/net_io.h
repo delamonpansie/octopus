@@ -142,6 +142,7 @@ void netmsg_getmark(struct netmsg_head *h, struct netmsg_mark *mark) LUA_DEF;
 void net_add_iov(struct netmsg_head *o, const void *buf, size_t len) LUA_DEF;
 struct iovec *net_reserve_iov(struct netmsg_head *o) LUA_DEF;
 void net_add_iov_dup(struct netmsg_head *o, const void *buf, size_t len) LUA_DEF;
+#define net_add_dup(o, buf) net_add_iov_dup(o, (buf), sizeof(*(buf)))
 void net_add_ref_iov(struct netmsg_head *o, uintptr_t ref, const void *buf, size_t len) LUA_DEF;
 void net_add_obj_iov(struct netmsg_head *o, struct tnt_object *obj, const void *buf, size_t len) LUA_DEF;
 void netmsg_verify_ownership(struct netmsg_head *h); /* debug method */

@@ -55,6 +55,14 @@ read_must_have(struct tbuf *b, i32 n)
 	_read_must_have(b, n);
 }
 
+void
+read_must_end(struct tbuf *b, const char *err)
+{
+	if (unlikely(tbuf_len(b) != 0)) {
+		@throw [[Error palloc] init:(err ?: "tbuf not empty")];
+	}
+}
+
 /* caller must ensure that there is space in target */
 u8 *
 save_varint32(u8 *target, u32 value)
@@ -206,6 +214,14 @@ read_bytes(struct tbuf *buf, u32 data_len)
 	void *p = buf->ptr;
 	buf->ptr += data_len;
 	return p;
+}
+
+void
+read_to(struct tbuf *buf, void *p, u32 data_len)
+{
+	_read_must_have(buf, data_len);
+	memcpy(p, buf->ptr, data_len);
+	buf->ptr += data_len;
 }
 
 void *

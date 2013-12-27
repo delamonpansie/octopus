@@ -90,6 +90,7 @@ void tbuf_ltrim(struct tbuf *b, size_t diff);
 void tbuf_rtrim(struct tbuf *b, size_t diff);
 
 void tbuf_append(struct tbuf *b, const void *data, size_t len);
+#define tbuf_add_dup(b, data) tbuf_append(b, (data), sizeof(*(data)))
 void tbuf_append_field(struct tbuf *b, void *f);
 void tbuf_vprintf(struct tbuf *b, const char *format, va_list ap)
 	__attribute__ ((format(FORMAT_PRINTF, 2, 0)));
