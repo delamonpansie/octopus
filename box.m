@@ -821,10 +821,12 @@ box_cb(struct iproto *request, struct conn *c)
 		struct iproto_retcode *reply = iproto_reply(h, request);
 		reply->data_len += sizeof(u32);
 		net_add_iov_dup(h, &txn->obj_affected, sizeof(u32));
-		if (txn->flags & BOX_RETURN_TUPLE && txn->obj)
-			tuple_add(h, reply, txn->obj);
-		if (request->msg_code == DELETE && txn->flags & BOX_RETURN_TUPLE && txn->old_obj)
-			tuple_add(h, reply, txn->old_obj);
+		if (txn->flags & BOX_RETURN_TUPLE) {
+			if (txn->obj)
+				tuple_add(h, reply, txn->obj);
+			else if (request->msg_code == DELETE && txn->old_obj)
+				tuple_add(h, reply, txn->old_obj);
+		}
 
 		stop = ev_now();
 		if (stop - start > cfg.too_long_threshold)
