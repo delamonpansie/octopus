@@ -48,7 +48,7 @@ Env.clean.with_server do
   100.times {|i| insert [i.to_s, i, i.to_s] }
   insert ["\0\0\0\0", "\0\0\0\0", "\0\0\0\0\0\0\0\0"], :object_space => 1
 
-  (1..5).each do |i|
+  (1..6).each do |i|
     lua "user_proc.test#{i}"
   end
 end

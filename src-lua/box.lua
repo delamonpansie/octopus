@@ -245,6 +245,10 @@ object_cast[ffi.C.BOX_TUPLE] = function(obj)
 		       tuple_mt)
 end
 
+local _dispatch = _dispatch
+function dispatch(...)
+    return object(_dispatch(...))
+end
 
 function select(n, ...)
         local index = object_space[n].index[0]

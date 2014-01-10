@@ -264,7 +264,10 @@ local function test5()
     return 0, {a,b,c,d}
 end
 
+local function test6()
+    return 0, {box.replace(0, "\0\0\0\0", "\0\0\0\0", "\0\0\0\0")}
+end
 
-for i, f in ipairs({test1, test2, test3, test4, test5}) do
+for i, f in ipairs({test1, test2, test3, test4, test5, test6}) do
    user_proc["test" .. tostring(i)] = box.wrap(f)
 end

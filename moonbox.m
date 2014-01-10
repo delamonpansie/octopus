@@ -67,7 +67,7 @@ luaT_box_dispatch(struct lua_State *L)
 		box_commit(&txn);
 
 		if (txn.obj != NULL) {
-			luaT_pushobject(L, txn.obj);
+			lua_pushlightuserdata(L, txn.obj);
 			return 1;
 		}
 	}
@@ -83,7 +83,7 @@ luaT_box_dispatch(struct lua_State *L)
 }
 
 static const struct luaL_reg boxlib [] = {
-	{"dispatch", luaT_box_dispatch},
+	{"_dispatch", luaT_box_dispatch},
 	{NULL, NULL}
 };
 
