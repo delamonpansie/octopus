@@ -206,7 +206,7 @@ tuple_add(struct netmsg_head *h, struct iproto_retcode *reply, struct tnt_object
 }
 
 static void
-validate_indexes(BoxTxn *txn)
+validate_indexes(struct box_txn *txn)
 {
 	foreach_index(index, txn->object_space) {
                 [index valid_object:txn->obj];
@@ -223,7 +223,7 @@ validate_indexes(BoxTxn *txn)
 }
 
 static struct tnt_object *
-txn_acquire(BoxTxn *txn, struct tnt_object *obj)
+txn_acquire(struct box_txn *txn, struct tnt_object *obj)
 {
 	if (unlikely(obj == NULL))
 		return NULL;
@@ -241,7 +241,7 @@ txn_acquire(BoxTxn *txn, struct tnt_object *obj)
 
 
 static void __attribute__((noinline))
-prepare_replace(BoxTxn *txn, size_t cardinality, const void *data, u32 data_len)
+prepare_replace(struct box_txn *txn, size_t cardinality, const void *data, u32 data_len)
 {
 	if (cardinality == 0)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "cardinality can't be equal to 0");
@@ -290,7 +290,7 @@ obj_remove(struct object_space *object_space, struct tnt_object *obj)
 }
 
 static void
-commit_replace(BoxTxn *txn)
+commit_replace(struct box_txn *txn)
 {
 	say_debug("%s: old_obj:%p obj:%p", __func__, txn->old_obj, txn->obj);
 	if (txn->old_obj != NULL)
@@ -309,7 +309,7 @@ commit_replace(BoxTxn *txn)
 }
 
 static void
-rollback_replace(BoxTxn *txn)
+rollback_replace(struct box_txn *txn)
 {
 	say_debug("rollback_replace: txn->obj:%p", txn->obj);
 
@@ -439,7 +439,7 @@ do_field_splice(struct tbuf *field, const void *args_data, u32 args_data_size)
 }
 
 static void __attribute__((noinline))
-prepare_update_fields(BoxTxn *txn, struct tbuf *data)
+prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 {
 	struct tbuf *fields;
 	const u8 *field;
@@ -674,7 +674,7 @@ process_select(struct netmsg_head *h, struct iproto_retcode *reply, Index<BasicI
 }
 
 static void __attribute__((noinline))
-prepare_delete(BoxTxn *txn, struct tbuf *key_data)
+prepare_delete(struct box_txn *txn, struct tbuf *key_data)
 {
 	u32 c = read_u32(key_data);
 	txn->old_obj = txn_acquire(txn, [txn->index find_key:key_data with_cardinalty:c]);
@@ -682,7 +682,7 @@ prepare_delete(BoxTxn *txn, struct tbuf *key_data)
 }
 
 static void
-commit_delete(BoxTxn *txn)
+commit_delete(struct box_txn *txn)
 {
 	if (txn->old_obj)
 		obj_remove(txn->object_space, txn->old_obj);
@@ -690,9 +690,9 @@ commit_delete(BoxTxn *txn)
 
 
 void
-box_prepare_update(BoxTxn *txn, struct tbuf *data)
+box_prepare(struct box_txn *txn, struct tbuf *data)
 {
-	say_debug("box_prepare_update(%i)", txn->op);
+	say_debug("%s op:%i", __func__, txn->op);
 
 	i32 n = read_u32(data);
 	if (n < 0 || n > object_space_count - 1)
@@ -795,7 +795,7 @@ box_cb(struct iproto *request, struct conn *c)
 {
 	say_debug("%s: c:%p op:0x%02x sync:%u", __func__, c, request->msg_code, request->sync);
 
-	struct BoxTxn *txn = [BoxTxn palloc];
+	struct box_txn txn = { .op = request->msg_code };
 	@try {
 		ev_tstamp start = ev_now(), stop;
 
@@ -803,34 +803,34 @@ box_cb(struct iproto *request, struct conn *c)
 			iproto_raise(ERR_CODE_NONMASTER, "updates forbiden on secondary port");
 
 		[recovery check_replica];
-		[txn prepare:request->msg_code
-			data:request->data
-			 len:request->data_len];
 
-		if (!txn->object_space)
+		box_prepare(&txn, &TBUF(request->data, request->data_len, NULL));
+
+		if (!txn.object_space)
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "ignored object space");
 
-		if (txn->obj_affected > 0) {
-			if ([recovery submit:request->data len:request->data_len
+		if (txn.obj_affected > 0) {
+			if ([recovery submit:request->data
+					 len:request->data_len
 					 tag:request->msg_code<<5|TAG_WAL] != 1)
 				iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
 		}
-		[txn commit];
+		box_commit(&txn);
 
 		struct netmsg_head *h = &c->out_messages;
 		struct iproto_retcode *reply = iproto_reply(h, request);
 		reply->data_len += sizeof(u32);
-		net_add_iov_dup(h, &txn->obj_affected, sizeof(u32));
-		if (txn->flags & BOX_RETURN_TUPLE) {
-			if (txn->obj)
-				tuple_add(h, reply, txn->obj);
-			else if (request->msg_code == DELETE && txn->old_obj)
-				tuple_add(h, reply, txn->old_obj);
+		net_add_iov_dup(h, &txn.obj_affected, sizeof(u32));
+		if (txn.flags & BOX_RETURN_TUPLE) {
+			if (txn.obj)
+				tuple_add(h, reply, txn.obj);
+			else if (request->msg_code == DELETE && txn.old_obj)
+				tuple_add(h, reply, txn.old_obj);
 		}
 
 		stop = ev_now();
 		if (stop - start > cfg.too_long_threshold)
-			say_warn("too long %s: %.3f sec", ops[txn->op], stop - start);
+			say_warn("too long %s: %.3f sec", ops[txn.op], stop - start);
 	}
 	@catch (Error *e) {
 		if (e->file && strcmp(e->file, "src/paxos.m") != 0) {
@@ -839,7 +839,7 @@ box_cb(struct iproto *request, struct conn *c)
 			if (e->backtrace)
 				say_debug("backtrace:\n%s", e->backtrace);
 		}
-		[txn rollback];
+		box_rollback(&txn);
 		@throw;
 	}
 }
@@ -1214,10 +1214,8 @@ initialize_service()
 }
 
 
-@implementation BoxTxn
-
 static void
-txn_cleanup(BoxTxn *txn)
+txn_cleanup(struct box_txn *txn)
 {
 	assert(!txn->closed);
 	txn->closed = true;
@@ -1232,120 +1230,101 @@ txn_cleanup(BoxTxn *txn)
 	}
 }
 
-- (struct tbuf *)
-prepare:(u16)op_ data:(const void *)data len:(u32)len
+void
+box_commit(struct box_txn *txn)
 {
-	op = op_;
-	box_prepare_update(self, &TBUF(data, len, NULL));
-
-	struct tbuf *cmd = tbuf_alloc(fiber->pool);
-	tbuf_append(cmd, &op, sizeof(op));
-	tbuf_append(cmd, data, len);
-	return cmd;
-}
-
-
-- (void)
-prepare:(struct tbuf *)data tag:(u16)tag
-{
-	say_debug("%s tag:%s data:%s", __func__,
-		  xlog_tag_to_a(tag), tbuf_to_hex(data));
-
-	int tag_type = tag & ~TAG_MASK;
-	tag &= TAG_MASK;
-
-	switch (tag_type) {
-	case TAG_WAL:
-		if (tag < user_tag && tag != wal_tag) {
-			if (tag != wal_tag)
-				return;
-			op = read_u16(data);
-		} else {
-			op = tag >> 5;
-		}
-		op = tag == wal_tag ? read_u16(data) : tag >> 5;
-		box_prepare_update(self, data);
-		return;
-	case TAG_SNAP:
-		if (tag != snap_tag)
-			return;
-
-		const struct box_snap_row *snap = box_snap_row(data);
-		object_space = &object_space_registry[snap->object_space];
-		if (!object_space->enabled)
-			raise("object_space %i is not configured", object_space->n);
-		if (object_space->ignored) {
-			object_space = NULL;
-			return;
-		}
-
-		op = INSERT;
-		index = object_space->index[0];
-		assert(index != nil);
-
-		prepare_replace(self, snap->tuple_size, snap->data, snap->data_size);
-		return;
-	case TAG_SYS:
-		return;
-	}
-	abort();
-}
-
-
-- (void)
-commit
-{
-	if (!object_space)
+	if (!txn->object_space)
 		goto cleanup;
 
-	if (op == DELETE || op == DELETE_1_3)
-		commit_delete(self);
+	if (txn->op == DELETE || txn->op == DELETE_1_3)
+		commit_delete(txn);
 	else
-		commit_replace(self);
+		commit_replace(txn);
 
-	stat_collect(stat_base, op, 1);
+	stat_collect(stat_base, txn->op, 1);
 	say_debug("%s: old_obj:refs=%i,%p obj:ref=%i,%p", __func__,
-		 old_obj ? old_obj->refs : 0, old_obj,
-		 obj ? obj->refs : 0, obj);
+		 txn->old_obj ? txn->old_obj->refs : 0, txn->old_obj,
+		 txn->obj ? txn->obj->refs : 0, txn->obj);
 cleanup:
-	txn_cleanup(self);
+	txn_cleanup(txn);
 }
 
-- (void)
-rollback
+void
+box_rollback(struct box_txn *txn)
 {
-	if (!object_space)
+	if (!txn->object_space)
 		goto cleanup;
 
-	say_debug("box_rollback(op:%s)", ops[op]);
+	say_debug("box_rollback(op:%s)", ops[txn->op]);
 
-	if (op == DELETE || op == DELETE_1_3)
+	if (txn->op == DELETE || txn->op == DELETE_1_3)
 		goto cleanup;
 
-	if (op == INSERT || op == UPDATE_FIELDS)
-		rollback_replace(self);
+	if (txn->op == INSERT || txn->op == UPDATE_FIELDS)
+		rollback_replace(txn);
 
 	say_debug("%s: old_obj:refs=%i,%p obj:ref=%i,%p", __func__,
-		 old_obj ? old_obj->refs : 0, old_obj,
-		 obj ? obj->refs : 0, obj);
+		 txn->old_obj ? txn->old_obj->refs : 0, txn->old_obj,
+		 txn->obj ? txn->obj->refs : 0, txn->obj);
 
 cleanup:
-	txn_cleanup(self);
+	txn_cleanup(txn);
 }
-@end
 
 @implementation Recovery (Box)
 
 - (void)
-apply:(struct tbuf *)op tag:(u16)tag
+apply:(struct tbuf *)data tag:(u16)tag
 {
-	BoxTxn *txn = [BoxTxn palloc];
+	struct box_txn txn = {0};
+
 	@try {
-		[txn prepare:op tag:tag];
-		[txn commit];
+
+		say_debug("%s tag:%s data:%s", __func__,
+			  xlog_tag_to_a(tag), tbuf_to_hex(data));
+
+		int tag_type = tag & ~TAG_MASK;
+		tag &= TAG_MASK;
+
+		switch (tag_type) {
+		case TAG_WAL:
+			if (tag < user_tag) {
+				if (tag != wal_tag)
+					return;
+				txn.op = read_u16(data);
+			} else {
+				txn.op = tag >> 5;
+			}
+
+			box_prepare(&txn, data);
+			break;
+		case TAG_SNAP:
+			if (tag != snap_tag)
+				return;
+
+			const struct box_snap_row *snap = box_snap_row(data);
+			txn.object_space = &object_space_registry[snap->object_space];
+			if (!txn.object_space->enabled)
+				raise("object_space %i is not configured", txn.object_space->n);
+			if (txn.object_space->ignored) {
+				txn.object_space = NULL;
+				return;
+			}
+
+			txn.op = INSERT;
+			txn.index = txn.object_space->index[0];
+			assert(txn.index != nil);
+
+			prepare_replace(&txn, snap->tuple_size, snap->data, snap->data_size);
+			break;
+		case TAG_SYS:
+			return;
+		}
+
+		box_commit(&txn);
 	}
 	@catch (id e) {
-		[txn rollback];
+		box_rollback(&txn);
 		@throw;
 	}
 }

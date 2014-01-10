@@ -47,10 +47,9 @@
 static int
 luaT_box_dispatch(struct lua_State *L)
 {
-	u16 op = luaL_checkinteger(L, 1);
 	size_t len;
 	const char *req;
-	struct BoxTxn *txn = [BoxTxn palloc];
+	struct box_txn txn = { .op = luaL_checkinteger(L, 1) };
 
 	if (lua_type(L, 2) == ~LJ_TCDATA) {
 		char * const *p = lua_topointer(L, 2);
@@ -62,18 +61,18 @@ luaT_box_dispatch(struct lua_State *L)
 	@try {
 		[recovery check_replica];
 
-		[txn prepare:op data:req len:len];
-		if ([recovery submit:req len:len tag:op<<5|TAG_WAL] != 1)
+		box_prepare(&txn, &TBUF(req, len, NULL));
+		if ([recovery submit:req len:len tag:txn.op<<5|TAG_WAL] != 1)
 			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write row");
-		[txn commit];
+		box_commit(&txn);
 
-		if (txn->obj != NULL) {
-			luaT_pushobject(L, txn->obj);
+		if (txn.obj != NULL) {
+			luaT_pushobject(L, txn.obj);
 			return 1;
 		}
 	}
 	@catch (Error *e) {
-		[txn rollback];
+		box_rollback(&txn);
 		if ([e respondsTo:@selector(code)])
 			lua_pushfstring(L, "code:%d reason:%s", [(id)e code], e->reason);
 		else
