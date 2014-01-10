@@ -259,16 +259,28 @@ function select(n, ...)
         return result
 end
 
+function add(n, ...)
+    local flags = 3 -- return tuple + add tuple flags
+    local req = packer()
+
+    req:u32(n)
+    req:u32(flags)
+    req:u32(lselect('#', ...))
+    for i = 1, lselect('#', ...) do
+        req:field(lselect(i, ...))
+    end
+    return dispatch(13, req:pack())
+end
+
 function replace(n, ...)
-        local tuple = {...}
-        local flags = 0
+        local flags = 1 -- return tuple
         local req = packer()
 
         req:u32(n)
         req:u32(flags)
-        req:u32(#tuple)
-        for k, v in pairs(tuple) do
-                req:field(v)
+        req:u32(lselect('#', ...))
+        for i = 1, lselect('#', ...) do
+            req:field(lselect(i, ...))
         end
         return dispatch(13, req:pack())
 end
@@ -285,7 +297,7 @@ end
 
 function update(n, key, ...)
         local ops = {...}
-        local flags, key_cardinality = 0, 1
+        local flags, key_cardinality = 1, 1
         local req = packer()
 
         req:u32(tonumber(n))
