@@ -67,14 +67,15 @@ function conn_op:add_iov_iproto_header(request)
    return header
 end
 local netmsg_mark_t = ffi.typeof('struct netmsg_mark')
-function conn_op:pcall(f, ...)
+function conn_op:apply(f, ...)
    local mark = ffi.new(netmsg_mark_t)
    ffi.C.netmsg_getmark(self.ptr.out_messages, mark)
    local ok, errmsg = pcall(f, self, ...)
    if not ok then
-      ffi.C.netmsg_rewind(self.ptr.out_messages, mark)
-      error(errmsg)
+       ffi.C.netmsg_rewind(self.ptr.out_messages, mark)
+       error(errmsg, 2)
    end
+   return ok
 end
 
 local conn_t = ffi.metatype(ffi.typeof('struct conn_wrap'), { __index = conn_op,
