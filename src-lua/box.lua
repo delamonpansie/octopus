@@ -375,11 +375,11 @@ function wrap(proc_body)
 	   -- proc_body may fail and may block in core
 	   -- it's unsafe to modify 'struct conn' while blocking in core,
 	   -- because of possible concurent updates
-	   -- so, append to conn in atomically via out:pcall
+           -- so, append to conn atomically via out:apply(f, args)
 
 	   local ret_code, result = proc_body(...)
 	   local out = net.conn(out)
-	   out:pcall(append, request, ret_code, result)
+	   out:apply(append, request, ret_code, result)
         end
 
         return proc
