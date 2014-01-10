@@ -131,6 +131,7 @@ struct mhash_t {
 MH_DECL struct mhash_t * _mh(init)(void *(*custom_realloc)(void *, size_t));
 static inline mh_key_t _mh(key)(struct mhash_t *h, uint32_t i);
 static inline mh_val_t _mh(value)(struct mhash_t *h, uint32_t i);
+static inline void     _mh(put_value)(struct mhash_t *h, uint32_t i, mh_val_t val);
 static inline uint32_t _mh(get)(struct mhash_t *h, const mh_key_t key);
 static inline uint32_t _mh(put)(struct mhash_t *h, mh_key_t key, mh_val_t val, int *ret);
 static inline uint32_t _mh(put_node)(struct mhash_t *h, struct index_node *node);
@@ -165,6 +166,17 @@ static inline mh_val_t
 _mh(value)(struct mhash_t *h, uint32_t i)
 {
 	return *(mh_val_t *)mh_slot(h, i);
+}
+
+static inline void
+_mh(put_value)(struct mhash_t *h, uint32_t i, mh_val_t val)
+{
+        *(mh_val_t*)mh_slot(h, i) = val;
+#if MH_INCREMENTAL_RESIZE
+        if (h->resizing) {
+                _mh(put)(h->shadow, _mh(key)(h, i), val, NULL);
+        }
+#endif
 }
 
 static inline mh_val_t *
