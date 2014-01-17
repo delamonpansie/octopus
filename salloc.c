@@ -441,6 +441,7 @@ slab_cache_alloc(struct slab_cache *cache)
 		assert(valid_item(slab, slab->brk));
 		item = slab->brk;
 		ASAN_UNPOISON_MEMORY_REGION(item, cache->item_size + sizeof(red_zone));
+		VALGRIND_MAKE_MEM_UNDEFINED((void *)item + cache->item_size, sizeof(red_zone));
 		memcpy((void *)item + cache->item_size, red_zone, sizeof(red_zone));
 		ASAN_POISON_MEMORY_REGION((void *)item + cache->item_size, sizeof(red_zone), 0xfb);
 		/* we can leave slab here in case of last item has been allocated
