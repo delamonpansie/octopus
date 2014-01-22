@@ -196,6 +196,8 @@ struct row_v12 {
 }
 + (XLog *) open_for_read_filename:(const char *)filename
 			      dir:(XLogDir *)dir;
++ (void) register_version4: (Class)xlog;
++ (void) register_version3: (Class)xlog;
 
 - (void) follow:(follow_cb *)cb data:(void *)data;
 - (int) inprogress_rename;

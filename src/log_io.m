@@ -69,11 +69,16 @@ const u32 default_version = 12;
 const u32 version_11 = 11;
 const char *v11 = "0.11\n";
 const char *v12 = "0.12\n";
+const char *v04 = "0.04\n";
+const char *v03 = "0.03\n";
 const char *snap_mark = "SNAP\n";
 const char *xlog_mark = "XLOG\n";
 const char *inprogress_suffix = ".inprogress";
 const u32 marker = 0xba0babed;
 const u32 eof_marker = 0x10adab1e;
+Class version3 = nil;
+Class version4 = nil;
+
 
 const char *
 xlog_tag_to_a(u16 tag)
@@ -169,7 +174,16 @@ open_for_read_filename:(const char *)filename dir:(XLogDir *)dir
 		l = [XLog11 alloc];
 	} else if (strcmp(version_, v12) == 0) {
 		l = [XLog12 alloc];
-	} else {
+	} else if (strcmp(version_, v04) == 0) {
+		if (version4 != nil) {
+			l = [version4 alloc];
+		}
+	} else if (strcmp(version_, v03) == 0) {
+		if (version3 != nil) {
+			l = [version3 alloc];
+		}
+	}
+	if (l == nil) {
 		say_error("bad version `%s' of %s", version_, filename);
 		fclose(fd);
 		return nil;
@@ -186,6 +200,18 @@ open_for_read_filename:(const char *)filename dir:(XLogDir *)dir
 	}
 
 	return l;
+}
+
++ (void)
+register_version3: (Class)xlog
+{
+	version3 = xlog;
+}
+
++ (void)
+register_version4: (Class)xlog
+{
+	version4 = xlog;
 }
 
 - (id)
