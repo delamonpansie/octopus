@@ -278,7 +278,7 @@ close
 			result = -1;
 	} else {
 		if (rows == 0 && access(filename, F_OK) == 0) {
-			bool legacy_snap = [self isMemberOf:[XLog11 class]] &&
+			bool legacy_snap = ![self isMemberOf:[XLog12 class]] &&
 					   [dir isMemberOf:[SnapDir class]];
 			if (!legacy_snap)
 				panic("no valid rows were read");
