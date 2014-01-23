@@ -177,6 +177,8 @@ open_for_read_filename:(const char *)filename dir:(XLogDir *)dir
 	} else if (strcmp(version_, v04) == 0) {
 		if (version4 != nil) {
 			l = [version4 alloc];
+		} else {
+			l = [XLog04 alloc];
 		}
 	} else if (strcmp(version_, v03) == 0) {
 		if (version3 != nil) {
@@ -358,14 +360,27 @@ read_row
 	return NULL;
 }
 
+- (marker_desc_t)
+marker_desc
+{
+	return (marker_desc_t){
+		.marker = (u64)marker,
+		.eof = (u64)eof_marker,
+		.size = 4,
+		.eof_size = 4
+	};
+}
+
 - (struct row_v12 *)
 fetch_row
 {
 	struct row_v12 *row;
-	u32 magic;
+	u64 magic, magic_shift;
 	off_t marker_offset = 0, good_offset, eof_offset;
+	marker_desc_t mdesc = [self marker_desc];
 
-	assert(sizeof(magic) == sizeof(marker));
+	magic = 0;
+	magic_shift = (mdesc.size - 1) * 8;
 	good_offset = ftello(fd);
 
 restart:
@@ -373,17 +388,17 @@ restart:
 		fseeko(fd, marker_offset + 1, SEEK_SET);
 
 	say_debug("%s: start offt %08" PRIofft, __func__, ftello(fd));
-	if (fread(&magic, sizeof(marker), 1, fd) != 1)
+	if (fread(&magic, mdesc.size, 1, fd) != 1)
 		goto eof;
 
-	while (magic != marker) {
+	while (magic != mdesc.marker) {
 		int c = fgetc(fd);
 		if (c == EOF)
 			goto eof;
 		magic >>= 8;
-		magic |= (((u32)c & 0xff) << ((sizeof(magic) - 1) * 8));
+		magic |= ((u64)c & 0xff) << magic_shift;
 	}
-	marker_offset = ftello(fd) - sizeof(marker);
+	marker_offset = ftello(fd) - mdesc.size;
 	if (good_offset != marker_offset)
 		say_warn("skipped %" PRIofft " bytes after %08" PRIofft " offset",
 			 marker_offset - good_offset, good_offset);
@@ -405,15 +420,21 @@ restart:
 	return row;
 eof:
 	eof_offset = ftello(fd);
-	if (eof_offset == good_offset + sizeof(eof_marker)) {
+	if (eof_offset == good_offset + mdesc.eof_size) {
+		if (mdesc.eof_size == 0) {
+			eof = 1;
+			return NULL;
+		}
+
 		fseeko(fd, good_offset, SEEK_SET);
 
-		if (fread(&magic, sizeof(eof_marker), 1, fd) != 1) {
+		magic = 0;
+		if (fread(&magic, mdesc.eof_size, 1, fd) != 1) {
 			fseeko(fd, good_offset, SEEK_SET);
 			return NULL;
 		}
 
-		if (memcmp(&magic, &eof_marker, sizeof(eof_marker)) != 0) {
+		if (magic != mdesc.eof) {
 			fseeko(fd, good_offset, SEEK_SET);
 			return NULL;
 		}
@@ -553,6 +574,126 @@ confirm_write
 
 @end
 
+@implementation XLog04
+- (u32) version { return 4; }
+
+- (marker_desc_t)
+marker_desc
+{
+	return (marker_desc_t){
+		.marker = (u64)-1,
+		.eof = (u64)0,
+		.size = 8,
+		.eof_size = 8
+	};
+}
+
+- (int)
+read_header
+{
+	char buf[256];
+	char *r;
+	int n, year, mon, day, hour, min, sec;
+	r = fgets(buf, sizeof(buf), fd);
+	if (r == NULL)
+		return -1;
+	n = sscanf(r, "%d %d %d %d:%d:%d\n", &year, &mon, &day, &hour, &min, &sec);
+	if (n != 6) {
+		return -1;
+	}
+	return 0;
+}
+
+struct tbuf *
+convert_row_v04_to_v12(struct tbuf *m)
+{
+	struct tbuf *n = tbuf_alloc(m->pool);
+	tbuf_append(n, NULL, sizeof(struct row_v12));
+	row_v12(n)->scn = row_v12(n)->lsn = _row_v04(m)->lsn;
+	row_v12(n)->tm = 0;
+	row_v12(n)->len = _row_v04(m)->len + sizeof(u16); /* tag */
+	row_v12(n)->tag = wal_tag;
+	row_v12(n)->cookie = default_cookie;
+
+	tbuf_add_dup(n, &_row_v04(m)->type);
+	tbuf_ltrim(m, sizeof(struct _row_v04));
+	tbuf_append(n, m->ptr, row_v12(n)->len - sizeof(u16));
+
+	row_v12(n)->data_crc32c = crc32c(0, row_v12(n)->data, row_v12(n)->len);
+	row_v12(n)->header_crc32c = crc32c(0, n->ptr + field_sizeof(struct row_v12, header_crc32c),
+					   sizeof(struct row_v12) - field_sizeof(struct row_v12, header_crc32c));
+
+	return n;
+}
+
+- (struct row_v12 *)
+read_row
+{
+	struct tbuf *m = tbuf_alloc(fiber->pool);
+
+	u32 row_crc, calc_crc;
+	tbuf_append(m, NULL, sizeof(struct _row_v04));
+	if (fread(m->ptr, sizeof(struct _row_v04), 1, fd) != 1) {
+		if (ferror(fd))
+			say_error("fread error");
+		return NULL;
+	}
+
+	tbuf_append(m, NULL, _row_v04(m)->len);
+	if (fread(_row_v04(m)->data, _row_v04(m)->len, 1, fd) != 1) {
+		if (ferror(fd))
+			say_error("fread error");
+		return NULL;
+	}
+
+	if (fread(&row_crc, sizeof(row_crc), 1, fd) != 1) {
+		if (ferror(fd))
+			say_error("fread error");
+		return NULL;
+	}
+
+	calc_crc = crc32(m->ptr, tbuf_len(m));
+	if (row_crc != calc_crc) {
+		say_error("data crc32c mismatch %x %x", row_crc, calc_crc);
+		return NULL;
+	}
+
+	say_debug("read row v04 success lsn:%"PRIu64, _row_v04(m)->lsn);
+
+	return convert_row_v04_to_v12(m)->ptr;
+}
+
+@end
+
+@implementation XLog03Template
+- (u32) version { return 3; }
+
+- (int)
+read_header
+{
+	char buf[256];
+	char *r;
+	int n, year, mon, day, hour, min, sec;
+	r = fgets(buf, sizeof(buf), fd);
+	if (r == NULL)
+		return -1;
+	n = sscanf(r, "%d %d %d %d:%d:%d\n", &year, &mon, &day, &hour, &min, &sec);
+	if (n != 6) {
+		return -1;
+	}
+	return 0;
+}
+
+- (marker_desc_t)
+marker_desc
+{
+	return (marker_desc_t){
+		.marker = (u64)0xffffffff,
+		.size = 4,
+		.eof_size = 0
+	};
+}
+@end
 
 @implementation XLog11
 - (u32) version { return 11; }
