@@ -131,6 +131,38 @@ function packer ()
     return ffi.new('struct tbuf', nil, nil, 0, C.fiber.pool)
 end
 
+local tp_meths = {
+    u8 = function(self, n) self.p:field_u8(n); self.n = self.n + 1 end,
+    u16 = function(self, n) self.p:field_u16(n); self.n = self.n + 1 end,
+    u32 = function(self, n) self.p:field_u32(n); self.n = self.n + 1 end,
+    u64 = function(self, n) self.p:field_u64(n); self.n = self.n + 1 end,
+    str = function(self, s) self.p:field(s); self.n = self.n + 1 end,
+    raw = function(self, s, l) self.p:field_raw(s, l); self.n = self.n + 1 end,
+    raw_str = function(self, s) self.p:string(s); self.n = self.n + 1 end,
+    raw_raw = function(self, s, l) self.p:raw(s, l); self.n = self.n + 1 end,
+    get = function(self)
+        local head = ffi.cast(u32p, self.p.ptr)
+        head[0] = self.p:len() - 8
+        head[1] = self.n
+        self.n = 0
+        return ffi.string(self.p:pack())
+    end
+}
+tp_meths.i8 = tp_meths.u8
+tp_meths.i16 = tp_meths.u16
+tp_meths.i32 = tp_meths.u32
+tp_meths.i64 = tp_meths.u64
+local tuple_packer_mt = {
+    __index = tp_meths,
+}
+
+function tuple_packer()
+    local p = packer()
+    p:u32(0)
+    p:u32(0)
+    return setmetatable({n=0, p=p}, tuple_packer_mt)
+end
+
 ffi.cdef [[
     struct tread {
         u8 const * const beg;
