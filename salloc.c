@@ -113,7 +113,7 @@ uint8_t red_zone[0] = { };
 int salloc_error;
 
 static const uint32_t SLAB_MAGIC = 0x51abface;
-static const size_t MAX_SLAB_ITEM = 1 << 20;
+static const size_t MAX_SLAB_ITEM = SLAB_SIZE / 4;
 static size_t page_size;
 
 struct slab_item {
