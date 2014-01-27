@@ -410,11 +410,36 @@ int wal_disk_writer(int fd, void *state);
 void wal_disk_writer_input_dispatch(va_list ap __attribute__((unused)));
 int snapshot_write_row(XLog *l, u16 tag, struct tbuf *row);
 
-struct replication_handshake {
-		u32 ver;
-		i64 scn;
-		char filter[32];
+#define replication_handshake_base_fields \
+	u32 ver; \
+	i64 scn; \
+	char filter[32]
+struct replication_handshake_base {
+	replication_handshake_base_fields;
 } __attribute__((packed));
+#define REPLICATION_FILTER_NAME_LEN field_sizeof(struct replication_handshake_base, filter)
+
+#define replication_handshake_v1 replication_handshake_base
+
+struct replication_handshake_v2 {
+	replication_handshake_base_fields;
+	u32 filter_type;
+	u32 filter_arglen;
+	char filter_arg[];
+} __attribute__((packed));
+
+struct replication_filter {
+	u32 type;
+	u32 arglen;
+	char name[REPLICATION_FILTER_NAME_LEN];
+	char *arg;
+};
+enum {
+	FILTER_TYPE_ID  = 0,
+	FILTER_TYPE_LUA = 1,
+	FILTER_TYPE_C   = 2,
+	FILTER_TYPE_MAX = 3
+};
 
 static inline struct _row_v04 *_row_v04(const struct tbuf *t)
 {

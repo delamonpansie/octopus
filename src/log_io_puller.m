@@ -127,7 +127,7 @@ handshake:(i64)scn err:(const char **)err_ptr
 			goto err;
 		}
 	} else {
-		struct replication_handshake hshake = {1, scn, {0}};
+		struct replication_handshake_v1 hshake = {1, scn, {0}};
 
 		if (cfg.wal_feeder_filter != NULL) {
 			if (strlen(cfg.wal_feeder_filter) + 1 > sizeof(hshake.filter))
