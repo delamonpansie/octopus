@@ -333,6 +333,7 @@ init(void)
 		child = tnt_fork();
 		if (child < 0) {
 			say_syserror("fork");
+			close(client);
 			continue;
 		}
 		if (child == 0)
