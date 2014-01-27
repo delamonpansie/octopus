@@ -280,7 +280,7 @@ recover_snap
 
 		say_info("recover from `%s'", snap->filename);
 
-		bool legacy_snap = [snap isKindOf:[XLog11 class]];
+		bool legacy_snap = ![snap isKindOf:[XLog12 class]];
 
 		if (legacy_snap && !cfg.sync_scn_with_lsn)
 			panic("sync_scn_with_lsn is required when loading from v11 snapshots");

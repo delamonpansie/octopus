@@ -146,6 +146,13 @@ typedef void (follow_cb)(ev_stat *w, int events);
 @interface WALDir: XLogDir
 @end
 
+struct _row_v04 {
+	i64 lsn;
+	u16 type;
+	u32 len;
+	u8 data[];
+} __attribute__((packed));
+
 struct _row_v11 {
 	u32 header_crc32c;
 	i64 lsn;
@@ -166,6 +173,11 @@ struct row_v12 {
 	u32 data_crc32c;
 	u8 data[0];
 } __attribute__((packed));
+
+typedef struct marker_desc {
+	u64 marker, eof;
+	off_t size, eof_size;
+} marker_desc_t;
 
 @interface XLog: Object <XLogPuller> {
 	size_t rows, wet_rows;
@@ -196,6 +208,8 @@ struct row_v12 {
 }
 + (XLog *) open_for_read_filename:(const char *)filename
 			      dir:(XLogDir *)dir;
++ (void) register_version4: (Class)xlog;
++ (void) register_version3: (Class)xlog;
 
 - (void) follow:(follow_cb *)cb data:(void *)data;
 - (int) inprogress_rename;
@@ -214,6 +228,12 @@ struct row_v12 {
 @end
 
 struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
+@interface XLog04: XLog
+@end
+
+@interface XLog03Template: XLog
+@end
+
 @interface XLog11: XLog
 @end
 
@@ -395,6 +415,11 @@ struct replication_handshake {
 		i64 scn;
 		char filter[32];
 } __attribute__((packed));
+
+static inline struct _row_v04 *_row_v04(const struct tbuf *t)
+{
+	return (struct _row_v04 *)t->ptr;
+}
 
 static inline struct _row_v11 *_row_v11(const struct tbuf *t)
 {
