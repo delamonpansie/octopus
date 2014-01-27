@@ -146,12 +146,23 @@ local tp_meths = {
         head[1] = self.n
         self.n = 0
         return ffi.string(self.p:pack())
-    end
+    end,
+    start_field = function(self, len) self.p:ber(len); self.n = self.n + 1 end,
+    append_u8 = function(self, n) self.p:u8(n) end,
+    append_u16 = function(self, n) self.p:u16(n) end,
+    append_u32 = function(self, n) self.p:u32(n) end,
+    append_u64 = function(self, n) self.p:u64(n) end,
+    append_string = function(self, s) self.p:string(s) end,
+    append_raw = function(self, s, l) self.p:raw(s, l) end,
 }
 tp_meths.i8 = tp_meths.u8
 tp_meths.i16 = tp_meths.u16
 tp_meths.i32 = tp_meths.u32
 tp_meths.i64 = tp_meths.u64
+tp_meths.append_i8 = tp_meths.append_u8
+tp_meths.append_i16 = tp_meths.append_u16
+tp_meths.append_i32 = tp_meths.append_u32
+tp_meths.append_i64 = tp_meths.append_u64
 local tuple_packer_mt = {
     __index = tp_meths,
 }
