@@ -42,10 +42,28 @@
 
 #import <mod/feeder/feeder_version.h>
 
+const char *filter_type_names[] = {
+	"ID",
+	"LUA",
+	"C"
+};
+
+typedef struct row_v12 *(*filter_callback)(struct row_v12 *r, const char *arg, int arglen);
+struct registered_callback {
+	char name[REPLICATION_FILTER_NAME_LEN];
+	filter_callback filter;
+};
+struct registered_callbacks {
+	struct registered_callback *callbacks;
+	int capa, count;
+};
+static struct registered_callbacks registered = {NULL, 0, 0};
+
 @interface Feeder: Recovery {
 	int fd;
-	struct row_v12 *(*filter)(struct row_v12 *r);
+	filter_callback filter;
 }
++ (void) register_filter: (const char*)name call: (filter_callback)filter;
 @end
 
 @implementation Feeder
@@ -57,6 +75,35 @@
 		     wal_dir:wal_dirname];
 	fd = fd_;
 	return self;
+}
+
++ (void)
+register_filter: (const char*)name call: (filter_callback)filter
+{
+	if (strlen(name) >= REPLICATION_FILTER_NAME_LEN) {
+		panic("Filter callback name '%s' too long", name);
+	}
+
+	if (registered.capa == 0) {
+		registered.callbacks = xcalloc(sizeof(*registered.callbacks), 4);
+		registered.capa = 4;
+	} else if (registered.count == registered.capa) {
+		registered.callbacks = xrealloc(registered.callbacks, sizeof(*registered.callbacks) * registered.capa * 2); 
+		registered.capa *= 2;
+	}
+
+	int i;
+	for(i=0; i < registered.count; i++) {
+		if (strncmp(name, registered.callbacks[i].name,
+				       	REPLICATION_FILTER_NAME_LEN) == 0) {
+			panic("feeder filter callback '%s' already registered", name);
+		}
+	}
+
+	strncpy(registered.callbacks[registered.count].name, name,
+		       	REPLICATION_FILTER_NAME_LEN);
+	registered.callbacks[registered.count].filter = filter;
+	registered.count++;
 }
 
 static void
@@ -75,22 +122,27 @@ writef(int fd, const char *b, size_t len)
 
 
 struct row_v12 *
-id_filter(struct row_v12 *r)
+id_filter(struct row_v12 *r, __attribute((unused)) const char *arg, __attribute__((unused)) int arglen)
 {
 	return r;
 }
 
 struct row_v12 *
-lua_filter(struct row_v12 *r)
+lua_filter(struct row_v12 *r, __attribute((unused)) const char *arg, __attribute__((unused)) int arglen)
 {
 	struct lua_State *L = fiber->L;
 
 	assert(r != NULL);
 	lua_pushvalue(L, 1);
 	lua_pushvalue(L, 2);
-	luaT_pushptr(L, r);
+	if (r) {
+		luaT_pushptr(L, r);
+	} else {
+		lua_pushnil(L);
+	}
+	lua_pushvalue(L, 3);
 
-	if (lua_pcall(L, 2, 1, 0) != 0) {
+	if (lua_pcall(L, 3, 1, 0) != 0) {
 		say_error("lua filter error: %s", lua_tostring(L, -1));
 		_exit(EXIT_FAILURE);
 	}
@@ -115,7 +167,7 @@ lua_filter(struct row_v12 *r)
 - (void)
 recover_row:(struct row_v12 *)r
 {
-	struct row_v12 *n = filter(r);
+	struct row_v12 *n = filter(r, NULL, 0);
 
 	/* FIXME: we should buffer writes */
 	if (n)
@@ -132,22 +184,47 @@ wal_final_row
 }
 
 - (void)
-recover_start_from_scn:(i64)initial_scn filter:(const char *)filter_name
+recover_start_from_scn:(i64)initial_scn filter:(struct replication_filter*)_filter
 {
-	say_debug("%s initial_scn:%"PRIi64" filter:%s", __func__, initial_scn, filter_name);
-	if (strlen(filter_name) > 0) {
+	int i;
+	say_debug("%s initial_scn:%"PRIi64" filter: type=%s name=%s", __func__, initial_scn, filter_type_names[_filter->type], _filter->name);
+	switch (_filter->type) {
+	case FILTER_TYPE_ID:
+		filter = id_filter;
+		break;
+	case FILTER_TYPE_LUA:
 		lua_getglobal(fiber->L, "__feederentrypoint");
 		lua_getglobal(fiber->L, "replication_filter");
-		lua_pushstring(fiber->L, filter_name);
+		lua_pushstring(fiber->L, _filter->name);
 		lua_gettable(fiber->L, -2);
 		lua_remove(fiber->L, -2);
 		if (!lua_isfunction(fiber->L, -1)) {
-			say_error("nonexistent filter: %s", filter_name);
+			say_error("nonexistent lua filter: %s", _filter->name);
 			_exit(EXIT_FAILURE);
 		}
+		if (_filter->arg) {
+			lua_pushlstring(fiber->L, _filter->arg, _filter->arglen);
+		} else {
+			lua_pushnil(fiber->L);
+		}
 		filter = lua_filter;
-	} else {
-		filter = id_filter;
+		break;
+	case FILTER_TYPE_C:
+		for(i = 0; i < registered.count; i++) {
+			if (strncmp(registered.callbacks[i].name, _filter->name,
+					       	REPLICATION_FILTER_NAME_LEN) == 0)
+				break;
+		}
+		if (i == registered.count) {
+			say_error("nonexistent C filter: %s", _filter->name);
+			_exit(EXIT_FAILURE);
+		}
+		filter = registered.callbacks[i].filter;
+		break;
+	}
+
+	if (_filter->arg) {
+		filter(NULL, _filter->arg, _filter->arglen);
 	}
 
 	if (initial_scn == 0) {
@@ -169,7 +246,7 @@ recover_start_from_scn:(i64)initial_scn filter:(const char *)filter_name
 @end
 
 static i64
-handshake(int sock, char *filter)
+handshake(int sock, struct replication_filter *filter)
 {
 	struct tbuf *rep, *input;
 	struct iproto *req;
@@ -194,18 +271,52 @@ handshake(int sock, char *filter)
 			break;
 	}
 
-	if (req->data_len != sizeof(struct replication_handshake)) {
+	if (req->data_len < sizeof(struct replication_handshake_base)) {
 		say_error("bad handshake len");
 		_exit(EXIT_FAILURE);
 	}
 
-	struct replication_handshake *hshake = (void *)&req->data;
-	if (hshake->ver != 1) {
+	filter->type = FILTER_TYPE_ID;
+	filter->arglen = 0;
+	filter->arg    = NULL;
+
+	struct replication_handshake_base *hshake = (void *)&req->data;
+	struct replication_handshake_v2 *hshake2 = (void *)&req->data;
+	switch (hshake->ver) {
+	case 1:
+		if (req->data_len != sizeof(struct replication_handshake_v1)) {
+			say_error("bad handshake len");
+			_exit(EXIT_FAILURE);
+		}
+		if (strnlen(hshake->filter, sizeof(hshake->filter)) > 0) {
+			filter->type = FILTER_TYPE_LUA;
+			memcpy(filter->name, hshake->filter, sizeof(hshake->filter));
+		}
+		break;
+	case 2: {
+		if (req->data_len != sizeof(*hshake2) + hshake2->filter_arglen) {
+			say_error("bad handshake len");
+			_exit(EXIT_FAILURE);
+		}
+		if (hshake2->filter_type >= FILTER_TYPE_MAX) {
+			say_error("bad handshake filter type %d", hshake2->filter_type);
+			_exit(EXIT_FAILURE);
+		}
+		if (strnlen(hshake2->filter, sizeof(hshake2->filter)) > 0) {
+			filter->type = hshake2->filter_type;
+			memcpy(filter->name, hshake2->filter, sizeof(hshake->filter));
+			if (hshake2->filter_arglen > 0) {
+				filter->arglen = hshake2->filter_arglen;
+				filter->arg = hshake2->filter_arg;
+			}
+		}
+		}
+		break;
+	default:
 		say_error("bad replication version");
 		_exit(EXIT_FAILURE);
 	}
 	scn = hshake->scn;
-	memcpy(filter, hshake->filter, sizeof(hshake->filter));
 
 	tbuf_append(rep, &(struct iproto_retcode)
 			 { .msg_code = req->msg_code,
@@ -238,7 +349,7 @@ recover_feed_slave(int sock)
 	const char *peer_name = "<unknown>";
 	ev_io io = { .coro = 0 };
 	ev_timer tm = { .coro = 0 };
-	char filter_name[field_sizeof(struct replication_handshake, filter)];
+	struct replication_filter filter;
 
 	if (getpeername(sock, (struct sockaddr *)&addr, &addrlen) != -1)
 		peer_name = sintoa(&addr);
@@ -253,9 +364,9 @@ recover_feed_slave(int sock)
 	feeder = [[Feeder alloc] init_snap_dir:cfg.snap_dir
 				       wal_dir:cfg.wal_dir
 					    fd:sock];
-	i64 initial_scn = handshake(sock, filter_name);
-	say_info("connect peer:%s initial SCN:%"PRIi64" filter:'%s'", peer_name, initial_scn, filter_name);
-	[feeder recover_start_from_scn:initial_scn filter:filter_name];
+	i64 initial_scn = handshake(sock, &filter);
+	say_info("connect peer:%s initial SCN:%"PRIi64" filter: type=%s name='%s'", peer_name, initial_scn, filter_type_names[filter.type], filter.name);
+	[feeder recover_start_from_scn:initial_scn filter:&filter];
 
 	ev_io_init(&io, (void *)eof_monitor, sock, EV_READ);
 	ev_io_start(&io);

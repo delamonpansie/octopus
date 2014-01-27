@@ -23,8 +23,8 @@ struct row_v12 {
 ]])
 
 local row_v12 = ffi.typeof("struct row_v12 *")
-function __feederentrypoint(f, ptr)
-    local row = f(ffi.cast(row_v12, ptr))
+function __feederentrypoint(f, ptr, arg)
+    local row = f(ptr and ffi.cast(row_v12, ptr), arg)
     assert(type(row) == 'nil' or
            type(row) == 'boolean' or
            (type(row) == 'cdata' and ffi.typeof(row) == row_v12))
