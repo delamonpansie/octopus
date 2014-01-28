@@ -14,6 +14,9 @@ local object, object_cast, varint32, packer = object, object_cast, varint32, pac
 local safeptr, assertarg = safeptr, assertarg
 local lselect = select
 
+local dyn_tuple = require 'box.dyn_tuple'
+local box_op = require 'box.op'
+
 -- legacy, slow because of string interning
 ffi.cdef[[ typedef union { char ch[8]; u8 u8; u16 u16; u32 u32; u64 u64;} pack_it_gently ]]
 local ptg = ffi.new 'pack_it_gently'
@@ -58,16 +61,6 @@ struct object_space {
 };
 extern struct object_space *object_space_registry;
 extern const int object_space_count, object_space_max_idx;
-
-enum object_type {
-	BOX_TUPLE = 1
-};
-
-struct box_tuple {
-	uint32_t bsize; /* byte size of data[] */
-	uint32_t cardinality;
-	uint8_t data[0];
-} __attribute__((packed));
 ]]
 
 local maxidx = ffi.C.object_space_max_idx
@@ -136,119 +129,10 @@ object_space_registry = setmetatable({}, {
 -- make useful aliases
 space, object_space = object_space_registry, object_space_registry
 
-local u16_ptr = ffi.typeof("uint16_t *")
-local u32_ptr = ffi.typeof("uint32_t *")
-local u64_ptr = ffi.typeof("uint64_t *")
 
+-- install automatic cast of object() return value
+object_cast[dyn_tuple.obj_type] = dyn_tuple.obj_cast
 
-local ptrof = setmetatable({}, {__index = function (t, k) t[k] = ffi.typeof('$ *', k); return t[k]; end})
-
-local datacast_type_cache = setmetatable({}, {
-   __index = function(t, k)
-      -- k either 'uintXX_t' or ctype<unsigned XX>
-      local ctype = ffi.typeof(k)
-      t[k] = { ptrof[ctype], ffi.sizeof(ctype) }
-      return t[k]
-   end
-})
-
-local tuple_index = {
-   field = function(self, i, level)
-      assertarg(i, 'number', 1, level or 0)
-      if i < 0 or i >= self.cardinality then
-	 error('invalid field index', 2 + level or 0)
-      end
-      i = i * 2
-      local j = #self.__cache - 1
-      while j < i do
-	 local offt = self.__cache[j] + self.__cache[j + 1]
-	 local len, vlen = varint32.read(self.__tuple.data + offt)
-	 self.__cache[j + 2], self.__cache[j + 3] = len, offt + vlen
-	 j = j + 2
-      end
-
-      return self.__cache[i], self.__cache[i + 1]
-   end,
-   strfield = function(self, i)
-      -- fixme: add check
-      local len, offt = self:field(i, 1)
-      self[i] = ffi.string(self.__tuple.data + offt, len)
-      return self[i]
-   end,
-   numfield = function(self, i)
-      local len, offt = self:field(i, 1)
-      if len == 2 then
-	 return tonumber(ffi.cast(u16_ptr, self.__tuple.data + offt)[0])
-      elseif len == 4 then
-	 return tonumber(ffi.cast(u32_ptr, self.__tuple.data + offt)[0])
-      elseif len == 8 then
-	 return ffi.cast(u64_ptr, self.__tuple.data + offt)[0]
-      else
-	 error('field length not equal to 2, 4 or 8', 2)
-      end
-   end,
-   arrfield = function(self, i, ctype)
-      local len, offt = self:field(i, 1)
-      ctype = ffi.typeof(ctype)
-      if len % ffi.sizeof(ctype) ~= 0 then
-	 error('bad field len', 2)
-      end
-      local ptr = ffi.cast(ptrof[ctype], self.__tuple.data + offt)
-      return safeptr(self.__obj, ptr, len / ffi.sizeof(ctype))
-   end,
-   datacast = function(self, ctype, offt, len)
-      if ctype == 'string' then
-	 if (offt < 0 or offt + len > self.__tuple.bsize) then
-	    error("out of bounds", 2)
-	 end
-	 return ffi.string(self.__tuple.data + offt, len)
-      elseif ctype == 'varint' then
-	 if (offt < 0 or offt + 1 > self.__tuple.bsize) then
-	    error("out of bounds", 2)
-	 end
-	 return varint32.read(self.__tuple.data + offt)
-      else
-	 local ctinfo = datacast_type_cache[ctype]
-	 if offt < 0 or offt + ctinfo[2] > self.__tuple.bsize then
-	    error("out of bounds", 2)
-	 end
-	 return ffi.cast(ctinfo[1], self.__tuple.data + offt)[0]
-      end
-   end
-}
-local tuple_mt = {
-   __index = function(self, key)
-      if type(key) == 'number' then
-	 return self:strfield(key)
-      else
-	 return tuple_index[key]
-      end
-   end,
-   __len = function(self)
-      return self.cardinality
-   end,
-   __tostring = function(self)
-      return tostring(self.__tuple)
-   end
-}
-
-local box_tuple = ffi.typeof('struct box_tuple *')
-
-object_cast[ffi.C.BOX_TUPLE] = function(obj)
-   local tuple = ffi.cast(box_tuple, obj + 1) --  tuple starts right after 'struct tnt_object'
-   local len0, offt0 = varint32.read(tuple.data)
-   return setmetatable({ __obj = obj,
-			 __tuple = tuple,
-			 __cache = {[0] = len0, offt0}, -- {len0, offt0, len1, offt1, ...}
-			 cardinality = tonumber(tuple.cardinality),
-			 bsize = tonumber(tuple.bsize),},
-		       tuple_mt)
-end
-
-local _dispatch = _dispatch
-function dispatch(...)
-    return object(_dispatch(...))
-end
 
 function select(n, ...)
         local index = object_space[n].index[0]
@@ -259,96 +143,12 @@ function select(n, ...)
         return result
 end
 
-function add(n, ...)
-    local flags = 3 -- return tuple + add tuple flags
-    local req = packer()
-
-    req:u32(n)
-    req:u32(flags)
-    req:u32(lselect('#', ...))
-    for i = 1, lselect('#', ...) do
-        req:field(lselect(i, ...))
-    end
-    return dispatch(13, req:pack())
+local _dispatch = _dispatch
+--- jit.off(_dispatch) not needed, because C API calls are NYI
+for _, v in pairs{'add', 'replace', 'delete', 'update'} do
+    local pack = box_op.pack[v]
+    _M[v] = function (...) return object(_dispatch(pack(...))) end
 end
-
-function replace(n, ...)
-        local flags = 1 -- return tuple
-        local req = packer()
-
-        req:u32(n)
-        req:u32(flags)
-        req:u32(lselect('#', ...))
-        for i = 1, lselect('#', ...) do
-            req:field(lselect(i, ...))
-        end
-        return dispatch(13, req:pack())
-end
-
-function delete(n, key)
-        local key_len = 1
-        local req = packer()
-
-        req:u32(n)
-        req:u32(key_len)
-        req:field(key)
-        dispatch(20, req:pack())
-end
-
-function update(n, key, ...)
-        local ops = {...}
-        local flags, key_cardinality = 1, 1
-        local req = packer()
-
-        req:u32(tonumber(n))
-        req:u32(flags)
-        req:u32(key_cardinality)
-        req:field(key)
-        req:u32(#ops)
-        for k, op in ipairs(ops) do
-                req:u32(op[1])
-                if (op[2] == "set") then
-                        req:u8(0)
-                        req:field(op[3])
-                elseif (op[2] == "add") then
-                        req:u8(1)
-                        req:field_u32(op[3])
-                elseif (op[2] == "and") then
-                        req:u8(2)
-                        req:field_u32(op[3])
-                elseif (op[2] == "or") then
-                        req:u8(3)
-                        req:field_u32(op[3])
-                elseif (op[2] == "xor") then
-                        req:u8(4)
-                        req:field_u32(op[3])
-                elseif (op[2] == "splice") then
-                        req:u8(5)
-                        local s = packer()
-                        if (op[3] ~= nil) then
-                                s:field_u32(op[3])
-                        else
-                                s:u8(0)
-                        end
-                        if (op[4] ~= nil) then
-                                s:field_u32(op[4])
-                        else
-                                s:u8(0)
-                        end
-			s:field(op[5])
-			local buf, len = s:pack()
-			req:varint(len)
-			req:raw(buf, len)
-                elseif (op[2] == "delete") then
-                        req:string("\006\000")
-                elseif (op[2] == "insert") then
-                        req:u8(7)
-                        req:field(op[3])
-                end
-        end
-        return dispatch(19, req:pack())
-end
-
 
 function ctuple(obj)
    assert(obj ~= nil)
