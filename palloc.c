@@ -111,7 +111,7 @@ void __asan_unpoison_memory_region(void const volatile *addr, size_t size);
 # define RZMAX (PALLOC_REDZONE + (uintptr_t)PALLOC_ALIGN((void *)1))
 #else
 # define PALLOC_ALIGN(ptr) ptr
-# define RZMAX 0
+# define RZMAX PALLOC_REDZONE
 #endif
 
 #ifdef PALLOC_STAT
