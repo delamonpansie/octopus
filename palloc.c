@@ -608,8 +608,8 @@ palloc_cutoff(struct palloc_pool *pool)
 		if (chunk == root->chunk)
 			break;
 
-		release_chunk(chunk);
 		TAILQ_REMOVE(&pool->chunks, chunk, busy_link);
+		release_chunk(chunk);
 	}
 	assert(chunk == TAILQ_FIRST(&pool->chunks));
 
