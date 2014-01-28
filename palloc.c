@@ -454,7 +454,7 @@ release_chunks(struct chunk_list_head *chunks)
 	TAILQ_FOREACH_SAFE(chunk, chunks, link, tvar)
 		release_chunk(chunk);
 
-	if (release_count++ % 256 == 0)
+	if (++release_count % 256)
 		return;
 
 	for (uint32_t i = 0; i < nelem(classes); i++) {
