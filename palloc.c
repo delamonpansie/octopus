@@ -144,8 +144,8 @@ struct chunk {
 	uint64_t last_use;
 
 	struct chunk_class *class;
-	TAILQ_ENTRY(chunk) busy_link;
-	TAILQ_ENTRY(chunk) free_link;
+	TAILQ_ENTRY(chunk) link; /* chunk is either member of
+				    palloc_pool->chunks or chunk_class->chunks */
 
 #if PALLOC_REDZONE > 0 || (HAVE_VALGRIND_VALGRIND_H && !defined(NVALGRIND))
 	/* initial chunk->brk must be 8-aligned (for asan) */
@@ -302,7 +302,7 @@ next_chunk_for(struct palloc_pool *pool, size_t size)
 
 	chunk = TAILQ_FIRST(&class->chunks);
 	if (chunk != NULL) {
-		TAILQ_REMOVE(&class->chunks, chunk, free_link);
+		TAILQ_REMOVE(&class->chunks, chunk, link);
 		goto found;
 	}
 
@@ -331,7 +331,7 @@ next_chunk_for(struct palloc_pool *pool, size_t size)
 	ASAN_POISON_MEMORY_REGION(chunk->redzone, sizeof(chunk->redzone), 0xfa);
 found:
 	assert(chunk != NULL && chunk->magic == chunk_magic);
-	TAILQ_INSERT_HEAD(&pool->chunks, chunk, busy_link);
+	TAILQ_INSERT_HEAD(&pool->chunks, chunk, link);
 	pool->allocated += chunk->data_size;
 	VALGRIND_CREATE_MEMPOOL(chunk, PALLOC_REDZONE, 0); /* NOACCESS mark is set by chunk_poison() */
 
@@ -434,7 +434,8 @@ release_chunk(struct chunk *chunk)
 	if (chunk->class->size != malloc_fallback) {
 		chunk->free = chunk->data_size;
 		chunk->brk = (void *)chunk + sizeof(struct chunk);
-		TAILQ_INSERT_HEAD(&chunk->class->chunks, chunk, free_link);
+		/* chunk must be removed from palloc_pool->chunks already */
+		TAILQ_INSERT_HEAD(&chunk->class->chunks, chunk, link);
 		chunk_poison(chunk);
 		chunk->last_use = release_count;
 	} else {
@@ -444,12 +445,13 @@ release_chunk(struct chunk *chunk)
 	}
 }
 
+/* chunks is a garbage after call */
 static void
 release_chunks(struct chunk_list_head *chunks)
 {
 	struct chunk *chunk, *tvar;
 
-	TAILQ_FOREACH_SAFE(chunk, chunks, busy_link, tvar)
+	TAILQ_FOREACH_SAFE(chunk, chunks, link, tvar)
 		release_chunk(chunk);
 
 	if (release_count++ % 256 == 0)
@@ -462,11 +464,11 @@ release_chunks(struct chunk_list_head *chunks)
 		if (class->size == malloc_fallback)
 			continue;
 
-		TAILQ_FOREACH_REVERSE_SAFE(chunk, &class->chunks, chunk_list_head, free_link, tvar) {
+		TAILQ_FOREACH_REVERSE_SAFE(chunk, &class->chunks, chunk_list_head, link, tvar) {
 			if (release_count - chunk->last_use < PALLOC_CHUNK_TTL)
 				break;
 
-			TAILQ_REMOVE(&class->chunks, chunk, free_link);
+			TAILQ_REMOVE(&class->chunks, chunk, link);
 			ASAN_UNPOISON_MEMORY_REGION(chunk->redzone, sizeof(chunk->redzone));
 			ASAN_UNPOISON_MEMORY_REGION(chunk->brk, chunk->free);
 			munmap(chunk, class->size + sizeof(struct chunk));
@@ -521,7 +523,7 @@ palloc_unmap_unused(void)
 		struct chunk_class *class = &classes[i];
 		struct chunk *chunk, *tvar;
 
-		TAILQ_FOREACH_SAFE(chunk, &class->chunks, free_link, tvar) {
+		TAILQ_FOREACH_SAFE(chunk, &class->chunks, link, tvar) {
 			ASAN_UNPOISON_MEMORY_REGION(chunk, sizeof(struct chunk) + chunk->data_size);
 			munmap(chunk, class->size + sizeof(struct chunk));
 			class->chunks_count--;
@@ -604,11 +606,11 @@ palloc_cutoff(struct palloc_pool *pool)
 		return;
 	}
 
-	TAILQ_FOREACH_SAFE(chunk, &pool->chunks, busy_link, next_chunk) {
+	TAILQ_FOREACH_SAFE(chunk, &pool->chunks, link, next_chunk) {
 		if (chunk == root->chunk)
 			break;
 
-		TAILQ_REMOVE(&pool->chunks, chunk, busy_link);
+		TAILQ_REMOVE(&pool->chunks, chunk, link);
 		release_chunk(chunk);
 	}
 	assert(chunk == TAILQ_FIRST(&pool->chunks));
@@ -638,7 +640,7 @@ palloc_stat_info(struct tbuf *buf)
 		class = &classes[i];
 
 		int free_chunks = 0;
-		TAILQ_FOREACH(chunk, &class->chunks, free_link)
+		TAILQ_FOREACH(chunk, &class->chunks, link)
 		    free_chunks++;
 
 		tbuf_printf(buf,
@@ -658,7 +660,7 @@ palloc_stat_info(struct tbuf *buf)
 		if (pool->allocated > 0) {
 			tbuf_printf(buf, "      busy chunks:" CRLF);
 
-			TAILQ_FOREACH(chunk, &pool->chunks, busy_link)
+			TAILQ_FOREACH(chunk, &pool->chunks, link)
 				chunks[chunk->class - &classes[0]]++;
 
 			int indent = 0;
@@ -696,7 +698,7 @@ palloc_owner(struct palloc_pool *pool, void *ptr)
 {
 	struct chunk *chunk;
 
-	TAILQ_FOREACH(chunk, &pool->chunks, busy_link) {
+	TAILQ_FOREACH(chunk, &pool->chunks, link) {
 		void *data_start = (void *)chunk + sizeof(struct chunk);
 		void *data_end = data_start + chunk->data_size;
 		if (data_start <= ptr && ptr < data_end)
