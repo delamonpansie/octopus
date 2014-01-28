@@ -197,16 +197,12 @@ module(const char *name)
 void
 module_init(struct tnt_module *mod)
 {
+	int i;
 	if (mod->_state == TNT_MODULE_INITED)
 		return;
 
 	if (mod->_state == TNT_MODULE_INPROGRESS) {
 		say_error("Circular module dependency detected on module %s", mod->name);
-	}
-
-	if (!mod->init) {
-		mod->_state = TNT_MODULE_INITED;
-		return;
 	}
 
 	mod->_state = TNT_MODULE_INPROGRESS;
@@ -215,13 +211,39 @@ module_init(struct tnt_module *mod)
 		foreach_module (m) {
 			if (!m->init_before)
 				continue;
-			if (strcmp(m->init_before, mod->name) == 0) {
-				module_init(m);
+			for (i = 0; m->init_before[i]; i++) {
+				if (strcmp(m->init_before[i], mod->name) == 0) {
+					module_init(m);
+				}
 			}
 		}
 	}
 
-	mod->init();
+	if (mod->depend_on) {
+		for (i = 0; mod->depend_on[i]; i++) {
+			struct tnt_module *dep = NULL;
+			/* if dependency is "?module_name"
+			 * then "module_name" is not critical dependency */
+			if (mod->depend_on[i][0] == '?') {
+				dep = module(mod->depend_on[i] + 1);
+				if (!dep) {
+					say_warn("dependency module '%s' not registered",
+						       	mod->depend_on[i]+1);
+					continue;
+				}
+			} else {
+				dep = module(mod->depend_on[i]);
+				if (!dep) {
+					panic("dependency module '%s' not registered",
+						       	mod->depend_on[i]);
+				}
+			}
+			module_init(dep);
+		}
+	}
+
+	if (mod->init)
+		mod->init();
 
 	mod->_state = TNT_MODULE_INITED;
 }

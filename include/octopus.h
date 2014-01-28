@@ -48,7 +48,7 @@ enum {
 
 struct tnt_module {
 	struct tnt_module *next;
-	const char *name, *version, *init_before;
+	const char *name, *version, **init_before, **depend_on;
 	int _state;
 	void (*init)(void);
 	i32  (*check_config)(struct octopus_cfg *conf);
