@@ -195,6 +195,38 @@ module(const char *name)
 }
 
 void
+module_init(struct tnt_module *mod)
+{
+	if (mod->_state == TNT_MODULE_INITED)
+		return;
+
+	if (mod->_state == TNT_MODULE_INPROGRESS) {
+		say_error("Circular module dependency detected on module %s", mod->name);
+	}
+
+	if (!mod->init) {
+		mod->_state = TNT_MODULE_INITED;
+		return;
+	}
+
+	mod->_state = TNT_MODULE_INPROGRESS;
+
+	if (mod->name) {
+		foreach_module (m) {
+			if (!m->init_before)
+				continue;
+			if (strcmp(m->init_before, mod->name) == 0) {
+				module_init(m);
+			}
+		}
+	}
+
+	mod->init();
+
+	mod->_state = TNT_MODULE_INITED;
+}
+
+void
 register_module_(struct tnt_module *m)
 {
         m->next = modules_head;
@@ -748,7 +780,7 @@ octopus(int argc, char **argv)
 			exit(EX_USAGE);
 		}
 
-		module(NULL)->init();
+		module_init(module(NULL));
 		exit([recovery write_initial_state]);
 	}
 #endif
@@ -758,7 +790,7 @@ octopus(int argc, char **argv)
 	fiber_init();
 	luaT_init();
 	signal_init();
-	module(NULL)->init();
+	module_init(module(NULL));
 #elif defined(STORAGE)
 	say_info("octopus version: %s", octopus_version());
 	say_info("%s", OCT_BUILD_INFO);
@@ -807,7 +839,7 @@ octopus(int argc, char **argv)
 	luaT_init();
 
 	if (module("feeder") && fold_scn == 0)
-		module("feeder")->init();
+		module_init(module("feeder"));
 
 	ev_signal ev_sig = { .coro = 0 };
 	ev_signal_init(&ev_sig, (void *)save_snapshot, SIGUSR1);
@@ -823,11 +855,11 @@ octopus(int argc, char **argv)
 	@try {
 		struct tnt_module *primary = module(NULL),
 				   *feeder = module("feeder");
-		primary->init();
+		module_init(primary);
 		foreach_module(m) {
 			if (!m->init || m == primary || m == feeder)
 				continue;
-			m->init();
+			module_init(m);
 		}
 	}
 	@catch (id e) {
