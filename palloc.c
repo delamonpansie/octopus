@@ -601,7 +601,6 @@ palloc_cutoff(struct palloc_pool *pool)
 
 	if (root == NULL) {
 		prelease(pool);
-
 		return;
 	}
 
