@@ -462,6 +462,12 @@ init(void)
 			say_syserror("accept");
 			continue;
 		}
+
+		if (cfg.wal_feeder_debug_no_fork) {
+			recover_feed_slave(client);
+			continue;
+		}
+
 		child = tnt_fork();
 		if (child < 0) {
 			say_syserror("fork");
