@@ -245,8 +245,19 @@ recv
 		ev_io io = { .coro = 1 };
 		ev_io_init(&io, (void *)fiber, c.fd, EV_READ);
 		ev_io_start(&io);
+		ev_timer timer = { .coro = 1 };
+		bool timer_set = false;
+
 		in_recv = fiber;
-		yield();
+		if (cfg.wal_feeder_keepalive_timeout > 0.0) {
+			timer_set = true;
+			ev_timer_init(&timer, (void *)fiber, cfg.wal_feeder_keepalive_timeout, 0);
+			ev_timer_start(&timer);
+		}
+		void *w = yield();
+		if (timer_set && w != &timer) {
+			ev_timer_stop(&timer);
+		}
 		in_recv = NULL;
 		ev_io_stop(&io);
 
