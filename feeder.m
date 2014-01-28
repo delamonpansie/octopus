@@ -184,6 +184,13 @@ wal_final_row
 }
 
 - (void)
+write_row_direct: (struct row_v12*) row
+{
+	if (row)
+		writef(fd, (const char *)row, sizeof(*row) + row->len);
+}
+
+- (void)
 recover_start_from_scn:(i64)initial_scn filter:(struct replication_filter*)_filter
 {
 	int i;
@@ -341,6 +348,18 @@ eof_monitor(void)
 }
 
 static void
+keepalive_send(va_list ap)
+{
+	Feeder *feeder = va_arg(ap, typeof(feeder));
+	struct row_v12* sysnop = [feeder dummy_row_lsn: 0 scn: 0 tag: nop | TAG_SYS];
+
+	for (;;) {
+		[feeder write_row_direct: sysnop];
+		fiber_sleep(cfg.wal_feeder_keepalive_interval);
+	}
+}
+
+static void
 recover_feed_slave(int sock)
 {
 	Feeder *feeder;
@@ -373,6 +392,8 @@ recover_feed_slave(int sock)
 
 	ev_timer_init(&tm, (void *)keepalive, 1, 1);
 	ev_timer_start(&tm);
+
+	fiber_create("feeder/keepalive_send", keepalive_send, feeder);
 
 	ev_run(0);
 }
