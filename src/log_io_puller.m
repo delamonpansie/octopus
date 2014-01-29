@@ -38,6 +38,13 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 
+@interface XLogPuller ()
+- (ssize_t) recv_with_timeout: (ev_tstamp)timeout;
+- (const char *) establish_connection;
+- (const char *) replication_compat: (i64)scn;
+- (const char *) replication_handshake:(void*)hshake len:(size_t)len;
+@end
+
 @implementation XLogPuller
 - (u32) version { return version; }
 - (bool) eof { return false; }
@@ -71,20 +78,16 @@ handshake:(struct sockaddr_in *)addr_ scn:(i64)scn
 	return [self handshake:addr_ scn:scn err:NULL];
 }
 
-- (int)
-handshake:(i64)scn err:(const char **)err_ptr
+- (const char *)
+establish_connection
 {
-	const char *err;
 	int fd;
 
 	abort = 0; /* must be set before connect */
 
-	assert(scn >= 0);
-
 	say_debug("%s: connect", __func__);
 	if ((fd = tcp_connect(&addr, NULL, 5)) < 0) {
-		err = "can't connect to feeder";
-		goto err;
+		return "can't connect to feeder";
 	}
 
 	int one = 1;
@@ -106,19 +109,88 @@ handshake:(i64)scn err:(const char **)err_ptr
 
 	assert(c.fd < 0);
 	conn_set(&c, fd);
+	return NULL;
+}
+
+- (const char *)
+replication_compat:(i64)scn
+{
+	say_debug("%s: compat send scn", __func__);
+	if (conn_write(&c, &scn, sizeof(scn)) != sizeof(scn)) {
+		return "can't write initial lsn";
+	}
+
+	say_debug("%s: compat recv scn", __func__);
+	if (conn_read(&c, &version, sizeof(version)) != sizeof(version)) {
+		return "can't write initial lsn";
+	}
+	return NULL;
+}
+
+- (const char *)
+replication_handshake:(void*)hshake len:(size_t)hsize
+{
+	struct tbuf *req = tbuf_alloc(fiber->pool);
+	struct iproto ireq = { .msg_code = 0, .sync = 0, .data_len = hsize };
+	tbuf_add_dup(req, &ireq);
+	tbuf_append(req, hshake, hsize);
+
+	say_debug("%s: send handshake, %u bytes", __func__, tbuf_len(req));
+	if (conn_write(&c, req->ptr, tbuf_len(req)) != tbuf_len(req)) {
+		return "can't write initial handshake";
+	}
+
+	do {
+		tbuf_ensure(c.rbuf, 16 * 1024);
+		ssize_t r = [self recv_with_timeout: 5];
+
+		if (r < 0) {
+			if (r == -2) {
+				return "timeout";
+			}
+			if (errno == EAGAIN ||
+			    errno == EWOULDBLOCK ||
+			    errno == EINTR)
+				continue;
+			return "can'r read initial handshake";
+		} else if (r == 0) {
+			return "can'r read initial handshake, eof";
+		}
+
+		say_debug("%s: recv handshake part, %u bytes", __func__, tbuf_len(c.rbuf));
+	} while (tbuf_len(c.rbuf) < sizeof(struct iproto_retcode) + sizeof(version));
+
+	struct iproto_retcode *reply = (void *)iproto_parse(c.rbuf);
+	if (reply == NULL) {
+		return "can't read reply";
+	}
+
+	if (reply->ret_code != 0 ||
+	    reply->sync != iproto(req)->sync ||
+	    reply->msg_code != iproto(req)->msg_code ||
+	    reply->data_len != sizeof(reply->ret_code) + sizeof(version))
+	{
+		return "bad reply";
+	}
+
+	say_debug("%s: iproto_reply data_len:%i, rbuf len:%i", __func__,
+		  reply->data_len, tbuf_len(c.rbuf));
+
+	memcpy(&version, reply->data, sizeof(version));
+	return NULL;
+}
+
+- (int)
+handshake:(i64)scn err:(const char **)err_ptr
+{
+	assert(scn >= 0);
+
+	const char *err = [self establish_connection];
+	if (err) goto err;
 
 	if (cfg.replication_compat) {
-		say_debug("%s: compat send scn", __func__);
-		if (conn_write(&c, &scn, sizeof(scn)) != sizeof(scn)) {
-			err = "can't write initial lsn";
-			goto err;
-		}
-
-		say_debug("%s: compat recv scn", __func__);
-		if (conn_read(&c, &version, sizeof(version)) != sizeof(version)) {
-			err = "can't read version";
-			goto err;
-		}
+		err = [self replication_compat: scn];
+		if (err) goto err;
 	} else {
 		struct replication_handshake_v1 hshake = {1, scn, {0}};
 
@@ -128,59 +200,8 @@ handshake:(i64)scn err:(const char **)err_ptr
 			else
 				strcpy(hshake.filter, cfg.wal_feeder_filter);
 		}
-		struct tbuf *req = tbuf_alloc(fiber->pool);
-		tbuf_append(req, &(struct iproto){ .msg_code = 0, .sync = 0, .data_len = sizeof(hshake) },
-			    sizeof(struct iproto));
-		tbuf_append(req, &hshake, sizeof(hshake));
-
-		say_debug("%s: send handshake, %u bytes", __func__, tbuf_len(req));
-		if (conn_write(&c, req->ptr, tbuf_len(req)) != tbuf_len(req)) {
-			err = "can't write initial handshake";
-			goto err;
-		}
-
-		do {
-			tbuf_ensure(c.rbuf, 16 * 1024);
-			ssize_t r = [self recv_with_timeout: 5];
-
-			if (r < 0) {
-				if (r == -2) {
-					err = "timeout";
-					goto err;
-				}
-				if (errno == EAGAIN ||
-				    errno == EWOULDBLOCK ||
-				    errno == EINTR)
-					continue;
-				err = "can'r read initial handshake";
-				goto err;
-			} else if (r == 0) {
-				err = "can'r read initial handshake, eof";
-				goto err;
-			}
-
-			say_debug("%s: recv handshake part, %u bytes", __func__, tbuf_len(c.rbuf));
-		} while (tbuf_len(c.rbuf) < sizeof(struct iproto_retcode) + sizeof(version));
-
-		struct iproto_retcode *reply = (void *)iproto_parse(c.rbuf);
-		if (reply == NULL) {
-			err = "can't read reply";
-			goto err;
-		}
-
-		if (reply->ret_code != 0 ||
-		    reply->sync != iproto(req)->sync ||
-		    reply->msg_code != iproto(req)->msg_code ||
-		    reply->data_len != sizeof(reply->ret_code) + sizeof(version))
-		{
-			err = "bad reply";
-			goto err;
-		}
-
-		say_debug("%s: iproto_reply data_len:%i, rbuf len:%i", __func__,
-			  reply->data_len, tbuf_len(c.rbuf));
-
-		memcpy(&version, reply->data, sizeof(version));
+		err = [self replication_handshake: &hshake len: sizeof(hshake)];
+		if (err) goto err;
 	}
 
 	if (version != default_version && version != version_11) {
