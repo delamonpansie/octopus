@@ -369,6 +369,7 @@ recover_feed_slave(int sock)
 	ev_io io = { .coro = 0 };
 	ev_timer tm = { .coro = 0 };
 	struct replication_filter filter;
+	memset(&filter, 0, sizeof(filter));
 
 	if (getpeername(sock, (struct sockaddr *)&addr, &addrlen) != -1)
 		peer_name = sintoa(&addr);
