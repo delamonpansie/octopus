@@ -329,6 +329,7 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 	struct fiber *in_recv;
 }
 
+- (ssize_t) recv_with_timeout: (ev_tstamp)timeout;
 - (ssize_t) recv;
 - (void) abort_recv;
 

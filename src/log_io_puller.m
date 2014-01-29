@@ -81,13 +81,6 @@ handshake:(i64)scn err:(const char **)err_ptr
 
 	assert(scn >= 0);
 
-	/* FIXME: do we need this ? */
-	if (scn > 0) {
-		scn -= 1024;
-		if (scn < 1)
-			scn = 1;
-	}
-
 	say_debug("%s: connect", __func__);
 	if ((fd = tcp_connect(&addr, NULL, 5)) < 0) {
 		err = "can't connect to feeder";
@@ -147,25 +140,14 @@ handshake:(i64)scn err:(const char **)err_ptr
 		}
 
 		do {
-			ev_tstamp timeout = 5;
-			ev_timer timer = { .coro = 1 };
-			ev_io io = { .coro = 1 };
-			ev_io_init(&io, (void *)fiber, c.fd, EV_READ);
-			ev_io_start(&io);
-			ev_timer_init(&timer, (void *)fiber, timeout, 0.);
-			ev_timer_start(&timer);
-			void *w = yield();
-			ev_io_stop(&io);
-			ev_timer_stop(&timer);
-			if (w == &timer) {
-				err = "timeout";
-				goto err;
-			}
 			tbuf_ensure(c.rbuf, 16 * 1024);
-
-			ssize_t r = tbuf_recv(c.rbuf, c.fd);
+			ssize_t r = [self recv_with_timeout: 5];
 
 			if (r < 0) {
+				if (r == -2) {
+					err = "timeout";
+					goto err;
+				}
 				if (errno == EAGAIN ||
 				    errno == EWOULDBLOCK ||
 				    errno == EINTR)
@@ -232,6 +214,42 @@ contains_full_row_v11(const struct tbuf *b)
 }
 
 - (ssize_t)
+recv_with_timeout: (ev_tstamp)timeout
+{
+	ssize_t r = tbuf_recv(c.rbuf, c.fd);
+	if (r == -1) {
+		ev_io io = { .coro = 1 };
+		ev_io_init(&io, (void *)fiber, c.fd, EV_READ);
+		ev_io_start(&io);
+		ev_timer timer = { .coro = 1 };
+		ev_timer_init(&timer, (void *)fiber, timeout, 0);
+
+		bool set_timer = timeout > 0.0;
+		if (set_timer) {
+			ev_now_update();
+			ev_timer_start(&timer);
+		}
+
+		in_recv = fiber;
+		void *w = yield();
+		ev_io_stop(&io);
+		in_recv = NULL;
+
+		if (set_timer) {
+			if (unlikely(w == &timer))
+				return -2;
+			ev_timer_stop(&timer);
+		}
+
+		if (w == &io) {
+			r = tbuf_recv(c.rbuf, c.fd);
+		}
+	}
+
+	return r;
+}
+
+- (ssize_t)
 recv
 {
 	if (abort) {
@@ -240,34 +258,11 @@ recv
 	}
 
 	tbuf_ensure(c.rbuf, 256 * 1024);
-	ssize_t r = tbuf_recv(c.rbuf, c.fd);
-	if (r == -1) {
-		ev_io io = { .coro = 1 };
-		ev_io_init(&io, (void *)fiber, c.fd, EV_READ);
-		ev_io_start(&io);
-		ev_timer timer = { .coro = 1 };
-		bool timer_set = false;
-
-		in_recv = fiber;
-		if (cfg.wal_feeder_keepalive_timeout > 0.0) {
-			timer_set = true;
-			ev_timer_init(&timer, (void *)fiber, cfg.wal_feeder_keepalive_timeout, 0);
-			ev_timer_start(&timer);
-		}
-		void *w = yield();
-		if (timer_set && w != &timer) {
-			ev_timer_stop(&timer);
-		}
-		in_recv = NULL;
-		ev_io_stop(&io);
-
-		if (abort) {
-			conn_close(&c);
-			errno = 0;
-			return -1;
-		}
-
-		r = tbuf_recv(c.rbuf, c.fd);
+	ssize_t r = [self recv_with_timeout: cfg.wal_feeder_keepalive_timeout];
+	if (abort) {
+		conn_close(&c);
+		errno = 0;
+		return -1;
 	}
 
 	return r;
