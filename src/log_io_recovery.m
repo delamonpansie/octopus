@@ -747,6 +747,7 @@ remote_hot_standby(va_list ap)
 			say_error("replication failure: %s", e->reason);
 		}
 	sleep:
+		fiber_gc();
 		fiber_sleep(reconnect_delay);
 	}
 }
