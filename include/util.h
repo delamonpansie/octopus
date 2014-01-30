@@ -96,6 +96,8 @@ void *xrealloc(void *ptr, size_t size);
 #  define oct_cold
 #endif
 
+#define __unused__ __attribute__((unused))
+
 #if HAVE__BUILTIN_EXPECT
 #  define likely(x)    __builtin_expect((x),1)
 #  define unlikely(x)  __builtin_expect((x),0)
