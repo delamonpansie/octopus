@@ -191,7 +191,7 @@ write_row_direct: (struct row_v12*) row
 }
 
 - (void)
-recover_start_from_scn:(i64)initial_scn filter:(struct replication_filter*)_filter
+recover_start_from_scn:(i64)initial_scn filter:(struct feeder_filter*)_filter
 {
 	int i;
 	say_debug("%s initial_scn:%"PRIi64" filter: type=%s name=%s", __func__, initial_scn, filter_type_names[_filter->type], _filter->name);
@@ -253,7 +253,7 @@ recover_start_from_scn:(i64)initial_scn filter:(struct replication_filter*)_filt
 @end
 
 static i64
-handshake(int sock, struct replication_filter *filter)
+handshake(int sock, struct feeder_filter *filter)
 {
 	struct tbuf *rep, *input;
 	struct iproto *req;
@@ -297,7 +297,7 @@ handshake(int sock, struct replication_filter *filter)
 		}
 		if (strnlen(hshake->filter, sizeof(hshake->filter)) > 0) {
 			filter->type = FILTER_TYPE_LUA;
-			memcpy(filter->name, hshake->filter, sizeof(hshake->filter));
+			filter->name = hshake->filter;
 		}
 		break;
 	case 2: {
@@ -311,7 +311,7 @@ handshake(int sock, struct replication_filter *filter)
 		}
 		if (strnlen(hshake2->filter, sizeof(hshake2->filter)) > 0) {
 			filter->type = hshake2->filter_type;
-			memcpy(filter->name, hshake2->filter, sizeof(hshake->filter));
+			filter->name = hshake->filter;
 			if (hshake2->filter_arglen > 0) {
 				filter->arglen = hshake2->filter_arglen;
 				filter->arg = hshake2->filter_arg;
@@ -368,7 +368,7 @@ recover_feed_slave(int sock)
 	const char *peer_name = "<unknown>";
 	ev_io io = { .coro = 0 };
 	ev_timer tm = { .coro = 0 };
-	struct replication_filter filter;
+	struct feeder_filter filter;
 	memset(&filter, 0, sizeof(filter));
 
 	if (getpeername(sock, (struct sockaddr *)&addr, &addrlen) != -1)
