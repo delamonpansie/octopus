@@ -465,7 +465,7 @@ unpack_meths = {
 }
 local unpack_mt = {
     __index = unpack_meths,
-    __len = function(self) return self.stop - self.ptr end
+    __len = function(self) return self.len end
 }
 ffi.metatype(unpack_t, unpack_mt)
 
