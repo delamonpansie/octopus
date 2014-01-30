@@ -853,7 +853,8 @@ retry:
 					continue;
 
 				say_debug("feeding from %s", p->name);
-				if ([puller handshake:&p->feeder_addr scn:[r scn] err:NULL] <= 0)
+				[puller set_addr:&p->feeder_addr];
+				if ([puller handshake:[r scn] err:NULL] <= 0)
 					continue;
 				while ([r pull_wal:puller] != 1);
 				break;
@@ -1146,7 +1147,8 @@ enable_local_writes
 			if (p->id == self_id)
 				continue;
 
-			if ([puller handshake:&p->feeder_addr scn:scn err:NULL] <= 0)
+			[puller set_addr:&p->feeder_addr];
+			if ([puller handshake:scn err:NULL] <= 0)
 				continue;
 
 			say_debug("loading from %s", p->name);

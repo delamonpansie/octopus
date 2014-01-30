@@ -722,7 +722,13 @@ remote_hot_standby(va_list ap)
 
 		const char *err;
 
-		while ([r->remote_puller handshake:&sin scn:[r scn]+1 err:&err] <= 0) {
+		if (cfg.replication_compat)
+			[r->remote_puller replication_compat];
+		else
+			[r->remote_puller hshake_v1: cfg.wal_feeder_filter];
+
+		[r->remote_puller set_addr: &sin];
+		if ([r->remote_puller handshake:[r scn]+1 err:&err] <= 0) {
 			/* no more WAL rows in near future, notify module about that */
 			[r wal_final_row];
 

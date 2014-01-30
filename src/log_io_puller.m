@@ -43,6 +43,7 @@
 - (const char *) establish_connection;
 - (const char *) replication_compat: (i64)scn;
 - (const char *) replication_handshake:(void*)hshake len:(size_t)len;
+- (void) set_filter: (const char*)filter type: (u32)type;
 @end
 
 @implementation XLogPuller
@@ -56,26 +57,61 @@ init
 	say_debug("%s", __func__);
 	conn_init(&c, fiber->pool, -1, fiber, fiber, MO_STATIC);
 	palloc_register_gc_root(fiber->pool, &c, conn_gc);
+	hshake_ver = 1;
+	filter = (struct replication_filter){
+		.type = FILTER_TYPE_ID,
+		.name = {0},
+		.arg = NULL,
+		.arglen = 0
+	};
 	return [super init];
+}
+
+- (void)
+set_filter: (const char*)_filter type: (u32)type
+{
+	if (type > FILTER_TYPE_MAX) {
+		raise("Unknown wal feeder filter type %d", type);
+	}
+	if (_filter != NULL) {
+		if (strlen(_filter) + 1 > sizeof(filter.name))
+			raise("wal feeder filter name too big, ignoring");
+		else {
+			filter.type = type;
+			strcpy(filter.name, _filter);
+			return;
+		}
+	}
+	filter.type = FILTER_TYPE_ID;
+	memset(filter.name, 0, sizeof(filter.name));
+}
+
+- (void)
+replication_compat
+{
+	hshake_ver = 0;
+}
+
+- (void)
+hshake_v1: (const char*)_filter
+{
+	hshake_ver = 1;
+	[self set_filter: _filter type: FILTER_TYPE_LUA];
+}
+
+- (void)
+hshake_v2: (const char*)_filter type: (u32)type arg: (void *)arg len: (u32)len
+{
+	hshake_ver = 2;
+	[self set_filter: _filter type: type];
+	filter.arg = arg;
+	filter.arglen = len;
 }
 
 - (void)
 set_addr:(struct sockaddr_in *)addr_
 {
 	memcpy(&addr, addr_, sizeof(addr));
-}
-
-- (int)
-handshake:(struct sockaddr_in *)addr_ scn:(i64)scn err:(const char **)err_ptr
-{
-	memcpy(&addr, addr_, sizeof(addr));
-	return [self handshake:scn err:err_ptr];
-}
-
-- (int)
-handshake:(struct sockaddr_in *)addr_ scn:(i64)scn
-{
-	return [self handshake:addr_ scn:scn err:NULL];
 }
 
 - (const char *)
@@ -188,19 +224,23 @@ handshake:(i64)scn err:(const char **)err_ptr
 	const char *err = [self establish_connection];
 	if (err) goto err;
 
-	if (cfg.replication_compat) {
+	if (hshake_ver == 0) {
 		err = [self replication_compat: scn];
 		if (err) goto err;
-	} else {
+	} else if (hshake_ver == 1) {
 		struct replication_handshake_v1 hshake = {1, scn, {0}};
+		strncpy(hshake.filter, filter.name, sizeof(hshake.filter));
 
-		if (cfg.wal_feeder_filter != NULL) {
-			if (strlen(cfg.wal_feeder_filter) + 1 > sizeof(hshake.filter))
-				say_error("wal_feeder_filter too big, ignoring");
-			else
-				strcpy(hshake.filter, cfg.wal_feeder_filter);
-		}
 		err = [self replication_handshake: &hshake len: sizeof(hshake)];
+		if (err) goto err;
+	} else if (hshake_ver == 2) {
+		struct tbuf *hbuf = tbuf_alloc(fiber->pool);
+		struct replication_handshake_v2 hshake = {2, scn, {0}, filter.type, filter.arglen};
+		strncpy(hshake.filter, filter.name, sizeof(hshake.filter));
+		tbuf_add_dup(hbuf, &hshake);
+		tbuf_append(hbuf, filter.arg, filter.arglen);
+
+		err = [self replication_handshake: hbuf->ptr len: tbuf_len(hbuf)];
 		if (err) goto err;
 	}
 

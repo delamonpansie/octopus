@@ -261,6 +261,37 @@ struct wal_reply {
 	u32 run_crc;
 } __attribute__((packed));
 
+#define replication_handshake_base_fields \
+	u32 ver; \
+	i64 scn; \
+	char filter[32]
+struct replication_handshake_base {
+	replication_handshake_base_fields;
+} __attribute__((packed));
+#define REPLICATION_FILTER_NAME_LEN field_sizeof(struct replication_handshake_base, filter)
+
+#define replication_handshake_v1 replication_handshake_base
+
+struct replication_handshake_v2 {
+	replication_handshake_base_fields;
+	u32 filter_type;
+	u32 filter_arglen;
+	char filter_arg[];
+} __attribute__((packed));
+
+struct replication_filter {
+	u32 type;
+	u32 arglen;
+	char name[REPLICATION_FILTER_NAME_LEN];
+	void *arg;
+};
+enum {
+	FILTER_TYPE_ID  = 0,
+	FILTER_TYPE_LUA = 1,
+	FILTER_TYPE_C   = 2,
+	FILTER_TYPE_MAX = 3
+};
+
 
 int wal_pack_prepare(XLogWriter *r, struct wal_pack *);
 u32 wal_pack_append_row(struct wal_pack *pack, struct row_v12 *row);
@@ -327,6 +358,8 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 	u32 version;
 	bool abort;
 	struct fiber *in_recv;
+	u32 hshake_ver;
+	struct replication_filter filter;
 }
 
 - (ssize_t) recv;
@@ -335,10 +368,11 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 - (XLogPuller *) init;
 - (void) set_addr:(struct sockaddr_in *)addr_;
 
+- (void) replication_compat;
+- (void) hshake_v1: (const char*)filter;
+- (void) hshake_v2: (const char*)filter type: (u32)type arg: (void *)arg len: (u32)len;
 /* returns -1 in case of handshake failure. puller is closed.  */
 - (int) handshake:(i64)scn err:(const char **)err_ptr;
-- (int) handshake:(struct sockaddr_in *)addr_ scn:(i64)scn;
-- (int) handshake:(struct sockaddr_in *)addr_ scn:(i64)scn err:(const char **)err_ptr;
 @end
 
 @interface Recovery: XLogWriter {
@@ -409,37 +443,6 @@ i64 fold_scn;
 int wal_disk_writer(int fd, void *state);
 void wal_disk_writer_input_dispatch(va_list ap __attribute__((unused)));
 int snapshot_write_row(XLog *l, u16 tag, struct tbuf *row);
-
-#define replication_handshake_base_fields \
-	u32 ver; \
-	i64 scn; \
-	char filter[32]
-struct replication_handshake_base {
-	replication_handshake_base_fields;
-} __attribute__((packed));
-#define REPLICATION_FILTER_NAME_LEN field_sizeof(struct replication_handshake_base, filter)
-
-#define replication_handshake_v1 replication_handshake_base
-
-struct replication_handshake_v2 {
-	replication_handshake_base_fields;
-	u32 filter_type;
-	u32 filter_arglen;
-	char filter_arg[];
-} __attribute__((packed));
-
-struct replication_filter {
-	u32 type;
-	u32 arglen;
-	char name[REPLICATION_FILTER_NAME_LEN];
-	char *arg;
-};
-enum {
-	FILTER_TYPE_ID  = 0,
-	FILTER_TYPE_LUA = 1,
-	FILTER_TYPE_C   = 2,
-	FILTER_TYPE_MAX = 3
-};
 
 static inline struct _row_v04 *_row_v04(const struct tbuf *t)
 {
