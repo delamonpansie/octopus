@@ -431,7 +431,7 @@ recover_cont
 	strcpy(status, "hot_standby/local");
 
 	/* all curently readable wal rows were read, notify about that */
-	if (feeder_addr == NULL || cfg.local_hot_standby)
+	if (feeder.addr.sin_family == AF_UNSPEC || cfg.local_hot_standby)
 		[self wal_final_row];
 
 	return lsn;
@@ -705,29 +705,18 @@ static void
 remote_hot_standby(va_list ap)
 {
 	Recovery *r = va_arg(ap, Recovery *);
-	struct sockaddr_in sin;
 	ev_tstamp reconnect_delay = 0.1;
 	bool warning_said = false;
 
 	r->remote_puller = [[objc_lookUpClass("XLogPuller") alloc] init];
 
 	for (;;) {
-		if (!r->feeder_addr)
-			goto sleep;
-
-		memset(&sin, 0, sizeof(sin));
-		atosin(r->feeder_addr, &sin);
-		if (sin.sin_addr.s_addr == INADDR_ANY)
+		if (![r feeder_addr_remote])
 			goto sleep;
 
 		const char *err;
 
-		if (cfg.replication_compat)
-			[r->remote_puller replication_compat];
-		else
-			[r->remote_puller hshake_v1: cfg.wal_feeder_filter];
-
-		[r->remote_puller set_addr: &sin];
+		[r->remote_puller feeder_param: &r->feeder];
 		if ([r->remote_puller handshake:[r scn]+1 err:&err] <= 0) {
 			/* no more WAL rows in near future, notify module about that */
 			[r wal_final_row];
@@ -759,16 +748,25 @@ remote_hot_standby(va_list ap)
 }
 
 
-- (void)
-feeder_change_from:(const char *)old to:(const char *)new
+- (bool)
+feeder_changed:(struct feeder_param*)new
 {
-	if (!local_writes)
-		return;
-
-	if (!old || !new || strcmp(old, new)) {
-		feeder_addr = new;
-		[remote_puller abort_recv];
+	if (feeder_param_eq(&feeder, new) != true) {
+		free(feeder.filter.name);
+		free(feeder.filter.arg);
+		feeder = *new;
+		if (feeder.filter.name) {
+			feeder.filter.name = strdup(feeder.filter.name);
+		}
+		if (feeder.filter.arg) {
+			feeder.filter.arg = xmalloc(feeder.filter.arglen);
+			memcpy(feeder.filter.arg, new->filter.arg, feeder.filter.arglen);
+		}
+		if (local_writes)
+			[remote_puller abort_recv];
+		return true;
 	}
+	return false;
 }
 
 
@@ -779,19 +777,15 @@ enable_local_writes
 	[self recover_finalize];
 	local_writes = true;
 
-	if (feeder_addr != NULL) {
+	if ([self feeder_addr_remote]) {
 		if (lsn > 0) /* we're already have some xlogs and recovered from them */
 			[self configure_wal_writer];
-
-		struct sockaddr_in *sin = xmalloc(sizeof(*sin));
-		if (atosin(feeder_addr, sin) == -1 || sin->sin_addr.s_addr == INADDR_ANY)
-			panic("bad feeder addr: `%s'", feeder_addr);
 
 		if (!fiber_create("remote_hot_standby", remote_hot_standby, self))
 			panic("unable to start remote hot standby fiber");
 
 		say_info("starting remote hot standby");
-		snprintf(status, sizeof(status), "hot_standby/%s", feeder_addr);
+		snprintf(status, sizeof(status), "hot_standby/%s", sintoa(&feeder.addr));
 	} else {
 		[self configure_wal_writer];
 		say_info("I am primary");
@@ -804,7 +798,7 @@ is_replica
 {
 	if (!local_writes)
 		return true;
-	if (feeder_addr != NULL)
+	if ([self feeder_addr_remote])
 		return true;
 	return false;
 }
@@ -833,6 +827,7 @@ submit_run_crc
 {
 	snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
 	wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
+	memset(&feeder, 0, sizeof(feeder));
 
 	wal_timer.data = self;
 
@@ -906,13 +901,14 @@ nop_hb_writer(va_list ap)
 - (id) init_snap_dir:(const char *)snap_dirname
              wal_dir:(const char *)wal_dirname
 	rows_per_wal:(int)wal_rows_per_file
-	 feeder_addr:(const char *)feeder_addr_
+	feeder_param:(struct feeder_param*)feeder_
                flags:(int)flags
 {
 	/* Recovery object is never released */
 
 	snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
 	wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
+	memset(&feeder, 0, sizeof(feeder));
 
 	wal_timer.data = self;
 
@@ -941,14 +937,25 @@ nop_hb_writer(va_list ap)
 			fiber_create("nop_hb", nop_hb_writer, self, cfg.nop_hb_delay);
 	}
 
-	if (feeder_addr_ != NULL) {
-		feeder_addr = feeder_addr_;
-		say_info("configuring remote hot standby, WAL feeder %s", feeder_addr);
+	if (feeder_ != NULL) {
+		[self feeder_changed: feeder_];
+		say_info("configuring remote hot standby, WAL feeder %s", sintoa(&feeder.addr));
 	}
 
 	return self;
 }
 
+- (bool)
+feeder_addr_set
+{
+	return feeder.addr.sin_family != AF_UNSPEC;
+}
+
+- (bool)
+feeder_addr_remote
+{
+	return feeder.addr.sin_addr.s_addr != INADDR_ANY && feeder.addr.sin_family != AF_UNSPEC;
+}
 @end
 
 @implementation FoldRecovery
@@ -960,6 +967,7 @@ init_snap_dir:(const char *)snap_dirname
 	[super init];
         snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
         wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
+	memset(&feeder, 0, sizeof(feeder));
 	return self;
 }
 
@@ -1103,20 +1111,21 @@ init_snap_dir:(const char *)snap_dirname
 	[super init];
         snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
         wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
+	memset(&feeder, 0, sizeof(feeder));
 	return self;
 }
 
 - (id) init_snap_dir:(const char *)snap_dirname
              wal_dir:(const char *)wal_dirname
         rows_per_wal:(int)wal_rows_per_file
-	 feeder_addr:(const char *)feeder_addr_
+	feeder_param:(struct feeder_param*)feeder_
                flags:(int)flags
 {
 	say_info("WAL disabled");
 	return [super init_snap_dir:snap_dirname
 			    wal_dir:wal_dirname
 		       rows_per_wal:wal_rows_per_file
-			feeder_addr:feeder_addr_
+		       feeder_param:feeder_
 			      flags:flags | RECOVER_READONLY];
 }
 

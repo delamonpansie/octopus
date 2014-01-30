@@ -46,6 +46,8 @@ wal_dir_rescan_delay=0.1, ro
 wal_feeder_addr=NULL, rw
 wal_feeder_filter=NULL, rw
 wal_feeder_keepalive_timeout=0.0, rw
+wal_feeder_filter_type=NULL, rw
+wal_feeder_filter_arg=NULL, rw
 
 
 ## backward compatibility mode

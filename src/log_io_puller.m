@@ -38,12 +38,87 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 
+bool
+feeder_param_set_addr(struct feeder_param *feeder, const char *addr)
+{
+	if (addr == NULL || strnlen(addr, 2) == 0) {
+		feeder->addr.sin_family = AF_UNSPEC;
+		feeder->addr.sin_addr.s_addr = INADDR_ANY;
+		return true;
+	}
+	if (strnlen(addr, 23) <= 22)
+		if (atosin(addr, &feeder->addr) == 0)
+			return true;
+	feeder->addr.sin_family = AF_UNSPEC;
+	feeder->addr.sin_addr.s_addr = INADDR_ANY;
+	say_error("invalid feeder address '%.*s'", 23, addr);
+	return false;
+}
+
+enum feeder_cfg_e
+feeder_param_fill_from_cfg(struct feeder_param *param, struct octopus_cfg *_cfg)
+{
+	if (_cfg == NULL) _cfg = &cfg;
+
+	enum feeder_cfg_e e = 0;
+	if (!feeder_param_set_addr(param, _cfg->wal_feeder_addr)) {
+		say_error("replication feeder address wrong");
+		e |= FEEDER_CFG_BAD_ADDR;
+	}
+
+	if (_cfg->wal_feeder_filter == NULL || strnlen(_cfg->wal_feeder_filter, 2) == 0) {
+		param->filter.name = NULL;
+	} else if (strnlen(_cfg->wal_feeder_filter, REPLICATION_FILTER_NAME_LEN+2) >=
+			REPLICATION_FILTER_NAME_LEN) {
+		say_error("replication filter name too long");
+		e |= FEEDER_CFG_BAD_FILTER;
+	} else {
+		param->filter.name = _cfg->wal_feeder_filter;
+	}
+
+	if (_cfg->replication_compat) {
+		if (param->filter.name != NULL) {
+			say_error("replication_compat is incompatible with wal_feeder_filter");
+			e |= FEEDER_CFG_BAD_VERSION;
+		}
+		param->ver = 0;
+	} else {
+		if (_cfg->wal_feeder_filter_type != NULL) {
+			if (strncasecmp(_cfg->wal_feeder_filter_type, "id", 4) == 0)
+				param->filter.type = FILTER_TYPE_ID;
+			else if (strncasecmp(_cfg->wal_feeder_filter_type, "lua", 4) == 0)
+				param->filter.type = FILTER_TYPE_LUA;
+			else if (strncasecmp(_cfg->wal_feeder_filter_type, "c", 4) == 0)
+				param->filter.type = FILTER_TYPE_C;
+		} else if (param->filter.name == NULL)
+			param->filter.type = FILTER_TYPE_ID;
+		else
+			param->filter.type = FILTER_TYPE_LUA;
+
+		param->filter.arg = NULL;
+		param->filter.arglen = 0;
+		if (param->filter.type != FILTER_TYPE_ID) {
+			if (_cfg->wal_feeder_filter_arg != NULL) {
+				param->filter.arg = _cfg->wal_feeder_filter_arg;
+				param->filter.arglen = strlen(_cfg->wal_feeder_filter_arg);
+			}
+		}
+
+		if (param->filter.type == FILTER_TYPE_ID ||
+		    (param->filter.type == FILTER_TYPE_LUA && param->filter.arg == NULL)) {
+			param->ver = 1;
+		} else {
+			param->ver = 2;
+		}
+	}
+	return e;
+}
+
 @interface XLogPuller ()
 - (ssize_t) recv_with_timeout: (ev_tstamp)timeout;
 - (const char *) establish_connection;
 - (const char *) replication_compat: (i64)scn;
 - (const char *) replication_handshake:(void*)hshake len:(size_t)len;
-- (void) set_filter: (const char*)filter type: (u32)type;
 @end
 
 @implementation XLogPuller
@@ -57,61 +132,22 @@ init
 	say_debug("%s", __func__);
 	conn_init(&c, fiber->pool, -1, fiber, fiber, MO_STATIC);
 	palloc_register_gc_root(fiber->pool, &c, conn_gc);
-	hshake_ver = 1;
-	filter = (struct replication_filter){
-		.type = FILTER_TYPE_ID,
-		.name = {0},
-		.arg = NULL,
-		.arglen = 0
-	};
+	feeder = NULL;
 	return [super init];
 }
 
-- (void)
-set_filter: (const char*)_filter type: (u32)type
+- (XLogPuller *)
+init:(struct feeder_param*)_feeder
 {
-	if (type > FILTER_TYPE_MAX) {
-		raise("Unknown wal feeder filter type %d", type);
-	}
-	if (_filter != NULL) {
-		if (strlen(_filter) + 1 > sizeof(filter.name))
-			raise("wal feeder filter name too big, ignoring");
-		else {
-			filter.type = type;
-			strcpy(filter.name, _filter);
-			return;
-		}
-	}
-	filter.type = FILTER_TYPE_ID;
-	memset(filter.name, 0, sizeof(filter.name));
+	XLogPuller *e = [self init];
+	[e feeder_param: _feeder];
+	return e;
 }
 
 - (void)
-replication_compat
+feeder_param:(struct feeder_param*)_feeder
 {
-	hshake_ver = 0;
-}
-
-- (void)
-hshake_v1: (const char*)_filter
-{
-	hshake_ver = 1;
-	[self set_filter: _filter type: FILTER_TYPE_LUA];
-}
-
-- (void)
-hshake_v2: (const char*)_filter type: (u32)type arg: (void *)arg len: (u32)len
-{
-	hshake_ver = 2;
-	[self set_filter: _filter type: type];
-	filter.arg = arg;
-	filter.arglen = len;
-}
-
-- (void)
-set_addr:(struct sockaddr_in *)addr_
-{
-	memcpy(&addr, addr_, sizeof(addr));
+	feeder = _feeder;
 }
 
 - (const char *)
@@ -120,9 +156,10 @@ establish_connection
 	int fd;
 
 	abort = 0; /* must be set before connect */
+	assert(feeder != NULL);
 
 	say_debug("%s: connect", __func__);
-	if ((fd = tcp_connect(&addr, NULL, 5)) < 0) {
+	if ((fd = tcp_connect(&feeder->addr, NULL, 5)) < 0) {
 		return "can't connect to feeder";
 	}
 
@@ -224,21 +261,27 @@ handshake:(i64)scn err:(const char **)err_ptr
 	const char *err = [self establish_connection];
 	if (err) goto err;
 
-	if (hshake_ver == 0) {
+	if (feeder->ver == 0) {
 		err = [self replication_compat: scn];
 		if (err) goto err;
-	} else if (hshake_ver == 1) {
+	} else if (feeder->ver == 1) {
 		struct replication_handshake_v1 hshake = {1, scn, {0}};
-		strncpy(hshake.filter, filter.name, sizeof(hshake.filter));
+		if (feeder->filter.name)
+			strncpy(hshake.filter, feeder->filter.name, sizeof(hshake.filter));
 
 		err = [self replication_handshake: &hshake len: sizeof(hshake)];
 		if (err) goto err;
-	} else if (hshake_ver == 2) {
+	} else if (feeder->ver == 2) {
 		struct tbuf *hbuf = tbuf_alloc(fiber->pool);
-		struct replication_handshake_v2 hshake = {2, scn, {0}, filter.type, filter.arglen};
-		strncpy(hshake.filter, filter.name, sizeof(hshake.filter));
+		struct replication_handshake_v2 hshake = {
+			.ver = 2, .scn = scn, .filter = {0},
+			.filter_type = feeder->filter.type,
+		       	.filter_arglen = feeder->filter.arglen};
+		if (feeder->filter.name)
+			strncpy(hshake.filter, feeder->filter.name, sizeof(hshake.filter));
+		strncpy(hshake.filter, feeder->filter.name, sizeof(hshake.filter));
 		tbuf_add_dup(hbuf, &hshake);
-		tbuf_append(hbuf, filter.arg, filter.arglen);
+		tbuf_append(hbuf, feeder->filter.arg, feeder->filter.arglen);
 
 		err = [self replication_handshake: hbuf->ptr len: tbuf_len(hbuf)];
 		if (err) goto err;
@@ -249,7 +292,7 @@ handshake:(i64)scn err:(const char **)err_ptr
 		goto err;
 	}
 
-	say_info("succefully connected to feeder/%s, version:%i", sintoa(&addr), version);
+	say_info("succefully connected to feeder/%s, version:%i", sintoa(&feeder->addr), version);
 	say_info("starting remote recovery from scn:%" PRIi64, scn);
 	return 1;
 err:
