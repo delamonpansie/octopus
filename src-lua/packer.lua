@@ -315,7 +315,7 @@ unpack_meths = {
                 self.haserror = HAS_ERROR
                 unpack_errors[self] = err:format(...) .. pos
             else
-                error(err)
+                error(err, 3)
             end
         end
     end,
@@ -323,7 +323,7 @@ unpack_meths = {
         if self.haserror == NO_ERROR then
             self.haserror = RAISE_ON_ERROR
         elseif self.haserror == HAS_ERROR then
-            error(self:error())
+            error(self:error(), 3)
         end
     end,
     error = function(self)
