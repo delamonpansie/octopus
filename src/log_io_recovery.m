@@ -722,7 +722,7 @@ remote_hot_standby(va_list ap)
 
 		const char *err;
 
-		while ([r->remote_puller handshake:&sin scn:[r scn] err:&err] <= 0) {
+		while ([r->remote_puller handshake:&sin scn:[r scn]+1 err:&err] <= 0) {
 			/* no more WAL rows in near future, notify module about that */
 			[r wal_final_row];
 

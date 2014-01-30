@@ -1141,7 +1141,9 @@ containg_scn:(i64)target_scn
 		if (scn == 0)
 			scn = lsn[i];
 
-		if (scn >= target_scn)
+		if (scn == target_scn)
+			return lsn[i];
+		if (scn > target_scn)
 			return i > 0 ? lsn[i - 1] : initial_lsn;
 	}
 
