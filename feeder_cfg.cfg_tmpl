@@ -10,5 +10,4 @@ wal_feeder_bind_port=0, ro
 
 # it's advisable to fork before initialization of memory storage
 wal_feeder_fork_before_init=1, ro
-wal_feeder_keepalive_interval=2.0, ro
 wal_feeder_debug_no_fork=0, ro
