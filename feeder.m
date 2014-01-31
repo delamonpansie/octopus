@@ -354,8 +354,12 @@ keepalive_send(va_list ap)
 	struct row_v12* sysnop = [feeder dummy_row_lsn: 0 scn: 0 tag: nop | TAG_SYS];
 
 	for (;;) {
-		[feeder write_row_direct: sysnop];
-		fiber_sleep(cfg.wal_feeder_keepalive_interval);
+		if (cfg.wal_feeder_keepalive_timeout > 0.0) {
+			[feeder write_row_direct: sysnop];
+			fiber_sleep(cfg.wal_feeder_keepalive_timeout / 3.0);
+		} else {
+			fiber_sleep(5.0);
+		}
 	}
 }
 
