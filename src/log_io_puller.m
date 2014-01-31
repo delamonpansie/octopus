@@ -114,7 +114,7 @@ feeder_param_fill_from_cfg(struct feeder_param *param, struct octopus_cfg *_cfg)
 	return e;
 }
 
-@interface XLogPuller ()
+@interface XLogPuller (Helpers)
 - (ssize_t) recv_with_timeout: (ev_tstamp)timeout;
 - (const char *) establish_connection;
 - (const char *) replication_compat: (i64)scn;
