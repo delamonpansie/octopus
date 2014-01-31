@@ -73,7 +73,14 @@ for _,lib in pairs{'_G', 'string', 'table', 'math',
   end
 end
 
-local function _data_dumper(value, varname, fastmode, ident)
+local function _data_dumper(value, varname)
+  local mode
+  if varname and varname:find(':') then
+    varname, mode = varname:match('(.*):(.*)')
+  end
+  local fastmode = mode and mode:find('f')
+  local indent = mode and mode:find('i')
+  local dumpall = mode and mode:find('a')
   local defined, dumplua = {}
   -- Local variables for speed optimization
   local string_format, type, string_dump, string_rep = 
@@ -86,17 +93,21 @@ local function _data_dumper(value, varname, fastmode, ident)
     t[value] = res
     return res
   end})
-  local fcts = {
+  local fcts = setmetatable({
     string = function(value) return strvalcache[value] end,
     number = function(value) return value end,
     boolean = function(value) return tostring(value) end,
     ['nil'] = function(value) return 'nil' end,
     ['function'] = function(value) 
       return string_format("loadstring(%q)", string_dump(value)) 
-    end,
-    userdata = function() error("Cannot dump userdata") end,
-    thread = function() error("Cannot dump threads") end,
-  }
+    end,},
+    {__index = function(t, k)
+      if dumpall then
+        return function (v) return '<' .. k .. ':' .. tostring(v) .. '>' end
+      else
+        return function () error("Cannot dump " .. k) end
+      end
+    end })
   local function test_defined(value, path)
     if defined[value] then
       if path:match("^getmetatable.*%)$") then
