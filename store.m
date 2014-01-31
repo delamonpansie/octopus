@@ -515,20 +515,23 @@ init()
 	mc_index = [[CStringHash alloc] init];
 	mc_index->dtor = dtor;
 
+	struct feeder_param feeder;
+	enum feeder_cfg_e fid_err = feeder_param_fill_from_cfg(&feeder, NULL);
+	if (fid_err) panic("wrong feeder conf");
+
 	recovery = [Recovery alloc];
 	recovery = [recovery init_snap_dir:cfg.snap_dir
 				   wal_dir:cfg.wal_dir
 			      rows_per_wal:cfg.rows_per_wal
-			       feeder_addr:cfg.wal_feeder_addr
-				     flags:init_storage ? RECOVER_READONLY : 0
-				 txn_class:nil];
+			      feeder_param:&feeder
+				     flags:init_storage ? RECOVER_READONLY : 0];
 
 	if (init_storage)
 		return;
 
 	i64 local_lsn = [recovery recover_start];
 	if (local_lsn == 0) {
-		if (!cfg.wal_feeder_addr) {
+		if (![recovery feeder_addr_remote]) {
 			say_error("unable to find initial snapshot");
 			say_info("don't you forget to initialize "
 				 "storage with --init-storage switch?");
