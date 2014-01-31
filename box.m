@@ -1516,10 +1516,14 @@ init(void)
 			panic("wal_hot_standby is incompatible with paxos");
 	}
 
+	struct feeder_param feeder;
+	enum feeder_cfg_e fid_err = feeder_param_fill_from_cfg(&feeder, NULL);
+	if (fid_err) panic("wrong feeder conf");
+
 	recovery = [[Recovery alloc] init_snap_dir:strdup(cfg.snap_dir)
 					   wal_dir:strdup(cfg.wal_dir)
 				      rows_per_wal:cfg.rows_per_wal
-				       feeder_addr:cfg.wal_feeder_addr
+				      feeder_param:&feeder
 					     flags:init_storage ? RECOVER_READONLY : 0];
 
 	if (init_storage)
@@ -1544,7 +1548,7 @@ init_second_stage(va_list ap __attribute__((unused)))
 			[recovery enable_local_writes];
 		} else {
 			if (local_lsn == 0) {
-				if (!cfg.wal_feeder_addr) {
+				if (![recovery feeder_addr_remote]) {
 					say_error("unable to find initial snapshot");
 					say_info("don't you forget to initialize "
 						 "storage with --init-storage switch?");
@@ -1557,7 +1561,7 @@ init_second_stage(va_list ap __attribute__((unused)))
 				   Binding to primary port depends on wal_final_row from
 				   remote replication. (There is no data in local WALs yet)
 				 */
-				if (cfg.wal_feeder_addr && cfg.local_hot_standby)
+				if ([recovery feeder_addr_remote] && cfg.local_hot_standby)
 					[recovery wal_final_row];
 			}
 			if (!cfg.local_hot_standby)
@@ -1691,22 +1695,36 @@ info(struct tbuf *out, const char *what)
 	}
 }
 
+static int
+check_config(struct octopus_cfg *new)
+{
+	extern void out_warning(int v, char *format, ...);
+	struct feeder_param feeder;
+	enum feeder_cfg_e e = feeder_param_fill_from_cfg(&feeder, new);
+	if (e) {
+		out_warning(0, "wal_feeder config is wrong");
+		return -1;
+	}
+
+	return 0;
+}
+
 static void
-reload_config(struct octopus_cfg *old,
+reload_config(struct octopus_cfg *old __unused__,
 	      struct octopus_cfg *new)
 {
-	if (!old->wal_feeder_addr && !new->wal_feeder_addr)
-		return;
-
-	[recovery feeder_change_from:old->wal_feeder_addr
-				  to:new->wal_feeder_addr];
-	title("%s", [recovery status]);
+	struct feeder_param feeder;
+	feeder_param_fill_from_cfg(&feeder, new);
+	if ([recovery feeder_changed:&feeder]) {
+		title("%s", [recovery status]);
+	}
 }
 
 static struct tnt_module box = {
 	.name = "box",
 	.version = box_version_string,
 	.init = init,
+	.check_config = check_config,
 	.reload_config = reload_config,
 	.cat = cat,
 	.cat_scn = cat_scn,
