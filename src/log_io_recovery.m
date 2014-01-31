@@ -717,7 +717,10 @@ remote_hot_standby(va_list ap)
 		const char *err;
 
 		[r->remote_puller feeder_param: &r->feeder];
-		if ([r->remote_puller handshake:[r scn]+1 err:&err] <= 0) {
+		i64 scn = [r scn];
+		if (scn != 0) /* special case: scn == 0 => want snapshot */
+			scn++; /* otherwise start recover from next scn */
+		if ([r->remote_puller handshake:scn err:&err] <= 0) {
 			/* no more WAL rows in near future, notify module about that */
 			[r wal_final_row];
 
