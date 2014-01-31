@@ -61,7 +61,7 @@ struct paxos_peer {
 	struct iproto_peer iproto;
 	int id;
 	const char *name, *primary_addr;
-	struct sockaddr_in feeder_addr;
+	struct feeder_param feeder;
 	SLIST_ENTRY(paxos_peer) link;
 };
 
@@ -81,8 +81,10 @@ make_paxos_peer(int id, const char *name, const char *addr,
 	paddr.sin_port = htons(primary_port);
 	p->primary_addr = strdup(sintoa(&paddr));
 
-	p->feeder_addr = p->iproto.addr;
-	p->feeder_addr.sin_port = htons(feeder_port);
+	memset(&p->feeder, 0, sizeof(p->feeder));
+	p->feeder.ver = 1;
+	p->feeder.addr = p->iproto.addr;
+	p->feeder.addr.sin_port = htons(feeder_port);
 	return p;
 }
 
@@ -164,7 +166,7 @@ proposal_cmp(const struct proposal *a, const struct proposal *b)
 	return (a->scn < b->scn) ? -1 : (a->scn > b->scn);
 }
 #ifndef __unused
-#define __unused    __attribute__((__unused__))
+#define __unused    __unused__
 #endif
 RB_GENERATE_STATIC(ptree, proposal, link, proposal_cmp)
 
@@ -853,7 +855,8 @@ retry:
 					continue;
 
 				say_debug("feeding from %s", p->name);
-				if ([puller handshake:&p->feeder_addr scn:[r scn] err:NULL] <= 0)
+				[puller feeder_param:&p->feeder];
+				if ([puller handshake:[r scn] err:NULL] <= 0)
 					continue;
 				while ([r pull_wal:puller] != 1);
 				break;
@@ -1076,7 +1079,7 @@ loop:
 init_snap_dir:(const char *)snap_dirname
       wal_dir:(const char *)wal_dirname
  rows_per_wal:(int)wal_rows_per_file
-  feeder_addr:(const char *)feeder_addr_
+ feeder_param:(struct feeder_param*)param
 	flags:(int)flags
 {
 	struct octopus_cfg_paxos_peer *c;
@@ -1084,7 +1087,7 @@ init_snap_dir:(const char *)snap_dirname
 	[super init_snap_dir:snap_dirname
 		     wal_dir:wal_dirname
 		rows_per_wal:wal_rows_per_file
-		 feeder_addr:feeder_addr_
+		feeder_param:param
 		       flags:flags];
 
 	SLIST_INIT(&group);
@@ -1146,7 +1149,8 @@ enable_local_writes
 			if (p->id == self_id)
 				continue;
 
-			if ([puller handshake:&p->feeder_addr scn:scn err:NULL] <= 0)
+			[puller feeder_param:&p->feeder];
+			if ([puller handshake:scn err:NULL] <= 0)
 				continue;
 
 			say_debug("loading from %s", p->name);

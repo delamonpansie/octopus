@@ -38,6 +38,89 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 
+bool
+feeder_param_set_addr(struct feeder_param *feeder, const char *addr)
+{
+	if (addr == NULL || strnlen(addr, 2) == 0) {
+		feeder->addr.sin_family = AF_UNSPEC;
+		feeder->addr.sin_addr.s_addr = INADDR_ANY;
+		return true;
+	}
+	if (strnlen(addr, 23) <= 22)
+		if (atosin(addr, &feeder->addr) == 0)
+			return true;
+	feeder->addr.sin_family = AF_UNSPEC;
+	feeder->addr.sin_addr.s_addr = INADDR_ANY;
+	say_error("invalid feeder address '%.*s'", 23, addr);
+	return false;
+}
+
+enum feeder_cfg_e
+feeder_param_fill_from_cfg(struct feeder_param *param, struct octopus_cfg *_cfg)
+{
+	if (_cfg == NULL) _cfg = &cfg;
+
+	enum feeder_cfg_e e = 0;
+	if (!feeder_param_set_addr(param, _cfg->wal_feeder_addr)) {
+		say_error("replication feeder address wrong");
+		e |= FEEDER_CFG_BAD_ADDR;
+	}
+
+	if (_cfg->wal_feeder_filter == NULL || strnlen(_cfg->wal_feeder_filter, 2) == 0) {
+		param->filter.name = NULL;
+	} else if (strnlen(_cfg->wal_feeder_filter, REPLICATION_FILTER_NAME_LEN+2) >=
+			REPLICATION_FILTER_NAME_LEN) {
+		say_error("replication filter name too long");
+		e |= FEEDER_CFG_BAD_FILTER;
+	} else {
+		param->filter.name = _cfg->wal_feeder_filter;
+	}
+
+	if (_cfg->replication_compat) {
+		if (param->filter.name != NULL) {
+			say_error("replication_compat is incompatible with wal_feeder_filter");
+			e |= FEEDER_CFG_BAD_VERSION;
+		}
+		param->ver = 0;
+	} else {
+		if (_cfg->wal_feeder_filter_type != NULL) {
+			if (strncasecmp(_cfg->wal_feeder_filter_type, "id", 4) == 0)
+				param->filter.type = FILTER_TYPE_ID;
+			else if (strncasecmp(_cfg->wal_feeder_filter_type, "lua", 4) == 0)
+				param->filter.type = FILTER_TYPE_LUA;
+			else if (strncasecmp(_cfg->wal_feeder_filter_type, "c", 4) == 0)
+				param->filter.type = FILTER_TYPE_C;
+		} else if (param->filter.name == NULL)
+			param->filter.type = FILTER_TYPE_ID;
+		else
+			param->filter.type = FILTER_TYPE_LUA;
+
+		param->filter.arg = NULL;
+		param->filter.arglen = 0;
+		if (param->filter.type != FILTER_TYPE_ID) {
+			if (_cfg->wal_feeder_filter_arg != NULL) {
+				param->filter.arg = _cfg->wal_feeder_filter_arg;
+				param->filter.arglen = strlen(_cfg->wal_feeder_filter_arg);
+			}
+		}
+
+		if (param->filter.type == FILTER_TYPE_ID ||
+		    (param->filter.type == FILTER_TYPE_LUA && param->filter.arg == NULL)) {
+			param->ver = 1;
+		} else {
+			param->ver = 2;
+		}
+	}
+	return e;
+}
+
+@interface XLogPuller ()
+- (ssize_t) recv_with_timeout: (ev_tstamp)timeout;
+- (const char *) establish_connection;
+- (const char *) replication_compat: (i64)scn;
+- (const char *) replication_handshake:(void*)hshake len:(size_t)len;
+@end
+
 @implementation XLogPuller
 - (u32) version { return version; }
 - (bool) eof { return false; }
@@ -49,49 +132,35 @@ init
 	say_debug("%s", __func__);
 	conn_init(&c, fiber->pool, -1, fiber, fiber, MO_STATIC);
 	palloc_register_gc_root(fiber->pool, &c, conn_gc);
+	feeder = NULL;
 	return [super init];
 }
 
+- (XLogPuller *)
+init:(struct feeder_param*)_feeder
+{
+	XLogPuller *e = [self init];
+	[e feeder_param: _feeder];
+	return e;
+}
+
 - (void)
-set_addr:(struct sockaddr_in *)addr_
+feeder_param:(struct feeder_param*)_feeder
 {
-	memcpy(&addr, addr_, sizeof(addr));
+	feeder = _feeder;
 }
 
-- (int)
-handshake:(struct sockaddr_in *)addr_ scn:(i64)scn err:(const char **)err_ptr
+- (const char *)
+establish_connection
 {
-	memcpy(&addr, addr_, sizeof(addr));
-	return [self handshake:scn err:err_ptr];
-}
-
-- (int)
-handshake:(struct sockaddr_in *)addr_ scn:(i64)scn
-{
-	return [self handshake:addr_ scn:scn err:NULL];
-}
-
-- (int)
-handshake:(i64)scn err:(const char **)err_ptr
-{
-	const char *err;
 	int fd;
 
 	abort = 0; /* must be set before connect */
-
-	assert(scn >= 0);
-
-	/* FIXME: do we need this ? */
-	if (scn > 0) {
-		scn -= 1024;
-		if (scn < 1)
-			scn = 1;
-	}
+	assert(feeder != NULL);
 
 	say_debug("%s: connect", __func__);
-	if ((fd = tcp_connect(&addr, NULL, 5)) < 0) {
-		err = "can't connect to feeder";
-		goto err;
+	if ((fd = tcp_connect(&feeder->addr, NULL, 5)) < 0) {
+		return "can't connect to feeder";
 	}
 
 	int one = 1;
@@ -113,92 +182,109 @@ handshake:(i64)scn err:(const char **)err_ptr
 
 	assert(c.fd < 0);
 	conn_set(&c, fd);
+	return NULL;
+}
 
-	if (cfg.replication_compat) {
-		say_debug("%s: compat send scn", __func__);
-		if (conn_write(&c, &scn, sizeof(scn)) != sizeof(scn)) {
-			err = "can't write initial lsn";
-			goto err;
-		}
+- (const char *)
+replication_compat:(i64)scn
+{
+	say_debug("%s: compat send scn", __func__);
+	if (conn_write(&c, &scn, sizeof(scn)) != sizeof(scn)) {
+		return "can't write initial lsn";
+	}
 
-		say_debug("%s: compat recv scn", __func__);
-		if (conn_read(&c, &version, sizeof(version)) != sizeof(version)) {
-			err = "can't read version";
-			goto err;
-		}
-	} else {
-		struct replication_handshake hshake = {1, scn, {0}};
+	say_debug("%s: compat recv scn", __func__);
+	if (conn_read(&c, &version, sizeof(version)) != sizeof(version)) {
+		return "can't write initial lsn";
+	}
+	return NULL;
+}
 
-		if (cfg.wal_feeder_filter != NULL) {
-			if (strlen(cfg.wal_feeder_filter) + 1 > sizeof(hshake.filter))
-				say_error("wal_feeder_filter too big, ignoring");
-			else
-				strcpy(hshake.filter, cfg.wal_feeder_filter);
-		}
-		struct tbuf *req = tbuf_alloc(fiber->pool);
-		tbuf_append(req, &(struct iproto){ .msg_code = 0, .sync = 0, .data_len = sizeof(hshake) },
-			    sizeof(struct iproto));
-		tbuf_append(req, &hshake, sizeof(hshake));
+- (const char *)
+replication_handshake:(void*)hshake len:(size_t)hsize
+{
+	struct tbuf *req = tbuf_alloc(fiber->pool);
+	struct iproto ireq = { .msg_code = 0, .sync = 0, .data_len = hsize };
+	tbuf_add_dup(req, &ireq);
+	tbuf_append(req, hshake, hsize);
 
-		say_debug("%s: send handshake, %u bytes", __func__, tbuf_len(req));
-		if (conn_write(&c, req->ptr, tbuf_len(req)) != tbuf_len(req)) {
-			err = "can't write initial handshake";
-			goto err;
-		}
+	say_debug("%s: send handshake, %u bytes", __func__, tbuf_len(req));
+	if (conn_write(&c, req->ptr, tbuf_len(req)) != tbuf_len(req)) {
+		return "can't write initial handshake";
+	}
 
-		do {
-			ev_tstamp timeout = 5;
-			ev_timer timer = { .coro = 1 };
-			ev_io io = { .coro = 1 };
-			ev_io_init(&io, (void *)fiber, c.fd, EV_READ);
-			ev_io_start(&io);
-			ev_timer_init(&timer, (void *)fiber, timeout, 0.);
-			ev_timer_start(&timer);
-			void *w = yield();
-			ev_io_stop(&io);
-			ev_timer_stop(&timer);
-			if (w == &timer) {
-				err = "timeout";
-				goto err;
+	do {
+		tbuf_ensure(c.rbuf, 16 * 1024);
+		ssize_t r = [self recv_with_timeout: 5];
+
+		if (r < 0) {
+			if (r == -2) {
+				return "timeout";
 			}
-			tbuf_ensure(c.rbuf, 16 * 1024);
-
-			ssize_t r = tbuf_recv(c.rbuf, c.fd);
-
-			if (r < 0) {
-				if (errno == EAGAIN ||
-				    errno == EWOULDBLOCK ||
-				    errno == EINTR)
-					continue;
-				err = "can'r read initial handshake";
-				goto err;
-			} else if (r == 0) {
-				err = "can'r read initial handshake, eof";
-				goto err;
-			}
-
-			say_debug("%s: recv handshake part, %u bytes", __func__, tbuf_len(c.rbuf));
-		} while (tbuf_len(c.rbuf) < sizeof(struct iproto_retcode) + sizeof(version));
-
-		struct iproto_retcode *reply = (void *)iproto_parse(c.rbuf);
-		if (reply == NULL) {
-			err = "can't read reply";
-			goto err;
+			if (errno == EAGAIN ||
+			    errno == EWOULDBLOCK ||
+			    errno == EINTR)
+				continue;
+			return "can'r read initial handshake";
+		} else if (r == 0) {
+			return "can'r read initial handshake, eof";
 		}
 
-		if (reply->ret_code != 0 ||
-		    reply->sync != iproto(req)->sync ||
-		    reply->msg_code != iproto(req)->msg_code ||
-		    reply->data_len != sizeof(reply->ret_code) + sizeof(version))
-		{
-			err = "bad reply";
-			goto err;
-		}
+		say_debug("%s: recv handshake part, %u bytes", __func__, tbuf_len(c.rbuf));
+	} while (tbuf_len(c.rbuf) < sizeof(struct iproto_retcode) + sizeof(version));
 
-		say_debug("%s: iproto_reply data_len:%i, rbuf len:%i", __func__,
-			  reply->data_len, tbuf_len(c.rbuf));
+	struct iproto_retcode *reply = (void *)iproto_parse(c.rbuf);
+	if (reply == NULL) {
+		return "can't read reply";
+	}
 
-		memcpy(&version, reply->data, sizeof(version));
+	if (reply->ret_code != 0 ||
+	    reply->sync != iproto(req)->sync ||
+	    reply->msg_code != iproto(req)->msg_code ||
+	    reply->data_len != sizeof(reply->ret_code) + sizeof(version))
+	{
+		return "bad reply";
+	}
+
+	say_debug("%s: iproto_reply data_len:%i, rbuf len:%i", __func__,
+		  reply->data_len, tbuf_len(c.rbuf));
+
+	memcpy(&version, reply->data, sizeof(version));
+	return NULL;
+}
+
+- (int)
+handshake:(i64)scn err:(const char **)err_ptr
+{
+	assert(scn >= 0);
+
+	const char *err = [self establish_connection];
+	if (err) goto err;
+
+	if (feeder->ver == 0) {
+		err = [self replication_compat: scn];
+		if (err) goto err;
+	} else if (feeder->ver == 1) {
+		struct replication_handshake_v1 hshake = {1, scn, {0}};
+		if (feeder->filter.name)
+			strncpy(hshake.filter, feeder->filter.name, sizeof(hshake.filter));
+
+		err = [self replication_handshake: &hshake len: sizeof(hshake)];
+		if (err) goto err;
+	} else if (feeder->ver == 2) {
+		struct tbuf *hbuf = tbuf_alloc(fiber->pool);
+		struct replication_handshake_v2 hshake = {
+			.ver = 2, .scn = scn, .filter = {0},
+			.filter_type = feeder->filter.type,
+		       	.filter_arglen = feeder->filter.arglen};
+		if (feeder->filter.name)
+			strncpy(hshake.filter, feeder->filter.name, sizeof(hshake.filter));
+		strncpy(hshake.filter, feeder->filter.name, sizeof(hshake.filter));
+		tbuf_add_dup(hbuf, &hshake);
+		tbuf_append(hbuf, feeder->filter.arg, feeder->filter.arglen);
+
+		err = [self replication_handshake: hbuf->ptr len: tbuf_len(hbuf)];
+		if (err) goto err;
 	}
 
 	if (version != default_version && version != version_11) {
@@ -206,7 +292,7 @@ handshake:(i64)scn err:(const char **)err_ptr
 		goto err;
 	}
 
-	say_info("succefully connected to feeder/%s, version:%i", sintoa(&addr), version);
+	say_info("succefully connected to feeder/%s, version:%i", sintoa(&feeder->addr), version);
 	say_info("starting remote recovery from scn:%" PRIi64, scn);
 	return 1;
 err:
@@ -232,6 +318,42 @@ contains_full_row_v11(const struct tbuf *b)
 }
 
 - (ssize_t)
+recv_with_timeout: (ev_tstamp)timeout
+{
+	ssize_t r = tbuf_recv(c.rbuf, c.fd);
+	if (r == -1) {
+		ev_io io = { .coro = 1 };
+		ev_io_init(&io, (void *)fiber, c.fd, EV_READ);
+		ev_io_start(&io);
+		ev_timer timer = { .coro = 1 };
+		ev_timer_init(&timer, (void *)fiber, timeout, 0);
+
+		bool set_timer = timeout > 0.0;
+		if (set_timer) {
+			ev_now_update();
+			ev_timer_start(&timer);
+		}
+
+		in_recv = fiber;
+		void *w = yield();
+		ev_io_stop(&io);
+		in_recv = NULL;
+
+		if (set_timer) {
+			if (unlikely(w == &timer))
+				return -2;
+			ev_timer_stop(&timer);
+		}
+
+		if (w == &io) {
+			r = tbuf_recv(c.rbuf, c.fd);
+		}
+	}
+
+	return r;
+}
+
+- (ssize_t)
 recv
 {
 	if (abort) {
@@ -240,23 +362,11 @@ recv
 	}
 
 	tbuf_ensure(c.rbuf, 256 * 1024);
-	ssize_t r = tbuf_recv(c.rbuf, c.fd);
-	if (r == -1) {
-		ev_io io = { .coro = 1 };
-		ev_io_init(&io, (void *)fiber, c.fd, EV_READ);
-		ev_io_start(&io);
-		in_recv = fiber;
-		yield();
-		in_recv = NULL;
-		ev_io_stop(&io);
-
-		if (abort) {
-			conn_close(&c);
-			errno = 0;
-			return -1;
-		}
-
-		r = tbuf_recv(c.rbuf, c.fd);
+	ssize_t r = [self recv_with_timeout: cfg.wal_feeder_keepalive_timeout];
+	if (abort) {
+		conn_close(&c);
+		errno = 0;
+		return -1;
 	}
 
 	return r;

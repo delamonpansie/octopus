@@ -261,6 +261,76 @@ struct wal_reply {
 	u32 run_crc;
 } __attribute__((packed));
 
+#define replication_handshake_base_fields \
+	u32 ver; \
+	i64 scn; \
+	char filter[32]
+struct replication_handshake_base {
+	replication_handshake_base_fields;
+} __attribute__((packed));
+#define REPLICATION_FILTER_NAME_LEN field_sizeof(struct replication_handshake_base, filter)
+
+#define replication_handshake_v1 replication_handshake_base
+
+struct replication_handshake_v2 {
+	replication_handshake_base_fields;
+	u32 filter_type;
+	u32 filter_arglen;
+	char filter_arg[];
+} __attribute__((packed));
+
+struct feeder_filter {
+	u32 type;
+	u32 arglen;
+	char *name;
+	void *arg;
+};
+
+struct feeder_param {
+	struct sockaddr_in addr;
+	u32 ver;
+	struct feeder_filter filter;
+};
+
+static inline bool
+feeder_param_eq(struct feeder_param *this, struct feeder_param *that)
+{
+	bool equal =
+		this->ver == that->ver &&
+		this->addr.sin_family == that->addr.sin_family &&
+		this->addr.sin_addr.s_addr == that->addr.sin_addr.s_addr &&
+		this->addr.sin_port == that->addr.sin_port &&
+		this->filter.type == that->filter.type &&
+		this->filter.arglen == that->filter.arglen;
+	if (!equal) return false;
+	bool this_name_empty = this->filter.name == NULL || strlen(this->filter.name) == 0;
+	bool that_name_empty = that->filter.name == NULL || strlen(that->filter.name) == 0;
+	equal = (this_name_empty && that_name_empty) ||
+		(!this_name_empty && !that_name_empty &&
+		 strcmp(this->filter.name, that->filter.name) == 0);
+	if (!equal) return false;
+	equal = this->filter.arglen == 0 ||
+		memcmp(this->filter.arg, that->filter.arg, this->filter.arglen) == 0;
+	return equal;
+}
+
+enum feeder_cfg_e {
+	FEEDER_CFG_OK = 0,
+	FEEDER_CFG_BAD_ADDR = 1,
+	FEEDER_CFG_BAD_FILTER = 2,
+	FEEDER_CFG_BAD_VERSION = 4,
+};
+enum feeder_cfg_e feeder_param_fill_from_cfg(struct feeder_param *param, struct octopus_cfg *cfg);
+bool feeder_param_set_addr(struct feeder_param *param, const char *addr);
+
+
+enum {
+	FILTER_TYPE_ID  = 0,
+	FILTER_TYPE_LUA = 1,
+	FILTER_TYPE_C   = 2,
+	FILTER_TYPE_MAX = 3
+};
+
 
 int wal_pack_prepare(XLogWriter *r, struct wal_pack *);
 u32 wal_pack_append_row(struct wal_pack *pack, struct row_v12 *row);
@@ -323,22 +393,20 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 
 @interface XLogPuller: Object <XLogPuller, XLogPullerAsync> {
 	struct conn c;
-	struct sockaddr_in addr;
 	u32 version;
 	bool abort;
 	struct fiber *in_recv;
+	struct feeder_param *feeder;
 }
 
 - (ssize_t) recv;
 - (void) abort_recv;
 
 - (XLogPuller *) init;
-- (void) set_addr:(struct sockaddr_in *)addr_;
-
+- (XLogPuller *) init:(struct feeder_param*)_feeder;
+- (void) feeder_param:(struct feeder_param*)_feeder;
 /* returns -1 in case of handshake failure. puller is closed.  */
 - (int) handshake:(i64)scn err:(const char **)err_ptr;
-- (int) handshake:(struct sockaddr_in *)addr_ scn:(i64)scn;
-- (int) handshake:(struct sockaddr_in *)addr_ scn:(i64)scn err:(const char **)err_ptr;
 @end
 
 @interface Recovery: XLogWriter {
@@ -347,7 +415,7 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 	char status[64];
 
 	XLogPuller *remote_puller;
-	const char *feeder_addr;
+	struct feeder_param feeder;
 
 	bool run_crc_log_mismatch, run_crc_mod_mismatch;
 	u32 processed_rows, estimated_snap_rows;
@@ -377,8 +445,6 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 - (bool) is_replica;
 - (void) check_replica;
 
-- (void) feeder_change_from:(const char *)old to:(const char *)new;
-
 - (int) submit_run_crc;
 
 - (struct row_v12 *)dummy_row_lsn:(i64)lsn_ scn:(i64)scn_ tag:(u16)tag;
@@ -389,8 +455,13 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 - (id) init_snap_dir:(const char *)snap_dir
              wal_dir:(const char *)wal_dir
         rows_per_wal:(int)rows_per_wal
-	 feeder_addr:(const char *)feeder_addr
+	feeder_param:(struct feeder_param*)feeder_
                flags:(int)flags;
+
+- (bool) feeder_addr_set;
+- (bool) feeder_addr_remote;
+- (bool) feeder_changed:(struct feeder_param*)new;
+
 @end
 
 @interface Recovery (Deprecated)
@@ -409,12 +480,6 @@ i64 fold_scn;
 int wal_disk_writer(int fd, void *state);
 void wal_disk_writer_input_dispatch(va_list ap __attribute__((unused)));
 int snapshot_write_row(XLog *l, u16 tag, struct tbuf *row);
-
-struct replication_handshake {
-		u32 ver;
-		i64 scn;
-		char filter[32];
-} __attribute__((packed));
 
 static inline struct _row_v04 *_row_v04(const struct tbuf *t)
 {

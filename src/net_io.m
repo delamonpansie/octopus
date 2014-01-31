@@ -1090,6 +1090,7 @@ atosin(const char *orig, struct sockaddr_in *addr)
 	int port;
 	char *str = strdupa(orig);
 	char *colon = strchr(str, ':');
+	addr->sin_family = AF_UNSPEC;
 
 	if (colon != NULL) {
 		*colon = 0;
@@ -1104,7 +1105,6 @@ atosin(const char *orig, struct sockaddr_in *addr)
 	}
 
 	memset(addr, 0, sizeof(*addr));
-	addr->sin_family = AF_INET;
 
 	if (colon == NULL || colon == str) { /* "33013" ":33013" */
 		addr->sin_addr.s_addr = INADDR_ANY;
@@ -1115,6 +1115,7 @@ atosin(const char *orig, struct sockaddr_in *addr)
 		}
 	}
 
+	addr->sin_family = AF_INET;
 	addr->sin_port = htons(port);
 	return 0;
 }

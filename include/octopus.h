@@ -40,9 +40,16 @@ struct tnt_object {
 	uint8_t data[0];
 } __attribute__((packed));
 
+enum {
+	TNT_MODULE_WAITING = 0,
+	TNT_MODULE_INPROGRESS = 1,
+	TNT_MODULE_INITED = 2,
+};
+
 struct tnt_module {
 	struct tnt_module *next;
-	const char *name, *version;
+	const char *name, *version, *(*init_before)[], *(*depend_on)[];
+	int _state;
 	void (*init)(void);
 	i32  (*check_config)(struct octopus_cfg *conf);
 	void (*reload_config)(struct octopus_cfg *old_conf, struct octopus_cfg *new_conf);
@@ -53,6 +60,7 @@ struct tnt_module {
 };
 struct tnt_module *modules_head;
 struct tnt_module *module(const char *);
+void module_init(struct tnt_module *);
 void register_module_(struct tnt_module *);
 #define register_module(name)				\
 	__attribute__((constructor)) static void	\
