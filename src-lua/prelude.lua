@@ -178,5 +178,9 @@ for _, levelstr in ipairs({"ERROR", "WARN", "INFO", "DEBUG", "DEBUG2", "DEBUG3"}
     end
 end
 
+function palloc(size)
+    return ffi.C.palloc(ffi.C.fiber.pool, size)
+end
+
 require('stat')
 print("Lua prelude initialized.")
