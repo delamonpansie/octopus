@@ -166,7 +166,7 @@ proposal_cmp(const struct proposal *a, const struct proposal *b)
 	return (a->scn < b->scn) ? -1 : (a->scn > b->scn);
 }
 #ifndef __unused
-#define __unused    __unused__
+#define __unused    _unused_
 #endif
 RB_GENERATE_STATIC(ptree, proposal, link, proposal_cmp)
 
