@@ -49,7 +49,7 @@ local __tuple_index = {
       local j = #self.__cache - 1
       while j < i do
 	 local offt = self.__cache[j] + self.__cache[j + 1]
-	 local len, vlen = varint32.read(self.__tuple.data + offt)
+	 local len, vlen = varint32.read(self.data + offt)
 	 self.__cache[j + 2], self.__cache[j + 3] = len, offt + vlen
 	 j = j + 2
       end
@@ -59,17 +59,17 @@ local __tuple_index = {
    strfield = function(self, i)
       -- fixme: add check
       local len, offt = self:field(i, 1)
-      self[i] = ffi.string(self.__tuple.data + offt, len)
+      self[i] = ffi.string(self.data + offt, len)
       return self[i]
    end,
    numfield = function(self, i)
       local len, offt = self:field(i, 1)
       if len == 2 then
-	 return tonumber(ffi.cast(u16_ptr, self.__tuple.data + offt)[0])
+	 return tonumber(ffi.cast(u16_ptr, self.data + offt)[0])
       elseif len == 4 then
-	 return tonumber(ffi.cast(u32_ptr, self.__tuple.data + offt)[0])
+	 return tonumber(ffi.cast(u32_ptr, self.data + offt)[0])
       elseif len == 8 then
-	 return ffi.cast(u64_ptr, self.__tuple.data + offt)[0]
+	 return ffi.cast(u64_ptr, self.data + offt)[0]
       else
 	 error('field length not equal to 2, 4 or 8', 2)
       end
@@ -80,26 +80,26 @@ local __tuple_index = {
       if len % ffi.sizeof(ctype) ~= 0 then
 	 error('bad field len', 2)
       end
-      local ptr = ffi.cast(ptrof[ctype], self.__tuple.data + offt)
+      local ptr = ffi.cast(ptrof[ctype], self.data + offt)
       return safeptr(self.__obj, ptr, len / ffi.sizeof(ctype))
    end,
    datacast = function(self, ctype, offt, len)
       if ctype == 'string' then
-	 if (offt < 0 or offt + len > self.__tuple.bsize) then
+	 if (offt < 0 or offt + len > self.bsize) then
 	    error("out of bounds", 2)
 	 end
-	 return ffi.string(self.__tuple.data + offt, len)
+	 return ffi.string(self.data + offt, len)
       elseif ctype == 'varint' then
-	 if (offt < 0 or offt + 1 > self.__tuple.bsize) then
+	 if (offt < 0 or offt + 1 > self.bsize) then
 	    error("out of bounds", 2)
 	 end
-	 return varint32.read(self.__tuple.data + offt)
+	 return varint32.read(self.data + offt)
       else
 	 local ctinfo = datacast_type_cache[ctype]
-	 if offt < 0 or offt + ctinfo[2] > self.__tuple.bsize then
+	 if offt < 0 or offt + ctinfo[2] > self.bsize then
 	    error("out of bounds", 2)
 	 end
-	 return ffi.cast(ctinfo[1], self.__tuple.data + offt)[0]
+	 return ffi.cast(ctinfo[1], self.data + offt)[0]
       end
    end
 }
@@ -116,7 +116,7 @@ local tuple_mt = {
       return self.cardinality
    end,
    __tostring = function(self)
-      return tostring(self.__tuple)
+      return tostring(self.__tuple or self.data)
    end
 }
 
@@ -130,7 +130,18 @@ obj_cast = function(obj)
                           __tuple = tuple,
                           __cache = {[0] = len0, offt0}, -- {len0, offt0, len1, offt1, ...}
                           cardinality = tonumber(tuple.cardinality),
-                          bsize = tonumber(tuple.bsize),},
+                          data = tuple.data,
+                          bsize = tonumber(tuple.bsize)},
                         tuple_mt)
 end
 
+
+function new(obj, cardinality, data, bsize)
+    local len0, offt0 = varint32.read(data)
+    return setmetatable({ __obj = obj,
+                          __cache = {[0] = len0, offt0}, -- {len0, offt0, len1, offt1, ...}
+                          cardinality = cardinality,
+                          data = data,
+                          bsize = bsize},
+                        tuple_mt)
+end
