@@ -1710,7 +1710,7 @@ check_config(struct octopus_cfg *new)
 }
 
 static void
-reload_config(struct octopus_cfg *old __unused__,
+reload_config(struct octopus_cfg *old _unused_,
 	      struct octopus_cfg *new)
 {
 	struct feeder_param feeder;
