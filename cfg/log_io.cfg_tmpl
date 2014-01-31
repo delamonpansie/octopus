@@ -45,7 +45,7 @@ wal_dir_rescan_delay=0.1, ro
 # setting env var SYNC_DUMP=1 will force replica do initial dump without forking.
 wal_feeder_addr=NULL, rw
 wal_feeder_filter=NULL, rw
-wal_feeder_keepalive_timeout=0.0, rw
+wal_feeder_keepalive_timeout=120.0, rw
 wal_feeder_filter_type=NULL, rw
 wal_feeder_filter_arg=NULL, rw
 
