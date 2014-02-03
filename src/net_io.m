@@ -911,6 +911,12 @@ tcp_server(va_list ap)
 			handler(cfd, data);
 		}
 
+		if (errno == EINVAL || errno == EBADF) {
+			say_debug("tcp_socket acceptor were closed on : %s", addr);
+			ev_io_stop(&io);
+			break;
+		}
+
 		if (errno == EMFILE) {
 			say_error("can't accept, too many open files, throttling");
 			ev_io_stop(&io);
