@@ -109,8 +109,20 @@ register_filter: (const char*)name call: (filter_callback)filter
 static void
 writef(int fd, const char *b, size_t len)
 {
+	ev_io io = { .coro = 1 };
+	ev_io_init(&io, (void *)fiber, fd, EV_WRITE);
 	do {
 		ssize_t r = write(fd, b, len);
+		if (r < 0) {
+			if (errno == EINTR)
+				continue;
+			if (errno == EAGAIN || errno == EWOULDBLOCK) {
+				ev_io_start(&io);
+				yield();
+				ev_io_stop(&io);
+				continue;
+			}
+		}
 		if (r <= 0) {
 			say_syserror("write");
 			_exit(EXIT_SUCCESS);
@@ -258,6 +270,8 @@ handshake(int sock, struct feeder_filter *filter)
 	struct tbuf *rep, *input;
 	struct iproto *req;
 	i64 scn;
+	ev_io io = { .coro = 1 };
+	ev_io_init(&io, (void*)fiber, sock, EV_READ);
 
 	input = tbuf_alloc(fiber->pool);
 	rep = tbuf_alloc(fiber->pool);
@@ -265,8 +279,16 @@ handshake(int sock, struct feeder_filter *filter)
 	for (;;) {
 		tbuf_ensure(input, 4096);
 		ssize_t r = tbuf_recv(input, sock);
-		if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR))
-			continue;
+		if (r < 0) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK) {
+				ev_io_start(&io);
+				yield();
+				ev_io_stop(&io);
+				continue;
+			}
+			if (errno == EINTR)
+				continue;
+		}
 		if (r <= 0) {
 			say_syserror("closing connection, recv");
 			_exit(EXIT_SUCCESS);
@@ -371,7 +393,6 @@ recover_feed_slave(int sock)
 	socklen_t addrlen = sizeof(addr);
 	const char *peer_name = "<unknown>";
 	ev_io io = { .coro = 0 };
-	ev_timer tm = { .coro = 0 };
 	struct feeder_filter filter;
 	memset(&filter, 0, sizeof(filter));
 
@@ -395,36 +416,72 @@ recover_feed_slave(int sock)
 	ev_io_init(&io, (void *)eof_monitor, sock, EV_READ);
 	ev_io_start(&io);
 
-	ev_timer_init(&tm, (void *)keepalive, 1, 1);
-	ev_timer_start(&tm);
-
 	fiber_create("feeder/keepalive_send", keepalive_send, feeder);
-
-	ev_run(0);
 }
 
-void fsleep(ev_tstamp t)
+static void
+do_exit(int code)
 {
-	struct timeval tv;
-	tv.tv_sec = (long)t;
-	tv.tv_usec = (long)((t - tv.tv_sec) * 1e6);
-	select(0, NULL, NULL, NULL, &tv);
+	if (cfg.wal_feeder_fork_before_init)
+		_exit(code);
+	else
+		exit(code);
+}
+
+static int server;
+static void
+on_bind(int srv)
+{
+	if (srv == -1) {
+		say_error("unable to bind feeder");
+		do_exit(EXIT_FAILURE);
+	}
+	server = srv;
+}
+
+static ev_timer tm = { .coro = 0 };
+static void
+accept_client(int client, void *data _unused_)
+{
+	if (cfg.wal_feeder_debug_no_fork) {
+		close(server);
+		recover_feed_slave(client);
+		return;
+	}
+	int child = tnt_fork();
+	if (child < 0) {
+		say_syserror("fork");
+		close(client);
+	}
+	else if (child == 0) {
+		close(server);
+
+		if (!cfg.wal_feeder_fork_before_init) {
+			ev_timer_init(&tm, (void *)keepalive, 1, 1);
+			ev_timer_start(&tm);
+		}
+
+		recover_feed_slave(client);
+	}
+	else {
+		close(client);
+	}
 }
 
 static void
 init(void)
 {
-	int server, client;
-	struct sockaddr_in server_addr;
-
 	if (cfg.wal_feeder_bind_addr == NULL) {
 		say_info("WAL feeder is disabled");
 		return;
 	}
 
-	if (cfg.wal_feeder_fork_before_init)
+	if (cfg.wal_feeder_fork_before_init) {
 		if (tnt_fork() != 0)
 			return;
+		ev_timer_init(&tm, (void *)keepalive, 1, 1);
+		ev_timer_start(&tm);
+	}
 
 	signal(SIGCHLD, SIG_IGN);
 
@@ -443,49 +500,14 @@ init(void)
 	set_proc_title("feeder:acceptor%s %s",
 		       custom_proc_title, cfg.wal_feeder_bind_addr);
 
-	if (atosin(cfg.wal_feeder_bind_addr, &server_addr) == -1)
-		panic("bad wal_feeder_bind_addr: '%s'", cfg.wal_feeder_bind_addr);
-
-	server = server_socket(SOCK_STREAM, &server_addr, 0, NULL, fsleep);
-	if (server == -1) {
-		say_error("unable to create server socket");
-		goto exit;
+	if (fiber_create("feeder/acceptor", tcp_server, cfg.wal_feeder_bind_addr,
+				accept_client, on_bind, NULL) == NULL) {
+		say_syserror("can't start feeder acceptor on '%s'", cfg.wal_feeder_bind_addr);
+		do_exit(EXIT_FAILURE);
 	}
 
-	struct timeval tm = { .tv_sec = 0, .tv_usec = 100000};
-	setsockopt(server, SOL_SOCKET, SO_RCVTIMEO, &tm,sizeof(tm));
-	say_info("WAL feeder initilized");
-
-	for (;;) {
-		pid_t child;
-		keepalive();
-
-		client = accept(server, NULL, NULL);
-		if (unlikely(client < 0)) {
-			if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
-				continue;
-			say_syserror("accept");
-			continue;
-		}
-
-		if (cfg.wal_feeder_debug_no_fork) {
-			recover_feed_slave(client);
-			continue;
-		}
-
-		child = tnt_fork();
-		if (child < 0) {
-			say_syserror("fork");
-			close(client);
-			continue;
-		}
-		if (child == 0)
-			recover_feed_slave(client);
-		else
-			close(client);
-	}
-      exit:
-	_exit(EXIT_FAILURE);
+	ev_run(0);
+	do_exit(EXIT_SUCCESS);
 }
 
 static int
