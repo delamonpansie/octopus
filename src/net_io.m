@@ -911,7 +911,7 @@ tcp_server(va_list ap)
 			handler(cfd, data);
 		}
 
-		if (errno == EINVAL || errno == EBADF) {
+		if (errno == EINVAL || errno == EBADF || errno == ENOTSOCK) {
 			say_debug("tcp_socket acceptor were closed on : %s", addr);
 			ev_io_stop(&io);
 			break;
