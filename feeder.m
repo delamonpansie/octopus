@@ -180,7 +180,7 @@ recover_row:(struct row_v12 *)r
 - (void)
 wal_final_row
 {
-	[self recover_row:[self dummy_row_lsn:0 scn:0 tag:wal_final_tag|TAG_WAL]];
+	[self recover_row:[self dummy_row_lsn:0 scn:0 tag:wal_final|TAG_SYS]];
 }
 
 - (void)
