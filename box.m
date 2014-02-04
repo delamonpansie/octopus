@@ -988,7 +988,7 @@ print_row(struct tbuf *out, u16 tag, struct tbuf *r)
 {
 	int tag_type = tag & ~TAG_MASK;
 	tag &= TAG_MASK;
-	if (tag == wal_tag) {
+	if (tag == wal_data) {
 		u16 op = read_u16(r);
 		xlog_print(out, op, r);
 		return;
@@ -998,7 +998,7 @@ print_row(struct tbuf *out, u16 tag, struct tbuf *r)
 		xlog_print(out, op, r);
 		return;
 	}
-	if (tag == snap_tag) {
+	if (tag == snap_data) {
 		snap_print(out, r);
 		return;
 	}
@@ -1288,18 +1288,17 @@ apply:(struct tbuf *)data tag:(u16)tag
 
 		switch (tag_type) {
 		case TAG_WAL:
-			if (tag < user_tag) {
-				if (tag != wal_tag)
-					return;
+			if (tag == wal_data)
 				txn.op = read_u16(data);
-			} else {
+			else if(tag >= user_tag)
 				txn.op = tag >> 5;
-			}
+			else
+				return;
 
 			box_prepare(&txn, data);
 			break;
 		case TAG_SNAP:
-			if (tag != snap_tag)
+			if (tag != snap_data)
 				return;
 
 			const struct box_snap_row *snap = box_snap_row(data);
@@ -1449,7 +1448,7 @@ snapshot_write_rows:(XLog *)l
 			tbuf_append(row, &header, sizeof(header));
 			tbuf_append(row, tuple->data, tuple->bsize);
 
-			if (snapshot_write_row(l, snap_tag, row) < 0) {
+			if (snapshot_write_row(l, snap_data, row) < 0) {
 				ret = -1;
 				goto out;
 			}

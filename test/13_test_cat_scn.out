@@ -46,8 +46,8 @@
 # box.insert([15, 15])
 1
 
-lsn:1 scn:1 t:snap/snap_initial_tag 0.0.0.0:0 count:0 run_crc_log:0x00000000 run_crc_mod:0x00000000
-lsn:1 scn:1 t:snap/snap_final_tag 0.0.0.0:0 
+lsn:1 scn:1 t:sys/snap_initial 0.0.0.0:0 count:0 run_crc_log:0x00000000 run_crc_mod:0x00000000
+lsn:1 scn:1 t:sys/snap_final 0.0.0.0:0 
 lsn:2 scn:2 t:wal/usr13 0.0.0.0:0 INSERT n:0 <0:"\x00\x00\x00\x00", 0:"\x00\x00\x00\x00">
 lsn:3 scn:3 t:wal/usr13 0.0.0.0:0 INSERT n:0 <1:"\x01\x00\x00\x00", 1:"\x01\x00\x00\x00">
 lsn:4 scn:4 t:wal/usr13 0.0.0.0:0 INSERT n:0 <2:"\x02\x00\x00\x00", 2:"\x02\x00\x00\x00">
