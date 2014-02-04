@@ -212,7 +212,8 @@ recover_row:(struct row_v12 *)r
 			}
 		}
 
-		if (tag_type == TAG_WAL)
+		/* compat hack: check of tag is redundant and required for old xlogs */
+		if (tag_type == TAG_WAL && (tag == wal_tag || tag > user_tag))
 			run_crc_log = crc32c(run_crc_log, r->data, r->len);
 
 		[self apply:&TBUF(r->data, r->len, fiber->pool) tag:r->tag];
@@ -338,7 +339,8 @@ recover_wal:(id<XLogPuller>)l
 					next_skip_scn = tbuf_len(&skip_scn) > 0 ?
 							read_u64(&skip_scn) : 0;
 
-				if (tag_type == TAG_WAL)
+				/* compat hack: check of tag is redundant and required for old xlogs */
+				if (tag_type == TAG_WAL && (tag == wal_tag || tag > user_tag))
 					run_crc_log = crc32c(run_crc_log, r->data, r->len);
 
 				if (r->lsn > lsn)
