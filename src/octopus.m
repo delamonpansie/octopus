@@ -527,17 +527,11 @@ luaT_pushptr(struct lua_State *L, void *p)
 
 
 #ifdef STORAGE
-static void
-keepalive_read(ev_io *e, int events __attribute__((unused)))
+void
+_keepalive_read(ev_io *e, int events __attribute__((unused)))
 {
-	char buf[16];
-	ssize_t r = read(e->fd, buf, sizeof(buf));
-	if (r > 0)
-		return;
-	if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR))
-		return;
-
-	panic("read from keepalive_pipe failed");
+	assert(e != NULL && e->fd == keepalive_pipe[0]);
+	keepalive_read();
 }
 
 static void
@@ -854,7 +848,7 @@ octopus(int argc, char **argv)
 		exit(1);
 	}
 
-	ev_io_init(&keepalive_ev, keepalive_read, keepalive_pipe[0], EV_READ);
+	ev_io_init(&keepalive_ev, _keepalive_read, keepalive_pipe[0], EV_READ);
 	ev_io_start(&keepalive_ev);
 
 	fiber_init(); /* must be initialized before Lua */

@@ -148,6 +148,23 @@ keepalive(void)
 		panic("parent is dead");
 }
 
+void
+keepalive_read()
+{
+	char buf[16];
+	ssize_t r;
+next:
+	r = read(keepalive_pipe[0], buf, sizeof(buf));
+	if (r > 0) {
+		if (r == sizeof(buf))
+			goto next;
+		return;
+	}
+	if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR))
+		return;
+
+	panic("read from keepalive_pipe failed");
+}
 
 volatile int gdb_wait_lock = 1;
 void
