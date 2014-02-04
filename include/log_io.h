@@ -40,19 +40,19 @@
 
 /* despite having type encoding tag must be unique */
 
-enum { snap_initial_tag = 1,  /* SNAP */
-       snap_tag,              /* SNAP */
-       wal_tag,               /* WAL */
-       snap_final_tag,        /* SNAP */
-       wal_final_tag,         /* WAL */
-       run_crc,               /* WAL */
-       nop,                   /* WAL */
-       snap_skip_scn,         /* SNAP */
-       paxos_prepare,         /* SYS */
-       paxos_promise,         /* SYS */
-       paxos_propose,         /* SYS */
-       paxos_accept,          /* SYS */
-       paxos_nop,             /* SYS */
+enum { snap_initial = 1,
+       snap_data,
+       wal_data,
+       snap_final,
+       wal_final,
+       run_crc,
+       nop,
+       snap_skip_scn,
+       paxos_prepare,
+       paxos_promise,
+       paxos_propose,
+       paxos_accept,
+       paxos_nop,
 
        user_tag = 32
 };
@@ -70,30 +70,35 @@ enum { snap_initial_tag = 1,  /* SNAP */
 #define TAG_WAL 0x8000
 #define TAG_SYS 0xc000
 
+static inline bool scn_changer(int tag)
+{
+	int tag_type = tag & ~TAG_MASK;
+	tag &= TAG_MASK;
+	return tag_type == TAG_WAL || tag == nop || tag == run_crc;
+}
+
 static inline bool dummy_tag(int tag) /* dummy row tag */
 {
-	return (tag & TAG_MASK) == wal_final_tag;
+	return (tag & TAG_MASK) == wal_final;
 }
 
 static inline u16 fix_tag(u16 tag)
 {
 	switch (tag) {
-	case snap_initial_tag:	return tag | TAG_SNAP;
-	case snap_tag:		return tag | TAG_SNAP;
-	case wal_tag:		return tag | TAG_WAL;
-	case snap_final_tag:	return tag | TAG_SNAP;
-	case wal_final_tag:	return tag | TAG_WAL;
-	case run_crc:		return tag | TAG_WAL;
-	case nop:		return tag | TAG_WAL;
-	case snap_skip_scn:	return tag | TAG_SNAP;
-	case paxos_prepare:	return tag | TAG_SYS;
-	case paxos_promise:	return tag | TAG_SYS;
-	case paxos_propose:	return tag | TAG_SYS;
-	case paxos_accept:	return tag | TAG_SYS;
+	case snap_data:		return tag | TAG_SNAP;
+	case wal_data:		return tag | TAG_WAL;
+	case snap_initial:
+	case snap_final:
+	case wal_final:
+	case run_crc:
+	case nop:
+	case snap_skip_scn:
+	case paxos_prepare:
+	case paxos_promise:
+	case paxos_propose:
+	case paxos_accept:
 	case paxos_nop:		return tag | TAG_SYS;
-	default:
-		assert(tag & ~TAG_MASK);
-		return tag;
+	default:		abort();
 	}
 }
 

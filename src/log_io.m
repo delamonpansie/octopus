@@ -96,11 +96,11 @@ xlog_tag_to_a(u16 tag)
 	}
 
 	switch (tag) {
-	case snap_initial_tag:	strcat(p, "snap_initial_tag"); break;
-	case snap_tag:		strcat(p, "snap_tag"); break;
-	case wal_tag:		strcat(p, "wal_tag"); break;
-	case snap_final_tag:	strcat(p, "snap_final_tag"); break;
-	case wal_final_tag:	strcat(p, "wal_final_tag"); break;
+	case snap_initial:	strcat(p, "snap_initial"); break;
+	case snap_data:		strcat(p, "snap_data"); break;
+	case snap_final:	strcat(p, "snap_final"); break;
+	case wal_data:		strcat(p, "wal_data"); break;
+	case wal_final:		strcat(p, "wal_final"); break;
 	case run_crc:		strcat(p, "run_crc"); break;
 	case nop:		strcat(p, "nop"); break;
 	case paxos_prepare:	strcat(p, "paxos_prepare"); break;
@@ -612,7 +612,7 @@ convert_row_v04_to_v12(struct tbuf *m)
 	row_v12(n)->scn = row_v12(n)->lsn = _row_v04(m)->lsn;
 	row_v12(n)->tm = 0;
 	row_v12(n)->len = _row_v04(m)->len + sizeof(u16); /* tag */
-	row_v12(n)->tag = wal_tag;
+	row_v12(n)->tag = wal_data;
 	row_v12(n)->cookie = default_cookie;
 
 	tbuf_add_dup(n, &_row_v04(m)->type);
@@ -711,9 +711,9 @@ convert_row_v11_to_v12(struct tbuf *m)
 
 	u16 tag = read_u16(m);
 	if (tag == (u16)-1) {
-		row_v12(n)->tag = snap_tag;
+		row_v12(n)->tag = snap_data;
 	} else if (tag == (u16)-2) {
-		row_v12(n)->tag = wal_tag;
+		row_v12(n)->tag = wal_data;
 	} else {
 		say_error("unknown tag %i", (int)tag);
 		return NULL;
@@ -805,13 +805,13 @@ append_row:(struct row_v12 *)row12 data:(const void *)data
 
 	assert(wet_rows < nelem(wet_rows_offset));
 
-	if (tag == snap_tag) {
+	if (tag == snap_data) {
 		tag = (u16)-1;
-	} else if (tag == wal_tag) {
+	} else if (tag == wal_data) {
 		tag = (u16)-2;
-	} else if (tag == snap_initial_tag ||
-		   tag == snap_final_tag ||
-		   tag == wal_final_tag)
+	} else if (tag == snap_initial ||
+		   tag == snap_final ||
+		   tag == wal_final)
 	{
 		/* SEGV value non equal to NULL */
 		return (const struct row_v12 *)(intptr_t)1;

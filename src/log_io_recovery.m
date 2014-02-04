@@ -142,7 +142,7 @@ fixup:(const struct row_v12 *)r
 	assert(tag_type == TAG_WAL ? r->scn > 1 : 1);
 
 	switch (tag) {
-	case snap_initial_tag:
+	case snap_initial:
 		if (r->len == sizeof(u32) * 3) { /* not a dummy row */
 			struct tbuf buf = TBUF(r->data, r->len, NULL);
 			estimated_snap_rows = read_u32(&buf);
@@ -212,7 +212,7 @@ recover_row:(struct row_v12 *)r
 			}
 		}
 
-		if (tag_type == TAG_WAL && (tag == wal_tag || tag > user_tag))
+		if (tag_type == TAG_WAL)
 			run_crc_log = crc32c(run_crc_log, r->data, r->len);
 
 		[self apply:&TBUF(r->data, r->len, fiber->pool) tag:r->tag];
@@ -227,8 +227,8 @@ recover_row:(struct row_v12 *)r
 
 		lsn = r->lsn;
 
-		if (tag == snap_final_tag || tag_type == TAG_WAL) {
-			if (unlikely(tag != snap_final_tag && r->scn - scn != 1 &&
+		if (scn_changer(r->tag) || tag == snap_final) {
+			if (unlikely(tag != snap_final && r->scn - scn != 1 &&
 				     cfg.panic_on_scn_gap && [[self class] name] == [Recovery name]))
 				panic("non consecutive SCN %"PRIi64 " -> %"PRIi64, scn, r->scn);
 
@@ -286,7 +286,7 @@ recover_snap
 			panic("sync_scn_with_lsn is required when loading from v11 snapshots");
 
 		if (legacy_snap)
-			[self recover_row:[self dummy_row_lsn:snap_lsn scn:snap_lsn tag:(snap_initial_tag | TAG_SNAP)]];
+			[self recover_row:[self dummy_row_lsn:snap_lsn scn:snap_lsn tag:snap_initial|TAG_SYS]];
 
 		int row_count = 0;
 		while ((r = [snap fetch_row])) {
@@ -306,7 +306,7 @@ recover_snap
 
 		/* old v11 snapshot, scn == lsn from filename */
 		if (legacy_snap)
-			[self recover_row:[self dummy_row_lsn:snap_lsn scn:snap_lsn tag:(snap_final_tag | TAG_SNAP)]];
+			[self recover_row:[self dummy_row_lsn:snap_lsn scn:snap_lsn tag:snap_final|TAG_SYS]];
 
 		if (![snap eof])
 			raise("unable to fully read snapshot");
@@ -330,7 +330,6 @@ recover_wal:(id<XLogPuller>)l
 		while ((r = [l fetch_row])) {
 			if (r->scn == next_skip_scn) {
 				say_info("skip SCN:%"PRIi64 " tag:%s", next_skip_scn, xlog_tag_to_a(r->tag));
-				int tag = r->tag & TAG_MASK;
 				int tag_type = r->tag & ~TAG_MASK;
 
 				/* there are multiply rows with same SCN in paxos mode.
@@ -339,7 +338,7 @@ recover_wal:(id<XLogPuller>)l
 					next_skip_scn = tbuf_len(&skip_scn) > 0 ?
 							read_u64(&skip_scn) : 0;
 
-				if (tag_type == TAG_WAL && (tag == wal_tag || tag > user_tag))
+				if (tag_type == TAG_WAL)
 					run_crc_log = crc32c(run_crc_log, r->data, r->len);
 
 				if (r->lsn > lsn)
@@ -529,9 +528,9 @@ pull_snapshot:(id<XLogPullerAsync>)puller
 			int tag = row->tag & TAG_MASK;
 			int tag_type = row->tag & ~TAG_MASK;
 
-			if (tag_type == TAG_SNAP) {
+			if (tag_type == TAG_SNAP || tag == snap_initial || tag == snap_final) {
 				[self recover_row:row];
-				if (tag == snap_final_tag)
+				if (tag == snap_final)
 					return;
 			} else {
 				raise("unexpected tag %s", xlog_tag_to_a(row->tag));
@@ -561,21 +560,21 @@ pull_wal:(id<XLogPullerAsync>)puller
 
 	do {
 		int tag = row->tag & TAG_MASK;
-		int tag_type = row->tag & ~TAG_MASK;
 
 		/* TODO: apply filter on feeder side */
-		/* filter out all system (paxos) rows
+		/* filter out all paxos rows
 		   these rows define non shared/non replicated state */
-		if (tag_type == TAG_SYS)
+		if (tag == paxos_prepare ||
+		    tag == paxos_promise ||
+		    tag == paxos_propose ||
+		    tag == paxos_accept ||
+		    tag == paxos_nop)
 			continue;
 
-		if (tag == wal_final_tag) {
+		if (tag == wal_final) {
 			final_row = row;
 			break;
 		}
-
-		if (tag_type != TAG_WAL)
-			raise("unexpected tag %s", xlog_tag_to_a(row->tag));
 
 		if (cfg.io12_hack)
 			fix_scn(row);
@@ -605,8 +604,8 @@ pull_wal:(id<XLogPullerAsync>)puller
 					continue;
 
 				switch (tag) {
-				case wal_tag:
-				case wal_final_tag:
+				case wal_data:
+				case wal_final:
 					continue;
 				default:
 					panic("can't replicate from non io_compat master");
@@ -822,7 +821,7 @@ submit_run_crc
 	typeof(run_crc_log) run_crc_mod = 0;
 	tbuf_append(b, &run_crc_mod, sizeof(run_crc_mod));
 
-	return [self submit:b->ptr len:tbuf_len(b) tag:(run_crc | TAG_WAL)];
+	return [self submit:b->ptr len:tbuf_len(b) tag:run_crc|TAG_SYS];
 }
 
 - (id) init_snap_dir:(const char *)snap_dirname
@@ -897,7 +896,7 @@ nop_hb_writer(va_list ap)
 		if ([recovery is_replica])
 			continue;
 
-		[recovery submit:body len:nelem(body) tag:(nop | TAG_WAL)];
+		[recovery submit:body len:nelem(body) tag:nop|TAG_SYS];
 	}
 }
 
@@ -1034,7 +1033,7 @@ print_gen_row(struct tbuf *out, const struct row_v12 *row,
 
 	int tag = row->tag & TAG_MASK;
 	switch (tag) {
-	case snap_initial_tag:
+	case snap_initial:
 		if (tbuf_len(&row_data) == sizeof(u32) * 3) {
 			u32 count = read_u32(&row_data);
 			u32 log = read_u32(&row_data);

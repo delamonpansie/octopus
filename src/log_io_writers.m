@@ -282,15 +282,14 @@ wal_disk_writer(int fd, void *state)
 					continue;
 				}
 
-				int tag = h->tag & TAG_MASK;
 				int tag_type = h->tag & ~TAG_MASK;
-				if (tag_type == TAG_WAL && (tag == wal_tag || tag > user_tag))
+				if (tag_type == TAG_WAL)
 					crc = crc32c(crc, data, h->len);
 
 				/* next_scn is used for writing XLog header, which is turn used to
 				   find correct file for replication replay.
 				   so, next_scn should be updated only when data modification occurs */
-				if (tag_type == TAG_WAL) {
+				if (scn_changer(h->tag)) {
 					if (cfg.panic_on_scn_gap && ret->scn - next_scn != 1)
 						panic("GAP %"PRIi64" rows:%i", ret->scn - next_scn,
 						      request[requests_processed].row_count);
@@ -394,7 +393,7 @@ submit:(const void *)data len:(u32)data_len tag:(u16)tag
 	   should ever use cfg.io_compat */
 	if (cfg.io_compat && (tag & ~TAG_MASK) == TAG_WAL) {
 		u16 op = (tag & TAG_MASK) >> 5;
-		row.tag = wal_tag|TAG_WAL;
+		row.tag = wal_data|TAG_WAL;
 		wal_pack_append_data(&pack, &row, &op, sizeof(op));
 	}
 	wal_pack_append_data(&pack, &row, data, data_len);
@@ -504,7 +503,7 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *row)
 	static ev_tstamp last = 0;
 	const int io_rate_limit = cfg.snap_io_rate_limit * 1024 * 1024;
 
-	if ([l append_row:row->ptr len:tbuf_len(row) scn:0 tag:(tag | TAG_SNAP)] == NULL) {
+	if ([l append_row:row->ptr len:tbuf_len(row) scn:0 tag:tag|TAG_SNAP] == NULL) {
 		say_syserror("unable write row");
 		return -1;
 	}
@@ -591,7 +590,7 @@ snapshot_write
 	u32 run_crc_mod = 0;
 	tbuf_append(snap_ini, &run_crc_mod, sizeof(run_crc_mod));
 
-	if ([snap append_row:snap_ini->ptr len:tbuf_len(snap_ini) scn:[state scn] tag:(snap_initial_tag | TAG_SNAP)] == NULL) {
+	if ([snap append_row:snap_ini->ptr len:tbuf_len(snap_ini) scn:[state scn] tag:snap_initial|TAG_SYS] == NULL) {
 		say_error("unable write initial row");
 		return -1;
 	}
@@ -603,7 +602,7 @@ snapshot_write
 		return -1;
 
 	const char end[] = "END";
-	if ([snap append_row:end len:strlen(end) scn:[state scn] tag:(snap_final_tag | TAG_SNAP)] == NULL) {
+	if ([snap append_row:end len:strlen(end) scn:[state scn] tag:snap_final|TAG_SYS] == NULL) {
 		say_error("unable write final row");
 		return -1;
 	}
