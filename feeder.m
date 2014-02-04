@@ -428,7 +428,6 @@ do_exit(int code)
 		exit(code);
 }
 
-static int server;
 static void
 on_bind(int srv)
 {
@@ -436,15 +435,14 @@ on_bind(int srv)
 		say_error("unable to bind feeder");
 		do_exit(EXIT_FAILURE);
 	}
-	server = srv;
 }
 
 static ev_timer tm = { .coro = 0 };
 static void
-accept_client(int client, void *data _unused_)
+accept_client(int client, void *data _unused_, struct tcp_server_state *tcp_state)
 {
 	if (cfg.wal_feeder_debug_no_fork) {
-		close(server);
+		tcp_server_stop(tcp_state);
 		recover_feed_slave(client);
 		return;
 	}
@@ -454,7 +452,7 @@ accept_client(int client, void *data _unused_)
 		close(client);
 	}
 	else if (child == 0) {
-		close(server);
+		tcp_server_stop(tcp_state);
 
 		if (!cfg.wal_feeder_fork_before_init) {
 			ev_timer_init(&tm, (void *)keepalive, 1, 1);
