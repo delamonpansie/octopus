@@ -213,7 +213,7 @@ recover_row:(struct row_v12 *)r
 		}
 
 		/* compat hack: check of tag is redundant and required for old xlogs */
-		if (tag_type == TAG_WAL && (tag == wal_tag || tag > user_tag))
+		if (tag_type == TAG_WAL && (tag == wal_data || tag > user_tag))
 			run_crc_log = crc32c(run_crc_log, r->data, r->len);
 
 		[self apply:&TBUF(r->data, r->len, fiber->pool) tag:r->tag];
@@ -332,6 +332,7 @@ recover_wal:(id<XLogPuller>)l
 			if (r->scn == next_skip_scn) {
 				say_info("skip SCN:%"PRIi64 " tag:%s", next_skip_scn, xlog_tag_to_a(r->tag));
 				int tag_type = r->tag & ~TAG_MASK;
+				int tag = r->tag & TAG_MASK;
 
 				/* there are multiply rows with same SCN in paxos mode.
 				   the last one is WAL row */
@@ -340,7 +341,7 @@ recover_wal:(id<XLogPuller>)l
 							read_u64(&skip_scn) : 0;
 
 				/* compat hack: check of tag is redundant and required for old xlogs */
-				if (tag_type == TAG_WAL && (tag == wal_tag || tag > user_tag))
+				if (tag_type == TAG_WAL && (tag == wal_data || tag > user_tag))
 					run_crc_log = crc32c(run_crc_log, r->data, r->len);
 
 				if (r->lsn > lsn)
