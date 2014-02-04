@@ -872,28 +872,28 @@ retry_bind:
 void
 tcp_server(va_list ap)
 {
-	const char *addr = va_arg(ap, const char *);
-	void (*handler)(int fd, void *data) = va_arg(ap, void (*)(int, void *));
-	void (*on_bind)(int fd) = va_arg(ap, void (*)(int fd));
-	void *data = va_arg(ap, void *);
+	struct tcp_server_state state;
+	state.addr = va_arg(ap, const char *);
+	state.handler = va_arg(ap, void (*)(int, void *, struct tcp_server_state *));
+	state.on_bind = va_arg(ap, void (*)(int fd));
+	state.data = va_arg(ap, void *);
 
-	struct sockaddr_in saddr;
 	int cfd, fd, one = 1;
 
-	if (!addr)
+	if (!state.addr)
 		return; /* exit before yield() will prevent fiber creation */
 
-	if (atosin(addr, &saddr) < 0)
+	if (atosin(state.addr, &state.saddr) < 0)
 		return;
 
-	if ((fd = server_socket(SOCK_STREAM, &saddr, 1, on_bind, fiber_sleep)) < 0)
+	if ((fd = server_socket(SOCK_STREAM, &state.saddr, 1, state.on_bind, fiber_sleep)) < 0)
 		return;
 
-	ev_io io = { .coro = 1 };
-	ev_io_init(&io, (void *)fiber, fd, EV_READ);
+	state.io = (ev_io){ .coro = 1 };
+	ev_io_init(&state.io, (void *)fiber, fd, EV_READ);
 
-	ev_io_start(&io);
-	while (1) {
+	ev_io_start(&state.io);
+	while (ev_is_active(&state.io)) {
 		yield();
 
 		while ((cfd = accept(fd, NULL, NULL)) > 0) {
@@ -908,20 +908,23 @@ tcp_server(va_list ap)
 				/* Do nothing, not a fatal error.  */
 			}
 
-			handler(cfd, data);
+			state.handler(cfd, state.data, &state);
+			if (!ev_is_active(&state.io)) {
+				return;
+			}
 		}
 
 		if (errno == EINVAL || errno == EBADF || errno == ENOTSOCK) {
-			say_debug("tcp_socket acceptor were closed on : %s", addr);
-			ev_io_stop(&io);
+			say_debug("tcp_socket acceptor were closed on : %s", state.addr);
+			ev_io_stop(&state.io);
 			break;
 		}
 
 		if (errno == EMFILE) {
 			say_error("can't accept, too many open files, throttling");
-			ev_io_stop(&io);
+			ev_io_stop(&state.io);
 			fiber_sleep(0.5);
-			ev_io_start(&io);
+			ev_io_start(&state.io);
 			continue;
 		}
 		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
@@ -930,6 +933,13 @@ tcp_server(va_list ap)
 		say_syserror("accept");
 		fiber_sleep(1);
 	}
+}
+
+void
+tcp_server_stop(struct tcp_server_state *state)
+{
+	ev_io_stop(&state->io);
+	close(state->io.fd);
 }
 
 void

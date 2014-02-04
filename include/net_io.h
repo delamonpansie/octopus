@@ -174,7 +174,16 @@ enum tac_state  tcp_async_connect(struct conn *c, ev_watcher *w,
 				ev_tstamp		timeout);
 
 int tcp_connect(struct sockaddr_in *dst, struct sockaddr_in *src, ev_tstamp timeout);
+struct tcp_server_state {
+	const char *addr;
+	void (*handler)(int fd, void *data, struct tcp_server_state *state);
+	void (*on_bind)(int fd);
+	void *data;
+	struct sockaddr_in saddr;
+	ev_io io;
+};
 void tcp_server(va_list ap);
+void tcp_server_stop(struct tcp_server_state *state);
 void udp_server(va_list ap);
 int server_socket(int type, struct sockaddr_in *src, int nonblock,
 		  void (*on_bind)(int fd), void (*sleep)(ev_tstamp tm));
