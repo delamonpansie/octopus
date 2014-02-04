@@ -111,6 +111,8 @@ writef(int fd, const char *b, size_t len)
 {
 	do {
 		ssize_t r = write(fd, b, len);
+		if (r < 0 && errno == EINTR)
+			continue;
 		if (r <= 0) {
 			say_syserror("write");
 			_exit(EXIT_SUCCESS);
@@ -265,7 +267,7 @@ handshake(int sock, struct feeder_filter *filter)
 	for (;;) {
 		tbuf_ensure(input, 4096);
 		ssize_t r = tbuf_recv(input, sock);
-		if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR))
+		if (r < 0 && errno == EINTR)
 			continue;
 		if (r <= 0) {
 			say_syserror("closing connection, recv");
@@ -371,7 +373,6 @@ recover_feed_slave(int sock)
 	socklen_t addrlen = sizeof(addr);
 	const char *peer_name = "<unknown>";
 	ev_io io = { .coro = 0 };
-	ev_timer tm = { .coro = 0 };
 	struct feeder_filter filter;
 	memset(&filter, 0, sizeof(filter));
 
@@ -395,9 +396,6 @@ recover_feed_slave(int sock)
 	ev_io_init(&io, (void *)eof_monitor, sock, EV_READ);
 	ev_io_start(&io);
 
-	ev_timer_init(&tm, (void *)keepalive, 1, 1);
-	ev_timer_start(&tm);
-
 	fiber_create("feeder/keepalive_send", keepalive_send, feeder);
 
 	ev_run(0);
@@ -412,6 +410,19 @@ void fsleep(ev_tstamp t)
 	select(0, NULL, NULL, NULL, &tv);
 }
 
+ev_timer tm = { .coro = 0 };
+
+static int
+feeder_fork()
+{
+	int n = tnt_fork();
+	if (n == 0 && !ev_is_active(&tm) && !cfg.wal_feeder_debug_no_fork) {
+		ev_timer_init(&tm, (void*)keepalive, 1, 1);
+		ev_timer_start(&tm);
+	}
+	return n;
+}
+
 static void
 init(void)
 {
@@ -423,9 +434,10 @@ init(void)
 		return;
 	}
 
-	if (cfg.wal_feeder_fork_before_init)
-		if (tnt_fork() != 0)
+	if (cfg.wal_feeder_fork_before_init && !cfg.wal_feeder_debug_no_fork) {
+		if (feeder_fork() != 0)
 			return;
+	}
 
 	signal(SIGCHLD, SIG_IGN);
 
@@ -459,10 +471,13 @@ init(void)
 
 	for (;;) {
 		pid_t child;
-		keepalive();
+		if (cfg.wal_feeder_fork_before_init && !cfg.wal_feeder_debug_no_fork)
+			keepalive();
+		else
+			keepalive_read();
 
 		client = accept(server, NULL, NULL);
-		if (unlikely(client < 0)) {
+		if (client < 0) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
 				continue;
 			say_syserror("accept");
@@ -474,16 +489,20 @@ init(void)
 			continue;
 		}
 
-		child = tnt_fork();
+		child = feeder_fork();
 		if (child < 0) {
 			say_syserror("fork");
 			close(client);
 			continue;
 		}
-		if (child == 0)
+		if (child == 0) {
+			struct timeval tm = { .tv_sec = 120, .tv_usec = 0};
+			setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &tm,sizeof(tm));
+			setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &tm,sizeof(tm));
 			recover_feed_slave(client);
-		else
+		} else {
 			close(client);
+		}
 	}
       exit:
 	_exit(EXIT_FAILURE);
