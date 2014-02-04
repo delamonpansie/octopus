@@ -283,7 +283,8 @@ wal_disk_writer(int fd, void *state)
 				}
 
 				int tag_type = h->tag & ~TAG_MASK;
-				if (tag_type == TAG_WAL)
+				int tag = h->tag & TAG_MASK;
+				if (tag_type == TAG_WAL && (tag == wal_data || tag > user_tag))
 					crc = crc32c(crc, data, h->len);
 
 				/* next_scn is used for writing XLog header, which is turn used to
