@@ -526,7 +526,7 @@ luaT_pushptr(struct lua_State *L, void *p)
 }
 
 
-#ifdef STORAGE
+#if defined(STORAGE) || defined(FEEDER)
 void
 _keepalive_read(ev_io *e, int events __attribute__((unused)))
 {
@@ -545,7 +545,7 @@ ev_panic(const char *msg)
 static int
 octopus(int argc, char **argv)
 {
-#ifdef STORAGE
+#if defined(STORAGE) || defined(FEEDER)
 	const char *cat_filename = NULL;
 #endif
 	const char *cfg_paramname = NULL;
@@ -572,9 +572,11 @@ octopus(int argc, char **argv)
 			   gopt_option('c', GOPT_ARG, gopt_shorts('c'),
 				       gopt_longs("config"),
 				       "=FILE", "path to configuration file (default: " DEFAULT_CFG_FILENAME ")"),
-#ifdef STORAGE
+#if defined(STORAGE) || defined(FEEDER)
 			   gopt_option('C', GOPT_ARG, gopt_shorts(0), gopt_longs("cat"),
 				       "=FILE|SCN", "cat xlog to stdout in readable format and exit"),
+#endif
+#ifdef STORAGE
 			   gopt_option('F', GOPT_ARG, gopt_shorts(0), gopt_longs("fold"),
 				       "=SCN", "calculate CRC32C of storage at given SCN and exit"),
 			   gopt_option('i', 0, gopt_shorts('i'),
@@ -615,7 +617,7 @@ octopus(int argc, char **argv)
 		say_list_sources();
 		return 0;
 	}
-#ifdef STORAGE
+#if defined(STORAGE) || defined(FEEDER)
 	if (gopt_arg(opt, 'C', &cat_filename)) {
 		salloc_init(0, 0, 0);
 		fiber_init();
@@ -650,7 +652,9 @@ octopus(int argc, char **argv)
 					return m->cat_scn(stop_scn);
 		}
 	}
+#endif
 
+#ifdef STORAGE
 	const char *opt_text;
 	if (gopt_arg(opt, 'F', &opt_text))
 		fold_scn = atol(opt_text);
@@ -807,7 +811,7 @@ octopus(int argc, char **argv)
 	luaT_init();
 	signal_init();
 	module_init(module(NULL));
-#elif defined(STORAGE)
+#elif defined(STORAGE) || defined(FEEDER)
 	say_info("octopus version: %s", octopus_version());
 	say_info("%s", OCT_BUILD_INFO);
 	struct utsname utsn;
@@ -854,9 +858,14 @@ octopus(int argc, char **argv)
 	fiber_init(); /* must be initialized before Lua */
 	luaT_init();
 
+#ifdef FEEDER
+	cfg.wal_feeder_fork_before_init = 0;
+	assert(module("feeder"));
+#endif
 	if (module("feeder") && fold_scn == 0)
 		module_init(module("feeder"));
 
+#ifdef STORAGE
 	ev_signal ev_sig = { .coro = 0 };
 	ev_signal_init(&ev_sig, (void *)save_snapshot, SIGUSR1);
 	ev_signal_start(&ev_sig);
@@ -904,8 +913,9 @@ octopus(int argc, char **argv)
 	ev_run(0);
 	ev_loop_destroy();
 	say_debug("exiting loop");
+#endif
 #else
-#error UTILITY or STORAGE must be defined
+#error UTILITY or STORAGE or FEEDER must be defined
 #endif
 	return 0;
 }
