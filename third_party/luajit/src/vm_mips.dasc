@@ -1,6 +1,6 @@
 |// Low-level VM code for MIPS CPUs.
 |// Bytecode interpreter, fast functions and helper functions.
-|// Copyright (C) 2005-2013 Mike Pall. See Copyright Notice in luajit.h
+|// Copyright (C) 2005-2014 Mike Pall. See Copyright Notice in luajit.h
 |
 |.arch mips
 |.section code_op, code_sub
@@ -2011,6 +2011,62 @@ static void build_subroutines(BuildCtx *ctx)
   |  jr CRET1
   |.  lw INS, -4(PC)
   |
+  |->cont_stitch:			// Trace stitching.
+  |.if JIT
+  |  // RA = resultptr, RB = meta base
+  |  lw INS, -4(PC)
+  |    lw TMP3, -24+LO(RB)		// Save previous trace number.
+  |  decode_RA8a RC, INS
+  |   addiu AT, MULTRES, -8
+  |  decode_RA8b RC
+  |   beqz AT, >2
+  |. addu RC, BASE, RC			// Call base.
+  |1:  // Move results down.
+  |  ldc1 f0, 0(RA)
+  |   addiu AT, AT, -8
+  |    addiu RA, RA, 8
+  |  sdc1 f0, 0(RC)
+  |   bnez AT, <1
+  |.   addiu RC, RC, 8
+  |2:
+  |   decode_RA8a RA, INS
+  |    decode_RB8a RB, INS
+  |   decode_RA8b RA
+  |    decode_RB8b RB
+  |   addu RA, RA, RB
+  |  lw TMP1, DISPATCH_J(trace)(DISPATCH)
+  |   addu RA, BASE, RA
+  |3:
+  |   sltu AT, RC, RA
+  |   bnez AT, >9			// More results wanted?
+  |. sll TMP2, TMP3, 2
+  |
+  |  addu TMP2, TMP1, TMP2
+  |  lw TRACE:TMP2, 0(TMP2)
+  |  beqz TRACE:TMP2, ->cont_nop
+  |.  nop
+  |  lhu RD, TRACE:TMP2->link
+  |  beq RD, TMP3, ->cont_nop		// Blacklisted.
+  |.  load_got lj_dispatch_stitch
+  |  bnez RD, =>BC_JLOOP		// Jump to stitched trace.
+  |.  sll RD, RD, 3
+  |
+  |  // Stitch a new trace to the previous trace.
+  |  sw TMP3, DISPATCH_J(exitno)(DISPATCH)
+  |  sw L, DISPATCH_J(L)(DISPATCH)
+  |  sw BASE, L->base
+  |  addiu CARG1, DISPATCH, GG_DISP2J
+  |  call_intern lj_dispatch_stitch	// (jit_State *J, const BCIns *pc)
+  |.  move CARG2, PC
+  |  b ->cont_nop
+  |.  lw BASE, L->base
+  |
+  |9:
+  |  sw TISNIL, HI(RC)
+  |  b <3
+  |.  addiu RC, RC, 8
+  |.endif
+  |
   |->vm_profhook:			// Dispatch target for profiler hook.
 #if LJ_HASPROFILE
   |  load_got lj_dispatch_profile
@@ -2090,14 +2146,14 @@ static void build_subroutines(BuildCtx *ctx)
   |   addiu DISPATCH, JGL, -GG_DISP2G-32768
   |  sw BASE, L->base
   |1:
-  |  bltz CRET1, >3			// Check for error from exit.
-  |.  lw LFUNC:TMP1, FRAME_FUNC(BASE)
+  |  bltz CRET1, >9			// Check for error from exit.
+  |.  lw LFUNC:RB, FRAME_FUNC(BASE)
   |    lui TMP3, 0x59c0			// TOBIT = 2^52 + 2^51 (float).
   |  sll MULTRES, CRET1, 3
   |    li TISNIL, LJ_TNIL
   |  sw MULTRES, SAVE_MULTRES
   |    mtc1 TMP3, TOBIT
-  |  lw TMP1, LFUNC:TMP1->pc
+  |  lw TMP1, LFUNC:RB->pc
   |   sw r0, DISPATCH_GL(jit_base)(DISPATCH)
   |  lw KBASE, PC2PROTO(k)(TMP1)
   |    cvt.d.s TOBIT, TOBIT
@@ -2118,11 +2174,27 @@ static void build_subroutines(BuildCtx *ctx)
   |  jr AT
   |.  decode_RD8b RD
   |2:
+  |  sltiu TMP2, TMP1, (BC_FUNCC+2)*4	// Fast function?
+  |  bnez TMP2, >3
+  |.  lw TMP1, FRAME_PC(BASE)
+  |  // Check frame below fast function.
+  |  andi TMP0, TMP1, FRAME_TYPE
+  |  bnez TMP0, >3			// Trace stitching continuation?
+  |.  nop
+  |  // Otherwise set KBASE for Lua function below fast function.
+  |  lw TMP2, -4(TMP1)
+  |  decode_RA8a TMP0, TMP2
+  |  decode_RA8b TMP0
+  |  subu TMP1, BASE, TMP0
+  |  lw LFUNC:TMP2, -8+FRAME_FUNC(TMP1)
+  |  lw TMP1, LFUNC:TMP2->pc
+  |  lw KBASE, PC2PROTO(k)(TMP1)
+  |3:
   |  addiu RC, MULTRES, -8
   |  jr AT
-  |.  add RA, RA, BASE
+  |.  addu RA, RA, BASE
   |
-  |3:  // Rethrow error from the right C frame.
+  |9:  // Rethrow error from the right C frame.
   |  load_got lj_err_throw
   |  negu CARG2, CRET1
   |  call_intern lj_err_throw		// (lua_State *L, int errcode)
@@ -2867,12 +2939,12 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  li AT, LJ_GC_BLACK|1
     |  or TMP3, TMP3, TMP0
     |  beq TMP3, AT, >2			// Upvalue is closed and black?
-    |.  addiu TMP2, TMP2, -(LJ_TISNUM+1)
+    |.  addiu TMP2, TMP2, -(LJ_TNUMX+1)
     |1:
     |  ins_next
     |
     |2:  // Check if new value is collectable.
-    |  sltiu AT, TMP2, LJ_TISGCV - (LJ_TISNUM+1)
+    |  sltiu AT, TMP2, LJ_TISGCV - (LJ_TNUMX+1)
     |  beqz AT, <1			// tvisgcv(v)
     |.  lw TMP1, LO(RD)
     |  lbu TMP3, GCOBJ:TMP1->gch.marked

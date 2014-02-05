@@ -1,6 +1,6 @@
 /*
 ** Base and coroutine library.
-** Copyright (C) 2005-2013 Mike Pall. See Copyright Notice in luajit.h
+** Copyright (C) 2005-2014 Mike Pall. See Copyright Notice in luajit.h
 **
 ** Major portions taken verbatim or adapted from the Lua interpreter.
 ** Copyright (C) 1994-2011 Lua.org, PUC-Rio. See Copyright Notice in lua.h
@@ -101,7 +101,7 @@ static int ffh_pairs(lua_State *L, MMS mm)
 #endif
 
 LJLIB_PUSH(lastcl)
-LJLIB_ASM(pairs)
+LJLIB_ASM(pairs)		LJLIB_REC(xpairs 0)
 {
   return ffh_pairs(L, MM_pairs);
 }
@@ -114,7 +114,7 @@ LJLIB_NOREGUV LJLIB_ASM(ipairs_aux)	LJLIB_REC(.)
 }
 
 LJLIB_PUSH(lastcl)
-LJLIB_ASM(ipairs)		LJLIB_REC(.)
+LJLIB_ASM(ipairs)		LJLIB_REC(xpairs 1)
 {
   return ffh_pairs(L, MM_ipairs);
 }

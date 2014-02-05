@@ -1,6 +1,6 @@
 |// Low-level VM code for x86 CPUs.
 |// Bytecode interpreter, fast functions and helper functions.
-|// Copyright (C) 2005-2013 Mike Pall. See Copyright Notice in luajit.h
+|// Copyright (C) 2005-2014 Mike Pall. See Copyright Notice in luajit.h
 |
 |.if P64
 |.arch x64
@@ -2659,6 +2659,69 @@ static void build_subroutines(BuildCtx *ctx)
   |  add NARGS:RD, 1
   |  jmp RBa
   |
+  |->cont_stitch:			// Trace stitching.
+  |.if JIT
+  |  // BASE = base, RC = result, RB = mbase
+  |  mov RA, [RB-24]			// Save previous trace number.
+  |  mov TMP1, RA
+  |  mov TMP3, DISPATCH			// Need one more register.
+  |  mov DISPATCH, MULTRES
+  |  movzx RA, PC_RA
+  |  lea RA, [BASE+RA*8]		// Call base.
+  |  sub DISPATCH, 1
+  |  jz >2
+  |1:  // Move results down.
+  |.if X64
+  |  mov RBa, [RC]
+  |  mov [RA], RBa
+  |.else
+  |  mov RB, [RC]
+  |  mov [RA], RB
+  |  mov RB, [RC+4]
+  |  mov [RA+4], RB
+  |.endif
+  |  add RC, 8
+  |  add RA, 8
+  |  sub DISPATCH, 1
+  |  jnz <1
+  |2:
+  |  movzx RC, PC_RA
+  |  movzx RB, PC_RB
+  |  add RC, RB
+  |  lea RC, [BASE+RC*8-8]
+  |3:
+  |  cmp RC, RA
+  |  ja >9				// More results wanted?
+  |
+  |  mov DISPATCH, TMP3
+  |  mov RB, TMP1			// Get previous trace number.
+  |  mov RA, [DISPATCH+DISPATCH_J(trace)]
+  |  mov TRACE:RD, [RA+RB*4]
+  |  test TRACE:RD, TRACE:RD
+  |  jz ->cont_nop
+  |  movzx RD, word TRACE:RD->link
+  |  cmp RD, RB
+  |  je ->cont_nop			// Blacklisted.
+  |  test RD, RD
+  |  jne =>BC_JLOOP			// Jump to stitched trace.
+  |
+  |  // Stitch a new trace to the previous trace.
+  |  mov [DISPATCH+DISPATCH_J(exitno)], RB
+  |  mov L:RB, SAVE_L
+  |  mov L:RB->base, BASE
+  |  mov FCARG2, PC
+  |  lea FCARG1, [DISPATCH+GG_DISP2J]
+  |  mov aword [DISPATCH+DISPATCH_J(L)], L:RBa
+  |  call extern lj_dispatch_stitch@8	// (jit_State *J, const BCIns *pc)
+  |  mov BASE, L:RB->base
+  |  jmp ->cont_nop
+  |
+  |9:  // Fill up results with nil.
+  |  mov dword [RA+4], LJ_TNIL
+  |  add RA, 8
+  |  jmp <3
+  |.endif
+  |
   |->vm_profhook:			// Dispatch target for profiler hook.
 #if LJ_HASPROFILE
   |  mov L:RB, SAVE_L
@@ -2783,7 +2846,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  mov r13, TMPa
   |  mov r12, TMPQ
   |.endif
-  |  test RD, RD; js >3			// Check for error from exit.
+  |  test RD, RD; js >9			// Check for error from exit.
   |  mov L:RB, SAVE_L
   |  mov MULTRES, RD
   |  mov LFUNC:KBASE, [BASE-8]
@@ -2799,16 +2862,31 @@ static void build_subroutines(BuildCtx *ctx)
   |  add PC, 4
   |  shr RC, 16
   |  cmp OP, BC_FUNCF			// Function header?
-  |  jb >2
-  |  mov RC, MULTRES			// RC/RD holds nres+1.
+  |  jb >3
+  |  cmp OP, BC_FUNCC+2			// Fast function?
+  |  jae >4
   |2:
+  |  mov RC, MULTRES			// RC/RD holds nres+1.
+  |3:
   |.if X64
   |  jmp aword [DISPATCH+OP*8]
   |.else
   |  jmp aword [DISPATCH+OP*4]
   |.endif
   |
-  |3:  // Rethrow error from the right C frame.
+  |4:  // Check frame below fast function.
+  |  mov RC, [BASE-4]
+  |  test RC, FRAME_TYPE
+  |  jnz <2				// Trace stitching continuation?
+  |  // Otherwise set KBASE for Lua function below fast function.
+  |  movzx RC, byte [RC-3]
+  |  not RCa
+  |  mov LFUNC:KBASE, [BASE+RC*8-8]
+  |  mov KBASE, LFUNC:KBASE->pc
+  |  mov KBASE, [KBASE+PC2PROTO(k)]
+  |  jmp <2
+  |
+  |9:  // Rethrow error from the right C frame.
   |  neg RD
   |  mov FCARG1, L:RB
   |  mov FCARG2, RD
@@ -4169,7 +4247,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |
     |2:  // Upvalue is black. Check if new value is collectable and white.
     |  sub RD, LJ_TISGCV
-    |  cmp RD, LJ_TISNUM - LJ_TISGCV			// tvisgcv(v)
+    |  cmp RD, LJ_TNUMX - LJ_TISGCV			// tvisgcv(v)
     |  jbe <1
     |  test byte GCOBJ:RA->gch.marked, LJ_GC_WHITES	// iswhite(v)
     |  jz <1
@@ -5382,7 +5460,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  ins_A	// RA = base, RD = target (loop extent)
     |  // Note: RA/RD is only used by trace recorder to determine scope/extent
     |  // This opcode does NOT jump, it's only purpose is to detect a hot loop.
-  |.if JIT
+    |.if JIT
     |  hotloop RB
     |.endif
     | // Fall through. Assumes BC_ILOOP follows and ins_A is a no-op.
@@ -5872,12 +5950,12 @@ static void emit_asm_debug(BuildCtx *ctx)
 #if LJ_64
 	  "\t.byte 0xe\n\t.byte 16\n"		/* def_cfa_offset */
 	  "\t.byte 0x86\n\t.byte 0x2\n"		/* offset rbp */
-	  "\t.byte 0xd\n\t.uleb128 0x6\n"	/* def_cfa_register rbp */
+	  "\t.byte 0xd\n\t.byte 0x6\n"		/* def_cfa_register rbp */
 	  "\t.byte 0x83\n\t.byte 0x3\n"		/* offset rbx */
 #else
 	  "\t.byte 0xe\n\t.byte 8\n"		/* def_cfa_offset */
 	  "\t.byte 0x84\n\t.byte 0x2\n"		/* offset ebp (4 for MACH-O)*/
-	  "\t.byte 0xd\n\t.uleb128 0x4\n"	/* def_cfa_register ebp */
+	  "\t.byte 0xd\n\t.byte 0x4\n"		/* def_cfa_register ebp */
 	  "\t.byte 0x83\n\t.byte 0x3\n"		/* offset ebx */
 #endif
 	  "\t.align " BSZPTR "\n"

@@ -1,6 +1,6 @@
 /*
 ** IR assembler (SSA IR -> machine code).
-** Copyright (C) 2005-2013 Mike Pall. See Copyright Notice in luajit.h
+** Copyright (C) 2005-2014 Mike Pall. See Copyright Notice in luajit.h
 */
 
 #define lj_asm_c
@@ -2017,7 +2017,7 @@ static void asm_setup_regsp(ASMState *as)
 	as->modset |= RSET_SCRATCH;
       continue;
       }
-    case IR_CALLN: case IR_CALLL: case IR_CALLS: {
+    case IR_CALLN: case IR_CALLA: case IR_CALLL: case IR_CALLS: {
       const CCallInfo *ci = &lj_ir_callinfo[ir->op2];
       ir->prev = asm_setup_call_slots(as, ir, ci);
       if (inloop)
