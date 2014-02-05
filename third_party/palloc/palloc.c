@@ -189,7 +189,7 @@ struct palloc_pool {
 static __thread SLIST_HEAD(palloc_pool_head, palloc_pool) pools;
 #define CHUNK_CLASS(i, kb) [(i)] = { .size = (kb) * 1024 - sizeof(struct chunk) }
 
-#define malloc_fallback (uint32_t)-1
+#define almost_unlimited (uint32_t)-1
 static __thread struct chunk_class classes[] = {
 	CHUNK_CLASS(0, 32),
 	CHUNK_CLASS(1, 64),
@@ -200,7 +200,7 @@ static __thread struct chunk_class classes[] = {
 	CHUNK_CLASS(6, 2048),
 	CHUNK_CLASS(7, 4096),
 
-	{ .size = malloc_fallback }
+	{ .size = almost_unlimited }
 };
 
 const uint32_t chunk_magic = 0xbb84fcf6;
@@ -294,7 +294,7 @@ next_chunk_for(struct palloc_pool *pool, size_t size)
 	else
 		class = &classes[0];
 
-	if (class->size == malloc_fallback) /* move to prev to malloc_fallback class */
+	if (class->size == almost_unlimited) /* move to prev to almost_unlimited class */
 		class--;
 
 	while (class->size < size)
@@ -306,10 +306,12 @@ next_chunk_for(struct palloc_pool *pool, size_t size)
 		goto found;
 	}
 
-	if (class->size == malloc_fallback) {
-		chunk_size = size;
-		chunk = malloc(sizeof(struct chunk) + chunk_size);
-		if (chunk == NULL)
+	if (class->size == almost_unlimited) {
+		size_t mmap_size = (size + sizeof(struct chunk) + 4095) & ~4095;
+		chunk_size = mmap_size - sizeof(struct chunk);
+		chunk = mmap(MMAP_HINT_ADDR, sizeof(struct chunk) + chunk_size,
+			     PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+		if (chunk == MAP_FAILED)
 			return NULL;
 	} else {
 		chunk_size = class->size;
@@ -431,7 +433,7 @@ static void
 release_chunk(struct chunk *chunk)
 {
 	VALGRIND_DESTROY_MEMPOOL(chunk);
-	if (chunk->class->size != malloc_fallback) {
+	if (chunk->class->size != almost_unlimited) {
 		chunk->free = chunk->data_size;
 		chunk->brk = (void *)chunk + sizeof(struct chunk);
 		/* chunk must be removed from palloc_pool->chunks already */
@@ -441,7 +443,9 @@ release_chunk(struct chunk *chunk)
 	} else {
 		assert(chunk->class->chunks_count > 0);
 		chunk->class->chunks_count--;
-		free(chunk);
+		ASAN_UNPOISON_MEMORY_REGION(chunk->redzone, sizeof(chunk->redzone));
+		ASAN_UNPOISON_MEMORY_REGION(chunk->brk, chunk->free);
+		munmap(chunk, chunk->data_size + sizeof(struct chunk));
 	}
 }
 
@@ -461,7 +465,7 @@ release_chunks(struct chunk_list_head *chunks)
 		struct chunk_class *class = &classes[i];
 		struct chunk *chunk, *tvar;
 
-		if (class->size == malloc_fallback)
+		if (class->size == almost_unlimited)
 			continue;
 
 		TAILQ_FOREACH_REVERSE_SAFE(chunk, &class->chunks, chunk_list_head, link, tvar) {
