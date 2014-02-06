@@ -40,6 +40,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#import <mod/feeder/feeder.h>
 #import <mod/feeder/feeder_version.h>
 
 const char *filter_type_names[] = {
@@ -48,23 +49,17 @@ const char *filter_type_names[] = {
 	"C"
 };
 
-typedef struct row_v12 *(*filter_callback)(struct row_v12 *r, const char *arg, int arglen);
 struct registered_callback {
 	char name[REPLICATION_FILTER_NAME_LEN];
 	filter_callback filter;
 };
+
 struct registered_callbacks {
 	struct registered_callback *callbacks;
 	int capa, count;
 };
-static struct registered_callbacks registered = {NULL, 0, 0};
 
-@interface Feeder: Recovery {
-	int fd;
-	filter_callback filter;
-}
-+ (void) register_filter: (const char*)name call: (filter_callback)filter;
-@end
+static struct registered_callbacks registered = {NULL, 0, 0};
 
 @implementation Feeder
 - (id) init_snap_dir:(const char *)snap_dirname
