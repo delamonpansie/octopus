@@ -190,7 +190,7 @@ clean:
 luaclean:
 	$(E) "CLEAN	luajit"
 	$(Q)rm -f .luajit
-	$(Q)$(MAKE) -C third_party/luajit/src clean
+	$(Q)$(MAKE) -C third_party/luajit/src CC="$(CC)" E="$(E)" Q="$(Q)" clean
 
 configure-byproducts += autom4te.cache config.log config.status
 configure-byproducts += include/config.h Makefile
