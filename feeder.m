@@ -491,6 +491,7 @@ init(void)
 			continue;
 		}
 		if (child == 0) {
+			close(server);
 			struct timeval tm = { .tv_sec = 120, .tv_usec = 0};
 			setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &tm,sizeof(tm));
 			setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &tm,sizeof(tm));
