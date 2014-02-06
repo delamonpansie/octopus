@@ -86,6 +86,8 @@ int keepalive_pipe[2];
 extern int daemonize(int nochdir, int noclose);
 void out_warning(int v, char *format, ...);
 
+char *primary_addr;
+
 static void
 reset_cfg_err()
 {
@@ -626,6 +628,9 @@ octopus(int argc, char **argv)
 		gopt_arg(opt, 'c', &cfg_filename);
 		if (fill_default_octopus_cfg(&cfg) != 0 || load_cfg(&cfg, 0) != 0)
 			panic("can't load config: %s", cfg_err);
+#ifdef STORAGE
+		primary_addr = cfg.primary_addr;
+#endif
 
 		if (strchr(cat_filename, '.') || strchr(cat_filename, '/')) {
 			if (access(cat_filename, R_OK) == -1) {
