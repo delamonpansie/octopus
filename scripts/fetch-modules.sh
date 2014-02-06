@@ -45,7 +45,7 @@ git remote show | while read remote_name; do
 
     git branch -a | sed "s/^..//; s/^remotes\///; s/^$remote_name\///;" | grep "^\(mod_\|client_\)" | while read branch_name; do
 	branch_name=${branch_name#$remote_name/}
-	dir=$(echo $branch_name | tr _ /)
+	dir=$(echo $branch_name | sed s/_/-/)
 	if [ -e $dir ]; then
 	    continue;
 	fi

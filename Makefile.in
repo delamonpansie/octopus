@@ -172,7 +172,7 @@ octopus_version.h: FORCE
 all_modules = $(foreach path,$(wildcard mod/*),$(notdir $(path)))
 
 $(foreach mod,$(all_modules),mod/$(mod)/$(mod)_version.h):
-	@echo -n 'const char $(subst .h,,$(notdir $@))_string[] = "' > $@_
+	@echo -n 'const char $(subst -,_,$(subst .h,,$(notdir $@)))_string[] = "' > $@_
 	@cd $(srcdir)/$(dir $@); $(GIT) describe --always HEAD | tr -d \\n | sed 's/.*-g/g/' >> $(notdir $@_)
 	@echo '";' >> $@_
 	@diff -q $@ $@_ 2>/dev/null >/dev/null || (echo "GEN	$@"; cp $@_ $@)
