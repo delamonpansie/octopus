@@ -880,7 +880,7 @@ xlog_print(struct tbuf *out, u16 op, struct tbuf *b)
 	u32 n, key_cardinality, key_bsize;
 	void *key;
 	u32 cardinality, field_no;
-	u32 flags;
+	u32 flags = 0;
 	u32 op_cnt;
 
 	n = read_u32(b);
@@ -1276,7 +1276,7 @@ cleanup:
 - (void)
 apply:(struct tbuf *)data tag:(u16)tag
 {
-	struct box_txn txn = {0};
+	struct box_txn txn = { .op = 0 };
 
 	@try {
 
