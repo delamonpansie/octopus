@@ -964,11 +964,11 @@ init_snap_dir:(const char *)snap_dirname
 - (id) init_snap_dir:(const char *)snap_dirname
              wal_dir:(const char *)wal_dirname
         rows_per_wal:(int)wal_rows_per_file
-	 feeder_addr:(const char *)feeder_addr_
+	feeder_param:(struct feeder_param *)feeder_param_
                flags:(int)flags
 {
 	(void)wal_rows_per_file;
-	(void)feeder_addr_;
+	(void)feeder_param_;
 	(void)flags;
 
 
