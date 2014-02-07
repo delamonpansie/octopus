@@ -470,6 +470,8 @@ int wal_disk_writer(int fd, void *state);
 void wal_disk_writer_input_dispatch(va_list ap __attribute__((unused)));
 int snapshot_write_row(XLog *l, u16 tag, struct tbuf *row);
 
+void remote_hot_standby(va_list ap);
+
 static inline struct _row_v04 *_row_v04(const struct tbuf *t)
 {
 	return (struct _row_v04 *)t->ptr;
