@@ -5,6 +5,7 @@ obj += $(obj-log-io)
 obj += src/paxos.o
 obj += src/tnt_obj.o
 obj += src/iproto.o
+obj += src/iproto_client.o
 
 src/octopus.o src/net_io.o: CFLAGS += -DOCT_OBJECT
 
