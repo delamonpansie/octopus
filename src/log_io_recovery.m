@@ -704,14 +704,14 @@ load_from_remote:(id<XLogPullerAsync>)puller
 	return 0;
 }
 
-static void
+void
 remote_hot_standby(va_list ap)
 {
 	Recovery *r = va_arg(ap, Recovery *);
 	ev_tstamp reconnect_delay = 0.1;
 	bool warning_said = false;
 
-	r->remote_puller = [[objc_lookUpClass("XLogPuller") alloc] init];
+	r->remote_puller = [[XLogPuller alloc] init];
 
 	for (;;) {
 		if (![r feeder_addr_remote])
