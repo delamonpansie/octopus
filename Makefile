@@ -1,4 +1,4 @@
-binary_type ?= UTILITY
+binary_type ?= FEEDER
 
 obj += mod/feeder/feeder.o
 obj += mod/feeder/src-lua/feeder.o
