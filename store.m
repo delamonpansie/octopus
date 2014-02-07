@@ -139,7 +139,7 @@ apply:(struct tbuf *)op tag:(u16)tag
 		break;
 
 	/* compat with box emulation */
-	case wal_tag: {
+	case wal_data: {
 		u16 code = read_u16(op);
 		read_u32(op); /* obj_space */
 		switch(code) {
@@ -169,7 +169,7 @@ apply:(struct tbuf *)op tag:(u16)tag
 		assert(tbuf_len(op) == 0);
 		break;
 	}
-	case snap_tag:
+	case snap_data:
 		read_u32(op); /* obj_space */
 		read_u32(op); /* cardinality */
 		read_u32(op);  /* data_size */
@@ -569,7 +569,7 @@ print_row(struct tbuf *out, u16 tag, struct tbuf *op)
 		}
 		break;
 
-	case snap_final_tag:
+	case snap_final:
 		break;
 	default:
 		tbuf_printf(out, "++UNKNOWN++");
