@@ -695,7 +695,7 @@ remote_hot_standby(va_list ap)
 	ev_tstamp reconnect_delay = 0.1;
 	bool warning_said = false;
 
-	r->remote_puller = [[XLogPuller alloc] init];
+	r->remote_puller = [[objc_lookUpClass("XLogPuller") alloc] init];
 
 	for (;;) {
 		if (![r feeder_addr_remote])
