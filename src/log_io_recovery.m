@@ -178,22 +178,9 @@ fixup:(const struct row_v12 *)r
 	lag = last_update_tstamp - r->tm;
 }
 
-void
-fix_scn(struct row_v12 *row)
-{
-	if (row->lsn <= 0)
-		return;
-
-	row->scn = row->lsn;
-}
-
 - (void)
 recover_row:(struct row_v12 *)r
 {
-	/* FIXME: temporary hack */
-	if (cfg.io12_hack)
-		fix_scn(r);
-
 	int tag = r->tag & TAG_MASK;
 	int tag_type = r->tag & ~TAG_MASK;
 
@@ -579,9 +566,6 @@ pull_wal:(id<XLogPullerAsync>)puller
 			final_row = row;
 			break;
 		}
-
-		if (cfg.io12_hack)
-			fix_scn(row);
 
 		if (row->scn <= scn)
 			continue;

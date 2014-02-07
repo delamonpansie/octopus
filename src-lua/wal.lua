@@ -57,12 +57,17 @@ struct row_v12 {
 } __attribute__((packed));
 ]])
 
+ffi.cdef[[u16 fix_tag_v2(u16 tag);]]
+
 local v12ptr = ffi.typeof('struct row_v12 *')
 local v12size = ffi.sizeof('struct row_v12')
 
 local m = { tag_value = function(self) return tag_value(self.tag) end,
             tag_type = function(self) return tag_type(self.tag) end,
             tag_name = function(self) return tag_name(self.tag) end,
+            tag_to_v2 = function(self)
+                self.tag = fix_tag_v2(bit.band(tag, bit.bnot(tag_mask)))
+            end,
             update_data = function(self, data, len)
                 if not len and type(data) == 'string' then
                     len = #data

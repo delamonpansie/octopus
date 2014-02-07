@@ -400,8 +400,7 @@ fetch_row
 		if (row_v12(buf)->data_crc32c != data_crc)
 			raise("data crc32c mismatch");
 
-		if (cfg.io12_hack && row_v12(buf)->scn == 0)
-			row_v12(buf)->scn = row_v12(buf)->lsn;
+		fixup_row_v12(row_v12(buf));
 		break;
 	case 11:
 		if (!contains_full_row_v11(c.rbuf))
@@ -421,8 +420,6 @@ fetch_row
 	}
 
 	row = buf->ptr;
-	if ((row->tag & ~TAG_MASK) == 0) /* old style row */
-		row->tag = fix_tag(row->tag);
 
 	say_debug("%s: scn:%"PRIi64 " tag:%s", __func__,
 		  row->scn, xlog_tag_to_a(row->tag));

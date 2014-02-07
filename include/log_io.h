@@ -82,25 +82,6 @@ static inline bool dummy_tag(int tag) /* dummy row tag */
 	return (tag & TAG_MASK) == wal_final;
 }
 
-static inline u16 fix_tag(u16 tag)
-{
-	switch (tag) {
-	case snap_data:		return tag | TAG_SNAP;
-	case wal_data:		return tag | TAG_WAL;
-	case snap_initial:
-	case snap_final:
-	case wal_final:
-	case run_crc:
-	case nop:
-	case snap_skip_scn:
-	case paxos_prepare:
-	case paxos_promise:
-	case paxos_propose:
-	case paxos_accept:
-	case paxos_nop:		return tag | TAG_SYS;
-	default:		abort();
-	}
-}
 
 extern const u64 default_cookie;
 extern const u32 default_version, version_11;
@@ -233,6 +214,9 @@ typedef struct marker_desc {
 @end
 
 struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
+void fixup_row_v12(struct row_v12 *);
+u16 fix_tag_v2(u16 tag);
+
 @interface XLog04: XLog
 @end
 

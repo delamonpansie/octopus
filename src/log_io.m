@@ -415,8 +415,6 @@ restart:
 	}
 
 	++rows;
-	if ((row->tag & ~TAG_MASK) == 0) /* old style row */
-		row->tag = fix_tag(row->tag);
 	return row;
 eof:
 	eof_offset = ftello(fd);
@@ -711,9 +709,9 @@ convert_row_v11_to_v12(struct tbuf *m)
 
 	u16 tag = read_u16(m);
 	if (tag == (u16)-1) {
-		row_v12(n)->tag = snap_data;
+		row_v12(n)->tag = snap_data|TAG_SNAP;
 	} else if (tag == (u16)-2) {
-		row_v12(n)->tag = wal_data;
+		row_v12(n)->tag = wal_data|TAG_WAL;
 	} else {
 		say_error("unknown tag %i", (int)tag);
 		return NULL;
@@ -913,6 +911,58 @@ write_header
 	return 0;
 }
 
+u16
+fix_tag_v2(u16 tag)
+{
+	switch (tag) {
+	case snap_initial:	return tag|TAG_SNAP;
+	case snap_data:		return tag|TAG_SNAP;
+	case wal_data:		return tag|TAG_WAL;
+	case snap_final:	return tag|TAG_SNAP;
+	case wal_final:		return tag|TAG_WAL;
+	case run_crc:		return tag|TAG_WAL;
+	case nop:		return tag|TAG_WAL;
+	case snap_skip_scn:	return tag|TAG_SNAP;
+	case paxos_prepare:	return tag|TAG_SYS;
+	case paxos_promise:	return tag|TAG_SYS;
+	case paxos_propose:	return tag|TAG_SYS;
+	case paxos_accept:	return tag|TAG_SYS;
+	case paxos_nop:		return tag|TAG_SYS;
+	default:		abort();
+	}
+}
+
+static u16
+fix_tag_v3(u16 tag)
+{
+	switch (tag) {
+	case snap_data:		return tag|TAG_SNAP;
+	case wal_data:		return tag|TAG_WAL;
+	case snap_initial:
+	case snap_final:
+	case wal_final:
+	case run_crc:
+	case nop:
+	case snap_skip_scn:
+	case paxos_prepare:
+	case paxos_promise:
+	case paxos_propose:
+	case paxos_accept:
+	case paxos_nop:		return tag|TAG_SYS;
+	default:		abort();
+	}
+}
+
+void
+fixup_row_v12(struct row_v12 *row)
+{
+	if (cfg.io12_hack && row->scn == 0)
+		row->scn = row->lsn;
+
+	if ((row->tag & ~TAG_MASK) == 0) /* old style row */
+		row->tag = fix_tag_v3(row->tag);
+}
+
 - (struct row_v12 *)
 read_row
 {
@@ -958,6 +1008,7 @@ read_row
 		return NULL;
 	}
 
+	fixup_row_v12(row_v12(m));
 	say_debug("read row v12 success lsn:%" PRIi64, row_v12(m)->lsn);
 
 	return m->ptr;
