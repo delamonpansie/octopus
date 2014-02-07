@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2012 Mail.RU
- * Copyright (C) 2012 Yuriy Vostrikov
+ * Copyright (C) 2012, 2013, 2014 Mail.RU
+ * Copyright (C) 2012, 2013, 2014 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
