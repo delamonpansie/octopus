@@ -610,7 +610,7 @@ convert_row_v04_to_v12(struct tbuf *m)
 	row_v12(n)->scn = row_v12(n)->lsn = _row_v04(m)->lsn;
 	row_v12(n)->tm = 0;
 	row_v12(n)->len = _row_v04(m)->len + sizeof(u16); /* tag */
-	row_v12(n)->tag = wal_data;
+	row_v12(n)->tag = wal_data | TAG_WAL;
 	row_v12(n)->cookie = default_cookie;
 
 	tbuf_add_dup(n, &_row_v04(m)->type);
