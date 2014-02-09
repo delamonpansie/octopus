@@ -941,6 +941,12 @@ nop_hb_writer(va_list ap)
 	return self;
 }
 
+- (struct sockaddr_in)
+feeder_addr
+{
+	return feeder.addr;
+}
+
 - (bool)
 feeder_addr_set
 {
