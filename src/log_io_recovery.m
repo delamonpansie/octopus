@@ -688,6 +688,16 @@ load_from_remote:(id<XLogPullerAsync>)puller
 	return 0;
 }
 
+- (void)
+pull_from_remote:(id<XLogPullerAsync>)puller
+{
+	if ([self lsn] == 0)
+		[self load_from_remote:puller];
+
+	for (;;)
+		[self pull_wal:puller];
+}
+
 void
 remote_hot_standby(va_list ap)
 {
@@ -721,11 +731,7 @@ remote_hot_standby(va_list ap)
 		warning_said = false;
 
 		@try {
-			if ([r lsn] == 0)
-				[r load_from_remote:r->remote_puller];
-
-			for (;;)
-				[r pull_wal:r->remote_puller];
+			[r pull_from_remote:r->remote_puller];
 		}
 		@catch (Error *e) {
 			[r->remote_puller close];

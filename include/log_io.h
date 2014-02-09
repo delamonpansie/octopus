@@ -430,6 +430,7 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 /* pull_wal & load_from_remote throws exceptions on failure */
 - (int) pull_wal:(id<XLogPullerAsync>)puller;
 - (int) load_from_remote:(id<XLogPullerAsync>)puller;
+- (void) pull_from_remote:(id<XLogPullerAsync>)puller;
 - (void) enable_local_writes;
 - (bool) is_replica;
 - (void) check_replica;
