@@ -104,7 +104,7 @@ local __tuple_index = {
 	    error("out of bounds", 2)
 	 end
 	 return ffi.string(self.data + offt, len)
-      elseif ctype == 'varint' then
+      elseif ctype == 'varint32' then
 	 if (offt < 0 or offt + 1 > self.bsize) then
 	    error("out of bounds", 2)
 	 end
