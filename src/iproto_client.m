@@ -73,7 +73,7 @@ init_iproto_peer(struct iproto_peer *p, int id, const char *name, const char *ad
 
 
 static void
-req_dump(struct iproto_req *r, const char *prefix)
+iproto_req_dump(struct iproto_req *r, const char *prefix)
 {
 	const char *status = "";
 	if (r->closed)
@@ -93,66 +93,150 @@ req_dump(struct iproto_req *r, const char *prefix)
 }
 
 static void
-req_delete(ev_timer *w, int events __attribute__((unused)))
+iproto_req_delete(ev_timer *w, int events __attribute__((unused)))
 {
 	struct iproto_req *r = (void *)w - offsetof(struct iproto_req, timer);
 	ev_timer_stop(&r->timer);
-	u32 k = mh_i32_get(req_registry, r->sync);
+	u32 k = mh_i32_get(req_registry, r->header.sync);
 	assert(k != mh_end(req_registry));
 	mh_i32_del(req_registry, k);
 	slab_cache_free(&response_cache, r);
 }
 
 void
-req_release(struct iproto_req *r)
+iproto_req_release(struct iproto_req *r)
 {
 	ev_timer_stop(&r->timer);
-	ev_timer_init(&r->timer, req_delete, 15., 0.);
+	ev_timer_init(&r->timer, iproto_req_delete, 15., 0.);
 	ev_timer_start(&r->timer);
 }
 
 static void
-req_timeout(ev_timer *w, int events __attribute__((unused)))
+iproto_req_timeout(ev_timer *w, int events __attribute__((unused)))
 {
 	struct iproto_req *r = (void *)w - offsetof(struct iproto_req, timer);
 	r->closed = ev_now();
 	if (r->waiter) {
-		req_dump(r, __func__);
+		iproto_req_dump(r, __func__);
 		fiber_wake(r->waiter, r);
 	}
 }
 
 struct iproto_req *
-req_make(const char *name, int quorum, ev_tstamp timeout,
-	 struct iproto *header, const void *data, size_t data_len)
+iproto_req_make(u16 msg_code, ev_tstamp timeout, const char *name)
 {
 	struct iproto_req *r = slab_cache_alloc(&response_cache);
 	*r = (struct iproto_req) { .name = name,
 				   .count = 0,
-				   .quorum = quorum,
+				   .quorum = 1,
 				   .timeout = timeout,
-				   .sent = ev_now(),
-				   .header = header,
-				   .data = data,
-				   .data_len = data_len };
-	memset(&r->timer, 0, sizeof(r->timer));
-	r->sync = r->header->sync = iproto_next_sync();
-	mh_i32_put(req_registry, r->sync, r, NULL);
+				   .sent = ev_now() };
 
+	memset(&r->timer, 0, sizeof(r->timer));
+	r->header = (struct iproto){ .msg_code = msg_code,
+				     .sync = iproto_next_sync() };
+
+	mh_i32_put(req_registry, r->header.sync, r, NULL);
 	if (r->timeout > 0) {
-		ev_timer_init(&r->timer, req_timeout, r->timeout, 0.);
+		ev_timer_init(&r->timer, iproto_req_timeout, r->timeout, 0.);
 		ev_timer_start(&r->timer);
 		r->waiter = fiber;
 	} else {
-		req_release(r);
+		iproto_req_release(r);
 	}
 
 	return r;
 }
 
+void
+iproto_send(struct iproto_peer *peer, struct iproto_req *r,
+	    const struct iovec *iov, int iovcnt)
+{
+	if (peer->c.state < CONNECTED)
+		return;
+
+	struct iproto *header = &r->header;
+	for (int i = 0; i < iovcnt; i++)
+		header->data_len += iov[i].iov_len;
+
+	struct netmsg_head *h = &peer->c.out_messages;
+	net_add_iov_dup(h, header, sizeof(*header));
+
+	for (int i = 0; i < iovcnt; i++)
+		net_add_iov_dup(h, iov[i].iov_base, iov[i].iov_len);
+
+	ev_io_start(&peer->c.out);
+
+	say_debug("|   peer:%i/%s op:0x%x len:%zu data_len:%i", peer->id, peer->name,
+		  header->msg_code, sizeof(*header) + header->data_len,
+		  header->data_len);
+
+	if (r->waiter)
+		r->reply = p0alloc(r->waiter->pool, sizeof(struct iproto *) * 2);
+}
 
 void
-req_collect_reply(struct conn *c, struct iproto *msg)
+iproto_broadcast(struct iproto_group *group, int quorum, struct iproto_req *r,
+		 const struct iovec *iov, int iovcnt)
+{
+	assert(r != NULL);
+	assert(r->header.msg_code != 0);
+	struct iproto_peer *peer;
+	int peers_count = 0;
+	struct iproto *header = &r->header;
+
+	for (int i = 0; i < iovcnt; i++)
+		header->data_len += iov[i].iov_len;
+
+	r->quorum = quorum;
+	SLIST_FOREACH(peer, group, link) {
+		peers_count++;
+		if (peer->c.state < CONNECTED)
+			continue;
+
+		struct netmsg_head *h = &peer->c.out_messages;
+		net_add_iov_dup(h, header, sizeof(*header));
+		for (int i = 0; i < iovcnt; i++)
+			net_add_iov_dup(h, iov[i].iov_base, iov[i].iov_len);
+		ev_io_start(&peer->c.out);
+
+		say_debug("|   peer:%i/%s op:0x%x len:%zu data_len:%i", peer->id, peer->name,
+			  header->msg_code, sizeof(*header) + header->data_len,
+			  header->data_len);
+	}
+
+	if (r->waiter)
+		r->reply = p0alloc(r->waiter->pool, sizeof(struct iproto *) * (peers_count + 1));
+}
+
+
+void
+iproto_pinger(va_list ap)
+{
+	struct iproto_group *group = va_arg(ap, struct iproto_group *);
+	struct iproto_req *r;
+
+	for (;;) {
+		fiber_sleep(1);
+		int quorum = 0;
+		struct iproto_peer *p;
+		SLIST_FOREACH(p, group, link)
+			quorum++;
+		ev_tstamp sent = ev_now();
+
+		iproto_broadcast(group, quorum, iproto_req_make(msg_ping, 2.0, "ping"), NULL, 0);
+		r = yield();
+
+		say_info("ping r:%p q/c:%i:%i %.4f%s", r,
+			 r->quorum, r->count,
+			 ev_now() - sent, r->count == 0 ? " [TIMEOUT]" : "");
+
+		iproto_req_release(r);
+	}
+}
+
+void
+iproto_collect_reply(struct conn *c, struct iproto *msg)
 {
 	struct iproto_peer *p = (void *)c - offsetof(struct iproto_peer, c);
 	u32 k = mh_i32_get(req_registry, msg->sync);
@@ -179,68 +263,9 @@ req_collect_reply(struct conn *c, struct iproto *msg)
 		assert(!r->closed);
 		ev_timer_stop(&r->timer);
 		r->closed = ev_now();
-		req_dump(r, __func__);
+		iproto_req_dump(r, __func__);
 		if (r->waiter)
 			fiber_wake(r->waiter, r);
-	}
-}
-
-
-void
-broadcast(struct iproto_group *group, struct iproto_req *r)
-{
-	assert(r != NULL);
-	assert(r->header->msg_code != 0);
-	struct iproto_peer *p;
-	int header_len = sizeof(*r->header) + r->header->data_len;
-	int peers_count = 0;
-
-	if (r->data)
-		r->header->data_len += r->data_len;
-
-	SLIST_FOREACH(p, group, link) {
-		peers_count++;
-		if (p->c.state < CONNECTED)
-			continue;
-
-		struct netmsg_head *h = &p->c.out_messages;
-		net_add_iov_dup(h, r->header, header_len);
-		if (r->data)
-			net_add_iov_dup(h, r->data, r->data_len);
-		say_debug("|   peer:%i/%s op:0x%x len:%zu data_len:%i", p->id, p->name,
-			  r->header->msg_code, sizeof(struct iproto) + r->header->data_len,
-			  r->header->data_len);
-		ev_io_start(&p->c.out);
-	}
-
-	if (r->waiter)
-		r->reply = p0alloc(r->waiter->pool, sizeof(struct iproto *) * (peers_count + 1));
-}
-
-
-void
-iproto_pinger(va_list ap)
-{
-	struct iproto_group *group = va_arg(ap, struct iproto_group *);
-	struct iproto ping = { .data_len = 0, .msg_code = msg_ping };
-	struct iproto_req *r;
-
-	for (;;) {
-		fiber_sleep(1);
-		int q = 0;
-		struct iproto_peer *p;
-		SLIST_FOREACH(p, group, link)
-			q++;
-		ev_tstamp sent = ev_now();
-
-		broadcast(group, req_make("ping", q, 2.0, &ping, NULL, 0));
-		r = yield();
-
-		say_info("ping r:%p q/c:%i:%i %.4f%s", r,
-			 r->quorum, r->count,
-			 ev_now() - sent, r->count == 0 ? " [TIMEOUT]" : "");
-
-		req_release(r);
 	}
 }
 
@@ -357,5 +382,3 @@ iproto_client_init(void)
 {
 	slab_cache_init(&response_cache, sizeof(struct iproto_req), SLAB_GROW, "iproto/req");
 }
-
-register_source();

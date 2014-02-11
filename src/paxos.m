@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2011, 2012, 2013 Mail.RU
- * Copyright (C) 2011, 2012, 2013 Yuriy Vostrikov
+ * Copyright (C) 2011, 2012, 2013, 2014 Mail.RU
+ * Copyright (C) 2011, 2012, 2013, 2014 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -203,16 +203,19 @@ paxos_broadcast(PaxosRecovery *r, enum paxos_msg_code code, ev_tstamp timeout,
 				 .tag = tag,
 				 .value_len = value_len };
 
-	struct iproto_req *req = req_make(paxos_msg_code[code], quorum, timeout,
-					  &msg.header, value, value_len);
+	struct iproto_req *req = iproto_req_make(code, timeout, paxos_msg_code[code]);
 
 	say_debug("%s: > %s sync:%u SCN:%"PRIi64" ballot:%"PRIu64" timeout:%.2f",
-		  __func__, paxos_msg_code[code], req->header->sync, scn, ballot, timeout);
+		  __func__, paxos_msg_code[code], req->header.sync, scn, ballot, timeout);
 	if (code != PREPARE)
 		say_debug2("|  tag:%s value_len:%i value:%s", xlog_tag_to_a(tag), value_len,
 			   tbuf_to_hex(&TBUF(value, value_len, fiber->pool)));
 
-	broadcast(&r->remotes, req);
+	struct iovec iov[2] = { { .iov_base = (char *)&msg + sizeof(struct iproto),
+				  .iov_len = sizeof(msg) - sizeof(struct iproto) },
+				{ .iov_base = (void *)value,
+				  .iov_len = value_len } };
+	iproto_broadcast(&r->remotes, quorum, req, iov, 2);
 }
 
 
@@ -310,6 +313,9 @@ propose_leadership(va_list ap)
 					     .peer_id = self_id,
 					     .version = paxos_default_version,
 					     .leader_id = self_id };
+	struct iovec iov[1] = { { .iov_base = (char *)&leader_propose + sizeof(struct iproto),
+				  .iov_len = sizeof(leader_propose) - sizeof(struct iproto) } };
+
 	fiber_sleep(0.3); /* wait connections to be up */
 	for (;;) {
 		if (ev_now() > leadership_expire)
@@ -331,8 +337,9 @@ propose_leadership(va_list ap)
 			continue;
 
 		leader_propose.expire = ev_now() + leader_lease_interval;
-		broadcast(&r->remotes, req_make("leader_propose", quorum, 1.0,
-						&leader_propose.header, NULL, 0));
+		iproto_broadcast(&r->remotes, quorum, iproto_req_make(LEADER_PROPOSE, 1.0, "leader_propose"),
+				 iov, 1);
+
 		struct iproto_req *req = yield();
 
 		int votes = 0;
@@ -360,7 +367,7 @@ propose_leadership(va_list ap)
 				say_debug("%s: no quorum v/q:%i/%i", __func__, votes, req->quorum);
 			}
 		}
-		req_release(req);
+		iproto_req_release(req);
 		notify_leadership_change(r);
 	}
 }
@@ -823,7 +830,7 @@ retry:
 		goto retry;
 	}
 
-	say_debug("PREPARE reply sync:%i SCN:%"PRIi64, rsp->sync, p->scn);
+	say_debug("PREPARE reply sync:%i SCN:%"PRIi64, rsp->header.sync, p->scn);
 	struct msg_paxos *max = NULL;
 	reply_count = votes = 0;
 	FOREACH_REPLY(rsp, reply) {
@@ -844,7 +851,7 @@ retry:
 		case DECIDE:
 			update_proposal_value(p, mp->value_len, mp->value, mp->tag);
 			update_proposal_ballot(p, ULLONG_MAX);
-			req_release(rsp);
+			iproto_req_release(rsp);
 			goto decide;
 		case STALE: {
 			struct paxos_peer *p;
@@ -877,7 +884,7 @@ retry:
 			ballot = nack_ballot;
 		}
 
-		req_release(rsp);
+		iproto_req_release(rsp);
 		fiber_sleep(0.001 * rand() / RAND_MAX);
 		goto retry;
 	}
@@ -894,13 +901,13 @@ retry:
 		value_len = max->value_len;
 		tag = max->tag;
 	}
-	req_release(rsp);
+	iproto_req_release(rsp);
 
 	rsp = propose(r, ballot, p->scn, value, value_len, tag);
 	if (rsp == NULL)
 		goto retry;
 
-	say_debug("PROPOSE reply sync:%i SCN:%"PRIi64, rsp->sync, p->scn);
+	say_debug("PROPOSE reply sync:%i SCN:%"PRIi64, rsp->header.sync, p->scn);
 	reply_count = votes = 0;
 	FOREACH_REPLY(rsp, reply) {
 		reply_count++;
@@ -915,7 +922,7 @@ retry:
 		case DECIDE:
 			update_proposal_value(p, mp->value_len, mp->value, mp->tag);
 			update_proposal_ballot(p, ULLONG_MAX);
-			req_release(rsp);
+			iproto_req_release(rsp);
 			goto decide;
 			break;
 		case NACK:
@@ -926,7 +933,7 @@ retry:
 	if (reply_count == 0)
 		say_debug("|  SCN:%"PRIi64" EMPTY", p->scn);
 
-	req_release(rsp);
+	iproto_req_release(rsp);
 
 	if (votes < quorum) {
 		if (nack_ballot > ballot) { /* we have a hint about ballot */
@@ -934,7 +941,7 @@ retry:
 			ballot = nack_ballot;
 		}
 
-		req_release(rsp);
+		iproto_req_release(rsp);
 		fiber_sleep(0.001 * rand() / RAND_MAX);
 		goto retry;
 	}
@@ -1193,7 +1200,7 @@ exit:
 	for (int i = 0; i < 3; i++)
 		fiber_create("paxos/worker", iproto_worker, &service);
 
-	reply_reader = fiber_create("paxos/reply_reader", iproto_reply_reader, req_collect_reply);
+	reply_reader = fiber_create("paxos/reply_reader", iproto_reply_reader, iproto_collect_reply);
 	fiber_create("paxos/rendevouz", iproto_rendevouz, NULL, &remotes, reply_reader, output_flusher);
 	fiber_create("paxos/elect", propose_leadership, self);
 
