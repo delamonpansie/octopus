@@ -66,7 +66,7 @@ local m = { tag_value = function(self) return tag_value(self.tag) end,
             tag_type = function(self) return tag_type(self.tag) end,
             tag_name = function(self) return tag_name(self.tag) end,
             tag_to_v2 = function(self)
-                self.tag = ffi.C.fix_tag_v2(bit.band(self.tag, bit.bnot(tag_mask)))
+                self.tag = ffi.C.fix_tag_v2(bit.band(self.tag, tag_mask))
             end,
             update_data = function(self, data, len)
                 if not len and type(data) == 'string' then
