@@ -14,7 +14,18 @@ local u32p = ffi.typeof('uint32_t*')
 local u64p = ffi.typeof('uint64_t*')
 local pack_meths = {
     willneed = C.tbuf_willneed,
+    -- :need() return "stable" offset for reserved space.
+    -- use result as:
+    --   local off = packer:need_offset(xbytes)
+    --   ffi.cast('mytype*', packer.ptr + off)[0] = value
     need = function(self, i)
+        self:willneed(i)
+        local off = self.stop - self.ptr
+        self.stop = self.stop + i
+        return off
+    end,
+    -- Warning: :need_ptr() gives you unstable pointer. You should use it immediately
+    need_ptr = function(self, i)
         self:willneed(i)
         return self:_need(i)
     end,
