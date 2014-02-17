@@ -83,8 +83,8 @@ local function _data_dumper(value, varname)
   local dumpall = mode and mode:find('a')
   local defined, dumplua = {}
   -- Local variables for speed optimization
-  local string_format, type, string_dump, string_rep = 
-        string.format, type, string.dump, string.rep
+  local string_format, type, string_dump, string_rep, pcall =
+        string.format, type, string.dump, string.rep, pcall
   local tostring, pairs, table_concat = 
         tostring, pairs, table.concat
   local keycache, strvalcache, out, closure_cnt = {}, {}, {}, 0
@@ -101,13 +101,7 @@ local function _data_dumper(value, varname)
     ['function'] = function(value) 
       return string_format("loadstring(%q)", string_dump(value)) 
     end,},
-    {__index = function(t, k)
-      if dumpall then
-        return function (v) return '<' .. k .. ':' .. tostring(v) .. '>' end
-      else
-        return function () error("Cannot dump " .. k) end
-      end
-    end })
+    {__index = function(t, k) return function () error("Cannot dump " .. k) end end })
   local function test_defined(value, path)
     if defined[value] then
       if path:match("^getmetatable.*%)$") then
@@ -207,7 +201,12 @@ local function _data_dumper(value, varname)
     end
   end
   function dumplua(value, ident, path)
-    return fcts[type(value)](value, ident, path)
+      if dumpall then
+          local ok, ret = pcall(fcts[type(value)], value, ident, path)
+          return ok and ret or '<' .. tostring(value) .. '>'
+      else
+          return fcts[type(value)](value, ident, path)
+      end
   end
   if varname == nil then
     varname = "return "
