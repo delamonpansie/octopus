@@ -16,7 +16,7 @@ local pack_meths = {
     willneed = C.tbuf_willneed,
     -- :need() return "stable" offset for reserved space.
     -- use result as:
-    --   local off = packer:need_offset(xbytes)
+    --   local off = packer:need(xbytes)
     --   ffi.cast('mytype*', packer.ptr + off)[0] = value
     need = function(self, i)
         self:willneed(i)
