@@ -109,8 +109,10 @@ local function dumpk(value)
 end
 
 local function dumpt(value)
+    local notempty = false
     local numidx = 1
     for k, v in pairs(value) do
+        notempty = true
         if numidx ~= 1 then write(',\n') end
         if k == numidx then
             numidx = numidx + 1
@@ -121,6 +123,7 @@ local function dumpt(value)
         end
         dumpv(v)
     end
+    return notempty
 end
 
 local function dumpf(value)
@@ -173,25 +176,23 @@ disp = setmetatable({
             return
         end
 
+        local meta = getmetatable(value)
         if ref[value] == nil then
-            write('{\n')
-            il = il + 1
-            assert(il < 10)
-            dumpt(value)
-            write('}')
-            il = il - 1
-            return
+            if meta then
+                write('tbl{\n')
+            else
+                write('{\n')
+            end
+        else
+            ref[value] = tostring(value):gsub('^%w+: ', '') -- "foo: 0xdeadbead" -> "0xdeadbead"
+            write('tbl{ [id]=',ref[value],',\n')
         end
 
-        ref[value] = tostring(value):gsub('^%w+: ', '') -- "foo: 0xdeadbead" -> "0xdeadbead"
-        write('tbl{ [id]=',ref[value],',\n')
 
         il = il + 1
-        dumpt(value)
-
-        local meta = getmetatable(value)
+        local notempty = dumpt(value)
         if meta then
-            write(',\n',indent[il],'[meta]=')
+            write(notempty and ',\n' or '',indent[il],'[meta]=')
             dumpv(meta)
         end
 
