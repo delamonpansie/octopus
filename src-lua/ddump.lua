@@ -113,7 +113,11 @@ local function dumpt(value)
     local numidx = 1
     for k, v in pairs(value) do
         notempty = true
-        if numidx ~= 1 then write(',\n') end
+        if numidx ~= 1 then
+            write(',\n')
+        else
+            write('\n')
+        end
         if k == numidx then
             numidx = numidx + 1
             write(indent[il])
@@ -172,31 +176,38 @@ disp = setmetatable({
     end,
     ['table'] = function(value)
         if ref[value] then
-            write('tbl(', ref[value], ')')
+            write('table(', ref[value], ')')
             return
         end
 
         local meta = getmetatable(value)
         if ref[value] == nil then
             if meta then
-                write('tbl{\n')
+                write('setmetatable({')
             else
-                write('{\n')
+                write('{')
             end
         else
             ref[value] = tostring(value):gsub('^%w+: ', '') -- "foo: 0xdeadbead" -> "0xdeadbead"
-            write('tbl{ [id]=',ref[value],',\n')
+            write('table(',ref[value],', {')
         end
 
 
         il = il + 1
         local notempty = dumpt(value)
+        write("}")
         if meta then
-            write(notempty and ',\n' or '',indent[il],'[meta]=')
+            if notempty then
+                write(',\n',indent[il])
+            else
+                write(',')
+            end
             dumpv(meta)
+            write(')')
+        elseif ref[value] ~= nil then
+            write(')')
         end
 
-        write('}')
         il = il - 1
     end
     },
