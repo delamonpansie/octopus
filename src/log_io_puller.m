@@ -60,6 +60,8 @@ feeder_param_fill_from_cfg(struct feeder_param *param, struct octopus_cfg *_cfg)
 {
 	if (_cfg == NULL) _cfg = &cfg;
 
+	memset(param, 0, sizeof(*param));
+
 	enum feeder_cfg_e e = 0;
 	if (!feeder_param_set_addr(param, _cfg->wal_feeder_addr)) {
 		say_error("replication feeder address wrong");
