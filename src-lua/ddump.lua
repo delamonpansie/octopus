@@ -130,6 +130,19 @@ local function dumpt(value)
     return notempty
 end
 
+local c_functions = {}
+for _,lib in pairs{'_G', 'string', 'table', 'math',
+    'io', 'os', 'coroutine', 'package', 'debug', 'box'} do
+  local t = _G[lib] or {}
+  lib = lib .. "."
+  if lib == "_G." then lib = "" end
+  for k,v in pairs(t) do
+    if type(v) == 'function' and not pcall(string.dump, v) then
+      c_functions[v] = lib..k
+    end
+  end
+end
+
 local function dumpf(value)
     local i = getinfo(value, "S")
     write("<function: ", i.short_src, '@', i.linedefined, ">")
@@ -146,7 +159,14 @@ disp = setmetatable({
     ['nil'] = function(value) write('nil') end,
     ['function'] = function(value)
         local ok, body = pcall(string_dump, value)
-        if not ok then write('<', tostring(value), '>'); return end
+        if not ok then
+            if c_functions[value] then
+                write(c_functions[value])
+            else
+                write('<', tostring(value), '>')
+            end
+            return
+        end
 
         if ref[value] then write('closure(', ref[value], ')'); return end
 
