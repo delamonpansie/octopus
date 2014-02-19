@@ -1547,7 +1547,7 @@ init_second_stage(va_list ap __attribute__((unused)))
 			[recovery enable_local_writes];
 		} else {
 			if (local_lsn == 0) {
-				if (![recovery feeder_addr_remote]) {
+				if (![recovery feeder_addr_configured]) {
 					say_error("unable to find initial snapshot");
 					say_info("don't you forget to initialize "
 						 "storage with --init-storage switch?");
@@ -1560,7 +1560,7 @@ init_second_stage(va_list ap __attribute__((unused)))
 				   Binding to primary port depends on wal_final_row from
 				   remote replication. (There is no data in local WALs yet)
 				 */
-				if ([recovery feeder_addr_remote] && cfg.local_hot_standby)
+				if ([recovery feeder_addr_configured] && cfg.local_hot_standby)
 					[recovery wal_final_row];
 			}
 			if (!cfg.local_hot_standby)
