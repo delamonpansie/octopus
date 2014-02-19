@@ -41,16 +41,16 @@
 bool
 feeder_param_set_addr(struct feeder_param *feeder, const char *addr)
 {
-	if (addr == NULL || strnlen(addr, 2) == 0) {
-		feeder->addr.sin_family = AF_UNSPEC;
-		feeder->addr.sin_addr.s_addr = INADDR_ANY;
+	feeder->addr.sin_family = AF_UNSPEC;
+	feeder->addr.sin_addr.s_addr = INADDR_ANY;
+
+	if (addr == NULL || *addr == 0) /* empty address is valid value */
 		return true;
-	}
+
 	if (strnlen(addr, 23) <= 22)
 		if (atosin(addr, &feeder->addr) == 0)
 			return true;
-	feeder->addr.sin_family = AF_UNSPEC;
-	feeder->addr.sin_addr.s_addr = INADDR_ANY;
+
 	say_error("invalid feeder address '%.*s'", 23, addr);
 	return false;
 }
@@ -68,7 +68,7 @@ feeder_param_fill_from_cfg(struct feeder_param *param, struct octopus_cfg *_cfg)
 		e |= FEEDER_CFG_BAD_ADDR;
 	}
 
-	if (_cfg->wal_feeder_filter == NULL || strnlen(_cfg->wal_feeder_filter, 2) == 0) {
+	if (_cfg->wal_feeder_filter == NULL || *(_cfg->wal_feeder_filter) == 0) {
 		param->filter.name = NULL;
 	} else if (strnlen(_cfg->wal_feeder_filter, REPLICATION_FILTER_NAME_LEN+2) >=
 			REPLICATION_FILTER_NAME_LEN) {

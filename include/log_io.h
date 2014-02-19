@@ -449,8 +449,7 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
                flags:(int)flags;
 
 - (struct sockaddr_in) feeder_addr;
-- (bool) feeder_addr_set;
-- (bool) feeder_addr_remote;
+- (bool) feeder_addr_configured;
 - (bool) feeder_changed:(struct feeder_param*)new;
 
 @end

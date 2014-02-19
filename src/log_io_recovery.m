@@ -708,7 +708,7 @@ remote_hot_standby(va_list ap)
 	r->remote_puller = [[objc_lookUpClass("XLogPuller") alloc] init];
 
 	for (;;) {
-		if (![r feeder_addr_remote])
+		if (![r feeder_addr_configured])
 			goto sleep;
 
 		const char *err;
@@ -758,8 +758,10 @@ feeder_changed:(struct feeder_param*)new
 			feeder.filter.arg = xmalloc(feeder.filter.arglen);
 			memcpy(feeder.filter.arg, new->filter.arg, feeder.filter.arglen);
 		}
-		if (local_writes)
-			[remote_puller abort_recv];
+
+		[remote_puller abort_recv];
+		if ([self feeder_addr_configured])
+			say_info("configured remote hot standby, WAL feeder %s", sintoa(&feeder.addr));
 		return true;
 	}
 	return false;
@@ -773,7 +775,7 @@ enable_local_writes
 	[self recover_finalize];
 	local_writes = true;
 
-	if ([self feeder_addr_remote]) {
+	if ([self feeder_addr_configured]) {
 		if (lsn > 0) /* we're already have some xlogs and recovered from them */
 			[self configure_wal_writer];
 
@@ -794,7 +796,7 @@ is_replica
 {
 	if (!local_writes)
 		return true;
-	if ([self feeder_addr_remote])
+	if ([self feeder_addr_configured])
 		return true;
 	return false;
 }
@@ -933,10 +935,8 @@ nop_hb_writer(va_list ap)
 			fiber_create("nop_hb", nop_hb_writer, self, cfg.nop_hb_delay);
 	}
 
-	if (feeder_ != NULL) {
+	if (feeder_ != NULL)
 		[self feeder_changed: feeder_];
-		say_info("configuring remote hot standby, WAL feeder %s", sintoa(&feeder.addr));
-	}
 
 	return self;
 }
@@ -948,15 +948,9 @@ feeder_addr
 }
 
 - (bool)
-feeder_addr_set
+feeder_addr_configured
 {
 	return feeder.addr.sin_family != AF_UNSPEC;
-}
-
-- (bool)
-feeder_addr_remote
-{
-	return feeder.addr.sin_addr.s_addr != INADDR_ANY && feeder.addr.sin_family != AF_UNSPEC;
 }
 @end
 
