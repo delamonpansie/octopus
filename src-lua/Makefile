@@ -1,6 +1,7 @@
 obj += src-lua/prelude.o
 obj += src-lua/packer.o
 obj += src-lua/pp.o
+obj += src-lua/ddump.o
 obj += src-lua/objc.o
 obj += src-lua/index.o
 obj += src-lua/stat.o
