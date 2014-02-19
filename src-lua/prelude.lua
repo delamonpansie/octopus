@@ -4,6 +4,7 @@ local C = ffi.C
 require('cdef_base')
 require('cdef')
 require('packer')
+ddump = require('ddump')
 
 local print_ = print
 function print (...)

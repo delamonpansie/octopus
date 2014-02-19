@@ -1,10 +1,10 @@
 local tostring, string_format, string_dump, string_byte = tostring, string.format, string.dump, string.byte
-local type, pairs, pcall = type, pairs, pcall
+local type, pairs, ipairs, pcall = type, pairs, ipairs, pcall
 local setmetatable, getmetatable, getupvalue, getinfo = setmetatable, debug.getmetatable, debug.getupvalue, debug.getinfo
 local table_insert, table_concat = table.insert, table.concat
 local io_write = io.write
 
-local fdsip, disp
+local dump, fdisp, disp
 local ref = {}
 local closure_count = 0
 local write = io_write
@@ -132,12 +132,12 @@ end
 
 local c_functions = {}
 for _,lib in pairs{'_G', 'string', 'table', 'math',
-    'io', 'os', 'coroutine', 'package', 'debug', 'box'} do
+    'io', 'os', 'coroutine', 'package', 'debug', 'ffi', 'bit', 'jit'} do
   local t = _G[lib] or {}
   lib = lib .. "."
   if lib == "_G." then lib = "" end
   for k,v in pairs(t) do
-    if type(v) == 'function' and not pcall(string.dump, v) then
+    if type(v) == 'function' and not pcall(string_dump, v) then
       c_functions[v] = lib..k
     end
   end
@@ -158,6 +158,10 @@ disp = setmetatable({
     boolean = function(value) write(tostring(value)) end,
     ['nil'] = function(value) write('nil') end,
     ['function'] = function(value)
+        if value == ddump then
+            write('ddump.dump')
+            return
+        end
         local ok, body = pcall(string_dump, value)
         if not ok then
             if c_functions[value] then
@@ -171,7 +175,6 @@ disp = setmetatable({
         if ref[value] then write('closure(', ref[value], ')'); return end
 
         if getupvalue(value, 1) == nil then
-            -- write(string_format('loadstring(%q)', body))
             dumpf(value)
         else
             closure_count = closure_count + 1
@@ -235,7 +238,7 @@ disp = setmetatable({
 )
 
 
-local function dump(value, w)
+dump = function (value, w)
     ref = {}
     closure_count = 0
     write = w or io_write
