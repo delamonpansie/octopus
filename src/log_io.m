@@ -384,6 +384,15 @@ fetch_row
 	good_offset = ftello(fd);
 
 restart:
+
+	/* 
+	 * reset stream status if we reached eof before,
+	 * subsequent fread() call could cache (at least on
+	 * FreeBSD) eof cache status
+	 */
+	if (feof(fd))
+		clearerr(fd);
+
 	if (marker_offset > 0)
 		fseeko(fd, marker_offset + 1, SEEK_SET);
 
@@ -427,6 +436,10 @@ eof:
 		fseeko(fd, good_offset, SEEK_SET);
 
 		magic = 0;
+		/* reset stream status if we reached eof before */
+		if (feof(fd))
+			clearerr(fd);
+
 		if (fread(&magic, mdesc.eof_size, 1, fd) != 1) {
 			fseeko(fd, good_offset, SEEK_SET);
 			return NULL;
