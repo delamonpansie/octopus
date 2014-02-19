@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -529,7 +529,7 @@ memcached_init()
 
 	i64 local_lsn = [recovery recover_start];
 	if (local_lsn == 0) {
-		if (![recovery feeder_addr_remote]) {
+		if (![recovery feeder_addr_configured]) {
 			say_error("unable to find initial snapshot");
 			say_info("don't you forget to initialize "
 				 "storage with --init-storage switch?");
