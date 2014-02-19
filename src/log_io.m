@@ -117,6 +117,19 @@ xlog_tag_to_a(u16 tag)
 	return buf;
 }
 
+static char *
+set_file_buf(FILE *fd) {
+	char	*vbuf;
+	const int bufsize = 64 * 1024;
+
+	/* libc will try prepread sizeof(vbuf) bytes on every fseeko,
+	   so no reason to make vbuf particulary large */
+	vbuf = xmalloc(bufsize);
+	setvbuf(fd, vbuf, _IOFBF, bufsize);
+
+	return vbuf;
+}
+
 @implementation XLog
 - (bool) eof { return eof; }
 - (u32) version { return 0; }
@@ -125,20 +138,15 @@ xlog_tag_to_a(u16 tag)
 init_filename:(const char *)filename_
            fd:(FILE *)fd_
           dir:(XLogDir *)dir_
+	  vbuf:(char*)vbuf_
 {
 	[super init];
 	filename = strdup(filename_);
 	fd = fd_;
 	mode = LOG_READ;
 	dir = dir_;
+	vbuf = vbuf_;
 
-#ifdef __GLIBC__
-	/* libc will try prepread sizeof(vbuf) bytes on every fseeko,
-	   so no reason to make vbuf particulary large */
-	const int bufsize = 64 * 1024;
-	vbuf = xmalloc(bufsize);
-	setvbuf(fd, vbuf, _IOFBF, bufsize);
-#endif
 	offset = ftello(fd);
 	return self;
 }
@@ -149,9 +157,11 @@ open_for_read_filename:(const char *)filename dir:(XLogDir *)dir
 	char filetype_[32], version_[32];
 	XLog *l = nil;
 	FILE *fd;
+	char *fbuf;
 
 	if ((fd = fopen(filename, "r")) == NULL)
-		return nil;
+		return nil; /* no cleanup needed */
+	fbuf = set_file_buf(fd);
 
 	if (fgets(filetype_, sizeof(filetype_), fd) == NULL ||
 	    fgets(version_, sizeof(version_), fd) == NULL)
@@ -160,14 +170,12 @@ open_for_read_filename:(const char *)filename dir:(XLogDir *)dir
 			say_error("unexpected EOF reading %s", filename);
 		else
 			say_syserror("can't read header of %s", filename);
-		fclose(fd);
-		return nil;
+		goto error;
 	}
 
 	if (dir != NULL && strncmp(dir->filetype, filetype_, sizeof(filetype_)) != 0) {
 		say_error("filetype mismatch of %s", filename);
-		fclose(fd);
-		return nil;
+		goto error;
 	}
 
 	if (strcmp(version_, v11) == 0) {
@@ -187,21 +195,25 @@ open_for_read_filename:(const char *)filename dir:(XLogDir *)dir
 	}
 	if (l == nil) {
 		say_error("bad version `%s' of %s", version_, filename);
-		fclose(fd);
-		return nil;
+		goto error;
 	}
 
-	[l init_filename:filename fd:fd dir:dir];
+	[l init_filename:filename fd:fd dir:dir vbuf:fbuf];
 	if ([l read_header] < 0) {
 		if (feof(fd))
 			say_error("unexpected EOF reading %s", filename);
 		else
 			say_syserror("can't read header of %s", filename);
-		[l free];
+		[l free]; /* will do correct cleanup */
 		return nil;
 	}
 
 	return l;
+
+error:
+	fclose(fd);
+	free(fbuf);
+	return nil;
 }
 
 + (void)
@@ -1250,9 +1262,8 @@ open_for_write:(i64)lsn scn:(i64)scn
 {
         XLog *l = nil;
         FILE *file = NULL;
-	int fd = -1;
         assert(lsn > 0);
-
+	char *fbuf = NULL;
 
 	const char *final_filename = [self format_filename:lsn];
 	if (access(final_filename, F_OK) == 0) {
@@ -1269,16 +1280,21 @@ open_for_write:(i64)lsn scn:(i64)scn
 		say_syserror("fopen failed");
 		goto error;
 	}
+	fbuf = set_file_buf(file);
 
 	if (cfg.io_compat) {
-		l = [[XLog11 alloc] init_filename:filename fd:file dir:self];
+		l = [[XLog11 alloc] init_filename:filename fd:file dir:self vbuf:fbuf];
 		l->next_lsn = lsn;
 
 	} else {
-		l = [[XLog12 alloc] init_filename:filename fd:file dir:self];
+		l = [[XLog12 alloc] init_filename:filename fd:file dir:self vbuf:fbuf];
 		l->next_lsn = lsn;
 		((XLog12 *)l)->next_scn = scn;
 	}
+
+	/* reset local variables: they are included in l */
+	fbuf = NULL;
+	file = NULL;
 
 	l->mode = LOG_WRITE;
 	l->inprogress = 1;
@@ -1290,10 +1306,10 @@ open_for_write:(i64)lsn scn:(i64)scn
 
 	return l;
       error:
-	if (fd >= 0)
-		close(fd);
         if (file != NULL)
                 fclose(file);
+	if (fbuf != NULL)
+		free(fbuf);
         [l free];
 	return NULL;
 }
