@@ -397,7 +397,7 @@ fetch_row
 
 restart:
 
-	/* 
+	/*
 	 * reset stream status if we reached eof before,
 	 * subsequent fread() call could cache (at least on
 	 * FreeBSD) eof cache status
