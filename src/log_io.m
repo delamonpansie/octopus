@@ -476,8 +476,16 @@ eof:
 - (void)
 follow:(follow_cb *)cb data:(void *)data
 {
-	ev_stat_stop(&stat);
+	if (ev_is_active(&stat))
+		return;
+
+	if (cb == NULL) {
+		ev_stat_stop(&stat);
+		return;
+	}
+
 	ev_stat_init(&stat, cb, filename, 0.);
+	stat.interval = (ev_tstamp)cfg.wal_dir_rescan_delay / 10;
 	stat.data = data;
 	ev_stat_start(&stat);
 }
