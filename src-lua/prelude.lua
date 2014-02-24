@@ -184,4 +184,5 @@ function palloc(size)
 end
 
 require('stat')
+require('fiber_lock')
 print("Lua prelude initialized.")
