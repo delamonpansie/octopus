@@ -28,9 +28,11 @@
 #define INDEX_H
 
 #include <util.h>
+#include <pickle.h>
 #include <objc.h>
 
 #include <stdbool.h>
+#include <string.h>
 
 
 union index_field {
@@ -212,5 +214,19 @@ int lstr_compare(const struct index_node *na, const struct index_node *nb, void 
 int lstr_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
 int cstr_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
 int cstr_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+
+
+static inline int llexstrcmp(const void *a, const void *b)
+{
+	int al, bl;
+	int r;
+
+	al = LOAD_VARINT32(a);
+	bl = LOAD_VARINT32(b);
+
+	r = memcmp(a, b, al <= bl ? al : bl);
+
+	return r != 0 ? r : al - bl;
+}
 
 #endif

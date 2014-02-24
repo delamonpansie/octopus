@@ -103,14 +103,14 @@ i64_compare_with_addr(const struct index_node *na, const struct index_node *nb, 
 int
 lstr_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
-	return lstrcmp(na->key.ptr, nb->key.ptr);
+	return llexstrcmp(na->key.ptr, nb->key.ptr);
 }
 
 int
 lstr_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
 
-	int r = lstrcmp(na->key.ptr, nb->key.ptr);
+	int r = llexstrcmp(na->key.ptr, nb->key.ptr);
 	if (r != 0)
 		return r;
 
