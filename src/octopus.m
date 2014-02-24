@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -738,8 +738,11 @@ octopus(int argc, char **argv)
 	if (cfg.username != NULL) {
 		if (getuid() == 0 || geteuid() == 0) {
 			struct passwd *pw;
+			errno = 0;
 			if ((pw = getpwnam(cfg.username)) == 0) {
-				say_syserror("getpwnam: %s", cfg.username);
+				if (errno == 0)
+					errno = ENOENT;
+				say_syserror("getpwnam(\"%s\")", cfg.username);
 				exit(EX_NOUSER);
 			}
 			if (setgid(pw->pw_gid) < 0 || setuid(pw->pw_uid) < 0 || seteuid(pw->pw_uid)) {
