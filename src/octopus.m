@@ -78,7 +78,6 @@ int cfg_err_len, cfg_err_offt;
 struct octopus_cfg cfg;
 char *custom_proc_title;
 
-
 ev_io keepalive_ev = { .coro = 0 };
 Recovery *recovery;
 int keepalive_pipe[2];
@@ -87,6 +86,21 @@ extern int daemonize(int nochdir, int noclose);
 void out_warning(int v, char *format, ...);
 
 char *primary_addr;
+
+static int io_collect_zeroers = 0;
+void
+zero_io_collect_interval()
+{
+	if (++io_collect_zeroers == 1)
+		ev_set_io_collect_interval(0.0);
+}
+
+void
+unzero_io_collect_interval()
+{
+	if (--io_collect_zeroers == 0)
+		ev_set_io_collect_interval(cfg.io_collect_interval);
+}
 
 static void
 reset_cfg_err()

@@ -65,7 +65,8 @@ void *watcher;
 int events;
 static uint32_t last_used_fid;
 
-ev_prepare wake_prep;
+static ev_prepare wake_prep;
+static ev_async wake_async;
 
 static struct mhash_t *fibers_registry;
 
@@ -369,11 +370,18 @@ fiber_wakeup_pending(void)
 	assert(fiber == &sched);
 	struct fiber *f, *tvar;
 
-	TAILQ_FOREACH_SAFE(f, &wake_list, wake_link, tvar) {
-		void *arg = f->wake;
-		TAILQ_REMOVE(&wake_list, f, wake_link);
-		f->wake_link.tqe_prev = NULL;
-		resume(f, arg);
+	for(int i=10; i && !TAILQ_EMPTY(&wake_list); i--) {
+		TAILQ_FOREACH_SAFE(f, &wake_list, wake_link, tvar) {
+			void *arg = f->wake;
+			TAILQ_REMOVE(&wake_list, f, wake_link);
+			f->wake_link.tqe_prev = NULL;
+			resume(f, arg);
+		}
+	}
+
+	if (!TAILQ_EMPTY(&wake_list)) {
+		zero_io_collect_interval();
+		ev_async_send(&wake_async);
 	}
 }
 
@@ -396,6 +404,8 @@ fiber_init(void)
 
 	ev_prepare_init(&wake_prep, (void *)fiber_wakeup_pending);
 	ev_prepare_start(&wake_prep);
+	ev_async_init(&wake_async, (void *)unzero_io_collect_interval);
+	ev_async_start(&wake_async);
 	say_debug("fibers initialized");
 }
 

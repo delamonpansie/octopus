@@ -104,6 +104,8 @@ static inline bool ghost(struct tnt_object *obj)
 	return obj->flags & GHOST;
 }
 
+void zero_io_collect_interval();
+void unzero_io_collect_interval();
 
 extern lua_State *root_L;
 struct lua_src {

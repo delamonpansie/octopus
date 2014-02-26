@@ -655,15 +655,9 @@ pull_wal:(id<XLogPullerAsync>)puller
 - (int)
 load_from_remote:(id<XLogPullerAsync>)puller
 {
-	bool revert_io_collect_interval = false;
 	@try {
 		if (lsn == 0) {
-			/* there is only one connection during initial load,
-			   so io_collect_interval is useless */
-			if (cfg.io_collect_interval > 0) {
-				ev_set_io_collect_interval(0);
-				revert_io_collect_interval = true;
-			}
+			zero_io_collect_interval();
 
 			[self pull_snapshot:puller];
 			[self configure_wal_writer];
@@ -682,8 +676,7 @@ load_from_remote:(id<XLogPullerAsync>)puller
 		while ([self pull_wal:puller] != 1);
 	}
 	@finally {
-		if (revert_io_collect_interval)
-			ev_set_io_collect_interval(cfg.io_collect_interval);
+		unzero_io_collect_interval();
 	}
 	return 0;
 }
