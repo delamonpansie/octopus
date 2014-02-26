@@ -1106,7 +1106,7 @@ atosin(const char *orig, struct sockaddr_in *addr)
 	int port;
 	addr->sin_family = AF_UNSPEC;
 
-	if (orig == NULL) {
+	if (orig == NULL || *orig == 0) {
 		addr->sin_addr.s_addr = INADDR_ANY;
 		return -1;
 	}
