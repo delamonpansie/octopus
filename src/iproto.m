@@ -45,7 +45,6 @@
 #include <netinet/tcp.h>
 
 const uint32_t msg_ping = 0xff00;
-const uint32_t msg_replica = 0xff01;
 
 #define STAT(_) \
         _(IPROTO_WORKER_STARVATION, 1)			\
