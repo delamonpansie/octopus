@@ -1104,9 +1104,18 @@ int
 atosin(const char *orig, struct sockaddr_in *addr)
 {
 	int port;
-	char *str = strdupa(orig);
-	char *colon = strchr(str, ':');
 	addr->sin_family = AF_UNSPEC;
+
+	if (orig == NULL) {
+		addr->sin_addr.s_addr = INADDR_ANY;
+		return -1;
+	}
+
+	char str[25];
+	strncpy(str, orig, 25);
+	str[24] = 0;
+
+	char *colon = strchr(str, ':');
 
 	if (colon != NULL) {
 		*colon = 0;
