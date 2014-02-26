@@ -1,6 +1,6 @@
-Tarantool/Silverbox, project Octopus
+Octopus project, former Tarantool/Silverbox
 
-Tarantool: in-memory storage framework
+Octopus: in-memory storage framework
 Silverbox: Yet another in-memory key-value database
 
 Key features:
