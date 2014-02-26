@@ -19,6 +19,7 @@ $CPP include/octopus.h | $SED -n '/^void object_/p '
 $CPP include/index.h | $SED -n '/^\(struct\|union\) index_[a-z]\+ \+{/,/^}/p'
 $CPP include/fiber.h | $SED -n '/^typedef struct coro_context/p;'
 $CPP include/fiber.h | $SED -n '/^struct \(fiber\|octopus_coro\|coro_context\) \+{/,/^}/p'
+$CPP include/fiber.h | $SED -n '/fiber_wake\|fid2fiber/p'
 echo "extern struct fiber *fiber;"
 $CPP include/octopus_ev.h | $SED -n '/^typedef [a-z]\+ ev_tstamp/p; /typedef struct ev_\(io\|timer\)/,/^}/p;'
 $CPP include/iproto_def.h | $SED -n '/^struct iproto\(_retcode\)\? \+{/,/^}/{s/\[\]/[?]/;p;}'
