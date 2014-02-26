@@ -81,6 +81,8 @@ SLIST_HEAD(iproto_group, iproto_peer);
 
 int init_iproto_peer(struct iproto_peer *p, int id, const char *name, const char *addr);
 
+void iproto_ping(struct netmsg_head *h, struct iproto *r, struct conn *c);
+
 void
 service_register_iproto_stream(struct service *s, u32 cmd,
 			       void (*cb)(struct netmsg_head *, struct iproto *, struct conn *),
