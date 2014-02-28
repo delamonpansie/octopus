@@ -5,7 +5,7 @@ obj += $(obj-log-io)
 obj += src/tnt_obj.o
 obj += src/iproto.o
 
-src/octopus.o src/net_io.o: CFLAGS += -DOCT_OBJECT
+src/octopus.o src/net_io.o: XCFLAGS += -DOCT_OBJECT
 
 obj += mod/memcached/store.o
 obj += mod/memcached/proto.o
