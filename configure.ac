@@ -205,16 +205,16 @@ AC_COMPILE_IFELSE(
    AC_DEFINE([HAVE__BUILTIN_EXPECT], [1], [Define to 1 if the C compiler supports __builtin_expect])])
 AC_MSG_RESULT($ac_cv__builtin_expect)
 
-AC_CC_FLAG_CHECK([-Werror], [CFLAGS_WARNS="-Werror $CFLAGS_WARNS"])
-AC_CC_FLAG_CHECK([-Wno-sign-compare], [CFLAGS_WARNS="-Wno-sign-compare $CFLAGS_WARNS"])
-AC_CC_FLAG_CHECK([-Wextra], [CFLAGS_WARNS="-Wextra $CFLAGS_WARNS"])
-AC_SUBST(CFLAGS_WARNS)
+AC_CC_FLAG_CHECK([-Werror], [WCFLAGS="-Werror $WCFLAGS"])
+AC_CC_FLAG_CHECK([-Wno-sign-compare], [WCFLAGS="-Wno-sign-compare $WCFLAGS"])
+AC_CC_FLAG_CHECK([-Wextra], [WCFLAGS="-Wextra $WCFLAGS"])
+AC_SUBST(WCFLAGS)
 
-CFLAGS_EXTRA=-Wall
-AC_CC_FLAG_CHECK([-fno-stack-protector], [CFLAGS_EXTRA="-fno-stack-protector $CFLAGS_EXTRA"])
-AC_CC_FLAG_CHECK([-pipe], [CFLAGS_EXTRA="-pipe $CFLAGS_EXTRA"])
-AC_CC_FLAG_CHECK([-MD -MP], [CFLAGS_EXTRA="-MD -MP $CFLAGS_EXTRA"])
-AC_SUBST(CFLAGS_EXTRA)
+XCFLAGS=-Wall
+AC_CC_FLAG_CHECK([-fno-stack-protector], [XCFLAGS="-fno-stack-protector $XCFLAGS"])
+AC_CC_FLAG_CHECK([-pipe], [XCFLAGS="-pipe $XCFLAGS"])
+AC_CC_FLAG_CHECK([-MD -MP], [XCFLAGS="-MD -MP $XCFLAGS"])
+AC_SUBST(XCFLAGS)
 
 AS_IF([test "x$ac_cv_werror" == xyes],
       [AC_MSG_CHECKING([whether the compiler supports __attribute__((cold))])
@@ -255,8 +255,8 @@ AS_IF([test "x$coverage" = xyes],
       [AC_CHECK_PROG([LCOV], [lcov], [lcov])
        AS_IF([test -n $LCOV], [AC_SUBST(HAVE_LCOV, 1)])
        AC_SUBST(COVERAGE, 1)
-       CFLAGS="--coverage $CFLAGS";
-       LDFLAGS="--coverage $LDFLAGS"])
+       XCFLAGS="--coverage $XCFLAGS";
+       XLDFLAGS="--coverage $XLDFLAGS"])
 
 AC_ARG_ENABLE([valgrind],
               [AS_HELP_STRING([--enable-valgrind],
@@ -265,12 +265,12 @@ AC_ARG_ENABLE([valgrind],
 AS_IF([test "x$valgrind" == xyes],
       [AS_IF([test $ac_cv_header_valgrind_valgrind_h == no],
              AC_MSG_ERROR([unable to find valgrind headers]))],
-      [CFLAGS_EXTRA="-DNVALGRIND $CFLAGS_EXTRA"])
+      [AC_DEFINE(NVALGRIND, 1, [Define to 1 if Valgrind support should be disabled])])
 
 m4_include(modules.m4)
 AC_SUBST(modules, [$octopus_modules])
 for module in $octopus_modules; do
-    AS_IF([test -r ${srcdir}/mod/$module/Makefile], [], AC_MSG_ERROR([No such module: $module]))
+    AS_IF([test -r "${srcdir}/mod/$module/Makefile"], [], AC_MSG_ERROR([No such module: $module]))
 done
 
 
@@ -281,7 +281,7 @@ AC_ARG_ENABLE([clients],
               [octopus_clients="libiproto"])
 AC_SUBST(clients, [$octopus_clients])
 for client in $octopus_clients; do
-    AS_IF([test -r ${srcdir}/client/$client/Makefile], [], AC_MSG_ERROR([No such client: $client]))
+    AS_IF([test -r "${srcdir}/client/$client/Makefile"], [], AC_MSG_ERROR([No such client: $client]))
 done
 
 AC_OUTPUT
@@ -293,12 +293,11 @@ Modules enabled........$octopus_modules
 Clients enabled........$octopus_clients
 
 Objective C compiler...$CC
-CPPFLAGS...............$CPPFLAGS
 CFLAGS.................$CFLAGS
-CFLAGS_EXTRA...........$CFLAGS_EXTRA
-CFLAGS_WARNS...........$CFLAGS_WARNS
-LDFLAGS................$LDFLAGS
+CPPFLAGS...............$CPPFLAGS
 LIBS...................$LIBS
+configured CFLAGS......$XCFLAGS $WCFLAGS
+configured LDFLAGS.....$XLDFLAGS
 
 Ragel..................$RAGEL
 Ragel flags............$RAGELFLAGS

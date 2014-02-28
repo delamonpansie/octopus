@@ -193,6 +193,9 @@
 /* Define to 1 if assertions should be disabled. */
 #undef NDEBUG
 
+/* Define to 1 if Valgrind support should be disabled */
+#undef NVALGRIND
+
 /* Define if you have Apple ObjC runtime */
 #undef OBJC_APPLE_RUNTIME
 

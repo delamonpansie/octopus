@@ -2,7 +2,7 @@ CLDIR=client/libiproto
 libobj += $(CLDIR)/iproto.o $(CLDIR)/errcode.o
 dep += $(call depend,$(libobj))
 
-$(CLDIR)/iproto.o $(CLDIR)/errcode.o: CFLAGS += -DLIBIPROTO_OCTOPUS
+$(CLDIR)/iproto.o $(CLDIR)/errcode.o: XCFLAGS += -DLIBIPROTO_OCTOPUS
 
 $(libobj): Makefile $(sub-Makefile)
 

@@ -6,4 +6,4 @@ AC_ARG_ENABLE([modules],
               [octopus_modules=${bundled_modules:-box feeder}])
 
 AC_MSG_NOTICE([Fetching modules])
-${srcdir}/scripts/fetch-modules.sh
+"${srcdir}"/scripts/fetch-modules.sh octopus_modules

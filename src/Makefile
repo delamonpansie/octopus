@@ -27,25 +27,25 @@ ifeq (1,$(HAVE_RAGEL))
 	dist += src/admin.m
 endif
 
-$(obj): CFLAGS_EXTRA += -DOCTOPUS
+$(obj): XCFLAGS += -DOCTOPUS
 
 src/octopus.o: octopus_version.h
-src/octopus.o: CFLAGS_EXTRA += -DPRIMARY_MOD='"$(primary_module)"' -D$(binary_type)
+src/octopus.o: XCFLAGS += -DPRIMARY_MOD='"$(primary_module)"' -D$(binary_type)
 ifeq ($(binary_type),)
   $(error binary_type must be defined)
 endif
 
 # some modules might be built without paxos
 ifneq ($(findstring src/paxos.o,$(obj)),)
-  src/log_io_recovery.o: CFLAGS_EXTRA += -DPAXOS
+  src/log_io_recovery.o: XCFLAGS += -DPAXOS
 endif
 
 # no warns at all: it complains even with -Wall
 no-extra-warns += src/octopus_ev.o
-src/octopus_ev.o: CFLAGS_EXTRA := -U_FORTIFY_SOURCE $(filter-out -W%,$(CFLAGS_EXTRA))
+src/octopus_ev.o: XCFLAGS := -U_FORTIFY_SOURCE $(filter-out -W%,$(CFLAGS_EXTRA))
 
 ifneq (,$(TRACE))
 	obj += src/trace.o
-	$(TRACE): CFLAGS_EXTRA += -finstrument-functions
-	LDFLAGS += -Wl,-Map=octopus.map
+	$(TRACE): XCFLAGS += -finstrument-functions
+	XLDFLAGS += -Wl,-Map=octopus.map
 endif

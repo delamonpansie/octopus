@@ -8,56 +8,61 @@ export LC_ALL=C
 .SECONDARY:
 ROOT:=$(CURDIR)
 
-CORO_IMPL ?= ASM
+CORO_IMPL = ASM
 
 @SET_MAKE@
-CC := @CC@
-CPP := @CPP@
-CFLAGS ?= @CFLAGS@
-CFLAGS_EXTRA ?= @CFLAGS_EXTRA@
+CC = @CC@
+CPP = @CPP@
+CFLAGS = @CFLAGS@
+XCFLAGS = @XCFLAGS@
 # no -Wextra & -Werror on bundled builds: compiler is unknown
 ifeq (@BUNDLE@,)
-CFLAGS_WARNS ?= @CFLAGS_WARNS@
+WCFLAGS = @WCFLAGS@
 endif
-CPPFLAGS ?= @CPPFLAGS@
-LDFLAGS ?= @LDFLAGS@
-RANLIB ?= @RANLIB@
-ARFLAGS := rc
-RAGEL := @RAGEL@
-RAGELFLAGS := @RAGELFLAGS@
-DOT ?= @DOT@
-CONFETTI ?= @CONFETTI@
-GIT ?= @GIT@
-HAVE_GIT := @HAVE_GIT@
-ECHO ?= @ECHO@
-CAT ?= cat
-SED ?= @SED@
-NM ?= @NM@
-OBJCOPY ?= @OBJCOPY@
-HAVE_RAGEL := @HAVE_RAGEL@
-HAVE_CONFETTI := @HAVE_CONFETTI@
-HAVE_LCOV := @HAVE_LCOV@
-COVERAGE := @COVERAGE@
-LIBS ?= @LIBS@
-HAVE_CC_FLAG_W_NO_COMMENT := @HAVE_CC_FLAG_W_NO_COMMENT@
-HAVE_CC_FLAG_W_NO_UNUSED_VALUE := @HAVE_CC_FLAG_W_NO_UNUSED_VALUE@
-modules := @modules@
-clients := @clients@
-srcdir := @srcdir@
+CPPFLAGS = @CPPFLAGS@
+LDFLAGS = @LDFLAGS@
+RANLIB = @RANLIB@
+ARFLAGS = rc
+RAGEL = @RAGEL@
+RAGELFLAGS = @RAGELFLAGS@
+DOT = @DOT@
+CONFETTI = @CONFETTI@
+GIT = @GIT@
+HAVE_GIT = @HAVE_GIT@
+ECHO = @ECHO@
+CAT = cat
+SED = @SED@
+NM = @NM@
+OBJCOPY = @OBJCOPY@
+HAVE_RAGEL = @HAVE_RAGEL@
+HAVE_CONFETTI = @HAVE_CONFETTI@
+HAVE_LCOV = @HAVE_LCOV@
+COVERAGE = @COVERAGE@
+LIBS = @LIBS@
+HAVE_CC_FLAG_W_NO_COMMENT = @HAVE_CC_FLAG_W_NO_COMMENT@
+HAVE_CC_FLAG_W_NO_UNUSED_VALUE = @HAVE_CC_FLAG_W_NO_UNUSED_VALUE@
+modules = @modules@
+clients = @clients@
+srcdir = @srcdir@
 VPATH := @srcdir@
+
+ifneq ($(words $(srcdir)),1)
+  $(error source dir must not contain spaces)
+endif
 
 MAKEFLAGS += --no-print-directory
 
-# some lua files are generated with CPP, they also need CPPFLAGS
-%.o %.lua: CPPFLAGS += -I. -Iinclude
+# some lua files are generated with CPP, they also need XCPPFLAGS
+%.o %.lua: XCPPFLAGS += -I. -Iinclude
 ifneq (.,$(srcdir))
-  %.o %.lua: CPPFLAGS += -I$(srcdir) -I$(srcdir)/include
+  %.o %.lua: XCPPFLAGS += -I$(srcdir) -I$(srcdir)/include
 endif
 
 primary_module=$(firstword $(modules))
 binary=octopus$(if $(WITH_MODNAME),_$(primary_module),)
 
-%.o: CFLAGS_EXTRA += -Wno-strict-aliasing -funwind-tables
+DCFLAGS=$(filter -g%,$(XCFLAGS) $(CFLAGS))
+%.o: XCFLAGS += -Wno-strict-aliasing -funwind-tables
 
 ifeq ("$(origin V)", "command line")
     VERBOSE = $(V)
@@ -86,7 +91,7 @@ sub-Makefile = $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
 
 $(binary): $(obj) .luajit
 	$E "CC	$@"
-	$Q$(CC) $(LDFLAGS) -L$(srcdir)/third_party/luajit/src $(filter-out .%,$^) -lluajit $(LIBS) -o $@
+	$Q$(CC) -L$(srcdir)/third_party/luajit/src $(filter-out .%,$^) -lluajit $(LIBS) $(XLDFLAGS) $(LDFLAGS) $(CFLAGS) -o $@
 
 .luajit:
 	@$(MAKE) -C $(srcdir)/third_party/luajit/src CC="$(CC)" E="$(E)" Q="$(Q)" \
@@ -100,26 +105,30 @@ $(obj): Makefile $(sub-Makefile)
 dep += $(call depend,$(obj))
 -include $(dep)
 
-$(filter-out $(no-extra-warns),$(obj)): CFLAGS_EXTRA += $(CFLAGS_WARNS)
+$(filter-out $(no-extra-warns),$(obj)): XCFLAGS += $(WCFLAGS)
 
 %.o: %.m
 	@mkdir -p $(dir $@)
 	$(E) "CC	$@"
-	$(Q)$(CC) $(CPPFLAGS) $(CFLAGS_EXTRA) $(CFLAGS) -Wno-protocol -fobjc-exceptions -c $< -o $@
+	$(Q)$(CC) $(XCPPFLAGS) $(XCFLAGS) $(CPPFLAGS) $(CFLAGS) -Wno-protocol -fobjc-exceptions -c $< -o $@
 
 %.o: %.c
 	@mkdir -p $(dir $@)
 	$(E) "CC	$@"
-	$(Q)$(CC) $(CPPFLAGS) $(CFLAGS_EXTRA) $(CFLAGS) -c $< -o $@
+	$(Q)$(CC) $(XCPPFLAGS) $(XCFLAGS) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+define LUAJIT_B
+LUA_PATH='$(srcdir)/third_party/luajit/src/?.lua' \
+	$(srcdir)/third_party/luajit/src/luajit -b \
+	$(if $(DCFLAGS),-g) \
+	-n $(subst /,.,$(basename $(lastword $(subst src-lua/, ,$<)))) \
+	$< $@
+endef
 
 %.o: %.lua .luajit
 	@mkdir -p $(dir $@)
 	$(E) "LUAJIT	$@"
-	$(Q) LUA_PATH='$(srcdir)/third_party/luajit/src/?.lua' \
-	     $(srcdir)/third_party/luajit/src/luajit -b \
-		$(if $(filter -g%,$(CFLAGS)),-g) \
-		-n $(subst /,.,$(basename $(lastword $(subst src-lua/, ,$<)))) \
-		$< $@
+	$(Q)$(LUAJIT_B)
 
 ifeq (1,$(HAVE_RAGEL))
 %.m: %.rl
@@ -159,13 +168,14 @@ endif
 FORCE:
 .PHONY: FORCE
 ifeq (1,$(HAVE_GIT))
+BUNDLE=NONE
 octopus_version.h: FORCE
 	@echo -n 'const char octopus_version_string[] = "' > $@_
 	@cd $(srcdir); $(GIT) describe --always HEAD | tr -d \\n >> $@_
 	@echo -n - >> $@_
 	@cd $(srcdir); $(GIT) branch | grep  '\*' | cut -f2 -d' ' | sed 's/^master$$/experimental/' | tr -d \\n >> $@_
 	@echo '";' >> $@_
-	@echo 'const char octopus_bundle_string[] = "NONE";' >> $@_;
+	@echo 'const char octopus_bundle_string[] = "$(BUNDLE)";' >> $@_;
 	@diff -q $@ $@_ 2>/dev/null >/dev/null || (echo "GEN	$(notdir $@)"; cp $@_ $@)
 	@rm $@_
 
@@ -245,12 +255,14 @@ Makefile: config.status $(srcdir)/include/config.h.in $(srcdir)/Makefile.in $(su
 config.status: $(srcdir)/configure
 	./config.status --recheck
 
-configure: $(srcdir)/configure.ac $(srcdir)/third_party/libev/libev.m4
+$(srcdir)/configure: configure.ac third_party/libev/libev.m4
 	cd $(srcdir) && autoconf
 
-.PHONY: dist
-dist: configure $(dist) octopus_version.h
+.PHONY: dist pre-dist
+pre-dist: configure $(dist) octopus_version.h
 	@rm -rf $(configure-byproducts)
+dist:
+	@./scripts/make-dist.sh $(foreach mod,$(modules),mod/$(mod))
 
 $(eval $(defered))
 
