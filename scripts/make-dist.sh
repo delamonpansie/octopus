@@ -9,6 +9,10 @@ RDIR=$(pwd)
 DESTDIR=$(mktemp -d)/octopus
 mkdir "$DESTDIR"
 test -n "$DESTDIR" 
+modules=""
+clients=""
+conf_modules=""
+conf_clients=""
 
 clone() {
     local repo=$1
@@ -30,8 +34,8 @@ clone() {
 clone .
 for repo in ${@:-client/* mod/*}; do
     case $repo in
-      mod/*) conf_modules="$modules ${repo#*/}" ;;
-      client/*) conf_clients="$clients ${repo#*/}";;
+      mod/*) conf_modules="$conf_modules ${repo#*/}" ;;
+      client/*) conf_clients="$conf_clients ${repo#*/}";;
     esac
 
     clone $repo
