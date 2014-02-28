@@ -7,7 +7,7 @@ obj += src/tnt_obj.o
 obj += src/iproto.o
 obj += src/iproto_client.o
 
-src/octopus.o src/net_io.o: CFLAGS += -DOCT_OBJECT
+src/octopus.o src/net_io.o: XCFLAGS += -DOCT_OBJECT
 
 obj += mod/box/box.o
 obj += mod/box/moonbox.o
