@@ -188,14 +188,12 @@ tuple_bsize(u32 cardinality, const void *data, u32 max_len)
 }
 
 static void
-tuple_add(struct netmsg_head *h, struct iproto_retcode *reply, struct tnt_object *obj)
+tuple_add(struct netmsg_head *h, struct tnt_object *obj)
 {
 	struct box_tuple *tuple = box_tuple(obj);
 	size_t size = tuple->bsize +
 		      sizeof(tuple->bsize) +
 		      sizeof(tuple->cardinality);
-
-	reply->data_len += size;
 
 	/* it's faster to copy & join small tuples into single large
 	   iov entry. join is done by net_add_iov() */
@@ -608,7 +606,7 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 
 
 static void __attribute__((noinline))
-process_select(struct netmsg_head *h, struct iproto_retcode *reply, Index<BasicIndex> *index,
+process_select(struct netmsg_head *h, Index<BasicIndex> *index,
 	       u32 limit, u32 offset, struct tbuf *data)
 {
 	struct tnt_object *obj;
@@ -617,7 +615,6 @@ process_select(struct netmsg_head *h, struct iproto_retcode *reply, Index<BasicI
 
 	say_debug("SELECT");
 	found = palloc(h->pool, sizeof(*found));
-	reply->data_len += sizeof(*found);
 	net_add_iov(h, found, sizeof(*found));
 	*found = 0;
 
@@ -637,7 +634,7 @@ process_select(struct netmsg_head *h, struct iproto_retcode *reply, Index<BasicI
 			}
 
 			(*found)++;
-			tuple_add(h, reply, obj);
+			tuple_add(h, obj);
 			limit--;
 		}
 	} else {
@@ -661,7 +658,7 @@ process_select(struct netmsg_head *h, struct iproto_retcode *reply, Index<BasicI
 				}
 
 				(*found)++;
-				tuple_add(h, reply, obj);
+				tuple_add(h, obj);
 				--limit;
 			}
 		}
@@ -818,15 +815,15 @@ box_cb(struct iproto *request, struct conn *c)
 		box_commit(&txn);
 
 		struct netmsg_head *h = &c->out_messages;
-		struct iproto_retcode *reply = iproto_reply(h, request);
-		reply->data_len += sizeof(u32);
+		struct iproto_retcode *reply = iproto_reply_start(h, request);
 		net_add_iov_dup(h, &txn.obj_affected, sizeof(u32));
 		if (txn.flags & BOX_RETURN_TUPLE) {
 			if (txn.obj)
-				tuple_add(h, reply, txn.obj);
+				tuple_add(h, txn.obj);
 			else if (request->msg_code == DELETE && txn.old_obj)
-				tuple_add(h, reply, txn.old_obj);
+				tuple_add(h, txn.old_obj);
 		}
+		iproto_reply_fixup(h, reply);
 
 		stop = ev_now();
 		if (stop - start > cfg.too_long_threshold)
@@ -848,7 +845,7 @@ static void
 box_select_cb(struct netmsg_head *h, struct iproto *request, struct conn *c __attribute__((unused)))
 {
 	struct tbuf data = TBUF(request->data, request->data_len, fiber->pool);
-	struct iproto_retcode *reply = iproto_reply(h, request);
+	struct iproto_retcode *reply = iproto_reply_start(h, request);
 	struct object_space *object_space;
 
 	i32 n = read_u32(&data);
@@ -870,7 +867,8 @@ box_select_cb(struct netmsg_head *h, struct iproto *request, struct conn *c __at
 	if ((object_space->index[i]) == NULL)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index is invalid");
 
-	process_select(h, reply, object_space->index[i], limit, offset, &data);
+	process_select(h, object_space->index[i], limit, offset, &data);
+	iproto_reply_fixup(h, reply);
 	stat_collect(stat_base, request->msg_code, 1);
 }
 
