@@ -63,6 +63,8 @@ static inline struct iproto *iproto_parse(struct tbuf *t)
 
 struct netmsg_head;
 struct iproto_retcode * iproto_reply(struct netmsg_head *h, const struct iproto *request);
+struct iproto_retcode * iproto_reply_start(struct netmsg_head *h, const struct iproto *request);
+void iproto_reply_fixup(struct netmsg_head *h, struct iproto_retcode *reply);
 void iproto_error(struct netmsg_head *h, const struct iproto *request, u32 ret_code, const char *err);
 
 void iproto_worker(va_list ap);

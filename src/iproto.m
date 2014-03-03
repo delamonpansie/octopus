@@ -278,6 +278,25 @@ iproto_reply(struct netmsg_head *h, const struct iproto *request)
 	return header;
 }
 
+struct iproto_retcode *
+iproto_reply_start(struct netmsg_head *h, const struct iproto *request)
+{
+	struct iproto_retcode *header = palloc(h->pool, sizeof(*header));
+	net_add_iov(h, header, sizeof(*header));
+	*header = (struct iproto_retcode){ .msg_code = request->msg_code,
+					   .data_len = h->bytes,
+					   .sync = request->sync,
+					   .ret_code = ERR_CODE_OK };
+	return header;
+}
+
+void
+iproto_reply_fixup(struct netmsg_head *h, struct iproto_retcode *reply)
+{
+	reply->data_len = h->bytes - reply->data_len + sizeof(reply->ret_code);
+}
+
+
 void
 iproto_error(struct netmsg_head *h, const struct iproto *request, u32 ret_code, const char *err)
 {
