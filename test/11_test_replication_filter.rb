@@ -10,6 +10,10 @@ class MasterEnv < StandAloneEnv
 
   def config
     super + <<EOD
+# normaly not needed. but because there is no WAL then test started (and thus no inotify watcher running),
+# feeder will sleep until WAL dir rescan.
+wal_dir_rescan_delay = 0.05
+
 wal_feeder_bind_addr = "0:33034"
 object_space[0].enabled = 1
 object_space[0].index[0].type = "HASH"
