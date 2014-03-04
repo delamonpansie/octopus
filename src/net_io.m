@@ -1054,6 +1054,18 @@ accept_client(int fd, void *data)
 	clnt->state = CONNECTED;
 }
 
+static inline void
+service_alloc_handlers(struct service *s, int capa)
+{
+	int i;
+	s->ih_size = 0;
+	s->ih = xcalloc(capa, sizeof(struct iproto_handler));
+	s->ih_mask = capa - 1;
+	for(i = 0; i < capa; i++) {
+		s->ih[i].code = -1;
+	}
+}
+
 void
 tcp_service(struct service *service, const char *addr, void (*on_bind)(int fd), void (*wakeup_workers)(ev_prepare *))
 {
@@ -1076,6 +1088,37 @@ tcp_service(struct service *service, const char *addr, void (*on_bind)(int fd), 
 
 	ev_prepare_init(&service->wakeup, (void *)wakeup_workers);
 	ev_prepare_start(&service->wakeup);
+
+	service_alloc_handlers(service, SERVICE_DEFAULT_CAPA);
+}
+
+void
+service_set_handler(struct service *s, struct iproto_handler h)
+{
+	if (h.code == -1) {
+		free(s->ih);
+		service_alloc_handlers(s, SERVICE_DEFAULT_CAPA);
+		s->default_handler = h;
+		return;
+	}
+	if (s->ih_size > s->ih_mask / 3) {
+		struct iproto_handler *old_ih = s->ih;
+		int i, old_n = s->ih_mask + 1;
+		service_alloc_handlers(s, old_n * 2);
+		for(i = 0; i < old_n; i++) {
+			if (old_ih[i].code != -1) {
+				service_set_handler(s, old_ih[i]);
+			}
+		}
+		free(old_ih);
+	}
+	int pos = h.code & s->ih_mask;
+	int dlt = (h.code % s->ih_mask) | 1;
+	while(s->ih[pos].code != h.code && s->ih[pos].code != -1)
+		pos = (pos + dlt) & s->ih_mask;
+	if (s->ih[pos].code != h.code)
+		s->ih_size++;
+	s->ih[pos] = h;
 }
 
 void

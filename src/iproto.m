@@ -117,13 +117,11 @@ service_register_iproto_stream(struct service *s, u32 cmd,
 			       void (*cb)(struct netmsg_head *, struct iproto *, struct conn *),
 			       int flags)
 {
-	if (cmd == -1) { /* ANY */
-		for (int i = 0; i <= 0xff; i++)
-			service_register_iproto_stream(s, i, cb, flags);
-	} else {
-		s->ih[cmd & 0xff].cb.stream = cb;
-		s->ih[cmd & 0xff].flags = flags | IPROTO_NONBLOCK;
-	}
+	service_set_handler(s, (struct iproto_handler){
+			.code = cmd,
+			.cb = {.stream = cb},
+			.flags = flags | IPROTO_NONBLOCK
+		});
 }
 
 void
@@ -131,13 +129,11 @@ service_register_iproto_block(struct service *s, u32 cmd,
 			      void (*cb)(struct iproto *, struct conn *),
 			      int flags)
 {
-	if (cmd == -1) { /* ANY */
-		for (int i = 0; i <= 0xff; i++)
-			service_register_iproto_block(s, i, cb, flags);
-	} else {
-		s->ih[cmd & 0xff].cb.block = cb;
-		s->ih[cmd & 0xff].flags = flags & ~IPROTO_NONBLOCK;
-	}
+	service_set_handler(s, (struct iproto_handler){
+			.code = cmd,
+			.cb = {.block = cb},
+			.flags = flags & ~IPROTO_NONBLOCK
+		});
 }
 
 void
@@ -159,7 +155,7 @@ process_requests(struct conn *c)
 	       tbuf_len(c->rbuf) >= sizeof(struct iproto) + iproto(c->rbuf)->data_len)
 	{
 		struct iproto *request = iproto(c->rbuf);
-		struct iproto_handler *ih = &service->ih[request->msg_code & 0xff];
+		struct iproto_handler *ih = service_find_code(service, request->msg_code);
 
 		if (ih->flags & IPROTO_NONBLOCK) {
 			stat_collect(stat_base, IPROTO_STREAM_OP, 1);
