@@ -42,45 +42,6 @@ function assertarg(arg, atype, n, level)
    error(msg, 3 + (level or 0))
 end
 
-function reloadfile(filename)
-	assertarg(filename, 'string', 1)
-
-        local function print_warn(msg)
-                print(string.format("reloadfile(\"%s\"): %s", filename, msg))
-        end
-
-        local function require(filename)
-                local modulename = string.gsub(string.gsub(filename, "^.*/", ""), "%.lua$", "")
-                local module, err = loadfile(filename)
-                if module == nil then
-                        print_warn(err)
-                        return
-                end
-                package.loaded[module] = module(modulename)
-        end
-        local function reload_loop()
-                local tm = 0
-                while true do
-                        local r, v = pcall(os.ctime, filename)
-                        if r then
-                                if v > tm then
-                                        local r, err = pcall(require, filename)
-                                        if r then
-                                                tm = v
-                                        else
-                                                print_warn(err)
-                                        end
-                                end
-                        else
-                                print_warn(v)
-                        end
-                        fiber.sleep(1)
-                end
-        end
-        -- do all loading from fiber, since loaded code may call fiber.sleep()
-        return fiber.create(reload_loop)
-end
-
 varint32 = {}
 function varint32.read(ptr)
    local result = 0
@@ -185,4 +146,5 @@ end
 
 require('stat')
 require('fiber_lock')
+require('reloadfile')
 print("Lua prelude initialized.")
