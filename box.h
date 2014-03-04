@@ -70,6 +70,19 @@ box_tuple(struct tnt_object *obj)
 	return (struct box_tuple *)obj->data;
 }
 
+struct box_snap_row {
+	u32 object_space;
+	u32 tuple_size;
+	u32 data_size;
+	u8 data[];
+} __attribute((packed));
+
+static inline struct box_snap_row *
+box_snap_row(const struct tbuf *t)
+{
+	return (struct box_snap_row *)t->ptr;
+}
+
 extern struct dtor_conf box_tuple_dtor;
 struct index_conf * cfg_box2index_conf(struct octopus_cfg_object_space_index *c);
 
@@ -127,6 +140,7 @@ void box_rollback(struct box_txn *txn);
 	_(SELECT_KEYS, 99)
 
 enum messages ENUM_INITIALIZER(MESSAGES);
+extern char * const box_ops[];
 
 @interface Recovery (Box)
 @end
@@ -135,5 +149,8 @@ extern Recovery *recovery;
 void *next_field(void *f);
 void append_field(struct tbuf *b, void *f);
 void *tuple_field(struct box_tuple *tuple, size_t i);
+ssize_t tuple_bsize(u32 cardinality, const void *data, u32 max_len);
 
+int box_cat_scn(i64 stop_scn);
+int box_cat(const char *filename);
 #endif

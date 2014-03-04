@@ -58,31 +58,17 @@
 static struct service box_primary, box_secondary;
 
 static int stat_base;
-static char * const ops[] = ENUM_STR_INITIALIZER(MESSAGES);
+char * const box_ops[] = ENUM_STR_INITIALIZER(MESSAGES);
 
 extern char *primary_addr;
 struct object_space *object_space_registry;
 const int object_space_count = 256, object_space_max_idx = MAX_IDX;
-
-struct box_snap_row {
-	u32 object_space;
-	u32 tuple_size;
-	u32 data_size;
-	u8 data[];
-} __attribute((packed));
 
 void __attribute__((noreturn))
 bad_object_type()
 {
 	raise("bad object type");
 }
-
-static inline struct box_snap_row *
-box_snap_row(const struct tbuf *t)
-{
-	return (struct box_snap_row *)t->ptr;
-}
-
 
 void *
 next_field(void *f)
@@ -105,65 +91,6 @@ tuple_field(struct box_tuple *tuple, size_t i)
 	return field;
 }
 
-static int
-quote_all(int c __attribute__((unused)))
-{
-	return 1;
-}
-static int
-quote_non_printable(int c)
-{
-	return !(0x20 <= c && c < 0x7f && !(c == '"' || c == '\\'));
-}
-
-static int (*quote)(int c) = quote_non_printable;
-
-static void
-field_print(struct tbuf *buf, void *f)
-{
-	uint32_t size;
-
-	size = LOAD_VARINT32(f);
-
-	if (quote != quote_all) {
-		if (size == 2)
-			tbuf_printf(buf, "%i:", *(u16 *)f);
-
-		if (size == 4)
-			tbuf_printf(buf, "%i:", *(u32 *)f);
-
-		tbuf_printf(buf, "\"");
-		while (size-- > 0) {
-			if (quote(*(u8 *)f))
-				tbuf_printf(buf, "\\x%02X", *(u8 *)f++);
-			else
-				tbuf_printf(buf, "%c", *(u8 *)f++);
-		}
-		tbuf_printf(buf, "\"");
-	} else {
-		tbuf_printf(buf, "\"");
-		while (size-- > 0)
-			tbuf_printf(buf, "\\x%02X", *(u8 *)f++);
-		tbuf_printf(buf, "\"");
-	}
-
-}
-
-static void
-tuple_print(struct tbuf *buf, u32 cardinality, void *f)
-{
-	tbuf_printf(buf, "<");
-
-	for (size_t i = 0; i < cardinality; i++, f = next_field(f)) {
-		field_print(buf, f);
-
-		if (likely(i + 1 < cardinality))
-			tbuf_printf(buf, ", ");
-
-	}
-
-	tbuf_printf(buf, ">");
-}
 
 static struct tnt_object *
 tuple_alloc(unsigned cardinality, unsigned size)
@@ -177,7 +104,7 @@ tuple_alloc(unsigned cardinality, unsigned size)
 	return obj;
 }
 
-static ssize_t
+ssize_t
 tuple_bsize(u32 cardinality, const void *data, u32 max_len)
 {
 	struct tbuf tmp = TBUF(data, max_len, NULL);
@@ -765,7 +692,7 @@ box_lua_cb(struct iproto *request, struct conn *c)
 
 		stop = ev_now();
 		if (stop - start > cfg.too_long_threshold)
-			say_warn("too long %s: %.3f sec", ops[request->msg_code], stop - start);
+			say_warn("too long %s: %.3f sec", box_ops[request->msg_code], stop - start);
 	}
 	@catch (Error *e) {
 		say_warn("aborting lua request, [%s reason:\"%s\"] at %s:%d peer:%s",
@@ -827,7 +754,7 @@ box_cb(struct iproto *request, struct conn *c)
 
 		stop = ev_now();
 		if (stop - start > cfg.too_long_threshold)
-			say_warn("too long %s: %.3f sec", ops[txn.op], stop - start);
+			say_warn("too long %s: %.3f sec", box_ops[txn.op], stop - start);
 	}
 	@catch (Error *e) {
 		if (e->file && strcmp(e->file, "src/paxos.m") != 0) {
@@ -872,135 +799,6 @@ box_select_cb(struct netmsg_head *h, struct iproto *request, struct conn *c __at
 	stat_collect(stat_base, request->msg_code, 1);
 }
 
-static void
-xlog_print(struct tbuf *out, u16 op, struct tbuf *b)
-{
-	u32 n, key_cardinality, key_bsize;
-	void *key;
-	u32 cardinality, field_no;
-	u32 flags = 0;
-	u32 op_cnt;
-
-	n = read_u32(b);
-
-	switch (op) {
-	case INSERT:
-		tbuf_printf(out, "%s n:%i ", ops[op], n);
-		flags = read_u32(b);
-		cardinality = read_u32(b);
-		u32 data_len = tbuf_len(b);
-		void *data = read_bytes(b, data_len);
-
-		if (tuple_bsize(cardinality, data, data_len) != data_len)
-			abort();
-		tuple_print(out, cardinality, data);
-		break;
-
-	case DELETE:
-		flags = read_u32(b);
-	case DELETE_1_3:
-		tbuf_printf(out, "%s n:%i ", ops[op], n);
-		key_cardinality = read_u32(b);
-		key_bsize = tbuf_len(b);
-		key = read_bytes(b, key_bsize);
-
-		if (tuple_bsize(key_cardinality, key, key_bsize) != key_bsize)
-			abort();
-
-		if (op == DELETE)
-			tbuf_printf(out, "flags:%08X ", flags);
-		tuple_print(out, key_cardinality, key);
-		break;
-
-	case UPDATE_FIELDS:
-		tbuf_printf(out, "%s n:%i ", ops[op], n);
-		flags = read_u32(b);
-		key_cardinality = read_u32(b);
-		key_bsize = tuple_bsize(key_cardinality, b->ptr, tbuf_len(b));
-		key = read_bytes(b, key_bsize);
-
-		op_cnt = read_u32(b);
-
-		tbuf_printf(out, "flags:%08X ", flags);
-		tuple_print(out, key_cardinality, key);
-
-		while (op_cnt-- > 0) {
-			field_no = read_u32(b);
-			u8 op = read_u8(b);
-			void *arg = read_field(b);
-
-			tbuf_printf(out, " [field_no:%i op:", field_no);
-			switch (op) {
-			case 0:
-				tbuf_printf(out, "set ");
-				break;
-			case 1:
-				tbuf_printf(out, "add ");
-				break;
-			case 2:
-				tbuf_printf(out, "and ");
-				break;
-			case 3:
-				tbuf_printf(out, "xor ");
-				break;
-			case 4:
-				tbuf_printf(out, "or ");
-				break;
-			case 5:
-				tbuf_printf(out, "splice ");
-				break;
-			case 6:
-				tbuf_printf(out, "delete ");
-				break;
-			case 7:
-				tbuf_printf(out, "insert ");
-				break;
-			}
-			tuple_print(out, 1, arg);
-			tbuf_printf(out, "] ");
-		}
-		break;
-
-	case NOP:
-		tbuf_printf(out, "NOP");
-		break;
-	default:
-		tbuf_printf(out, "unknown wal op %" PRIi32, op);
-	}
-
-	if (tbuf_len(b) > 0)
-		abort();
-}
-
-static void
-snap_print(struct tbuf *out, struct tbuf *row)
-{
-	struct box_snap_row *snap = box_snap_row(row);
-	tbuf_printf(out, "n:%i ", snap->object_space);
-	tuple_print(out, snap->tuple_size, snap->data);
-}
-
-
-static void
-print_row(struct tbuf *out, u16 tag, struct tbuf *r)
-{
-	int tag_type = tag & ~TAG_MASK;
-	tag &= TAG_MASK;
-	if (tag == wal_data) {
-		u16 op = read_u16(r);
-		xlog_print(out, op, r);
-		return;
-	}
-	if (tag_type == TAG_WAL) {
-		u16 op = tag >> 5;
-		xlog_print(out, op, r);
-		return;
-	}
-	if (tag == snap_data) {
-		snap_print(out, r);
-		return;
-	}
-}
 
 static void
 configure(void)
@@ -1253,7 +1051,7 @@ box_rollback(struct box_txn *txn)
 	if (!txn->object_space)
 		goto cleanup;
 
-	say_debug("box_rollback(op:%s)", ops[txn->op]);
+	say_debug("box_rollback(op:%s)", box_ops[txn->op]);
 
 	if (txn->op == DELETE || txn->op == DELETE_1_3)
 		goto cleanup;
@@ -1498,7 +1296,7 @@ static void init_second_stage(va_list ap __attribute__((unused)));
 static void
 init(void)
 {
-	stat_base = stat_register(ops, nelem(ops));
+	stat_base = stat_register(box_ops, nelem(box_ops));
 	primary_addr = cfg.primary_addr;
 
 	object_space_registry = xcalloc(object_space_count, sizeof(struct object_space));
@@ -1571,77 +1369,6 @@ init_second_stage(va_list ap __attribute__((unused)))
 	title("%s", [recovery status]);
 }
 
-@interface CatRecovery: FoldRecovery {
-	i64 stop_scn;
-}
-@end
-
-@implementation CatRecovery
-- (id)
-init_snap_dir:(const char *)snap_dirname
-      wal_dir:(const char *)wal_dirname
-     stop_scn:(i64)scn_
-{
-	[super init_snap_dir:snap_dirname
-		     wal_dir:wal_dirname];
-	stop_scn = scn_;
-	return self;
-}
-- (i64)
-snap_lsn
-{
-	return [snap_dir containg_scn:stop_scn];
-}
-
-- (void)
-recover_row:(struct row_v12 *)r
-{
-	[super recover_row:r];
-	struct tbuf *out = tbuf_alloc(fiber->pool);
-	print_gen_row(out, r, print_row);
-	puts(out->ptr);
-	if (r->scn >= stop_scn && (r->tag & ~TAG_MASK) == TAG_WAL)
-		exit(0);
-}
-
-- (void)
-apply:(struct tbuf *)op tag:(u16)tag
-{
-	(void)op;
-	(void)tag;
-}
-
-- (void)
-wal_final_row
-{
-	say_error("unable to find record with SCN:%"PRIi64, stop_scn);
-	exit(EX_OSFILE);
-}
-
-@end
-
-
-static int
-cat_scn(i64 stop_scn)
-{
-	[[[CatRecovery alloc] init_snap_dir:cfg.snap_dir
-				    wal_dir:cfg.wal_dir
-				   stop_scn:stop_scn] recover_start];
-	return 0;
-}
-
-static int
-cat(const char *filename)
-{
-	const char *q = getenv("BOX_CAT_QUOTE");
-	if (q && !strcmp(q, "ALL")) {
-		quote = quote_all;
-	} else {
-		quote = quote_non_printable;
-	}
-	read_log(filename, print_row);
-	return 0; /* ignore return status of read_log */
-}
 
 
 static void
@@ -1723,8 +1450,8 @@ static struct tnt_module box = {
 	.init = init,
 	.check_config = check_config,
 	.reload_config = reload_config,
-	.cat = cat,
-	.cat_scn = cat_scn,
+	.cat = box_cat,
+	.cat_scn = box_cat_scn,
 	.info = info
 };
 
