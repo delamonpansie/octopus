@@ -445,7 +445,7 @@ luaT_os_ctime(lua_State *L)
 
 	if (stat(filename, &buf) < 0)
 		luaL_error(L, "stat(`%s'): %s", filename, strerror(errno));
-	lua_pushinteger(L, buf.st_ctime);
+	lua_pushnumber(L, buf.st_ctime + (lua_Number)buf.st_ctim.tv_nsec / 1.0e9);
 	return 1;
 }
 

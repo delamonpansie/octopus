@@ -87,7 +87,7 @@ local function check_reload(name)
     local r, v = pcall(os.ctime, stat.filename)
     if r then
         if v > stat.ctm and (v > stat.err_ctm or os.time() > stat.err_tm + 5) then
-            if v == os.time() then
+            if v >= os.time() then
                 push_to_queue(name)
                 return
             end
