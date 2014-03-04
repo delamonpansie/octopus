@@ -48,11 +48,17 @@ for repo in ${@:-client/* mod/*}; do
 done
 
 
-bundle=$(date +%Y%m%d%H%M)
+last_commit=$(git log --date-order --format=format:%ct -n1)
 suffix=$(git name-rev HEAD | cut -f2 -d' ' | sed 's/^master$/experimental/'):$(git describe --always | sed 's/.*-//')
 for mod in $modules; do
     mod_suffix="$mod_suffix+$mod:"$(cd mod/$mod; git describe --always | sed 's/.*-//')
+    mod_last_commit=$(git log --date-order --format=format:%ct -n1)
+    if [ $mod_last_commit -gt $last_commit ]; then
+	last_commit=$mod_last_commit
+    fi
 done
+
+bundle=$(date +%Y%m%d%H%M --date="@$last_commit")
 name=octopus-${bundle}-${suffix}${mod_suffix}
 
 
