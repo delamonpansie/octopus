@@ -42,15 +42,16 @@ local function fix_reload_filename(name)
     if r then
         stat.filename = filename
         return true
-    else
-        local r, fn = pcall(package.searchpath, stat.modulename, package.path)
+    end
+    local pfname = ''
+    if not filename:match('^%.') and not filename:match('/%.+/') then
+        r, pfname = package.searchpath(stat.modulename, package.path)
         if r then
-            stat.filename = fn
+            stat.filename = pfname
             return true
-        else
-            print_warn(name, filename .. '/' .. fn)
         end
     end
+    print_warn(name, v .. pfname:gsub('\n\t', ','))
 end
 
 local function do_reload(name)
