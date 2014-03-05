@@ -52,6 +52,12 @@ local function fix_reload_filename(name)
     end
 end
 
+local function do_reload(name)
+    local stat = reload_modules[name]
+    local module = assert(loadfile(stat.filename))
+    return module(mname)
+end
+
 local function reload_fullpath_loader(name)
     local stat = reload_modules[name]
     if not stat then
@@ -62,10 +68,7 @@ local function reload_fullpath_loader(name)
             return "'"..name.."' could not be found by reload_file"
         end
     end
-    return function(mname)
-        local module = assert(loadfile(stat.filename))
-        return module(mname)
-    end
+    return do_reload
 end
 table.insert(package.loaders, 1, reload_fullpath_loader)
 
