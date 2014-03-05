@@ -26,6 +26,7 @@ local function register_reload(name)
             err_tm = 0
         }
         reload_files[name] = stat
+        table.insert(reload_files, name)
         reload_modules[modulename] = stat
     end
     return reload_files[name]
@@ -93,9 +94,9 @@ local function check_reload(name)
     local r, v = pcall(os.ctime, stat.filename)
     if r then
         if v > stat.ctm and (v > stat.err_ctm or os.time() > stat.err_tm + 5) then
-            if v >= os.time() then
-                push_to_queue(name)
-                return
+            if v >= os.time()-1 then
+                fiber.sleep(1)
+                return check_reload(name)
             end
             package.loaded[stat.modulename] = nil
             local r, err = pcall(require, stat.modulename)
@@ -132,7 +133,7 @@ end
 local function reload_queue_pusher()
     while true do
         fiber.sleep(1)
-        for name, stat in pairs(reload_files) do
+        for _, name in ipairs(reload_files) do
             push_to_queue(name)
         end
     end
