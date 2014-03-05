@@ -110,8 +110,8 @@ local function check_reload(name)
         end
     else
         stat.filename = nil
-        push_to_queue(name)
         print_warn(name, v)
+        return check_reload(name)
     end
 end
 
