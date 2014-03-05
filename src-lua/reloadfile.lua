@@ -73,7 +73,10 @@ local function push_to_queue(name)
     if not reload_files_queue then
         reload_files_queue = {}
     end
-    reload_files_queue[name] = true
+    if reload_files_queue[name] == nil then
+        reload_files_queue[name] = true
+        table.insert(reload_files_queue, name)
+    end
     if #fiber._locks[reload_lock] == 1 then
         fiber._unlock(reload_lock)
     end
@@ -115,7 +118,7 @@ local function reload_loop()
         while reload_files_queue do
             local rfq = reload_files_queue
             reload_files_queue = nil
-            for name, _ in pairs(rfq) do
+            for _, name in ipairs(rfq) do
                 check_reload(name)
             end
             fiber.sleep(1)
