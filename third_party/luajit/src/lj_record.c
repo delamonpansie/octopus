@@ -648,7 +648,10 @@ static TRef rec_call_specialize(jit_State *J, GCfunc *fn, TRef tr)
     case FF_coroutine_wrap_aux:
     case FF_string_gmatch_aux:
       /* NYI: io_file_iter doesn't have an ffid, yet. */
-      /* NYI: specialize to ffid? Not strictly necessary, trace will stop. */
+      {  /* Specialize to the ffid. */
+	TRef trid = emitir(IRT(IR_FLOAD, IRT_U8), tr, IRFL_FUNC_FFID);
+	emitir(IRTG(IR_EQ, IRT_INT), trid, lj_ir_kint(J, fn->c.ffid));
+      }
       return tr;
     default:
       /* NYI: don't specialize to non-monomorphic C functions. */
@@ -764,7 +767,7 @@ void lj_record_ret(jit_State *J, BCReg rbase, ptrdiff_t gotresults)
 	(J->parent == 0 && J->exitno == 0 &&
 	 !bc_isret(bc_op(J->cur.startins))))) {
     /* NYI: specialize to frame type and return directly, not via RET*. */
-    for (i = -1; i < (ptrdiff_t)rbase; i++)
+    for (i = 0; i < (ptrdiff_t)rbase; i++)
       J->base[i] = 0;  /* Purge dead slots. */
     J->maxslot = rbase + (BCReg)gotresults;
     lj_record_stop(J, LJ_TRLINK_RETURN, 0);  /* Return to interpreter. */
@@ -1603,10 +1606,8 @@ static void rec_varg(jit_State *J, BCReg dst, ptrdiff_t nresults)
     } else if (dst + nresults > J->maxslot) {
       J->maxslot = dst + (BCReg)nresults;
     }
-    for (i = 0; i < nresults; i++) {
-      J->base[dst+i] = i < nvararg ? J->base[i - nvararg - 1] : TREF_NIL;
-      lua_assert(J->base[dst+i] != 0);
-    }
+    for (i = 0; i < nresults; i++)
+      J->base[dst+i] = i < nvararg ? getslot(J, i - nvararg - 1) : TREF_NIL;
   } else {  /* Unknown number of varargs passed to trace. */
     TRef fr = emitir(IRTI(IR_SLOAD), 0, IRSLOAD_READONLY|IRSLOAD_FRAME);
     int32_t frofs = 8*(1+numparams)+FRAME_VARG;
