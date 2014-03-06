@@ -43,7 +43,7 @@ local function fix_reload_filename(name)
         return true
     end
     local pfname = ''
-    if not filename:match('^%.') and not filename:match('/%.+/') then
+    if not filename:match('^[%./~]') and not filename:match('/%.+/') then
         r, pfname = package.searchpath(stat.modulename, package.path)
         if r then
             stat.filename = pfname
