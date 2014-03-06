@@ -219,13 +219,12 @@ replication_handshake:(void*)hshake len:(size_t)hsize
 		tbuf_ensure(c.rbuf, 16 * 1024);
 		ssize_t r = [self recv_with_timeout: 5];
 
-		if (abort) {
-			return "handshake aborted";
-		}
-
 		if (r < 0) {
 			if (r == -2) {
 				return "handshake timeout";
+			}
+			if (r == -3) {
+				return "handshake aborted";
 			}
 			if (errno == EAGAIN ||
 			    errno == EWOULDBLOCK ||
@@ -323,6 +322,8 @@ contains_full_row_v11(const struct tbuf *b)
 		tbuf_len(b) >= sizeof(struct _row_v11) + _row_v11(b)->len;
 }
 
+static ev_timer fake_abort;
+
 - (ssize_t)
 recv_with_timeout: (ev_tstamp)timeout
 {
@@ -354,6 +355,15 @@ recv_with_timeout: (ev_tstamp)timeout
 		if (w == &io) {
 			r = tbuf_recv(c.rbuf, c.fd);
 		}
+
+		if (abort) {
+			while (w != &fake_abort) {
+				w = yield();
+			}
+			conn_close(&c);
+			errno = 0;
+			return -3;
+		}
 	}
 
 	return r;
@@ -369,10 +379,13 @@ recv
 
 	tbuf_ensure(c.rbuf, 256 * 1024);
 	ssize_t r = [self recv_with_timeout: cfg.wal_feeder_keepalive_timeout];
-	if (abort) {
-		conn_close(&c);
-		errno = 0;
-		return -3;
+
+	if (r <= 0) {
+		if (r == -2)
+			raise("timeout");
+		if (r == -3)
+			raise("recv aborted");
+		raise("unexpected EOF");
 	}
 
 	return r;
@@ -383,8 +396,10 @@ abort_recv
 {
 	abort = 1;
 	/* it's safe to wake conn_recv() with NULL */
-	if (in_recv)
-		fiber_wake(in_recv, NULL);
+	if (in_recv) {
+		ev_timer_init(&fake_abort, NULL, 0, 0);
+		fiber_wake(in_recv, (void*)&fake_abort);
+	}
 }
 
 - (struct row_v12 *)

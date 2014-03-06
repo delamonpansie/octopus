@@ -508,14 +508,7 @@ pull_snapshot:(id<XLogPullerAsync>)puller
 {
 	for (;;) {
 		struct row_v12 *row;
-		ssize_t r = [puller recv];
-		if (r <= 0) {
-			if (r == -2)
-				raise("timeout");
-			if (r == -3)
-				raise("recv aborted");
-			raise("unexpected EOF");
-		}
+		[puller recv];
 
 		while ((row = [puller fetch_row])) {
 			int tag = row->tag & TAG_MASK;
@@ -543,14 +536,7 @@ pull_wal:(id<XLogPullerAsync>)puller
 	int pack_rows = 0;
 
 	while (!(row = [puller fetch_row])) {
-		ssize_t r = [puller recv];
-		if (r <= 0) {
-			if (r == -2)
-				raise("timeout");
-			if (r == -3)
-				raise("recv aborted");
-			raise("unexpected EOF");
-		}
+		[puller recv];
 	}
 
 	do {
