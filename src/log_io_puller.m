@@ -219,17 +219,21 @@ replication_handshake:(void*)hshake len:(size_t)hsize
 		tbuf_ensure(c.rbuf, 16 * 1024);
 		ssize_t r = [self recv_with_timeout: 5];
 
+		if (abort) {
+			return "handshake aborted";
+		}
+
 		if (r < 0) {
 			if (r == -2) {
-				return "timeout";
+				return "handshake timeout";
 			}
 			if (errno == EAGAIN ||
 			    errno == EWOULDBLOCK ||
 			    errno == EINTR)
 				continue;
-			return "can'r read initial handshake";
+			return "can't read initial handshake";
 		} else if (r == 0) {
-			return "can'r read initial handshake, eof";
+			return "can't read initial handshake, eof";
 		}
 
 		say_debug("%s: recv handshake part, %u bytes", __func__, tbuf_len(c.rbuf));
@@ -360,7 +364,7 @@ recv
 {
 	if (abort) {
 		conn_close(&c);
-		return -1;
+		return -3;
 	}
 
 	tbuf_ensure(c.rbuf, 256 * 1024);
@@ -368,7 +372,7 @@ recv
 	if (abort) {
 		conn_close(&c);
 		errno = 0;
-		return -1;
+		return -3;
 	}
 
 	return r;

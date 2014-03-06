@@ -512,6 +512,8 @@ pull_snapshot:(id<XLogPullerAsync>)puller
 		if (r <= 0) {
 			if (r == -2)
 				raise("timeout");
+			if (r == -3)
+				raise("recv aborted");
 			raise("unexpected EOF");
 		}
 
@@ -545,6 +547,8 @@ pull_wal:(id<XLogPullerAsync>)puller
 		if (r <= 0) {
 			if (r == -2)
 				raise("timeout");
+			if (r == -3)
+				raise("recv aborted");
 			raise("unexpected EOF");
 		}
 	}
