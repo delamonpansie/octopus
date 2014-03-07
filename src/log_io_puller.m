@@ -346,17 +346,11 @@ recv_with_timeout: (ev_tstamp)timeout
 		ev_io_stop(&io);
 		in_recv = NULL;
 
-		if (set_timer) {
-			if (unlikely(w == &timer))
-				return -2;
+		if (set_timer && w != &timer) {
 			ev_timer_stop(&timer);
 		}
 
-		if (w == &io) {
-			r = tbuf_recv(c.rbuf, c.fd);
-		}
-
-		if (abort) {
+		if (unlikely(abort)) {
 			while (w != &fake_abort) {
 				w = yield();
 			}
@@ -364,6 +358,15 @@ recv_with_timeout: (ev_tstamp)timeout
 			errno = 0;
 			return -3;
 		}
+
+		if (unlikely(w == &timer)) {
+			return -2;
+		}
+
+		if (w == &io) {
+			r = tbuf_recv(c.rbuf, c.fd);
+		}
+
 	}
 
 	return r;
