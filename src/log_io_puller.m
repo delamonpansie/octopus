@@ -351,9 +351,7 @@ recv_with_timeout: (ev_tstamp)timeout
 		}
 
 		if (unlikely(abort)) {
-			while (w != &fake_abort) {
-				w = yield();
-			}
+			fiber_cancel_wake(fiber);
 			conn_close(&c);
 			errno = 0;
 			return -3;
