@@ -351,6 +351,7 @@ recv_with_timeout: (ev_tstamp)timeout
 		}
 
 		if (unlikely(abort)) {
+			/* cause we could awake by io or timer */
 			fiber_cancel_wake(fiber);
 			conn_close(&c);
 			errno = 0;
