@@ -95,6 +95,7 @@ struct box_txn {
 
 	struct tnt_object *old_obj, *obj;
 	struct tnt_object *ref[2];
+	u16 index_eqmask;
 	u32 obj_affected;
 
 	bool closed;
@@ -103,6 +104,7 @@ struct box_txn {
 void box_prepare(struct box_txn *txn, struct tbuf *data);
 void box_commit(struct box_txn *txn);
 void box_rollback(struct box_txn *txn);
+void box_cleanup(struct box_txn *txn);
 
 #define BOX_RETURN_TUPLE 1
 #define BOX_ADD 2

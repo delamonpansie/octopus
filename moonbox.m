@@ -79,6 +79,9 @@ luaT_box_dispatch(struct lua_State *L)
 			lua_pushstring(L, e->reason);
 		lua_error(L);
 	}
+	@finally {
+		box_cleanup(&txn);
+	}
 	return 0;
 }
 

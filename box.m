@@ -131,37 +131,49 @@ tuple_add(struct netmsg_head *h, struct tnt_object *obj)
 }
 
 static void
-validate_indexes(struct box_txn *txn)
+box_replace(struct box_txn *txn)
 {
+	if (!txn->obj)
+		return;
+
 	foreach_index(index, txn->object_space) {
-                [index valid_object:txn->obj];
-
 		if (index->conf.unique) {
-                        struct tnt_object *obj = [index find_by_obj:txn->obj];
-
-                        if (obj != NULL && obj != txn->old_obj)
+			struct tnt_object *obj = [index find_by_obj:txn->obj];
+			if (obj == NULL) {
+				[index replace:txn->obj];
+			} else if (obj == txn->old_obj) {
+				[index valid_object:txn->obj];
+				txn->index_eqmask |= 1 << index->conf.n;
+			} else {
 				iproto_raise_fmt(ERR_CODE_INDEX_VIOLATION,
 						 "duplicate key value violates unique index %i:%s",
 						 index->conf.n, [[index class] name]);
-                }
+			}
+		} else {
+			[index replace:txn->obj];
+		}
 	}
 }
 
+
+enum obj_age {OLD, YOUNG};
 static struct tnt_object *
-txn_acquire(struct box_txn *txn, struct tnt_object *obj)
+txn_acquire(struct box_txn *txn, struct tnt_object *obj, enum obj_age age)
 {
-	if (unlikely(obj == NULL))
+	say_debug("%s: obj:%p age:%s", __func__, obj, age == YOUNG ? "young" : "old");
+
+	if (obj == NULL)
 		return NULL;
 
-	int i;
-	for (i = 0; i < nelem(txn->ref); i++)
-		if (txn->ref[i] == NULL) {
-			object_lock(obj); /* throws exception on lock failure */
-			txn->ref[i] = obj;
-			object_incr_ref(obj);
-			return obj;
-		}
-	panic("txn->ref[] to small i:%i", i);
+	object_lock(obj); /* throws exception on lock failure */
+	if (age == YOUNG) {
+		txn->obj = obj;
+		obj->flags |= GHOST;
+	} else {
+		txn->old_obj = obj;
+	}
+	object_incr_ref(obj);
+	return obj;
 }
 
 
@@ -173,73 +185,20 @@ prepare_replace(struct box_txn *txn, size_t cardinality, const void *data, u32 d
 	if (data_len == 0 || tuple_bsize(cardinality, data, data_len) != data_len)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "tuple encoding error");
 
-	txn->obj = txn_acquire(txn, tuple_alloc(cardinality, data_len));
+	txn_acquire(txn, tuple_alloc(cardinality, data_len), YOUNG);
 	struct box_tuple *tuple = box_tuple(txn->obj);
 	memcpy(tuple->data, data, data_len);
 
-	txn->old_obj = txn_acquire(txn, [txn->index find_by_obj:txn->obj]);
+	txn_acquire(txn, [txn->index find_by_obj:txn->obj], OLD);
 	txn->obj_affected = txn->old_obj != NULL ? 2 : 1;
 
 	if (txn->flags & BOX_ADD && txn->old_obj != NULL)
 		iproto_raise(ERR_CODE_NODE_FOUND, "tuple found");
-
 	if (txn->flags & BOX_REPLACE && txn->old_obj == NULL)
 		iproto_raise(ERR_CODE_NODE_NOT_FOUND, "tuple not found");
 
-	validate_indexes(txn);
-
 	say_debug("%s: old_obj:%p obj:%p", __func__, txn->old_obj, txn->obj);
-
-	if (txn->old_obj == NULL) {
-		/*
-		 * if tuple doesn't exist insert GHOST tuple in indeces
-		 * in order to avoid race condition
-		 */
-		foreach_index(index, txn->object_space)
-			[index replace: txn->obj];
-		object_incr_ref(txn->obj);
-
-		txn->obj->flags |= GHOST;
-	}
-}
-
-static void
-obj_remove(struct object_space *object_space, struct tnt_object *obj)
-{
-	foreach_index(index, object_space) {
-		int deleted = [index remove: obj];
-		(void)deleted;
-		assert(deleted == 1);
-	}
-	object_decr_ref(obj);
-}
-
-static void
-commit_replace(struct box_txn *txn)
-{
-	say_debug("%s: old_obj:%p obj:%p", __func__, txn->old_obj, txn->obj);
-	if (txn->old_obj != NULL)
-		obj_remove(txn->object_space, txn->old_obj);
-
-	if (txn->obj != NULL) {
-		if (txn->obj->flags & GHOST) {
-			txn->obj->flags &= ~GHOST;
-		} else {
-			foreach_index(index, txn->object_space)
-				[index replace: txn->obj];
-			object_incr_ref(txn->obj);
-		}
-	}
-
-}
-
-static void
-rollback_replace(struct box_txn *txn)
-{
-	say_debug("rollback_replace: txn->obj:%p", txn->obj);
-
-	if (txn->obj && txn->obj->flags & GHOST)
-		obj_remove(txn->object_space, txn->obj);
+	box_replace(txn);
 }
 
 static void
@@ -375,7 +334,7 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 	if (key_cardinality < txn->object_space->index[0]->conf.min_tuple_cardinality)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "key isn't fully specified");
 
-	txn->old_obj = txn_acquire(txn, [txn->index find_key:data with_cardinalty:key_cardinality]);
+	txn_acquire(txn, [txn->index find_key:data with_cardinalty:key_cardinality], OLD);
 
 	op_cnt = read_u32(data);
 	if (op_cnt > 128)
@@ -493,7 +452,7 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 	if (tbuf_len(data) != 0)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
 
-	txn->obj = txn_acquire(txn, tuple_alloc(cardinality, bsize));
+	txn_acquire(txn, tuple_alloc(cardinality, bsize), YOUNG);
 
 	u8 *p = box_tuple(txn->obj)->data;
 	i = 0;
@@ -518,17 +477,11 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 		}
 	} while (i < cardinality);
 
-	validate_indexes(txn);
-
 	Index<BasicIndex> *pk = txn->object_space->index[0];
-	if (![pk eq:txn->old_obj :txn->obj]) {
-		foreach_index(index, txn->object_space)
-			[index replace: txn->obj];
-		object_ref(txn->obj, +1);
-
-		txn->obj->flags |= GHOST;
+	if (![pk eq:txn->old_obj :txn->obj])
 		txn->obj_affected++;
-	}
+
+	box_replace(txn);
 }
 
 
@@ -601,17 +554,9 @@ static void __attribute__((noinline))
 prepare_delete(struct box_txn *txn, struct tbuf *key_data)
 {
 	u32 c = read_u32(key_data);
-	txn->old_obj = txn_acquire(txn, [txn->index find_key:key_data with_cardinalty:c]);
+	txn_acquire(txn, [txn->index find_key:key_data with_cardinalty:c], OLD);
 	txn->obj_affected = txn->old_obj != NULL;
 }
-
-static void
-commit_delete(struct box_txn *txn)
-{
-	if (txn->old_obj)
-		obj_remove(txn->object_space, txn->old_obj);
-}
-
 
 void
 box_prepare(struct box_txn *txn, struct tbuf *data)
@@ -765,6 +710,9 @@ box_cb(struct iproto *request, struct conn *c)
 		}
 		box_rollback(&txn);
 		@throw;
+	}
+	@finally {
+		box_cleanup(&txn);
 	}
 }
 
@@ -1009,20 +957,20 @@ initialize_service()
 	say_info("(silver)box initialized (%i workers)", cfg.wal_writer_inbox_size);
 }
 
-
-static void
-txn_cleanup(struct box_txn *txn)
+void
+box_cleanup(struct box_txn *txn)
 {
 	assert(!txn->closed);
 	txn->closed = true;
-	/* do not null tnx->obj & txn->old_obj, as there is
-	   code that examines contents of txn after commit */
 
-	for (int i = 0; i < nelem(txn->ref); i++) {
-		if (txn->ref[i] == NULL)
-			break;
-		object_unlock(txn->ref[i]);
-		object_decr_ref(txn->ref[i]);
+	if (txn->old_obj) {
+		object_unlock(txn->old_obj);
+		object_decr_ref(txn->old_obj);
+	}
+	if (txn->obj) {
+		object_unlock(txn->obj);
+		txn->obj->flags &= ~GHOST;
+		object_decr_ref(txn->obj);
 	}
 }
 
@@ -1030,41 +978,53 @@ void
 box_commit(struct box_txn *txn)
 {
 	if (!txn->object_space)
-		goto cleanup;
+		return;
 
-	if (txn->op == DELETE || txn->op == DELETE_1_3)
-		commit_delete(txn);
-	else
-		commit_replace(txn);
+	if (txn->old_obj) {
+		foreach_index(index, txn->object_space) {
+			if (!index->conf.unique ||
+			    (txn->index_eqmask & 1 << index->conf.n) == 0)
+				[index remove:txn->old_obj];
+		}
+		object_decr_ref(txn->old_obj);
+	}
+
+	if (txn->obj) {
+		foreach_index(index, txn->object_space) {
+			if (index->conf.unique &&
+			    txn->index_eqmask & 1 << index->conf.n)
+				[index replace:txn->obj];
+		}
+		object_incr_ref(txn->obj);
+	}
 
 	stat_collect(stat_base, txn->op, 1);
-	say_debug("%s: old_obj:refs=%i,%p obj:ref=%i,%p", __func__,
-		 txn->old_obj ? txn->old_obj->refs : 0, txn->old_obj,
-		 txn->obj ? txn->obj->refs : 0, txn->obj);
-cleanup:
-	txn_cleanup(txn);
+
 }
 
 void
 box_rollback(struct box_txn *txn)
 {
 	if (!txn->object_space)
-		goto cleanup;
+		return;
 
-	say_debug("box_rollback(op:%s)", box_ops[txn->op]);
+	if (txn->obj == NULL)
+		return;
 
-	if (txn->op == DELETE || txn->op == DELETE_1_3)
-		goto cleanup;
+	foreach_index(index, txn->object_space) {
+		if (index->conf.unique && [index find_by_obj:txn->obj] != txn->obj)
+			continue;
 
-	if (txn->op == INSERT || txn->op == UPDATE_FIELDS)
-		rollback_replace(txn);
-
-	say_debug("%s: old_obj:refs=%i,%p obj:ref=%i,%p", __func__,
-		 txn->old_obj ? txn->old_obj->refs : 0, txn->old_obj,
-		 txn->obj ? txn->obj->refs : 0, txn->obj);
-
-cleanup:
-	txn_cleanup(txn);
+		@try {
+			[index remove:txn->obj];
+		}
+		@catch (IndexError *e) {
+			/* obj with invalid shape will cause exception on txn_prepare.
+			   since index traversing order is same for prepare and rollback
+			   there is no references to obj in following indexes */
+			break;
+		}
+	}
 }
 
 @implementation Recovery (Box)
@@ -1121,6 +1081,9 @@ apply:(struct tbuf *)data tag:(u16)tag
 	@catch (id e) {
 		box_rollback(&txn);
 		@throw;
+	}
+	@finally {
+		box_cleanup(&txn);
 	}
 }
 
