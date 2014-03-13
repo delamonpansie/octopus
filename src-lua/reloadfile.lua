@@ -56,7 +56,7 @@ end
 local function do_reload(name)
     local stat = reload_modules[name]
     local module = assert(loadfile(stat.filename))
-    return module(mname)
+    return module(name)
 end
 
 local function reload_fullpath_loader(name)
