@@ -213,6 +213,9 @@ wal_disk_writer(int fd, void *state)
 	   there is no need in util.m:keepalive() */
 	signal(SIGPIPE, SIG_IGN);
 
+	/* ignore SIGUSR1, so accidental miss in 'kill -USR1' won't cause crash */
+	signal(SIGUSR1, SIG_IGN);
+
 	for (;;) {
 		if (!delay_read) {
 			tbuf_ensure(&rbuf, 16 * 1024);
