@@ -1111,15 +1111,6 @@ wal_final_row
 	title("%s", [recovery status]);
 }
 
-- (u32)
-snapshot_estimate
-{
-	size_t total_rows = 0;
-	for (int n = 0; n < object_space_count; n++)
-		if (object_space_registry[n].enabled)
-			total_rows += [object_space_registry[n].index[0] size];
-	return total_rows;
-}
 
 - (int)
 snapshot_fold
@@ -1162,6 +1153,16 @@ snapshot_fold
 @end
 
 @implementation SnapWriter (Box)
+- (u32)
+snapshot_estimate
+{
+	size_t total_rows = 0;
+	for (int n = 0; n < object_space_count; n++)
+		if (object_space_registry[n].enabled)
+			total_rows += [object_space_registry[n].index[0] size];
+	return total_rows;
+}
+
 - (int)
 snapshot_write_rows:(XLog *)l
 {
