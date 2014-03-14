@@ -129,7 +129,6 @@ lua_filter(struct row_v12 *r, __attribute((unused)) const char *arg, __attribute
 {
 	struct lua_State *L = fiber->L;
 
-	assert(r != NULL);
 	lua_pushvalue(L, 1);
 	lua_pushvalue(L, 2);
 	if (r) {
