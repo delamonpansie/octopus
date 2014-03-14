@@ -519,13 +519,14 @@ luaT_require(const char *modname)
 	} else {
 		const char *err = lua_tostring(L, -1);
 		char buf[64];
+		int ret = 0;
 		snprintf(buf, sizeof(buf), "module '%s' not found", modname);
-		if (strstr(err, buf) != NULL) {
-			lua_pop(L, 1);
-			return 0;
+		if (strstr(err, buf) == NULL) {
+			say_debug("luaT_require(%s): failed with `%s'", modname, err);
+			ret = -1;
 		}
-		say_debug("luaT_require(%s): failed with `%s'", modname, err);
-		return -1;
+		lua_pop(L, 1);
+		return ret;
 	}
 }
 
