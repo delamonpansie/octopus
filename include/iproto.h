@@ -138,18 +138,21 @@ void iproto_broadcast(struct iproto_group *group, int quorum, struct iproto_req 
 - (u32)code;
 @end
 
-#define iproto_raise(err, msg)						\
-	@throw [[IProtoError palloc] init_code:(err)			\
-					  line:__LINE__			\
-					  file:__FILE__			\
-				     backtrace:NULL			\
-					reason:(msg)]
-#define iproto_raise_fmt(err, fmt, ...)					\
-	@throw [[IProtoError palloc] init_code:(err)			\
-					  line:__LINE__			\
-					  file:__FILE__			\
-				     backtrace:NULL			\
-					format:(fmt), __VA_ARGS__]
+#define iproto_exc(err, msg)						\
+	[[IProtoError palloc] init_code:(err)				\
+				   line:__LINE__			\
+				   file:__FILE__			\
+			      backtrace:NULL				\
+				 reason:(msg)]
+#define iproto_fexc(err, fmt, ...)					\
+	[[IProtoError palloc] init_code:(err)				\
+				   line:__LINE__			\
+				   file:__FILE__			\
+			      backtrace:NULL				\
+				 format:(fmt), __VA_ARGS__]
+
+#define iproto_raise(...) @throw iproto_exc(__VA_ARGS__)
+#define iproto_raise_fmt(...) @throw iproto_fexc(__VA_ARGS__)
 
 enum error_codes ENUM_INITIALIZER(ERROR_CODES);
 
