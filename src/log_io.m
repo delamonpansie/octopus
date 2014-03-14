@@ -41,6 +41,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/file.h>
 
 #if !HAVE_DECL_FDATASYNC
 extern int fdatasync(int fd);
@@ -1077,7 +1078,16 @@ append_row:(struct row_v12 *)row data:(const void *)data
 init_dirname:(const char *)dirname_
 {
         dirname = dirname_;
+	fd = open(dirname, O_RDONLY);
+	if (fd < 0)
+		say_syserror("can't open wal_dir");
         return self;
+}
+
+- (int)
+lock
+{
+	return flock(fd, LOCK_EX|LOCK_NB);
 }
 
 static int

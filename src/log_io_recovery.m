@@ -756,6 +756,9 @@ enable_local_writes
 {
 	say_debug("%s", __func__);
 	[self recover_finalize];
+	if ([wal_dir lock] < 0)
+		panic("Can't lock wal_dir");
+
 	local_writes = true;
 
 	if ([self feeder_addr_configured]) {

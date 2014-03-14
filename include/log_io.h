@@ -110,6 +110,7 @@ struct tbuf;
 typedef void (follow_cb)(ev_stat *w, int events);
 
 @interface XLogDir: Object {
+	int fd;
 @public
 	size_t rows_per_file;
 	double fsync_delay;
@@ -124,6 +125,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 - (i64) greatest_lsn;
 - (XLog *) containg_lsn:(i64)target_lsn;
 - (i64) containg_scn:(i64)target_scn;
+- (int) lock;
 @end
 
 @interface SnapDir: XLogDir
