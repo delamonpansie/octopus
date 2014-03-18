@@ -28,7 +28,8 @@ src-lua/jit/vmdef.lua: .luajit
 include/net_io.h: cfg/octopus.h
 
 dist-clean += src-lua/cdef.lua
-src-lua/cdef.lua: include/octopus.h include/index.h include/fiber.h include/octopus_ev.h include/net_io.h include/iproto_def.h include/pickle.h src-lua/gen_cdef.sh
+
+src-lua/cdef.lua: cfg/octopus.h include/config.h include/fiber.h include/index.h include/iproto_def.h include/net_io.h include/octopus.h include/octopus_ev.h include/palloc.h include/pickle.h include/say.h include/tbuf.h src-lua/gen_cdef.sh
 	@mkdir -p $(dir $@)
 	$(E) "GEN	$@"
 	$(Q)CPP="$(CPP) -P $(XCPPFLAGS) $(CPPFLAGS)" SED="$(SED)" srcdir="$(srcdir)" sh $(srcdir)/src-lua/gen_cdef.sh > $@

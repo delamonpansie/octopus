@@ -15,7 +15,7 @@ ffi.cdef [[
 struct palloc_pool;
 EOF
 $CPP include/octopus.h | $SED -n '/^\(enum tnt_object_flags\|struct tnt_object\) \+{/,/^}/p'
-$CPP include/octopus.h | $SED -n '/^void object_/p '
+$CPP include/octopus.h | $SED -n '/^void object_/p; /^extern struct octopus_cfg/p;'
 $CPP include/index.h | $SED -n '/^\(struct\|union\) index_[a-z]\+ \+{/,/^}/p'
 $CPP include/fiber.h | $SED -n '/^typedef struct coro_context/p;'
 $CPP include/fiber.h | $SED -n '/^struct \(fiber\|octopus_coro\|coro_context\) \+{/,/^}/p'
@@ -31,6 +31,7 @@ $CPP include/tbuf.h | $SED -n '/^void tbuf_\(willneed\|append\|printf\).*/{s/voi
 $CPP include/pickle.h | $SED -n '/write.*(.*struct tbuf/p'
 $CPP include/say.h | $SED -n '/^extern int.*max_level/p; /^enum say_level {/,/^}/p; /^void _say(/{s/$/;/;p;}'
 $CPP include/palloc.h | $SED -n '/palloc(/p'
+$CPP cfg/octopus.h | $SED -n '/^typedef struct octopus_.* {/,/^}/p'
 echo "]]"
 echo "autoconf = {}"
 cat include/config.h  | $SED '/^#define [^ ]* ["0-9]/!d; s/#define \([^ ]*\) \(.*\)/autoconf.\1 = \2/;'
