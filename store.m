@@ -190,7 +190,7 @@ snapshot_write_rows: (XLog *)l
 	u32			i = 0;
 	struct tnt_object	*obj;
 
-	set_proc_title("dumper of pid %" PRIu32 ": dumping actions", getppid());
+	title("dumper of pid %" PRIu32 ": dumping actions", getppid());
 
 	[mc_index iterator_init];
 
@@ -201,8 +201,8 @@ snapshot_write_rows: (XLog *)l
 
 		if ((++i)% 100000 == 0) {
 			say_info("%.1fM rows written", i / 1000000. );
-			set_proc_title("dumper of pid %" PRIu32 ": dumping actions (%.1fM  rows )",
-				       getppid(), i / 1000000.);
+			title("dumper of pid %" PRIu32 ": dumping actions (%.1fM  rows )",
+			      getppid(), i / 1000000.);
 		}
 
 		if (i % 10000 == 0)
@@ -412,9 +412,7 @@ memcached_bound_to_primary(int fd)
 	if (cfg.local_hot_standby) {
 		@try {
 			[recovery enable_local_writes];
-			set_proc_title("memcached:%s%s pri:%s adm:%s",
-				       [recovery status], custom_proc_title,
-				       cfg.primary_addr, cfg.admin_addr);
+			title(NULL);
 		}
 		@catch (Error *e) {
 			panic("Recovery failure: %s", e->reason);
