@@ -373,7 +373,7 @@ recover_feed_slave(int sock)
 	if (getpeername(sock, (struct sockaddr *)&addr, &addrlen) != -1)
 		peer_name = sintoa(&addr);
 
-	set_proc_title("feeder:client_handler%s %s", custom_proc_title, peer_name);
+	title("client_handler/%s", peer_name);
 
 	if (luaT_require("feeder_init") == -1)
 		panic("unable to load `feeder_init' lua module: %s", lua_tostring(fiber->L, -1));
@@ -447,8 +447,7 @@ init(void)
 	if (cfg.wal_dir == NULL || cfg.snap_dir == NULL)
 		panic("can't start feeder without snap_dir or wal_dir");
 
-	set_proc_title("feeder:acceptor%s %s",
-		       custom_proc_title, cfg.wal_feeder_bind_addr);
+	title("acceptor/%s", cfg.wal_feeder_bind_addr);
 
 	if (atosin(cfg.wal_feeder_bind_addr, &server_addr) == -1)
 		panic("bad wal_feeder_bind_addr: '%s'", cfg.wal_feeder_bind_addr);
