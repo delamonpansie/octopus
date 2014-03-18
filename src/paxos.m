@@ -177,10 +177,7 @@ static const ev_tstamp paxos_default_timeout = 0.2;
 
 struct service *mesh_service;
 
-extern void title(const char *fmt, ...); /* FIXME: hack */
-
 static int catchup_done;
-
 static void catchup(PaxosRecovery *r, i64 upto_scn);
 
 static bool

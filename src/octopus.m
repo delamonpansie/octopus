@@ -76,7 +76,6 @@ lua_State *root_L;
 char cfg_err_buf[1024], *cfg_err;
 int cfg_err_len, cfg_err_offt;
 struct octopus_cfg cfg;
-char *custom_proc_title;
 
 ev_io keepalive_ev = { .coro = 0 };
 Recovery *recovery;
@@ -774,16 +773,8 @@ octopus(int argc, char **argv)
 	}
 
 	if (fold_scn) {
-		custom_proc_title = "fold";
+		cfg.custom_proc_title = "fold";
 	} else {
-		if (cfg.custom_proc_title == NULL)
-			custom_proc_title = "";
-		else {
-			custom_proc_title = xcalloc(strlen(cfg.custom_proc_title) + 2, 1);
-			strcat(custom_proc_title, "@");
-			strcat(custom_proc_title, cfg.custom_proc_title);
-		}
-
 		if (gopt(opt, 'D')) {
 			if (daemonize(1, 0) < 0)
 				panic("unable to daemonize");
@@ -880,8 +871,12 @@ octopus(int argc, char **argv)
 	cfg.wal_feeder_fork_before_init = 0;
 	assert(module("feeder"));
 #endif
-	if (module("feeder") && fold_scn == 0)
-		module_init(module("feeder"));
+	if (module("feeder") && fold_scn == 0) {
+		/* this either gets overriden it feeder don't fork
+		   or stays forever in the child */
+		current_module = module("feeder");
+		module_init(current_module);
+	}
 
 #ifdef STORAGE
 	ev_signal ev_sig = { .coro = 0 };
@@ -896,8 +891,8 @@ octopus(int argc, char **argv)
 
 	stat_init();
 	@try {
-		struct tnt_module *primary = module(NULL);
-		module_init(primary);
+		current_module = module(NULL); /* primary */
+		module_init(current_module);
 		foreach_module(m)
 			module_init(m);
 	}

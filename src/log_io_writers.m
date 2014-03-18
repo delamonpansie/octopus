@@ -644,8 +644,9 @@ snapshot:(bool)sync
 		return -1;
 
 	case 0: /* child, the dumper */
+		current_module = NULL;
 		fiber->name = "dumper";
-		set_proc_title("dumper (%" PRIu32 ")", getppid());
+		title("dumper (%" PRIu32 ")", getppid());
 		fiber_destroy_all();
 		palloc_unmap_unused();
 		close_all_xcpt(2, stderrfd, sayfd);

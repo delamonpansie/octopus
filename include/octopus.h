@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -58,7 +58,7 @@ struct tnt_module {
 	void (*info)(struct tbuf *out, const char *what);
 	void (*exec)(char *str, int len, struct tbuf *out);
 };
-struct tnt_module *modules_head;
+struct tnt_module *modules_head, *current_module;
 struct tnt_module *module(const char *);
 void module_init(struct tnt_module *);
 void register_module_(struct tnt_module *);
@@ -72,7 +72,6 @@ void register_module_(struct tnt_module *);
 extern struct octopus_cfg cfg;
 extern struct tbuf *cfg_out;
 extern const char *cfg_filename;
-extern char *custom_proc_title;
 extern bool init_storage, booting;
 extern char *binary_filename;
 

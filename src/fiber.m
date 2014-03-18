@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -309,7 +309,6 @@ struct child *
 spawn_child(const char *name, struct fiber *in, struct fiber *out,
 	    int (*handler)(int fd, void *state), void *state)
 {
-	char *child_name;
 	int one = 1, socks[2];
 	int pid;
 
@@ -337,14 +336,14 @@ spawn_child(const char *name, struct fiber *in, struct fiber *out,
 
 		return child;
 	} else {
+		extern id recovery;
+		recovery = nil;
 		salloc_destroy();
 		close_all_xcpt(3, socks[0], stderrfd, sayfd);
-		child_name = xmalloc(64);
-		snprintf(child_name, 64, "%s/child", name);
 		assert(fiber == &sched);
-		sched.name = child_name;
-		set_proc_title("%s%s", name, custom_proc_title);
-		say_info("%s initialized", name);
+		sched.name = name;
+		title("%s", name);
+		say_info("%s spawned", name);
 		_exit(handler(socks[0], state));
 	}
 }

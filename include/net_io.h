@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2011, 2012, 2013 Mail.RU
- * Copyright (C) 2011, 2012, 2013 Yuriy Vostrikov
+ * Copyright (C) 2011, 2012, 2013, 2014 Mail.RU
+ * Copyright (C) 2011, 2012, 2013, 2014 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -223,4 +223,5 @@ void service_info(struct tbuf *out, struct service *service);
 void luaT_opennet(struct lua_State *L);
 int luaT_pushnetmsg(struct lua_State *L);
 
+void title(const char *fmt, ...);
 #endif

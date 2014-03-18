@@ -194,7 +194,7 @@ recover_row:(struct row_v12 *)r
 				float pct = 100. * processed_rows / estimated_snap_rows;
 				say_info("%.1fM/%.2f%% rows processed",
 					 processed_rows / 1000000., pct);
-				set_proc_title("loading %.2f%%", pct);
+				title("loading %.2f%%", pct);
 			} else {
 				say_info("%.1fM rows processed", processed_rows / 1000000.);
 			}
