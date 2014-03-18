@@ -1261,7 +1261,6 @@ static void
 init(void)
 {
 	stat_base = stat_register(box_ops, nelem(box_ops));
-	primary_addr = cfg.primary_addr;
 
 	object_space_registry = xcalloc(object_space_count, sizeof(struct object_space));
 	for (int i = 0; i < object_space_count; i++)
