@@ -60,7 +60,6 @@ static struct service box_primary, box_secondary;
 static int stat_base;
 char * const box_ops[] = ENUM_STR_INITIALIZER(MESSAGES);
 
-extern char *primary_addr;
 struct object_space *object_space_registry;
 const int object_space_count = 256, object_space_max_idx = MAX_IDX;
 
@@ -811,21 +810,6 @@ configure(void)
 	}
 }
 
-void
-title(const char *fmt, ...)
-{
-	va_list ap;
-	char buf[64];
-
-	va_start(ap, fmt);
-	vsnprintf(buf, sizeof(buf), fmt, ap);
-	va_end(ap);
-
-	set_proc_title("box:%s%s pri:%s sec:%s adm:%s",
-		       buf, custom_proc_title,
-		       cfg.primary_addr, cfg.secondary_addr, cfg.admin_addr);
-}
-
 static void
 build_object_space_trees(struct object_space *object_space)
 {
@@ -916,7 +900,7 @@ box_bound_to_primary(int fd)
 	if (cfg.local_hot_standby) {
 		@try {
 			[recovery enable_local_writes];
-			title("%s", [recovery status]);
+			title(NULL);
 		}
 		@catch (Error *e) {
 			panic("Recovery failure: %s", e->reason);
@@ -1108,7 +1092,7 @@ wal_final_row
 	   second: pull rows from remote (ans proctitle set to "loading %xx.yy")
 	   in order to avoid stuck proctitle set it after every pull done,
 	   not after service initialization */
-	title("%s", [recovery status]);
+	title(NULL);
 }
 
 
@@ -1217,7 +1201,7 @@ snapshot_write_rows:(XLog *)l
 			if (++rows % 100000 == 0) {
 				float pct = (float)rows / total_rows * 100.;
 				say_info("%.1fM/%.2f%% rows written", rows / 1000000., pct);
-				set_proc_title("dumper %.2f%% (%" PRIu32 ")", pct, getppid());
+				title("snap_dump %.2f%%", pct);
 			}
 			if (rows % 10000 == 0)
 				[l confirm_write];
@@ -1231,7 +1215,7 @@ snapshot_write_rows:(XLog *)l
 			if ([index isKindOf:[DummyIndex class]])
 				continue;
 
-			set_proc_title("dumper check index:%i ((%" PRIu32 ")", index->conf.n, getppid());
+			title("snap_dump/check index:%i", index->conf.n);
 
 			size_t index_rows = 0;
 			[index iterator_init];
@@ -1329,7 +1313,7 @@ init_second_stage(va_list ap __attribute__((unused)))
 	@catch (Error *e) {
 		panic("Recovery failure: %s", e->reason);
 	}
-	title("%s", [recovery status]);
+	title(NULL);
 }
 
 
@@ -1356,7 +1340,9 @@ info(struct tbuf *out, const char *what)
 				tbuf_printf(out, "  recovery_run_crc_status: %s" CRLF, [recovery run_crc_status]);
 			}
 		}
-		tbuf_printf(out, "  status: %s%s" CRLF, [recovery status], custom_proc_title);
+		tbuf_printf(out, "  status: %s%s%s" CRLF, [recovery status],
+			    cfg.custom_proc_title ? "@" : "",
+			    cfg.custom_proc_title ?: "");
 		tbuf_printf(out, "  config: \"%s\""CRLF, cfg_filename);
 
 		tbuf_printf(out, "  namespaces:" CRLF);
@@ -1402,9 +1388,8 @@ reload_config(struct octopus_cfg *old _unused_,
 {
 	struct feeder_param feeder;
 	feeder_param_fill_from_cfg(&feeder, new);
-	if ([recovery feeder_changed:&feeder]) {
-		title("%s", [recovery status]);
-	}
+	if ([recovery feeder_changed:&feeder])
+		title(NULL);
 }
 
 static struct tnt_module box = {
