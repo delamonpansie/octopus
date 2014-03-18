@@ -896,14 +896,10 @@ octopus(int argc, char **argv)
 
 	stat_init();
 	@try {
-		struct tnt_module *primary = module(NULL),
-				   *feeder = module("feeder");
+		struct tnt_module *primary = module(NULL);
 		module_init(primary);
-		foreach_module(m) {
-			if (!m->init || m == primary || m == feeder)
-				continue;
+		foreach_module(m)
 			module_init(m);
-		}
 	}
 	@catch (id e) {
 		if ([e respondsTo:@selector(code)] && [e code] == ERR_CODE_MEMORY_ISSUE) {
