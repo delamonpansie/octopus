@@ -17,7 +17,6 @@ module(...)
 ffi.cdef[[
 const char *octopus_version(void);
 extern int gethostname(char *name, size_t len);
-extern char *custom_proc_title;
 
 typedef long int time_t;
 time_t time(time_t *t);
@@ -32,8 +31,8 @@ local function gethostname()
     if ffi.C.cfg.primary_addr ~= nil then
         result = result .. ":" .. ffi.string(ffi.C.cfg.primary_addr)
     end
-    if ffi.C.custom_proc_title ~= nil then
-        local proctitle = ffi.string(ffi.C.custom_proc_title)
+    if ffi.C.cfg.custom_proc_title ~= nil then
+        local proctitle = ffi.string(ffi.C.cfg.custom_proc_title)
         if #proctitle > 0 then
             result = result .. proctitle
         end
