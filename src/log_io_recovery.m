@@ -681,6 +681,16 @@ pull_from_remote:(id<XLogPullerAsync>)puller
 		[self pull_wal:puller];
 }
 
+static void
+hot_standby_status(Recovery *r, const char *status, const char *reason)
+{
+	snprintf(r->status, sizeof(r->status), "hot_standby/%s/%s%s%s",
+		 sintoa(&r->feeder.addr), status,
+		 reason ? ":" : "", reason ?: "");
+	if (strcmp(status, "fail") == 0)
+		say_error("replication failure: %s", reason);
+}
+
 void
 remote_hot_standby(va_list ap)
 {
@@ -690,22 +700,25 @@ remote_hot_standby(va_list ap)
 
 	r->remote_puller = [[objc_lookUpClass("XLogPuller") alloc] init];
 
+	if ([r feeder_addr_configured])
+		hot_standby_status(r, "connect", NULL);
 	for (;;) {
 		if (![r feeder_addr_configured])
 			goto sleep;
 
-		const char *err;
-
 		[r->remote_puller feeder_param: &r->feeder];
+
 		i64 scn = [r scn];
 		if (scn != 0) /* special case: scn == 0 => want snapshot */
 			scn++; /* otherwise start recover from next scn */
+
+		const char *err;
 		if ([r->remote_puller handshake:scn err:&err] <= 0) {
 			/* no more WAL rows in near future, notify module about that */
 			[r wal_final_row];
 
 			if (!warning_said) {
-				say_error("replication failure: %s", err);
+				hot_standby_status(r, "fail", err);
 				say_info("will retry every %.2f second", reconnect_delay);
 				warning_said = true;
 			}
@@ -714,11 +727,12 @@ remote_hot_standby(va_list ap)
 		warning_said = false;
 
 		@try {
+			hot_standby_status(r, "ok", NULL);
 			[r pull_from_remote:r->remote_puller];
 		}
 		@catch (Error *e) {
 			[r->remote_puller close];
-			say_error("replication failure: %s", e->reason);
+			hot_standby_status(r, "fail", e->reason);
 		}
 	sleep:
 		fiber_gc();
@@ -765,11 +779,9 @@ enable_local_writes
 		if (lsn > 0) /* we're already have some xlogs and recovered from them */
 			[self configure_wal_writer];
 
+		say_info("starting remote hot standby");
 		if (!fiber_create("remote_hot_standby", remote_hot_standby, self))
 			panic("unable to start remote hot standby fiber");
-
-		say_info("starting remote hot standby");
-		snprintf(status, sizeof(status), "hot_standby/%s", sintoa(&feeder.addr));
 	} else {
 		[self configure_wal_writer];
 		say_info("I am primary");
