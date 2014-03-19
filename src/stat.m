@@ -89,68 +89,44 @@ stat_print(lua_State *L, struct tbuf *buf)
 	lua_pop(L, 1);
 }
 
-static void
-stat_record(va_list ap __attribute__((unused)))
+static int
+stat_record(lua_State *L)
 {
-	lua_State *L = fiber->L;
+	if (stats == NULL)
+		return 0;
 
-	for (;;) {
-                fiber_sleep(1);
+	lua_newtable(L); /* table with stats */
+	for (int i = 0; i <= stats_max; i++) {
+		if (stats[i].name == NULL)
+			continue;
 
-                if (stats == NULL)
-                        continue;
+		lua_pushstring(L, stats[i].name);
+		lua_pushnumber(L, stats[i].value);
+		lua_settable(L, -3);
+	}
 
-		lua_getglobal(L, "stat");
-		lua_getfield(L, -1, "record");
-		lua_remove(L, 1); /* stack top is stat.record */
-
-		lua_newtable(L); /* table with stats */
-		for (int i = 0; i <= stats_max; i++) {
+	for (int i = 0; i <= stats_max; i++) {
 			if (stats[i].name == NULL)
 				continue;
-
-			lua_pushstring(L, stats[i].name);
-			lua_pushnumber(L, stats[i].value);
-			lua_settable(L, -3);
-		}
-
-		if (lua_pcall(L, 1, 0, 0) != 0) {
-			say_error("lua_pcall(stat.record): %s", lua_tostring(L, -1));
-			lua_pop(L, 1);
-		}
-
-		for (int i = 0; i <= stats_max; i++) {
-				if (stats[i].name == NULL)
-					continue;
-				stats[i].value = 0;
-		}
+			stats[i].value = 0;
 	}
-}
 
-void
-stat_clear()
-{
-        lua_State *L = fiber->L;
-
-        for (int i = 0; i <= stats_max; i++) {
-                if (stats[i].name == NULL)
-                        continue;
-                stats[i].value = 0;
-        }
-
-        lua_getglobal(L, "stat");
-        lua_getfield(L, -1, "clear");
-
-        if (lua_pcall(L, 0, 0, 0) != 0) {
-                say_error("lua_pcall(stat.clear): %s", lua_tostring(L, -1));
-                lua_pop(L, 1);
-        }
+	return 1;
 }
 
 void
 stat_init()
 {
-	fiber_create("stat", stat_record);
+	lua_State *L = fiber->L;
+	int top = lua_gettop(L);
+	lua_getglobal(L, "stat");
+	lua_getfield(L, -1, "new_with_graphite");
+	lua_pushstring(L, "stat");
+	lua_pushcfunction(L, stat_record);
+	if (lua_pcall(L, 2, 0, 0)) {
+		panic("could not initialize statistic, lua error: %s", lua_tostring(L, -1));
+	}
+	lua_settop(L, top);
 }
 
 register_source();

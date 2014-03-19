@@ -6,6 +6,14 @@ require('cdef')
 require('packer')
 ddump = require('ddump')
 
+function os.ev_time()
+    return C.ev_time()
+end
+
+function os.ev_now()
+    return C.ev_rt_now
+end
+
 local print_ = print
 function print (...)
     local s = {}
