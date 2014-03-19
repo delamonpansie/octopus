@@ -2,10 +2,14 @@ local ffi = require('ffi')
 module(...)
 if ffi.abi('32bit') then
    ffi.cdef [[typedef unsigned int uintptr_t;
-	      typedef int ssize_t;]]
+              typedef int ssize_t;
+              typedef int time_t;
+              ]]
 elseif ffi.abi('64bit') then
    ffi.cdef[[typedef unsigned long int uintptr_t;
-	     typedef long int ssize_t;]]
+             typedef long int ssize_t;
+             typedef long int time_t;
+             ]]
 else
    error('ABI not supported by LuaJIT.ffi')
 end
@@ -159,10 +163,13 @@ extern uint32_t ntohl(uint32_t netlong);
 extern uint16_t ntohs(uint16_t netshort);
 extern uint32_t htonl(uint32_t hostlong);
 extern uint16_t htons(uint16_t hostshort);
-extern int64_t atoll(const char *);
 ]]
 
 
 ffi.cdef[[
 extern void *malloc(size_t);
+extern time_t time(time_t *t);
+double ev_time();
+extern double ev_rt_now;
+extern int64_t atoll(const char *);
 ]]

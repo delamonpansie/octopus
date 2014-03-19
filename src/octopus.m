@@ -889,7 +889,13 @@ octopus(int argc, char **argv)
 
 	salloc_init(fixed_arena, cfg.slab_alloc_minimal, cfg.slab_alloc_factor);
 
+	/* try autoload bundled graphite module */
+	lua_getglobal(fiber->L, "require");
+	lua_pushliteral(fiber->L, "graphite");
+	lua_pcall(fiber->L, 1, 1, 0);
+	lua_pop(fiber->L, 1); /* pop off either module or error */
 	stat_init();
+
 	@try {
 		current_module = module(NULL); /* primary */
 		module_init(current_module);
@@ -907,12 +913,6 @@ octopus(int argc, char **argv)
 	/* run Lua init _after_ module init */
 	if (luaT_require("init") == -1)
 		panic("unable to load `init' lua module: %s", lua_tostring(fiber->L, -1));
-
-	/* try autoload bundled graphite module */
-	lua_getglobal(fiber->L, "require");
-	lua_pushliteral(fiber->L, "graphite");
-	lua_pcall(fiber->L, 1, 1, 0);
-	lua_pop(fiber->L, 1); /* pop off either module or error */
 
 	prelease(fiber->pool);
 	say_debug("entering event loop");

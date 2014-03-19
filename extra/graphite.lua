@@ -7,19 +7,17 @@
 local ffi = require 'ffi'
 local fiber = require 'fiber'
 require 'net' -- for ffi.cdef
-local pcall, type, pairs, collectgarbage = pcall, type, pairs, collectgarbage
+local pcall, type, collectgarbage = pcall, type, collectgarbage
 local print, tostring, tonumber = print, tostring, tonumber
-local string, table = string, table
+local string, table, pairs, ipairs = string, table, pairs, ipairs
 local stat = stat
+local _ev_now = os.ev_now
 
 module(...)
 
 ffi.cdef[[
 const char *octopus_version(void);
 extern int gethostname(char *name, size_t len);
-
-typedef long int time_t;
-time_t time(time_t *t);
 ]]
 
 local function gethostname()
@@ -43,34 +41,42 @@ end
 
 local callback = {}
 
+local mtu = 1400
 local function makemsg()
     local hostname = gethostname()
-    local time = tostring(tonumber(ffi.C.time(nil)))
-    local msg = {}
 
     local head = ("my.octopus.%s."):format(gethostname())
-    local tail = (" %i\n"):format(tonumber(ffi.C.time(nil)))
+    local tail = (" %i\n"):format(_ev_now())
 
+    local msgs, msg = {}, {len = 0}
     for n, cb in pairs(callback) do
         local ok, t = pcall(cb)
         if ok and type(t) == 'table' then
-            local type = n .. "."
+            local tp = n .. '.'
+            local fix_len = #head + #tp + #tail
             for k, v in pairs(t) do
+                local _k = tostring(k)
+                local _v = v == 0 and ' 0' or (" %.2f"):format(v)
+                local _len = fix_len + #_k + #_v
+                if msg.len + _len > mtu then
+                    table.insert(msgs, table.concat(msg))
+                    msg = {len = 0}
+                end
                 table.insert(msg, head)
-                table.insert(msg, type)
-                table.insert(msg, k)
-                table.insert(msg, " ")
-                table.insert(msg, v)
+                table.insert(msg, tp)
+                table.insert(msg, _k)
+                table.insert(msg, _v)
                 table.insert(msg, tail)
+                msg.len = msg.len + _len
             end
         else
-            print("error in graphite callback '" .. n .. "'")
+            print("error in graphite callback '" .. n .. "':" .. tostring(t))
         end
     end
-    if #msg == 0 then
-        return nil
+    if #msg > 0 then
+        table.insert(msgs, table.concat(msg))
     end
-    return table.concat(msg)
+    return msgs
 end
 
 
@@ -78,10 +84,6 @@ local addrvalid
 local sockaddr_in = ffi.new('struct sockaddr_in')
 local sockaddr = ffi.cast('struct sockaddr *', sockaddr_in)
 local sock = ffi.C.socket(ffi.C.PF_INET, ffi.C.SOCK_DGRAM, 0)
-
-function add_cb(name, f)
-    callback[name] = f
-end
 
 function start(addr)
     local rc = ffi.C.atosin(addr, sockaddr_in)
@@ -96,8 +98,7 @@ end
 local function worker_loop()
     fiber.sleep(60)
     if addrvalid then
-        local msg = makemsg()
-        if msg then
+        for _, msg in ipairs(makemsg()) do
             ffi.C.sendto(sock, msg, #msg, 0, sockaddr, ffi.sizeof(sockaddr_in))
         end
     end
@@ -110,19 +111,25 @@ end
 fiber.create(worker_loop)
 
 -- common stats
-local function statcb()
-    local stat_ready = pcall(function () pairs(stat.records[0]) end)
-    if not stat_ready then
-        -- stat module either not loaded or disabled
-        return {}
-    end
-    return stat.records[0]
+local function statcb(name)
+    return stat.collectors[name]:get_periodic()
 end
+
 local function gccb()
     return {["count"] = collectgarbage("count")}
 end
 
-add_cb("stat", statcb)
+function add_cb(name, f)
+    if not f then
+        f = name
+    end
+    if type(f) == 'string' then
+        local _name = f
+        f = function() return statcb(_name) end
+    end
+    callback[name] = f
+end
+
 add_cb("gc", gccb)
 local version = tonumber(ffi.string(ffi.C.octopus_version()):match('bundle:([0-9]+)'))
 if version then
