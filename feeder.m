@@ -435,6 +435,9 @@ init(void)
 
 	signal(SIGCHLD, SIG_IGN);
 
+	/* ignore SIGUSR1, so accidental miss in 'kill -USR1' won't cause crash */
+	signal(SIGUSR1, SIG_IGN);
+
 	fiber->name = "feeder";
 	fiber->pool = palloc_create_pool("feeder");
 	fiber->L = root_L;
