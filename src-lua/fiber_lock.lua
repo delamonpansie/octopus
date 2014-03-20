@@ -1,6 +1,7 @@
 local ffi = require 'ffi'
 local table_insert, table_remove = table.insert, table.remove
-local pcall, unpack = pcall, unpack
+local xpcall, unpack = xpcall, unpack
+local traceback, cut_traceback = debug.traceback, cut_traceback
 local C = ffi.C
 
 local _yield = fiber.yield
@@ -41,10 +42,10 @@ end
 
 function fiber.locked(key, trans, ...)
     lock(key)
-    local results = {pcall(trans, ...)}
+    local results = {xpcall(trans, traceback, ...)}
     unlock(key)
     if results[1] == false then
-        error(results[2])
+        error(cut_traceback(results[2]))
     end
     table_remove(results, 1)
     return unpack(results)

@@ -414,11 +414,13 @@ luaT_fiber_trampoline(va_list ap)
 	struct lua_State *pL = va_arg(ap, struct lua_State *),
 			  *L = fiber->L;
 
+	lua_pushcfunction(L, luaT_traceback);
 	lua_xmove(pL, L, 1);
-	if (lua_pcall(L, 0, 0, 0) != 0) {
+	if (lua_pcall(L, 0, 0, -2) != 0) {
 		say_error("lua_pcall(): %s", lua_tostring(L, -1));
 		lua_pop(L, 1);
 	}
+	lua_pop(L, 1);
 }
 
 static int

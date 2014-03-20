@@ -119,11 +119,12 @@ stat_init()
 {
 	lua_State *L = fiber->L;
 	int top = lua_gettop(L);
+	lua_pushcfunction(L, luaT_traceback);
 	lua_getglobal(L, "stat");
 	lua_getfield(L, -1, "new_with_graphite");
 	lua_pushstring(L, "stat");
 	lua_pushcfunction(L, stat_record);
-	if (lua_pcall(L, 2, 0, 0)) {
+	if (lua_pcall(L, 2, 0, top+1)) {
 		panic("could not initialize statistic, lua error: %s", lua_tostring(L, -1));
 	}
 	lua_settop(L, top);
