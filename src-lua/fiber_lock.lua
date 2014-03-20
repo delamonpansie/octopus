@@ -43,7 +43,7 @@ end
 
 function fiber.locked(key, trans, ...)
     lock(key)
-    local res = {pcall(trans, ...)}
+    local results = {pcall(trans, ...)}
     unlock(key)
     if results[1] == false then
         error(results[2])
