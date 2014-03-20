@@ -112,6 +112,7 @@ luaT_openbox(struct lua_State *L)
 }
 
 
+static int box_entry_i = 0;
 void
 box_dispach_lua(struct conn *c, struct iproto *request)
 {
@@ -124,9 +125,13 @@ box_dispach_lua(struct conn *c, struct iproto *request)
 	u32 nargs = read_u32(&data);
 	int top = lua_gettop(L);
 
-	lua_getglobal(L, "box");
-	lua_getfield(L, -1, "entry");
-	lua_remove(L, -2);
+	if (box_entry_i == 0) {
+		lua_getglobal(L, "box");
+		lua_getfield(L, -1, "entry");
+		lua_remove(L, -2);
+		box_entry_i = lua_ref(L, LUA_REGISTRYINDEX);
+	}
+	lua_rawgeti(L, LUA_REGISTRYINDEX, box_entry_i);
 
 	lua_pushlstring(L, fname, flen);
 	luaT_pushptr(L, c);
