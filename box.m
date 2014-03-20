@@ -1279,8 +1279,7 @@ static void
 init_second_stage(va_list ap __attribute__((unused)))
 {
 	luaT_openbox(root_L);
-	if (luaT_require("box_init") == -1)
-		panic("unable to load `box_init' lua module: %s", lua_tostring(fiber->L, -1));
+	luaT_require_or_panic("box_init", false, NULL);
 
 	configure();
 

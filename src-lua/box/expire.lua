@@ -1,6 +1,6 @@
 local box = require 'box'
 local fiber = require 'fiber'
-local print, pcall, error = print, pcall, error
+local print, xpcall, error, traceback = print, xpcall, error, debug.traceback
 local ipairs = ipairs
 local insert = table.insert
 
@@ -38,7 +38,7 @@ local function loop(n)
    -- every object_space modification must be done _outside_ of iterator running
    local function delete_batch(batch)
        for _, tuple in ipairs(batch) do
-           local r, err = pcall(box.delete, n, tuple[0])
+           local r, err = xpcall(box.delete, traceback, n, tuple[0])
            if not r then
                print("delete failed: " .. err)
            end
