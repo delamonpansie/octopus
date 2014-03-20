@@ -122,12 +122,13 @@ box_dispach_lua(struct conn *c, struct iproto *request)
 	u32 flen = read_varint32(&data);
 	void *fname = read_bytes(&data, flen);
 	u32 nargs = read_u32(&data);
+	int top = lua_gettop(L);
 
-	if (luaT_find_proc(L, fname, flen) == 0) {
-		lua_pop(L, 1);
-		iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "no such proc: %.*s", flen, fname);
-	}
+	lua_getglobal(L, "box");
+	lua_getfield(L, -1, "entry");
+	lua_remove(L, -2);
 
+	lua_pushlstring(L, fname, flen);
 	luaT_pushptr(L, c);
 	luaT_pushptr(L, request);
 
@@ -135,7 +136,7 @@ box_dispach_lua(struct conn *c, struct iproto *request)
 		read_push_field(L, &data);
 
 	/* FIXME: switch to native exceptions ? */
-	if (lua_pcall(L, 2 + nargs, 0, 0)) {
+	if (lua_pcall(L, 3 + nargs, LUA_MULTRET, 0)) {
 		IProtoError *err = [IProtoError palloc];
 		const char *reason = lua_tostring(L, -1);
 		int code = ERR_CODE_ILLEGAL_PARAMS;
@@ -150,9 +151,43 @@ box_dispach_lua(struct conn *c, struct iproto *request)
 
 		[err init_code:code line:__LINE__ file:__FILE__
 		     backtrace:NULL format:"%s", reason];
-		lua_settop(L, 0);
+		lua_settop(L, top);
 		@throw err;
 	}
+
+	int newtop = lua_gettop(L);
+	if (newtop != top) {
+		if (newtop != top + 3 && newtop != top + 2) {
+			IProtoError *err = [IProtoError palloc];
+			int code = ERR_CODE_ILLEGAL_PARAMS;
+			[err init_code:code line:__LINE__ file:__FILE__
+			     backtrace:NULL
+			     format:"illegal return from wrapped function %s", fname];
+			lua_settop(L, top);
+			@throw err;
+		}
+		struct netmsg_mark mark;
+		netmsg_getmark(&c->out_messages, &mark);
+		struct iproto_retcode *reply = iproto_reply_start(&c->out_messages, request);
+		reply->ret_code = lua_tointeger(L, top + 2);
+		if (newtop == top + 3 && !lua_isnil(L, top + 3)) {
+			lua_remove(L, top + 2);
+			luaT_pushptr(L, c);
+			if (lua_pcall(L, 2, 0, 0)) {
+				IProtoError *err = [IProtoError palloc];
+				const char *reason = lua_tostring(L, -1);
+				int code = ERR_CODE_ILLEGAL_PARAMS;
+				netmsg_rewind(&c->out_messages, &mark);
+
+				[err init_code:code line:__LINE__ file:__FILE__
+				     backtrace:NULL format:"%s", reason];
+				lua_settop(L, top);
+				@throw err;
+			}
+		}
+		iproto_reply_fixup(&c->out_messages, reply);
+	}
+	lua_settop(L, top);
 }
 
 register_source();

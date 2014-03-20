@@ -10,6 +10,7 @@ local printf = printf
 
 local ffi, bit, debug = require("ffi"), require("bit"), require("debug")
 local net, index = require("net"), require('index')
+local fiber = require("fiber")
 local object, object_cast, varint32, packer = object, object_cast, varint32, packer
 local safeptr, assertarg = safeptr, assertarg
 local lselect = select
@@ -48,6 +49,18 @@ string.tofield = function(s)
    return ffi.string(buf, n + #s)
 end
 
+local add_stat_exec_lua = function(name) end
+local add_stat_exec_lua_ok = function(name) end
+local add_stat_exec_lua_rcode = function(name, rcode) end
+if graphite then
+    local add_stat = stat.request_collector{name = 'exec_lua'}
+    graphite.add_cb('exec_lua')
+    add_stat_exec_lua = add_stat.add_run
+    add_stat_exec_lua_ok = add_stat.add_ok
+    add_stat_exec_lua_rcode = add_stat.add_rcode
+end
+
+local _G = _G
 module(...)
 
 user_proc = {}
@@ -155,50 +168,75 @@ function ctuple(obj)
    return obj
 end
 
+local wrapped = setmetatable({}, {__mode = "k"})
 function wrap(proc_body)
         if type(proc_body) ~= "function" then
                 return nil
         end
+        wrapped[proc_body] = true
 
-	local function append(out, request, ret_code, result)
-	   local header = out:add_iov_iproto_header(request)
-	   local bytes = out:bytes()
+        return proc_body
+end
 
-	   if type(result) == "table" then
-	      out:add_iov_string(string.tou32(#result))
+local function append(result, out)
+   local out = net.conn(out)
 
-	      for k, v in pairs(result) do
-		 if type(v) == "string" then
-		    out:add_iov_string(v)
-		 elseif type(v) == "table" and v.__obj then
-		    ffi.C.object_incr_ref(v.__obj)
-		    out:add_iov_ref(v.__tuple, v.bsize + 8, ffi.cast('uintptr_t', v.__obj))
-		 else
-		    error("unexpected type of result: " .. type(v), 2)
-		 end
-	      end
-	   elseif type(result) == "number" then
-	      out:add_iov_string(string.tou32(result))
-	   else
-	      error("unexpected type of result: " .. type(result), 2)
-	   end
+   if type(result) == "table" then
+      out:add_iov_string(string.tou32(#result))
 
-	   header.data_len = header.data_len + out:bytes() - bytes
-	   header.ret_code = ret_code
-	end
+      for k, v in pairs(result) do
+         if type(v) == "string" then
+            out:add_iov_string(v)
+         elseif type(v) == "table" and v.__obj then
+            ffi.C.object_incr_ref(v.__obj)
+            out:add_iov_ref(v.__tuple, v.bsize + 8, ffi.cast('uintptr_t', v.__obj))
+         else
+            error("unexpected type of result: " .. type(v), 2)
+         end
+      end
+   elseif type(result) == "number" then
+      out:add_iov_string(string.tou32(result))
+   else
+      error("unexpected type of result: " .. type(result), 2)
+   end
+end
 
-        local function proc(out, request, ...)
-	   -- proc_body may fail and may block in core
-	   -- it's unsafe to modify 'struct conn' while blocking in core,
-	   -- because of possible concurent updates
-           -- so, append to conn atomically via out:apply(f, args)
+local fn_cache_mt = {__index = function(t, name)
+    local fn = _G
+    for k in name:gmatch('[^%.]+') do
+       fn = fn[k]
+       if not fn then
+           error("function '"..name.."' not found")
+       end
+    end
+    if type(fn) ~= 'function' then
+       error("'"..name.."' is not a function")
+    end
+    t[name] = fn
+    return fn
+end}
+local fn_cache = setmetatable({}, fn_cache_mt)
+local function clear_cache()
+    while true do
+        fiber.sleep(1)
+        fn_cache = setmetatable({}, fn_cache_mt)
+    end
+end
+fiber.create(clear_cache)
 
-	   local ret_code, result = proc_body(...)
-	   local out = net.conn(out)
-	   out:apply(append, request, ret_code, result)
-        end
+function entry(name, start, out, request, ...)
+    add_stat_exec_lua(name)
 
-        return proc
+    local proc = fn_cache[name]
+    if wrapped[proc] then
+        local rcode, res = proc(...)
+        add_stat_exec_lua_rcode(name, rcode)
+        return append, rcode, res
+    end
+    add_stat_exec_lua("NotWrapped")
+    add_stat_exec_lua(name..":NotWrapped")
+    proc(out, request, ...)
+    add_stat_exec_lua_ok(name)
 end
 
 function tuple(...)

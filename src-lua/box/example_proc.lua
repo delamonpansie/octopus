@@ -198,6 +198,12 @@ local function test1()
 	      box.tuple("abc")}
 end
 
+local function test0()
+   return 0, {box.tuple("abc", "defg", "foobar"),
+	      box.tuple("abc", "defg"),
+	      box.tuple("abc")}
+end
+
 local function tos(s)
    return tostring(s):gsub("0x%w+", "0xPTR")
 end
@@ -268,6 +274,7 @@ local function test6()
     return 0, {box.replace(0, "\0\0\0\0", "\0\0\0\0", "\0\0\0\0")}
 end
 
+user_proc.test0 = box.wrap(test0)
 for i, f in ipairs({test1, test2, test3, test4, test5, test6}) do
    user_proc["test" .. tostring(i)] = box.wrap(f)
 end
