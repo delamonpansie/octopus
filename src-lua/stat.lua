@@ -205,7 +205,7 @@ do
             error("request_collector needs {name='stat', gen_name = function(k) return graphitename(k) end")
         end
         local collect = setmetatable({}, statmt)
-        local stat_colander = stat.klass:new(name, function()
+        stat.klass:new(name, function()
             local cur = {}
             for f, st in pairs(collect) do
                 for k, v in pairs(st) do
