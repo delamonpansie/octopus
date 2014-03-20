@@ -122,4 +122,5 @@ void luaT_require_or_panic(const char *filename, bool panic_on_missing, const ch
 int luaT_find_proc(lua_State *L, const char *fname, i32 len);
 int luaT_pushptr(struct lua_State *L, void *p);
 int luaT_traceback(lua_State* L);
+void luaT_pushtraceback(lua_State* L);
 #endif

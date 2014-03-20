@@ -464,6 +464,14 @@ luaT_traceback(lua_State *L)
 	return 1;
 }
 
+static int luaT_traceback_i = 0;
+void
+luaT_pushtraceback(lua_State *L)
+{
+	lua_rawgeti(L, LUA_REGISTRYINDEX, luaT_traceback_i);
+}
+
+
 static void
 luaT_init()
 {
@@ -496,6 +504,8 @@ luaT_init()
 	lua_pushliteral(L, "prelude");
 	if (lua_pcall(L, 1, 0, -3))
 		panic("lua_pcall() failed: %s", lua_tostring(L, -1));
+
+	luaT_traceback_i = lua_ref(L, LUA_REGISTRYINDEX);
 
 	lua_atpanic(L, luaT_error);
 }
