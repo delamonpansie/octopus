@@ -35,9 +35,7 @@ local function unlock(key)
     if #q == 0 then
         locks[key] = nil
     else
-        local fid = q[1]
-        table_remove(q, 1)
-        wake(fid)
+        wake(table_remove(q, 1))
     end
 end
 
