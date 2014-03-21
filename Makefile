@@ -35,7 +35,7 @@ cfg_tmpl += mod/box/box.cfg_tmpl
 test: box_test
 
 .PHONY: box_test
-box_test:
+box_test: $(binary)
 	@cd mod/box && ./test/run.rb
 
 -include ../../jumproot.mk
