@@ -129,16 +129,16 @@ lua_filter(struct row_v12 *r, __attribute((unused)) const char *arg, __attribute
 {
 	struct lua_State *L = fiber->L;
 
-	lua_pushvalue(L, 1);
 	lua_pushvalue(L, 2);
+	lua_pushvalue(L, 3);
 	if (r) {
 		luaT_pushptr(L, r);
 	} else {
 		lua_pushnil(L);
 	}
-	lua_pushvalue(L, 3);
+	lua_pushvalue(L, 4);
 
-	if (lua_pcall(L, 3, 1, 0) != 0) {
+	if (lua_pcall(L, 3, 1, 1) != 0) {
 		say_error("lua filter error: %s", lua_tostring(L, -1));
 		_exit(EXIT_FAILURE);
 	}
@@ -196,10 +196,10 @@ recover_start_from_scn:(i64)initial_scn filter:(struct feeder_filter*)_filter
 		filter = id_filter;
 		break;
 	case FILTER_TYPE_LUA:
+		luaT_pushtraceback(fiber->L);
 		lua_getglobal(fiber->L, "__feederentrypoint");
 		lua_getglobal(fiber->L, "replication_filter");
-		lua_pushstring(fiber->L, _filter->name);
-		lua_gettable(fiber->L, -2);
+		lua_getfield(fiber->L, -1, _filter->name);
 		lua_remove(fiber->L, -2);
 		if (!lua_isfunction(fiber->L, -1)) {
 			say_error("nonexistent lua filter: %s", _filter->name);
@@ -375,10 +375,8 @@ recover_feed_slave(int sock)
 
 	title("client_handler/%s", peer_name);
 
-	if (luaT_require("feeder_init") == -1)
-		panic("unable to load `feeder_init' lua module: %s", lua_tostring(fiber->L, -1));
-	if (luaT_require("init") == -1)
-		panic("unable to load `init' lua module: %s", lua_tostring(fiber->L, -1));
+	luaT_require_or_panic("feeder_init", false, NULL);
+	luaT_require_or_panic("init", false, NULL);
 
 	feeder = [[Feeder alloc] init_snap_dir:cfg.snap_dir
 				       wal_dir:cfg.wal_dir
