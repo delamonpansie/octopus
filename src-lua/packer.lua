@@ -136,10 +136,10 @@ local pack_meths = {
     end,
 }
 pack_meths._varint32 = pack_meths._ber
-ffi.metatype('struct tbuf', {__index=pack_meths})
-
+local tbuf_t = ffi.typeof('struct tbuf')
+ffi.metatype(tbuf_t, {__index=pack_meths})
 function packer ()
-    return ffi.new('struct tbuf', nil, nil, 0, C.fiber.pool)
+    return ffi.new(tbuf_t, nil, nil, 0, C.fiber.pool)
 end
 
 local tp_meths = {

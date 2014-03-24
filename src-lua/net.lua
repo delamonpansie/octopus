@@ -18,7 +18,7 @@ local C = ffi.C
 local netmsg_t = ffi.typeof('struct netmsg *')
 local iproto_ptr_t = ffi.typeof('struct iproto *')
 local iproto_t = ffi.typeof('struct iproto')
-local iproto_retcode_t = ffi.typeof('struct iproto_retcode')
+local iproto_retcode0_t = ffi.typeof('struct iproto_retcode_0')
 
 local ref -- forward decl
 
@@ -34,8 +34,8 @@ end
 function netmsg_op:add_iov_iproto_header(request)
    assert(request ~= nil)
    local request = ffi.new(iproto_ptr_t, request)
-   local header = ffi.new(iproto_retcode_t, 0, request.msg_code, 4, request.sync)
-   self:add_iov_ref(header, ffi.sizeof(iproto_retcode_t))
+   local header = ffi.new(iproto_retcode0_t, request.msg_code, 4, request.sync)
+   self:add_iov_ref(header, ffi.sizeof(iproto_retcode0_t))
    return header
 end
 
@@ -62,13 +62,16 @@ end
 function conn_op:add_iov_iproto_header(request)
    assert(request ~= nil)
    local request = ffi.new(iproto_ptr_t, request)
-   local header = ffi.new(iproto_retcode_t, 0, request.msg_code, 4, request.sync)
-   self:add_iov_ref(header, ffi.sizeof(header))
+   local header = ffi.new(iproto_retcode0_t, request.msg_code, 4, request.sync)
+   self:add_iov_ref(header, ffi.sizeof(iproto_retcode0_t))
    return header
 end
-local netmsg_mark_t = ffi.typeof('struct netmsg_mark')
+
+local mark = ffi.new('struct netmsg_mark')
+function conn_op:mark() ffi.C.netmsg_getmark(self.ptr.out_messages, mark) end
+function conn_op:rewind() ffi.C.netmsg_rewind(self.ptr.out_messages, mark) end
+-- no fiber switching or blocking inside f() or else
 function conn_op:apply(f, ...)
-   local mark = ffi.new(netmsg_mark_t)
    ffi.C.netmsg_getmark(self.ptr.out_messages, mark)
    local ok, errmsg = pcall(f, self, ...)
    if not ok then
