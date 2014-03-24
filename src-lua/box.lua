@@ -167,6 +167,11 @@ function ctuple(obj)
    assert(obj ~= nil)
    return obj
 end
+local tuple_mt = {}
+function tuple(...)
+    return setmetatable({...}, tuple_mt)
+end
+
 
 local wrapped = setmetatable({}, {__mode = "k"})
 function wrap(proc_body)
@@ -178,21 +183,34 @@ function wrap(proc_body)
         return proc_body
 end
 
-local cbuf = ffi.new('uint32_t[1]')
+local u32ptr = ffi.typeof('uint32_t *')
+local uintptr = ffi.typeof('uintptr_t')
+local u32buf = ffi.new('uint32_t[1]')
+local p = packer()
 
 local function append(result, out)
    local out = net.conn(out)
+   p:reset()
 
    if type(result) == "table" then
-       cbuf[0] = #result
-       out:add_iov_dup(cbuf, 4)
+       u32buf[0] = #result
+       out:add_iov_dup(u32buf, 4)
 
-      for k, v in ipairs(result) do
+      for _, v in ipairs(result) do
          if type(v) == "string" then
             out:add_iov_string(v)
          elseif type(v) == "table" and v.__obj then
             ffi.C.object_incr_ref(v.__obj)
-            out:add_iov_ref(v.__tuple, v.bsize + 8, ffi.cast('uintptr_t', v.__obj))
+            out:add_iov_ref(v.__tuple, v.bsize + 8, ffi.cast(uintptr, v.__obj))
+         elseif type(v) == "table" and getmetatable(v) == tuple_mt then
+             p:string("....----") -- placeholder for bsize, cardinality
+             for i = 1, #v do
+                 p:field(v[i])
+             end
+             local u32 = ffi.cast(u32ptr, p.ptr)
+             u32[0] = p:len() - 8 -- bsize adjust
+             u32[1] = #v
+             out:add_iov_dup(p:pack())
          else
             error("unexpected type of result: " .. type(v), 2)
          end
@@ -240,19 +258,6 @@ function entry(name, start, out, request, ...)
     add_stat_exec_lua(name..":NotWrapped")
     proc(out, request, ...)
     add_stat_exec_lua_ok(name)
-end
-
-function tuple(...)
-   local p = packer()
-   p:string("....----") -- placeholder for bsize, cardinality
-   for i = 1, lselect('#', ...) do
-      p:field(lselect(i, ...))
-   end
-   local buf, len = p:pack()
-   local u32 = ffi.cast('uint32_t *', buf)
-   u32[0] = len - 8 -- bsize adjust
-   u32[1] = lselect('#', ...)
-   return ffi.string(buf, len)
 end
 
 
