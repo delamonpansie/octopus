@@ -105,10 +105,12 @@ luaT_openbox(struct lua_State *L)
 	luaL_register(L, NULL, boxlib);
 	lua_pop(L, 1);
 
+	luaT_pushtraceback(L);
 	lua_getglobal(L, "require");
         lua_pushliteral(L, "box_prelude");
-	if (lua_pcall(L, 1, 0, 0) != 0)
+	if (lua_pcall(L, 1, 0, -3) != 0)
 		panic("moonbox: %s", lua_tostring(L, -1));
+	lua_pop(L, 1);
 }
 
 
@@ -123,6 +125,8 @@ box_dispach_lua(struct conn *c, struct iproto *request)
 	u32 flen = read_varint32(&data);
 	void *fname = read_bytes(&data, flen);
 	u32 nargs = read_u32(&data);
+
+	luaT_pushtraceback(L);
 	int top = lua_gettop(L);
 
 	if (box_entry_i == 0) {
@@ -137,11 +141,16 @@ box_dispach_lua(struct conn *c, struct iproto *request)
 	luaT_pushptr(L, c);
 	luaT_pushptr(L, request);
 
+	if (!lua_checkstack(L, nargs)) {
+		lua_settop(L, top-1);
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "too many args to exec_lua");
+	}
+
 	for (int i = 0; i < nargs; i++)
 		read_push_field(L, &data);
 
 	/* FIXME: switch to native exceptions ? */
-	if (lua_pcall(L, 3 + nargs, LUA_MULTRET, 0)) {
+	if (lua_pcall(L, 3 + nargs, LUA_MULTRET, top)) {
 		IProtoError *err = [IProtoError palloc];
 		const char *reason = lua_tostring(L, -1);
 		int code = ERR_CODE_ILLEGAL_PARAMS;
@@ -156,7 +165,7 @@ box_dispach_lua(struct conn *c, struct iproto *request)
 
 		[err init_code:code line:__LINE__ file:__FILE__
 		     backtrace:NULL format:"%s", reason];
-		lua_settop(L, top);
+		lua_settop(L, top-1);
 		@throw err;
 	}
 
@@ -168,7 +177,7 @@ box_dispach_lua(struct conn *c, struct iproto *request)
 			[err init_code:code line:__LINE__ file:__FILE__
 			     backtrace:NULL
 			     format:"illegal return from wrapped function %s", fname];
-			lua_settop(L, top);
+			lua_settop(L, top-1);
 			@throw err;
 		}
 		struct netmsg_mark mark;
@@ -178,7 +187,7 @@ box_dispach_lua(struct conn *c, struct iproto *request)
 		if (newtop == top + 3 && !lua_isnil(L, top + 3)) {
 			lua_remove(L, top + 2);
 			luaT_pushptr(L, c);
-			if (lua_pcall(L, 2, 0, 0)) {
+			if (lua_pcall(L, 2, 0, top)) {
 				IProtoError *err = [IProtoError palloc];
 				const char *reason = lua_tostring(L, -1);
 				int code = ERR_CODE_ILLEGAL_PARAMS;
@@ -186,13 +195,13 @@ box_dispach_lua(struct conn *c, struct iproto *request)
 
 				[err init_code:code line:__LINE__ file:__FILE__
 				     backtrace:NULL format:"%s", reason];
-				lua_settop(L, top);
+				lua_settop(L, top-1);
 				@throw err;
 			}
 		}
 		iproto_reply_fixup(&c->out_messages, reply);
 	}
-	lua_settop(L, top);
+	lua_settop(L, top-1);
 }
 
 register_source();
