@@ -11,8 +11,6 @@ local pcall = pcall
 
 module(...)
 
-ffi.cdef 'struct conn_wrap { struct conn *ptr; };'
-
 local C = ffi.C
 
 local netmsg_t = ffi.typeof('struct netmsg *')
@@ -26,7 +24,7 @@ local netmsg_op = {}
 function netmsg_op:add_iov_ref(obj, len, v) C.net_add_ref_iov(self, v or ref(obj), obj, len) end
 function netmsg_op:add_iov_string(str)
     if #str < 512 then
-        C.net_add_iov_dup(self.ptr.out_messages, str, #str)
+        C.net_add_iov_dup(self.out_messages, str, #str)
     else
         C.net_add_ref_iov(self, ref(str), str, #str)
     end
@@ -49,14 +47,14 @@ end
 
 
 local conn_op = {}
-function conn_op:bytes() return self.ptr.out_messages.bytes end
-function conn_op:add_iov_dup(obj, len) C.net_add_iov_dup(self.ptr.out_messages, obj, len) end
-function conn_op:add_iov_ref(obj, len, v) C.net_add_ref_iov(self.ptr.out_messages, v or ref(obj), obj, len) end
+function conn_op:bytes() return self.out_messages.bytes end
+function conn_op:add_iov_dup(obj, len) C.net_add_iov_dup(self.out_messages, obj, len) end
+function conn_op:add_iov_ref(obj, len, v) C.net_add_ref_iov(self.out_messages, v or ref(obj), obj, len) end
 function conn_op:add_iov_string(str)
    if #str < 512 then
-      C.net_add_iov_dup(self.ptr.out_messages, str, #str)
+      C.net_add_iov_dup(self.out_messages, str, #str)
    else
-      C.net_add_ref_iov(self.ptr.out_messages, ref(str), str, #str)
+      C.net_add_ref_iov(self.out_messages, ref(str), str, #str)
    end
 end
 function conn_op:add_iov_iproto_header(request)
@@ -68,26 +66,25 @@ function conn_op:add_iov_iproto_header(request)
 end
 
 local mark = ffi.new('struct netmsg_mark')
-function conn_op:mark() ffi.C.netmsg_getmark(self.ptr.out_messages, mark) end
-function conn_op:rewind() ffi.C.netmsg_rewind(self.ptr.out_messages, mark) end
+function conn_op:mark() ffi.C.netmsg_getmark(self.out_messages, mark) end
+function conn_op:rewind() ffi.C.netmsg_rewind(self.out_messages, mark) end
 -- no fiber switching or blocking inside f() or else
 function conn_op:apply(f, ...)
-   ffi.C.netmsg_getmark(self.ptr.out_messages, mark)
+   ffi.C.netmsg_getmark(self.out_messages, mark)
    local ok, errmsg = pcall(f, self, ...)
    if not ok then
-       ffi.C.netmsg_rewind(self.ptr.out_messages, mark)
+       ffi.C.netmsg_rewind(self.out_messages, mark)
        error(errmsg, 2)
    end
    return ok
 end
 
-local conn_t = ffi.metatype(ffi.typeof('struct conn_wrap'), { __index = conn_op,
-							      __gc = function(c) C.conn_unref(c.ptr) end
-							    })
+ffi.metatype(ffi.typeof('struct conn'), { __index = conn_op })
+local conn_ptr = ffi.typeof('struct conn *')
 function conn(ptr)
-   local c = conn_t(ptr)
-   c.ptr.ref = c.ptr.ref + 1
-   return c
+    local c = ffi.gc(ffi.cast(conn_ptr, ptr), C.conn_unref)
+    c.ref = c.ref + 1
+    return c
 end
 
 function iproto(ptr)
