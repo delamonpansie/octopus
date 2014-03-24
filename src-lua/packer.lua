@@ -134,6 +134,12 @@ local pack_meths = {
         self.ptr = self.stop
         return ptr, len
     end,
+    reset = function(self, pool)
+        self.ptr = nil
+        self.stop = nil
+        self.free = 0
+        self.pool = pool or C.fiber.pool
+    end,
 }
 pack_meths._varint32 = pack_meths._ber
 local tbuf_t = ffi.typeof('struct tbuf')
