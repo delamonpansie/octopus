@@ -7,7 +7,8 @@
 local ffi = require 'ffi'
 local fiber = require 'fiber'
 require 'net' -- for ffi.cdef
-local pcall, type, collectgarbage = pcall, type, collectgarbage
+local xpcall, type, collectgarbage = xpcall, type, collectgarbage
+local traceback = debug.traceback
 local print, tostring, tonumber = print, tostring, tonumber
 local string, table, pairs, ipairs = string, table, pairs, ipairs
 local stat = stat
@@ -50,7 +51,7 @@ local function makemsg()
 
     local msgs, msg = {}, {len = 0}
     for n, cb in pairs(callback) do
-        local ok, t = pcall(cb)
+        local ok, t = xpcall(cb, traceback)
         if ok and type(t) == 'table' then
             local tp = n .. '.'
             local fix_len = #head + #tp + #tail

@@ -29,7 +29,7 @@ local function shift_all()
         for _, st in pairs(stat.collectors) do
             local cur
             if st.get_current then
-                local ok, val = pcall(st.get_current)
+                local ok, val = xpcall(st.get_current, debug.traceback)
                 if not ok then
                     say_error(val)
                 end

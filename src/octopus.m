@@ -446,6 +446,32 @@ luaT_os_ctime(lua_State *L)
 	return 1;
 }
 
+int
+luaT_traceback(lua_State *L)
+{
+	if (!lua_isstring(L, 1)) { /* Non-string error object? Try metamethod. */
+		if (lua_isnoneornil(L, 1) ||
+				!luaL_callmeta(L, 1, "__tostring") ||
+				!lua_isstring(L, -1)) {
+			lua_settop(L, 1);
+			lua_getglobal(L, "tostring");
+			lua_pushvalue(L, -2);
+			lua_call(L, 1, 0);
+		}
+		lua_remove(L, 1);  /* Replace object by result of __tostring metamethod. */
+	}
+	luaL_traceback(L, L, lua_tostring(L, 1), 1);
+	return 1;
+}
+
+static int luaT_traceback_i = 0;
+void
+luaT_pushtraceback(lua_State *L)
+{
+	lua_rawgeti(L, LUA_REGISTRYINDEX, luaT_traceback_i);
+}
+
+
 static void
 luaT_init()
 {
@@ -473,10 +499,13 @@ luaT_init()
 #ifdef OCT_OBJECT
 	luaT_objinit(L);
 #endif
-        lua_getglobal(L, "require");
-        lua_pushliteral(L, "prelude");
-	if (lua_pcall(L, 1, 0, 0))
+	lua_pushcfunction(L, luaT_traceback);
+	lua_getglobal(L, "require");
+	lua_pushliteral(L, "prelude");
+	if (lua_pcall(L, 1, 0, -3))
 		panic("lua_pcall() failed: %s", lua_tostring(L, -1));
+
+	luaT_traceback_i = lua_ref(L, LUA_REGISTRYINDEX);
 
 	lua_atpanic(L, luaT_error);
 }
@@ -508,10 +537,12 @@ int
 luaT_require(const char *modname)
 {
 	struct lua_State *L = fiber->L;
+	lua_pushcfunction(L, luaT_traceback);
 	lua_getglobal(L, "require");
 	lua_pushstring(L, modname);
-	if (!lua_pcall(L, 1, 0, 0)) {
+	if (!lua_pcall(L, 1, 0, -3)) {
 		say_info("Lua module '%s' loaded", modname);
+		lua_pop(L, 1);
 		return 1;
 	} else {
 		const char *err = lua_tostring(L, -1);
@@ -522,9 +553,25 @@ luaT_require(const char *modname)
 			say_debug("luaT_require(%s): failed with `%s'", modname, err);
 			ret = -1;
 		}
-		lua_pop(L, 1);
+		lua_remove(L, -2);
 		return ret;
 	}
+}
+
+void
+luaT_require_or_panic(const char *modname, bool panic_on_missing, const char *error_format)
+{
+	int ret = luaT_require(modname);
+	if (ret == 1)
+		return;
+	if (ret == 0 && !panic_on_missing) {
+		lua_pop(fiber->L, 1);
+		return;
+	}
+	if (error_format == NULL) {
+		error_format = "unable to load `%s' lua module: %s";
+	}
+	panic(error_format, modname, lua_tostring(fiber->L, -1));
 }
 
 int
@@ -890,10 +937,7 @@ octopus(int argc, char **argv)
 	salloc_init(fixed_arena, cfg.slab_alloc_minimal, cfg.slab_alloc_factor);
 
 	/* try autoload bundled graphite module */
-	lua_getglobal(fiber->L, "require");
-	lua_pushliteral(fiber->L, "graphite");
-	lua_pcall(fiber->L, 1, 1, 0);
-	lua_pop(fiber->L, 1); /* pop off either module or error */
+	luaT_require_or_panic("graphite", false, NULL);
 	stat_init();
 
 	@try {
@@ -911,8 +955,7 @@ octopus(int argc, char **argv)
 	}
 
 	/* run Lua init _after_ module init */
-	if (luaT_require("init") == -1)
-		panic("unable to load `init' lua module: %s", lua_tostring(fiber->L, -1));
+	luaT_require_or_panic("init", false, NULL);
 
 	prelease(fiber->pool);
 	say_debug("entering event loop");

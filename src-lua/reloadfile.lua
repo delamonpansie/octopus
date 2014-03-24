@@ -50,7 +50,7 @@ local function fix_reload_filename(name)
             return true
         end
     end
-    print_warn(name, v .. err:gsub('\n\t', ','))
+    print_warn(name, "fix_reload_filename: ".. v .. ";" .. err:gsub('\n\t', ','))
 end
 
 local function do_reload(name)
@@ -86,7 +86,7 @@ local function check_reload(name)
                 return check_reload(name)
             end
             package.loaded[stat.modulename] = nil
-            local r, err = pcall(require, stat.modulename)
+            local r, err = xpcall(require, debug.traceback, stat.modulename)
             if r then
                 stat.ctm = v
             else
@@ -97,7 +97,7 @@ local function check_reload(name)
         end
     else
         stat.filename = nil
-        print_warn(name, v)
+        print_warn(name, "check_reload: "..v)
         return check_reload(name)
     end
 end

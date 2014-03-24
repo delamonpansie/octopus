@@ -152,6 +152,20 @@ function palloc(size)
     return ffi.C.palloc(ffi.C.fiber.pool, size)
 end
 
+function cut_traceback(deep)
+    local current = debug.traceback('', 2)
+    local last_line_match = #deep
+    for i=1, #current do
+        if current:byte(-i) ~= deep:byte(-i) then
+            break
+        end
+        if current:byte(-i) == 10 then
+            last_line_match = #deep - i
+        end
+    end
+    return deep:sub(1, last_line_match)
+end
+
 require('stat')
 require('fiber_lock')
 require('reloadfile')
