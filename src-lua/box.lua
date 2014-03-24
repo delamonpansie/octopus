@@ -189,7 +189,7 @@ local u32buf = ffi.new('uint32_t[1]')
 local p = packer()
 
 local function append(result, out)
-   local out = net.conn(out)
+   local out = net._conn(out)
    p:reset()
 
    if type(result) == "table" then
