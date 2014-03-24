@@ -178,13 +178,16 @@ function wrap(proc_body)
         return proc_body
 end
 
+local cbuf = ffi.new('uint32_t[1]')
+
 local function append(result, out)
    local out = net.conn(out)
 
    if type(result) == "table" then
-      out:add_iov_string(string.tou32(#result))
+       cbuf[0] = #result
+       out:add_iov_dup(cbuf, 4)
 
-      for k, v in pairs(result) do
+      for k, v in ipairs(result) do
          if type(v) == "string" then
             out:add_iov_string(v)
          elseif type(v) == "table" and v.__obj then
