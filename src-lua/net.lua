@@ -87,6 +87,10 @@ function conn(ptr)
     return c
 end
 
+function _conn(ptr)
+    return ffi.cast(conn_ptr, ptr)
+end
+
 function iproto(ptr)
    return iproto_ptr_t(ptr)
 end
