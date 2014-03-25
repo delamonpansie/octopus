@@ -20,6 +20,15 @@
 [["0", "a", "c", "d"]]
 
 # box.lua("user_proc.update", "0")
-Failed with: {code: 0x102, message: 'replica is readonly'}
+Failed with: {code: 0x102, message: 'replica is readonly
+stack traceback:
+	[C]: in function '_dispatch'
+	mod/box/src-lua/box.lua:163: in function 'update'
+	box_init.lua:11: in function 'proc'
+	mod/box/src-lua/box.lua:253: in function <mod/box/src-lua/box.lua:248>'}
 # box.lua("user_proc.error", "0")
-Failed with: {code: 0x202, message: 'box_init.lua:16: fooo'}
+Failed with: {code: 0x202, message: 'box_init.lua:16: fooo
+stack traceback:
+	[C]: in function 'error'
+	box_init.lua:16: in function 'proc'
+	mod/box/src-lua/box.lua:253: in function <mod/box/src-lua/box.lua:248>'}
