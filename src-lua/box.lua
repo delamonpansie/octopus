@@ -245,7 +245,7 @@ local function clear_cache()
 end
 fiber.create(clear_cache)
 
-function entry(name, start, out, request, ...)
+function entry(name, out, request, ...)
     add_stat_exec_lua(name)
 
     local proc = fn_cache[name]
