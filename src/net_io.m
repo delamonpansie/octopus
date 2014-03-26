@@ -1265,7 +1265,7 @@ title(const char *fmt, ...)
 {
 	/* title expects ..  */
 	extern id recovery;
-	char buf[64] = { 0 };
+	char buf[128] = { 0 };
 
 	if (current_module && current_module->name)
 		cat(buf, sizeof(buf), "", current_module->name);
