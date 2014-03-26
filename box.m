@@ -900,7 +900,6 @@ box_bound_to_primary(int fd)
 	if (cfg.local_hot_standby) {
 		@try {
 			[recovery enable_local_writes];
-			title(NULL);
 		}
 		@catch (Error *e) {
 			panic("Recovery failure: %s", e->reason);
@@ -1086,12 +1085,11 @@ wal_final_row
 		build_secondary_indexes();
 		initialize_service();
 	}
+}
 
-	/* recovery of empty local_hot_standby & remote_hot_standby replica done in reverse:
-	   first: primary port bound & service initialized (and proctitle set)
-	   second: pull rows from remote (ans proctitle set to "loading %xx.yy")
-	   in order to avoid stuck proctitle set it after every pull done,
-	   not after service initialization */
+- (void)
+status_changed
+{
 	title(NULL);
 }
 
@@ -1387,8 +1385,7 @@ reload_config(struct octopus_cfg *old _unused_,
 {
 	struct feeder_param feeder;
 	feeder_param_fill_from_cfg(&feeder, new);
-	if ([recovery feeder_changed:&feeder])
-		title(NULL);
+	[recovery feeder_changed:&feeder];
 }
 
 static struct tnt_module box = {
