@@ -376,7 +376,7 @@ recv
 {
 	if (abort) {
 		conn_close(&c);
-		return -3;
+		raise("recv aborted");
 	}
 
 	tbuf_ensure(c.rbuf, 256 * 1024);
