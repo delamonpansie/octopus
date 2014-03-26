@@ -699,13 +699,9 @@ remote_hot_standby(va_list ap)
 	bool warning_said = false;
 
 	r->remote_puller = [[objc_lookUpClass("XLogPuller") alloc] init];
+	hot_standby_status(r, "connect", NULL);
 
-	if ([r feeder_addr_configured])
-		hot_standby_status(r, "connect", NULL);
-	for (;;) {
-		if (![r feeder_addr_configured])
-			goto sleep;
-
+	while ([r feeder_addr_configured]) {
 		[r->remote_puller feeder_param: &r->feeder];
 
 		i64 scn = [r scn];
@@ -738,6 +734,8 @@ remote_hot_standby(va_list ap)
 		fiber_gc();
 		fiber_sleep(reconnect_delay);
 	}
+	[r->remote_puller free];
+	r->remote_puller = nil;
 }
 
 
