@@ -705,6 +705,7 @@ remote_hot_standby(va_list ap)
 	bool warning_said = false;
 
 	r->remote_puller = [[objc_lookUpClass("XLogPuller") alloc] init];
+connect:
 	hot_standby_status(r, "connect", NULL);
 
 	while ([r feeder_addr_configured]) {
@@ -740,11 +741,14 @@ remote_hot_standby(va_list ap)
 		fiber_gc();
 		fiber_sleep(reconnect_delay);
 	}
-	[r->remote_puller free];
-	r->remote_puller = nil;
 
 	assert(r->local_writes);
 	[r status_update:"primary"];
+
+	while (![r feeder_addr_configured])
+		fiber_sleep(reconnect_delay);
+
+	goto connect;
 }
 
 
@@ -782,13 +786,14 @@ enable_local_writes
 
 	local_writes = true;
 
+	if (!fiber_create("remote_hot_standby", remote_hot_standby, self))
+		panic("unable to start remote hot standby fiber");
+
 	if ([self feeder_addr_configured]) {
 		if (lsn > 0) /* we're already have some xlogs and recovered from them */
 			[self configure_wal_writer];
 
-		say_info("starting remote hot standby");
-		if (!fiber_create("remote_hot_standby", remote_hot_standby, self))
-			panic("unable to start remote hot standby fiber");
+		say_info("configured remote hot standby, WAL feeder %s", sintoa(&feeder.addr));
 	} else {
 		[self configure_wal_writer];
 		[self status_update:"primary"];
