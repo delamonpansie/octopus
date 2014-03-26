@@ -1090,7 +1090,9 @@ wal_final_row
 - (void)
 status_changed
 {
-	title(NULL);
+	/* ugly hack: since it's a category it also breaks feeders title() */
+	if (self == recovery)
+		title(NULL);
 }
 
 
