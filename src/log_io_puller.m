@@ -328,47 +328,39 @@ static ev_timer fake_abort;
 recv_with_timeout: (ev_tstamp)timeout
 {
 	ssize_t r = tbuf_recv(c.rbuf, c.fd);
-	if (r == -1) {
-		ev_io io = { .coro = 1 };
-		ev_io_init(&io, (void *)fiber, c.fd, EV_READ);
-		ev_io_start(&io);
-		ev_timer timer = { .coro = 1 };
-		ev_timer_init(&timer, (void *)fiber, timeout, 0);
+	if (r >= 0)
+		return r;
 
-		bool set_timer = timeout > 0.0;
-		if (set_timer) {
-			ev_now_update();
-			ev_timer_start(&timer);
-		}
+	ev_io io = { .coro = 1 };
+	ev_io_init(&io, (void *)fiber, c.fd, EV_READ);
+	ev_io_start(&io);
 
-		in_recv = fiber;
-		void *w = yield();
-		ev_io_stop(&io);
-		in_recv = NULL;
+	ev_timer timer = { .coro = 1 };
+	ev_timer_init(&timer, (void *)fiber, timeout, 0);
+	if (timeout > 0)
+		ev_timer_start(&timer);
 
-		if (set_timer && w != &timer) {
-			ev_timer_stop(&timer);
-		}
+	in_recv = fiber;
+	void *w = yield();
+	in_recv = NULL;
 
-		if (unlikely(abort)) {
-			/* cause we could awake by io or timer */
-			fiber_cancel_wake(fiber);
-			conn_close(&c);
-			errno = 0;
-			return -3;
-		}
+	ev_io_stop(&io);
+	ev_timer_stop(&timer);
 
-		if (unlikely(w == &timer)) {
-			return -2;
-		}
-
-		if (w == &io) {
-			r = tbuf_recv(c.rbuf, c.fd);
-		}
-
+	if (unlikely(abort)) {
+		/* cause we could awake by io or timer */
+		fiber_cancel_wake(fiber);
+		errno = 0;
+		return -3;
 	}
 
-	return r;
+	if (unlikely(w == &timer))
+		return -2;
+
+	if (w == &io)
+		return tbuf_recv(c.rbuf, c.fd);
+
+	assert(false);
 }
 
 - (ssize_t)
@@ -385,8 +377,10 @@ recv
 	if (r <= 0) {
 		if (r == -2)
 			raise("timeout");
-		if (r == -3)
+		if (r == -3) {
+			conn_close(&c);
 			raise("recv aborted");
+		}
 		raise("unexpected EOF");
 	}
 
