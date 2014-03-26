@@ -1185,7 +1185,7 @@ exit:
 	struct proposal *min = RB_MIN(ptree, &self->proposals);
 	say_info("SCN:%"PRIi64" minSCN:%"PRIi64" appSCN:%"PRIi64" maxSCN:%"PRIi64,
 		 scn, min ? min->scn : -1, app_scn, max_scn);
-	strcpy(status, "active");
+	[self status_update:"active"];
 
 	const char *addr = sintoa(&paxos_peer(self, self_id)->iproto.addr);
 	tcp_service(&service, addr, NULL, iproto_wakeup_workers);

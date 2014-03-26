@@ -454,6 +454,8 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 - (bool) feeder_addr_configured;
 - (bool) feeder_changed:(struct feeder_param*)new;
 
+- (void) status_update:(const char *)fmt, ...;
+- (void) status_changed;
 @end
 
 @interface Recovery (Deprecated)

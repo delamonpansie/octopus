@@ -239,6 +239,12 @@ recover_row:(struct row_v12 *)r
 - (void)
 wal_final_row
 {
+	/* recovery of empty local_hot_standby & remote_hot_standby replica done in reverse:
+	   first: primary port bound & service initialized (and proctitle set)
+	   second: pull rows from remote (ans proctitle set to "loading %xx.yy")
+	   in order to avoid stuck proctitle set it after every pull done,
+	   not after service initialization */
+	[self status_changed];
 }
 
 - (i64)
@@ -418,7 +424,7 @@ recover_cont
 	say_info("wals recovered, lsn:%"PRIi64" scn:%"PRIi64, lsn, scn);
 
 	[self recover_follow:cfg.wal_dir_rescan_delay]; /* FIXME: make this conf */
-	strcpy(status, "hot_standby/local");
+	[self status_update:"hot_standby/local"];
 
 	/* all curently readable wal rows were read, notify about that */
 	if (feeder.addr.sin_family == AF_UNSPEC || cfg.local_hot_standby)
@@ -684,9 +690,9 @@ pull_from_remote:(id<XLogPullerAsync>)puller
 static void
 hot_standby_status(Recovery *r, const char *status, const char *reason)
 {
-	snprintf(r->status, sizeof(r->status), "hot_standby/%s/%s%s%s",
-		 sintoa(&r->feeder.addr), status,
-		 reason ? ":" : "", reason ?: "");
+	[r status_update:"hot_standby/%s/%s%s%s",
+	      sintoa(&r->feeder.addr), status,
+		  reason ? ":" : "", reason ?: ""];
 	if (strcmp(status, "fail") == 0)
 		say_error("replication failure: %s", reason);
 }
@@ -736,6 +742,9 @@ remote_hot_standby(va_list ap)
 	}
 	[r->remote_puller free];
 	r->remote_puller = nil;
+
+	assert(r->local_writes);
+	[r status_update:"primary"];
 }
 
 
@@ -782,8 +791,7 @@ enable_local_writes
 			panic("unable to start remote hot standby fiber");
 	} else {
 		[self configure_wal_writer];
-		say_info("I am primary");
-		strcpy(status, "primary");
+		[self status_update:"primary"];
 	}
 }
 
@@ -947,6 +955,23 @@ feeder_addr
 feeder_addr_configured
 {
 	return feeder.addr.sin_family != AF_UNSPEC;
+}
+
+- (void)
+status_update:(const char *)fmt, ...
+{
+	va_list ap;
+	va_start(ap, fmt);
+	vsnprintf(status, sizeof(status), fmt, ap);
+	va_end(ap);
+
+	say_info("recovery status: %s", status);
+	[self status_changed];
+}
+
+- (void)
+status_changed
+{
 }
 @end
 
