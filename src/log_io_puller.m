@@ -388,7 +388,6 @@ recv
 abort_recv
 {
 	abort = 1;
-	/* it's safe to wake conn_recv() with NULL */
 	if (in_recv) {
 		ev_timer_init(&fake_abort, NULL, 0, 0);
 		fiber_wake(in_recv, (void*)&fake_abort);
