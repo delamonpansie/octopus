@@ -373,11 +373,12 @@ recv
 	ssize_t r = [self recv_with_timeout: cfg.wal_feeder_keepalive_timeout];
 
 	if (r <= 0) {
-		if (r == -2)
-			raise("timeout");
-		if (r == -3)
-			raise("recv aborted");
-		raise("unexpected EOF");
+		switch (r) {
+		case 0: raise("unexpected EOF");
+		case -2: raise("timeout");
+		case -3: raise("recv aborted");
+		default: raise("unknown error");
+		}
 	}
 
 	return r;
