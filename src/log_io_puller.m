@@ -366,10 +366,8 @@ recv_with_timeout: (ev_tstamp)timeout
 - (ssize_t)
 recv
 {
-	if (abort) {
-		conn_close(&c);
+	if (abort)
 		raise("recv aborted");
-	}
 
 	tbuf_ensure(c.rbuf, 256 * 1024);
 	ssize_t r = [self recv_with_timeout: cfg.wal_feeder_keepalive_timeout];
@@ -377,10 +375,8 @@ recv
 	if (r <= 0) {
 		if (r == -2)
 			raise("timeout");
-		if (r == -3) {
-			conn_close(&c);
+		if (r == -3)
 			raise("recv aborted");
-		}
 		raise("unexpected EOF");
 	}
 
