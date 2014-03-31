@@ -1295,8 +1295,7 @@ title(const char *fmt, ...)
 
 	cat(buf, sizeof(buf), "@", cfg.custom_proc_title);
 
-	/* if recovery is present then we're called from main proccess serving request */
-	if (recovery) {
+	if (master_pid == getpid()) {
 		cat(buf, sizeof(buf), " pri:", cfg.primary_addr);
 		cat(buf, sizeof(buf), " sec:", cfg.secondary_addr);
 		cat(buf, sizeof(buf), " adm:", cfg.admin_addr);
