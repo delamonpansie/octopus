@@ -1085,6 +1085,7 @@ wal_final_row
 		build_secondary_indexes();
 		initialize_service();
 	}
+	[self status_changed]; /* should be [super wal_final_row], but because of category .. */
 }
 
 - (void)
