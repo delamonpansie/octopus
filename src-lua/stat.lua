@@ -96,7 +96,11 @@ function meths:admin_out(out)
         end
     end
 
-    table.insert(out, "statistics @"..self.name.." "..#self.records..":\r\n")
+    if self.name == "stat" then
+        table.insert(out, "statistics:\r\n")
+    else
+        table.insert(out, "statistics@"..self.name..":\r\n")
+    end
 
     local ordered_keys = {}
     for k in pairs(sum) do
@@ -108,11 +112,11 @@ function meths:admin_out(out)
         local val = sum[key]
         if type(val) == 'number' then
             local rps = (val or 0) / (#self.records + 1)
-            local line = string.format("  %-25s rps:  %-8i\r\n", key .. ':', rps)
+            local line = string.format("  %-25s { rps:  %-8i }\r\n", key .. ':', rps)
             table.insert(out, line)
         elseif type(val) == 'table' then
             local aval = val[0] / val[1]
-            local line = string.format("  %-25s avg: %-08.3f min: %-5i max %-8i\r\n", key .. ':', aval, val[2], val[3])
+            local line = string.format("  %-25s { avg: %-08.3f, min: %-5i, max %-8i }\r\n", key .. ':', aval, val[2], val[3])
             table.insert(out, line)
         end
     end
