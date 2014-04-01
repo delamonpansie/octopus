@@ -416,6 +416,33 @@ feeder_fork()
 }
 
 static void
+feeder_keepalive()
+{
+	if (cfg.wal_feeder_fork_before_init && !cfg.wal_feeder_debug_no_fork)
+		keepalive();
+	else
+		keepalive_read();
+}
+
+static void
+wait_for_some_xlogs(void)
+{
+	title("acceptor/wait_for_xlogs");
+
+	WALDir *dir = [[WALDir alloc] init_dirname:cfg.wal_dir];
+	for (;;) {
+		palloc_register_cut_point(fiber->pool);
+		i64 lsn = [dir greatest_lsn];
+		palloc_cutoff(fiber->pool);
+		if (lsn > 0)
+			break;
+		feeder_keepalive();
+		sleep(1);
+	}
+	[dir free];
+}
+
+static void
 init(void)
 {
 	int server, client;
@@ -448,6 +475,10 @@ init(void)
 	if (cfg.wal_dir == NULL || cfg.snap_dir == NULL)
 		panic("can't start feeder without snap_dir or wal_dir");
 
+	/* replication without any xlogs will fail. clients will retry on such failure.
+	   in order to avoid this behavior wait until at least one xlog is present */
+	wait_for_some_xlogs();
+
 	title("acceptor/%s", cfg.wal_feeder_bind_addr);
 
 	if (atosin(cfg.wal_feeder_bind_addr, &server_addr) == -1)
@@ -465,10 +496,7 @@ init(void)
 
 	for (;;) {
 		pid_t child;
-		if (cfg.wal_feeder_fork_before_init && !cfg.wal_feeder_debug_no_fork)
-			keepalive();
-		else
-			keepalive_read();
+		feeder_keepalive();
 
 		client = accept(server, NULL, NULL);
 		if (client < 0) {
