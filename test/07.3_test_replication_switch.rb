@@ -87,7 +87,7 @@ MasterEnv1.clean do
 
     SlaveEnv.clean do
       start
-      sleep(0.5)
+      sleep(1.5)
       slave = connect
       slave.select 1,2,3,4
 
