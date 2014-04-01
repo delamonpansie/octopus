@@ -1084,6 +1084,13 @@ init_dirname:(const char *)dirname_
         return self;
 }
 
+- (id)
+free
+{
+	close(fd);
+	return [super free];
+}
+
 - (int)
 lock
 {
