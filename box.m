@@ -910,8 +910,6 @@ box_bound_to_primary(int fd)
 static void
 box_service_register(struct service *s)
 {
-	service_iproto(s);
-
 	service_register_iproto_stream(s, NOP, box_select_cb, 0);
 	service_register_iproto_stream(s, SELECT, box_select_cb, 0);
 	service_register_iproto_stream(s, SELECT_LIMIT, box_select_cb, 0);
@@ -926,7 +924,7 @@ box_service_register(struct service *s)
 static void
 initialize_service()
 {
-	tcp_service(&box_primary, cfg.primary_addr, box_bound_to_primary, iproto_wakeup_workers);
+	tcp_iproto_service(&box_primary, cfg.primary_addr, box_bound_to_primary, NULL);
 	box_service_register(&box_primary);
 
 	for (int i = 0; i < MAX(1, cfg.wal_writer_inbox_size); i++)
