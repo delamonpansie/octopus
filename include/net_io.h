@@ -210,8 +210,6 @@ int server_socket(int type, struct sockaddr_in *src, int nonblock,
 
 void tcp_service(struct service *s , const char *addr, void (*on_bind)(int fd), void (*wakeup)(ev_prepare *));
 void wakeup_workers(ev_prepare *ev);
-void service_iproto(struct service *s);
-void iproto_wakeup_workers(ev_prepare *ev);
 
 int atosin(const char *orig, struct sockaddr_in *addr) LUA_DEF;
 const char *sintoa(const struct sockaddr_in *addr);

@@ -1189,8 +1189,8 @@ exit:
 	[self status_update:"active"];
 
 	const char *addr = sintoa(&paxos_peer(self, self_id)->paxos.addr);
-	tcp_service(&service, addr, NULL, iproto_wakeup_workers);
-	service_iproto(&service);
+	tcp_iproto_service(&service, addr, NULL, iproto_wakeup_workers);
+
 	service_register_iproto_block(&service, LEADER_PROPOSE, leader, 0);
 	service_register_iproto_block(&service, PREPARE, acceptor, 0);
 	service_register_iproto_block(&service, ACCEPT, acceptor, 0);

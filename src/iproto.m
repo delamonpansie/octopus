@@ -137,10 +137,11 @@ service_register_iproto_block(struct service *s, u32 cmd,
 }
 
 void
-service_iproto(struct service *s)
+tcp_iproto_service(struct service *service, const char *addr, void (*on_bind)(int fd), void (*wakeup_workers)(ev_prepare *))
 {
-	service_register_iproto_stream(s, -1, err, 0);
-	service_register_iproto_stream(s, msg_ping, iproto_ping, IPROTO_NONBLOCK);
+	tcp_service(service, addr, on_bind, wakeup_workers ?: iproto_wakeup_workers);
+	service_register_iproto_stream(service, -1, err, 0);
+	service_register_iproto_stream(service, msg_ping, iproto_ping, IPROTO_NONBLOCK);
 }
 
 static int

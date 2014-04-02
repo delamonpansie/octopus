@@ -85,6 +85,9 @@ int init_iproto_peer(struct iproto_peer *p, int id, const char *name, const char
 
 void iproto_ping(struct netmsg_head *h, struct iproto *r, struct conn *c);
 
+void tcp_iproto_service(struct service *service, const char *addr, void (*on_bind)(int fd), void (*wakeup_workers)(ev_prepare *));
+void iproto_wakeup_workers(ev_prepare *ev);
+
 void
 service_register_iproto_stream(struct service *s, u32 cmd,
 			       void (*cb)(struct netmsg_head *, struct iproto *, struct conn *),
