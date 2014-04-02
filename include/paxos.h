@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2011, 2012, 2013 Mail.RU
- * Copyright (C) 2011, 2012, 2013 Yuriy Vostrikov
+ * Copyright (C) 2011, 2012, 2013, 2014 Mail.RU
+ * Copyright (C) 2011, 2012, 2013, 2014 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -37,7 +37,7 @@ RB_HEAD(ptree, proposal);
 @interface PaxosRecovery: Recovery {
 @public
 	SLIST_HEAD(paxos_group, paxos_peer) group;
-	struct iproto_group remotes;
+	struct iproto_group paxos_remotes;
 	struct fiber *proposer_fiber;
 	struct fiber *output_flusher, *reply_reader, *follower, *wal_dumper;
 	struct palloc_pool *pool;

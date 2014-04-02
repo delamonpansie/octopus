@@ -58,7 +58,7 @@ const int proposal_history_size = 16 * 1024;
 const int quorum = 2; /* FIXME: hardcoded */
 
 struct paxos_peer {
-	struct iproto_peer iproto;
+	struct iproto_peer paxos, primary;
 	int id;
 	const char *name, *primary_addr;
 	struct feeder_param feeder;
@@ -73,17 +73,17 @@ make_paxos_peer(int id, const char *name, const char *addr,
 
 	p->id = id;
 	p->name = name;
-	if (init_iproto_peer(&p->iproto, id, name, addr) == -1) {
+	if (init_iproto_peer(&p->paxos, id, name, addr) == -1) {
 		free(p);
 		return NULL;
 	}
-	struct sockaddr_in paddr = p->iproto.addr;
+	struct sockaddr_in paddr = p->paxos.addr;
 	paddr.sin_port = htons(primary_port);
 	p->primary_addr = strdup(sintoa(&paddr));
 
 	memset(&p->feeder, 0, sizeof(p->feeder));
 	p->feeder.ver = 1;
-	p->feeder.addr = p->iproto.addr;
+	p->feeder.addr = p->paxos.addr;
 	p->feeder.addr.sin_port = htons(feeder_port);
 	return p;
 }
@@ -212,7 +212,7 @@ paxos_broadcast(PaxosRecovery *r, enum paxos_msg_code code, ev_tstamp timeout,
 				  .iov_len = sizeof(msg) - sizeof(struct iproto) },
 				{ .iov_base = (void *)value,
 				  .iov_len = value_len } };
-	iproto_broadcast(&r->remotes, quorum, req, iov, 2);
+	iproto_broadcast(&r->paxos_remotes, quorum, req, iov, 2);
 }
 
 
@@ -334,7 +334,8 @@ propose_leadership(va_list ap)
 			continue;
 
 		leader_propose.expire = ev_now() + leader_lease_interval;
-		iproto_broadcast(&r->remotes, quorum, iproto_req_make(LEADER_PROPOSE, 1.0, "leader_propose"),
+		iproto_broadcast(&r->paxos_remotes, quorum,
+				 iproto_req_make(LEADER_PROPOSE, 1.0, "leader_propose"),
 				 iov, 1);
 
 		struct iproto_req *req = yield();
@@ -1124,7 +1125,7 @@ init_snap_dir:(const char *)snap_dirname
 			panic("bad addr %s", c->addr);
 
 		SLIST_INSERT_HEAD(&group, p, link);
-		SLIST_INSERT_HEAD(&remotes, &p->iproto, link);
+		SLIST_INSERT_HEAD(&paxos_remotes, &p->paxos, link);
 	}
 
 	if (!paxos_peer(self, self_id))
@@ -1187,7 +1188,7 @@ exit:
 		 scn, min ? min->scn : -1, app_scn, max_scn);
 	[self status_update:"active"];
 
-	const char *addr = sintoa(&paxos_peer(self, self_id)->iproto.addr);
+	const char *addr = sintoa(&paxos_peer(self, self_id)->paxos.addr);
 	tcp_service(&service, addr, NULL, iproto_wakeup_workers);
 	service_iproto(&service);
 	service_register_iproto_block(&service, LEADER_PROPOSE, leader, 0);
@@ -1198,7 +1199,7 @@ exit:
 		fiber_create("paxos/worker", iproto_worker, &service);
 
 	reply_reader = fiber_create("paxos/reply_reader", iproto_reply_reader, iproto_collect_reply);
-	fiber_create("paxos/rendevouz", iproto_rendevouz, NULL, &remotes, reply_reader, output_flusher);
+	fiber_create("paxos/rendevouz", iproto_rendevouz, NULL, &paxos_remotes, reply_reader, output_flusher);
 	fiber_create("paxos/elect", propose_leadership, self);
 
 	mbox_init(&wal_dumper_mbox);
