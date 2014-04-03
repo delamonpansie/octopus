@@ -103,12 +103,9 @@ err(struct netmsg_head *h __attribute__((unused)),
 	iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "unknown iproto command %i", r->msg_code);
 }
 
-void
-iproto_ping(struct netmsg_head *h, struct iproto *r, struct conn *c)
+static void
+iproto_ping(struct netmsg_head *h, struct iproto *r, struct conn *c __attribute__((unused)))
 {
-	if (r->msg_code != msg_ping)
-		err(h, r, c);
-
 	net_add_iov_dup(h, r, sizeof(struct iproto));
 }
 
