@@ -99,13 +99,13 @@ MasterEnv.clean do
     # File.open("octopus.log").lines.each {|l| puts l }
     slave = connect
 
-
     6.times do |i|
       master.insert [i, i]
     end
     master.update_fields 4, [1, :add, 1]
     master.update_fields 5, [1, :add, 1]
-    sleep 0.1
+
+    sleep 1.1 # wait fo feeder to find non empty xlog
 
     master.select 0,1,2,3,4,5
     slave.select 0,1,2,3,5
