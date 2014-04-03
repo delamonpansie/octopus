@@ -1295,11 +1295,13 @@ title(const char *fmt, ...)
 
 	cat(buf, sizeof(buf), "@", cfg.custom_proc_title);
 
+#ifdef STORAGE
 	if (master_pid == getpid()) {
 		cat(buf, sizeof(buf), " pri:", cfg.primary_addr);
 		cat(buf, sizeof(buf), " sec:", cfg.secondary_addr);
 		cat(buf, sizeof(buf), " adm:", cfg.admin_addr);
 	}
+#endif
 	set_proc_title("%s", buf);
 }
 

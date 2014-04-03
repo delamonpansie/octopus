@@ -34,6 +34,7 @@ src/octopus.o: XCFLAGS += -DPRIMARY_MOD='"$(primary_module)"' -D$(binary_type)
 ifeq ($(binary_type),)
   $(error binary_type must be defined)
 endif
+src/net_io.o: XCFLAGS += -D$(binary_type)
 
 # some modules might be built without paxos
 ifneq ($(findstring src/paxos.o,$(obj)),)
