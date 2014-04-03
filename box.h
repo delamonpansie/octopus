@@ -35,6 +35,8 @@
 
 extern bool box_updates_allowed;
 
+extern struct service box_primary;
+
 struct namespace;
 struct box_tuple;
 struct index;
@@ -61,7 +63,7 @@ struct box_tuple {
 	u8 data[0];
 } __attribute__((packed));
 
-void bad_object_type(void);
+void __attribute__((noreturn)) bad_object_type(void);
 static inline struct box_tuple * __attribute__((always_inline))
 box_tuple(struct tnt_object *obj)
 {
@@ -105,6 +107,9 @@ void box_prepare(struct box_txn *txn, struct tbuf *data);
 void box_commit(struct box_txn *txn);
 void box_rollback(struct box_txn *txn);
 void box_cleanup(struct box_txn *txn);
+void prepare_replace(struct box_txn *txn, size_t cardinality, const void *data, u32 data_len);
+
+void box_service_register(struct service *s);
 
 #define BOX_RETURN_TUPLE 1
 #define BOX_ADD 2
