@@ -980,64 +980,6 @@ status_changed
 }
 @end
 
-@implementation FoldRecovery
-
-- (id)
-init_snap_dir:(const char *)snap_dirname
-      wal_dir:(const char *)wal_dirname
-{
-	[super init];
-        snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
-        wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
-	memset(&feeder, 0, sizeof(feeder));
-	return self;
-}
-
-- (id) init_snap_dir:(const char *)snap_dirname
-             wal_dir:(const char *)wal_dirname
-        rows_per_wal:(int)wal_rows_per_file
-	feeder_param:(struct feeder_param *)feeder_param_
-               flags:(int)flags
-{
-	(void)wal_rows_per_file;
-	(void)feeder_param_;
-	(void)flags;
-
-
-	return [self init_snap_dir:snap_dirname wal_dir:wal_dirname];
-}
-
-- (void)
-configure_wal_writer
-{
-}
-
-- (i64)
-snap_lsn
-{
-	return [snap_dir containg_scn:fold_scn];
-}
-
-- (void)
-recover_row:(struct row_v12 *)r
-{
-	[super recover_row:r];
-
-	if (r->scn == fold_scn && (r->tag & ~TAG_MASK) == TAG_WAL) {
-		if ([self respondsTo:@selector(snapshot_fold)])
-			exit([self snapshot_fold]);
-		exit([[self snap_writer] snapshot_write]);
-	}
-}
-
-- (void)
-wal_final_row
-{
-	say_error("unable to find record with SCN:%"PRIi64, fold_scn);
-	exit(EX_OSFILE);
-}
-
-@end
 
 
 void
@@ -1125,7 +1067,6 @@ read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, struct
 }
 
 @implementation NoWALRecovery
-
 - (id)
 init_snap_dir:(const char *)snap_dirname
       wal_dir:(const char *)wal_dirname
@@ -1133,22 +1074,19 @@ init_snap_dir:(const char *)snap_dirname
 	[super init];
         snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
         wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
-	memset(&feeder, 0, sizeof(feeder));
 	return self;
 }
 
 - (id) init_snap_dir:(const char *)snap_dirname
              wal_dir:(const char *)wal_dirname
         rows_per_wal:(int)wal_rows_per_file
-	feeder_param:(struct feeder_param*)feeder_
+	feeder_param:(struct feeder_param *)feeder_param_
                flags:(int)flags
 {
-	say_info("WAL disabled");
-	return [super init_snap_dir:snap_dirname
-			    wal_dir:wal_dirname
-		       rows_per_wal:wal_rows_per_file
-		       feeder_param:feeder_
-			      flags:flags | RECOVER_READONLY];
+	(void)wal_rows_per_file;
+	(void)feeder_param_;
+	(void)flags;
+	return [self init_snap_dir:snap_dirname wal_dir:wal_dirname];
 }
 
 
@@ -1165,6 +1103,35 @@ submit:(const void *)data len:(size_t)len tag:(u16)tag
 	scn++;
 	lsn++;
 	return 1;
+}
+
+@end
+
+@implementation FoldRecovery
+
+- (i64)
+snap_lsn
+{
+	return [snap_dir containg_scn:fold_scn];
+}
+
+- (void)
+recover_row:(struct row_v12 *)r
+{
+	[super recover_row:r];
+
+	if (r->scn == fold_scn && (r->tag & ~TAG_MASK) == TAG_WAL) {
+		if ([self respondsTo:@selector(snapshot_fold)])
+			exit([self snapshot_fold]);
+		exit([[self snap_writer] snapshot_write]);
+	}
+}
+
+- (void)
+wal_final_row
+{
+	say_error("unable to find record with SCN:%"PRIi64, fold_scn);
+	exit(EX_OSFILE);
 }
 
 @end

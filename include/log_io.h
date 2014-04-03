@@ -462,13 +462,14 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 - (void) apply:(struct tbuf *)op tag:(u16)tag;
 @end
 
-@interface FoldRecovery: Recovery
-i64 fold_scn;
+
+@interface NoWALRecovery: Recovery
 - (id) init_snap_dir:(const char *)snap_dirname
 	     wal_dir:(const char *)wal_dirname;
 @end
 
-@interface NoWALRecovery: Recovery
+@interface FoldRecovery: NoWALRecovery
+i64 fold_scn;
 @end
 
 int wal_disk_writer(int fd, void *state);
