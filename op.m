@@ -681,9 +681,6 @@ box_lua_cb(struct iproto *request, struct conn *c)
 	@try {
 		ev_tstamp start = ev_now(), stop;
 
-		if (unlikely(c->service != &box_primary))
-			iproto_raise(ERR_CODE_NONMASTER, "updates forbiden on secondary port");
-
 		box_dispach_lua(c, request);
 		stat_collect(stat_base, EXEC_LUA, 1);
 
@@ -719,9 +716,6 @@ box_cb(struct iproto *request, struct conn *c)
 	struct box_txn txn = { .op = request->msg_code };
 	@try {
 		ev_tstamp start = ev_now(), stop;
-
-		if (unlikely(c->service != &box_primary))
-			iproto_raise(ERR_CODE_NONMASTER, "updates forbiden on secondary port");
 
 		[recovery check_replica];
 
@@ -800,7 +794,7 @@ box_select_cb(struct netmsg_head *h, struct iproto *request, struct conn *c __at
 }
 
 void
-box_service_register(struct service *s)
+box_service(struct service *s)
 {
 	service_register_iproto_stream(s, NOP, box_select_cb, 0);
 	service_register_iproto_stream(s, SELECT, box_select_cb, 0);
@@ -811,6 +805,30 @@ box_service_register(struct service *s)
 	service_register_iproto_block(s, DELETE_1_3, box_cb, 0);
 	service_register_iproto_block(s, EXEC_LUA, box_lua_cb, 0);
 	service_register_iproto_block(s, PAXOS_LEADER, box_paxos_cb, 0);
+}
+
+static void
+box_roerr(struct netmsg_head *h __attribute__((unused)),
+      struct iproto *request __attribute__((unused)),
+      struct conn *c __attribute__((unused)))
+{
+	iproto_raise(ERR_CODE_NONMASTER, "updates are forbidden");
+}
+
+void
+box_service_ro(struct service *s)
+{
+	service_register_iproto_stream(s, SELECT, box_select_cb, 0);
+	service_register_iproto_stream(s, SELECT_LIMIT, box_select_cb, 0);
+
+	service_register_iproto_stream(s, INSERT, box_roerr, 0);
+	service_register_iproto_stream(s, UPDATE_FIELDS, box_roerr, 0);
+	service_register_iproto_stream(s, DELETE, box_roerr, 0);
+	service_register_iproto_stream(s, DELETE_1_3, box_roerr, 0);
+	service_register_iproto_stream(s, EXEC_LUA, box_roerr, 0);
+	service_register_iproto_stream(s, PAXOS_LEADER, box_roerr, 0);
+	/* FIXME: lua is disabled because there is no easy way to
+	   ensure RO mode in lua callback */
 }
 
 void __attribute__((constructor))

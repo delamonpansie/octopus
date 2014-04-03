@@ -51,7 +51,7 @@
 #include <arpa/inet.h>
 #include <sysexits.h>
 
-struct service box_primary, box_secondary;
+static struct service box_primary, box_secondary;
 struct object_space *object_space_registry;
 
 static void
@@ -218,14 +218,14 @@ static void
 initialize_service()
 {
 	tcp_iproto_service(&box_primary, cfg.primary_addr, box_bound_to_primary, NULL);
-	box_service_register(&box_primary);
+	box_service(&box_primary);
 
 	for (int i = 0; i < MAX(1, cfg.wal_writer_inbox_size); i++)
 		fiber_create("box_worker", iproto_worker, &box_primary);
 
 	if (cfg.secondary_addr != NULL && strcmp(cfg.secondary_addr, cfg.primary_addr) != 0) {
-		tcp_service(&box_secondary, cfg.secondary_addr, NULL, iproto_wakeup_workers);
-		box_service_register(&box_secondary);
+		tcp_iproto_service(&box_secondary, cfg.secondary_addr, NULL, NULL);
+		box_service_ro(&box_secondary);
 		fiber_create("box_secondary_worker", iproto_worker, &box_secondary);
 	}
 	say_info("(silver)box initialized (%i workers)", cfg.wal_writer_inbox_size);

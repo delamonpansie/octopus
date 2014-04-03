@@ -35,8 +35,6 @@
 
 extern bool box_updates_allowed;
 
-extern struct service box_primary;
-
 struct namespace;
 struct box_tuple;
 struct index;
@@ -109,7 +107,8 @@ void box_rollback(struct box_txn *txn);
 void box_cleanup(struct box_txn *txn);
 void prepare_replace(struct box_txn *txn, size_t cardinality, const void *data, u32 data_len);
 
-void box_service_register(struct service *s);
+void box_service(struct service *s);
+void box_service_ro(struct service *s);
 
 #define BOX_RETURN_TUPLE 1
 #define BOX_ADD 2
