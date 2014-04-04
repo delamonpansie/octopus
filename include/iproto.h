@@ -83,6 +83,8 @@ SLIST_HEAD(iproto_group, iproto_peer);
 
 int init_iproto_peer(struct iproto_peer *p, int id, const char *name, const char *addr);
 
+void iproto_ping(struct netmsg_head *h, struct iproto *r, struct conn *c);
+
 void tcp_iproto_service(struct service *service, const char *addr, void (*on_bind)(int fd), void (*wakeup_workers)(ev_prepare *));
 void iproto_wakeup_workers(ev_prepare *ev);
 
