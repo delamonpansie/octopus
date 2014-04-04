@@ -23,7 +23,7 @@ ifeq (1, $(HAVE_CONFETTI))
     dist += cfg/octopus.c
     dist += cfg/octopus.cfg
 
-    defered += $$(obj): cfg/octopus.h cfg/octopus.cfg
+    defered += $$(obj): cfg/octopus.h cfg/octopus.cfg cfg/defs.h
 
     cfg/octopus.cfg_tmpl: Makefile $(sub-Makefile)
     cfg/octopus.cfg_tmpl: cfg/core.cfg_tmpl $(sort $(cfg_tmpl))
@@ -43,4 +43,8 @@ ifeq (1, $(HAVE_CONFETTI))
     cfg/prscfg.h: cfg/octopus.cfg_tmpl
 	$(E) "CNFTI	$@"
 	$(Q)$(CONFETTI) -i $< -H $@
+
+    cfg/defs.h: cfg/octopus.cfg
+	$(E) "GEN	$@"
+	$(Q)$(SED) '/^[a-z]/!d; /^[ 	]*$$/d; s/^\([a-z_]\+\).*/#define CFG_\1 1/'< $< > $@
 endif
