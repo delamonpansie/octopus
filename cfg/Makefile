@@ -46,6 +46,7 @@ ifeq (1, $(HAVE_CONFETTI))
 endif
 
 # this target doesn't depend on CONFETTI
+dist-clean += cfg/defs.h
 cfg/defs.h: cfg/octopus.cfg
 	$(E) "GEN	$@"
 	$(Q)$(SED) '/^[a-z]/!d; /^[ 	]*$$/d; s/^\([a-z_]\+\).*/#define CFG_\1 1/'< $< > $@

@@ -35,6 +35,7 @@ client/*
 !client/*/
 client/octobench/
 client/octobench-pub/
+cfg/defs.h
 
 # luajit
 third_party/luajit/src/buildvm
