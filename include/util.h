@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -215,4 +215,5 @@ void assert_fail(const char *assertion, const char *file,
 	dst;						\
 })
 
+void title(const char *fmt, ...);
 #endif

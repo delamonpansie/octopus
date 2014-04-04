@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012 Mail.RU
- * Copyright (C) 2010, 2011, 2012 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2014 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2014 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,6 +28,8 @@
 #import <fiber.h>
 #import <octopus_ev.h>
 #import <say.h>
+#import <cfg/defs.h>
+#import <objc.h>
 
 #include <stdarg.h>
 #include <stdbool.h>
@@ -413,5 +415,66 @@ xrealloc(void *ptr, size_t size)
 	return ptr;
 }
 
+
+static void
+cat(char *dst, size_t n, const char *prefix, const char *src)
+{
+	if (!src || strlen(src) == 0 || n - strlen(dst) < strlen(src) + strlen(prefix))
+		return;
+
+	strcat(dst, prefix);
+	strcat(dst, src);
+}
+
+void
+title(const char *fmt, ...)
+{
+	char buf[128] = { 0 };
+
+	if (current_module && current_module->name)
+		cat(buf, sizeof(buf), "", current_module->name);
+	else if (fiber->name)
+		cat(buf, sizeof(buf), "", fiber->name);
+	else if (module(NULL) && module(NULL)->name)
+		cat(buf, sizeof(buf), "", module(NULL)->name);
+	else
+		cat(buf, sizeof(buf), "", "unknown");
+
+	if (fmt) {
+		va_list ap;
+		char tmp[32];
+		va_start(ap, fmt);
+		vsnprintf(tmp, sizeof(tmp), fmt, ap);
+		va_end(ap);
+		cat(buf, sizeof(buf), ":", tmp);
+	} else {
+		/* This block can be put under #ifdef too */
+		@try {
+			extern id recovery;
+			if ([recovery respondsTo:@selector(status)]) {
+				void *status = [recovery perform:@selector(status)];
+				cat(buf, sizeof(buf), ":", status);
+			}
+		}
+		@catch (id e) {
+			/* oops, bad object */
+		}
+	}
+
+	cat(buf, sizeof(buf), "@", cfg.custom_proc_title);
+
+	if (master_pid == getpid()) {
+#if CFG_primary_addr
+		cat(buf, sizeof(buf), " pri:", cfg.primary_addr);
+#endif
+#if CFG_secondary_addr
+		cat(buf, sizeof(buf), " sec:", cfg.secondary_addr);
+#endif
+#if CFG_admin_addr
+		cat(buf, sizeof(buf), " adm:", cfg.admin_addr);
+#endif
+	}
+	set_proc_title("%s", buf);
+}
 
 register_source();

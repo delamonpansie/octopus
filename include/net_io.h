@@ -220,6 +220,4 @@ void service_info(struct tbuf *out, struct service *service);
 
 void luaT_opennet(struct lua_State *L);
 int luaT_pushnetmsg(struct lua_State *L);
-
-void title(const char *fmt, ...);
 #endif
