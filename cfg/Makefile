@@ -23,7 +23,7 @@ ifeq (1, $(HAVE_CONFETTI))
     dist += cfg/octopus.c
     dist += cfg/octopus.cfg
 
-    defered += $$(obj): cfg/octopus.h cfg/octopus.cfg
+    defered_depend += cfg/octopus.h cfg/octopus.cfg
 
     cfg/octopus.cfg_tmpl: Makefile $(sub-Makefile)
     cfg/octopus.cfg_tmpl: cfg/core.cfg_tmpl $(sort $(cfg_tmpl))
@@ -47,7 +47,7 @@ endif
 
 # this target doesn't depend on CONFETTI
 dist-clean += cfg/defs.h
-defered += $$(obj): cfg/defs.h
+defered_depend += cfg/defs.h
 cfg/defs.h: cfg/octopus.cfg
 	$(E) "GEN	$@"
 	$(Q)$(SED) '/^[a-z]/!d; /^[ 	]*$$/d; s/^\([a-z_]\+\).*/#define CFG_\1 1/'< $< > $@

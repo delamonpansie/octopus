@@ -264,7 +264,7 @@ pre-dist: configure $(dist) octopus_version.h
 dist:
 	@./scripts/make-dist.sh $(foreach mod,$(modules),mod/$(mod))
 
-$(eval $(defered))
+$(eval $(obj): $(defered_depend))
 
 ifeq (1,$(I))
     $(info * build with $(filter -D%,$(CFLAGS)))
