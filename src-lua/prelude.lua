@@ -32,21 +32,26 @@ package.loaders[2], package.loaders[1] = package.loaders[1], package.loaders[2]
 package.loaders[3] = nil
 package.loaders[4] = nil
 
-local type = type
-function assertarg(arg, atype, n, level)
-   if type(arg) == 'cdata' then
-      if ffi.typeof(arg) == atype then
+local type, getmetatable = type, getmetatable
+function assertarg(arg, expected, n, level)
+    local argtype = type(arg)
+    if argtype == 'cdata' then
+      if ffi.typeof(arg) == expected then
 	 return
       end
+   elseif type(expected) == 'table' then
+       if argtype == 'table' and getmetatable(arg) == expected then
+           return
+       end
    else
-      if type(arg) == atype then
+      if argtype == expected then
 	 return
       end
    end
    local fname = debug.getinfo(2 + (level or 0), "n").name
    local etype = type(arg) ~= 'cdata' and type(arg) or tostring(ffi.typeof(arg))
    local msg = string.format("bad argument #%s to '%s' (%s expected, got %s)",
-			     n and tostring(n) or '?', fname, atype, etype)
+			     n and tostring(n) or '?', fname, expected, etype)
    error(msg, 3 + (level or 0))
 end
 
