@@ -76,22 +76,29 @@ extern struct object_space *object_space_registry;
 extern const int object_space_count, object_space_max_idx;
 ]]
 
-local maxidx = ffi.C.object_space_max_idx
+local object_space_mt = {
+   __tostring = function(self)
+      return tostring(self.__ptr)
+   end
+}
+
+local maxidx = tonumber(ffi.C.object_space_max_idx)
 local index_registry_mt = {
    __index = function (table, i)
-      i = tonumber(i)
-      if i < 0 or i >= maxidx or table.__object_space.index[i] == nil then
-	 return nil
-      end
-      if not rawget(table, i) then
-	 local legacy, new = index.cast(table.__object_space.index[i])
-	 table[i] = legacy
-      end
-      return rawget(table, i)
+       i = tonumber(i)
+       if i == nil or i < 0 or i >= maxidx or table.__object_space.index[i] == nil then
+           return nil
+       end
+       if not rawget(table, i) then
+           local legacy, new = index.cast(table.__object_space.index[i])
+           table[i] = legacy
+       end
+       return rawget(table, i)
    end,
    __call = function (t, object_space, i)
        i = tonumber(i)
-       if i < 0 or i >= maxidx or object_space.__ptr.index[i] == nil then
+       assertarg(object_space, object_space_mt, 2)
+       if i == nil or i < 0 or i >= maxidx or object_space.__ptr.index[i] == nil then
 	   return nil
        end
        if not rawget(t, i + maxidx) then
@@ -100,12 +107,6 @@ local index_registry_mt = {
        end
 
        return rawget(t, i + maxidx)
-   end
-}
-
-local object_space_mt = {
-   __tostring = function(self)
-      return tostring(self.__ptr)
    end
 }
 
@@ -127,7 +128,7 @@ object_space_registry = setmetatable({}, {
 	 return nil
       end
 
-      local ptr = ffi.C.object_space_registry[i]
+      local ptr = ffi.C.object_space_registry + i
       local index_registry = setmetatable({ __object_space = ptr }, index_registry_mt)
       local object_space = setmetatable({ __ptr = ptr,
 					  n = ptr.n,
