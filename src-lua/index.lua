@@ -157,7 +157,7 @@ local index_mt = {
 	    else
 		local ok, node = pcall(packnode, index, ...)
 		if not ok then
-		    packerr(node, "find", index, ...)
+		    packerr(node, "iter", index, ...)
 		end
 		iterator_init_with_node(index, node)
 	    end
