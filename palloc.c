@@ -86,6 +86,10 @@ void __asan_unpoison_memory_region(void const volatile *addr, size_t size);
 # define MMAP_HINT_ADDR NULL
 #endif
 
+#ifndef MAP_ANONYMOUS
+# define MAP_ANONYMOUS MAP_ANON
+#endif
+
 #ifndef likely
 # if HAVE__BUILTIN_EXPECT
 #  define likely(x)	__builtin_expect((x),1)
