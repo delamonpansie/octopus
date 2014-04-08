@@ -36,7 +36,7 @@
 #if HAVE_THIRD_PARTY_QUEUE_H
 # include <third_party/queue.h>
 #elif HAVE_UTIL
-# include "../../include/queue.h"
+# include "../include/queue.h"
 #else
 # include "queue.h"
 #endif
