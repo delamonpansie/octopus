@@ -116,7 +116,7 @@ function iter(index, key)
       index = ffi.cast(indext, index)
    end
    assertarg(index, indext, 1, 2)
-   if index.conf.field_type[0] ~= ffi.C.STRING then
+   if index.conf.field_type[0] ~= ffi.C.STRING and type(key) == 'string' then
        key = tonumber(key)
    end
    return index:iter(key)
