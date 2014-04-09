@@ -195,29 +195,33 @@ build_secondary_indexes()
 	}
 }
 
-void
-box_bound_to_primary(int fd)
+static void
+bound_hotstandby(int fd)
 {
-	if (fd < 0) {
-		if (!cfg.local_hot_standby)
-			panic("unable bind to %s", cfg.primary_addr);
+	if (fd < 0)
 		return;
-	}
 
-	if (cfg.local_hot_standby) {
-		@try {
-			[recovery enable_local_writes];
-		}
-		@catch (Error *e) {
-			panic("Recovery failure: %s", e->reason);
-		}
+	@try {
+		[recovery enable_local_writes];
 	}
+	@catch (Error *e) {
+		panic("Recovery failure: %s", e->reason);
+	}
+}
+
+static void
+bound_standalone(int fd)
+{
+	if (fd < 0)
+		panic("unable bind to %s", cfg.primary_addr);
 }
 
 static void
 initialize_service()
 {
-	tcp_iproto_service(&box_primary, cfg.primary_addr, box_bound_to_primary, NULL);
+	tcp_iproto_service(&box_primary, cfg.primary_addr,
+			   cfg.local_hot_standby ? bound_hotstandby : bound_standalone,
+			   NULL);
 	box_service(&box_primary);
 
 	for (int i = 0; i < MAX(1, cfg.wal_writer_inbox_size); i++)
