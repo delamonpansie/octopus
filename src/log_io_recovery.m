@@ -133,14 +133,9 @@ verify_run_crc:(struct tbuf *)buf
 }
 
 - (void)
-fixup:(const struct row_v12 *)r
+apply_sys:(const struct row_v12 *)r
 {
 	int tag = r->tag & TAG_MASK;
-	int tag_type = r->tag & ~TAG_MASK;
-
-	(void)tag_type;
-	assert(tag_type != 0);
-	assert(tag_type == TAG_WAL ? r->scn > 1 : 1);
 
 	switch (tag) {
 	case snap_initial:
@@ -162,7 +157,7 @@ fixup:(const struct row_v12 *)r
 		skip_scn = TBUF(ptr, r->len, (void *)ptr); /* NB: backing storage is malloc! */
 		next_skip_scn = read_u64(&skip_scn);
 		break;
-	case run_crc: {
+	case run_crc:
 		if (cfg.ignore_run_crc)
 			break;
 
@@ -172,10 +167,6 @@ fixup:(const struct row_v12 *)r
 		[self verify_run_crc:&TBUF(r->data, r->len, NULL)];
 		break;
 	}
-	}
-
-	last_update_tstamp = ev_now();
-	lag = last_update_tstamp - r->tm;
 }
 
 - (void)
@@ -200,12 +191,12 @@ recover_row:(struct row_v12 *)r
 			}
 		}
 
-		/* compat hack: check of tag is redundant and required for old xlogs */
-		if (tag_type == TAG_WAL && (tag == wal_data || tag > user_tag))
+		if (tag_type == TAG_WAL)
 			run_crc_log = crc32c(run_crc_log, r->data, r->len);
 
 		[self apply:&TBUF(r->data, r->len, fiber->pool) tag:r->tag];
-		[self fixup:r];
+		if (tag_type == TAG_SYS)
+			[self apply_sys:r];
 
 		/* note: it's to late to raise here: txn is already commited */
 		if (unlikely(r->lsn - lsn > 1 && cfg.panic_on_lsn_gap))
@@ -215,6 +206,8 @@ recover_row:(struct row_v12 *)r
 			panic("out of sync SCN:%"PRIi64 " != LSN:%"PRIi64, r->scn, r->lsn);
 
 		lsn = r->lsn;
+		last_update_tstamp = ev_now();
+		lag = last_update_tstamp - r->tm;
 
 		if (scn_changer(r->tag) || tag == snap_final) {
 			if (unlikely(tag != snap_final && r->scn - scn != 1 &&

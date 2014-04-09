@@ -993,7 +993,11 @@ fixup_row_v12(struct row_v12 *row)
 	if (cfg.io12_hack && row->scn == 0)
 		row->scn = row->lsn;
 
-	if ((row->tag & ~TAG_MASK) == 0) /* old style row */
+	int tag = row->tag & TAG_MASK;
+	int tag_type = row->tag & ~TAG_MASK;
+
+	/* compat: fix tags in old style row */
+	if (tag_type == 0 || (tag_type == TAG_WAL && tag != wal_data && tag < user_tag))
 		row->tag = fix_tag_v3(row->tag);
 }
 
