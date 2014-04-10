@@ -818,7 +818,6 @@ submit_run_crc
 {
 	snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
 	wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
-	memset(&feeder, 0, sizeof(feeder));
 
 	wal_timer.data = self;
 
