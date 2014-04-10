@@ -194,9 +194,19 @@ recover_row:(struct row_v12 *)r
 		if (tag_type == TAG_WAL)
 			run_crc_log = crc32c(run_crc_log, r->data, r->len);
 
-		[self apply:&TBUF(r->data, r->len, fiber->pool) tag:r->tag];
-		if (tag_type == TAG_SYS)
-			[self apply_sys:r];
+		if (r->scn == next_skip_scn) {
+			say_info("skip SCN:%"PRIi64 " tag:%s", next_skip_scn, xlog_tag_to_a(r->tag));
+
+			/* there are multiply rows with same SCN in paxos mode.
+			   the last one is WAL row */
+			if (tag_type == TAG_WAL)
+				next_skip_scn = tbuf_len(&skip_scn) > 0 ?
+						read_u64(&skip_scn) : 0;
+		} else {
+			[self apply:&TBUF(r->data, r->len, fiber->pool) tag:r->tag];
+			if (tag_type == TAG_SYS)
+				[self apply_sys:r];
+		}
 
 		/* note: it's to late to raise here: txn is already commited */
 		if (unlikely(r->lsn - lsn > 1 && cfg.panic_on_lsn_gap))
@@ -316,25 +326,6 @@ recover_wal:(id<XLogPuller>)l
 		struct row_v12 *r;
 		int row_count = 0;
 		while ((r = [l fetch_row])) {
-			if (r->scn == next_skip_scn) {
-				say_info("skip SCN:%"PRIi64 " tag:%s", next_skip_scn, xlog_tag_to_a(r->tag));
-				int tag_type = r->tag & ~TAG_MASK;
-				int tag = r->tag & TAG_MASK;
-
-				/* there are multiply rows with same SCN in paxos mode.
-				   the last one is WAL row */
-				if (tag_type == TAG_WAL)
-					next_skip_scn = tbuf_len(&skip_scn) > 0 ?
-							read_u64(&skip_scn) : 0;
-
-				/* compat hack: check of tag is redundant and required for old xlogs */
-				if (tag_type == TAG_WAL && (tag == wal_data || tag > user_tag))
-					run_crc_log = crc32c(run_crc_log, r->data, r->len);
-
-				if (r->lsn > lsn)
-					last_wal_lsn = lsn = r->lsn;
-				continue;
-			}
 			if (r->lsn > lsn) {
 				last_wal_lsn = r->lsn;
 				[self recover_row:r];
