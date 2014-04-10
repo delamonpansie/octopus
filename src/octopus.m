@@ -851,11 +851,12 @@ octopus(int argc, char **argv)
 		salloc_init(0, 0, 0);
 		fiber_init();
 		luaT_init();
+#ifdef CFG_wal_feeder_addr
 		if (cfg.wal_feeder_addr) {
 			say_warn("--init-storage is no op in replica");
 			exit(EX_USAGE);
 		}
-
+#endif
 		module_init(module(NULL));
 		exit([recovery write_initial_state]);
 	}
