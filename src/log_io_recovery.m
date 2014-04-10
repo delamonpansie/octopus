@@ -288,12 +288,6 @@ recover_snap
 
 		int row_count = 0;
 		while ((r = [snap fetch_row])) {
-			/* some of old tarantool snapshots has all rows with lsn == 0,
-			   so using lsn from record will reset recovery lsn set by snap_initial_tag to 0,
-			   also v11 snapshots imply that SCN === LSN */
-			if (unlikely(legacy_snap && r->lsn == 0))
-				r->scn = r->lsn = lsn;
-
 			[self recover_row:r];
 			if (row_count++ > 1024) {
 				palloc_cutoff(fiber->pool);
@@ -818,7 +812,7 @@ submit_run_crc
 {
 	snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
 	wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
-
+	snap_dir->recovery = wal_dir->recovery = self;
 	wal_timer.data = self;
 
 	return self;

@@ -823,7 +823,15 @@ read_row
 
 	say_debug("read row v11 success lsn:%" PRIi64, _row_v11(m)->lsn);
 
-	return convert_row_v11_to_v12(m)->ptr;
+	struct row_v12 *r = convert_row_v11_to_v12(m)->ptr;
+
+	/* some of old tarantool snapshots has all rows with lsn == 0,
+	   so using lsn from record will reset recovery lsn set by snap_initial_tag to 0,
+	   also v11 snapshots imply that SCN === LSN */
+	if (r->lsn == 0 && r->tag & TAG_SNAP)
+		r->scn = r->lsn = [dir->recovery lsn];
+
+	return r;
 }
 
 

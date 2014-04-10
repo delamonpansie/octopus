@@ -118,6 +118,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 	const char *filetype;
 	const char *suffix;
 	const char *dirname;
+	Recovery *recovery;
 };
 - (id) init_dirname:(const char *)dirname_;
 - (XLog *) open_for_read:(i64)lsn;
