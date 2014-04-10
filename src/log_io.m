@@ -119,7 +119,8 @@ xlog_tag_to_a(u16 tag)
 }
 
 static char *
-set_file_buf(FILE *fd) {
+set_file_buf(FILE *fd)
+{
 	char	*vbuf;
 	const int bufsize = 64 * 1024;
 
@@ -1337,8 +1338,7 @@ open_for_write:(i64)lsn scn:(i64)scn
       error:
         if (file != NULL)
                 fclose(file);
-	if (fbuf != NULL)
-		free(fbuf);
+	free(fbuf);
         [l free];
 	return NULL;
 }
