@@ -171,11 +171,17 @@ typedef struct marker_desc {
 @interface XLog: Object <XLogPuller> {
 	size_t rows, wet_rows;
 	bool eof;
-@public
-	char *filename;
-	FILE *fd;
+
+#if HAVE_SYNC_FILE_RANGE
+	size_t sync_bytes;
+	off_t sync_offset;
+#endif
 	void *vbuf;
 	ev_stat stat;
+
+	FILE *fd;
+@public
+	char *filename;
 
 	XLogDir *dir;
 	i64 next_lsn;
@@ -189,11 +195,6 @@ typedef struct marker_desc {
 
 	size_t bytes_written;
 	off_t offset, wet_rows_offset[WAL_PACK_MAX * 8];
-
-#if HAVE_SYNC_FILE_RANGE
-	size_t sync_bytes;
-	off_t sync_offset;
-#endif
 }
 + (XLog *) open_for_read_filename:(const char *)filename
 			      dir:(XLogDir *)dir;

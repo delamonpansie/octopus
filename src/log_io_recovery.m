@@ -471,8 +471,7 @@ recover_follow:(ev_tstamp)wal_dir_rescan_delay
 recover_finalize
 {
 	ev_timer_stop(&wal_timer);
-	if (current_wal != nil)
-		ev_stat_stop(&current_wal->stat);
+	/* [currert_wal follow] cb will be stopped by [current_wal close] */
 
 	[self recover_remaining_wals];
 
