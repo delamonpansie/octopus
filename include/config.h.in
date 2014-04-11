@@ -97,6 +97,9 @@
 /* Define to 1 if you have the `prctl' function. */
 #undef HAVE_PRCTL
 
+/* Define to 1 if you have the `recvmmsg' function. */
+#undef HAVE_RECVMMSG
+
 /* Define to 1 if you have the `select' function. */
 #undef HAVE_SELECT
 

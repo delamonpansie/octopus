@@ -963,9 +963,30 @@ udp_server(va_list ap)
 	if ((fd = server_socket(SOCK_DGRAM, &saddr, 1, on_bind, NULL)) < 0)
 		return;
 
-	const unsigned MAXUDPPACKETLEN = 65527 + 1; /* +1 for \0 */
-	char *buf = xmalloc(MAXUDPPACKETLEN);
 	ssize_t sz;
+	const unsigned MAXUDPPACKETLEN = 65527 + 1; /* +1 for \0 */
+
+#if HAVE_RECVMMSG
+#ifndef RECVMMSG_VEC
+#define RECVMMSG_VEC 128
+#endif
+	struct mmsghdr *msgvec;
+	struct iovec *iovec;
+
+	msgvec = xcalloc(RECVMMSG_VEC, sizeof(*msgvec));
+	iovec = xcalloc(RECVMMSG_VEC, sizeof(*iovec));
+
+	char *buf = xmalloc(MAXUDPPACKETLEN * RECVMMSG_VEC);
+
+	for (int i = 0; i < RECVMMSG_VEC; i++) {
+		iovec[i].iov_base = buf + MAXUDPPACKETLEN * i;
+		iovec[i].iov_len = MAXUDPPACKETLEN;
+		msgvec[i].msg_hdr.msg_iov = iovec + i;
+		msgvec[i].msg_hdr.msg_iovlen = 1;
+	}
+#else
+	char *buf = xmalloc(MAXUDPPACKETLEN);
+#endif
 	ev_io io = { .coro = 1};
 	ev_io_init(&io, (void *)fiber, fd, EV_READ);
 
@@ -973,9 +994,16 @@ udp_server(va_list ap)
 	while (1) {
 		yield();
 
+#if HAVE_RECVMMSG
+		while ((sz = recvmmsg(fd, msgvec, RECVMMSG_VEC, MSG_DONTWAIT, NULL)) > 0)
+			for (int i = 0; i < sz; i++)
+				handler(msgvec[i].msg_hdr.msg_iov->iov_base,
+					msgvec[i].msg_len,
+					data);
+#else
 		while ((sz = recv(fd, buf, MAXUDPPACKETLEN, MSG_DONTWAIT)) > 0)
 			handler(buf, sz, data);
-
+#endif
 		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
 			continue;
 
