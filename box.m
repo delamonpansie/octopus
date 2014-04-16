@@ -444,8 +444,11 @@ snapshot_write_rows:(XLog *)l
 
 			size_t index_rows = 0;
 			[index iterator_init];
-			while ([index iterator_next])
+			while ([index iterator_next]) {
+				if (unlikely(ghost(obj)))
+					continue;
 				index_rows++;
+			}
 			if (pk_rows != index_rows) {
 				say_error("heap invariant violation: n:%i index:%i rows:%zi != pk_rows:%zi",
 					  n, index->conf.n, index_rows, pk_rows);
