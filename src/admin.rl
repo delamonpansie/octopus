@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -259,6 +259,15 @@ admin_dispatch(struct conn *c)
 			}
 		}
 
+		action save_core {
+			if (coredump(60) >= 0) {
+				ok(out);
+			} else {
+				tbuf_printf(err, "%s", strerror(errno));
+				fail(out,err);
+			}
+		}
+
 		eol = "\n" | "\r\n";
 		show = "sh"("o"("w")?)?;
 		info = "in"("f"("o")?)?;
@@ -293,7 +302,7 @@ admin_dispatch(struct conn *c)
 			    show " "+ palloc		%{start(out); palloc_stat_info(out); end(out);}	|
 			    show " "+ stat		%show_stat					|
 			    enable " "+ coredump        %{maximize_core_rlimit(); ok(out);}		|
-			    save " "+ coredump		%{coredump(60); ok(out);}			|
+			    save " "+ coredump		%save_core					|
 			    save " "+ snapshot		%save_snapshot					|
 			    incr " "+ log         	%{log_level(out, "ALL", NULL, 1); }		|
 			    decr " "+ log         	%{log_level(out, "ALL", NULL, -1); }		|

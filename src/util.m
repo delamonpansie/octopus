@@ -96,24 +96,37 @@ maximize_core_rlimit()
 		say_syserror("setrlimit");
 }
 
-void
+int
 coredump(int dump_interval)
 {
 	static time_t last_coredump = 0;
 	time_t now = time(NULL);
 
-	if (now - last_coredump < dump_interval)
-		return;
+	if (now - last_coredump < dump_interval) {
+		say_error("can't coredump: ratelimit exceeded (wait %i sec)",
+			  (int)(dump_interval - (now - last_coredump)));
+		errno = EAGAIN;
+		return -1;
+	}
 
 	last_coredump = now;
 
-	if (tnt_fork() == 0) {
+	pid_t pid = tnt_fork();
+	if (pid < 0) {
+		say_syserror("can't create coredump child");
+		return -1;
+	}
+
+	if (pid == 0) {
+		say_info("making core");
 		close_all_xcpt(0);
 #ifdef COVERAGE
 		__gcov_flush();
 #endif
 		maximize_core_rlimit();
 		abort();
+	} else {
+		return 0;
 	}
 }
 
