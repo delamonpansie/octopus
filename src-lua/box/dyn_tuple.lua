@@ -108,7 +108,8 @@ local __tuple_index = {
 	 if (offt < 0 or offt + 1 > self.bsize) then
 	    error("out of bounds", 2)
 	 end
-	 return varint32.read(self.data + offt)
+	 local val, valn = varint32.read(self.data + offt)
+	 return val, offt + valn
       else
 	 local ctinfo = datacast_type_cache[ctype]
 	 if offt < 0 or offt + ctinfo[2] > self.bsize then
