@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011 Mail.RU
- * Copyright (C) 2010, 2011 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2013, 2014 Mail.RU
+ * Copyright (C) 2010, 2011, 2013, 2014 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -596,9 +596,9 @@ slab_stat(struct tbuf *t)
 	SLIST_FOREACH(slab, &fixed_arena->free_slabs, free_link)
 			fixed_free_slabs++;
 
-	tbuf_printf(t, "  free_slabs: %i" CRLF, fixed_free_slabs);
+	int64_t fixed_used_adj = fixed_arena->used - fixed_free_slabs * SLAB_SIZE;
 	tbuf_printf(t, "  items_used: %.2f" CRLF, (double)total_used / fixed_arena->size * 100);
-	tbuf_printf(t, "  arena_used: %.2f" CRLF, (double)fixed_arena->used / fixed_arena->size * 100);
+	tbuf_printf(t, "  arena_used: %.2f" CRLF, (double)fixed_used_adj / fixed_arena->size * 100);
 }
 
 register_source();
