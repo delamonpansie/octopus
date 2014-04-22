@@ -6,6 +6,8 @@ local function print_warn(name, msg)
     print(string.format("reloadfile(\"%s\"): %s", name, msg))
 end
 
+local fix_reload_filename
+
 local function register_reload(name)
     if reload_files[name] == nil then
         local modulename = name:gsub("^.*/", ""):gsub("%.lua$", "")
@@ -27,11 +29,12 @@ local function register_reload(name)
         reload_files[name] = stat
         table.insert(reload_files, name)
         reload_modules[modulename] = stat
+        fix_reload_filename(name)
     end
     return reload_files[name]
 end
 
-local function fix_reload_filename(name)
+function fix_reload_filename(name)
     local stat = reload_files[name]
     local filename = stat.name:gsub('%.lua$',''):gsub('([%w_-])%.([%w_-])', '%1/%2') .. '.lua'
     if not filename:match('%.lua$') then
@@ -72,6 +75,23 @@ local function reload_fullpath_loader(name)
     return do_reload
 end
 table.insert(package.loaders, 1, reload_fullpath_loader)
+
+local function first_load(stat)
+    local r, v = pcall(os.ctime, stat.filename)
+    if r then
+        local r, err = xpcall(require, debug.traceback, stat.modulename)
+        if r then
+            stat.ctm = v
+        else
+            stat.err_ctm = v
+            stat.err_tm = os.time()
+            print_warn(stat.name, err)
+        end
+    else
+        stat.filename = nil
+        print_warn(stat.name, "check_reload: "..v)
+    end
+end
 
 local function check_reload(name)
     local stat = reload_files[name]
@@ -136,6 +156,9 @@ fiber.create(reload_queue_pusher)
 function reloadfile(name)
     assertarg(name, 'string', 1)
     local stat = register_reload(name)
+    if stat.filename then
+        first_load(stat, name)
+    end
     unlock_reload_loop()
 end
 return reloadfile
