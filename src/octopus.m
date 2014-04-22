@@ -37,6 +37,7 @@
 #import <octopus.h>
 #import <index.h>
 #import <octopus_version.h>
+#import <cfg/defs.h>
 
 #include <third_party/gopt/gopt.h>
 #include <third_party/luajit/src/lua.h>
