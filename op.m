@@ -172,7 +172,11 @@ prepare_replace(struct box_txn *txn, size_t cardinality, const void *data, u32 d
 	struct box_tuple *tuple = box_tuple(txn->obj);
 	memcpy(tuple->data, data, data_len);
 
-	txn_acquire(txn, [txn->index find_by_obj:txn->obj], OLD);
+	struct tnt_object *obj;
+	while ((obj = [txn->index find_by_obj:txn->obj]) && obj->flags & WAL_WAIT)
+		object_yield(obj);
+
+	txn_acquire(txn, obj, OLD);
 	txn->obj_affected = txn->old_obj != NULL ? 2 : 1;
 
 	if (txn->flags & BOX_ADD && txn->old_obj != NULL)
@@ -317,7 +321,11 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 	if (key_cardinality < txn->object_space->index[0]->conf.min_tuple_cardinality)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "key isn't fully specified");
 
-	txn_acquire(txn, [txn->index find_key:data with_cardinalty:key_cardinality], OLD);
+	struct tnt_object *obj;
+	while ((obj = [txn->index find_key:data with_cardinalty:key_cardinality]) && obj->flags & WAL_WAIT)
+		object_yield(obj);
+
+	txn_acquire(txn, obj, OLD);
 
 	op_cnt = read_u32(data);
 	if (op_cnt > 128)
@@ -536,7 +544,12 @@ static void __attribute__((noinline))
 prepare_delete(struct box_txn *txn, struct tbuf *key_data)
 {
 	u32 c = read_u32(key_data);
-	txn_acquire(txn, [txn->index find_key:key_data with_cardinalty:c], OLD);
+
+	struct tnt_object *obj;
+	while ((obj = [txn->index find_key:key_data with_cardinalty:c]) && obj->flags & WAL_WAIT)
+		object_yield(obj);
+
+	txn_acquire(txn, obj, OLD);
 	txn->obj_affected = txn->old_obj != NULL;
 }
 
