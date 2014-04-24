@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2011, 2012, 2013 Mail.RU
- * Copyright (C) 2011, 2012, 2013 Yuriy Vostrikov
+ * Copyright (C) 2011, 2012, 2013, 2014 Mail.RU
+ * Copyright (C) 2011, 2012, 2013, 2014 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,6 +30,7 @@
 #import <net_io.h>
 #import <iproto.h>
 #import <util.h>
+#import <fiber.h>
 
 #include <stdint.h>
 
@@ -86,6 +87,30 @@ object_decr_ref(struct tnt_object *obj)
 	}
 }
 
+static struct { struct tnt_object *obj; struct fiber *waiter; } *ow;
+static int ows;
+
+void
+object_yield(struct tnt_object *obj)
+{
+	for (int i = 0; i < ows; i++) {
+		if (ow[i].obj != NULL)
+			continue;
+		ow[i].obj = obj;
+		ow[i].waiter = fiber;
+		obj->flags |= YIELD;
+		yield();
+		return;
+	}
+
+	int ows2 = ows ? ows * 2 : 128;
+	ow = xrealloc(ow, ows2 * sizeof(*ow));
+	memset(ow + ows, 0, sizeof(*ow) * (ows2 - ows));
+	ows = ows2;
+	object_yield(obj);
+}
+
+
 void
 object_lock(struct tnt_object *obj)
 {
@@ -103,6 +128,16 @@ object_unlock(struct tnt_object *obj)
 
 	say_debug("object_unlock(%p)", obj);
 	obj->flags &= ~WAL_WAIT;
+
+	if (obj->flags & YIELD) {
+		for (int i = 0; i < ows; i++) {
+			if (ow[i].obj != obj)
+				continue;
+			ow[i].obj = NULL;
+			obj->flags &= ~YIELD;
+			fiber_wake(ow[i].waiter, NULL);
+		}
+	}
 }
 
 const char *objectlib_name = "Octopus.object"; /* there is a copy of this string
