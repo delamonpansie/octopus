@@ -88,7 +88,7 @@ object_decr_ref(struct tnt_object *obj)
 }
 
 static struct { struct tnt_object *obj; struct fiber *waiter; } *ow;
-static int ows;
+static int ows, ows_used;
 
 void
 object_yield(struct tnt_object *obj)
@@ -99,6 +99,9 @@ object_yield(struct tnt_object *obj)
 		ow[i].obj = obj;
 		ow[i].waiter = fiber;
 		obj->flags |= YIELD;
+		if (ows_used <= i) {
+			ows_used = i + 1;
+		}
 		yield();
 		return;
 	}
@@ -107,7 +110,11 @@ object_yield(struct tnt_object *obj)
 	ow = xrealloc(ow, ows2 * sizeof(*ow));
 	memset(ow + ows, 0, sizeof(*ow) * (ows2 - ows));
 	ows = ows2;
-	object_yield(obj);
+
+	ow[ows_used].obj = obj;
+	ow[ows_used].waiter = fiber;
+	obj->flags |= YIELD;
+	ows_used++;
 }
 
 
@@ -130,12 +137,16 @@ object_unlock(struct tnt_object *obj)
 	obj->flags &= ~WAL_WAIT;
 
 	if (obj->flags & YIELD) {
-		for (int i = 0; i < ows; i++) {
+		for (int i = 0; i < ows_used; i++) {
 			if (ow[i].obj != obj)
 				continue;
 			ow[i].obj = NULL;
 			obj->flags &= ~YIELD;
 			fiber_wake(ow[i].waiter, NULL);
+			ow[i].waiter = NULL;
+			if (i == ows_used - 1) {
+				ows_used = i;
+			}
 		}
 	}
 }
