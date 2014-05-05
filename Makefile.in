@@ -56,6 +56,7 @@ MAKEFLAGS += --no-print-directory
 %.o %.lua: XCPPFLAGS += -I. -Iinclude
 ifneq (.,$(srcdir))
   %.o %.lua: XCPPFLAGS += -I$(srcdir) -I$(srcdir)/include
+  LUAJIT_VPATH=../../../$(srcdir)/third_party/luajit/src/
 endif
 
 primary_module=$(firstword $(modules))
@@ -89,16 +90,20 @@ subdirs += third_party cfg src src-lua
 sub-Makefile = $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
 -include $(sub-Makefile)
 
-$(binary): $(obj) .luajit
+$(binary): $(obj) third_party/luajit/src/libluajit.a
 	$E "CC	$@"
-	$Q$(CC) -L$(srcdir)/third_party/luajit/src $(filter-out .%,$^) -lluajit $(LIBS) $(XLDFLAGS) $(LDFLAGS) $(CFLAGS) -o $@
+	$Q$(CC) $^ $(LIBS) $(XLDFLAGS) $(LDFLAGS) $(CFLAGS) -o $@
 
-.luajit:
-	@$(MAKE) -C $(srcdir)/third_party/luajit/src CC="$(CC)" E="$(E)" Q="$(Q)" \
+third_party/luajit/src/libluajit.a: third_party/luajit/src/luajit
+third_party/luajit/src/luajit:
+	@mkdir -p third_party/luajit/src/host third_party/luajit/src/jit
+	$E "MAKE	$@"
+	$(Q)echo 'include $$(VPATH)Makefile' | $(MAKE) -C third_party/luajit/src -f - \
+		VPATH=$(LUAJIT_VPATH) \
+		CC="$(CC)" E="$(E)" Q="$(Q)" \
 		CCDEBUG=$(filter -g%,$(CFLAGS)) BUILDMODE=static \
 		TARGET_CFLAGS='-funwind-tables -DLUAJIT_UNWIND_EXTERNAL' \
-		libluajit.a jit/vmdef.lua luajit
-	@touch .luajit
+		$(subst third_party/luajit/src/,,$@)
 
 $(obj): Makefile $(sub-Makefile)
 
@@ -119,13 +124,13 @@ $(filter-out $(no-extra-warns),$(obj)): XCFLAGS += $(WCFLAGS)
 
 define LUAJIT_B
 LUA_PATH='$(srcdir)/third_party/luajit/src/?.lua' \
-	$(srcdir)/third_party/luajit/src/luajit -b \
+	./third_party/luajit/src/luajit -b \
 	$(if $(DCFLAGS),-g) \
 	-n $(subst /,.,$(basename $(lastword $(subst src-lua/, ,$<)))) \
 	$< $@
 endef
 
-%.o: %.lua .luajit
+%.o: %.lua third_party/luajit/src/luajit
 	@mkdir -p $(dir $@)
 	$(E) "LUAJIT	$@"
 	$(Q)$(LUAJIT_B)
@@ -179,9 +184,10 @@ octopus_version.h: FORCE
 	@diff -q $@ $@_ 2>/dev/null >/dev/null || (echo "GEN	$(notdir $@)"; cp $@_ $@)
 	@rm $@_
 
-all_modules = $(foreach path,$(wildcard mod/*),$(notdir $(path)))
+all_modules = $(sort $(modules) $(foreach path,$(wildcard mod/*),$(notdir $(path))))
 
 $(foreach mod,$(all_modules),mod/$(mod)/$(mod)_version.h):
+	@mkdir -p $(dir $@)
 	@echo -n 'const char $(subst -,_,$(subst .h,,$(notdir $@)))_string[] = "' > $@_
 	@cd $(srcdir)/$(dir $@); $(GIT) describe --always HEAD | tr -d \\n | sed 's/.*-g/g/' >> $(notdir $@_)
 	@echo '";' >> $@_
@@ -199,8 +205,7 @@ clean:
 
 luaclean:
 	$(E) "CLEAN	luajit"
-	$(Q)rm -f .luajit
-	$(Q)$(MAKE) -C third_party/luajit/src CC="$(CC)" E="$(E)" Q="$(Q)" clean
+	$(Q)echo 'include $$(VPATH)Makefile' | $(MAKE) -C third_party/luajit/src -f - CC="$(CC)" E="$(E)" Q="$(Q)" VPATH=$(LUAJIT_VPATH) clean
 
 configure-byproducts += autom4te.cache config.log config.status
 configure-byproducts += include/config.h Makefile

@@ -162,7 +162,7 @@ XCFLAGS=
 #   make HOST_CC="gcc -m32" CROSS=i586-mingw32msvc- TARGET_SYS=Windows
 #   make HOST_CC="gcc -m32" CROSS=powerpc-linux-gnu-
 
-CCOPTIONS= $(CCDEBUG) $(CCOPT) $(CCWARN) $(XCFLAGS) $(CFLAGS)
+CCOPTIONS= $(CCDEBUG) $(CCOPT) $(CCWARN) $(XCFLAGS) $(CFLAGS) $(if $(VPATH),-iquote .)
 LDOPTIONS= $(CCDEBUG) $(LDFLAGS)
 
 HOST_CC= $(CC)
@@ -171,7 +171,7 @@ HOST_RM= rm -f
 # copy of (plain) Lua 5.1 or 5.2, plus Lua BitOp. E.g. with: HOST_LUA=lua
 HOST_LUA=
 
-HOST_XCFLAGS= -I.
+HOST_XCFLAGS= -I$(VPATH).
 HOST_XLDFLAGS=
 HOST_XLIBS=
 HOST_ACFLAGS= $(CCOPTIONS) $(HOST_XCFLAGS) $(TARGET_ARCH) $(HOST_CFLAGS)
@@ -205,7 +205,7 @@ TARGET_ALDFLAGS= $(LDOPTIONS) $(TARGET_XLDFLAGS) $(TARGET_FLAGS) $(TARGET_LDFLAG
 TARGET_ASHLDFLAGS= $(LDOPTIONS) $(TARGET_XSHLDFLAGS) $(TARGET_FLAGS) $(TARGET_SHLDFLAGS)
 TARGET_ALIBS= $(TARGET_XLIBS) $(LIBS) $(TARGET_LIBS)
 
-TARGET_TESTARCH=$(shell $(TARGET_CC) $(TARGET_TCFLAGS) -E lj_arch.h -dM)
+TARGET_TESTARCH=$(shell $(TARGET_CC) $(TARGET_TCFLAGS) -E $(VPATH)lj_arch.h -dM)
 ifneq (,$(findstring LJ_TARGET_X64 ,$(TARGET_TESTARCH)))
   TARGET_LJARCH= x64
 else
@@ -369,7 +369,7 @@ ifeq (,$(HOST_LUA))
   DASM_DEP= $(MINILUA_T)
 endif
 
-DASM_DIR= ../dynasm
+DASM_DIR= $(VPATH)../dynasm
 DASM= $(HOST_LUA) $(DASM_DIR)/dynasm.lua
 DASM_XFLAGS=
 DASM_AFLAGS=
@@ -429,7 +429,7 @@ endif
 endif
 
 DASM_FLAGS= $(DASM_XFLAGS) $(DASM_AFLAGS)
-DASM_DASC= vm_$(DASM_ARCH).dasc
+DASM_DASC= $(VPATH)vm_$(DASM_ARCH).dasc
 
 BUILDVM_O= host/buildvm.o host/buildvm_asm.o host/buildvm_peobj.o \
 	   host/buildvm_lib.o host/buildvm_fold.o
@@ -446,7 +446,7 @@ LJVM_MODE= elfasm
 
 LJLIB_O= lib_base.o lib_math.o lib_bit.o lib_string.o lib_table.o \
 	 lib_io.o lib_os.o lib_package.o lib_debug.o lib_jit.o lib_ffi.o
-LJLIB_C= $(LJLIB_O:.o=.c)
+LJLIB_C= $(LJLIB_O:%.o=$(VPATH)%.c)
 
 LJCORE_O= lj_gc.o lj_err.o lj_char.o lj_bc.o lj_obj.o lj_buf.o \
 	  lj_str.o lj_tab.o lj_func.o lj_udata.o lj_meta.o lj_debug.o \
@@ -583,9 +583,9 @@ depend:
 	@$(HOST_CC) $(HOST_ACFLAGS) -MM *.c host/*.c | \
 	  sed -e "s| [^ ]*/dasm_\S*\.h||g" \
 	      -e "s|^\([^l ]\)|host/\1|" \
-	      -e "s| lj_target_\S*\.h| lj_target_*.h|g" \
-	      -e "s| lj_emit_\S*\.h| lj_emit_*.h|g" \
-	      -e "s| lj_asm_\S*\.h| lj_asm_*.h|g" >Makefile.dep
+	      -e "s| lj_target_\S*\.h| \$$(VPATH)lj_target_*.h|g" \
+	      -e "s| lj_emit_\S*\.h| \$$(VPATH)lj_emit_*.h|g" \
+	      -e "s| lj_asm_\S*\.h| \$$(VPATH)lj_asm_*.h|g" >Makefile.dep
 	@for file in $(ALL_HDRGEN); do \
 	  test -s $$file || $(HOST_RM) $$file; \
 	  done
@@ -636,7 +636,7 @@ $(LIB_VMDEF): $(BUILDVM_T) $(LJLIB_C)
 
 lj_folddef.h: $(BUILDVM_T) lj_opt_fold.c
 	$(E) "BUILDVM   $@"
-	$(Q)$(BUILDVM_X) -m folddef -o $@ lj_opt_fold.c
+	$(Q)$(BUILDVM_X) -m folddef -o $@ $(VPATH)lj_opt_fold.c
 
 ##############################################################################
 # Object file rules.
@@ -660,7 +660,7 @@ $(HOST_O): %.o: %.c
 	$(E) "HOSTCC    $@"
 	$(Q)$(HOST_CC) $(HOST_ACFLAGS) -c -o $@ $<
 
-include Makefile.dep
+include $(VPATH)Makefile.dep
 
 ##############################################################################
 # Target file rules.
