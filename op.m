@@ -322,8 +322,11 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "key isn't fully specified");
 
 	struct tnt_object *obj;
-	while ((obj = [txn->index find_key:data with_cardinalty:key_cardinality]) && obj->flags & WAL_WAIT)
+	void *ptr = data->ptr;
+	while ((obj = [txn->index find_key:data with_cardinalty:key_cardinality]) && obj->flags & WAL_WAIT) {
+		data->ptr = ptr;
 		object_yield(obj);
+	}
 
 	txn_acquire(txn, obj, OLD);
 
@@ -546,8 +549,11 @@ prepare_delete(struct box_txn *txn, struct tbuf *key_data)
 	u32 c = read_u32(key_data);
 
 	struct tnt_object *obj;
-	while ((obj = [txn->index find_key:key_data with_cardinalty:c]) && obj->flags & WAL_WAIT)
+	void *ptr = key_data->ptr;
+	while ((obj = [txn->index find_key:key_data with_cardinalty:c]) && obj->flags & WAL_WAIT) {
+		key_data->ptr = ptr;
 		object_yield(obj);
+	}
 
 	txn_acquire(txn, obj, OLD);
 	txn->obj_affected = txn->old_obj != NULL;
