@@ -485,6 +485,47 @@ recover_finalize
 	skip_scn = TBUF(NULL, 0, NULL);
 }
 
+- (void)
+bound_to_primary:(int)fd
+{
+	if (fd < 0) {
+		if (!cfg.local_hot_standby)
+			panic("unable bind to primary_addr `%s'", cfg.primary_addr);
+		return;
+	}
+
+	if (cfg.local_hot_standby) {
+		say_info("I am primary");
+
+		@try {
+			[self enable_local_writes];
+		}
+		@catch (Error *e) {
+			panic("Recovery failure: %s", e->reason);
+		}
+	}
+}
+
+- (void)
+simple
+{
+	@try {
+		i64 local_lsn = [self recover_start];
+		if (local_lsn == 0) {
+			if (![self feeder_addr_configured]) {
+				say_error("unable to find initial snapshot");
+				say_info("don't you forget to initialize "
+					 "storage with --init-storage switch?");
+				exit(EX_USAGE);
+			}
+		}
+		if (!cfg.local_hot_standby)
+			[self enable_local_writes];
+	}
+	@catch (Error *e) {
+		panic("Recovery failure: %s", e->reason);
+	}
+}
 
 - (void)
 pull_snapshot:(id<XLogPullerAsync>)puller

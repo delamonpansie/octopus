@@ -423,6 +423,9 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 - (ev_tstamp) run_crc_lag;
 - (const char *) run_crc_status;
 
+- (void) simple;
+- (void) bound_to_primary:(int)fd;
+
 - (void) recover_row:(struct row_v12 *)row;
 - (void) verify_run_crc:(struct tbuf *)buf;
 - (void) recover_finalize;
