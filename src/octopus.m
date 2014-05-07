@@ -225,8 +225,8 @@ module_init(struct tnt_module *mod)
 		foreach_module (m) {
 			if (!m->init_before)
 				continue;
-			for (i = 0; (*m->init_before)[i]; i++) {
-				if (strcmp((*m->init_before)[i], mod->name) == 0) {
+			for (i = 0; m->init_before[i]; i++) {
+				if (strcmp(m->init_before[i], mod->name) == 0) {
 					module_init(m);
 				}
 			}
@@ -238,18 +238,18 @@ module_init(struct tnt_module *mod)
 			struct tnt_module *dep = NULL;
 			/* if dependency is "?module_name"
 			 * then "module_name" is not critical dependency */
-			if ((*mod->depend_on)[i][0] == '?') {
-				dep = module((*mod->depend_on)[i] + 1);
+			if (mod->depend_on[i][0] == '?') {
+				dep = module(mod->depend_on[i] + 1);
 				if (!dep) {
 					say_warn("dependency module '%s' not registered",
-						       	(*mod->depend_on)[i]+1);
+						 mod->depend_on[i]+1);
 					continue;
 				}
 			} else {
-				dep = module((*mod->depend_on)[i]);
+				dep = module(mod->depend_on[i]);
 				if (!dep) {
 					panic("dependency module '%s' not registered",
-						       	(*mod->depend_on)[i]);
+					      mod->depend_on[i]);
 				}
 			}
 			module_init(dep);
