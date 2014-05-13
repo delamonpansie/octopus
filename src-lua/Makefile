@@ -19,9 +19,9 @@ obj += src-lua/jit/p.o
 obj += src-lua/jit/dis_x86.o
 obj += src-lua/jit/dis_x64.o
 
-src-lua/jit/vmdef.lua: third_party/luajit/src/luajit
+src-lua/jit/vmdef.lua: third_party/luajit/src/jit/vmdef.lua
 	@mkdir -p $(dir $@)
-	@test -f $@ || ln -s ../../third_party/luajit/src/jit/vmdef.lua $@
+	@test -f $@ || cp $^ $@
 
 
 # this dependency is required for $(CPP) calls below

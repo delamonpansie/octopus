@@ -5,7 +5,7 @@
 export LC_ALL=C
 
 .SUFFIXES:
-.SECONDARY:
+
 ROOT:=$(CURDIR)
 
 CORO_IMPL = ASM
@@ -57,7 +57,8 @@ MAKEFLAGS += --no-print-directory
 %.o %.lua: XCPPFLAGS += -I. -Iinclude
 ifneq (.,$(srcdir))
   %.o %.lua: XCPPFLAGS += -I$(srcdir) -I$(srcdir)/include
-  LUAJIT_VPATH=../../../$(srcdir)/third_party/luajit/src/
+  # ../../../ is because of 'make -C third_party/luajit/src'
+  LUAJIT_VPATH=$(if $(filter /%,$(srcdir)),$(srcdir)/third_party/luajit/src/,../../../$(srcdir)/third_party/luajit/src/)
 endif
 
 primary_module=$(firstword $(modules))
@@ -95,8 +96,7 @@ $(binary): $(obj) third_party/luajit/src/libluajit.a
 	$E "CC	$@"
 	$Q$(CC) $^ $(LIBS) $(XLDFLAGS) $(LDFLAGS) $(CFLAGS) -o $@
 
-third_party/luajit/src/libluajit.a: third_party/luajit/src/luajit
-third_party/luajit/src/luajit:
+third_party/luajit/src/luajit third_party/luajit/src/jit/vmdef.lua third_party/luajit/src/libluajit.a:
 	@mkdir -p third_party/luajit/src/host third_party/luajit/src/jit
 	$E "MAKE	$@"
 	$(Q)echo 'include $$(VPATH)Makefile' | $(MAKE) -C third_party/luajit/src -f - \
