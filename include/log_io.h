@@ -390,6 +390,7 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 	bool abort;
 	struct fiber *in_recv;
 	struct feeder_param *feeder;
+	struct row_v12 *unfetch_row;
 }
 
 - (ssize_t) recv;
@@ -428,11 +429,15 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 
 - (void) recover_row:(struct row_v12 *)row;
 - (void) verify_run_crc:(struct tbuf *)buf;
-- (void) recover_finalize;
-- (i64) recover_start;
-- (void) recover_follow:(ev_tstamp)delay;
+
 - (i64) recover_snap;
-- (i64) recover_cont;
+- (void) recover_remaining_wals;
+
+- (i64) load_from_local;
+- (void) local_hot_standby;
+- (void) recover_follow:(ev_tstamp)delay;
+- (void) recover_finalize;
+
 - (void) wal_final_row;
 /* pull_wal & load_from_remote throws exceptions on failure */
 - (int) pull_wal:(id<XLogPullerAsync>)puller;

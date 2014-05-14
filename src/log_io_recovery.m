@@ -240,6 +240,38 @@ recover_row:(struct row_v12 *)r
 }
 
 - (void)
+recover_row_stream:(id<XLogPuller>)stream
+{
+	@try {
+		int row_count = 0;
+		struct row_v12 *row;
+		palloc_register_cut_point(fiber->pool);
+
+		while ((row = [stream fetch_row])) {
+			if (row->lsn > lsn ||
+			    row->tag == (snap_initial|TAG_SYS) ||
+			    row->tag == (snap_final|TAG_SYS) ||
+			    (row->tag & ~TAG_MASK) == TAG_SNAP)
+				break;
+		}
+
+		for (; row; row = [stream fetch_row]) {
+			[self recover_row:row];
+
+			if (row_count++ > 1024) {
+				palloc_cutoff(fiber->pool);
+				palloc_register_cut_point(fiber->pool);
+				row_count = 0;
+			}
+		}
+	}
+	@finally {
+		palloc_cutoff(fiber->pool);
+	}
+}
+
+
+- (void)
 wal_final_row
 {
 	/* recovery of empty local_hot_standby & remote_hot_standby replica done in reverse:
@@ -260,7 +292,6 @@ snap_lsn
 recover_snap
 {
 	XLog *snap = nil;
-	struct row_v12 *r;
 
 	@try {
 		palloc_register_cut_point(fiber->pool);
@@ -286,15 +317,7 @@ recover_snap
 		if (legacy_snap)
 			[self recover_row:[self dummy_row_lsn:snap_lsn scn:snap_lsn tag:snap_initial|TAG_SYS]];
 
-		int row_count = 0;
-		while ((r = [snap fetch_row])) {
-			[self recover_row:r];
-			if (row_count++ > 1024) {
-				palloc_cutoff(fiber->pool);
-				palloc_register_cut_point(fiber->pool);
-				row_count = 0;
-			}
-		}
+		[self recover_row_stream:snap];
 
 		/* old v11 snapshot, scn == lsn from filename */
 		if (legacy_snap)
@@ -310,30 +333,6 @@ recover_snap
 	}
 	say_info("snapshot recovered, lsn:%"PRIi64 " scn:%"PRIi64, lsn, scn);
 	return lsn;
-}
-
-- (void)
-recover_wal:(id<XLogPuller>)l
-{
-	@try {
-		palloc_register_cut_point(fiber->pool);
-		struct row_v12 *r;
-		int row_count = 0;
-		while ((r = [l fetch_row])) {
-			if (r->lsn > lsn) {
-				last_wal_lsn = r->lsn;
-				[self recover_row:r];
-			}
-			if (row_count++ > 1024) {
-				palloc_cutoff(fiber->pool);
-				palloc_register_cut_point(fiber->pool);
-				row_count = 0;
-			}
-		}
-	}
-	@finally {
-		palloc_cutoff(fiber->pool);
-	}
 }
 
 - (XLog *)
@@ -372,7 +371,7 @@ recover_remaining_wals
 
 		say_info("recover from `%s'", current_wal->filename);
 	recover_current_wal:
-		[self recover_wal:current_wal];
+		[self recover_row_stream:current_wal];
 
 		if ([current_wal eof]) {
 			say_info("done `%s' lsn:%"PRIi64" scn:%"PRIi64,
@@ -392,43 +391,54 @@ recover_remaining_wals
 		      wal_greatest_lsn, lsn, wal_greatest_lsn - lsn);
 }
 
+
 - (i64)
-recover_cont
+load_from_local
 {
+	say_info("local recovery start");
+	[self status_update:"loading/local"];
+
+	if (lsn == 0) {
+		[self recover_snap];
+		if (lsn == 0) {
+			/* Break circular dependency.
+			   Remote recovery depends on [enable_local_writes] wich itself
+			   depends on binding to primary port.
+			   Binding to primary port depends on wal_final_row from
+			   remote replication. (There is no data in local WALs yet)
+			*/
+			if ([self feeder_addr_configured] && cfg.local_hot_standby)
+				[self wal_final_row];
+
+			return 0;
+		}
+		/*
+		 * just after snapshot recovery current_wal isn't known
+		 * so find wal which contains record with next lsn
+		 */
+		current_wal = [wal_dir containg_lsn:lsn + 1];
+	}
+
 	if (current_wal != nil)
 		say_info("recover from `%s'", current_wal->filename);
-
 	[self recover_remaining_wals];
 	say_info("wals recovered, lsn:%"PRIi64" scn:%"PRIi64, lsn, scn);
 
-	[self recover_follow:cfg.wal_dir_rescan_delay]; /* FIXME: make this conf */
-	[self status_update:"hot_standby/local"];
-
 	/* all curently readable wal rows were read, notify about that */
-	if (feeder.addr.sin_family == AF_UNSPEC || cfg.local_hot_standby)
+	if (![self feeder_addr_configured] || cfg.local_hot_standby)
 		[self wal_final_row];
 
-	return lsn;
-}
-
-- (i64)
-recover_start
-{
-	say_info("local recovery start");
-	[self recover_snap];
-	if (scn == 0)
-		return 0;
-	/*
-	 * just after snapshot recovery current_wal isn't known
-	 * so find wal which contains record with next lsn
-	 */
-	current_wal = [wal_dir containg_lsn:lsn + 1];
-	[self recover_cont];
 	if (last_wal_lsn && last_wal_lsn < lsn)
 		raise("Snapshot LSN is greater then last WAL LSN");
 	return lsn;
 }
 
+- (void)
+local_hot_standby
+{
+	[self recover_follow:cfg.wal_dir_rescan_delay]; /* FIXME: make this conf */
+	[self status_update:"hot_standby/local"];
+}
 
 static void follow_file(ev_stat *, int);
 
@@ -446,7 +456,7 @@ static void
 follow_file(ev_stat *w, int events __attribute__((unused)))
 {
 	Recovery *r = w->data;
-	[r recover_wal:r->current_wal];
+	[r recover_row_stream:r->current_wal];
 	if ([r->current_wal eof]) {
 		say_info("done `%s' LSN:%"PRIi64" SCN:%"PRIi64,
 			 r->current_wal->filename, [r lsn], [r scn]);
@@ -510,16 +520,19 @@ bound_to_primary:(int)fd
 simple
 {
 	@try {
-		i64 local_lsn = [self recover_start];
+		i64 local_lsn = [self load_from_local];
 		if (local_lsn == 0) {
 			if (![self feeder_addr_configured]) {
 				say_error("unable to find initial snapshot");
 				say_info("don't you forget to initialize "
 					 "storage with --init-storage switch?");
 				exit(EX_USAGE);
+
 			}
 		}
-		if (!cfg.local_hot_standby)
+		if (cfg.local_hot_standby)
+			[self local_hot_standby];
+		else
 			[self enable_local_writes];
 	}
 	@catch (Error *e) {
