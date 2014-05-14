@@ -1007,7 +1007,7 @@ fixup_row_v12(struct row_v12 *row)
 
 	/* compat: fix tags in old style row */
 	if (tag_type == 0 || (tag_type == TAG_WAL && tag != wal_data && tag < user_tag))
-		row->tag = fix_tag_v3(row->tag);
+		row->tag = fix_tag_v3(tag);
 }
 
 - (struct row_v12 *)
