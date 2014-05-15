@@ -96,6 +96,12 @@ $(binary): $(obj) third_party/luajit/src/libluajit.a
 	$E "CC	$@"
 	$Q$(CC) $^ $(LIBS) $(XLDFLAGS) $(LDFLAGS) $(CFLAGS) -o $@
 
+
+
+# prevent parallel building of this targets
+third_party/luajit/src/libluajit.a:|third_party/luajit/src/jit/vmdef.lua
+third_party/luajit/src/jit/vmdef.lua:|third_party/luajit/src/luajit
+
 third_party/luajit/src/luajit third_party/luajit/src/jit/vmdef.lua third_party/luajit/src/libluajit.a:
 	@mkdir -p third_party/luajit/src/host third_party/luajit/src/jit
 	$E "MAKE	$@"
