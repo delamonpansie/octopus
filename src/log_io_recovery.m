@@ -507,37 +507,27 @@ bound_to_primary:(int)fd
 	if (cfg.local_hot_standby) {
 		say_info("I am primary");
 
-		@try {
-			[self enable_local_writes];
-		}
-		@catch (Error *e) {
-			panic("Recovery failure: %s", e->reason);
-		}
+		[self enable_local_writes];
 	}
 }
 
 - (void)
 simple
 {
-	@try {
-		i64 local_lsn = [self load_from_local];
-		if (local_lsn == 0) {
-			if (![self feeder_addr_configured]) {
-				say_error("unable to find initial snapshot");
-				say_info("don't you forget to initialize "
-					 "storage with --init-storage switch?");
-				exit(EX_USAGE);
+	i64 local_lsn = [self load_from_local];
+	if (local_lsn == 0) {
+		if (![self feeder_addr_configured]) {
+			say_error("unable to find initial snapshot");
+			say_info("don't you forget to initialize "
+				 "storage with --init-storage switch?");
+			exit(EX_USAGE);
 
-			}
 		}
-		if (cfg.local_hot_standby)
-			[self local_hot_standby];
-		else
-			[self enable_local_writes];
 	}
-	@catch (Error *e) {
-		panic("Recovery failure: %s", e->reason);
-	}
+	if (cfg.local_hot_standby)
+		[self local_hot_standby];
+	else
+		[self enable_local_writes];
 }
 
 - (void)
