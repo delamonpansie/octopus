@@ -444,7 +444,7 @@ snapshot_write_rows:(XLog *)l
 
 			size_t index_rows = 0;
 			[index iterator_init];
-			while ([index iterator_next]) {
+			while ((obj = [index iterator_next])) {
 				if (unlikely(ghost(obj)))
 					continue;
 				index_rows++;
