@@ -1,25 +1,13 @@
 #!/usr/bin/ruby1.9.1
 
-$:.push 'test/lib'
-require 'standalone_env'
+$: << File.dirname($0) + '/lib'
+require 'run_env'
 
-class StandAloneEnvX < StandAloneEnv
-  def config
-    super + <<EOD
-object_space[0].enabled = 1
-object_space[0].index[0].type = "HASH"
-object_space[0].index[0].unique = 1
-object_space[0].index[0].key_field[0].fieldno = 0
-object_space[0].index[0].key_field[0].type = "STR"
-EOD
-  end
-
-  task :setup => [:init_lua]
-
-  task :init_lua do
-    cd_test_root do
-      f = open("box_init.lua", "w")
-      f.write <<-EOD
+class RunEnvX < RunEnv
+  task :setup => "box_init.lua"
+  file "box_init.lua" do
+    File.open("box_init.lua", "w") do |io|
+      io.write <<-EOD
         local box = require 'box'
         user_proc.select = box.wrap(function (n)
 	  local object_space = box.object_space[n]
@@ -40,15 +28,14 @@ EOD
 
         print('box_init.lua loadded')
       EOD
-      f.close
     end
   end
 
 end
 
-class MasterEnv < StandAloneEnvX
+class MasterEnv < RunEnvX
   def test_root
-    super + "_master"
+    super << "_master"
   end
 
   def config
@@ -58,14 +45,11 @@ EOD
   end
 end
 
-class SlaveEnv < StandAloneEnvX
+class SlaveEnv < RunEnvX
   def initialize
-    super
     @primary_port = 33023
-  end
-
-  def test_root
-    super + "_slave"
+    @test_root_suffix = "_slave"
+    super
   end
 
   def config
@@ -75,37 +59,24 @@ EOD
   end
 end
 
-def wait_for(n=100)
-  n.times do
-    return if yield
-    sleep 0.05
-  end
-  raise "wait_for failed"
+master = MasterEnv.new.connect_eval do
+  ping
+  self
 end
 
-MasterEnv.clean do
-  start
-  master = connect
-  master.ping
+SlaveEnv.connect_eval do
+  master.insert ['0', 'a', 'b', 'c', 'd']
+  wait_for { select_nolog(['0']).length > 0 }
 
-  SlaveEnv.clean do
-    start
-    slave = connect
+  master.select ['0']
+  select ['0']
 
-    master.insert ['0', 'a', 'b', 'c', 'd']
-    wait_for { slave.select_nolog(['0']).length > 0 }
+  master.lua 'user_proc.select', '0'
+  lua 'user_proc.select', '0'
 
+  master.lua 'user_proc.update', '0'
+  log_try { lua 'user_proc.update', '0' }
 
-    master.select ['0']
-    slave.select ['0']
-
-    master.lua 'user_proc.select', '0'
-    slave.lua 'user_proc.select', '0'
-
-    master.lua 'user_proc.update', '0'
-    log_try { slave.lua 'user_proc.update', '0' }
-
-    log_try { slave.lua 'user_proc.error', '0' }
-  end
+  log_try { lua 'user_proc.error', '0' }
 end
 

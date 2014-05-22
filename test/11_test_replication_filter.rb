@@ -1,11 +1,11 @@
 #!/usr/bin/ruby1.9.1
 
-$:.push 'test/lib'
-require 'standalone_env'
+$: << File.dirname($0) + '/lib'
+require 'run_env'
 
-class MasterEnv < StandAloneEnv
+class MasterEnv < RunEnv
   def test_root
-    super + "_master"
+    super << "_master"
   end
 
   def config
@@ -15,11 +15,7 @@ class MasterEnv < StandAloneEnv
 wal_dir_rescan_delay = 0.05
 
 wal_feeder_bind_addr = "0:33034"
-object_space[0].enabled = 1
-object_space[0].index[0].type = "HASH"
-object_space[0].index[0].unique = 1
-object_space[0].index[0].key_field[0].fieldno = 0
-object_space[0].index[0].key_field[0].type = "STR"
+object_space[0].index[0].key_field[0].type = "NUM"
 EOD
   end
 
@@ -64,56 +60,50 @@ end
   end
 end
 
-class SlaveEnv < StandAloneEnv
+class SlaveEnv < RunEnv
   def initialize
-    super
     @primary_port = 33023
-  end
-
-  def test_root
-    super + "_slave"
+    @test_root_suffix = "_slave"
+    super
   end
 
   def config
     super + <<EOD
 wal_feeder_addr = "127.0.0.1:33034"
 wal_feeder_filter = "test_filter"
-object_space[0].enabled = 1
-object_space[0].index[0].type = "HASH"
-object_space[0].index[0].unique = 1
-object_space[0].index[0].key_field[0].fieldno = 0
-object_space[0].index[0].key_field[0].type = "NUM"
 sync_scn_with_lsn = 0
 panic_on_scn_gap = 0
+
+object_space[0].index[0].key_field[0].type = "NUM"
 EOD
   end
 end
 
-
-MasterEnv.clean do
+master_env = MasterEnv.new
+master = master_env.env_eval do
   start
-  master = connect
+  connect
+end
 
-  SlaveEnv.clean do
-    start
-    # File.open("octopus.log").lines.each {|l| puts l }
-    slave = connect
+SlaveEnv.new.env_eval do
+  start
+  slave = connect
 
-    6.times do |i|
-      master.insert [i, i]
-    end
-    master.update_fields 4, [1, :add, 1]
-    master.update_fields 5, [1, :add, 1]
-
-    sleep 1.1 # wait fo feeder to find non empty xlog
-
-    master.select 0,1,2,3,4,5
-    slave.select 0,1,2,3,5
-
-    stop
-    start
-    puts "Slave\n" + `./octopus --cat 00000000000000000002.xlog 2>/dev/null| sed 's/tm:[^ ]* //'` + "\n"
+  6.times do |i|
+    master.insert [i, i]
   end
-  puts "Master\n" + `./octopus --cat 00000000000000000002.xlog 2>/dev/null| sed 's/tm:[^ ]* //'` + "\n"
+  master.update_fields 4, [1, :add, 1]
+  master.update_fields 5, [1, :add, 1]
+
+  sleep 1.1 # wait fo feeder to find non empty xlog
+
+  master.select 0,1,2,3,4,5
+  slave.select 0,1,2,3,5
+
+  restart
+  puts "Slave\n" + `./octopus --cat 00000000000000000002.xlog 2>/dev/null| sed 's/tm:[^ ]* //'` + "\n"
+  master_env.cd do
+    puts "Master\n" + `./octopus --cat 00000000000000000002.xlog 2>/dev/null| sed 's/tm:[^ ]* //'` + "\n"
+  end
 end
 

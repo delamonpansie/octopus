@@ -1,9 +1,9 @@
 #!/usr/bin/ruby1.9.1
 
-$:.push 'test/lib'
-require 'standalone_env'
+$: << File.dirname($0) + '/lib'
+require 'run_env'
 
-class Env < StandAloneEnv
+class Env < RunEnv
   def config
     super + <<EOD
 rows_per_wal=100
@@ -19,8 +19,7 @@ EOD
   end
 end
 
-env = Env.clean
-env.with_server do
+Env.connect_eval do
   ping
   insert ["x16", "y16", 1]
   insert ["x22", "y22", 2]

@@ -1,9 +1,9 @@
 #!/usr/bin/ruby1.9.1
 
-$:.push 'test/lib'
-require 'standalone_env'
+$: << File.dirname($0) + '/lib'
+require 'run_env'
 
-class Env < StandAloneEnv
+class Env < RunEnv
   def config
     super + <<EOD
 object_space[0].enabled = 1
@@ -63,7 +63,7 @@ EOD
   end
 end
 
-Env.clean.with_server do
+Env.connect_eval do
   ping
   insert ['1', '2', 3]
   select '1', :index => 0
@@ -87,7 +87,7 @@ Env.clean.with_server do
   select 0, :index => 1
 end
 
-Env.clean.with_server do
+Env.connect_eval do
   ping
 
   log_try { insert [] }
@@ -95,7 +95,7 @@ Env.clean.with_server do
   log_try { insert [1,2] }
 end
 
-Env.clean.with_server do
+Env.connect_eval do
   100.times {|i| insert [i.to_s, i.to_s, i] }
 
   pks

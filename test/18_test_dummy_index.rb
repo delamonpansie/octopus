@@ -1,17 +1,13 @@
 #!/usr/bin/ruby1.9.1
 
-$:.push 'test/lib'
-require 'standalone_env'
+$: << File.dirname($0) + '/lib'
+require 'run_env'
 
-class Env < StandAloneEnv
+class Env < RunEnv
   def config
     super + <<EOD
 rows_per_wal=100
 
-object_space[0].enabled = 1
-object_space[0].index[0].type = "HASH"
-object_space[0].index[0].unique = 1
-object_space[0].index[0].key_field[0].fieldno = 0
 object_space[0].index[0].key_field[0].type = "NUM"
 
 object_space[0].index[1].type = "TREE"
@@ -23,8 +19,10 @@ EOD
   end
 end
 
-env = Env.clean
-env.with_server do
+env = Env.new
+
+env.start
+env.connect_eval do
   ping
   insert [1,2]
   insert [2,3]
@@ -32,13 +30,15 @@ env.with_server do
   Process.kill('USR1', env.pid)
 end
 
-env.with_server do
+env.restart
+env.connect_eval do
   ping
   insert [1,2]
   insert [2,3]
 end
 
-env.with_server do
+env.restart
+env.connect_eval do
   ping
   insert [1,2]
   insert [2,3]

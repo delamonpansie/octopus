@@ -1,9 +1,9 @@
 #!/usr/bin/ruby1.9.1
 
-$:.push 'test/lib'
-require 'standalone_env'
+$: << File.dirname($0) + '/lib'
+require 'run_env'
 
-class Env < StandAloneEnv
+class Env < RunEnv
   def config
     super + <<EOD
 object_space[0].enabled = 1
@@ -17,20 +17,17 @@ EOD
   end
 end
 
-Env.clean do
-  start
-  s = connect
+Env.connect_eval do |env|
+  insert %w[1 2 3]
+  delete %w[1 2]
+  select %w[1]
 
-  s.insert %w[1 2 3]
-  s.delete %w[1 2]
-  s.select %w[1]
+  insert %w[1 2 3]
+  insert %w[1 2a 3]
+  log_try { update_fields %w[1], [1, :set, "aa"] }
+  update_fields %w[1 2], [1, :set, "aa"]
+  select %w[1]
 
-  s.insert %w[1 2 3]
-  s.insert %w[1 2a 3]
-  log_try { s.update_fields %w[1], [1, :set, "aa"] }
-  s.update_fields %w[1 2], [1, :set, "aa"]
-  s.select %w[1]
-
-  stop
+  env.stop
   puts `./octopus --cat 00000000000000000002.xlog`.gsub(/ tm:\d+\.\d+ /, ' ')
 end

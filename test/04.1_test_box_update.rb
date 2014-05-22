@@ -1,28 +1,24 @@
 #!/usr/bin/ruby1.9.1
 
-$:.push 'test/lib'
-require 'standalone_env'
+$: << File.dirname($0) + '/lib'
+require 'run_env'
 
-class Env < StandAloneEnv
+class Env < RunEnv
   def config
     super + <<EOD
-object_space[0].enabled = 1
-object_space[0].index[0].type = "HASH"
-object_space[0].index[0].unique = 1
-object_space[0].index[0].key_field[0].fieldno = 0
 object_space[0].index[0].key_field[0].type = "NUM"
 EOD
   end
 end
 
-Env.clean do |env|
+Env.env_eval do
   start
 
-  c1 = env.connect
-  c2 = env.connect
-  c4 = env.connect
+  c1 = connect
+  c2 = connect
+  c4 = connect
 
-  wal_writer_pid = env.pid + 4 # hack!
+  wal_writer_pid = pid + 4 # hack!
   c1.insert [3, "baz"]
   puts "# wal_writer stop"
   Process.kill "STOP", wal_writer_pid

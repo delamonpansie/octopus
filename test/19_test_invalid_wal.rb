@@ -1,22 +1,9 @@
 #!/usr/bin/ruby1.9.1
 
-$:.push 'test/lib'
-require 'standalone_env'
+$: << File.dirname($0) + '/lib'
+require 'run_env'
 
-class Env < StandAloneEnv
-  def config
-    super + <<EOD
-object_space[0].enabled = 1
-object_space[0].index[0] = { type = "HASH"
-    			     unique = 1
-			     key_field[0] = { fieldno = 0,
-					      type = "NUM" }
-                           }
-EOD
-  end
-end
-
-env = Env.clean do
+RunEnv.env_eval do
   touch '00000000000000000002.xlog.inprogress'
   start
   connect.ping
@@ -24,15 +11,18 @@ env = Env.clean do
 end
 
 
-env = Env.clean do
+RunEnv.env_eval do
+  invoke :start
   touch '00000000000000000002.xlog'
   octopus [], :out => "/dev/null", :err => "/dev/null"
-  delay
-  puts File.open('octopus.log').lines.grep(/fail/)[0].sub(/.*> /, '')
+
+  log_line = wait_for "expected failure" do
+    File.open('octopus.log').lines.grep(/not all WALs have been successfully read/)[0].sub(/.*> /, '')
+  end
+  puts log_line
 end
 
-
-env = Env.clean do
+RunEnv.env_eval do
   start
   connect.insert [1,2,3]
   stop
@@ -46,6 +36,8 @@ env = Env.clean do
   mv '00000000000000000002.xlog.tmp', '00000000000000000002.xlog'
 
   octopus [], :out => "/dev/null", :err => "/dev/null"
-  delay
-  puts File.open('octopus.log').lines.grep(/no valid rows were read/)[0].sub(/.*> /, '')
+  log_line = wait_for "expected failure" do
+    File.open('octopus.log').lines.grep(/no valid rows were read/)[0].sub(/.*> /, '')
+  end
+  puts log_line
 end

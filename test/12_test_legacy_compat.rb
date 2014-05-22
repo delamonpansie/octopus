@@ -1,24 +1,9 @@
 #!/usr/bin/ruby1.9.1
 
-$:.push 'test/lib'
-require 'standalone_env'
+$: << File.dirname($0) + '/lib'
+require 'run_env'
 
-class Env < StandAloneEnv
-  def config
-    super + <<EOD
-
-object_space[0].enabled = 1
-object_space[0].index[0].type = "HASH"
-object_space[0].index[0].unique = 1
-object_space[0].index[0].key_field[0].fieldno = 0
-object_space[0].index[0].key_field[0].type = "STR"
-EOD
-  end
-
-  def delay
-    sleep 0.01
-  end
-
+class Env < RunEnv
   def octopus(args, param = {})
     param[:err] = "/dev/null"
     super args, param
@@ -28,7 +13,6 @@ end
 class EnvIOCompat < Env
   def config
     super + <<EOD
-
 io_compat = 1
 EOD
   end
@@ -41,11 +25,12 @@ SNAP = {
 }
 
 def test(env, ver)
-  env.clean do
-    rm '00000000000000000001.snap'
-    f = File.new('00000000000000000001.snap', 'w')
-    f.write(SNAP[ver])
-    f.close
+  env.env_eval do
+    invoke :setup
+
+    File.open('00000000000000000001.snap', 'w') do |io|
+      io.write(SNAP[ver])
+    end
 
     begin
       start

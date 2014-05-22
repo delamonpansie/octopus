@@ -1,21 +1,17 @@
 #!/usr/bin/ruby1.9.1
 
-$:.push 'test/lib'
-require 'standalone_env'
+$: << File.dirname($0) + '/lib'
+require 'run_env'
 
-class Env < StandAloneEnv
+class Env < RunEnv
   def config
     super + <<EOD
-object_space[0].enabled = 1
-object_space[0].index[0] = { type = "HASH"
-			     unique = 1
-			     key_field[0] = { fieldno = 0
-                                              type = "NUM" } }
+object_space[0].index[0].key_field[0].type = "NUM"
 EOD
   end
 end
 
-Env.clean.with_server do
+Env.connect_eval do
   200.times {|i| insert [i, "x" * i] }
 
   lua('user_proc.get_all_tuples', '0', '0').each do |t| puts t[1] end

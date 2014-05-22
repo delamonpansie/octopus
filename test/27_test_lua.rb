@@ -1,9 +1,9 @@
 #!/usr/bin/ruby1.9.1
 
-$:.push 'test/lib'
-require 'standalone_env'
+$: << File.dirname($0) + '/lib'
+require 'run_env'
 
-class Env < StandAloneEnv
+class Env < RunEnv
   def config
     super + <<EOD
 object_space[0].enabled = 1
@@ -44,7 +44,7 @@ EOD
   end
 end
 
-Env.clean.with_server do
+Env.connect_eval do
   100.times {|i| insert [i.to_s, i, i.to_s] }
   insert ["\0\0\0\0", "\0\0\0\0", "\0\0\0\0\0\0\0\0"], :object_space => 1
 

@@ -1,4 +1,4 @@
-$:.push 'client/ruby'
+$: << File.dirname($0) + '/../client/ruby'
 require 'silverbox'
 
 class SilverBox

@@ -1,22 +1,17 @@
 #!/usr/bin/ruby1.9.1
 
-$:.push 'test/lib'
-require 'standalone_env'
+$: << File.dirname($0) + '/lib'
+require 'run_env'
 
-class MasterEnv < StandAloneEnv
+class MasterEnv < RunEnv
   def test_root
-    super + "_master"
+    super << "_master"
   end
 
   def config
     super + <<EOD
 wal_feeder_bind_addr = ":33034"
 #{$io_compat}
-object_space[0].enabled = 1
-object_space[0].index[0].type = "HASH"
-object_space[0].index[0].unique = 1
-object_space[0].index[0].key_field[0].fieldno = 0
-object_space[0].index[0].key_field[0].type = "STR"
 
 object_space[1].enabled = 1
 object_space[1].index[0].type = "HASH"
@@ -58,26 +53,19 @@ end
   end
 end
 
-class SlaveEnv < StandAloneEnv
+class SlaveEnv < RunEnv
   def initialize
-    super
     @primary_port = 33023
-  end
-
-  def test_root
-    super + "_slave"
+    @test_root_suffix = "_slave"
+    super
   end
 
   def config
     super + <<EOD
+admin_port = 33025
 wal_feeder_addr = "127.0.0.1:33034"
 wal_feeder_filter = "id_xlog"
 #{$io_compat}
-object_space[0].enabled = 1
-object_space[0].index[0].type = "HASH"
-object_space[0].index[0].unique = 1
-object_space[0].index[0].key_field[0].fieldno = 0
-object_space[0].index[0].key_field[0].type = "NUM"
 
 object_space[1].enabled = 1
 object_space[1].index[0].type = "HASH"
@@ -88,60 +76,60 @@ EOD
   end
 end
 
-def wait_for(n=100)
-  n.times do
-    return if yield
-    sleep 0.05
-  end
-  raise "wait_for failed"
-end
-
-MasterEnv.clean do
-  start
-  master = connect
-  master.ping
+master = MasterEnv.new
+master.start
+master.connect_eval do
+  ping
 
   100.times do |i|
-    master.insert [i, i + 1, "abc", "def"]
-    master.insert [i, i + 1, "abc", "def"]
-    master.insert [i, i + 1, "abc", "def"], :object_space => 1
+    insert [i, i + 1, "abc", "def"]
+    insert [i, i + 1, "abc", "def"]
+    insert [i, i + 1, "abc", "def"], :object_space => 1
     if i == 50 then
-      Process.kill('USR1', pid)
-      wait_for { FileTest.readable?("00000000000000000154.snap") }
+      Process.kill('USR1', master.pid)
+      wait_for "readable 00000000000000000154.snap" do
+        FileTest.readable?("00000000000000000154.snap")
+      end
     end
   end
+end
 
-  SlaveEnv.clean do
-    start
-    slave = connect
-    wait_for { FileTest.readable?("00000000000000000154.snap") }
-    slave.select [99]
-    slave.select [99], :object_space => 1
+SlaveEnv.connect_eval do |env|
+  wait_for "readable 00000000000000000154.snap" do
+    FileTest.readable?("00000000000000000154.snap")
+  end
 
-    Process.kill("STOP", pid)
+  wait_for { select_nolog([99]).length > 0 }
+
+  select [99]
+  select [99], :object_space => 1
+
+  Process.kill("STOP", env.pid)
+  master.connect_eval do
     1000.times do |i|
-      master.insert [i, i + 1, "ABC", "DEF"]
-      master.insert [i, i + 1, "ABC", "DEF"]
-      master.insert [i, i + 1, "ABC", "DEF"], :object_space => 1
+      insert [i, i + 1, "ABC", "DEF"]
+      insert [i, i + 1, "ABC", "DEF"]
+      insert [i, i + 1, "ABC", "DEF"], :object_space => 1
     end
-    Process.kill("CONT", pid)
-
-    wait_for { slave.select_nolog([999]).length > 0 }
-    slave.select [998]
-    slave.select [999]
-    slave.select [998], :object_space => 1
-    slave.select [999], :object_space => 1
-
-    # verify that replica is able to read it's own xlog's
-    stop
-    start
-
-    slave = connect
-    wait_for { slave.select_nolog([999]) }
-    slave.select [998]
-    slave.select [999]
-    slave.select [998], :object_space => 1
-    slave.select [999], :object_space => 1
   end
+  Process.kill("CONT", env.pid)
+
+  wait_for { select_nolog([999]).length > 0 }
+  select [998]
+  select [999]
+  select [998], :object_space => 1
+  select [999], :object_space => 1
+
+  # verify that replica is able to read it's own xlog's
+  env.stop
+  env.start
+
+  wait_for "reconnect" do reconnect end
+
+  wait_for { select_nolog([999]) }
+  select [998]
+  select [999]
+  select [998], :object_space => 1
+  select [999], :object_space => 1
 end
 
