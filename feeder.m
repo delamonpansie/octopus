@@ -230,10 +230,7 @@ recover_start_from_scn:(i64)initial_scn filter:(struct feeder_filter*)_filter
 		filter(NULL, _filter->arg, _filter->arglen);
 	}
 
-	if (initial_scn == 0) {
-		[self recover_snap];
-		current_wal = [wal_dir containg_lsn:lsn];
-	} else {
+	if (initial_scn != 0) {
 		i64 initial_lsn = [wal_dir containg_scn:initial_scn];
 		if (initial_lsn <= 0)
 			raise("unable to find WAL containing SCN:%"PRIi64, initial_scn);
@@ -243,7 +240,9 @@ recover_start_from_scn:(i64)initial_scn filter:(struct feeder_filter*)_filter
 					   with lsn + 1 ==> equal to initial_lsn */
 		scn = initial_scn;
 	}
-	[self recover_cont];
+
+	[self load_from_local];
+	[self recover_follow:cfg.wal_dir_rescan_delay];
 }
 
 @end
