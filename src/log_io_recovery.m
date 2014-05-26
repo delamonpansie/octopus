@@ -726,10 +726,12 @@ remote_hot_standby(va_list ap)
 	bool warning_said = false;
 
 	r->remote_puller = [[objc_lookUpClass("XLogPuller") alloc] init];
-connect:
-	hot_standby_status(r, "connect", NULL);
+again:
+	while (![r feeder_addr_configured])
+		fiber_sleep(reconnect_delay);
 
-	while ([r feeder_addr_configured]) {
+	hot_standby_status(r, "connect", NULL);
+	do {
 		[r->remote_puller feeder_param: &r->feeder];
 
 		i64 scn = [r scn];
@@ -761,15 +763,12 @@ connect:
 	sleep:
 		fiber_gc();
 		fiber_sleep(reconnect_delay);
-	}
+	} while ([r feeder_addr_configured]);
 
 	assert(r->local_writes);
 	[r status_update:"primary"];
 
-	while (![r feeder_addr_configured])
-		fiber_sleep(reconnect_delay);
-
-	goto connect;
+	goto again;
 }
 
 
