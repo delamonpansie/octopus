@@ -127,6 +127,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 - (XLog *) containg_lsn:(i64)target_lsn;
 - (i64) containg_scn:(i64)target_scn;
 - (int) lock;
+- (int) stat:(struct stat *)buf;
 @end
 
 @interface SnapDir: XLogDir
@@ -404,9 +405,11 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 @end
 
 @interface Recovery: XLogWriter {
+	ev_timer lock_timer;
+@public
 	i64 last_wal_lsn;
 	ev_tstamp lag, last_update_tstamp, run_crc_verify_tstamp;
-	char status[64];
+	char status[64], prev_status[64];
 
 	XLogPuller *remote_puller;
 	struct feeder_param feeder;
@@ -425,7 +428,6 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 - (const char *) run_crc_status;
 
 - (void) simple;
-- (void) bound_to_primary:(int)fd;
 
 - (void) recover_row:(struct row_v12 *)row;
 - (void) verify_run_crc:(struct tbuf *)buf;

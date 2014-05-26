@@ -1110,6 +1110,12 @@ lock
 	return flock(fd, LOCK_EX|LOCK_NB);
 }
 
+- (int)
+stat:(struct stat *)buf
+{
+	return fstat(fd, buf);
+}
+
 static int
 cmp_i64(const void *_a, const void *_b)
 {

@@ -400,18 +400,9 @@ load_from_local
 
 	if (lsn == 0) {
 		[self recover_snap];
-		if (lsn == 0) {
-			/* Break circular dependency.
-			   Remote recovery depends on [enable_local_writes] wich itself
-			   depends on binding to primary port.
-			   Binding to primary port depends on wal_final_row from
-			   remote replication. (There is no data in local WALs yet)
-			*/
-			if ([self feeder_addr_configured] && cfg.local_hot_standby)
-				[self wal_final_row];
-
+		if (lsn == 0)
 			return 0;
-		}
+
 		/*
 		 * just after snapshot recovery current_wal isn't known
 		 * so find wal which contains record with next lsn
@@ -424,8 +415,10 @@ load_from_local
 	[self recover_remaining_wals];
 	say_info("wals recovered, lsn:%"PRIi64" scn:%"PRIi64, lsn, scn);
 
-	/* all curently readable wal rows were read, notify about that */
-	if (![self feeder_addr_configured] || cfg.local_hot_standby)
+	/* loading is faster until wal_final_row called because service is not yet initialized and
+	   only pk indexes must be updated. remote feeder will send wal_final_row then all remote
+	   rows are read */
+	if (![self feeder_addr_configured])
 		[self wal_final_row];
 
 	if (last_wal_lsn && last_wal_lsn < lsn)
@@ -433,11 +426,25 @@ load_from_local
 	return lsn;
 }
 
+static void
+wal_lockcb(ev_timer *timer, int ev __attribute__((unused)))
+{
+	Recovery *r = timer->data;
+	if ([r->wal_dir lock] == 0) {
+		[r enable_local_writes];
+		ev_timer_stop(timer);
+	}
+}
+
 - (void)
 local_hot_standby
 {
 	[self recover_follow:cfg.wal_dir_rescan_delay]; /* FIXME: make this conf */
 	[self status_update:"hot_standby/local"];
+
+	lock_timer.data = self;
+	ev_timer_init(&lock_timer, wal_lockcb, 0.0, 1.0);
+	ev_timer_start(&lock_timer);
 }
 
 static void follow_file(ev_stat *, int);
@@ -493,22 +500,6 @@ recover_finalize
 
 	free(skip_scn.pool);
 	skip_scn = TBUF(NULL, 0, NULL);
-}
-
-- (void)
-bound_to_primary:(int)fd
-{
-	if (fd < 0) {
-		if (!cfg.local_hot_standby)
-			panic("unable bind to primary_addr `%s'", cfg.primary_addr);
-		return;
-	}
-
-	if (cfg.local_hot_standby) {
-		say_info("I am primary");
-
-		[self enable_local_writes];
-	}
 }
 
 - (void)
@@ -795,12 +786,28 @@ feeder_changed:(struct feeder_param*)new
 	return false;
 }
 
+static int
+same_dir(XLogDir *a, XLogDir *b)
+{
+	struct stat sta, stb;
+	if ([a stat:&sta] == 0 && [a stat:&stb] == 0)
+		return sta.st_ino == stb.st_ino;
+	else
+		return strcmp(a->dirname, b->dirname) == 0;
+}
+
 
 - (void)
 enable_local_writes
 {
 	if ([wal_dir lock] < 0)
-		panic("Can't lock wal_dir");
+		panic("Can't lock wal_dir:%s", wal_dir->dirname);
+
+	if (!same_dir(wal_dir, snap_dir)) {
+		if ([snap_dir lock] < 0)
+			panic("Can't lock snap_dir:%s", snap_dir->dirname);
+	}
+
 	local_writes = true;
 
 	[self recover_finalize];
@@ -983,13 +990,16 @@ feeder_addr_configured
 - (void)
 status_update:(const char *)fmt, ...
 {
+	strcpy(prev_status, status);
 	va_list ap;
 	va_start(ap, fmt);
 	vsnprintf(status, sizeof(status), fmt, ap);
 	va_end(ap);
 
-	say_info("recovery status: %s", status);
-	[self status_changed];
+	if (strcmp(prev_status, status) != 0) {
+		say_info("recovery status: %s", status);
+		[self status_changed];
+	}
 }
 
 - (void)
