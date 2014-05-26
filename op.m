@@ -844,10 +844,11 @@ box_service_ro(struct service *s)
 	service_register_iproto_stream(s, UPDATE_FIELDS, box_roerr, 0);
 	service_register_iproto_stream(s, DELETE, box_roerr, 0);
 	service_register_iproto_stream(s, DELETE_1_3, box_roerr, 0);
-	service_register_iproto_stream(s, EXEC_LUA, box_roerr, 0);
 	service_register_iproto_stream(s, PAXOS_LEADER, box_roerr, 0);
-	/* FIXME: lua is disabled because there is no easy way to
-	   ensure RO mode in lua callback */
+
+	/* allow select only lua procedures
+	   updates are blocked by luaT_box_dispatch() */
+	service_register_iproto_block(s, EXEC_LUA, box_lua_cb, 0);
 }
 
 void __attribute__((constructor))

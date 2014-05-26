@@ -279,7 +279,7 @@ box_cat_scn(i64 stop_scn)
 {
 	[[[CatRecovery alloc] init_snap_dir:cfg.snap_dir
 				    wal_dir:cfg.wal_dir
-				   stop_scn:stop_scn] recover_start];
+				   stop_scn:stop_scn] load_from_local];
 	return 0;
 }
 

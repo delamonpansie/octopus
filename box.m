@@ -196,33 +196,10 @@ build_secondary_indexes()
 }
 
 static void
-bound_hotstandby(int fd)
-{
-	if (fd < 0)
-		return;
-
-	@try {
-		[recovery enable_local_writes];
-	}
-	@catch (Error *e) {
-		panic("Recovery failure: %s", e->reason);
-	}
-}
-
-static void
-bound_standalone(int fd)
-{
-	if (fd < 0)
-		panic("unable bind to %s", cfg.primary_addr);
-}
-
-static void
 initialize_service()
 {
-	tcp_iproto_service(&box_primary, cfg.primary_addr,
-			   cfg.local_hot_standby ? bound_hotstandby : bound_standalone,
-			   NULL);
-	box_service(&box_primary);
+	tcp_iproto_service(&box_primary, cfg.primary_addr, NULL, NULL);
+	box_service_ro(&box_primary);
 
 	for (int i = 0; i < MAX(1, cfg.wal_writer_inbox_size); i++)
 		fiber_create("box_worker", iproto_worker, &box_primary);
@@ -317,8 +294,16 @@ wal_final_row
 status_changed
 {
 	/* ugly hack: since it's a category it also breaks feeders title() */
-	if (self == recovery)
+	if (self == recovery) {
 		title(NULL);
+
+		if (strcmp(status, "primary") == 0) {
+			box_service(&box_primary);
+			return;
+		}
+		if (strcmp(prev_status, "primary") == 0)
+			box_service_ro(&box_primary);
+	}
 }
 
 - (int)
@@ -509,34 +494,11 @@ init_second_stage(va_list ap __attribute__((unused)))
 
 	configure();
 
-	@try {
-		i64 local_lsn = [recovery recover_start];
-		if (cfg.paxos_enabled) {
-			[recovery enable_local_writes];
-		} else {
-			if (local_lsn == 0) {
-				if (![recovery feeder_addr_configured]) {
-					say_error("unable to find initial snapshot");
-					say_info("don't you forget to initialize "
-						 "storage with --init-storage switch?");
-					exit(EX_USAGE);
-				}
-
-				/* Break circular dependency.
-				   Remote recovery depends on [enable_local_writes] wich itself
-				   depends on binding to primary port.
-				   Binding to primary port depends on wal_final_row from
-				   remote replication. (There is no data in local WALs yet)
-				 */
-				if ([recovery feeder_addr_configured] && cfg.local_hot_standby)
-					[recovery wal_final_row];
-			}
-			if (!cfg.local_hot_standby)
-				[recovery enable_local_writes];
-		}
-	}
-	@catch (Error *e) {
-		panic("Recovery failure: %s", e->reason);
+	if (cfg.paxos_enabled) {
+		[recovery load_from_local];
+		[recovery enable_local_writes];
+	} else {
+		[recovery simple];
 	}
 	title(NULL);
 }
