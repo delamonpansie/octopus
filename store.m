@@ -181,6 +181,23 @@ apply:(struct tbuf *)op tag:(u16)tag
 	}
 }
 
+#ifndef MEMCACHE_NO_EXPIRE
+static void memcached_expire(va_list va __attribute__((unused)));
+- (void)
+status_changed
+{
+	/* ugly hack: since it's a category it also breaks feeders title() */
+	if (self == recovery) {
+		if (strcmp(status, "primary") == 0) {
+			if (fiber_create("memecached_expire", memcached_expire) == NULL)
+				panic("can't start the expire fiber");
+			return;
+		}
+		if (strcmp(prev_status, "primary") == 0)
+			panic("can't downgrade from primary");
+	}
+}
+#endif
 @end
 
 @implementation SnapWriter (Memcached)
@@ -401,31 +418,6 @@ flush_all(va_list ap)
 }
 
 static void
-memcached_bound_to_primary(int fd)
-{
-	if (fd < 0) {
-		if (!cfg.local_hot_standby)
-			panic("unable bind to %s", cfg.primary_addr);
-		return;
-	}
-
-	if (cfg.local_hot_standby) {
-		@try {
-			[recovery enable_local_writes];
-			title(NULL);
-		}
-		@catch (Error *e) {
-			panic("Recovery failure: %s", e->reason);
-		}
-	}
-
-#ifndef MEMCACHE_NO_EXPIRE
-	if (fd > 0 && fiber_create("memecached_expire", memcached_expire) == NULL)
-		panic("can't start the expire fiber");
-#endif
-}
-
-static void
 memcached_handler(va_list ap)
 {
 	int fd = va_arg(ap, int);
@@ -525,20 +517,10 @@ memcached_init()
 	if (init_storage)
 		return;
 
-	i64 local_lsn = [recovery recover_start];
-	if (local_lsn == 0) {
-		if (![recovery feeder_addr_configured]) {
-			say_error("unable to find initial snapshot");
-			say_info("don't you forget to initialize "
-				 "storage with --init-storage switch?");
-			exit(EX_USAGE);
-		}
-	}
-	if (!cfg.local_hot_standby)
-		[recovery enable_local_writes];
+	[recovery simple];
 
 	if (fiber_create("memcached/acceptor", tcp_server, cfg.primary_addr,
-			 memcached_accept, memcached_bound_to_primary, NULL) == NULL)
+			 memcached_accept, NULL, NULL) == NULL)
 	{
 		say_error("can't start tcp_server on `%s'", cfg.primary_addr);
 		exit(EX_OSERR);
