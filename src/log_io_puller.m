@@ -322,8 +322,6 @@ contains_full_row_v11(const struct tbuf *b)
 		tbuf_len(b) >= sizeof(struct _row_v11) + _row_v11(b)->len;
 }
 
-static ev_timer fake_abort;
-
 - (ssize_t)
 recv_with_timeout: (ev_tstamp)timeout
 {
@@ -389,8 +387,7 @@ abort_recv
 {
 	abort = 1;
 	if (in_recv) {
-		ev_timer_init(&fake_abort, NULL, 0, 0);
-		fiber_wake(in_recv, (void*)&fake_abort);
+		fiber_wake(in_recv, NULL);
 	}
 }
 
