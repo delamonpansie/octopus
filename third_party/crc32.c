@@ -734,7 +734,8 @@ multitable_crc32c(uint32_t crc32c,
 	return (crc32c_sb8_64_bit(crc32c, buffer, length, to_even_word));
 }
 
-#if defined(__amd64__) && defined(__GNUC__) && !defined(__FreeBSD__)
+#define GCC_VERSION (__GNUC__ * 100 + __GNUC_MINOR__)
+#if defined(__amd64__) && defined(__GNUC__) && GCC_VERSION >= 403 && defined(__LP64__) && !defined(__FreeBSD__)
 #  define SSE42_FEATURE_BIT (1 << 20)
 #  define CPUID_FEATURES 1
 static uint32_t cached_cpu_supports_crc32;
