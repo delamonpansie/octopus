@@ -734,11 +734,76 @@ multitable_crc32c(uint32_t crc32c,
 	return (crc32c_sb8_64_bit(crc32c, buffer, length, to_even_word));
 }
 
+#if defined(__amd64__) && defined(__GNUC__) && !defined(__FreeBSD__)
+#  define SSE42_FEATURE_BIT (1 << 20)
+#  define CPUID_FEATURES 1
+static uint32_t cached_cpu_supports_crc32;
+static void __attribute__ ((constructor)) test_crc32_support_flag(void) {
+	uint32_t eax, ebx, ecx, edx;
+	asm("cpuid" : "=a" (eax), "=b"(ebx), "=c"(ecx), "=d"(edx) : "a"(CPUID_FEATURES) : "cc");
+	cached_cpu_supports_crc32 = !!(ecx & SSE42_FEATURE_BIT);
+}
+
+#define mm_crc32_u64(crc, value) \
+	asm("crc32q %1, %0\n" :  "+r" (crc) :  "rm" (value))
+
+#define mm_crc32_u32(crc, value) \
+	asm("crc32l %1, %0\n" :  "+r" (crc) :  "rm" (value))
+
+#define mm_crc32_u16(crc, value) \
+	asm("crc32w %1, %0\n" :  "+r" (crc) :  "rm" (value))
+
+#define mm_crc32_u8(crc, value) \
+	asm("crc32b %1, %0\n" :  "+r" (crc) :  "rm" (value));
+
+static inline uint32_t hardware_crc32c(uint32_t crc, const unsigned char *buf, unsigned int len) {
+	if (len == 0) {
+		return crc;
+	}
+
+#  define CALC_CRC_HEAD(op, type)                                  \
+	do {                                                       \
+		if ((size_t)buf & sizeof(type)) {                  \
+			op(crc, *(type *)buf);                     \
+			len -= sizeof(type); buf += sizeof(type);  \
+		}                                                  \
+	} while(0)
+	CALC_CRC_HEAD(mm_crc32_u8, uint8_t);
+	CALC_CRC_HEAD(mm_crc32_u16, uint16_t);
+	CALC_CRC_HEAD(mm_crc32_u32, uint32_t);
+
+	uint64_t _crc = crc;
+	while(len >= sizeof(uint64_t)) {
+		mm_crc32_u64(_crc, *(uint64_t*)(buf));
+		len -= sizeof(uint64_t); buf += sizeof(uint64_t);
+	}
+	crc = _crc;
+
+#  define CALC_CRC_TAIL(op, type)                                  \
+	do {                                                       \
+		if (len & sizeof(type)) {                          \
+			op(crc, *(type *)buf);                     \
+			len -= sizeof(type); buf += sizeof(type);  \
+		}                                                  \
+	} while(0)
+	CALC_CRC_TAIL(mm_crc32_u32, uint32_t);
+	CALC_CRC_TAIL(mm_crc32_u16, uint16_t);
+	CALC_CRC_TAIL(mm_crc32_u8, uint8_t);
+
+	return crc;
+}
+#endif
+
 uint32_t
 crc32c(uint32_t crc32c,
     const unsigned char *buffer,
     unsigned int length)
 {
+#if defined(SSE42_FEATURE_BIT)
+	if (cached_cpu_supports_crc32) {
+		return (hardware_crc32c(crc32c, buffer, length));
+	} else
+#endif
 	if (length < 4) {
 		return (singletable_crc32c(crc32c, buffer, length));
 	} else {
