@@ -762,12 +762,12 @@ static inline uint32_t hardware_crc32c(uint32_t crc, const unsigned char *buf, u
 		return crc;
 	}
 
-#  define CALC_CRC_HEAD(op, type)                                  \
-	do {                                                       \
-		if ((size_t)buf & sizeof(type)) {                  \
-			op(crc, *(type *)buf);                     \
-			len -= sizeof(type); buf += sizeof(type);  \
-		}                                                  \
+#  define CALC_CRC_HEAD(op, type)                                        \
+	do {                                                             \
+		if ((size_t)buf & sizeof(type) && len >= sizeof(type)) { \
+			op(crc, *(type *)buf);                           \
+			len -= sizeof(type); buf += sizeof(type);        \
+		}                                                        \
 	} while(0)
 	CALC_CRC_HEAD(mm_crc32_u8, uint8_t);
 	CALC_CRC_HEAD(mm_crc32_u16, uint16_t);
