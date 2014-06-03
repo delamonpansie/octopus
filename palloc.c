@@ -31,6 +31,8 @@
 # import <say.h>
 # import <tbuf.h>
 # import <stat.h>
+#else
+# include "palloc.h"
 #endif
 
 #if HAVE_THIRD_PARTY_QUEUE_H
@@ -184,10 +186,10 @@ struct cut_root {
 SLIST_HEAD(cut_list, cut_root);
 
 struct palloc_pool {
+	struct palloc_config cfg;
 	struct chunk_list_head chunks;
 	SLIST_ENTRY(palloc_pool) link;
 	size_t allocated;
-	const char *name;
 	struct gc_list gc_list;
 	struct cut_list cut_list;
 };
@@ -352,8 +354,11 @@ palloc_slow_path(struct palloc_pool *pool, size_t size)
 	struct chunk *chunk;
 
 	chunk = next_chunk_for(pool, size + RZMAX);
-	if (chunk == NULL)
+	if (chunk == NULL) {
+		if (pool->cfg.nomem_cb != NULL)
+			pool->cfg.nomem_cb(pool, (void *)pool->cfg.ctx);
 		abort();
+	}
 
 	return chunk_alloc(chunk, size);
 }
@@ -503,7 +508,7 @@ prelease_after(struct palloc_pool *pool, size_t after)
 }
 
 struct palloc_pool *
-palloc_create_pool(const char *name)
+palloc_create_pool(struct palloc_config cfg)
 {
 	struct palloc_pool *pool;
 
@@ -512,7 +517,7 @@ palloc_create_pool(const char *name)
 	pool = malloc(sizeof(struct palloc_pool));
 	assert(pool != NULL);
 	memset(pool, 0, sizeof(*pool));
-	pool->name = name;
+	pool->cfg = cfg;
 	TAILQ_INIT(&pool->chunks);
 	SLIST_INSERT_HEAD(&pools, pool, link);
 	return pool;
@@ -665,7 +670,7 @@ palloc_stat_info(struct tbuf *buf)
 			chunks[i] = 0;
 
 		tbuf_printf(buf, "    - name:  %s\n      alloc: %zu" CRLF,
-			    pool->name, pool->allocated);
+			    pool->cfg.name, pool->allocated);
 
 		if (pool->allocated > 0) {
 			tbuf_printf(buf, "      busy chunks:" CRLF);
@@ -691,9 +696,9 @@ palloc_stat_info(struct tbuf *buf)
 const char *
 palloc_name(struct palloc_pool *pool, const char *new_name)
 {
-	const char *old_name = pool->name;
+	const char *old_name = pool->cfg.name;
 	if (new_name != NULL)
-		pool->name = new_name;
+		pool->cfg.name = new_name;
 	return old_name;
 }
 

@@ -30,13 +30,21 @@
 #include <stdint.h>
 
 struct palloc_pool;
+typedef void (* palloc_nomem_cb)(struct palloc_pool *, void *);
+struct palloc_config {
+	const char *name;
+	const void *ctx;
+
+	palloc_nomem_cb nomem_cb;
+};
+
 void *palloc(struct palloc_pool *pool, size_t size);
 void *prealloc(struct palloc_pool *pool, void *oldptr, size_t oldsize, size_t size);
 void *p0alloc(struct palloc_pool *pool, size_t size);
 void *palloca(struct palloc_pool *pool, size_t size, size_t align);
 void prelease(struct palloc_pool *pool);
 void prelease_after(struct palloc_pool *pool, size_t after);
-struct palloc_pool *palloc_create_pool(const char *name);
+struct palloc_pool *palloc_create_pool(struct palloc_config);
 void palloc_destroy_pool(struct palloc_pool *);
 void palloc_unmap_unused(void);
 const char *palloc_name(struct palloc_pool *, const char *);
