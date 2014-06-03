@@ -702,6 +702,15 @@ palloc_name(struct palloc_pool *pool, const char *new_name)
 	return old_name;
 }
 
+void *
+palloc_ctx(struct palloc_pool *pool, const void *new_ctx)
+{
+	void *old_ctx = (void *)pool->cfg.ctx;
+	if (new_ctx != NULL)
+		pool->cfg.ctx = new_ctx;
+	return old_ctx;
+}
+
 size_t
 palloc_allocated(struct palloc_pool *pool)
 {

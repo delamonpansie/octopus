@@ -48,6 +48,7 @@ struct palloc_pool *palloc_create_pool(struct palloc_config);
 void palloc_destroy_pool(struct palloc_pool *);
 void palloc_unmap_unused(void);
 const char *palloc_name(struct palloc_pool *, const char *);
+void *palloc_ctx(struct palloc_pool *, const void *);
 size_t palloc_allocated(struct palloc_pool *);
 
 void palloc_register_gc_root(struct palloc_pool *pool,
