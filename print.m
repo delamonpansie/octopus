@@ -113,9 +113,10 @@ xlog_print(struct tbuf *out, u16 op, struct tbuf *b)
 		u32 data_len = tbuf_len(b);
 		void *data = read_bytes(b, data_len);
 
-		if (tuple_bsize(cardinality, data, data_len) != data_len)
-			abort();
-		tuple_print(out, cardinality, data);
+		if (tuple_bsize(cardinality, data, data_len) == data_len)
+			tuple_print(out, cardinality, data);
+		else
+			tbuf_printf(out, "<CORRUPT TUPLE>");
 		break;
 
 	case DELETE:
@@ -126,8 +127,10 @@ xlog_print(struct tbuf *out, u16 op, struct tbuf *b)
 		key_bsize = tbuf_len(b);
 		key = read_bytes(b, key_bsize);
 
-		if (tuple_bsize(key_cardinality, key, key_bsize) != key_bsize)
-			abort();
+		if (tuple_bsize(key_cardinality, key, key_bsize) != key_bsize) {
+			tbuf_printf(out, "<CORRUPT KEY>");
+			break;
+		}
 
 		if (op == DELETE)
 			tbuf_printf(out, "flags:%08X ", flags);
@@ -177,6 +180,8 @@ xlog_print(struct tbuf *out, u16 op, struct tbuf *b)
 			case 7:
 				tbuf_printf(out, "insert ");
 				break;
+			default:
+				tbuf_printf(out, "CORRUPT_OP:%i", op);
 			}
 			tuple_print(out, 1, arg);
 			tbuf_printf(out, "] ");
@@ -191,7 +196,7 @@ xlog_print(struct tbuf *out, u16 op, struct tbuf *b)
 	}
 
 	if (tbuf_len(b) > 0)
-		abort();
+		tbuf_printf(out, "ERROR, %i bytes unparsed", tbuf_len(b));
 }
 
 static void
