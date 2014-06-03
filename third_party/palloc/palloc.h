@@ -30,12 +30,12 @@
 #include <stdint.h>
 
 struct palloc_pool;
-typedef void (* palloc_nomem_cb)(struct palloc_pool *, void *);
+typedef void (* palloc_nomem_cb_t)(struct palloc_pool *, void *);
 struct palloc_config {
 	const char *name;
 	const void *ctx;
 
-	palloc_nomem_cb nomem_cb;
+	palloc_nomem_cb_t nomem_cb;
 };
 
 void *palloc(struct palloc_pool *pool, size_t size);
@@ -49,6 +49,7 @@ void palloc_destroy_pool(struct palloc_pool *);
 void palloc_unmap_unused(void);
 const char *palloc_name(struct palloc_pool *, const char *);
 void *palloc_ctx(struct palloc_pool *, const void *);
+palloc_nomem_cb_t palloc_nomem_cb(struct palloc_pool *, palloc_nomem_cb_t);
 size_t palloc_allocated(struct palloc_pool *);
 
 void palloc_register_gc_root(struct palloc_pool *pool,
