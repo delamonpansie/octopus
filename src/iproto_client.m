@@ -63,11 +63,9 @@ init_iproto_peer(struct iproto_peer *p, int id, const char *name, const char *ad
 	if (req_registry == NULL)
 		req_registry = mh_i32_init(xrealloc);
 
-	memset(p, 0, sizeof(*p));
-
-	p->id = id;
-	p->name = name;
-	p->c.fd = -1;
+	*p = (struct iproto_peer){ .id = id,
+				   .name = name,
+				   .c = { .fd = -1 } };
 	return atosin(addr, &p->addr);
 }
 
