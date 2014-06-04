@@ -194,6 +194,9 @@ process_requests(struct conn *c)
 		}
 	}
 
+	if (unlikely(c->state == CLOSED)) /* handler may close connection */
+		goto out;
+
 	if (tbuf_len(c->rbuf) < sizeof(struct iproto) ||
 	    tbuf_len(c->rbuf) < sizeof(struct iproto) + iproto(c->rbuf)->data_len)
 	{
@@ -207,17 +210,18 @@ process_requests(struct conn *c)
 	}
 
 #ifndef IPROTO_PESSIMISTIC_WRITES
-	if (c->out_messages.bytes > 0 && c->state != CLOSED) {
+	if (c->out_messages.bytes > 0) {
 		ssize_t r = conn_write_netmsg(c);
 		if (r < 0) {
 			say_syswarn("%s writev() failed, closing connection",
 				    c->service->name);
 			conn_close(c);
+			goto out;
 		}
 	}
 #endif
 
-	if (c->out_messages.bytes > 0 && c->state != CLOSED) {
+	if (c->out_messages.bytes > 0) {
 		ev_io_start(&c->out);
 
 		/* Prevent output owerflow by start reading if
@@ -227,7 +231,7 @@ process_requests(struct conn *c)
 		if (c->out_messages.bytes >= cfg.output_high_watermark)
 			ev_io_stop(&c->in);
 	}
-
+out:
 	conn_unref(c);
 
 	return r;
