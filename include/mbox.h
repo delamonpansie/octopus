@@ -78,9 +78,11 @@ struct name {								\
 
 #define mbox_wait(mbox) ({						\
 	struct mbox_consumer consumer = { .fiber = fiber }; 		\
+	mbox_msgtype(mbox) msg;						\
 	LIST_INSERT_HEAD(&(mbox)->consumer_list, &consumer, conslink);	\
-	mbox_msgtype(mbox) msg = yield();				\
-	LIST_REMOVE(&consumer, conslink);	\
+	while ((mbox)->msg_count == 0)					\
+		msg = yield();						\
+	LIST_REMOVE(&consumer, conslink);				\
 	msg;								\
 })
 
