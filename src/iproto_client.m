@@ -45,7 +45,6 @@
 #include <netinet/tcp.h>
 
 static struct mhash_t *req_registry;
-static struct slab_cache response_cache;
 
 u32
 iproto_next_sync()
@@ -60,7 +59,7 @@ iproto_next_sync()
 int
 init_iproto_peer(struct iproto_peer *p, int id, const char *name, const char *addr)
 {
-	if (req_registry == NULL)
+	if (unlikely(req_registry == NULL))
 		req_registry = mh_i32_init(xrealloc);
 
 	*p = (struct iproto_peer){ .id = id,
@@ -69,167 +68,149 @@ init_iproto_peer(struct iproto_peer *p, int id, const char *name, const char *ad
 	return atosin(addr, &p->addr);
 }
 
-
-static void
-iproto_req_dump(struct iproto_req *r, const char *prefix)
-{
-	const char *status = "";
-	if (r->closed)
-		status = "[CLOSED]";
-	if (r->count < r->quorum) {
-		assert(r->closed);
-		status = "[CLOSED,TIMEOUT]";
-	}
-	say_debug("%s: response:%s q/c:%i/%i %s", prefix, r->name, r->quorum, r->count, status);
-	if (!r->waiter)
-		return;
-
-	int i;
-	for (i = 0; i < nelem(r->reply) && r->reply[i]; i++)
-		say_debug("|   reply[%i]: sync:%i op:0x%02x len:%i",
-			  i, r->reply[i]->sync, r->reply[i]->msg_code, r->reply[i]->data_len);
-}
-
-static void
-iproto_req_delete(ev_timer *w, int events __attribute__((unused)))
-{
-	struct iproto_req *r = (void *)w - offsetof(struct iproto_req, timer);
-	ev_timer_stop(&r->timer);
-	u32 k = mh_i32_get(req_registry, r->header.sync);
-	assert(k != mh_end(req_registry));
-	mh_i32_del(req_registry, k);
-	slab_cache_free(&response_cache, r);
-}
-
 void
-iproto_req_release(struct iproto_req *r)
+iproto_mbox_release(struct iproto_mbox *mbox)
 {
-	ev_timer_stop(&r->timer);
-	ev_timer_init(&r->timer, iproto_req_delete, 15., 0.);
-	ev_timer_start(&r->timer);
+	for (int i = 0; i < mbox->sent; i++) {
+		u32 k = mh_i32_get(req_registry, mbox->sync[i]);
+		assert(k != mh_end(req_registry));
+		mh_i32_del(req_registry, k);
+	}
 }
 
 static void
-iproto_req_timeout(ev_timer *w, int events __attribute__((unused)))
+msg_prepare(struct iproto *msg, const struct iovec *iov, int iovcnt)
 {
-	struct iproto_req *r = (void *)w - offsetof(struct iproto_req, timer);
-	r->closed = ev_now();
-	if (r->waiter) {
-		iproto_req_dump(r, __func__);
-		fiber_wake(r->waiter, r);
+	for (int i = 0; i < iovcnt; i++)
+		msg->data_len += iov[i].iov_len;
+}
+
+static void
+msg_fixup_sync(struct iproto_mbox *mbox, struct iproto *msg)
+{
+	u32 sync = iproto_next_sync();
+	msg->sync = sync;
+	if (mbox) {
+		assert(mbox->sent < mbox->sync_nelem);
+		mbox->sync[mbox->sent++] = sync;
+		mh_i32_put(req_registry, sync, mbox, NULL);
 	}
 }
 
-struct iproto_req *
-iproto_req_make(u16 msg_code, ev_tstamp timeout, const char *name)
-{
-	struct iproto_req *r = slab_cache_alloc(&response_cache);
-	*r = (struct iproto_req) { .name = name,
-				   .count = 0,
-				   .quorum = 1,
-				   .timeout = timeout,
-				   .sent = ev_now() };
-
-	memset(&r->timer, 0, sizeof(r->timer));
-	r->header = (struct iproto){ .msg_code = msg_code,
-				     .sync = iproto_next_sync() };
-
-	mh_i32_put(req_registry, r->header.sync, r, NULL);
-	if (r->timeout > 0) {
-		ev_timer_init(&r->timer, iproto_req_timeout, r->timeout, 0.);
-		ev_timer_start(&r->timer);
-		r->waiter = fiber;
-	} else {
-		iproto_req_release(r);
-	}
-
-	return r;
-}
-
-void
-iproto_send(struct iproto_peer *peer, struct iproto_req *r,
-	    const struct iovec *iov, int iovcnt)
+static int
+msg_send(struct iproto_mbox *mbox, struct iproto_peer *peer,
+	 struct iproto *msg, int msglen,
+	 const struct iovec *iov, int iovcnt)
 {
 	if (peer->c.state < CONNECTED)
-		return;
+		return 0;
 
-	struct iproto *header = &r->header;
-	for (int i = 0; i < iovcnt; i++)
-		header->data_len += iov[i].iov_len;
+	msg_fixup_sync(mbox, msg);
 
 	struct netmsg_head *h = &peer->c.out_messages;
-	net_add_iov_dup(h, header, sizeof(*header));
-
+	net_add_iov_dup(h, msg, msglen);
 	for (int i = 0; i < iovcnt; i++)
 		net_add_iov_dup(h, iov[i].iov_base, iov[i].iov_len);
-
 	ev_io_start(&peer->c.out);
 
-	say_debug("|   peer:%i/%s op:0x%x len:%zu data_len:%i", peer->id, peer->name,
-		  header->msg_code, sizeof(*header) + header->data_len,
-		  header->data_len);
+	say_debug("|    peer:%i/%s\top:0x%x sync:%u len:%zu data_len:%i", peer->id, peer->name,
+		  msg->msg_code, msg->sync, sizeof(*msg) + msg->data_len,
+		  msg->data_len);
+	return 1;
+}
 
-	if (r->waiter)
-		r->reply = p0alloc(r->waiter->pool, sizeof(struct iproto *) * 2);
+int
+iproto_send(struct iproto_mbox *mbox, struct iproto_peer *peer,
+	    struct iproto *msg, const struct iovec *iov, int iovcnt)
+{
+	int msglen = sizeof(*msg) + msg->data_len;
+	msg_prepare(msg, iov, iovcnt);
+	return msg_send(mbox, peer, msg, msglen, iov, iovcnt);
+}
+
+int
+iproto_broadcast(struct iproto_mbox *mbox, struct iproto_group *group,
+		 struct iproto *msg, const struct iovec *iov, int iovcnt)
+{
+	struct iproto_peer *peer;
+	int ret = 0;
+	int msglen = sizeof(*msg) + msg->data_len;
+	msg_prepare(msg, iov, iovcnt);
+	SLIST_FOREACH(peer, group, link)
+		ret += msg_send(mbox, peer, msg, msglen, iov, iovcnt);
+	return ret;
+}
+
+struct iproto *
+iproto_wait(struct iproto_mbox *mbox)
+{
+	struct iproto_reply *reply = mbox_wait(mbox);
+	return reply ? &reply->header : NULL;
+}
+
+struct iproto *
+iproto_wait_sync(struct iproto_mbox *mbox, u32 sync)
+{
+	for (;;) {
+		struct iproto_reply *reply = mbox_wait(mbox);
+		if (!reply)
+			return NULL;
+		if (reply->header.sync == sync) {
+			STAILQ_REMOVE(&mbox->msg_list, reply, iproto_reply, link); /* switch to TAILQ ? */
+			return &reply->header;
+		}
+	}
 }
 
 void
-iproto_broadcast(struct iproto_group *group, int quorum, struct iproto_req *r,
-		 const struct iovec *iov, int iovcnt)
+iproto_wait_all(struct iproto_mbox *mbox)
 {
-	assert(r != NULL);
-	assert(r->header.msg_code != 0);
-	struct iproto_peer *peer;
-	int peers_count = 0;
-	struct iproto *header = &r->header;
-
-	for (int i = 0; i < iovcnt; i++)
-		header->data_len += iov[i].iov_len;
-
-	r->quorum = quorum;
-	SLIST_FOREACH(peer, group, link) {
-		peers_count++;
-		if (peer->c.state < CONNECTED)
-			continue;
-
-		struct netmsg_head *h = &peer->c.out_messages;
-		net_add_iov_dup(h, header, sizeof(*header));
-		for (int i = 0; i < iovcnt; i++)
-			net_add_iov_dup(h, iov[i].iov_base, iov[i].iov_len);
-		ev_io_start(&peer->c.out);
-
-		say_debug("|   peer:%i/%s op:0x%x len:%zu data_len:%i", peer->id, peer->name,
-			  header->msg_code, sizeof(*header) + header->data_len,
-			  header->data_len);
-	}
-
-	if (r->waiter)
-		r->reply = p0alloc(r->waiter->pool, sizeof(struct iproto *) * (peers_count + 1));
+	while (mbox->msg_count < mbox->sent)
+		mbox_wait(mbox);
 }
 
+
+struct iproto *
+iproto_mbox_get(struct iproto_mbox *mbox)
+{
+	struct iproto_reply *reply = mbox_get(mbox, link);
+	return reply ? &reply->header : NULL;
+}
+
+struct iproto *
+iproto_sync_send(struct iproto_peer *peer,
+		 struct iproto *msg, const struct iovec *iov, int iovcnt)
+{
+	struct iproto_mbox mbox = IPROTO_MBOX_INITIALIZER(mbox, fiber->pool);
+	iproto_send(&mbox, peer, msg, iov, iovcnt);
+	struct iproto *reply =  iproto_wait(&mbox);
+	iproto_mbox_release(&mbox);
+	return reply;
+}
 
 void
 iproto_pinger(va_list ap)
 {
 	struct iproto_group *group = va_arg(ap, struct iproto_group *);
-	struct iproto_req *r;
 
 	for (;;) {
+		fiber_gc();
 		fiber_sleep(1);
+		ev_tstamp sent = ev_now();
 		int quorum = 0;
 		struct iproto_peer *p;
 		SLIST_FOREACH(p, group, link)
 			quorum++;
-		ev_tstamp sent = ev_now();
 
-		iproto_broadcast(group, quorum, iproto_req_make(msg_ping, 2.0, "ping"), NULL, 0);
-		r = yield();
+		struct iproto_mbox mbox = IPROTO_MBOX_INITIALIZER(mbox, fiber->pool);
+		struct iproto ping = { .msg_code = msg_ping };
+		iproto_broadcast(&mbox, group, &ping, NULL, 0);
+		mbox_timedwait(&mbox, quorum, 2.0);
+		iproto_mbox_release(&mbox);
 
-		say_info("ping r:%p q/c:%i:%i %.4f%s", r,
-			 r->quorum, r->count,
-			 ev_now() - sent, r->count == 0 ? " [TIMEOUT]" : "");
-
-		iproto_req_release(r);
+		say_info("ping q/c:%i:%i %.4f%s",
+			 quorum, mbox.msg_count,
+			 ev_now() - sent, mbox.msg_count ? "" : " [TIMEOUT]");
 	}
 }
 
@@ -237,34 +218,19 @@ void
 iproto_collect_reply(struct conn *c, struct iproto *msg)
 {
 	struct iproto_peer *p = (void *)c - offsetof(struct iproto_peer, c);
+	struct iproto_mbox *mbox;
+	struct iproto_reply *reply;
+
 	u32 k = mh_i32_get(req_registry, msg->sync);
 	if (k == mh_end(req_registry)) {
 		say_warn("peer:%s op:0x%x sync:%i [STALE]", p->name, msg->msg_code, msg->sync);
 		return;
 	}
-
-	struct iproto_req *r = mh_i32_value(req_registry, k);
-
-	if (r->closed) {
-		if (ev_now() - r->closed > r->timeout * 1.01)
-			say_warn("stale reply: p:%i/%s op:0x%x sync:%i q:%i/c:%i late_after_close:%.4f",
-				 p->id, p->name, msg->msg_code, msg->sync, r->quorum, r->count,
-				 ev_now() - r->closed);
-		return;
-	}
-	if (r->waiter) {
-		size_t msg_len = sizeof(struct iproto) + msg->data_len;
-		r->reply[r->count] = palloc(r->waiter->pool, msg_len);
-		memcpy(r->reply[r->count], msg, msg_len);
-	}
-	if (++r->count == r->quorum) {
-		assert(!r->closed);
-		ev_timer_stop(&r->timer);
-		r->closed = ev_now();
-		iproto_req_dump(r, __func__);
-		if (r->waiter)
-			fiber_wake(r->waiter, r);
-	}
+	mbox = mh_i32_value(req_registry, k);
+	// FIXME: mh_i32_del(req_registry, k);
+	reply = palloc(mbox->pool, sizeof(*reply) + msg->data_len);
+	memcpy(&reply->header, msg, sizeof(*msg) + msg->data_len);
+	mbox_put(mbox, reply, link);
 }
 
 void
@@ -373,10 +339,4 @@ loop:
 	ev_timer_stop(&timer);
 
 	goto loop;
-}
-
-void __attribute__((constructor))
-iproto_client_init(void)
-{
-	slab_cache_init(&response_cache, sizeof(struct iproto_req), SLAB_GROW, "iproto/req");
 }

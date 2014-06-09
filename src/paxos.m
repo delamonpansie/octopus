@@ -103,7 +103,7 @@ static u16 paxos_default_version;
 struct msg_leader {
 	struct iproto header;
 	u16 peer_id;
-	u16 version;
+	u16 version; /* FIXME: move version before peer_id */
 	i16 leader_id;
 	ev_tstamp expire;
 } __attribute__((packed));
@@ -112,7 +112,7 @@ struct msg_leader {
 struct msg_paxos {
 	struct iproto header;
 	u16 peer_id;
-	u16 version;
+	u16 version; /* FIXME: move version before peer_id */
 	i64 scn;
 	u64 ballot;
 	u16 tag;
@@ -186,12 +186,12 @@ paxos_leader()
 	return leader_id >= 0 && leader_id == self_id;
 }
 
-static void
-paxos_broadcast(PaxosRecovery *r, enum paxos_msg_code code, ev_tstamp timeout,
+static u32
+paxos_broadcast(PaxosRecovery *r, struct iproto_mbox *mbox,
+		enum paxos_msg_code code, /* ev_tstamp timeout, */
 		i64 scn, u64 ballot, const char *value, u32 value_len, u16 tag)
 {
 	struct msg_paxos msg = { .header = { .data_len = sizeof(msg) - sizeof(struct iproto),
-					     .sync = 0,
 					     .msg_code = code },
 				 .scn = scn,
 				 .ballot = ballot,
@@ -200,19 +200,16 @@ paxos_broadcast(PaxosRecovery *r, enum paxos_msg_code code, ev_tstamp timeout,
 				 .tag = tag,
 				 .value_len = value_len };
 
-	struct iproto_req *req = iproto_req_make(code, timeout, paxos_msg_code[code]);
+	struct iovec iov[1] = { { .iov_base = (char *)value,
+				  .iov_len = value_len } };
+	iproto_broadcast(mbox, &r->paxos_remotes, &msg.header, iov, 1);
 
-	say_debug("%s: > %s sync:%u SCN:%"PRIi64" ballot:%"PRIu64" timeout:%.2f",
-		  __func__, paxos_msg_code[code], req->header.sync, scn, ballot, timeout);
+	say_debug("%s: > %s sync:%u SCN:%"PRIi64" ballot:%"PRIu64,
+		  __func__, paxos_msg_code[code], msg.header.sync, scn, ballot);
 	if (code != PREPARE)
 		say_debug2("|  tag:%s value_len:%i value:%s", xlog_tag_to_a(tag), value_len,
 			   tbuf_to_hex(&TBUF(value, value_len, fiber->pool)));
-
-	struct iovec iov[2] = { { .iov_base = (char *)&msg + sizeof(struct iproto),
-				  .iov_len = sizeof(msg) - sizeof(struct iproto) },
-				{ .iov_base = (void *)value,
-				  .iov_len = value_len } };
-	iproto_broadcast(&r->paxos_remotes, quorum, req, iov, 2);
+	return msg.header.sync;
 }
 
 
@@ -266,12 +263,12 @@ notify_leadership_change(PaxosRecovery *r)
 	if (leader_id < 0) {
 		if (prev_leader != leader_id)
 			say_info("leader unknown, %i -> %i", prev_leader, leader_id);
-		title("paxos_slave");
+		[r status_update:"paxos/slave"];
 	} else if (!paxos_leader()) {
 		if (prev_leader != leader_id)
 			say_info("leader is %s, %i -> %i", paxos_peer(r, leader_id)->name,
 				prev_leader, leader_id);
-		title("paxos_slave");
+		[r status_update:"paxos/slave"];
 	} else if (paxos_leader()) {
 		if (prev_leader != leader_id) {
 			say_info("I am leader, %i -> %i", prev_leader, leader_id);
@@ -287,7 +284,7 @@ notify_leadership_change(PaxosRecovery *r)
 				return;
 			}
 		}
-		title("paxos_leader");
+		[r status_update:"paxos/leader"];
 	}
 	prev_leader = leader_id;
 }
@@ -304,14 +301,11 @@ propose_leadership(va_list ap)
 {
 	PaxosRecovery *r = va_arg(ap, PaxosRecovery *);
 
-	struct msg_leader leader_propose = { .header = { .data_len = sizeof(leader_propose) - sizeof(struct iproto),
-						      .sync = 0,
-						      .msg_code = LEADER_PROPOSE },
+	struct msg_leader leader_propose = { .header = { .msg_code = LEADER_PROPOSE,
+							 .data_len = sizeof(leader_propose) - sizeof(struct iproto) },
 					     .peer_id = self_id,
 					     .version = paxos_default_version,
 					     .leader_id = self_id };
-	struct iovec iov[1] = { { .iov_base = (char *)&leader_propose + sizeof(struct iproto),
-				  .iov_len = sizeof(leader_propose) - sizeof(struct iproto) } };
 
 	fiber_sleep(0.3); /* wait connections to be up */
 	for (;;) {
@@ -334,15 +328,21 @@ propose_leadership(va_list ap)
 			continue;
 
 		leader_propose.expire = ev_now() + leader_lease_interval;
-		iproto_broadcast(&r->paxos_remotes, quorum,
-				 iproto_req_make(LEADER_PROPOSE, 1.0, "leader_propose"),
-				 iov, 1);
 
-		struct iproto_req *req = yield();
+		struct iproto_mbox mbox = IPROTO_MBOX_INITIALIZER(mbox, fiber->pool);
+		iproto_broadcast(&mbox, &r->paxos_remotes,
+				 &leader_propose.header, NULL, 0);
+		assert(leader_propose.header.data_len == 14);
+		mbox_timedwait(&mbox, quorum, 1);
+		iproto_mbox_release(&mbox);
 
 		int votes = 0;
 		struct msg_leader *nack_msg = NULL;
-		FOREACH_REPLY(req, reply) {
+
+		struct iproto *reply;
+		int reply_count = 0;
+		while ((reply = iproto_mbox_get(&mbox))) {
+			reply_count++;
 			if (reply->msg_code == LEADER_ACK) {
 				votes++;
 			} else {
@@ -350,8 +350,8 @@ propose_leadership(va_list ap)
 				nack_msg = (struct msg_leader *)reply;
 			}
 		}
-		if (votes >= req->quorum) {
-			say_debug("%s: quorum reached v/q:%i/%i", __func__, votes, req->quorum);
+		if (votes >= quorum) {
+			say_debug("%s: quorum reached v/q:%i/%i", __func__, votes, quorum);
 			leadership_expire = leader_propose.expire;
 			leader_id = self_id;
 		} else {
@@ -362,10 +362,9 @@ propose_leadership(va_list ap)
 				leadership_expire = nack_msg->expire;
 				leader_id = nack_msg->leader_id;
 			} else {
-				say_debug("%s: no quorum v/q:%i/%i", __func__, votes, req->quorum);
+				say_debug("%s: no quorum v/q:%i/%i", __func__, votes, quorum);
 			}
 		}
-		iproto_req_release(req);
 		notify_leadership_change(r);
 	}
 }
@@ -394,7 +393,7 @@ propose_leadership(va_list ap)
 		conn_close(c);						\
 		return;							\
 	}								\
-	if (!peer) {							\
+	if (!peer) {					\
 		say_warn("%s: closing connect from unknown peer %i", __func__, (msg)->peer_id); \
 		conn_close(c);						\
 		return;							\
@@ -623,23 +622,31 @@ accepted(PaxosRecovery *r, struct paxos_request *req)
 	paxos_reply(req, ACCEPTED, 0);
 }
 
-static struct iproto_req *
-prepare(PaxosRecovery *r, struct proposal *p, u64 ballot)
+static u32
+prepare(PaxosRecovery *r, struct iproto_mbox *mbox, struct proposal *p, u64 ballot)
 {
 	if ([r submit:&ballot len:sizeof(ballot) scn:p->scn tag:(paxos_prepare | TAG_SYS)] != 1)
 		return 0;
 	p->prepare_ballot = ballot;
-	paxos_broadcast(r, PREPARE, p->delay, p->scn, ballot, NULL, 0, 0);
-	return yield();
+
+	iproto_mbox_init(mbox, fiber->pool, IPROTO_MBOX_STATIC_SYNC_SIZE);
+	u32 sync = paxos_broadcast(r, mbox, PREPARE, p->scn, ballot, NULL, 0, 0);
+	mbox_timedwait(mbox, quorum, p->delay);
+	return sync;
 }
 
-static struct iproto_req *
-propose(PaxosRecovery *r, u64 ballot, i64 scn, const char *value, u32 value_len, u16 tag)
+static u32
+propose(PaxosRecovery *r, struct iproto_mbox *mbox,
+	u64 ballot, i64 scn, const char *value, u32 value_len, u16 tag)
 {
-	assert((tag & ~TAG_MASK) != 0 && (tag & ~TAG_MASK) != TAG_SYS);
+	assert((tag & ~TAG_MASK) != 0);
+	assert((tag & TAG_MASK) < paxos_prepare || (tag & TAG_MASK) > paxos_nop);
 	assert(value_len > 0);
-	paxos_broadcast(r, ACCEPT, paxos_default_timeout, scn, ballot, value, value_len, tag);
-	return yield();
+
+	iproto_mbox_init(mbox, fiber->pool, IPROTO_MBOX_STATIC_SYNC_SIZE);
+	u32 sync = paxos_broadcast(r, mbox, ACCEPT, scn, ballot, value, value_len, tag);
+	mbox_timedwait(mbox, quorum, paxos_default_timeout);
+	return sync;
 }
 
 
@@ -804,13 +811,15 @@ static u64 next_ballot(u64 min)
 static u64
 run_protocol(PaxosRecovery *r, struct proposal *p, char *value, u32 value_len, u16 tag)
 {
-	assert((tag & ~TAG_MASK) != 0 && (tag & ~TAG_MASK) != TAG_SYS);
+	assert((tag & ~TAG_MASK) != 0);
+	assert((tag & TAG_MASK) < paxos_prepare || (tag & TAG_MASK) > paxos_nop);
 	assert(value_len > 0);
 
-	struct iproto_req *rsp;
 	bool has_old_value = false;
 	u64 ballot = p->prepare_ballot, nack_ballot = 0;
 	int votes, reply_count;
+	struct iproto_mbox mbox;
+	// struct iproto *req;
 
 	say_debug("%s: SCN:%"PRIi64, __func__, p->scn);
 	say_debug2("|  tag:%s value_len:%u value:%s", xlog_tag_to_a(tag), value_len,
@@ -822,34 +831,29 @@ retry:
 
 	ballot = next_ballot(MAX(ballot, p->ballot));
 
-	rsp = prepare(r, p, ballot);
-	if (rsp == NULL) {
-		fiber_sleep(0.01);
-		goto retry;
-	}
-
-	say_debug("PREPARE reply sync:%i SCN:%"PRIi64, rsp->header.sync, p->scn);
-	struct msg_paxos *max = NULL;
+	u32 sync = prepare(r, &mbox, p, ballot);
+	say_debug("PREPARE reply sync:%i SCN:%"PRIi64, sync, p->scn);
+	struct msg_paxos *req, *max = NULL;
 	reply_count = votes = 0;
-	FOREACH_REPLY(rsp, reply) {
-		reply_count++;
-		struct msg_paxos *mp = (struct msg_paxos *)reply;
-		say_debug("|  %s SCN:%"PRIi64" ballot:%"PRIu64" value_len:%i",
-			  paxos_msg_code[mp->header.msg_code], mp->scn, mp->ballot, mp->value_len);
 
-		switch(reply->msg_code) {
+	while ((req = (struct msg_paxos *)iproto_mbox_get(&mbox))) {
+		reply_count++;
+		say_debug("|  %s SCN:%"PRIi64" ballot:%"PRIu64" value_len:%i",
+			  paxos_msg_code[req->header.msg_code], req->scn, req->ballot, req->value_len);
+
+		switch(req->header.msg_code) {
 		case NACK:
-			nack_ballot = mp->ballot;
+			nack_ballot = req->ballot;
 			break;
 		case PROMISE:
 			votes++;
-			if (mp->value_len > 0 && (max == NULL || mp->ballot > max->ballot))
-				max = mp;
+			if (req->value_len > 0 && (max == NULL || req->ballot > max->ballot))
+				max = req;
 			break;
 		case DECIDE:
-			update_proposal_value(p, mp->value_len, mp->value, mp->tag);
+			update_proposal_value(p, req->value_len, req->value, req->tag);
 			update_proposal_ballot(p, ULLONG_MAX);
-			iproto_req_release(rsp);
+			iproto_mbox_release(&mbox);
 			goto decide;
 		case STALE: {
 			struct paxos_peer *p;
@@ -873,8 +877,10 @@ retry:
 			abort();
 		}
 	}
-	if (reply_count == 0)
+	if (reply_count == 0 || (reply_count == 1 && req->peer_id == self_id)) {
 		say_debug("|  SCN:%"PRIi64" EMPTY", p->scn);
+		p->delay *= 1.25;
+	}
 
 	if (votes < quorum) {
 		if (nack_ballot > ballot) { /* we have a hint about ballot */
@@ -882,7 +888,7 @@ retry:
 			ballot = nack_ballot;
 		}
 
-		iproto_req_release(rsp);
+		iproto_mbox_release(&mbox);
 		fiber_sleep(0.001 * rand() / RAND_MAX);
 		goto retry;
 	}
@@ -899,39 +905,36 @@ retry:
 		value_len = max->value_len;
 		tag = max->tag;
 	}
-	iproto_req_release(rsp);
+	iproto_mbox_release(&mbox);
 
-	rsp = propose(r, ballot, p->scn, value, value_len, tag);
-	if (rsp == NULL)
-		goto retry;
+	sync = propose(r, &mbox, ballot, p->scn, value, value_len, tag);
 
-	say_debug("PROPOSE reply sync:%i SCN:%"PRIi64, rsp->header.sync, p->scn);
+	say_debug("PROPOSE reply sync:%i SCN:%"PRIi64, sync, p->scn);
 	reply_count = votes = 0;
-	FOREACH_REPLY(rsp, reply) {
+	while ((req = (struct msg_paxos *)iproto_mbox_get(&mbox))) {
 		reply_count++;
-		struct msg_paxos *mp = (struct msg_paxos *)reply;
 		say_debug("|  %s SCN:%"PRIi64" ballot:%"PRIu64" value_len:%i",
-			  paxos_msg_code[mp->header.msg_code], mp->scn, mp->ballot, mp->value_len);
+			  paxos_msg_code[req->header.msg_code], req->scn, req->ballot, req->value_len);
 
-		switch (reply->msg_code) {
+		switch (req->header.msg_code) {
 		case ACCEPTED:
 			votes++;
 			break;
 		case DECIDE:
-			update_proposal_value(p, mp->value_len, mp->value, mp->tag);
+			update_proposal_value(p, req->value_len, req->value, req->tag);
 			update_proposal_ballot(p, ULLONG_MAX);
-			iproto_req_release(rsp);
+			iproto_mbox_release(&mbox);
 			goto decide;
 			break;
 		case NACK:
-			nack_ballot = mp->ballot;
+			nack_ballot = req->ballot;
 			break;
 		}
 	}
 	if (reply_count == 0)
 		say_debug("|  SCN:%"PRIi64" EMPTY", p->scn);
 
-	iproto_req_release(rsp);
+	iproto_mbox_release(&mbox);
 
 	if (votes < quorum) {
 		if (nack_ballot > ballot) { /* we have a hint about ballot */
@@ -939,12 +942,11 @@ retry:
 			ballot = nack_ballot;
 		}
 
-		iproto_req_release(rsp);
 		fiber_sleep(0.001 * rand() / RAND_MAX);
 		goto retry;
 	}
 
-	paxos_broadcast(r, DECIDE, 0, p->scn, ballot, value, value_len, tag);
+	paxos_broadcast(r, NULL, DECIDE, p->scn, ballot, value, value_len, tag);
 	if (has_old_value)
 		sfree(value);
 	return has_old_value ? 0 : ballot;
@@ -960,7 +962,8 @@ decide:
 }
 
 
-static struct mbox wal_dumper_mbox;
+struct wal_msg { STAILQ_ENTRY(wal_msg) link; };
+static MBOX(, wal_msg) wal_dumper_mbox = MBOX_INITIALIZER(wal_dumper_mbox);
 
 static void
 maybe_wake_dumper(PaxosRecovery *r, struct proposal *p)
@@ -968,9 +971,8 @@ maybe_wake_dumper(PaxosRecovery *r, struct proposal *p)
 	if (p->scn - [r scn] < 8)
 		return;
 
-	struct mbox_msg *m = palloc(r->wal_dumper->pool, sizeof(*m));
-	m->msg = (void *)1;
-	mbox_put(&wal_dumper_mbox, m);
+	struct wal_msg *m = palloc(r->wal_dumper->pool, sizeof(*m));
+	mbox_put(&wal_dumper_mbox, m, link);
 }
 
 static void
@@ -980,8 +982,8 @@ wal_dumper_fib(va_list ap)
 	struct proposal *p = NULL;
 
 loop:
-	mbox_timedwait(&wal_dumper_mbox, 1);
-	while (mbox_get(&wal_dumper_mbox)); /* flush mbox */
+	mbox_timedwait(&wal_dumper_mbox, 1, 1);
+	while (mbox_get(&wal_dumper_mbox, link)); /* flush mbox */
 	fiber_gc(); /* NB: put comment */
 
 	p = RB_MIN(ptree, &r->proposals);
@@ -1131,8 +1133,6 @@ init_snap_dir:(const char *)snap_dirname
 	if (!paxos_peer(self, self_id))
 		panic("unable to find myself among paxos peers");
 
-	output_flusher = fiber_create("paxos/output_flusher", conn_flusher);
-
 	fiber_create("paxos/stat", paxos_stat, self);
 	return self;
 }
@@ -1186,7 +1186,6 @@ exit:
 	struct proposal *min = RB_MIN(ptree, &self->proposals);
 	say_info("SCN:%"PRIi64" minSCN:%"PRIi64" appSCN:%"PRIi64" maxSCN:%"PRIi64,
 		 scn, min ? min->scn : -1, app_scn, max_scn);
-	[self status_update:"active"];
 
 	const char *addr = sintoa(&paxos_peer(self, self_id)->paxos.addr);
 	tcp_iproto_service(&service, addr, NULL, iproto_wakeup_workers);
@@ -1199,10 +1198,10 @@ exit:
 		fiber_create("paxos/worker", iproto_worker, &service);
 
 	reply_reader = fiber_create("paxos/reply_reader", iproto_reply_reader, iproto_collect_reply);
+	output_flusher = fiber_create("paxos/output_flusher", conn_flusher);
 	fiber_create("paxos/rendevouz", iproto_rendevouz, NULL, &paxos_remotes, reply_reader, output_flusher);
 	fiber_create("paxos/elect", propose_leadership, self);
 
-	mbox_init(&wal_dumper_mbox);
 	wal_dumper = fiber_create("paxos/wal_dump", wal_dumper_fib, self);
 }
 
@@ -1319,8 +1318,7 @@ recover_row:(struct row_v12 *)r
 	int tag = r->tag & TAG_MASK;
 	int tag_type = r->tag & ~TAG_MASK;
 
-	switch (tag_type) {
-	case TAG_SYS:
+	if (tag_type == TAG_SYS) {
 		switch (tag) {
 		case paxos_prepare:
 			lsn = r->lsn;
@@ -1328,7 +1326,7 @@ recover_row:(struct row_v12 *)r
 			ballot = read_u64(&buf);
 			p = proposal(self, r->scn);
 			p->prepare_ballot = ballot;
-			break;
+			return;
 
 		case paxos_promise:
 		case paxos_nop:
@@ -1338,7 +1336,7 @@ recover_row:(struct row_v12 *)r
 			p = proposal(self, r->scn);
 			if (p->ballot < ballot)
 				update_proposal_ballot(p, ballot);
-			break;
+			return;
 
 		case paxos_accept:
 		case paxos_propose:
@@ -1353,13 +1351,16 @@ recover_row:(struct row_v12 *)r
 				update_proposal_ballot(p, ballot);
 				update_proposal_value(p, value_len, value, tag);
 			}
-			break;
-		default:
-			[super recover_row:r];
-			break;
-		}
-		return;
+			return;
 
+		case snap_initial:
+		case snap_final:
+			[super recover_row:r];
+			return;
+		}
+	}
+
+	switch (tag_type) {
 	case TAG_SNAP:
 		[super recover_row:r];
 		return;
@@ -1378,7 +1379,6 @@ recover_row:(struct row_v12 *)r
 		}
 
 		[super recover_row:r];
-		break;
 	}
 
 	expire_proposal(self);
