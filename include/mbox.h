@@ -41,8 +41,8 @@ struct mbox_consumer {
 
 #define MBOX(name, type)						\
 struct name {								\
-	LIST_HEAD(, mbox_consumer) consumer_list;	\
-	STAILQ_HEAD(, type) msg_list;			\
+	LIST_HEAD(, mbox_consumer) consumer_list;			\
+	STAILQ_HEAD(, type) msg_list;					\
 	int msg_count;							\
 }
 
@@ -78,7 +78,7 @@ struct name {								\
 
 #define mbox_wait(mbox) ({						\
 	struct mbox_consumer consumer = { .fiber = fiber }; 		\
-	mbox_msgtype(mbox) msg;						\
+	mbox_msgtype(mbox) msg = STAILQ_FIRST(&(mbox)->msg_list);	\
 	LIST_INSERT_HEAD(&(mbox)->consumer_list, &consumer, conslink);	\
 	while ((mbox)->msg_count == 0)					\
 		msg = yield();						\
