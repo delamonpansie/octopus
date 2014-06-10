@@ -71,7 +71,7 @@ iterator_init
 }
 
 - (void)
-iterator_init:(struct tbuf *)key_data with_cardinalty:(u32)cardinality
+iterator_init_with_key:(struct tbuf *)key_data cardinalty:(u32)cardinality
 {
 	(void)key_data; (void)cardinality;
 }
@@ -143,7 +143,7 @@ find:(const char *)key
 }
 
 - (struct tnt_object *)
-find_key:(struct tbuf *)key_data with_cardinalty:(u32)cardinality
+find_key:(struct tbuf *)key_data cardinalty:(u32)cardinality
 {
 	(void)key_data;
 	(void)cardinality;
@@ -151,14 +151,14 @@ find_key:(struct tbuf *)key_data with_cardinalty:(u32)cardinality
 }
 
 - (struct tnt_object *)
-find_by_obj:(struct tnt_object *)obj
+find_obj:(struct tnt_object *)obj
 {
 	(void)obj;
 	return NULL;
 }
 
 - (struct tnt_object *)
-find_by_node:(const struct index_node *)node
+find_node:(const struct index_node *)node
 {
 	(void)node;
 	return NULL;

@@ -124,7 +124,7 @@ resize:(u32)buckets							\
 	mh_##type##_start_resize(h, buckets, 0);			\
 }									\
 - (struct tnt_object *)							\
-find_by_obj:(struct tnt_object *)obj					\
+find_obj:(struct tnt_object *)obj					\
 {									\
 	struct index_node *node_ = GET_NODE(obj, node_a);		\
 	u32 k = mh_##type##_get_node(h, (void *)node_);			\
@@ -133,7 +133,7 @@ find_by_obj:(struct tnt_object *)obj					\
 	return NULL;							\
 }									\
 - (struct tnt_object *)							\
-find_by_node:(const struct index_node *)node				\
+find_node:(const struct index_node *)node				\
 {									\
 	u32 k = mh_##type##_get_node(h, (void *)node);			\
 	if (k != mh_end(h)) 						\
@@ -185,7 +185,7 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 }
 
 - (struct tnt_object *)
-find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
+find_key:(struct tbuf *)key_data cardinalty:(u32)key_cardinality
 {
         if (key_cardinality != 1)
 		index_raise("hashed key has cardinality != 1");
@@ -212,7 +212,7 @@ find:(const char *)key
 }
 
 - (void)
-iterator_init:(struct tbuf *)key_data with_cardinalty:(u32)cardinality
+iterator_init_with_key:(struct tbuf *)key_data cardinalty:(u32)cardinality
 {
 	if (cardinality != 1)
 		index_raise("cardinality too big");
@@ -236,7 +236,7 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 }
 
 - (struct tnt_object *)
-find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
+find_key:(struct tbuf *)key_data cardinalty:(u32)key_cardinality
 {
         if (key_cardinality != 1)
                 index_raise("hashed key has cardinality != 1");
@@ -263,7 +263,7 @@ find:(const char *)key
 }
 
 - (void)
-iterator_init:(struct tbuf *)key_data with_cardinalty:(u32)cardinality
+iterator_init_with_key:(struct tbuf *)key_data cardinalty:(u32)cardinality
 {
 	if (cardinality != 1)
 		index_raise("cardinality too big");
@@ -287,7 +287,7 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 }
 
 - (struct tnt_object *)
-find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
+find_key:(struct tbuf *)key_data cardinalty:(u32)key_cardinality
 {
         if (key_cardinality != 1)
                 index_raise("hashed key has cardinality != 1");
@@ -309,7 +309,7 @@ find:(const char *)key
 }
 
 - (void)
-iterator_init:(struct tbuf *)key_data with_cardinalty:(u32)cardinality
+iterator_init_with_key:(struct tbuf *)key_data cardinalty:(u32)cardinality
 {
 	if (cardinality != 1)
 		index_raise("cardinality too big");
@@ -330,7 +330,7 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 }
 
 - (struct tnt_object *)
-find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality
+find_key:(struct tbuf *)key_data cardinalty:(u32)key_cardinality
 {
         if (key_cardinality != 1)
                 index_raise("hashed key has cardinality != 1");
@@ -352,7 +352,7 @@ find:(const char *)key
 }
 
 - (void)
-iterator_init:(struct tbuf *)key_data with_cardinalty:(u32)cardinality
+iterator_init_with_key:(struct tbuf *)key_data cardinalty:(u32)cardinality
 {
 	if (cardinality != 1)
 		index_raise("cardinality too big");

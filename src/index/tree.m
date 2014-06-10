@@ -84,7 +84,7 @@ find:(const char *)key
 }
 
 - (struct tnt_object *)
-find_key:(struct tbuf *)key_data with_cardinalty:(u32)cardinality
+find_key:(struct tbuf *)key_data cardinalty:(u32)cardinality
 {
 	init_pattern(key_data, cardinality, &node_a, dtor_arg);
 	struct index_node *r = sptree_find(tree, &node_a);
@@ -92,7 +92,7 @@ find_key:(struct tbuf *)key_data with_cardinalty:(u32)cardinality
 }
 
 - (struct tnt_object *)
-find_by_obj:(struct tnt_object *)obj
+find_obj:(struct tnt_object *)obj
 {
 	dtor(obj, &node_a, dtor_arg);
 	struct index_node *r = sptree_find(tree, &node_a);
@@ -100,7 +100,7 @@ find_by_obj:(struct tnt_object *)obj
 }
 
 - (struct tnt_object *)
-find_by_node:(const struct index_node *)node
+find_node:(const struct index_node *)node
 {
 	struct index_node *r = sptree_find(tree, node);
 	return r != NULL ? r->obj : NULL;
@@ -141,11 +141,11 @@ remove:(struct tnt_object *)obj
 - (void)
 iterator_init
 {
-	[self iterator_init:NULL with_cardinalty:0];
+	[self iterator_init_with_key:NULL cardinalty:0];
 }
 
 - (void)
-iterator_init:(struct tbuf *)key_data with_cardinalty:(u32)cardinality
+iterator_init_with_key:(struct tbuf *)key_data cardinalty:(u32)cardinality
 {
 	if (cardinality == 0) {
 		sptree_iterator_init(tree, &iterator);

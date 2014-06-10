@@ -89,15 +89,15 @@ struct dtor_conf {
 @protocol BasicIndex
 - (int)eq:(struct tnt_object *)a :(struct tnt_object *)b;
 - (struct tnt_object *)find:(const char *)key;
-- (struct tnt_object *)find_by_obj:(struct tnt_object *)obj;
-- (struct tnt_object *)find_by_node:(const struct index_node *)obj;
-- (struct tnt_object *) find_key:(struct tbuf *)key_data with_cardinalty:(u32)key_cardinality;
+- (struct tnt_object *)find_obj:(struct tnt_object *)obj;
+- (struct tnt_object *)find_node:(const struct index_node *)obj;
+- (struct tnt_object *) find_key:(struct tbuf *)key_data cardinalty:(u32)key_cardinality;
 - (int) remove: (struct tnt_object *)obj;
 - (void) replace: (struct tnt_object *)obj;
 - (void) valid_object: (struct tnt_object *)obj;
 
 - (void)iterator_init;
-- (void)iterator_init:(struct tbuf *)key_data with_cardinalty:(u32)cardinality;
+- (void)iterator_init_with_key:(struct tbuf *)key_data cardinalty:(u32)cardinality;
 - (void)iterator_init_with_object:(struct tnt_object *)obj;
 - (void)iterator_init_with_node:(const struct index_node *)node;
 - (struct tnt_object *)iterator_next;

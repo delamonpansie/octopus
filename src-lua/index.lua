@@ -25,7 +25,7 @@ struct Index {
 };
 ]]
 
-local find_by_node = objc.msg_lookup('find_by_node:')
+local find_node = objc.msg_lookup('find_node:')
 local iterator_init = objc.msg_lookup("iterator_init")
 local iterator_init_with_node = objc.msg_lookup("iterator_init_with_node:")
 local iterator_init_with_object = objc.msg_lookup("iterator_init_with_object:")
@@ -145,7 +145,7 @@ local index_mt = {
 	    if not ok then
 		packerr(node, "find", index, ...)
 	    end
-	    return object(find_by_node(index, node))
+	    return object(find_node(index, node))
 	end,
 	iter = function(index, ...)
 	    if select('#', ...) == 0 or select(1, ...) == nil then
