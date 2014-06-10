@@ -27,7 +27,6 @@
 #import <util.h>
 #include <stdbool.h>
 
-#import <say.h>
 #import <tbuf.h>
 #import <fiber.h>
 #import <pickle.h>
@@ -60,7 +59,7 @@ new_conf:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 			i->dtor = dc->lstr;
 			break;
 		case NUM16:
-			panic("NUM16 single column indexes unupported");
+			index_raise("NUM16 single column indexes unupported");
 		default:
 			abort();
 		}
