@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -64,6 +64,7 @@ struct index_conf {
 	int min_tuple_cardinality, cardinality;
 	enum index_type { HASH, TREE } type;
 	bool unique;
+	enum sort_order { ASC, DESC } sort_order;
 	int n;
 };
 
@@ -214,6 +215,15 @@ int lstr_compare(const struct index_node *na, const struct index_node *nb, void 
 int lstr_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
 int cstr_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
 int cstr_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+
+int i32_compare_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int i32_compare_with_addr_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int i64_compare_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int i64_compare_with_addr_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int lstr_compare_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int lstr_compare_with_addr_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int cstr_compare_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int cstr_compare_with_addr_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
 
 
 static inline int llexstrcmp(const void *a, const void *b)

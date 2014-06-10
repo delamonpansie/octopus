@@ -147,8 +147,12 @@ iterator_init
 - (void)
 iterator_init:(struct tbuf *)key_data with_cardinalty:(u32)cardinality
 {
-        init_pattern(key_data, cardinality, &search_pattern, dtor_arg);
-        sptree_iterator_init_set(tree, &iterator, &search_pattern);
+	if (cardinality == 0) {
+		sptree_iterator_init(tree, &iterator);
+	} else {
+		init_pattern(key_data, cardinality, &search_pattern, dtor_arg);
+		sptree_iterator_init_set(tree, &iterator, &search_pattern);
+	}
 }
 
 - (void)
@@ -208,6 +212,10 @@ i32_init_pattern(struct tbuf *key, int cardinality,
 	}
 }
 
+#define COMPARE(type)										\
+	conf.sort_order == ASC ?								\
+	(conf.unique ? (index_cmp)type##_compare : (index_cmp)type##_compare_with_addr) :	\
+	(conf.unique ? (index_cmp)type##_compare_desc : (index_cmp)type##_compare_with_addr_desc)
 
 - (id)
 init:(struct index_conf *)ic
@@ -216,7 +224,8 @@ init:(struct index_conf *)ic
 	node_size = sizeof(struct tnt_object *) + sizeof(i32);
 	init_pattern = i32_init_pattern;
 	pattern_compare = (index_cmp)i32_compare;
-	compare = conf.unique ? (index_cmp)i32_compare : (index_cmp)i32_compare_with_addr;
+	compare = COMPARE(i32);
+
 	[self set_nodes:NULL count:0 allocated:0];
 	return self;
 }
@@ -251,7 +260,7 @@ init:(struct index_conf *)ic
 	node_size = sizeof(struct tnt_object *) + sizeof(i64);
 	init_pattern = i64_init_pattern;
 	pattern_compare = (index_cmp)i64_compare;
-	compare = conf.unique ? (index_cmp)i64_compare : (index_cmp)i64_compare_with_addr;
+	compare = COMPARE(i64);
 	[self set_nodes:NULL count:0 allocated:0];
 	return self;
 }
@@ -284,7 +293,7 @@ init:(struct index_conf *)ic
 	node_size = sizeof(struct tnt_object *) + sizeof(void *);
 	init_pattern = lstr_init_pattern;
 	pattern_compare = (index_cmp)lstr_compare;
-	compare = conf.unique ? (index_cmp)lstr_compare : (index_cmp)lstr_compare_with_addr;
+	compare = COMPARE(lstr);
 	[self set_nodes:NULL count:0 allocated:0];
 	return self;
 }
@@ -349,6 +358,12 @@ tree_node_compare(struct index_node *na, struct index_node *nb, struct index_con
 }
 
 static int
+tree_node_compare_desc(struct index_node *na, struct index_node *nb, struct index_conf *ic)
+{
+	return -tree_node_compare(na, nb, ic);
+}
+
+static int
 tree_node_compare_with_addr(struct index_node *na, struct index_node *nb, struct index_conf *ic)
 {
 	int r = tree_node_compare(na, nb, ic);
@@ -364,6 +379,12 @@ tree_node_compare_with_addr(struct index_node *na, struct index_node *nb, struct
 		return -1;
 	else
 		return 0;
+}
+
+static int
+tree_node_compare_with_addr_desc(struct index_node *na, struct index_node *nb, struct index_conf *ic)
+{
+	return -tree_node_compare_with_addr(na, nb, ic);
 }
 
 void
@@ -437,7 +458,7 @@ init:(struct index_conf *)ic
 
 	init_pattern = gen_init_pattern;
 	pattern_compare = (index_cmp)tree_node_compare;
-	compare = conf.unique ? (index_cmp)tree_node_compare : (index_cmp)tree_node_compare_with_addr;
+	compare = COMPARE(tree_node);
 	[self set_nodes:NULL count:0 allocated:0];
 	return self;
 }

@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2012, 2013 Mail.RU
- * Copyright (C) 2012, 2013 Yuriy Vostrikov
+ * Copyright (C) 2012, 2013, 2014 Mail.RU
+ * Copyright (C) 2012, 2013, 2014 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -49,6 +49,12 @@ i32_compare(const struct index_node *na, const struct index_node *nb, void *x __
 }
 
 int
+i32_compare_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	return i32_compare(nb, na, x);
+}
+
+int
 i32_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
 	i32 a = na->key.u32, b = nb->key.u32;
@@ -69,6 +75,12 @@ i32_compare_with_addr(const struct index_node *na, const struct index_node *nb, 
 }
 
 int
+i32_compare_with_addr_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	return i32_compare_with_addr(nb, na, x);
+}
+
+int
 i64_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
 	i64 a = na->key.u64, b = nb->key.u64;
@@ -78,6 +90,12 @@ i64_compare(const struct index_node *na, const struct index_node *nb, void *x __
 		return -1;
 	else
 		return 0;
+}
+
+int
+i64_compare_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	return i64_compare(nb, na, x);
 }
 
 int
@@ -101,9 +119,21 @@ i64_compare_with_addr(const struct index_node *na, const struct index_node *nb, 
 }
 
 int
+i64_compare_with_addr_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	return i64_compare_with_addr(nb, na, x);
+}
+
+int
 lstr_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
 	return llexstrcmp(na->key.ptr, nb->key.ptr);
+}
+
+int
+lstr_compare_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	return lstr_compare(nb, na, x);
 }
 
 int
@@ -126,9 +156,21 @@ lstr_compare_with_addr(const struct index_node *na, const struct index_node *nb,
 }
 
 int
+lstr_compare_with_addr_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	return lstr_compare_with_addr(nb, na, x);
+}
+
+int
 cstr_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
         return strcmp(na->key.ptr, nb->key.ptr);
+}
+
+int
+cstr_compare_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	return cstr_compare(nb, na, x);
 }
 
 int
@@ -147,4 +189,10 @@ cstr_compare_with_addr(const struct index_node *na, const struct index_node *nb,
 		return -1;
 	else
 		return 0;
+}
+
+int
+cstr_compare_with_addr_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	return cstr_compare_with_addr(nb, na, x);
 }
