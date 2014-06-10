@@ -140,8 +140,8 @@ static inline struct iproto_handler*
 service_find_code(struct service *s, int code)
 {
 	int pos = code & s->ih_mask;
-	if (s->ih[pos].code == code) return &s->ih[pos];
 	if (s->ih[pos].code == -1) return &s->default_handler;
+	if (s->ih[pos].code == code) return &s->ih[pos];
 	int dlt = (code % s->ih_mask) | 1;
 	do {
 		pos = (pos + dlt) & s->ih_mask;
