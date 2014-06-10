@@ -1,0 +1,144 @@
+# box.object_space=(0)
+0
+
+# box.insert(["a"])
+1
+
+# box.insert(["b"])
+1
+
+# box.insert(["c"])
+1
+
+# box.insert(["d"])
+1
+
+# box.object_space=(4)
+4
+
+# box.insert(["a"])
+1
+
+# box.insert(["b"])
+1
+
+# box.insert(["c"])
+1
+
+# box.insert(["d"])
+1
+
+# box.object_space=(1)
+1
+
+# box.insert([1])
+1
+
+# box.insert([2])
+1
+
+# box.insert([3])
+1
+
+# box.insert([4])
+1
+
+# box.object_space=(5)
+5
+
+# box.insert([1])
+1
+
+# box.insert([2])
+1
+
+# box.insert([3])
+1
+
+# box.insert([4])
+1
+
+# box.object_space=(2)
+2
+
+# box.insert(["\x00\x00\x00\x00\x00\x00\x00\x01"])
+1
+
+# box.insert(["\x00\x00\x00\x00\x00\x00\x00\x02"])
+1
+
+# box.insert(["\x00\x00\x00\x00\x00\x00\x00\x03"])
+1
+
+# box.insert(["\x00\x00\x00\x00\x00\x00\x00\x04"])
+1
+
+# box.object_space=(6)
+6
+
+# box.insert(["\x00\x00\x00\x00\x00\x00\x00\x01"])
+1
+
+# box.insert(["\x00\x00\x00\x00\x00\x00\x00\x02"])
+1
+
+# box.insert(["\x00\x00\x00\x00\x00\x00\x00\x03"])
+1
+
+# box.insert(["\x00\x00\x00\x00\x00\x00\x00\x04"])
+1
+
+# box.object_space=(3)
+3
+
+# box.insert(["a", 1])
+1
+
+# box.insert(["b", 2])
+1
+
+# box.insert(["c", 3])
+1
+
+# box.insert(["d", 4])
+1
+
+# box.object_space=(7)
+7
+
+# box.insert(["a", 1])
+1
+
+# box.insert(["b", 2])
+1
+
+# box.insert(["c", 3])
+1
+
+# box.insert(["d", 4])
+1
+
+# box.lua("user_proc.get_all_tuples", "0")
+[["a"], ["b"], ["c"], ["d"]]
+
+# box.lua("user_proc.get_all_tuples", "4")
+[["d"], ["c"], ["b"], ["a"]]
+
+# box.lua("user_proc.get_all_tuples", "1")
+[["\x01\x00\x00\x00"], ["\x02\x00\x00\x00"], ["\x03\x00\x00\x00"], ["\x04\x00\x00\x00"]]
+
+# box.lua("user_proc.get_all_tuples", "5")
+[["\x04\x00\x00\x00"], ["\x03\x00\x00\x00"], ["\x02\x00\x00\x00"], ["\x01\x00\x00\x00"]]
+
+# box.lua("user_proc.get_all_tuples", "2")
+[["\x00\x00\x00\x00\x00\x00\x00\x01"], ["\x00\x00\x00\x00\x00\x00\x00\x02"], ["\x00\x00\x00\x00\x00\x00\x00\x03"], ["\x00\x00\x00\x00\x00\x00\x00\x04"]]
+
+# box.lua("user_proc.get_all_tuples", "6")
+[["\x00\x00\x00\x00\x00\x00\x00\x04"], ["\x00\x00\x00\x00\x00\x00\x00\x03"], ["\x00\x00\x00\x00\x00\x00\x00\x02"], ["\x00\x00\x00\x00\x00\x00\x00\x01"]]
+
+# box.lua("user_proc.get_all_tuples", "3")
+[["a", "\x01\x00\x00\x00"], ["b", "\x02\x00\x00\x00"], ["c", "\x03\x00\x00\x00"], ["d", "\x04\x00\x00\x00"]]
+
+# box.lua("user_proc.get_all_tuples", "7")
+[["d", "\x04\x00\x00\x00"], ["c", "\x03\x00\x00\x00"], ["b", "\x02\x00\x00\x00"], ["a", "\x01\x00\x00\x00"]]
+

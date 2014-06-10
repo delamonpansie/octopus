@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -121,6 +121,12 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 		d->field_index[i] = d->cmp_order[i] = d->offset[i] = -1;
 
 	d->unique = c->unique;
+	if (strcmp(c->sort_order, "ASC") == 0)
+		d->sort_order = ASC;
+	else if (strcmp(c->sort_order, "DESC") == 0)
+		d->sort_order = DESC;
+	else
+		panic("unknown sort order");
 
 	if (strcmp(c->type, "HASH") == 0)
 		d->type = HASH;
