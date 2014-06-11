@@ -520,7 +520,7 @@ process_select(struct netmsg_head *h, Index<BasicIndex> *index,
 			if (unlikely(limit == 0))
 				continue;
 
-			while ((obj = [tree iterator_next_verify_pattern]) != NULL) {
+			while ((obj = [tree iterator_next_check:tree->pattern_compare]) != NULL) {
 				if (unlikely(ghost(obj)))
 					continue;
 				if (unlikely(limit == 0))
