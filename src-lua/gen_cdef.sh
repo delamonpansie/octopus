@@ -15,6 +15,7 @@ EOF
 $CPP $srcdir/include/octopus.h | $SED -n '/^\(enum tnt_object_flags\|struct tnt_object\) \+{/,/^}/p'
 $CPP $srcdir/include/octopus.h | $SED -n '/^void object_/p; /^extern struct octopus_cfg/p;'
 $CPP $srcdir/include/index.h | $SED -n '/^\(struct\|union\) index_[a-z]\+ \+{/,/^}/p'
+$CPP $srcdir/include/index.h | $SED -n '/^enum iterator_direction\+ \+{/,/^}/p'
 $CPP $srcdir/include/fiber.h | $SED -n '/^typedef struct coro_context/p;'
 $CPP $srcdir/include/fiber.h | $SED -n '/^struct \(fiber\|octopus_coro\|coro_context\) \+{/,/^}/p'
 $CPP $srcdir/include/fiber.h | $SED -n '/fiber_wake\|fid2fiber/p'

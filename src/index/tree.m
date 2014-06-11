@@ -141,32 +141,58 @@ remove:(struct tnt_object *)obj
 - (void)
 iterator_init
 {
-	[self iterator_init_with_key:NULL cardinalty:0];
+	[self iterator_init_with_key:NULL cardinalty:0 direction:iterator_forward];
+}
+
+- (void)
+iterator_init_with_direction:(enum iterator_direction)direction
+{
+	[self iterator_init_with_key:NULL cardinalty:0 direction:direction];
 }
 
 - (void)
 iterator_init_with_key:(struct tbuf *)key_data cardinalty:(u32)cardinality
 {
-	if (cardinality == 0) {
-		sptree_iterator_init(tree, &iterator);
-	} else {
-		init_pattern(key_data, cardinality, &search_pattern, dtor_arg);
-		sptree_iterator_init_set(tree, &iterator, &search_pattern);
-	}
+	[self iterator_init_with_key:key_data cardinalty:cardinality direction:iterator_forward];
 }
 
 - (void)
 iterator_init_with_object:(struct tnt_object *)obj
 {
-        dtor(obj, &search_pattern, dtor_arg);
-	sptree_iterator_init_set(tree, &iterator, &search_pattern);
+	[self iterator_init_with_object:obj direction:iterator_forward];
 }
 
 - (void)
 iterator_init_with_node:(const struct index_node *)node
 {
+	[self iterator_init_with_node:node direction:iterator_forward];
+}
+
+- (void)
+iterator_init_with_key:(struct tbuf *)key_data
+	    cardinalty:(u32)cardinality
+	     direction:(enum iterator_direction)direction
+{
+	if (cardinality == 0) {
+		sptree_iterator_init(tree, &iterator, direction);
+	} else {
+		init_pattern(key_data, cardinality, &search_pattern, dtor_arg);
+		sptree_iterator_init_set(tree, &iterator, &search_pattern, direction);
+	}
+}
+
+- (void)
+iterator_init_with_object:(struct tnt_object *)obj direction:(enum iterator_direction)direction
+{
+        dtor(obj, &search_pattern, dtor_arg);
+	sptree_iterator_init_set(tree, &iterator, &search_pattern, direction);
+}
+
+- (void)
+iterator_init_with_node:(const struct index_node *)node direction:(enum iterator_direction)direction
+{
 	memcpy(&search_pattern, node, node_size);
-	sptree_iterator_init_set(tree, &iterator, &search_pattern);
+	sptree_iterator_init_set(tree, &iterator, &search_pattern, direction);
 }
 
 - (struct tnt_object *)

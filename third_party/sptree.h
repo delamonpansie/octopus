@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2012 Mail.RU
+ * Copyright (C) 2010, 2012, 2014 Mail.RU
  * Copyright (C) 2010 Teodor Sigaev
  *
  * Redistribution and use in source and binary forms, with or without
@@ -99,6 +99,11 @@ typedef struct sptree_t {
     spnode_t                max_size;
     spnode_t                max_depth;
 } sptree_t;
+
+typedef enum sptree_direction_t {
+	sptree_forward = 1,
+	sptree_backward = -1
+} sptree_direction_t;
 
 static spnode_t
 sptree_mktree(sptree_t *t, spnode_t depth,
@@ -483,11 +488,33 @@ typedef struct sptree_iterator {
     sptree_t             *t;
     int                  level;
     int                  max_depth;
+    sptree_direction_t	 direction;
     spnode_t             stack[0];
 } sptree_iterator;
 
+static inline spnode_t
+sptree_descent(sptree_iterator *i, sptree_direction_t direction) {
+	sptree_t *t;
+	spnode_t	node;
+
+	t = i->t;
+
+	switch(direction) {
+		case sptree_forward:
+			node = _GET_SPNODE_LEFT(i->stack[i->level]);
+			break;
+		case sptree_backward:
+			node = _GET_SPNODE_RIGHT(i->stack[i->level]);
+			break;
+		default:
+			abort();
+	}
+
+	return node;
+}
+
 static inline void
-sptree_iterator_init(sptree_t *t, sptree_iterator **i)    {
+sptree_iterator_init(sptree_t *t, sptree_iterator **i, sptree_direction_t direction)    {
     spnode_t node;
 
     if (t->root == SPNIL) return;
@@ -497,16 +524,18 @@ sptree_iterator_init(sptree_t *t, sptree_iterator **i)    {
 
     (*i)->t = t;
     (*i)->level = 0;
+    (*i)->max_depth = t->max_depth;
+    (*i)->direction = direction;
     (*i)->stack[0] = t->root;
 
-    while( (node = _GET_SPNODE_LEFT( (*i)->stack[(*i)->level] )) != SPNIL ) {
+    while ((node = sptree_descent(*i, (*i)->direction)) != SPNIL) {
         (*i)->level++;
         (*i)->stack[(*i)->level] = node;
     }
 }
 
 static inline void
-sptree_iterator_init_set(sptree_t *t, sptree_iterator **i, void *k) {
+sptree_iterator_init_set(sptree_t *t, sptree_iterator **i, void *k, sptree_direction_t direction) {
     spnode_t node;
     int      lastLevelEq = -1, cmp;
 
@@ -518,6 +547,7 @@ sptree_iterator_init_set(sptree_t *t, sptree_iterator **i, void *k) {
     if (t->root == SPNIL) return;
 
     (*i)->max_depth = t->max_depth;
+    (*i)->direction = direction;
     (*i)->stack[0] = t->root;
 
     node = t->root;
@@ -528,13 +558,16 @@ sptree_iterator_init_set(sptree_t *t, sptree_iterator **i, void *k) {
         (*i)->stack[(*i)->level] = node;
 
         if (cmp > 0) {
-            (*i)->level--; /* exclude current node from path, ie "mark as visited" */
+	    if (direction == sptree_forward)
+                (*i)->level--; /* exclude current node from path, ie "mark as visited" */
             node = _GET_SPNODE_RIGHT(node);
         } else if (cmp < 0) {
+	    if (direction == sptree_backward)
+                (*i)->level--; /* exclude current node from path, ie "mark as visited" */
             node = _GET_SPNODE_LEFT(node);
         } else {
             lastLevelEq = (*i)->level;
-            node = _GET_SPNODE_LEFT(node); /* one way iterator: from left to right */
+	    node = sptree_descent(*i, (*i)->direction);
         }
     }
 
@@ -559,12 +592,12 @@ sptree_iterator_next(sptree_iterator *i)    {
     if ( i->level >= 0 ) {
         returnNode = i->stack[i->level];
 
-        node = _GET_SPNODE_RIGHT( i->stack[i->level] );
+	node = sptree_descent(i, - i->direction);
         i->level--;
         while( node != SPNIL ) {
             i->level++;
             i->stack[i->level] = node;
-            node = _GET_SPNODE_LEFT( i->stack[i->level] );
+	    node = sptree_descent(i, i->direction);
         }
     }
 

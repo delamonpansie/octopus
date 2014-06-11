@@ -12,6 +12,7 @@ local select = select
 local pcall = pcall
 local table = table
 local assertarg = assertarg
+local setmetatable = setmetatable
 
 local printf = printf
 
@@ -19,7 +20,11 @@ module(...)
 
 ffi.cdef[[
 struct OpaqueIndex;
-struct Index {
+struct BasicIndex {
+	struct { void *isa; };
+	const struct index_conf conf;
+};
+struct Tree {
 	struct { void *isa; };
 	const struct index_conf conf;
 };
@@ -29,6 +34,9 @@ local find_node = objc.msg_lookup('find_node:')
 local iterator_init = objc.msg_lookup("iterator_init")
 local iterator_init_with_node = objc.msg_lookup("iterator_init_with_node:")
 local iterator_init_with_object = objc.msg_lookup("iterator_init_with_object:")
+local iterator_init_with_direction = objc.msg_lookup("iterator_init_with_direction:")
+local iterator_init_with_node_direction = objc.msg_lookup("iterator_init_with_node:direction:")
+local iterator_init_with_object_direction = objc.msg_lookup("iterator_init_with_object:direction:")
 local iterator_next = objc.msg_lookup("iterator_next")
 local get = objc.msg_lookup('get:')
 
@@ -108,7 +116,8 @@ local function packerr(err, fname, index, ...)
 end
 
 local opaquet = ffi.typeof('struct OpaqueIndex *')
-local indext = ffi.typeof('struct Index *')
+local indext = ffi.typeof('struct BasicIndex *')
+local treet = ffi.typeof('struct Tree *')
 
 -- legacy iter interface interface
 function iter(index, key)
@@ -133,12 +142,55 @@ local legacy_mt = {
 }
 ffi.metatype('struct OpaqueIndex', legacy_mt)
 
+local int32_t = ffi.typeof('int32_t')
+local uint32_t = ffi.typeof('uint32_t')
+local int = ffi.typeof('int')
+local dir_decode = setmetatable({ forward = ffi.C.iterator_forward,
+                                  backward = ffi.C.iterator_backward, },
+                                { __index = function() return ffi.C.iterator_forward end })
+
 local function iter_next(index)
    return object(iterator_next(index))
 end
-local int32_t = ffi.typeof('int32_t')
-local uint32_t = ffi.typeof('uint32_t')
-local index_mt = {
+
+local function iter(index, ...)
+    if select('#', ...) == 0 or select(1, ...) == nil then
+        iterator_init(index)
+    elseif type(select(1, ...)) == 'table' then
+        local init = select(1, ...)
+        assert(init.__obj)
+        iterator_init_with_object(index, init.__obj)
+    else
+        local ok, node = pcall(packnode, index, ...)
+        if not ok then
+            packerr(node, "iter", index, ...)
+        end
+        iterator_init_with_node(index, node)
+    end
+    return iter_next, index
+end
+
+local function diter(index, direction, ...)
+    if type(direction) == 'string' then
+        direction = dir_decode[direction]
+    end
+    if select('#', ...) == 0 or select(1, ...) == nil then
+        iterator_init_with_direction(index, int(direction))
+    elseif type(select(1, ...)) == 'table' then
+        local init = select(1, ...)
+        assert(init.__obj)
+        iterator_init_with_object_direction(index, init.__obj, int(direction))
+    else
+        local ok, node = pcall(packnode, index, ...)
+        if not ok then
+            packerr(node, "iter", index, ...)
+        end
+        iterator_init_with_node_direction(index, node, int(direction))
+    end
+    return iter_next, index
+end
+
+local basicindex_mt = {
     __index = {
 	find = function(index, ...)
 	    local ok, node = pcall(packnode, index, ...)
@@ -146,22 +198,6 @@ local index_mt = {
 		packerr(node, "find", index, ...)
 	    end
 	    return object(find_node(index, node))
-	end,
-	iter = function(index, ...)
-	    if select('#', ...) == 0 or select(1, ...) == nil then
-		iterator_init(index)
-	    elseif type(select(1, ...)) == 'table' then
-		local init = select(1, ...)
-		assert(init.__obj)
-		iterator_init_with_object(index, init.__obj)
-	    else
-		local ok, node = pcall(packnode, index, ...)
-		if not ok then
-		    packerr(node, "iter", index, ...)
-		end
-		iterator_init_with_node(index, node)
-	    end
-	 return iter_next, index
 	end,
         size = function(index)
             return tonumber(ffi.cast(uint32_t, objc.msg_send(index, "size")))
@@ -181,12 +217,32 @@ local index_mt = {
             else
                 error("bad index type", 2)
             end
-        end
+        end,
+
+        iter = iter
    }
 }
-ffi.metatype('struct Index', index_mt)
+ffi.metatype('struct BasicIndex', basicindex_mt)
+
+local tree_mt = {
+    __index = {
+	find = basicindex_mt.__index.find,
+        size = basicindex_mt.__index.size,
+        slots = basicindex_mt.__index.slots,
+        get = basicindex_mt.__index.get,
+        type = basicindex_mt.__index.type,
+
+        diter = diter,
+        iter = function(index, ...) return diter(index, "forward", ...) end,
+	riter = function(index, ...) return diter(index, "backward", ...) end
+   }
+}
+ffi.metatype('struct Tree', tree_mt)
 
 function cast(index)
-   local legacy = ffi.cast('struct OpaqueIndex *', index)
-   return legacy, index
+    local legacy = ffi.cast(opaquet, index)
+    if index:type() == 'TREE' then
+        index = ffi.cast(treet, index)
+    end
+    return legacy, index
 end

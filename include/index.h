@@ -161,6 +161,11 @@ struct dtor_conf {
 @interface Int64Hash: Hash <HashIndex>
 @end
 
+/* must be same as sptree_direction_t */
+enum iterator_direction {
+	iterator_forward = 1,
+	iterator_backward = -1
+};
 
 @interface Tree: Index <BasicIndex> {
 @public
@@ -175,6 +180,11 @@ struct dtor_conf {
 	char __tree_padding[256]; /* FIXME: overflow */
 }
 - (void)set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated;
+
+- (void)iterator_init_with_direction:(enum iterator_direction)direction;
+- (void)iterator_init_with_key:(struct tbuf *)key_data cardinalty:(u32)cardinality direction:(enum iterator_direction)direction;
+- (void)iterator_init_with_object:(struct tnt_object *)obj direction:(enum iterator_direction)direction;
+- (void)iterator_init_with_node:(const struct index_node *)node direction:(enum iterator_direction)direction;
 
 - (struct tnt_object *)iterator_next_verify_pattern;
 @end
