@@ -186,7 +186,7 @@ enum iterator_direction {
 - (void)iterator_init_with_object:(struct tnt_object *)obj direction:(enum iterator_direction)direction;
 - (void)iterator_init_with_node:(const struct index_node *)node direction:(enum iterator_direction)direction;
 
-- (struct tnt_object *)iterator_next_verify_pattern;
+- (struct tnt_object *)iterator_next_check:(index_cmp)check;
 @end
 
 

@@ -203,17 +203,20 @@ iterator_next
 }
 
 - (struct tnt_object *)
-iterator_next_verify_pattern
+iterator_next_check:(index_cmp)check
 {
-	struct index_node *r = sptree_iterator_next(iterator);
-
-	if (r != NULL) {
-		if (pattern_compare(&search_pattern, r, self->dtor_arg) != 0)
-			return NULL;
-		return r->obj;
+	struct index_node *r;
+	while ((r = sptree_iterator_next(iterator))) {
+		switch (check(&search_pattern, r, self->dtor_arg)) {
+		case 0: return r->obj;
+		case -1:
+		case 1: return NULL;
+		case 2: continue;
+		}
 	}
 	return NULL;
 }
+
 @end
 
 @implementation Int32Tree
