@@ -1,0 +1,36 @@
+# box.insert(["0"])
+1
+
+# box.insert(["1"])
+1
+
+# box.insert(["2"])
+1
+
+# box.insert(["3"])
+1
+
+# box.insert(["4"])
+1
+
+# box.insert(["5"])
+1
+
+# box.insert(["6"])
+1
+
+# box.insert(["7"])
+1
+
+# box.insert(["8"])
+1
+
+# box.insert(["9"])
+1
+
+# box.lua("user_proc.iterator", "0", "5", "5")
+[["5"], ["6"], ["7"], ["8"], ["9"]]
+
+# box.lua("user_proc.iterator", "0", "5", "5", "backward")
+[["5"], ["4"], ["3"], ["2"], ["1"]]
+

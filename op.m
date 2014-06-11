@@ -123,7 +123,7 @@ box_replace(struct box_txn *txn)
 
 	foreach_index(index, txn->object_space) {
 		if (index->conf.unique) {
-			struct tnt_object *obj = [index find_by_obj:txn->obj];
+			struct tnt_object *obj = [index find_obj:txn->obj];
 			if (obj == NULL) {
 				[index replace:txn->obj];
 			} else if (obj == txn->old_obj) {
@@ -173,7 +173,7 @@ prepare_replace(struct box_txn *txn, size_t cardinality, const void *data, u32 d
 	memcpy(tuple->data, data, data_len);
 
 	struct tnt_object *obj;
-	while ((obj = [txn->index find_by_obj:txn->obj]) && obj->flags & WAL_WAIT)
+	while ((obj = [txn->index find_obj:txn->obj]) && obj->flags & WAL_WAIT)
 		object_yield(obj);
 
 	txn_acquire(txn, obj, OLD);
@@ -323,7 +323,7 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 
 	struct tnt_object *obj;
 	void *ptr = data->ptr;
-	while ((obj = [txn->index find_key:data with_cardinalty:key_cardinality]) && obj->flags & WAL_WAIT) {
+	while ((obj = [txn->index find_key:data cardinalty:key_cardinality]) && obj->flags & WAL_WAIT) {
 		data->ptr = ptr;
 		object_yield(obj);
 	}
@@ -494,7 +494,7 @@ process_select(struct netmsg_head *h, Index<BasicIndex> *index,
 	if (index->conf.type == HASH || (index->conf.unique && index->conf.cardinality == 1)) {
 		for (u32 i = 0; i < count; i++) {
 			u32 c = read_u32(data);
-			obj = [index find_key:data with_cardinalty:c];
+			obj = [index find_key:data cardinalty:c];
 			if (obj == NULL)
 				continue;
 			if (unlikely(ghost(obj)))
@@ -515,7 +515,7 @@ process_select(struct netmsg_head *h, Index<BasicIndex> *index,
 		Tree *tree = (Tree *)index;
 		for (u32 i = 0; i < count; i++) {
 			u32 c = read_u32(data);
-			[tree iterator_init:data with_cardinalty:c];
+			[tree iterator_init_with_key:data cardinalty:c];
 
 			if (unlikely(limit == 0))
 				continue;
@@ -550,7 +550,7 @@ prepare_delete(struct box_txn *txn, struct tbuf *key_data)
 
 	struct tnt_object *obj;
 	void *ptr = key_data->ptr;
-	while ((obj = [txn->index find_key:key_data with_cardinalty:c]) && obj->flags & WAL_WAIT) {
+	while ((obj = [txn->index find_key:key_data cardinalty:c]) && obj->flags & WAL_WAIT) {
 		key_data->ptr = ptr;
 		object_yield(obj);
 	}
@@ -676,7 +676,7 @@ box_rollback(struct box_txn *txn)
 		return;
 
 	foreach_index(index, txn->object_space) {
-		if (index->conf.unique && [index find_by_obj:txn->obj] != txn->obj)
+		if (index->conf.unique && [index find_obj:txn->obj] != txn->obj)
 			continue;
 
 		@try {

@@ -305,7 +305,7 @@
 [["abc", "defg", "foobar"], ["abc", "defg"], ["abc"]]
 
 # box.lua("user_proc.test2")
-[["cdata<struct OpaqueIndex *>: 0xPTR", "cdata<struct Index *>: 0xPTR"]]
+[["cdata<struct OpaqueIndex *>: 0xPTR", "cdata<struct BasicIndex *>: 0xPTR"]]
 
 # box.lua("user_proc.test3")
 [["cdata<struct box_tuple *>: 0xPTR", "11", "11"]]

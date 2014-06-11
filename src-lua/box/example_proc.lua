@@ -169,10 +169,10 @@ user_proc.truncate = box.wrap(function (n)
 end)
 
 
-user_proc.iterator = box.wrap(function (n, key, limit)
-	local object_space = box.object_space[n]
-	local pk = object_space.index[0]
-	local result = {}
+user_proc.iterator = box.wrap(function (n, key, limit, dir)
+	local os = box.object_space[n]
+        local pk = os:index(0)
+        local result = {}
 
 	if limit == nil then
 	   limit = 1024
@@ -180,7 +180,14 @@ user_proc.iterator = box.wrap(function (n, key, limit)
 	   limit = tonumber(limit)
 	end
 
-	for tuple in index.iter(pk, key) do
+        local next, state
+        if pk:type() == 'TREE' then
+            next, state = pk:diter(dir or 'forward', key)
+        else
+            next, state = pk:iter(key)
+        end
+
+        for tuple in next, state do
 	   table.insert(result, tuple)
 	   limit = limit - 1
 	   if limit == 0 then
