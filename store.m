@@ -244,7 +244,7 @@ store(const char *key, u32 exptime, u32 flags, u32 value_len, char *value)
 		obj = mc_alloc(key, exptime, flags, value_len, value);
 		struct mc_obj *m = mc_obj(obj);
 
-		old_obj = [mc_index find_by_obj:obj];
+		old_obj = [mc_index find_obj:obj];
 		if (old_obj) {
 			object_lock(old_obj); /* may throw exception */
 		} else {
