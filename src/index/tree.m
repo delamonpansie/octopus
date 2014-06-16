@@ -242,7 +242,7 @@ i32_init_pattern(struct tbuf *key, int cardinality,
 }
 
 #define COMPARE(type)										\
-	conf.sort_order == ASC ?								\
+	conf.sort_order[0] == ASC ?								\
 	(conf.unique ? (index_cmp)type##_compare : (index_cmp)type##_compare_with_addr) :	\
 	(conf.unique ? (index_cmp)type##_compare_desc : (index_cmp)type##_compare_with_addr_desc)
 
@@ -381,15 +381,9 @@ tree_node_compare(struct index_node *na, struct index_node *nb, struct index_con
 		union index_field *bkey = (void *)&nb->key + ic->offset[j];
 		int r = field_compare(akey, bkey, ic->field_type[j]);
 		if (r != 0)
-			return r;
+			return r * ic->sort_order[i];
 	}
 	return 0;
-}
-
-static int
-tree_node_compare_desc(struct index_node *na, struct index_node *nb, struct index_conf *ic)
-{
-	return -tree_node_compare(na, nb, ic);
 }
 
 static int
@@ -408,12 +402,6 @@ tree_node_compare_with_addr(struct index_node *na, struct index_node *nb, struct
 		return -1;
 	else
 		return 0;
-}
-
-static int
-tree_node_compare_with_addr_desc(struct index_node *na, struct index_node *nb, struct index_conf *ic)
-{
-	return -tree_node_compare_with_addr(na, nb, ic);
 }
 
 void
@@ -487,7 +475,7 @@ init:(struct index_conf *)ic
 
 	init_pattern = gen_init_pattern;
 	pattern_compare = (index_cmp)tree_node_compare;
-	compare = COMPARE(tree_node);
+	compare = conf.unique ? (index_cmp)tree_node_compare : (index_cmp)tree_node_compare_with_addr;
 	[self set_nodes:NULL count:0 allocated:0];
 	return self;
 }
