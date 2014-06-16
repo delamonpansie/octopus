@@ -35,32 +35,65 @@ object_space[3].index[0].key_field[1].type = "NUM"
 object_space[4].enabled = 1
 object_space[4].index[0].type = "TREE"
 object_space[4].index[0].unique = 1
-object_space[4].index[0].sort_order = "DESC"
 object_space[4].index[0].key_field[0].fieldno = 0
 object_space[4].index[0].key_field[0].type = "STR"
+object_space[4].index[0].key_field[0].sort_order = "DESC"
 
 object_space[5].enabled = 1
 object_space[5].index[0].type = "TREE"
 object_space[5].index[0].unique = 1
-object_space[5].index[0].sort_order = "DESC"
 object_space[5].index[0].key_field[0].fieldno = 0
 object_space[5].index[0].key_field[0].type = "NUM"
+object_space[5].index[0].key_field[0].sort_order = "DESC"
 
 object_space[6].enabled = 1
 object_space[6].index[0].type = "TREE"
 object_space[6].index[0].unique = 1
-object_space[6].index[0].sort_order = "DESC"
 object_space[6].index[0].key_field[0].fieldno = 0
 object_space[6].index[0].key_field[0].type = "NUM64"
+object_space[6].index[0].key_field[0].sort_order = "DESC"
 
 object_space[7].enabled = 1
 object_space[7].index[0].type = "TREE"
 object_space[7].index[0].unique = 1
-object_space[7].index[0].sort_order = "DESC"
 object_space[7].index[0].key_field[0].fieldno = 0
 object_space[7].index[0].key_field[0].type = "STR"
+object_space[7].index[0].key_field[0].sort_order = "DESC"
 object_space[7].index[0].key_field[1].fieldno = 1
 object_space[7].index[0].key_field[1].type = "NUM"
+object_space[7].index[0].key_field[1].sort_order = "DESC"
+
+object_space[8].enabled = 1
+object_space[8].index[0].type = "TREE"
+object_space[8].index[0].unique = 1
+object_space[8].index[0].key_field[0].fieldno = 0
+object_space[8].index[0].key_field[0].type = "STR"
+object_space[8].index[0].key_field[0].sort_order = "DESC"
+object_space[8].index[0].key_field[1].fieldno = 1
+object_space[8].index[0].key_field[1].type = "NUM"
+
+object_space[9] = { enabled = 1
+                    index[0] = { type = "HASH"
+                                 unique = 1
+                                 key_field[0] = { fieldno = 0
+                                                  type = "STR" }
+                               }
+                    index[1] = { type = "TREE"
+                                 unique = 0
+                                 key_field[0] = { fieldno = 1
+                                                  type = "STR" }
+				 key_field[1] = { fieldno = 2
+                                                  type = "STR" }
+                               }
+                    index[2] = { type = "TREE"
+                                 unique = 0
+                                 key_field[0] = { fieldno = 1
+                                                  type = "STR" }
+				 key_field[1] = { fieldno = 2
+                                                  type = "STR"
+						  sort_order = "DESC" }
+                               }
+                  }
 
 EOD
   end
@@ -91,4 +124,15 @@ Env.connect_eval do
   [0,4, 1,5, 2,6, 3,7].each do |o|
     lua 'user_proc.get_all_tuples', "#{o}"
   end
+
+  self.object_space = 9
+  i = 'a'
+  %w/a b/.each do |j|
+    %w/a b c d/.each do |k|
+      insert_nolog [i, j, k]
+      i = i.succ
+    end
+  end
+  select "a", "b", :index => 1
+  select "a", "b", :index => 2
 end

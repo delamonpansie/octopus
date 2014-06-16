@@ -121,13 +121,6 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 		d->field_index[i] = d->cmp_order[i] = d->offset[i] = -1;
 
 	d->unique = c->unique;
-	if (strcmp(c->sort_order, "ASC") == 0)
-		d->sort_order = ASC;
-	else if (strcmp(c->sort_order, "DESC") == 0)
-		d->sort_order = DESC;
-	else
-		panic("unknown sort order");
-
 	if (strcmp(c->type, "HASH") == 0)
 		d->type = HASH;
 	else if (strcmp(c->type, "TREE") == 0)
@@ -146,6 +139,13 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 		d->cmp_order[d->cardinality] = d->cardinality;
 		d->field_index[d->cardinality] = c->key_field[k]->fieldno;
 		d->offset[d->cardinality] = offset;
+
+		if (strcmp(c->key_field[k]->sort_order, "ASC") == 0)
+			d->sort_order[d->cardinality] = ASC;
+		else if (strcmp(c->key_field[k]->sort_order, "DESC") == 0)
+			d->sort_order[d->cardinality] = DESC;
+		else
+			panic("unknown sort order");
 
 		if (strcmp(c->key_field[k]->type, "NUM") == 0) {
 			d->field_type[d->cardinality] = NUM32;
@@ -183,6 +183,7 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 				swap(field_index);
 				swap(offset);
 				swap(cmp_order);
+				swap(sort_order);
 				swap(field_type);
 #undef swap
 			}

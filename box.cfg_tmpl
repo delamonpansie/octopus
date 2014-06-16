@@ -12,11 +12,11 @@ object_space = [
       {
         type = "", required
         unique = -1, required
-        sort_order = "ASC"
         key_field = [
           {
             fieldno = -1, required
             type = "", required
+	    sort_order = "ASC"
           }, ro,  required
         ], required
       }, ro, required

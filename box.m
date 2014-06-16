@@ -113,8 +113,7 @@ configure(void)
 		object_space_registry[i].enabled = true;
 
 		say_info("object space %i successfully configured", i);
-		say_info("  PK %i:%s%s", pk->conf.n, [[pk class] name],
-			 pk->conf.sort_order == ASC ? "" : "/DESC");
+		say_info("  PK %i:%s", pk->conf.n, [[pk class] name]);
 	}
 }
 
@@ -163,8 +162,7 @@ build_object_space_trees(struct object_space *object_space)
 	}
 
 	for (int i = 0; i < tree_count; i++) {
-		say_info("  %i:%s%s", ts[i]->conf.n, [[ts[i] class] name],
-			 pk->conf.sort_order == ASC ? "" : "/DESC");
+		say_info("  %i:%s", ts[i]->conf.n, [[ts[i] class] name]);
 		[ts[i] set_nodes:nodes[i]
 			   count:n_tuples
 		       allocated:estimated_tuples];
