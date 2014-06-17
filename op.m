@@ -828,8 +828,8 @@ box_service(struct service *s)
 
 static void
 box_roerr(struct netmsg_head *h __attribute__((unused)),
-      struct iproto *request __attribute__((unused)),
-      struct conn *c __attribute__((unused)))
+	  struct iproto *request __attribute__((unused)),
+	  struct conn *c __attribute__((unused)))
 {
 	iproto_raise(ERR_CODE_NONMASTER, "updates are forbidden");
 }
