@@ -46,7 +46,6 @@ RB_HEAD(ptree, proposal);
 	struct ptree proposals;
 	struct service service;
 }
-- (int) submit:(const void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag;
 - (i64) next_scn;
 @end
 

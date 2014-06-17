@@ -544,6 +544,20 @@ expire_proposal(PaxosRecovery *r)
 	paxos_reply((req), NACK, (nack_ballot));				\
 })
 
+static int
+submit(XLogWriter *r, const void *data, u32 data_len, i64 scn, u16 tag)
+{
+	struct row_v12 row = { .scn = scn,
+			       .tag = tag };
+
+	struct wal_pack pack;
+	if (!wal_pack_prepare(r, &pack))
+		return 0;
+	wal_pack_append_row(&pack, &row);
+	wal_pack_append_data(&pack, &row, data, data_len);
+	return [r wal_pack_submit];
+}
+
 static void
 decided(struct paxos_request *req)
 {
@@ -565,7 +579,7 @@ promise(PaxosRecovery *r, struct paxos_request *req)
 		return;
 	}
 
-	if ([r submit:&msg->ballot len:sizeof(msg->ballot) scn:msg->scn tag:(paxos_promise | TAG_SYS)] != 1)
+	if (submit(r, &msg->ballot, sizeof(msg->ballot), msg->scn, paxos_promise | TAG_SYS) != 1)
 		return;
 
 	if (p->ballot == ULLONG_MAX) {
@@ -603,7 +617,7 @@ accepted(PaxosRecovery *r, struct paxos_request *req)
 	tbuf_append(buf, &msg->value_len, sizeof(msg->value_len));
 	tbuf_append(buf, msg->value, msg->value_len);
 
-	if ([r submit:buf->ptr len:tbuf_len(buf) scn:msg->scn tag:(paxos_accept | TAG_SYS)] != 1)
+	if (submit(r, buf->ptr, tbuf_len(buf), msg->scn, paxos_accept | TAG_SYS) != 1)
 		return;
 
 	if (p->ballot == ULLONG_MAX) {
@@ -625,7 +639,7 @@ accepted(PaxosRecovery *r, struct paxos_request *req)
 static u32
 prepare(PaxosRecovery *r, struct iproto_mbox *mbox, struct proposal *p, u64 ballot)
 {
-	if ([r submit:&ballot len:sizeof(ballot) scn:p->scn tag:(paxos_prepare | TAG_SYS)] != 1)
+	if (submit(r, &ballot, sizeof(ballot), p->scn, paxos_prepare | TAG_SYS) != 1)
 		return 0;
 	p->prepare_ballot = ballot;
 
@@ -1001,7 +1015,7 @@ loop:
 		say_debug2("|  % 8"PRIi64" APPLIED", p->scn);
 		assert([r scn] + 1 == p->scn);
 		/* TODO: batch write */
-		if ([r submit:p->value len:p->value_len scn:p->scn tag:p->tag] != 1) {
+		if (submit(r, p->value, p->value_len, p->scn, p->tag) != 1) {
 			say_error("unable to writer wal row");
 			goto loop;
 		}
@@ -1225,20 +1239,6 @@ leader_redirect_raise
 	}
 }
 
-
-- (int)
-submit:(const void *)data len:(u32)data_len scn:(i64)scn_ tag:(u16)tag
-{
-	struct row_v12 row = { .scn = scn_,
-			       .tag = tag };
-
-	struct wal_pack pack;
-	if (!wal_pack_prepare(self, &pack))
-		return 0;
-	wal_pack_append_row(&pack, &row);
-	wal_pack_append_data(&pack, &row, data, data_len);
-	return [self wal_pack_submit];
-}
 
 - (void)
 check_replica
