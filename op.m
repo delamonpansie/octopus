@@ -812,16 +812,15 @@ box_select_cb(struct netmsg_head *h, struct iproto *request, struct conn *c __at
 	stat_collect(stat_base, request->msg_code, 1);
 }
 
+#define foreach_op(...) for(int *op = (int[]){__VA_ARGS__, 0}; *op; op++)
+
 void
 box_service(struct service *s)
 {
-	service_register_iproto_stream(s, NOP, box_select_cb, 0);
-	service_register_iproto_stream(s, SELECT, box_select_cb, 0);
-	service_register_iproto_stream(s, SELECT_LIMIT, box_select_cb, 0);
-	service_register_iproto_block(s, INSERT, box_cb, 0);
-	service_register_iproto_block(s, UPDATE_FIELDS, box_cb, 0);
-	service_register_iproto_block(s, DELETE, box_cb, 0);
-	service_register_iproto_block(s, DELETE_1_3, box_cb, 0);
+	foreach_op(NOP, SELECT, SELECT_LIMIT)
+		service_register_iproto_stream(s, *op, box_select_cb, 0);
+	foreach_op(INSERT, UPDATE_FIELDS, DELETE, DELETE_1_3)
+		service_register_iproto_block(s, *op, box_cb, 0);
 	service_register_iproto_block(s, EXEC_LUA, box_lua_cb, 0);
 	service_register_iproto_block(s, PAXOS_LEADER, box_paxos_cb, 0);
 }
@@ -840,11 +839,8 @@ box_service_ro(struct service *s)
 	service_register_iproto_stream(s, SELECT, box_select_cb, 0);
 	service_register_iproto_stream(s, SELECT_LIMIT, box_select_cb, 0);
 
-	service_register_iproto_stream(s, INSERT, box_roerr, 0);
-	service_register_iproto_stream(s, UPDATE_FIELDS, box_roerr, 0);
-	service_register_iproto_stream(s, DELETE, box_roerr, 0);
-	service_register_iproto_stream(s, DELETE_1_3, box_roerr, 0);
-	service_register_iproto_stream(s, PAXOS_LEADER, box_roerr, 0);
+	foreach_op(INSERT, UPDATE_FIELDS, DELETE, DELETE_1_3, PAXOS_LEADER)
+		service_register_iproto_stream(s, *op, box_roerr, 0);
 
 	/* allow select only lua procedures
 	   updates are blocked by luaT_box_dispatch() */
