@@ -415,7 +415,8 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 	struct feeder_param feeder;
 
 	bool run_crc_log_mismatch, run_crc_mod_mismatch;
-	u32 processed_rows, estimated_snap_rows;
+	i64 recovered_rows;
+	u32 estimated_snap_rows;
 
 	i64 next_skip_scn;
 	struct tbuf skip_scn;

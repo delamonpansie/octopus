@@ -180,14 +180,14 @@ recover_row:(struct row_v12 *)r
 			  __func__, r->lsn, r->scn, xlog_tag_to_a(r->tag));
 		say_debug2("	%s", tbuf_to_hex(&TBUF(r->data, r->len, fiber->pool)));
 
-		if (++processed_rows % 100000 == 0) {
-			if (estimated_snap_rows && processed_rows <= estimated_snap_rows) {
-				float pct = 100. * processed_rows / estimated_snap_rows;
-				say_info("%.1fM/%.2f%% rows processed",
-					 processed_rows / 1000000., pct);
+		if (++recovered_rows % 100000 == 0) {
+			if (estimated_snap_rows && recovered_rows <= estimated_snap_rows) {
+				float pct = 100. * recovered_rows / estimated_snap_rows;
+				say_info("%.1fM/%.2f%% rows recovered",
+					 recovered_rows / 1000000., pct);
 				title("loading %.2f%%", pct);
 			} else {
-				say_info("%.1fM rows processed", processed_rows / 1000000.);
+				say_info("%.1fM rows recovered", recovered_rows / 1000000.);
 			}
 		}
 
