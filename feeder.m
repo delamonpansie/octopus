@@ -476,6 +476,11 @@ init(void)
 
 	/* replication without any xlogs will fail. clients will retry on such failure.
 	   in order to avoid this behavior wait until at least one xlog is present */
+
+#include <cfg/defs.h>
+#if CFG_paxos_enabled
+	if (!cfg.paxos_enabled)
+#endif
 	wait_for_some_xlogs();
 
 	title("acceptor/%s", cfg.wal_feeder_bind_addr);
