@@ -1006,7 +1006,9 @@ fixup_row_v12(struct row_v12 *row)
 	int tag_type = row->tag & ~TAG_MASK;
 
 	/* compat: fix tags in old style row */
-	if (tag_type == 0 || (tag_type == TAG_WAL && tag != wal_data && tag < user_tag))
+	if (tag_type == 0 ||
+	    (tag_type == TAG_WAL && tag != wal_data && tag < user_tag) ||
+	    (tag_type == TAG_SNAP && tag != snap_data))
 		row->tag = fix_tag_v3(tag);
 }
 
