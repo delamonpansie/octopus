@@ -138,8 +138,8 @@ box_dispach_lua(struct conn *c, struct iproto *request)
 	lua_rawgeti(L, LUA_REGISTRYINDEX, box_entry_i);
 
 	lua_pushlstring(L, fname, flen);
-	luaT_pushptr(L, c);
-	luaT_pushptr(L, request);
+	lua_pushlightuserdata(L, c);
+	lua_pushlightuserdata(L, request);
 
 	if (!lua_checkstack(L, nargs)) {
 		lua_settop(L, top-1);
@@ -186,7 +186,7 @@ box_dispach_lua(struct conn *c, struct iproto *request)
 		reply->ret_code = lua_tointeger(L, top + 2);
 		if (newtop == top + 3 && !lua_isnil(L, top + 3)) {
 			lua_remove(L, top + 2);
-			luaT_pushptr(L, c);
+			lua_pushlightuserdata(L, c);
 			if (lua_pcall(L, 2, 0, top)) {
 				IProtoError *err = [IProtoError palloc];
 				const char *reason = lua_tostring(L, -1);
