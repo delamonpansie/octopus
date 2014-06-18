@@ -109,6 +109,7 @@ void prepare_replace(struct box_txn *txn, size_t cardinality, const void *data, 
 
 void box_service(struct service *s);
 void box_service_ro(struct service *s);
+void box_service_paxos_proxy(struct service *s);
 
 #define BOX_RETURN_TUPLE 1
 #define BOX_ADD 2

@@ -727,6 +727,17 @@ box_paxos_cb(struct iproto *request __attribute__((unused)),
 			     "PAXOS_LEADER unsupported in non cluster configuration");
 }
 
+void
+box_paxos_proxy_cb(struct iproto *request, struct conn *c)
+{
+	struct iproto_peer *peer = [(PaxosRecovery *)recovery leader_primary];
+	struct iproto *reply = iproto_sync_send(peer, request, NULL, 0);
+	if (!reply)
+		return;
+	reply->sync = request->sync;
+	net_add_iov_dup(&c->out_messages, reply, sizeof(*reply) + reply->data_len);
+}
+
 static void
 box_cb(struct iproto *request, struct conn *c)
 {
@@ -845,6 +856,18 @@ box_service_ro(struct service *s)
 	/* allow select only lua procedures
 	   updates are blocked by luaT_box_dispatch() */
 	service_register_iproto_block(s, EXEC_LUA, box_lua_cb, 0);
+}
+
+void
+box_service_paxos_proxy(struct service *s)
+{
+	service_register_iproto_stream(s, SELECT, box_select_cb, 0);
+	service_register_iproto_stream(s, SELECT_LIMIT, box_select_cb, 0);
+	service_register_iproto_block(s, PAXOS_LEADER, box_paxos_cb, 0);
+
+	foreach_op(INSERT, UPDATE_FIELDS, DELETE, DELETE_1_3, EXEC_LUA)
+		service_register_iproto_block(s, *op, box_paxos_proxy_cb, 0);
+
 }
 
 void __attribute__((constructor))

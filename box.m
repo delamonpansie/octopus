@@ -301,8 +301,12 @@ status_changed
 			box_service(&box_primary);
 			return;
 		}
-		if (prev_status == PRIMARY)
-			box_service_ro(&box_primary);
+		if (prev_status == PRIMARY) {
+			if (cfg.paxos_enabled)
+				box_service_paxos_proxy(&box_primary);
+			else
+				box_service_ro(&box_primary);
+		}
 	}
 }
 
