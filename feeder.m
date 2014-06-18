@@ -132,7 +132,7 @@ lua_filter(struct row_v12 *r, __attribute((unused)) const char *arg, __attribute
 	lua_pushvalue(L, 2);
 	lua_pushvalue(L, 3);
 	if (r) {
-		luaT_pushptr(L, r);
+		lua_pushlightuserdata(L, r);
 	} else {
 		lua_pushnil(L);
 	}
