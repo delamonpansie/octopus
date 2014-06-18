@@ -126,10 +126,10 @@ void iproto_pinger(va_list ap);
 
 int iproto_send(struct iproto_mbox *mbox, struct iproto_peer *peer,
 		struct iproto *msg, const struct iovec *iov, int iovcnt);
-
 int iproto_broadcast(struct iproto_mbox *mbox, struct iproto_group *group,
 		     struct iproto *msg, const struct iovec *iov, int iovcnt);
-
+struct iproto *iproto_sync_send(struct iproto_peer *peer,
+				struct iproto *msg, const struct iovec *iov, int iovcnt);
 struct iproto *iproto_wait_sync(struct iproto_mbox *mbox, u32 sync);
 void iproto_wait_all(struct iproto_mbox *mbox);
 

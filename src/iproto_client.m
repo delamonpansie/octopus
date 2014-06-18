@@ -176,7 +176,8 @@ iproto_sync_send(struct iproto_peer *peer,
 		 struct iproto *msg, const struct iovec *iov, int iovcnt)
 {
 	struct iproto_mbox mbox = IPROTO_MBOX_INITIALIZER(mbox, fiber->pool);
-	iproto_send(&mbox, peer, msg, iov, iovcnt);
+	if (iproto_send(&mbox, peer, msg, iov, iovcnt) != 1)
+		return NULL;
 	struct iproto *reply =  iproto_wait(&mbox);
 	iproto_mbox_release(&mbox);
 	return reply;
