@@ -46,6 +46,12 @@
 
 static struct mhash_t *req_registry;
 
+void __attribute__((constructor))
+iproto_registry_init()
+{
+	req_registry = mh_i32_init(xrealloc);
+}
+
 u32
 iproto_next_sync()
 {
@@ -54,18 +60,6 @@ iproto_next_sync()
 	if (unlikely(iproto_sync == 0))
 		iproto_sync++;
 	return iproto_sync;
-}
-
-int
-init_iproto_peer(struct iproto_peer *p, int id, const char *name, const char *addr)
-{
-	if (unlikely(req_registry == NULL))
-		req_registry = mh_i32_init(xrealloc);
-
-	*p = (struct iproto_peer){ .id = id,
-				   .name = name,
-				   .c = { .fd = -1 } };
-	return atosin(addr, &p->addr);
 }
 
 void
