@@ -297,11 +297,11 @@ status_changed
 	if (self == recovery) {
 		title(NULL);
 
-		if (strcmp(status, "primary") == 0) {
+		if (status == PRIMARY) {
 			box_service(&box_primary);
 			return;
 		}
-		if (strcmp(prev_status, "primary") == 0)
+		if (prev_status == PRIMARY)
 			box_service_ro(&box_primary);
 	}
 }
