@@ -69,21 +69,26 @@ struct paxos_peer *
 make_paxos_peer(int id, const char *name, const char *addr,
 		short primary_port, short feeder_port)
 {
-	struct paxos_peer *p = xcalloc(1, sizeof(*p));
+	struct sockaddr_in sin;
+	struct paxos_peer *p;
 
+	if (atosin(addr, &sin) == -1)
+		return NULL;
+
+	p = xcalloc(1, sizeof(*p));
 	p->id = id;
 	p->name = name;
-	if (init_iproto_peer(&p->paxos, id, name, addr) == -1) {
-		free(p);
-		return NULL;
-	}
-	struct sockaddr_in paddr = p->paxos.addr;
-	paddr.sin_port = htons(primary_port);
-	p->primary_addr = strdup(sintoa(&paddr));
+	p->paxos = (struct iproto_peer){ .id = id,
+					 .name = name,
+					 .addr = sin,
+					 .c = { .fd = -1 } };
+	p->primary = p->paxos;
+	p->primary.addr.sin_port = htons(primary_port);
+	p->primary_addr = strdup(sintoa(&p->primary.addr));
 
 	memset(&p->feeder, 0, sizeof(p->feeder));
 	p->feeder.ver = 1;
-	p->feeder.addr = p->paxos.addr;
+	p->feeder.addr = sin;
 	p->feeder.addr.sin_port = htons(feeder_port);
 	return p;
 }
@@ -1142,6 +1147,7 @@ init_snap_dir:(const char *)snap_dirname
 
 		SLIST_INSERT_HEAD(&group, p, link);
 		SLIST_INSERT_HEAD(&paxos_remotes, &p->paxos, link);
+		SLIST_INSERT_HEAD(&primary_group, &p->primary, link);
 	}
 
 	if (!paxos_peer(self, self_id))
@@ -1214,15 +1220,10 @@ exit:
 	reply_reader = fiber_create("paxos/reply_reader", iproto_reply_reader, iproto_collect_reply);
 	output_flusher = fiber_create("paxos/output_flusher", conn_flusher);
 	fiber_create("paxos/rendevouz", iproto_rendevouz, NULL, &paxos_remotes, reply_reader, output_flusher);
+	fiber_create("paxos_p/rendevouz", iproto_rendevouz, NULL, &primary_group, reply_reader, output_flusher);
 	fiber_create("paxos/elect", propose_leadership, self);
 
 	wal_dumper = fiber_create("paxos/wal_dump", wal_dumper_fib, self);
-}
-
-- (bool)
-is_replica
-{
-	return leader_id < 0 || leader_id != self_id;
 }
 
 - (void)
@@ -1239,6 +1240,18 @@ leader_redirect_raise
 	}
 }
 
+- (struct iproto_peer *)
+leader_primary
+{
+	assert(!paxos_leader());
+	return &paxos_peer(self, leader_id)->primary;
+}
+
+- (bool)
+is_replica
+{
+	return leader_id < 0 || leader_id != self_id;
+}
 
 - (void)
 check_replica
