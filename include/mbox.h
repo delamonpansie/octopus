@@ -87,19 +87,22 @@ struct name {								\
 })
 
 #define mbox_timedwait(mbox, count, delay) ({				\
+	struct mbox_consumer consumer = { .fiber = fiber }; 		\
 	ev_timer w = { .coro = 1 };					\
 	if (delay) {							\
 		ev_timer_init(&w, (void *)fiber, delay, 0);		\
 		ev_timer_start(&w);					\
 	}								\
-	mbox_msgtype(mbox) msg;						\
+	mbox_msgtype(mbox) msg = STAILQ_FIRST(&(mbox)->msg_list);	\
+	LIST_INSERT_HEAD(&(mbox)->consumer_list, &consumer, conslink);	\
 	while ((mbox)->msg_count < count) {				\
-		msg = mbox_wait(mbox);					\
+		msg = yield();					\
 		if (msg == (void *)&w) { /* timeout */			\
 			msg = NULL;					\
 			break;						\
 		}							\
 	}								\
+	LIST_REMOVE(&consumer, conslink);				\
 	if (delay)							\
 		ev_timer_stop(&w);					\
 	msg;								\
