@@ -575,19 +575,6 @@ luaT_require_or_panic(const char *modname, bool panic_on_missing, const char *er
 	panic(error_format, modname, lua_tostring(fiber->L, -1));
 }
 
-int
-luaT_pushptr(struct lua_State *L, void *p)
-{
-	GCcdata *cd = lj_cdata_new_(L, CTID_P_VOID, SIZEOF_VOID_P);
-	cdata_setptr(cdataptr(cd), SIZEOF_VOID_P, p);
-
-	TValue *o = L->top;
-	setcdataV(L, o, cd);
-	incr_top(L);
-	return 1;
-}
-
-
 #if defined(STORAGE) || defined(FEEDER)
 void
 _keepalive_read(ev_io *e, int events __attribute__((unused)))
