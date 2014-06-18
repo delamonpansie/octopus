@@ -78,7 +78,7 @@ ours:
 	return [super alloc];
 }
 
-- (const char *) status { return status; }
+- (const char *) status { return status_buf; }
 - (ev_tstamp) lag { return lag; }
 - (ev_tstamp) last_update_tstamp { return last_update_tstamp; }
 
@@ -396,7 +396,7 @@ recover_remaining_wals
 load_from_local
 {
 	say_info("local recovery start");
-	[self status_update:"loading/local"];
+	[self status_update:LOADING fmt:"loading/local"];
 
 	if (lsn == 0) {
 		[self recover_snap];
@@ -440,7 +440,7 @@ wal_lockcb(ev_timer *timer, int ev __attribute__((unused)))
 local_hot_standby
 {
 	[self recover_follow:cfg.wal_dir_rescan_delay]; /* FIXME: make this conf */
-	[self status_update:"hot_standby/local"];
+	[self status_update:STANDBY fmt:"hot_standby/local"];
 
 	lock_timer.data = self;
 	ev_timer_init(&lock_timer, wal_lockcb, 0.0, 1.0);
@@ -702,10 +702,9 @@ pull_from_remote:(id<XLogPullerAsync>)puller
 static void
 hot_standby_status(Recovery *r, const char *status, const char *reason)
 {
-	[r status_update:"hot_standby/%s/%s%s%s",
-	      sintoa(&r->feeder.addr), status,
-		  reason ? ":" : "", reason ?: ""];
-	if (strcmp(status, "fail") == 0)
+	[r status_update:STANDBY fmt:"hot_standby/%s/%s%s%s",
+	   sintoa(&r->feeder.addr), status, reason ? ":" : "", reason ?: ""];
+	if (strcmp([r status], "fail") == 0)
 		say_error("replication failure: %s", reason);
 }
 
@@ -757,7 +756,7 @@ again:
 	} while ([r feeder_addr_configured]);
 
 	assert(r->local_writes);
-	[r status_update:"primary"];
+	[r status_update:PRIMARY fmt:"primary"];
 
 	goto again;
 }
@@ -822,7 +821,7 @@ enable_local_writes
 		say_info("configured remote hot standby, WAL feeder %s", sintoa(&feeder.addr));
 	} else {
 		[self configure_wal_writer];
-		[self status_update:"primary"];
+		[self status_update:PRIMARY fmt:"primary"];
 	}
 }
 
@@ -988,16 +987,18 @@ feeder_addr_configured
 }
 
 - (void)
-status_update:(const char *)fmt, ...
+status_update:(enum recovery_status)new_status fmt:(const char *)fmt, ...
 {
-	strcpy(prev_status, status);
+	prev_status = status;
+	status = new_status;
+
 	va_list ap;
 	va_start(ap, fmt);
-	vsnprintf(status, sizeof(status), fmt, ap);
+	vsnprintf(status_buf, sizeof(status_buf), fmt, ap);
 	va_end(ap);
 
-	if (strcmp(prev_status, status) != 0) {
-		say_info("recovery status: %s", status);
+	if (prev_status != status) {
+		say_info("recovery status: %s", status_buf);
 		[self status_changed];
 	}
 }

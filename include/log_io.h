@@ -404,12 +404,14 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 - (int) handshake:(i64)scn err:(const char **)err_ptr;
 @end
 
+enum recovery_status { LOADING = 1, PRIMARY, STANDBY };
 @interface Recovery: XLogWriter {
 	ev_timer lock_timer;
 @public
 	i64 last_wal_lsn;
 	ev_tstamp lag, last_update_tstamp, run_crc_verify_tstamp;
-	char status[64], prev_status[64];
+	enum recovery_status status, prev_status;
+	char status_buf[64];
 
 	XLogPuller *remote_puller;
 	struct feeder_param feeder;
@@ -467,7 +469,7 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 - (bool) feeder_addr_configured;
 - (bool) feeder_changed:(struct feeder_param*)new;
 
-- (void) status_update:(const char *)fmt, ...;
+- (void) status_update:(enum recovery_status)s fmt:(const char *)fmt, ...;
 - (void) status_changed;
 @end
 

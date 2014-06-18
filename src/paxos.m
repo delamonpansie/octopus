@@ -263,12 +263,12 @@ notify_leadership_change(PaxosRecovery *r)
 	if (leader_id < 0) {
 		if (prev_leader != leader_id)
 			say_info("leader unknown, %i -> %i", prev_leader, leader_id);
-		[r status_update:"paxos/slave"];
+		[r status_update:STANDBY fmt:"paxos/slave"];
 	} else if (!paxos_leader()) {
 		if (prev_leader != leader_id)
 			say_info("leader is %s, %i -> %i", paxos_peer(r, leader_id)->name,
 				prev_leader, leader_id);
-		[r status_update:"paxos/slave"];
+		[r status_update:STANDBY fmt:"paxos/slave"];
 	} else if (paxos_leader()) {
 		if (prev_leader != leader_id) {
 			say_info("I am leader, %i -> %i", prev_leader, leader_id);
@@ -284,7 +284,7 @@ notify_leadership_change(PaxosRecovery *r)
 				return;
 			}
 		}
-		[r status_update:"paxos/leader"];
+		[r status_update:PRIMARY fmt:"paxos/leader"];
 	}
 	prev_leader = leader_id;
 }
