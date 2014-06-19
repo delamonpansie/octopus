@@ -9,8 +9,9 @@ local printf = printf
 
 
 local ffi, bit, debug = require("ffi"), require("bit"), require("debug")
-local net, index = require("net"), require('index')
+local index = require('index')
 local fiber = require("fiber")
+local conn_ptr = require("net").conn_ptr
 local object, object_cast, varint32, packer = object, object_cast, varint32, packer
 local safeptr, assertarg = safeptr, assertarg
 local lselect = select
@@ -189,33 +190,48 @@ local uintptr = ffi.typeof('uintptr_t')
 local u32buf = ffi.new('uint32_t[1]')
 local p = packer()
 
+local function append_value(out, v)
+    if type(v) == "string" then
+        out:add_iov_string(v)
+    elseif type(v) == "table" and v.__obj then
+        ffi.C.object_incr_ref(v.__obj)
+        out:add_iov_ref(v.__tuple, v.bsize + 8, ffi.cast(uintptr, v.__obj))
+    elseif type(v) == "table" and getmetatable(v) == tuple_mt then
+        p:string("....----") -- placeholder for bsize, cardinality
+        for i = 1, #v do
+            p:field(v[i])
+        end
+        local u32 = ffi.cast(u32ptr, p.ptr)
+        u32[0] = p:len() - 8 -- bsize adjust
+        u32[1] = #v
+        out:add_iov_dup(p:pack())
+    else
+        error("unexpected type of result: " .. type(v), 2)
+    end
+end
+
 local function append(result, out)
-   local out = net._conn(out)
+   out = ffi.cast(conn_ptr, out)
    p:reset()
 
    if type(result) == "table" then
        u32buf[0] = #result
        out:add_iov_dup(u32buf, 4)
 
-      for _, v in ipairs(result) do
-         if type(v) == "string" then
-            out:add_iov_string(v)
-         elseif type(v) == "table" and v.__obj then
-            ffi.C.object_incr_ref(v.__obj)
-            out:add_iov_ref(v.__tuple, v.bsize + 8, ffi.cast(uintptr, v.__obj))
-         elseif type(v) == "table" and getmetatable(v) == tuple_mt then
-             p:string("....----") -- placeholder for bsize, cardinality
-             for i = 1, #v do
-                 p:field(v[i])
-             end
-             local u32 = ffi.cast(u32ptr, p.ptr)
-             u32[0] = p:len() - 8 -- bsize adjust
-             u32[1] = #v
-             out:add_iov_dup(p:pack())
-         else
-            error("unexpected type of result: " .. type(v), 2)
-         end
-      end
+       if #result == 1 then
+           append_value(out, result[1])
+       elseif #result == 2 then
+           append_value(out, result[1])
+           append_value(out, result[2])
+       elseif #result == 3 then
+           append_value(out, result[1])
+           append_value(out, result[2])
+           append_value(out, result[3])
+       else
+           for _, v in ipairs(result) do
+               append_value(out, v)
+           end
+       end
    elseif type(result) == "number" then
       out:add_iov_string(string.tou32(result))
    else
