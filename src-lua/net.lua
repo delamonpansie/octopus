@@ -14,6 +14,7 @@ module(...)
 local C = ffi.C
 
 local netmsg_t = ffi.typeof('struct netmsg *')
+iproto_ptr = ffi.typeof('struct iproto *')
 local iproto_ptr_t = ffi.typeof('struct iproto *')
 local iproto_t = ffi.typeof('struct iproto')
 local iproto_retcode0_t = ffi.typeof('struct iproto_retcode_0')
@@ -80,19 +81,12 @@ function conn_op:apply(f, ...)
 end
 
 ffi.metatype(ffi.typeof('struct conn'), { __index = conn_op })
-local conn_ptr = ffi.typeof('struct conn *')
+conn_ptr = ffi.typeof('struct conn *')
+local conn_ptr = conn_ptr
 function conn(ptr)
     local c = ffi.gc(ffi.cast(conn_ptr, ptr), C.conn_unref)
     c.ref = c.ref + 1
     return c
-end
-
-function _conn(ptr)
-    return ffi.cast(conn_ptr, ptr)
-end
-
-function iproto(ptr)
-   return iproto_ptr_t(ptr)
 end
 
 function iproto_copy(req)
