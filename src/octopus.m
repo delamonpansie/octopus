@@ -43,8 +43,6 @@
 #include <third_party/luajit/src/lua.h>
 #include <third_party/luajit/src/lualib.h>
 #include <third_party/luajit/src/lauxlib.h>
-#include <third_party/luajit/src/lj_cdata.h>
-#include <third_party/luajit/src/lj_state.h>
 
 #include <stdio.h>
 #include <stdlib.h>
