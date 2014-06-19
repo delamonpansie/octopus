@@ -265,26 +265,14 @@ iproto_wakeup_workers(ev_prepare *ev)
 
 
 struct iproto_retcode *
-iproto_reply(struct netmsg_head *h, const struct iproto *request)
-{
-	struct iproto_retcode *header = palloc(h->pool, sizeof(*header));
-	net_add_iov(h, header, sizeof(*header));
-	*header = (struct iproto_retcode){ .msg_code = request->msg_code,
-					   .data_len = sizeof(header->ret_code),
-					   .sync = request->sync,
-					   .ret_code = ERR_CODE_OK };
-	return header;
-}
-
-struct iproto_retcode *
-iproto_reply_start(struct netmsg_head *h, const struct iproto *request)
+iproto_reply(struct netmsg_head *h, const struct iproto *request, u32 ret_code)
 {
 	struct iproto_retcode *header = palloc(h->pool, sizeof(*header));
 	net_add_iov(h, header, sizeof(*header));
 	*header = (struct iproto_retcode){ .msg_code = request->msg_code,
 					   .data_len = h->bytes,
 					   .sync = request->sync,
-					   .ret_code = ERR_CODE_OK };
+					   .ret_code = ret_code };
 	return header;
 }
 
@@ -298,12 +286,10 @@ iproto_reply_fixup(struct netmsg_head *h, struct iproto_retcode *reply)
 void
 iproto_error(struct netmsg_head *h, const struct iproto *request, u32 ret_code, const char *err)
 {
-	struct iproto_retcode *header = iproto_reply(h, request);
-	header->ret_code = ret_code;
-	if (err && strlen(err) > 0) {
-		header->data_len += strlen(err);
+	struct iproto_retcode *header = iproto_reply(h, request, ret_code);
+	if (err && strlen(err) > 0)
 		net_add_iov_dup(h, err, strlen(err));
-	}
+	iproto_reply_fixup(h, header);
 	say_debug("%s: op:%02x data_len:%i sync:%i ret:%i", __func__,
 		  header->msg_code, header->data_len, header->sync, header->ret_code);
 }
