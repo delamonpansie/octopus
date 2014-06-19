@@ -763,7 +763,7 @@ box_cb(struct iproto *request, struct conn *c)
 		box_commit(&txn);
 
 		struct netmsg_head *h = &c->out_messages;
-		struct iproto_retcode *reply = iproto_reply_start(h, request);
+		struct iproto_retcode *reply = iproto_reply(h, request, ERR_CODE_OK);
 		net_add_iov_dup(h, &txn.obj_affected, sizeof(u32));
 		if (txn.flags & BOX_RETURN_TUPLE) {
 			if (txn.obj)
@@ -796,7 +796,7 @@ static void
 box_select_cb(struct netmsg_head *h, struct iproto *request, struct conn *c __attribute__((unused)))
 {
 	struct tbuf data = TBUF(request->data, request->data_len, fiber->pool);
-	struct iproto_retcode *reply = iproto_reply_start(h, request);
+	struct iproto_retcode *reply = iproto_reply(h, request, ERR_CODE_OK);
 	struct object_space *object_space;
 
 	i32 n = read_u32(&data);

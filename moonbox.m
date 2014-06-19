@@ -182,8 +182,8 @@ box_dispach_lua(struct conn *c, struct iproto *request)
 		}
 		struct netmsg_mark mark;
 		netmsg_getmark(&c->out_messages, &mark);
-		struct iproto_retcode *reply = iproto_reply_start(&c->out_messages, request);
-		reply->ret_code = lua_tointeger(L, top + 2);
+		struct iproto_retcode *reply = iproto_reply(&c->out_messages, request,
+							    lua_tointeger(L, top + 2));
 		if (newtop == top + 3 && !lua_isnil(L, top + 3)) {
 			lua_remove(L, top + 2);
 			lua_pushlightuserdata(L, c);
