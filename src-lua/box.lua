@@ -211,32 +211,32 @@ local function append_value(out, v)
 end
 
 local function append(result, out)
-   out = ffi.cast(conn_ptr, out)
-   p:reset()
+    out = ffi.cast(conn_ptr, out)
+    p:reset()
 
-   if type(result) == "table" then
-       u32buf[0] = #result
-       out:add_iov_dup(u32buf, 4)
+    if type(result) == "table" then
+        u32buf[0] = #result
+        out:add_iov_dup(u32buf, 4)
 
-       if #result == 1 then
-           append_value(out, result[1])
-       elseif #result == 2 then
-           append_value(out, result[1])
-           append_value(out, result[2])
-       elseif #result == 3 then
-           append_value(out, result[1])
-           append_value(out, result[2])
-           append_value(out, result[3])
-       else
-           for _, v in ipairs(result) do
-               append_value(out, v)
-           end
-       end
-   elseif type(result) == "number" then
-      out:add_iov_string(string.tou32(result))
-   else
-      error("unexpected type of result: " .. type(result), 2)
-   end
+        if #result == 1 then
+            append_value(out, result[1])
+        elseif #result == 2 then
+            append_value(out, result[1])
+            append_value(out, result[2])
+        elseif #result == 3 then
+            append_value(out, result[1])
+            append_value(out, result[2])
+            append_value(out, result[3])
+        else
+            for _, v in ipairs(result) do
+                append_value(out, v)
+            end
+        end
+    elseif type(result) == "number" then
+        out:add_iov_string(string.tou32(result))
+    else
+        error("unexpected type of result: " .. type(result), 2)
+    end
 end
 
 local fn_cache_mt = {__index = function(t, name)
