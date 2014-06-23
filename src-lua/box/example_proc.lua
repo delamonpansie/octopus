@@ -198,6 +198,30 @@ user_proc.iterator = box.wrap(function (n, key, limit, dir)
         return 0, result
 end)
 
+user_proc.iterator2 = box.wrap(function (n, key)
+	local os = box.object_space[0]
+        local pk = os:index(n)
+        local result = {}
+
+        for tuple in pk:iter(tonumber(key)) do
+	   table.insert(result, tuple)
+	end
+
+        return 0, result
+end)
+
+user_proc.iterator2r = box.wrap(function (n, key)
+	local os = box.object_space[0]
+        local pk = os:index(n)
+        local result = {}
+
+        for tuple in pk:riter(tonumber(key)) do
+	   table.insert(result, tuple)
+	end
+
+        return 0, result
+end)
+
 
 local function test1()
    return 0, {box.tuple("abc", "defg", "foobar"),
