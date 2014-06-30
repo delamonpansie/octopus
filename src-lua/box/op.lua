@@ -106,7 +106,7 @@ function pack.update(n, key, ...)
                         end
 			s:field(op[5])
 			local buf, len = s:pack()
-			req:varint(len)
+			req:varint32(len)
 			req:raw(buf, len)
                 elseif (op[2] == "delete") then
                         req:string("\006\000")
