@@ -190,7 +190,10 @@ write_row_direct: (struct row_v12*) row
 recover_start_from_scn:(i64)initial_scn filter:(struct feeder_filter*)_filter
 {
 	int i;
-	say_debug("%s initial_scn:%"PRIi64" filter: type=%s name=%s", __func__, initial_scn, filter_type_names[_filter->type], _filter->name);
+	if (_filter->type == FILTER_TYPE_ID)
+		say_debug("%s initial_scn:%"PRIi64" filter: type=ID", __func__, initial_scn);
+	else
+		say_debug("%s initial_scn:%"PRIi64" filter: type=%s name='%s'", __func__, initial_scn, filter_type_names[_filter->type], _filter->name);
 	switch (_filter->type) {
 	case FILTER_TYPE_ID:
 		filter = id_filter;
@@ -381,7 +384,10 @@ recover_feed_slave(int sock)
 				       wal_dir:cfg.wal_dir
 					    fd:sock];
 	i64 initial_scn = handshake(sock, &filter);
-	say_info("connect peer:%s initial SCN:%"PRIi64" filter: type=%s name='%s'", peer_name, initial_scn, filter_type_names[filter.type], filter.name);
+	if (filter.type == FILTER_TYPE_ID)
+		say_info("connect peer:%s initial SCN:%"PRIi64" filter: type=ID", peer_name, initial_scn);
+	else
+		say_info("connect peer:%s initial SCN:%"PRIi64" filter: type=%s name='%s'", peer_name, initial_scn, filter_type_names[filter.type], filter.name);
 	[feeder recover_start_from_scn:initial_scn filter:&filter];
 
 	ev_io_init(&io, (void *)eof_monitor, sock, EV_READ);
