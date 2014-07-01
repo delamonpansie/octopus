@@ -210,17 +210,14 @@ iproto_pinger(va_list ap)
 }
 
 void
-iproto_collect_reply(struct conn *c, struct iproto *msg)
+iproto_collect_reply(struct conn *c __attribute__((unused)), struct iproto *msg)
 {
-	struct iproto_peer *p = (void *)c - offsetof(struct iproto_peer, c);
 	struct iproto_mbox *mbox;
 	struct iproto_reply *reply;
 
 	u32 k = mh_i32_get(req_registry, msg->sync);
-	if (k == mh_end(req_registry)) {
-		say_warn("peer:%s op:0x%x sync:%i [STALE]", p->name, msg->msg_code, msg->sync);
+	if (k == mh_end(req_registry))
 		return;
-	}
 	mbox = mh_i32_value(req_registry, k);
 	// FIXME: mh_i32_del(req_registry, k);
 	reply = palloc(mbox->pool, sizeof(*reply) + msg->data_len);
