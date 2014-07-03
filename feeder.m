@@ -161,14 +161,19 @@ lua_filter(struct row_v12 *r, __attribute((unused)) const char *arg, __attribute
 }
 
 - (void)
+send_row: (struct row_v12*) row
+{
+	/* FIXME: we should buffer writes */
+	if (row)
+		writef(fd, (const char *)row, sizeof(*row) + row->len);
+}
+
+- (void)
 recover_row:(struct row_v12 *)r
 {
 	struct row_v12 *n = filter(r, NULL, 0);
 
-	/* FIXME: we should buffer writes */
-	if (n)
-		writef(fd, (const char *)n, sizeof(*n) + n->len);
-
+	[self send_row:n];
 	if (!dummy_tag(r->tag))
 		lsn = r->lsn;
 }
@@ -179,12 +184,6 @@ wal_final_row
 	[self recover_row:[self dummy_row_lsn:0 scn:0 tag:wal_final|TAG_SYS]];
 }
 
-- (void)
-write_row_direct: (struct row_v12*) row
-{
-	if (row)
-		writef(fd, (const char *)row, sizeof(*row) + row->len);
-}
 
 - (void)
 recover_start_from_scn:(i64)initial_scn filter:(struct feeder_filter*)_filter
@@ -353,7 +352,7 @@ keepalive_send(va_list ap)
 
 	for (;;) {
 		if (cfg.wal_feeder_keepalive_timeout > 0.0) {
-			[feeder write_row_direct: sysnop];
+			[feeder send_row: sysnop];
 			fiber_sleep(cfg.wal_feeder_keepalive_timeout / 3.0);
 		} else {
 			fiber_sleep(5.0);
