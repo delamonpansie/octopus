@@ -434,6 +434,10 @@ fetch_row
 	say_debug("%s: scn:%"PRIi64 " tag:%s", __func__,
 		  row->scn, xlog_tag_to_a(row->tag));
 
+	/* feeder may send keepalive rows */
+	if (row->lsn == 0 && row->scn == 0 && row->tag == (nop|TAG_SYS))
+		return NULL;
+
 	return row;
 }
 
