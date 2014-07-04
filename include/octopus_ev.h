@@ -28,7 +28,6 @@
 #define OCTOPUS_EV_H
 
 #define EV_MULTIPLICITY 0
-#define ECB_NO_THREADS 1
 #define EV_CONFIG_H "include/config.h"
 
 #include <coro.h>
