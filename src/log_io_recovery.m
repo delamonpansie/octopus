@@ -453,9 +453,11 @@ static void
 follow_dir(ev_timer *w, int events __attribute__((unused)))
 {
 	Recovery *r = w->data;
-	[r recover_remaining_wals];
-	if (r->current_wal == nil)
+	static int tick = 5;
+	if (r->current_wal && tick-- > 0)
 		return;
+	tick = 5;
+	[r recover_remaining_wals];
 	[r->current_wal follow:follow_file data:r];
 }
 
@@ -478,7 +480,7 @@ follow_file(ev_stat *w, int events __attribute__((unused)))
 recover_follow:(ev_tstamp)wal_dir_rescan_delay
 {
 	ev_timer_init(&wal_timer, follow_dir,
-		      wal_dir_rescan_delay, wal_dir_rescan_delay);
+		      wal_dir_rescan_delay / 5, wal_dir_rescan_delay / 5);
 	ev_timer_start(&wal_timer);
 	if (current_wal != nil)
 		[current_wal follow:follow_file data:self];
