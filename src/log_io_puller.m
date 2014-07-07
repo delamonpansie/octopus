@@ -375,7 +375,7 @@ recv
 		case 0: raise("unexpected EOF");
 		case -2: raise("timeout");
 		case -3: raise("recv aborted");
-		default: raise("unknown error");
+		default: raise("unknown error: %s", strerror(errno));
 		}
 	}
 
