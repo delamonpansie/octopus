@@ -217,7 +217,7 @@ vsay(int level, const char *filename, unsigned line,
 {
 	size_t p = 0, len = PIPE_BUF;
 	const char *f;
-	static char buf[PIPE_BUF];
+	static __thread char buf[PIPE_BUF];
 
 	if (level > FATAL && !say_filter(level, filename))
 		return;
