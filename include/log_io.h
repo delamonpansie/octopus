@@ -408,7 +408,6 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 
 enum recovery_status { LOADING = 1, PRIMARY, STANDBY };
 @interface Recovery: XLogWriter {
-	ev_timer lock_timer;
 @public
 	i64 last_wal_lsn;
 	ev_tstamp lag, last_update_tstamp, run_crc_verify_tstamp;
@@ -433,6 +432,7 @@ enum recovery_status { LOADING = 1, PRIMARY, STANDBY };
 - (const char *) run_crc_status;
 
 - (void) simple;
+- (void) lock; /* lock wal_dir & snap_dir */
 
 - (void) recover_row:(struct row_v12 *)row;
 - (void) verify_run_crc:(struct tbuf *)buf;
@@ -440,7 +440,9 @@ enum recovery_status { LOADING = 1, PRIMARY, STANDBY };
 - (i64) recover_snap;
 - (void) recover_remaining_wals;
 
-- (i64) load_from_local;
+- (i64) load_from_local; /* load from local snap+wal */
+- (int) load_from_remote; /* fetch and load snap+wal from feeder. doesn't persist anything */
+
 - (void) local_hot_standby;
 - (void) recover_follow:(ev_tstamp)delay;
 - (void) recover_finalize;
@@ -448,7 +450,6 @@ enum recovery_status { LOADING = 1, PRIMARY, STANDBY };
 - (void) wal_final_row;
 /* pull_wal & load_from_remote throws exceptions on failure */
 - (int) pull_wal:(id<XLogPullerAsync>)puller;
-- (int) load_from_remote:(id<XLogPullerAsync>)puller;
 - (void) pull_from_remote:(id<XLogPullerAsync>)puller;
 - (void) enable_local_writes;
 - (bool) is_replica;

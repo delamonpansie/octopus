@@ -426,14 +426,15 @@ load_from_local
 	return lsn;
 }
 
-static void
-wal_lockcb(ev_timer *timer, int ev __attribute__((unused)))
+void
+wal_lock(va_list ap)
 {
-	Recovery *r = timer->data;
-	if ([r->wal_dir lock] == 0) {
-		[r enable_local_writes];
-		ev_timer_stop(timer);
-	}
+	Recovery *r = va_arg(ap, Recovery *);
+
+	while ([r->wal_dir lock] != 0)
+		fiber_sleep(1);
+
+	[r enable_local_writes];
 }
 
 - (void)
@@ -442,9 +443,8 @@ local_hot_standby
 	[self recover_follow:cfg.wal_dir_rescan_delay]; /* FIXME: make this conf */
 	[self status_update:STANDBY fmt:"hot_standby/local"];
 
-	lock_timer.data = self;
-	ev_timer_init(&lock_timer, wal_lockcb, 0.0, 1.0);
-	ev_timer_start(&lock_timer);
+	if (!fiber_create("wal_lock", wal_lock, self))
+		panic("unable to start wal_lock fiber");
 }
 
 static void follow_file(ev_stat *, int);
@@ -663,21 +663,34 @@ pull_wal:(id<XLogPullerAsync>)puller
 }
 
 - (int)
-load_from_remote:(id<XLogPullerAsync>)puller
+load_from_remote
 {
+	XLogPuller *puller = nil;
+
 	@try {
-		if (lsn == 0) {
-			zero_io_collect_interval();
+		puller = [[objc_lookUpClass("XLogPuller") alloc] init];
+		[puller feeder_param: &feeder];
 
-			[self pull_snapshot:puller];
-			[self configure_wal_writer];
-
-			/* don't wait for snapshot. our goal to be replica as fast as possible */
-			if (getenv("SYNC_DUMP") == NULL)
-				[[self snap_writer] snapshot:false];
-			else
-				[[self snap_writer] snapshot_write];
+		int i = 5;
+		while (i-- > 0) {
+			if ([puller handshake:scn] > 0)
+				break;
+			fiber_sleep(1);
 		}
+		if (i == 0)
+			panic("feeder handshake: %s", [puller error]);
+
+
+		zero_io_collect_interval();
+
+		[self pull_snapshot:puller];
+		[self configure_wal_writer];
+
+		/* don't wait for snapshot. our goal to be replica as fast as possible */
+		if (getenv("SYNC_DUMP") == NULL)
+			[[self snap_writer] snapshot:false];
+		else
+			[[self snap_writer] snapshot_write];
 
 		/* old version doesn's send wal_final_tag for us. */
 		if ([puller version] == 11)
@@ -686,6 +699,7 @@ load_from_remote:(id<XLogPullerAsync>)puller
 		while ([self pull_wal:puller] != 1);
 	}
 	@finally {
+		[puller free];
 		unzero_io_collect_interval();
 	}
 	return 0;
@@ -694,9 +708,7 @@ load_from_remote:(id<XLogPullerAsync>)puller
 - (void)
 pull_from_remote:(id<XLogPullerAsync>)puller
 {
-	if ([self lsn] == 0)
-		[self load_from_remote:puller];
-
+	assert([self lsn] > 0);
 	for (;;)
 		[self pull_wal:puller];
 }
@@ -726,9 +738,8 @@ again:
 	do {
 		[r->remote_puller feeder_param: &r->feeder];
 
-		i64 scn = [r scn];
-		if (scn != 0) /* special case: scn == 0 => want snapshot */
-			scn++; /* otherwise start recover from next scn */
+		assert([r scn] > 0); /* snapshot must be loaded */
+		i64 scn = [r scn] + 1; /* start recover from next scn */
 
 		if ([r->remote_puller handshake:scn] <= 0) {
 			/* no more WAL rows in near future, notify module about that */
@@ -797,9 +808,8 @@ same_dir(XLogDir *a, XLogDir *b)
 		return strcmp(a->dirname, b->dirname) == 0;
 }
 
-
 - (void)
-enable_local_writes
+lock
 {
 	if ([wal_dir lock] < 0)
 		panic("Can't lock wal_dir:%s", wal_dir->dirname);
@@ -808,23 +818,31 @@ enable_local_writes
 		if ([snap_dir lock] < 0)
 			panic("Can't lock snap_dir:%s", snap_dir->dirname);
 	}
+}
 
+- (void)
+enable_local_writes
+{
+	[self lock];
+	[self recover_finalize];
 	local_writes = true;
 
-	[self recover_finalize];
+	if (lsn == 0) {
+		assert([self feeder_addr_configured]);
+		say_info("initial loading from WAL feeder %s", sintoa(&feeder.addr));
+		assert(fiber != &sched); /* load_from_remote expects being called from fiber */
+		[self load_from_remote];
+	} else {
+		[self configure_wal_writer];
+	}
 
 	if (!fiber_create("remote_hot_standby", remote_hot_standby, self))
 		panic("unable to start remote hot standby fiber");
 
-	if ([self feeder_addr_configured]) {
-		if (lsn > 0) /* we're already have some xlogs and recovered from them */
-			[self configure_wal_writer];
-
+	if ([self feeder_addr_configured])
 		say_info("configured remote hot standby, WAL feeder %s", sintoa(&feeder.addr));
-	} else {
-		[self configure_wal_writer];
+	else
 		[self status_update:PRIMARY fmt:"primary"];
-	}
 }
 
 - (bool)

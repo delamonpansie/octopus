@@ -1181,7 +1181,7 @@ enable_local_writes
 
 			say_debug("loading from %s", p->name);
 			@try {
-				[self load_from_remote:puller];
+				[self pull_wal:puller];
 			}
 			@finally {
 				[puller close];
