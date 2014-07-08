@@ -374,8 +374,10 @@ conn_set(struct conn *c, int fd)
 {
 	assert(c->out.cb != NULL && c->in.cb != NULL);
 	assert(fd >= 0);
+	assert(c->state == CLOSED || c->state == IN_CONNECT);
 
 	c->fd = fd;
+	c->state = CONNECTED;
 	ev_io_set(&c->in, c->fd, EV_READ);
 	ev_io_set(&c->out, c->fd, EV_WRITE);
 }
@@ -404,9 +406,8 @@ conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, st
 
 	netmsg_head_init(&c->out_messages, c->pool);
 
+	c->fd = -1;
 	c->ref = 0;
-	c->fd = fd;
-	c->state = fd >= 0 ? CONNECTED : CLOSED;
 	c->peer_name[0] = 0;
 	c->processing_link.tqe_prev = NULL;
 	c->iov_offset = 0;
