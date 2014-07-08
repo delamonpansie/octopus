@@ -429,24 +429,6 @@ feeder_keepalive()
 }
 
 static void
-wait_for_some_xlogs(void)
-{
-	title("acceptor/wait_for_xlogs");
-
-	WALDir *dir = [[WALDir alloc] init_dirname:cfg.wal_dir];
-	for (;;) {
-		palloc_register_cut_point(fiber->pool);
-		i64 lsn = [dir greatest_lsn];
-		palloc_cutoff(fiber->pool);
-		if (lsn > 0)
-			break;
-		feeder_keepalive();
-		sleep(1);
-	}
-	[dir free];
-}
-
-static void
 init(void)
 {
 	int server, client;
@@ -478,15 +460,6 @@ init(void)
 
 	if (cfg.wal_dir == NULL || cfg.snap_dir == NULL)
 		panic("can't start feeder without snap_dir or wal_dir");
-
-	/* replication without any xlogs will fail. clients will retry on such failure.
-	   in order to avoid this behavior wait until at least one xlog is present */
-
-#include <cfg/defs.h>
-#if CFG_paxos_enabled
-	if (!cfg.paxos_enabled)
-#endif
-	wait_for_some_xlogs();
 
 	title("acceptor/%s", cfg.wal_feeder_bind_addr);
 
