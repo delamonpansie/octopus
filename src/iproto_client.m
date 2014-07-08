@@ -172,6 +172,13 @@ iproto_mbox_get(struct iproto_mbox *mbox)
 }
 
 struct iproto *
+iproto_mbox_peek(struct iproto_mbox *mbox)
+{
+	struct iproto_reply *reply = mbox_peek(mbox);
+	return reply ? &reply->header : NULL;
+}
+
+struct iproto *
 iproto_sync_send(struct iproto_peer *peer,
 		 struct iproto *msg, const struct iovec *iov, int iovcnt)
 {

@@ -115,6 +115,7 @@ struct iproto_mbox {
 #define iproto_mbox_init(mbox, xpool, nelem) ({ mbox_init((mbox)); (mbox)->sent = 0; (mbox)->pool = (xpool); (mbox)->sync_nelem = nelem; })
 void iproto_mbox_release(struct iproto_mbox *mbox);
 struct iproto *iproto_mbox_get(struct iproto_mbox *mbox);
+struct iproto *iproto_mbox_peek(struct iproto_mbox *mbox);
 
 u32 iproto_next_sync();
 void iproto_reply_reader(va_list ap);

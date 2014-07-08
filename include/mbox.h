@@ -67,6 +67,8 @@ struct name {								\
 
 #define mbox_msgtype(mbox) typeof((mbox)->msg_list.stqh_first)
 
+#define mbox_peek(mbox) STAILQ_FIRST(&(mbox)->msg_list);
+
 #define mbox_get(mbox, link) ({						\
 	mbox_msgtype(mbox) msg = STAILQ_FIRST(&(mbox)->msg_list);	\
 	if (msg) {							\
