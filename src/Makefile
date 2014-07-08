@@ -40,6 +40,11 @@ ifneq ($(findstring src/paxos.o,$(obj)),)
   src/log_io_recovery.o: XCFLAGS += -DPAXOS
 endif
 
+# link with pthread if thread_pool used
+ifneq ($(findstring src/thread_pool.o,$(obj)),)
+  LIBS += -lpthread
+endif
+
 # no warns at all: it complains even with -Wall
 no-extra-warns += src/octopus_ev.o
 src/octopus_ev.o: XCFLAGS := -U_FORTIFY_SOURCE $(filter-out -W%,$(CFLAGS_EXTRA))
