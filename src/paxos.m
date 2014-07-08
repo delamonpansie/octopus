@@ -889,7 +889,7 @@ retry:
 
 				say_debug("feeding from %s", p->name);
 				[puller feeder_param:&p->feeder];
-				if ([puller handshake:[r scn] err:NULL] <= 0)
+				if ([puller handshake:[r scn]] <= 0)
 					continue;
 				while ([r pull_wal:puller] != 1);
 				break;
@@ -1176,7 +1176,7 @@ enable_local_writes
 				continue;
 
 			[puller feeder_param:&p->feeder];
-			if ([puller handshake:scn err:NULL] <= 0)
+			if ([puller handshake:scn] <= 0)
 				continue;
 
 			say_debug("loading from %s", p->name);

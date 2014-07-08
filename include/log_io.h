@@ -392,6 +392,7 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 	struct fiber *in_recv;
 	struct feeder_param *feeder;
 	struct row_v12 *unfetch_row;
+	char errbuf[64];
 }
 
 - (ssize_t) recv;
@@ -401,7 +402,8 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 - (XLogPuller *) init:(struct feeder_param*)_feeder;
 - (void) feeder_param:(struct feeder_param*)_feeder;
 /* returns -1 in case of handshake failure. puller is closed.  */
-- (int) handshake:(i64)scn err:(const char **)err_ptr;
+- (int) handshake:(i64)scn;
+- (const char *)error;
 @end
 
 enum recovery_status { LOADING = 1, PRIMARY, STANDBY };

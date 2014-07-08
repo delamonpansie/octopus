@@ -730,13 +730,13 @@ again:
 		if (scn != 0) /* special case: scn == 0 => want snapshot */
 			scn++; /* otherwise start recover from next scn */
 
-		const char *err;
-		if ([r->remote_puller handshake:scn err:&err] <= 0) {
+		if ([r->remote_puller handshake:scn] <= 0) {
 			/* no more WAL rows in near future, notify module about that */
 			[r wal_final_row];
 
 			if (!warning_said) {
-				hot_standby_status(r, "fail", err);
+				hot_standby_status(r, "fail", [r->remote_puller error]);
+				say_warn("feeder handshake failed: %s", [r->remote_puller error]);
 				say_info("will retry every %.2f second", reconnect_delay);
 				warning_said = true;
 			}

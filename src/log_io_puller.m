@@ -118,9 +118,9 @@ feeder_param_fill_from_cfg(struct feeder_param *param, struct octopus_cfg *_cfg)
 
 @interface XLogPuller (Helpers)
 - (ssize_t) recv_with_timeout: (ev_tstamp)timeout;
-- (const char *) establish_connection;
-- (const char *) replication_compat: (i64)scn;
-- (const char *) replication_handshake:(void*)hshake len:(size_t)len;
+- (int) establish_connection;
+- (int) replication_compat: (i64)scn;
+- (int) replication_handshake:(void*)hshake len:(size_t)len;
 @end
 
 @implementation XLogPuller
@@ -152,7 +152,7 @@ feeder_param:(struct feeder_param*)_feeder
 	feeder = _feeder;
 }
 
-- (const char *)
+- (int)
 establish_connection
 {
 	int fd;
@@ -162,7 +162,8 @@ establish_connection
 
 	say_debug("%s: connect", __func__);
 	if ((fd = tcp_connect(&feeder->addr, NULL, 5)) < 0) {
-		return "can't connect to feeder";
+		snprintf(errbuf, sizeof(errbuf), "can't connect, %s", strerror(errno));
+		return -1;
 	}
 
 	int one = 1;
@@ -184,25 +185,27 @@ establish_connection
 
 	assert(c.fd < 0);
 	conn_set(&c, fd);
-	return NULL;
+	return 0;
 }
 
-- (const char *)
+- (int)
 replication_compat:(i64)scn
 {
 	say_debug("%s: compat send scn", __func__);
 	if (conn_write(&c, &scn, sizeof(scn)) != sizeof(scn)) {
-		return "can't write initial lsn";
+		snprintf(errbuf, sizeof(errbuf), "can't write initial lsn, %s", strerror(errno));
+		return -1;
 	}
 
 	say_debug("%s: compat recv scn", __func__);
 	if (conn_read(&c, &version, sizeof(version)) != sizeof(version)) {
-		return "can't write initial lsn";
+		snprintf(errbuf, sizeof(errbuf), "can't read initial lsn, %s", strerror(errno));
+		return -1;
 	}
-	return NULL;
+	return 0;
 }
 
-- (const char *)
+- (int)
 replication_handshake:(void*)hshake len:(size_t)hsize
 {
 	struct tbuf *req = tbuf_alloc(fiber->pool);
@@ -212,7 +215,8 @@ replication_handshake:(void*)hshake len:(size_t)hsize
 
 	say_debug("%s: send handshake, %u bytes", __func__, tbuf_len(req));
 	if (conn_write(&c, req->ptr, tbuf_len(req)) != tbuf_len(req)) {
-		return "can't write initial handshake";
+		snprintf(errbuf, sizeof(errbuf), "can't write initial handshake, %s", strerror(errno));
+		return -1;
 	}
 
 	do {
@@ -220,62 +224,67 @@ replication_handshake:(void*)hshake len:(size_t)hsize
 		ssize_t r = [self recv_with_timeout: 5];
 
 		if (r < 0) {
-			if (r == -2) {
-				return "handshake timeout";
-			}
-			if (r == -3) {
-				return "handshake aborted";
-			}
 			if (errno == EAGAIN ||
 			    errno == EWOULDBLOCK ||
 			    errno == EINTR)
 				continue;
-			return "can't read initial handshake";
+
+			switch (r) {
+			case -2:
+				snprintf(errbuf, sizeof(errbuf), "handshake timeout");
+				break;
+			case -3:
+				snprintf(errbuf, sizeof(errbuf), "handshake aborted");
+				break;
+			default:
+				snprintf(errbuf, sizeof(errbuf), "can't read initial handshake, %s",
+					 strerror(errno));
+			}
+			return -1;
 		} else if (r == 0) {
-			return "can't read initial handshake, eof";
+			snprintf(errbuf, sizeof(errbuf), "can't read initial handshake, eof");
+			return -1;
 		}
 
 		say_debug("%s: recv handshake part, %u bytes", __func__, tbuf_len(c.rbuf));
 	} while (tbuf_len(c.rbuf) < sizeof(struct iproto_retcode) + sizeof(version));
 
 	struct iproto_retcode *reply = (void *)iproto_parse(c.rbuf);
-	if (reply == NULL) {
-		return "can't read reply";
-	}
-
-	if (reply->ret_code != 0 ||
+	if (reply == NULL ||
+	    reply->ret_code != 0 ||
 	    reply->sync != iproto(req)->sync ||
 	    reply->msg_code != iproto(req)->msg_code ||
 	    reply->data_len != sizeof(reply->ret_code) + sizeof(version))
 	{
-		return "bad reply";
+		snprintf(errbuf, sizeof(errbuf), "can't parse reply: bad iproto packet");
+		return -1;
 	}
 
 	say_debug("%s: iproto_reply data_len:%i, rbuf len:%i", __func__,
 		  reply->data_len, tbuf_len(c.rbuf));
 
 	memcpy(&version, reply->data, sizeof(version));
-	return NULL;
+	return 0;
 }
 
 - (int)
-handshake:(i64)scn err:(const char **)err_ptr
+handshake:(i64)scn
 {
 	assert(scn >= 0);
 
-	const char *err = [self establish_connection];
-	if (err) goto err;
+	if ([self establish_connection] < 0)
+		goto err;
 
 	if (feeder->ver == 0) {
-		err = [self replication_compat: scn];
-		if (err) goto err;
+		if ([self replication_compat: scn] < 0)
+			goto err;
 	} else if (feeder->ver == 1) {
 		struct replication_handshake_v1 hshake = {1, scn, {0}};
 		if (feeder->filter.name)
 			strncpy(hshake.filter, feeder->filter.name, sizeof(hshake.filter));
 
-		err = [self replication_handshake: &hshake len: sizeof(hshake)];
-		if (err) goto err;
+		if ([self replication_handshake: &hshake len: sizeof(hshake)] < 0)
+			goto err;
 	} else if (feeder->ver == 2) {
 		struct tbuf *hbuf = tbuf_alloc(fiber->pool);
 		struct replication_handshake_v2 hshake = {
@@ -288,12 +297,12 @@ handshake:(i64)scn err:(const char **)err_ptr
 		tbuf_add_dup(hbuf, &hshake);
 		tbuf_append(hbuf, feeder->filter.arg, feeder->filter.arglen);
 
-		err = [self replication_handshake: hbuf->ptr len: tbuf_len(hbuf)];
-		if (err) goto err;
+		if ([self replication_handshake: hbuf->ptr len: tbuf_len(hbuf)] < 0)
+			goto err;
 	}
 
 	if (version != default_version && version != version_11) {
-		err = "unknown remote version";
+		snprintf(errbuf, sizeof(errbuf), "unknown remote version");
 		goto err;
 	}
 
@@ -301,8 +310,6 @@ handshake:(i64)scn err:(const char **)err_ptr
 	say_info("starting remote recovery from scn:%" PRIi64, scn);
 	return 1;
 err:
-	if (err_ptr)
-		*err_ptr = err;
 	if (c.fd >= 0)
 		conn_close(&c);
 	return -1;
@@ -457,6 +464,12 @@ free
 	palloc_unregister_gc_root(fiber->pool, &c);
 	[self close];
 	return [super free];
+}
+
+- (const char *)
+error
+{
+	return errbuf;
 }
 
 @end
