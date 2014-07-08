@@ -836,9 +836,8 @@ run_protocol(PaxosRecovery *r, struct proposal *p, char *value, u32 value_len, u
 
 	bool has_old_value = false;
 	u64 ballot = p->prepare_ballot, nack_ballot = 0;
-	int votes, reply_count;
+	int votes;
 	struct iproto_mbox mbox;
-	// struct iproto *req;
 
 	say_debug("%s: SCN:%"PRIi64, __func__, p->scn);
 	say_debug2("|  tag:%s value_len:%u value:%s", xlog_tag_to_a(tag), value_len,
@@ -853,10 +852,16 @@ retry:
 	u32 sync = prepare(r, &mbox, p, ballot);
 	say_debug("PREPARE reply sync:%i SCN:%"PRIi64, sync, p->scn);
 	struct msg_paxos *req, *max = NULL;
-	reply_count = votes = 0;
+	votes = 0;
+
+	if (mbox.msg_count == 0)
+		say_debug("|  SCN:%"PRIi64" EMPTY", p->scn);
+
+	if (mbox.msg_count == 0 ||
+	    (mbox.msg_count == 1 && ((struct msg_paxos *)iproto_mbox_peek(&mbox))->peer_id == self_id))
+		p->delay *= 1.25;
 
 	while ((req = (struct msg_paxos *)iproto_mbox_get(&mbox))) {
-		reply_count++;
 		say_debug("|  %s SCN:%"PRIi64" ballot:%"PRIu64" value_len:%i",
 			  paxos_msg_code[req->header.msg_code], req->scn, req->ballot, req->value_len);
 
@@ -896,10 +901,6 @@ retry:
 			abort();
 		}
 	}
-	if (reply_count == 0 || (reply_count == 1 && req->peer_id == self_id)) {
-		say_debug("|  SCN:%"PRIi64" EMPTY", p->scn);
-		p->delay *= 1.25;
-	}
 
 	if (votes < quorum) {
 		if (nack_ballot > ballot) { /* we have a hint about ballot */
@@ -927,11 +928,13 @@ retry:
 	iproto_mbox_release(&mbox);
 
 	sync = propose(r, &mbox, ballot, p->scn, value, value_len, tag);
-
 	say_debug("PROPOSE reply sync:%i SCN:%"PRIi64, sync, p->scn);
-	reply_count = votes = 0;
+
+	if (mbox.msg_count == 0)
+		say_debug("|  SCN:%"PRIi64" EMPTY", p->scn);
+
+	votes = 0;
 	while ((req = (struct msg_paxos *)iproto_mbox_get(&mbox))) {
-		reply_count++;
 		say_debug("|  %s SCN:%"PRIi64" ballot:%"PRIu64" value_len:%i",
 			  paxos_msg_code[req->header.msg_code], req->scn, req->ballot, req->value_len);
 
@@ -950,8 +953,6 @@ retry:
 			break;
 		}
 	}
-	if (reply_count == 0)
-		say_debug("|  SCN:%"PRIi64" EMPTY", p->scn);
 
 	iproto_mbox_release(&mbox);
 
