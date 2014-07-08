@@ -119,13 +119,10 @@ xlog_tag_to_a(u16 tag)
 }
 
 static char *
-set_file_buf(FILE *fd)
+set_file_buf(FILE *fd, const int bufsize)
 {
 	char	*vbuf;
-	const int bufsize = 64 * 1024;
 
-	/* libc will try prepread sizeof(vbuf) bytes on every fseeko,
-	   so no reason to make vbuf particulary large */
 	vbuf = xmalloc(bufsize);
 	setvbuf(fd, vbuf, _IOFBF, bufsize);
 
@@ -163,7 +160,9 @@ open_for_read_filename:(const char *)filename dir:(XLogDir *)dir
 
 	if ((fd = fopen(filename, "r")) == NULL)
 		return nil; /* no cleanup needed */
-	fbuf = set_file_buf(fd);
+	/* libc will try prepread sizeof(vbuf) bytes on every fseeko,
+	   so no reason to make vbuf particulary large */
+	fbuf = set_file_buf(fd, 64 * 1024);
 
 	if (fgets(filetype_, sizeof(filetype_), fd) == NULL ||
 	    fgets(version_, sizeof(version_), fd) == NULL)
@@ -1326,7 +1325,7 @@ open_for_write:(i64)lsn scn:(i64)scn
 		say_syserror("fopen failed");
 		goto error;
 	}
-	fbuf = set_file_buf(file);
+	fbuf = set_file_buf(file, 1024 * 1024);
 
 	if (cfg.io_compat) {
 		l = [[XLog11 alloc] init_filename:filename fd:file dir:self vbuf:fbuf];
