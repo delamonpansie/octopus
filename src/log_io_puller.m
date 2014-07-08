@@ -131,19 +131,17 @@ feeder_param_fill_from_cfg(struct feeder_param *param, struct octopus_cfg *_cfg)
 - (XLogPuller *)
 init
 {
-	say_debug("%s", __func__);
-	conn_init(&c, fiber->pool, -1, fiber, fiber, MO_STATIC);
-	palloc_register_gc_root(fiber->pool, &c, conn_gc);
-	feeder = NULL;
-	return [super init];
+	[super init];
+	c.fd = -1;
+	return self;
 }
 
 - (XLogPuller *)
 init:(struct feeder_param*)_feeder
 {
-	XLogPuller *e = [self init];
-	[e feeder_param: _feeder];
-	return e;
+	[self init];
+	[self feeder_param: _feeder];
+	return self;
 }
 
 - (void)
@@ -184,7 +182,8 @@ establish_connection
 #endif
 
 	assert(c.fd < 0);
-	conn_set(&c, fd);
+	conn_init(&c, fiber->pool, fd, fiber, fiber, MO_STATIC);
+	palloc_register_gc_root(fiber->pool, &c, conn_gc);
 	return 0;
 }
 
@@ -454,14 +453,13 @@ close
 {
 	if (c.fd < 0)
 		return 0;
+	palloc_unregister_gc_root(fiber->pool, &c);
 	return conn_close(&c);
 }
 
 - (id)
 free
 {
-	say_debug("%s", __func__);
-	palloc_unregister_gc_root(fiber->pool, &c);
 	[self close];
 	return [super free];
 }
