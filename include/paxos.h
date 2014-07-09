@@ -48,6 +48,7 @@ RB_HEAD(ptree, proposal);
 }
 - (i64) next_scn;
 - (struct iproto_peer *)leader_primary;
+- (const char *)scn_info;
 @end
 
 void paxos_print(struct tbuf *out,

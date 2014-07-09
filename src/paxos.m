@@ -1000,8 +1000,7 @@ loop:
 	fiber_gc(); /* NB: put comment */
 
 	p = RB_MIN(ptree, &r->proposals);
-	say_debug("wal_dump SCN:%"PRIi64 " appSCN:%"PRIi64 " maxSCN:%"PRIi64,
-		  [r scn], r->app_scn, r->max_scn);
+	say_debug("wal_dump %s", [r scn_info]);
 
 	while (p && p->flags & P_CLOSED) {
 		say_debug2("|  % 8"PRIi64" CLOSED", p->scn);
@@ -1081,12 +1080,9 @@ paxos_stat(va_list ap)
 {
 	struct PaxosRecovery *r = va_arg(ap, typeof(r));
 loop:
-	say_info("SCN:%"PRIi64" "
-		 "AppSCN:%"PRIi64" "
-		 "MaxSCN:%"PRIi64" "
-		 "leader:%i %s",
-		 [r scn], r->app_scn, r->max_scn,
-		 leader_id, paxos_leader() ? "leader" : "");
+	say_info("%s leader:%i %s",
+		 [r scn_info], leader_id,
+		 paxos_leader() ? "leader" : "");
 
 	fiber_sleep(1);
 	goto loop;
@@ -1150,6 +1146,17 @@ init_snap_dir:(const char *)snap_dirname
 	return self;
 }
 
+- (const char *)
+scn_info
+{
+	static char buf[64];
+	const struct proposal *p = RB_MIN(ptree, &proposals);
+	snprintf(buf, sizeof(buf),
+		 "minSCN:%"PRIi64" SCN:%"PRIi64" appSCN:%"PRIi64" maxSCN:%"PRIi64,
+		 p ? p->scn : -1, scn, app_scn, max_scn);
+	return buf;
+}
+
 - (void)
 enable_local_writes
 {
@@ -1196,9 +1203,7 @@ exit:
 	if (max_scn == 0)
 		max_scn = scn;
 
-	struct proposal *min = RB_MIN(ptree, &self->proposals);
-	say_info("SCN:%"PRIi64" minSCN:%"PRIi64" appSCN:%"PRIi64" maxSCN:%"PRIi64,
-		 scn, min ? min->scn : -1, app_scn, max_scn);
+	say_info("%s", [self scn_info]);
 
 	const char *addr = sintoa(&paxos_peer(self, self_id)->paxos.addr);
 	tcp_iproto_service(&service, addr, NULL, iproto_wakeup_workers);
