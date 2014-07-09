@@ -583,7 +583,7 @@ pull_wal:(id<XLogPullerAsync>)puller
 			continue;
 
 		if (cfg.io_compat && tag == run_crc)
-				continue;
+			continue;
 
 		rows[pack_rows++] = row;
 		if (pack_rows == WAL_PACK_MAX)
