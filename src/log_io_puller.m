@@ -158,7 +158,7 @@ establish_connection
 	abort = 0; /* must be set before connect */
 	assert(feeder != NULL);
 
-	say_debug("%s: connect", __func__);
+	say_debug2("%s: connect", __func__);
 	if ((fd = tcp_connect(&feeder->addr, NULL, 5)) < 0) {
 		snprintf(errbuf, sizeof(errbuf), "can't connect, %s", strerror(errno));
 		return -1;
