@@ -267,7 +267,7 @@ wal_disk_writer(int fd, void *state)
 			request[i].fid = read_u32(&rbuf);
 
 			assert(request[i].row_count > 0);
-
+			say_debug("request[%i] rows:%i", i, request[i].row_count);
 			for (int j = 0; j < request[i].row_count; j++) {
 				struct row_v12 *h = read_bytes(&rbuf, sizeof(*h));
 				void *data = read_bytes(&rbuf, h->len);
@@ -275,7 +275,7 @@ wal_disk_writer(int fd, void *state)
 				if (io_failure)
 					continue;
 
-				say_debug("%s: SCN:%"PRIi64" tag:%s data_len:%u", __func__,
+				say_debug("|	SCN:%"PRIi64" tag:%s data_len:%u",
 					  h->scn, xlog_tag_to_a(h->tag), h->len);
 
 				const struct row_v12 *ret = [writer append_row:h data:data];
@@ -332,8 +332,8 @@ wal_disk_writer(int fd, void *state)
 				reply[i].scn = row[j - 1].scn;
 				reply[i].run_crc = row[j - 1].crc;
 			}
-			say_debug("%s: reply[%i] rows:%i LSN:%"PRIi64" SCN:%"PRIi64,
-				  __func__, i, reply[i].row_count, reply[i].lsn, reply[i].scn);
+			say_debug("reply[%i] rows:%i LSN:%"PRIi64" SCN:%"PRIi64,
+				  i, reply[i].row_count, reply[i].lsn, reply[i].scn);
 		}
 		do {
 			r = write(fd, reply, reply_len);
