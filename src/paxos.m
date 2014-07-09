@@ -494,6 +494,15 @@ update_proposal_value(struct proposal *p, u32 value_len, const u8 *value, u16 ta
 	memcpy(p->value, value, value_len);
 }
 
+static void
+delete_proposal(PaxosRecovery *r, struct proposal *p)
+{
+	RB_REMOVE(ptree, &r->proposals, p);
+	if (p->value)
+		sfree(p->value);
+	slab_cache_free(&proposal_cache, p);
+}
+
 static struct proposal *
 create_proposal(PaxosRecovery *r, i64 scn)
 {
@@ -502,9 +511,18 @@ create_proposal(PaxosRecovery *r, i64 scn)
 	struct proposal *p = slab_cache_alloc(&proposal_cache);
 	struct proposal ini = { .scn = scn, .delay = paxos_default_timeout, .tstamp = ev_now() };
 	memcpy(p, &ini, sizeof(*p));
+
 	RB_INSERT(ptree, &r->proposals, p);
 	if (r->max_scn < scn)
 		r->max_scn = scn;
+
+	for (struct proposal *m = RB_MIN(ptree, &r->proposals);
+	     r->max_scn - m->scn > proposal_history_size && m->flags & P_CLOSED;
+	     m = RB_MIN(ptree, &r->proposals))
+	{
+		delete_proposal(r, m);
+	}
+
 	return p;
 }
 
@@ -515,31 +533,6 @@ proposal(PaxosRecovery *r, i64 scn)
 	return find_proposal(r, scn) ?: create_proposal(r, scn);
 }
 
-static void
-delete_proposal(PaxosRecovery *r, struct proposal *p)
-{
-	RB_REMOVE(ptree, &r->proposals, p);
-	if (p->value)
-		sfree(p->value);
-	slab_cache_free(&proposal_cache, p);
-}
-
-static void
-expire_proposal(PaxosRecovery *r)
-{
-	struct proposal *p, *tmp;
-	i64 keep_scn = [r scn] - proposal_history_size; /* ok, if negative */
-
-	RB_FOREACH_SAFE(p, ptree, &r->proposals, tmp) {
-		if ((p->flags & P_CLOSED) == 0)
-			break;
-
-		if (p->scn >= keep_scn)
-			break;
-
-		delete_proposal(r, p);
-	}
-}
 
 #define nack(req, nack_ballot, msg_ballot) ({					\
 	assert(nack_ballot != ULLONG_MAX);						\
@@ -1049,7 +1042,6 @@ loop:
 		}
 	}
 
-	expire_proposal(r);
 	goto loop;
 }
 
@@ -1395,7 +1387,6 @@ recover_row:(struct row_v12 *)r
 		[super recover_row:r];
 	}
 
-	expire_proposal(self);
 }
 
 - (i64) next_scn { return ++max_scn; }
