@@ -444,7 +444,9 @@ local_hot_standby
 	[self status_update:STANDBY fmt:"hot_standby/local"];
 
 	if (!fiber_create("wal_lock", wal_lock, self))
-		panic("unable to start wal_lock fiber");
+		/* XXX may be more consize check need */
+		if (!local_writes)
+			panic("unable to start wal_lock fiber");
 }
 
 static void follow_file(ev_stat *, int);
