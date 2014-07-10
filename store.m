@@ -188,12 +188,11 @@ status_changed
 {
 	/* ugly hack: since it's a category it also breaks feeders title() */
 	if (self == recovery) {
-		if (strcmp(status, "primary") == 0) {
-			if (fiber_create("memecached_expire", memcached_expire) == NULL)
-				panic("can't start the expire fiber");
+		if (status == PRIMARY) {
+			fiber_create("memecached_expire", memcached_expire);
 			return;
 		}
-		if (strcmp(prev_status, "primary") == 0)
+		if (prev_status ==  PRIMARY)
 			panic("can't downgrade from primary");
 	}
 }
@@ -483,6 +482,7 @@ static void
 memcached_accept(int fd, void *data __attribute__((unused)))
 {
 	if (fiber_create("memcached/handler", memcached_handler, fd) == NULL) {
+		/* FIXME: fiber creation never fails */
 		say_error("unable create fiber");
 		close(fd);
 	}
