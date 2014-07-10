@@ -443,10 +443,7 @@ local_hot_standby
 	[self recover_follow:cfg.wal_dir_rescan_delay]; /* FIXME: make this conf */
 	[self status_update:STANDBY fmt:"hot_standby/local"];
 
-	if (!fiber_create("wal_lock", wal_lock, self))
-		/* XXX may be more consize check need */
-		if (!local_writes)
-			panic("unable to start wal_lock fiber");
+	fiber_create("wal_lock", wal_lock, self);
 }
 
 static void follow_file(ev_stat *, int);
