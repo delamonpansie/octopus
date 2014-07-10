@@ -838,8 +838,7 @@ enable_local_writes
 		[self configure_wal_writer];
 	}
 
-	if (!fiber_create("remote_hot_standby", remote_hot_standby, self))
-		panic("unable to start remote hot standby fiber");
+	fiber_create("remote_hot_standby", remote_hot_standby, self);
 
 	if ([self feeder_addr_configured])
 		say_info("configured remote hot standby, WAL feeder %s", sintoa(&feeder.addr));
@@ -976,8 +975,6 @@ nop_hb_writer(va_list ap)
 		struct fiber *wal_in = fiber_create("wal_writer/input_dispatcher",
 							wal_disk_writer_input_dispatch);
 		wal_writer = spawn_child("wal_writer", wal_in, wal_out, wal_disk_writer, wal_dir);
-		if (!wal_writer)
-			panic("unable to start WAL writer");
 
 		ev_set_priority(&wal_writer->c->in, 1);
 		ev_set_priority(&wal_writer->c->out, 1);
