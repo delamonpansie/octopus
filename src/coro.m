@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -45,6 +45,15 @@
 #include <unistd.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <errno.h>
+
+void
+octopus_coro_destroy(struct octopus_coro *coro)
+{
+	if (coro && coro->mmap != MAP_FAILED)
+		munmap(coro->mmap, coro->mmap_size);
+	free(coro);
+}
 
 struct octopus_coro *
 octopus_coro_create(struct octopus_coro *coro, void (*f) (void *), void *data)
@@ -52,7 +61,7 @@ octopus_coro_create(struct octopus_coro *coro, void (*f) (void *), void *data)
 	const int page = sysconf(_SC_PAGESIZE);
 
 	if (coro == NULL)
-		coro = xmalloc(sizeof(*coro));
+		coro = malloc(sizeof(*coro));
 
 	if (coro == NULL)
 		return NULL;
@@ -78,15 +87,10 @@ octopus_coro_create(struct octopus_coro *coro, void (*f) (void *), void *data)
 
 	return coro;
 
+	int saved_errno;
 fail:
-	if (coro && coro->stack != MAP_FAILED)
-		munmap(coro->stack, coro->stack_size);
-	free(coro);
+	saved_errno = errno;
+	octopus_coro_destroy(coro);
+	errno = saved_errno;
 	return NULL;
-}
-
-void
-octopus_coro_destroy(struct octopus_coro *coro)
-{
-	munmap(coro->mmap, coro->mmap_size);
 }
