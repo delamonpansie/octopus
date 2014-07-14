@@ -873,21 +873,7 @@ retry:
 			iproto_mbox_release(&mbox);
 			goto decide;
 		case STALE: {
-			struct paxos_peer *p;
-			XLogPuller *puller = [[XLogPuller alloc] init];
-
-			SLIST_FOREACH(p, &r->group, link) {
-				if (p->id == self_id)
-					continue;
-
-				say_debug("feeding from %s", p->name);
-				[puller feeder_param:&p->feeder];
-				if ([puller handshake:[r scn]] <= 0)
-					continue;
-				while ([r pull_wal:puller] != 1);
-				break;
-			}
-			[puller free];
+			giveup_leadership();
 			return 0;
 		}
 		default:
@@ -1088,7 +1074,66 @@ loop:
 	goto loop;
 }
 
+static void
+learner_puller(va_list ap)
+{
+	PaxosRecovery *r = va_arg(ap, PaxosRecovery *);
+	int i = va_arg(ap, int);
+
+	XLogPuller *puller = [[XLogPuller alloc] init];
+again:
+	fiber_gc();
+	fiber_sleep(0.1);
+
+	@try {
+		[puller feeder_param:&paxos_peer(r, i)->feeder];
+		if ([puller handshake:[r scn]] < 0)
+			goto again;
+
+		for (;;)
+			[r learn_wal:puller];
+
+		assert([r scn] <= r->app_scn);
+	}
+	@catch (Error *e) {
+		say_warn("puller failed, [%s reason:\"%s\"] at %s:%d",
+			 [[e class] name], e->reason, e->file, e->line);
+	}
+	@finally {
+		[puller close];
+	}
+	goto again;
+}
+
 @implementation PaxosRecovery
+
+- (void)
+learn_wal:(id<XLogPullerAsync>)puller
+{
+	struct row_v12 *row;
+	struct proposal *p;
+
+	[puller recv];
+	while ((row = [puller fetch_row])) {
+		if (row->scn <= app_scn)
+			continue;
+		if ((row->tag & ~TAG_MASK) != TAG_WAL)
+			continue;
+
+		p = proposal(self, row->scn);
+		if (p->flags & P_APPLIED) {
+			assert(row->len == p->value_len);
+			assert(memcmp(row->data, p->value, row->len) == 0);
+			assert(p->tag == row->tag);
+			p = NULL;
+		} else {
+			update_proposal_value(p, row->len, row->data, row->tag);
+			update_proposal_ballot(p, ULLONG_MAX);
+		}
+	}
+	if (p)
+		learn(self, NULL);
+}
 
 - (id)
 init_snap_dir:(const char *)snap_dirname
@@ -1212,9 +1257,10 @@ exit:
 	service_register_iproto_block(&service, PREPARE, acceptor, 0);
 	service_register_iproto_block(&service, ACCEPT, acceptor, 0);
 	service_register_iproto_block(&service, DECIDE, learner, 0);
-	for (int i = 0; i < 3; i++)
+	for (int i = 0; i < 3; i++) {
 		fiber_create("paxos/worker", iproto_worker, &service);
-
+		fiber_create("paxos/puller", learner_puller, self, i);
+	}
 	reply_reader = fiber_create("paxos/reply_reader", iproto_reply_reader, iproto_collect_reply);
 	output_flusher = fiber_create("paxos/output_flusher", conn_flusher);
 	fiber_create("paxos/rendevouz", iproto_rendevouz, NULL, &paxos_remotes, reply_reader, output_flusher);
