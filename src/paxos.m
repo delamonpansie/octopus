@@ -235,7 +235,7 @@ paxos_reply(struct paxos_request *req, enum paxos_msg_code code, u64 ballot)
 				       sizeof(*msg) - sizeof(struct iproto) + (p ? p->value_len : 0),
 				       req_msg->header.sync };
 	msg->scn = req_msg->scn;
-	msg->ballot = ballot ?: req_msg->ballot;
+	msg->ballot = ballot;
 	msg->peer_id = self_id;
 	msg->version = paxos_default_version;
 
@@ -631,7 +631,7 @@ accepted(PaxosRecovery *r, struct paxos_request *req)
 	assert(msg->ballot >= p->ballot);
 	update_proposal_ballot(p, msg->ballot);
 	update_proposal_value(p, msg->value_len, msg->value, msg->tag);
-	paxos_reply(req, ACCEPTED, 0);
+	paxos_reply(req, ACCEPTED, msg->ballot);
 }
 
 static u32
