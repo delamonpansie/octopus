@@ -136,6 +136,9 @@ local legacy_mt = {
       if ffi.typeof(index) == opaquet then
          index = ffi.cast(indext, index)
       end
+      if index.conf.field_type[0] ~= ffi.C.STRING and type(key) == 'string' then
+         key = tonumber(key)
+      end
       return index:find(key)
    end,
    __metatable = {}
