@@ -676,7 +676,7 @@ load_from_remote
 				break;
 			fiber_sleep(1);
 		}
-		if (i == 0)
+		if (i <= 0)
 			panic("feeder handshake: %s", [puller error]);
 
 
