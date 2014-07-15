@@ -1375,6 +1375,9 @@ recover_row:(struct row_v12 *)r
 	int tag = r->tag & TAG_MASK;
 	int tag_type = r->tag & ~TAG_MASK;
 
+	if (tag >= user_tag || tag == wal_data)
+		assert(app_scn > 0);
+
 	if (tag_type == TAG_SYS) {
 		switch (tag) {
 		case paxos_prepare:
