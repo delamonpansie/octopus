@@ -527,7 +527,7 @@ pull_snapshot:(id<XLogPullerAsync>)puller
 {
 	for (;;) {
 		struct row_v12 *row;
-		[puller recv];
+		[puller recv_row];
 
 		while ((row = [puller fetch_row])) {
 			int tag = row->tag & TAG_MASK;
@@ -554,11 +554,9 @@ pull_wal:(id<XLogPullerAsync>)puller
 
 	int pack_rows = 0;
 
-	while (!(row = [puller fetch_row])) {
-		[puller recv];
-	}
+	[puller recv_row];
 
-	do {
+	while ((row = [puller fetch_row])) {
 		int tag = row->tag & TAG_MASK;
 
 		/* TODO: apply filter on feeder side */
@@ -585,7 +583,7 @@ pull_wal:(id<XLogPullerAsync>)puller
 		rows[pack_rows++] = row;
 		if (pack_rows == WAL_PACK_MAX)
 			break;
-	} while ((row = [puller fetch_row]));
+	}
 
 	if (pack_rows > 0) {
 		/* we'r use our own lsn numbering */

@@ -447,6 +447,23 @@ fetch_row
 	return row;
 }
 
+- (ssize_t)
+recv_row
+{
+	switch (version) {
+	case 12:
+		while (!contains_full_row_v12(c.rbuf))
+			[self recv];
+		break;
+	case 11:
+		while (!contains_full_row_v11(c.rbuf))
+			[self recv];
+		break;
+	default:
+		assert(false);
+	}
+	return tbuf_len(c.rbuf);
+}
 
 - (int)
 close

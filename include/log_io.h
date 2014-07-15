@@ -102,6 +102,7 @@ struct tbuf;
 @protocol XLogPullerAsync <XLogPuller>
 - (ssize_t) recv;
 - (void) abort_recv; /* abort running recv asynchronously */
+- (ssize_t)recv_row;
 @end
 
 @class XLog;
