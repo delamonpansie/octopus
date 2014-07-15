@@ -1225,14 +1225,12 @@ enable_local_writes
 
 			say_debug("loading from %s", p->name);
 			@try {
-				[self pull_wal:puller];
+				while ([self pull_wal:puller] != 1);
 			}
 			@finally {
 				[puller close];
 			}
-
-			if ([self scn] > 0)
-				goto exit;
+			goto exit;
 		}
 		fiber_sleep(1);
 	}
