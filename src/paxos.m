@@ -1241,13 +1241,6 @@ exit:
 	if (!configured)
 		[self configure_wal_writer];
 
-	app_scn = scn;
-
-	/* boot from initial state or from non paxos xlogs
-	   there is no TAG_SYS records => we don't create any proposals => max_scn == 0 */
-	if (max_scn == 0)
-		max_scn = scn;
-
 	say_info("%s", [self scn_info]);
 
 	const char *addr = sintoa(&paxos_peer(self, self_id)->paxos.addr);
@@ -1413,6 +1406,7 @@ recover_row:(struct row_v12 *)r
 		case snap_initial:
 		case snap_final:
 			[super recover_row:r];
+			max_scn = app_scn = scn;
 			return;
 		}
 	}
