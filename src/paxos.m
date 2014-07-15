@@ -1206,11 +1206,20 @@ scn_info
 enable_local_writes
 {
 	say_debug("%s", __func__);
+	[self lock];
 	[self recover_finalize];
 	local_writes = true;
 
-	if (scn != 0)
+	if (lsn == 0) {
+		assert([self feeder_addr_configured]);
+		say_info("initial loading from WAL feeder %s", sintoa(&feeder.addr));
+		[self load_from_remote];
+	} else {
 		[self configure_wal_writer];
+	}
+	assert(configured);
+
+	fiber_create("remote_hot_standby", remote_hot_standby, self);
 
 	XLogPuller *puller = [[XLogPuller alloc] init];
 	for (;;) {
@@ -1236,8 +1245,6 @@ enable_local_writes
 	}
 exit:
 	[puller free];
-	if (!configured)
-		[self configure_wal_writer];
 
 	say_info("%s", [self scn_info]);
 
@@ -1285,12 +1292,14 @@ leader_primary
 - (bool)
 is_replica
 {
-	return leader_id < 0 || leader_id != self_id;
+	return leader_id < 0 || leader_id != self_id || [super is_replica];
 }
 
 - (void)
 check_replica
 {
+	[super check_replica];
+
 	if (!paxos_leader())
 		[self leader_redirect_raise];
 
