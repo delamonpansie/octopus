@@ -1427,19 +1427,23 @@ recover_row:(struct row_v12 *)r
 		return;
 
 	default:
+		if (r->scn <= scn) /* FIXME: add assertion */
+			return;
+
 		p = proposal(self, r->scn);
 		update_proposal_value(p, r->len, r->data, r->tag);
 		update_proposal_ballot(p, ULLONG_MAX);
 		p->flags |= P_CLOSED;
 
 		if (r->scn == next_skip_scn) {
-			p->flags |= P_APPLIED;
+			assert(p->flags & P_APPLIED);
 			next_skip_scn = tbuf_len(&skip_scn) > 0 ?
 					read_u64(&skip_scn) : 0;
 			return;
 		}
 
 		[super recover_row:r];
+		mark_applied(self, p);
 	}
 
 }
