@@ -291,8 +291,8 @@ fiber_create(const char *name, void (*f)(va_list va), ...)
 void
 fiber_destroy_all()
 {
-	struct fiber *f;
-	SLIST_FOREACH(f, &fibers, link) {
+	struct fiber *f, *tmp;
+	SLIST_FOREACH_SAFE(f, &fibers, link, tmp) {
 		if (f == fiber) /* do not destroy running fiber */
 			continue;
 		if (f->name != NULL && strcmp(f->name, "sched") == 0)
