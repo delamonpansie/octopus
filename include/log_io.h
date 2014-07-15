@@ -391,7 +391,6 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 	bool abort;
 	struct fiber *in_recv;
 	struct feeder_param *feeder;
-	struct row_v12 *unfetch_row;
 	char errbuf[64];
 }
 
