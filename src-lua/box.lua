@@ -166,8 +166,8 @@ for _, v in pairs{'add', 'replace', 'delete', 'update'} do
 end
 
 function ctuple(obj)
-   assert(obj ~= nil)
-   return obj
+   assert(obj ~= nil and obj.__tuple ~= nil)
+   return obj.__tuple
 end
 local tuple_mt = {}
 function tuple(...)
@@ -279,7 +279,10 @@ end
 
 
 local charbuf = ffi.typeof('char *')
-function decode_varint32(ptr, offt) return varint32.read(ffi.cast(charbuf, ptr) + offt) end
+function decode_varint32(ptr, offt)
+    local value, len = varint32.read(ffi.cast(charbuf, ptr) + offt)
+    return value, offt + len
+end
 
 decode = {}
 function decode.varint32(obj, offt) return obj:datacast('varint32', offt) end
