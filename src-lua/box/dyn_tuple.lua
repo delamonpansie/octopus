@@ -129,7 +129,7 @@ local tuple_mt = {
 	 return __tuple_index[key]
       end
    end,
-   __len = function(self)
+   __len = function(self) -- won't work until -DLUAJIT_ENABLE_LUA52COMPAT enabled
       return self.cardinality
    end,
    __tostring = function(self)
