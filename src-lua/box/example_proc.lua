@@ -119,25 +119,29 @@ user_proc.drop_first_tuple = box.wrap(function ()
 end)
 
 
+local typemap = { [8] = ffi.typeof('uint64_t *'),
+                  [4] = ffi.typeof('uint32_t *'),
+                  [2] = ffi.typeof('uint16_t *')}
+
 user_proc.sum_u64 = box.wrap(function (n, pk)
         local object_space = box.object_space[n]
         local obj = object_space.index[0][pk]
         if not obj then
-                return 0, {"not found"}
+            return 0x202, {"not found"}
         end
 
-        local t = box.ctuple(obj);
+        -- think twise before doing raw access to box_tuple
+        local t = obj:raw_box_tuple() -- "raw" pointer to slab allocated 'struct box_tuple'
         local f, offt, len = {}, 0
-        for i = 0,t[0].cardinality - 1 do
-                len, offt = box.decode_varint32(t[0].data, offt)
-                if len == 8 then
-                        table.insert(f, ffi.cast("uint64_t *", t[0].data + offt)[0])
-                elseif len == 4 then
-                        table.insert(f, ffi.cast("uint32_t *", t[0].data + offt)[0])
-                else
-                        table.insert(f, ffi.string(t[0].data + offt, len))
-                end
-                offt = offt + len
+        for i = 0, t.cardinality - 1 do
+            len, offt = box.decode_varint32(t.data, offt)
+            if typemap[len] then
+                v = ffi.cast(typemap[len], t.data + offt)[0]
+            else
+                v = ffi.string(t.data + offt, len)
+            end
+            table.insert(f, v)
+            offt = offt + len
         end
 
         local sum = 0
@@ -148,7 +152,27 @@ user_proc.sum_u64 = box.wrap(function (n, pk)
                 end
         end
 
-        return 0, {box.tuple(sum)}
+        return 0, {box.tuple(tostring(sum))}
+end)
+
+user_proc.sum_u64_v2 = box.wrap(function (n, pk)
+    local object_space = box.object_space[n]
+    local tuple = object_space:index(0):find(pk)
+    if not tuple then
+        return 0x202, {"not found"}
+    end
+
+    local sum = 0
+    for i = 0, tuple.cardinality - 1 do
+        local ok, v = pcall(tuple.numfield, tuple, i) -- method call
+        if not ok then
+            v = tonumber(tuple:strfield(i))
+        end
+        if v then
+            sum = sum + v
+        end
+    end
+    return 0, {box.tuple(tostring(sum))}
 end)
 
 user_proc.truncate = box.wrap(function (n)

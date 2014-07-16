@@ -117,7 +117,8 @@ local __tuple_index = {
 	 end
 	 return ffi.cast(ctinfo[1], self.data + offt)[0]
       end
-   end
+   end,
+   raw_box_tuple = function(self) return self.__tuple end
 }
 
 local tuple_mt = {
