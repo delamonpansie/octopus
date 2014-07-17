@@ -662,11 +662,20 @@ pull_wal:(id<XLogPullerAsync>)puller
 - (int)
 load_from_remote
 {
+	int ret = [self load_from_remote:&feeder];
+	if (ret < 0)
+		panic("unable to pull initial snapshot");
+	return ret;
+}
+
+- (int)
+load_from_remote:(struct feeder_param *)remote
+{
 	XLogPuller *puller = nil;
 
 	@try {
 		puller = [[objc_lookUpClass("XLogPuller") alloc] init];
-		[puller feeder_param: &feeder];
+		[puller feeder_param:remote];
 
 		int i = 5;
 		while (i-- > 0) {
@@ -674,8 +683,10 @@ load_from_remote
 				break;
 			fiber_sleep(1);
 		}
-		if (i <= 0)
-			panic("feeder handshake: %s", [puller error]);
+		if (i <= 0) {
+			say_error("feeder handshake failed: %s", [puller error]);
+			return -1;
+		}
 
 
 		zero_io_collect_interval();

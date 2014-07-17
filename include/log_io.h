@@ -442,6 +442,7 @@ enum recovery_status { LOADING = 1, PRIMARY, STANDBY };
 
 - (i64) load_from_local; /* load from local snap+wal */
 - (int) load_from_remote; /* fetch and load snap+wal from feeder. doesn't persist anything */
+- (int) load_from_remote:(struct feeder_param *)remote;
 
 - (void) local_hot_standby;
 - (void) recover_follow:(ev_tstamp)delay;
