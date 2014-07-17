@@ -77,9 +77,9 @@ make_paxos_peer(int id, const char *name, const char *addr,
 
 	p = xcalloc(1, sizeof(*p));
 	p->id = id;
-	p->name = name;
+	p->name = strdup(name);
 	p->paxos = (struct iproto_peer){ .id = id,
-					 .name = name,
+					 .name = p->name,
 					 .addr = sin,
 					 .c = { .fd = -1 } };
 	p->primary = p->paxos;
