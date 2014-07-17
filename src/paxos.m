@@ -1213,9 +1213,21 @@ enable_local_writes
 	local_writes = true;
 
 	if (lsn == 0) {
-		assert([self feeder_addr_configured]);
-		say_info("initial loading from WAL feeder %s", sintoa(&feeder.addr));
-		[self load_from_remote];
+		if ([self feeder_addr_configured]) {
+			say_info("initial loading from WAL feeder %s", sintoa(&feeder.addr));
+			[self load_from_remote];
+		} else {
+			say_warn("No snapshot found, trying to fetch from peers");
+			for (int i = 1; i <= 3; i++) {
+				if (i == self_id)
+					continue;
+				if ([self load_from_remote:&paxos_peer(self, i)->feeder] >= 0)
+					break;
+			}
+		}
+		if (lsn == 0)
+			panic("Unable to pull initial snapshot");
+
 	} else {
 		[self configure_wal_writer];
 	}
