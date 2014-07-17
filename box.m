@@ -463,8 +463,6 @@ init(void)
 
 	title("loading");
 	if (cfg.paxos_enabled) {
-		if (cfg.wal_feeder_addr)
-			panic("wal_feeder_addr is incompatible with paxos");
 		if (cfg.local_hot_standby)
 			panic("wal_hot_standby is incompatible with paxos");
 	}
