@@ -115,9 +115,9 @@ local function packerr(err, fname, index, ...)
     error(msg, 3)
 end
 
-local opaquet = ffi.typeof('struct OpaqueIndex *')
-local indext = ffi.typeof('struct BasicIndex *')
-local treet = ffi.typeof('struct Tree *')
+local opaquet = ffi.typeof('const struct OpaqueIndex *')
+local indext = ffi.typeof('const struct BasicIndex *')
+local treet = ffi.typeof('const struct Tree *')
 
 -- legacy iter interface interface
 function iter(index, key)
