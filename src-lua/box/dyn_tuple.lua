@@ -137,7 +137,7 @@ local tuple_mt = {
    end
 }
 
-local box_tuple = ffi.typeof('struct box_tuple *')
+local box_tuple = ffi.typeof('const struct box_tuple *')
 
 obj_type = ffi.C.BOX_TUPLE
 obj_cast = function(obj)
