@@ -717,7 +717,8 @@ box_lua_cb(struct iproto *request, struct conn *c)
 }
 
 static void
-box_paxos_cb(struct iproto *request __attribute__((unused)),
+box_paxos_cb(struct netmsg_head *h __attribute__((unused)),
+	     struct iproto *request __attribute__((unused)),
 	     struct conn *c __attribute__((unused)))
 {
 	if ([recovery respondsTo:@selector(leader_redirect_raise)])
@@ -727,14 +728,15 @@ box_paxos_cb(struct iproto *request __attribute__((unused)),
 			     "PAXOS_LEADER unsupported in non cluster configuration");
 }
 
-void
+static void
 box_paxos_proxy_cb(struct iproto *request, struct conn *c)
 {
+	u32 sync = request->sync;
 	struct iproto_peer *peer = [(PaxosRecovery *)recovery leader_primary];
 	struct iproto *reply = iproto_sync_send(peer, request, NULL, 0);
 	if (!reply)
 		return;
-	reply->sync = request->sync;
+	reply->sync = sync;
 	net_add_iov_dup(&c->out_messages, reply, sizeof(*reply) + reply->data_len);
 }
 
@@ -830,10 +832,10 @@ box_service(struct service *s)
 {
 	foreach_op(NOP, SELECT, SELECT_LIMIT)
 		service_register_iproto_stream(s, *op, box_select_cb, 0);
+	service_register_iproto_stream(s, PAXOS_LEADER, box_paxos_cb, 0);
 	foreach_op(INSERT, UPDATE_FIELDS, DELETE, DELETE_1_3)
 		service_register_iproto_block(s, *op, box_cb, 0);
 	service_register_iproto_block(s, EXEC_LUA, box_lua_cb, 0);
-	service_register_iproto_block(s, PAXOS_LEADER, box_paxos_cb, 0);
 }
 
 static void
@@ -849,25 +851,19 @@ box_service_ro(struct service *s)
 {
 	service_register_iproto_stream(s, SELECT, box_select_cb, 0);
 	service_register_iproto_stream(s, SELECT_LIMIT, box_select_cb, 0);
+	service_register_iproto_stream(s, PAXOS_LEADER, box_paxos_cb, 0);
 
-	foreach_op(INSERT, UPDATE_FIELDS, DELETE, DELETE_1_3, PAXOS_LEADER)
-		service_register_iproto_stream(s, *op, box_roerr, 0);
+	if (cfg.paxos_enabled) {
+		foreach_op(INSERT, UPDATE_FIELDS, DELETE, DELETE_1_3, EXEC_LUA)
+			service_register_iproto_block(s, *op, box_paxos_proxy_cb, 0);
+	} else {
+		foreach_op(INSERT, UPDATE_FIELDS, DELETE, DELETE_1_3, PAXOS_LEADER)
+			service_register_iproto_stream(s, *op, box_roerr, 0);
 
-	/* allow select only lua procedures
-	   updates are blocked by luaT_box_dispatch() */
-	service_register_iproto_block(s, EXEC_LUA, box_lua_cb, 0);
-}
-
-void
-box_service_paxos_proxy(struct service *s)
-{
-	service_register_iproto_stream(s, SELECT, box_select_cb, 0);
-	service_register_iproto_stream(s, SELECT_LIMIT, box_select_cb, 0);
-	service_register_iproto_block(s, PAXOS_LEADER, box_paxos_cb, 0);
-
-	foreach_op(INSERT, UPDATE_FIELDS, DELETE, DELETE_1_3, EXEC_LUA)
-		service_register_iproto_block(s, *op, box_paxos_proxy_cb, 0);
-
+		/* allow select only lua procedures
+		   updates are blocked by luaT_box_dispatch() */
+		service_register_iproto_block(s, EXEC_LUA, box_lua_cb, 0);
+	}
 }
 
 void __attribute__((constructor))
