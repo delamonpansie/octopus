@@ -1086,7 +1086,9 @@ again:
 	fiber_sleep(0.1);
 
 	@try {
-		[puller feeder_param:&paxos_peer(r, i)->feeder];
+		struct paxos_peer *peer = paxos_peer(r, i);
+		assert(peer != NULL);
+		[puller feeder_param:&peer->feeder];
 		if ([puller handshake:[r scn]] < 0)
 			goto again;
 
@@ -1111,9 +1113,9 @@ again:
 learn_wal:(id<XLogPullerAsync>)puller
 {
 	struct row_v12 *row;
-	struct proposal *p;
+	struct proposal *p = NULL;
 
-	[puller recv];
+	[puller recv_row];
 	while ((row = [puller fetch_row])) {
 		if (row->scn <= app_scn)
 			continue;
@@ -1257,7 +1259,7 @@ exit:
 	service_register_iproto_block(&service, DECIDE, learner, 0);
 	for (int i = 0; i < 3; i++) {
 		fiber_create("paxos/worker", iproto_worker, &service);
-		fiber_create("paxos/puller", learner_puller, self, i);
+		fiber_create("paxos/puller", learner_puller, self, i + 1); /* peer id starts from 1 */
 	}
 	reply_reader = fiber_create("paxos/reply_reader", iproto_reply_reader, iproto_collect_reply);
 	output_flusher = fiber_create("paxos/output_flusher", conn_flusher);
