@@ -504,7 +504,7 @@ luaT_init()
 	if (lua_pcall(L, 1, 0, -3))
 		panic("lua_pcall() failed: %s", lua_tostring(L, -1));
 
-	luaT_traceback_i = lua_ref(L, LUA_REGISTRYINDEX);
+	luaT_traceback_i = luaL_ref(L, LUA_REGISTRYINDEX);
 
 	lua_atpanic(L, luaT_error);
 }
