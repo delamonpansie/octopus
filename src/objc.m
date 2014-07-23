@@ -36,6 +36,24 @@
 #include <objc/runtime.h>
 #elif HAVE_OBJC_OBJC_API_H
 #include <objc/objc-api.h>
+size_t
+class_getInstanceSize(Class class)
+{
+	return class_get_instance_size(class);
+}
+
+Class
+object_setClass(id o, Class class)
+{
+	if (!obj) {
+		return Nil;
+	}
+	Class old = obj->class_pointer;
+	obj->class_pointer = class;
+	return old;
+}
+#else
+# error Unknown runtime
 #endif
 
 @implementation Object (Octopus)
@@ -44,15 +62,8 @@
 palloc
 {
 	Class class = (Class)self;
-#if HAVE_OBJC_RUNTIME_H
 	id obj = p0alloc(fiber->pool, class_getInstanceSize(class));
 	object_setClass(obj, class);
-#elif HAVE_OBJC_OBJC_API_H
-	id obj = p0alloc(fiber->pool, class_get_instance_size(class));
-	obj->class_pointer = class;
-#else
-# error Unknown runtime
-#endif
 	return obj;
 }
 
@@ -60,15 +71,8 @@ palloc
 palloc_from:(struct palloc_pool *)pool
 {
 	Class class = (Class)self;
-#if HAVE_OBJC_RUNTIME_H
 	id obj = p0alloc(pool, class_getInstanceSize(class));
 	object_setClass(obj, class);
-#elif HAVE_OBJC_OBJC_API_H
-	id obj = p0alloc(pool, class_get_instance_size(class));
-	obj->class_pointer = class;
-#else
-# error Unknown runtime
-#endif
 	return obj;
 }
 

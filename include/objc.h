@@ -31,6 +31,9 @@
 #include <palloc.h>
 #include <util.h>
 
+Class object_setClass(id, Class);
+size_t class_getInstanceSize(Class class);
+
 @interface Object (Octopus)
 + palloc;
 + palloc_from:(struct palloc_pool *)pool;
