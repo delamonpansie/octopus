@@ -231,9 +231,9 @@ paxos_reply(struct paxos_request *req, enum paxos_msg_code code, u64 ballot)
 	}
 
 	struct msg_paxos *msg = p0alloc(c->pool, sizeof(*msg));
-	msg->header = (struct iproto){ code,
-				       sizeof(*msg) - sizeof(struct iproto) + (p ? p->value_len : 0),
-				       req_msg->header.sync };
+	msg->header = (struct iproto){ .msg_code = code,
+				       .data_len = sizeof(*msg) - sizeof(struct iproto) + (p ? p->value_len : 0),
+				       .sync = req_msg->header.sync };
 	msg->scn = req_msg->scn;
 	msg->ballot = ballot;
 	msg->peer_id = self_id;
@@ -406,11 +406,12 @@ propose_leadership(va_list ap)
 	PAXOS_MSG_DROP(&(msg)->header);					\
 })
 
+#define Offsetof(p, f) ((uintptr_t)&(((p*)0)->f))
 
 static void
 leader(struct iproto *msg, struct conn *c)
 {
-	struct PaxosRecovery *r = (void *)c->service - offsetof(PaxosRecovery, service);
+	PaxosRecovery *r = (void *)c->service - Offsetof(PaxosRecovery, service);
 	struct msg_leader *pmsg = (struct msg_leader *)msg;
 	struct paxos_peer *peer = paxos_peer(r, pmsg->peer_id);
 	const char *ret = "accept";
@@ -728,7 +729,7 @@ msg_dump(const char *prefix, const struct paxos_peer *peer, const struct iproto 
 static void
 learner(struct iproto *msg, struct conn *c)
 {
-	struct PaxosRecovery *r = (void *)c->service - offsetof(PaxosRecovery, service);
+	PaxosRecovery *r = (void *)c->service - Offsetof(PaxosRecovery, service);
 	struct msg_paxos *req = (struct msg_paxos *)msg;
 	struct paxos_peer *peer = paxos_peer(r, req->peer_id);
 
@@ -760,7 +761,7 @@ learner(struct iproto *msg, struct conn *c)
 static void
 acceptor(struct iproto *imsg, struct conn *c)
 {
-	struct PaxosRecovery *r = (void *)c->service - offsetof(PaxosRecovery, service);
+	PaxosRecovery *r = (void *)c->service - Offsetof(PaxosRecovery, service);
 	struct msg_paxos *msg = (struct msg_paxos *)imsg;
 	struct paxos_request req = { .msg = msg,
 				     .peer = paxos_peer(r, msg->peer_id),
@@ -1064,7 +1065,7 @@ catchup(PaxosRecovery *r, i64 upto_scn)
 void
 paxos_stat(va_list ap)
 {
-	struct PaxosRecovery *r = va_arg(ap, typeof(r));
+	PaxosRecovery *r = va_arg(ap, typeof(r));
 loop:
 	say_info("%s leader:%i %s",
 		 [r scn_info], leader_id,
@@ -1322,7 +1323,7 @@ check_replica
 }
 
 - (int)
-submit:(void *)data len:(u32)len tag:(u16)tag
+submit:(const void *)data len:(u32)len tag:(u16)tag
 {
 	if (!configured)
 		return 0;
@@ -1330,7 +1331,7 @@ submit:(void *)data len:(u32)len tag:(u16)tag
 	@try {
 		i64 cur_scn = [self next_scn];
 		struct proposal *p = proposal(self, cur_scn);
-		u64 ballot = run_protocol(self, p, data, len, tag);
+		u64 ballot = run_protocol(self, p, (char*)data, len, tag);
 
 		if (ballot) {
 			update_proposal_value(p, len, data, tag);

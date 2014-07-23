@@ -80,6 +80,10 @@ static void
 end(struct tbuf *out)
 {
 	tbuf_printf(out, "..." CRLF);
+	/* dirty hack to compile with clang */
+	(void)admin_error;
+	(void)admin_en_main;
+	(void)admin_first_final;
 }
 
 static void

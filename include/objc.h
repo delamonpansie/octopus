@@ -35,18 +35,18 @@ Class object_setClass(id, Class);
 size_t class_getInstanceSize(Class class);
 
 @interface Object (Octopus)
-+ palloc;
-+ palloc_from:(struct palloc_pool *)pool;
++ (id)palloc;
++ (id)palloc_from:(struct palloc_pool *)pool;
 #if !HAVE_OBJC_OBJC_API_H
-+ alloc;
-- free;
-- init;
++ (id)alloc;
+- (id)free;
+- (id)init;
 - (BOOL)isMemberOf:(Class)class;
 - (BOOL)isKindOf:(Class)class;
 - (BOOL)respondsTo:(SEL)aSel;
 + (Class)class;
 + (const char *)name; /* class name */
-- perform:(SEL)aSel;
+- (id)perform:(SEL)aSel;
 #endif
 @end
 
@@ -58,15 +58,15 @@ size_t class_getInstanceSize(Class class);
 	const char *file;
 	char *backtrace;
 }
-- init:(const char *)reason;
-- init_line:(unsigned)line_
-       file:(const char *)file_
-  backtrace:(const char *)backtrace_
-     reason:(const char *)reason_;
-- init_line:(unsigned)line
-       file:(const char *)file
-  backtrace:(const char *)backtrace
-     format:(const char *)format, ...;
+- (id)init:(const char *)reason;
+- (id)init_line:(unsigned)line_
+           file:(const char *)file_
+      backtrace:(const char *)backtrace_
+         reason:(const char *)reason_;
+- (id)init_line:(unsigned)line
+           file:(const char *)file
+      backtrace:(const char *)backtrace
+         format:(const char *)format, ...;
 @end
 
 

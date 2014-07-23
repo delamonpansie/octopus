@@ -56,6 +56,8 @@
 #define objc_lookUpClass objc_lookup_class
 #endif
 
+i64 fold_scn = 0;
+
 @implementation Recovery
 + (id)
 alloc
@@ -1151,7 +1153,7 @@ configure_wal_writer
 
 
 - (int)
-submit:(const void *)data len:(size_t)len tag:(u16)tag
+submit:(const void *)data len:(u32)len tag:(u16)tag
 {
 	(void)data; (void)len; (void)tag;
 	scn++;

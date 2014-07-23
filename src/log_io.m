@@ -529,7 +529,7 @@ append_row:(struct row_v12 *)row data:(const void *)data
 }
 
 - (const struct row_v12 *)
-append_row:(void *)data len:(u32)len scn:(i64)scn tag:(u16)tag
+append_row:(const void *)data len:(u32)len scn:(i64)scn tag:(u16)tag
 {
 	assert(wet_rows < nelem(wet_rows_offset));
 	static struct row_v12 row;

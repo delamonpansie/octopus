@@ -488,8 +488,8 @@ enum recovery_status { LOADING = 1, PRIMARY, STANDBY };
 @end
 
 @interface FoldRecovery: NoWALRecovery
-i64 fold_scn;
 @end
+extern i64 fold_scn;
 
 int wal_disk_writer(int fd, void *state);
 void wal_disk_writer_input_dispatch(va_list ap __attribute__((unused)));

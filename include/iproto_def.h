@@ -43,7 +43,7 @@ struct iproto {
 	uint32_t msg_code;
 	uint32_t data_len;						/* not including header */
 	uint32_t sync;
-	uint8_t data[];
+	uint8_t data[0];
 } __attribute__((packed));
 
 struct iproto_retcode {
@@ -51,7 +51,7 @@ struct iproto_retcode {
 	uint32_t data_len;
 	uint32_t sync;
 	uint32_t ret_code;
-	uint8_t data[];
+	uint8_t data[0];
 } __attribute__((packed));
 
 union iproto_any_header {
