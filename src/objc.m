@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2011, 2013 Mail.RU
- * Copyright (C) 2011, 2013 Yuriy Vostrikov
+ * Copyright (C) 2011, 2013, 2014 Mail.RU
+ * Copyright (C) 2011, 2013, 2014 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -43,11 +43,11 @@ class_getInstanceSize(Class class)
 }
 
 Class
-object_setClass(id o, Class class)
+object_setClass(id obj, Class class)
 {
-	if (!obj) {
+	if (!obj)
 		return Nil;
-	}
+
 	Class old = obj->class_pointer;
 	obj->class_pointer = class;
 	return old;

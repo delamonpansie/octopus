@@ -406,12 +406,10 @@ propose_leadership(va_list ap)
 	PAXOS_MSG_DROP(&(msg)->header);					\
 })
 
-#define Offsetof(p, f) ((uintptr_t)&(((p*)0)->f))
-
 static void
 leader(struct iproto *msg, struct conn *c)
 {
-	PaxosRecovery *r = (void *)c->service - Offsetof(PaxosRecovery, service);
+	PaxosRecovery *r = (void *)c->service - offsetof(PaxosRecovery, service);
 	struct msg_leader *pmsg = (struct msg_leader *)msg;
 	struct paxos_peer *peer = paxos_peer(r, pmsg->peer_id);
 	const char *ret = "accept";
@@ -729,7 +727,7 @@ msg_dump(const char *prefix, const struct paxos_peer *peer, const struct iproto 
 static void
 learner(struct iproto *msg, struct conn *c)
 {
-	PaxosRecovery *r = (void *)c->service - Offsetof(PaxosRecovery, service);
+	PaxosRecovery *r = (void *)c->service - offsetof(PaxosRecovery, service);
 	struct msg_paxos *req = (struct msg_paxos *)msg;
 	struct paxos_peer *peer = paxos_peer(r, req->peer_id);
 
@@ -761,7 +759,7 @@ learner(struct iproto *msg, struct conn *c)
 static void
 acceptor(struct iproto *imsg, struct conn *c)
 {
-	PaxosRecovery *r = (void *)c->service - Offsetof(PaxosRecovery, service);
+	PaxosRecovery *r = (void *)c->service - offsetof(PaxosRecovery, service);
 	struct msg_paxos *msg = (struct msg_paxos *)imsg;
 	struct paxos_request req = { .msg = msg,
 				     .peer = paxos_peer(r, msg->peer_id),
