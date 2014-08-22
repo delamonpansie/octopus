@@ -110,7 +110,7 @@ local function field_dissect(buf, offt, vlen, blen, tree)
         local field = tree:add(box_tuple_field, buf:range(offt, vlen + blen))
         field:add(box_tuple_field_len, buf:range(offt, vlen), blen)
         if blen == 4 then
-            field:add(box_tuple_field_datau32, buf:range(offt + vlen, blen))
+            field:add_le(box_tuple_field_datau32, buf:range(offt + vlen, blen))
         elseif blen > 0 then
             field:add(box_tuple_field_data, buf:range(offt + vlen, blen))
         end
