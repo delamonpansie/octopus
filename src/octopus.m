@@ -51,8 +51,11 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/resource.h>
 #include <sys/ioctl.h>
+#include <sys/file.h>
+#include <fcntl.h>
 #include <pwd.h>
 #include <unistd.h>
 #include <getopt.h>
@@ -366,39 +369,41 @@ signal_init(void)
 	exit(EX_OSERR);
 }
 
+static int pid_file = -1;
 static void
 create_pid(void)
 {
-	FILE *f;
-	char buf[16] = { 0 };
-	pid_t pid;
-
-	f = fopen(cfg.pid_file, "a+");
-	if (f == NULL)
-		panic_syserror("can't open pid file");
-
-        fseeko(f, 0, SEEK_SET);
-	if (fgets(buf, sizeof(buf), f) != NULL && strlen(buf) > 0) {
-		pid = strtol(buf, NULL, 10);
-		if (pid > 0 && kill(pid, 0) == 0)
-			panic("the daemon is already running");
-		else
-			say_info("updating a stale pid file");
-		if (ftruncate(fileno(f), 0) == -1)
-			panic_syserror("ftruncate(`%s')", cfg.pid_file);
+#ifndef O_CLOEXEC
+#define O_CLOEXEC 0
+#endif
+	pid_file = open(cfg.pid_file, O_CREAT | O_CLOEXEC | O_RDWR | O_SYNC, 0644);
+	if (pid_file == -1)
+		panic_syserror("could not create pid file");
+	if (flock(pid_file, LOCK_EX|LOCK_NB))
+		panic("the daemon is already running");
+	struct stat st;
+	if (fstat(pid_file, &st))
+		panic_syserror("could not get fstat of pid_file");
+	if (st.st_size > 0) {
+		say_info("updating a stale pid file");
+		if (ftruncate(pid_file, 0))
+			panic_syserror("could not truncate pid file");
 	}
-
-        fseeko(f, 0, SEEK_SET);
-	fprintf(f, "%i\n", master_pid);
-	fclose(f);
+	char buf[8] = { 0 };
+	int n = snprintf(buf, sizeof(buf)-1, "%d\n", master_pid);
+	errno = 0;
+	if (write(pid_file, buf, n) != n) {
+		panic_syserror("could not write to pid file");
+	}
 }
 
 static void
 remove_pid(void)
 {
-	if (getpid() == master_pid)
+	if (getpid() == master_pid) {
 		unlink(cfg.pid_file);
-	else
+		close(pid_file);
+	} else
 		say_warn("%s: not a master", __func__);
 }
 
