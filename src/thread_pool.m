@@ -203,9 +203,9 @@ int
 thread_responses_possibly_have(thread_responses *queue)
 {
 #ifdef HAVE_EVENTFD
-	char buf[2048];
-#else
 	char buf[8];
+#else
+	char buf[2048];
 #endif
 	if (read(queue->ifd, buf, sizeof(buf)) == -1) {
 		if (errno == EAGAIN || errno == EWOULDBLOCK)
