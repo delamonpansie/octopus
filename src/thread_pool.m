@@ -277,13 +277,8 @@ thread_responses_callbacks_fiber_loop(va_list va)
 	for(;;) {
 		thread_responses_fiber_wait(queue);
 		while(thread_responses_get(queue, &res)) {
-			@try {
-				errno = res.eno;
-				res.cb(res.cb_arg, res.result, res.error);
-			}
-			@catch (id e) {
-				panic_exc(e);
-			}
+			errno = res.eno;
+			res.cb(res.cb_arg, res.result, res.error);
 		}
 	}
 }
