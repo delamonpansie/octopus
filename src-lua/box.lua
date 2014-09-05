@@ -152,8 +152,8 @@ object_cast[dyn_tuple.obj_type] = dyn_tuple.obj_cast
 function select(n, ...)
         local index = object_space[n].index[0]
         local result = {}
-        for k, v in pairs({...}) do
-                result[k] = index[v]
+        for k = 1, lselect('#', ...) do
+            result[k] = index[lselect(k, ...)]
         end
         return result
 end
@@ -171,7 +171,12 @@ function ctuple(obj)
 end
 local tuple_mt = {}
 function tuple(...)
-    return setmetatable({...}, tuple_mt)
+    local farg = lselect(1, ...)
+    if (type(farg) == 'table') then
+        return setmetatable(farg, tuple_mt)
+    else
+        return setmetatable({...}, tuple_mt)
+    end
 end
 
 
@@ -291,8 +296,41 @@ function decode.u8(obj, offt) return obj:datacast('uint8_t', offt) end
 function decode.u16(obj, offt) return obj:datacast('uint16_t', offt) end
 function decode.u32(obj, offt) return obj:datacast('uint32_t', offt) end
 
-cast = {}
-function cast.u32(str)
-   assertarg(str, 'string', 1)
-   return ffi.cast('uint32_t *', str)[0]
+bytes_to_int = {}
+cast = bytes_to_int -- legacy compat of cast.u32()
+local strlen = string.len
+for _, v in ipairs({8, 16, 32}) do
+    local t = 'uint' .. v .. '_t'
+    local pt = 'const ' .. t .. ' *'
+
+    local function f(str)
+        assertarg(str, 'string', 1)
+        assert(strlen(str) == ffi.sizeof(t),
+               "Invalid bytes length: !!want " .. ffi.sizeof(t) .. " but given " .. strlen(str))
+        return ffi.cast(pt, str)[0]
+    end
+    bytes_to_int[v] = f
+    bytes_to_int['u' .. v] = f
 end
+
+bytes_to_arr = {}
+for _, v in ipairs({8, 16, 32}) do
+    local t = 'uint' .. v .. '_t'
+    local pt = 'const ' .. t .. ' *'
+
+    local function f(str)
+        assertarg(str, 'string', 1)
+        assert(strlen(str) % ffi.sizeof(t) == 0,
+               "Invalid bytes length: " .. strlen(str) .. " isn't multiple of " .. ffi.sizeof(t))
+
+        local ptr = ffi.cast(pt, str)
+        local r = {}
+        for i = 1, strlen(str) / ffi.sizeof(t) do
+            r[i] = tonumber(ptr[i - 1])
+        end
+        return r
+    end
+    bytes_to_arr[v] = f
+    bytes_to_arr['u' .. v] = f
+end
+

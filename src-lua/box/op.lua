@@ -18,30 +18,36 @@ _M.op = op
 
 pack = {}
 
-function pack.add(n, ...)
-    local flags = 3 -- return tuple + add tuple flags
-    local req = packer()
-
-    req:u32(n)
-    req:u32(flags)
-    req:u32(select('#', ...))
-    for i = 1, select('#', ...) do
-        req:field(select(i, ...))
-    end
-    return op.INSERT, req:pack()
-end
-
-function pack.replace(n, ...)
-        local flags = 1 -- return tuple
+local function insert(n, flags, ...)
         local req = packer()
 
         req:u32(n)
         req:u32(flags)
-        req:u32(select('#', ...))
-        for i = 1, select('#', ...) do
-            req:field(select(i, ...))
+
+        if select('#', ...) == 1 and
+            type(select(1, ...)) == 'table'
+        then
+            local t = select(1, ...)
+            req:u32(#t)
+            for _, v in ipairs(t)do
+                req:field(v)
+            end
+        else
+            req:u32(select('#', ...))
+            for i = 1, select('#', ...) do
+                req:field(select(i, ...))
+            end
         end
         return op.INSERT, req:pack()
+end
+
+function pack.replace(n, ...)
+        -- flags == 1 => return tuple
+        return insert(n, 1, ...)
+end
+function pack.add(n, ...)
+    -- flags == 3 => return tuple + add tuple flags
+    return insert(n, 3, ...)
 end
 
 function pack.delete(n, key)
