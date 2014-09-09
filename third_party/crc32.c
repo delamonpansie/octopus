@@ -811,3 +811,59 @@ crc32c(uint32_t crc32c,
 		return (multitable_crc32c(crc32c, buffer, length));
 	}
 }
+
+static uint32_t crc32c_pow2k[48][32] = {};
+
+static inline uint32_t
+crc32_mult(uint32_t *pow2k, uint32_t ocrc)
+{
+	int i;
+	uint32_t crc = 0;
+	for (i = 0; i < 32; i++) {
+		crc ^= !!(ocrc & (1 << i)) * pow2k[i];
+	}
+	return crc;
+}
+
+static void
+crc32_square(uint32_t *next, uint32_t *pow2k)
+{
+	int n;
+	for (n = 0; n < 32; n++)
+		next[n] = crc32_mult(pow2k, pow2k[n]);
+}
+
+static inline void
+crc32c_fill_tables()
+{
+	int n;
+	if (crc32c_pow2k[47][31] == 0) {
+		crc32c_pow2k[0][0] = 0x82f63b78;
+		for (n = 1; n < 32; n++) {
+			crc32c_pow2k[0][n] = 1 << (n-1);
+		}
+		for (n = 1; n < 48; n++) {
+			crc32_square(crc32c_pow2k[n], crc32c_pow2k[n-1]);
+		}
+	}
+}
+
+uint32_t
+crc32c_combine(uint32_t crc1, uint32_t crc2, unsigned int len2)
+{
+	int n = 3, tz;
+	crc32c_fill_tables();
+	while (len2) {
+		if (len2 & 1) {
+			crc1 = crc32_mult(crc32c_pow2k[n], crc1);
+			len2 >>= 1;
+			n++;
+		} else {
+			tz = __builtin_ctz(len2) + 1;
+			len2 >>= tz;
+			n += tz;
+			crc1 = crc32_mult(crc32c_pow2k[n-1], crc1);
+		}
+	}
+	return crc1 ^ crc2;
+}
