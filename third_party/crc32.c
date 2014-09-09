@@ -734,16 +734,18 @@ multitable_crc32c(uint32_t crc32c,
 	return (crc32c_sb8_64_bit(crc32c, buffer, length, to_even_word));
 }
 
+#pragma push_macro("GCC_VERSION")
+#pragma push_macro("CLANG_VERSION")
 #define GCC_VERSION (__GNUC__ * 100 + __GNUC_MINOR__)
 #define CLANG_VERSION (__clang_major__ * 100 + __clang_minor__)
 #if defined(__amd64__) && ((defined(__GNUC__) && GCC_VERSION >= 403) || (defined(__clang__) && CLANG_VERSION >= 300))  && defined(__LP64__) && !defined(__FreeBSD__)
-#  define SSE42_FEATURE_BIT (1 << 20)
+#  define SSE42_CRC_FEATURE_BIT (1 << 20)
 #  define CPUID_FEATURES 1
 static uint32_t cached_cpu_supports_crc32;
 static void __attribute__ ((constructor)) test_crc32_support_flag(void) {
 	uint32_t eax, ebx, ecx, edx;
 	asm("cpuid" : "=a" (eax), "=b"(ebx), "=c"(ecx), "=d"(edx) : "a"(CPUID_FEATURES) : "cc");
-	cached_cpu_supports_crc32 = !!(ecx & SSE42_FEATURE_BIT);
+	cached_cpu_supports_crc32 = !!(ecx & SSE42_CRC_FEATURE_BIT);
 }
 
 #define mm_crc32_u64(crc, value) \
@@ -794,14 +796,21 @@ static inline uint32_t hardware_crc32c(uint32_t crc, const unsigned char *buf, u
 
 	return crc;
 }
+#undef CPUID_FEATURE
+#undef mm_crc32_u8
+#undef mm_crc32_u16
+#undef mm_crc32_u32
+#undef mm_crc32_u64
 #endif
+#pragma pop_macro("GCC_VERSION")
+#pragma pop_macro("CLANG_VERSION")
 
 uint32_t
 crc32c(uint32_t crc32c,
     const unsigned char *buffer,
     unsigned int length)
 {
-#if defined(SSE42_FEATURE_BIT)
+#if defined(SSE42_CRC_FEATURE_BIT)
 	if (cached_cpu_supports_crc32) {
 		return (hardware_crc32c(crc32c, buffer, length));
 	} else
@@ -834,7 +843,7 @@ crc32_square(uint32_t *next, uint32_t *pow2k)
 		next[n] = crc32_mult(pow2k, pow2k[n]);
 }
 
-static inline void
+static void
 crc32c_fill_tables()
 {
 	int n;
@@ -853,13 +862,16 @@ uint32_t
 crc32c_combine(uint32_t crc1, uint32_t crc2, unsigned int len2)
 {
 	int n = 3, tz;
-	crc32c_fill_tables();
+	if (crc32c_pow2k[47][31] == 0) {
+		crc32c_fill_tables();
+	}
 	while (len2) {
-		if (len2 & 1) {
+		while (len2 & 1) {
 			crc1 = crc32_mult(crc32c_pow2k[n], crc1);
 			len2 >>= 1;
 			n++;
-		} else {
+		}
+		if (len2) {
 			tz = __builtin_ctz(len2) + 1;
 			len2 >>= tz;
 			n += tz;
