@@ -95,15 +95,11 @@
 	__typeof__(bs_) _bs_ = (bs_); \
 	__typeof__(cmp_) cmp = (cmp); \
 	if (cmp < 0) { _bs_->high = _bs_->mid; } \
-	else { _bs_->high = _bs_->mid - 1; } \
+	else { _bs_->low = _bs_->mid + 1; } \
 } while(0)
 
-#define BSEARCH_INIT_SEARCH_EQUAL(bs_, count) do { \
-	__typeof__(bs_) _bs_ = (bs_); _bs_->low = _bs_->mid = 0; _bs_->high = (count); _bs_->equal = 0; \
-} while(0)
-
+#define BSEARCH_INIT_SEARCH_EQUAL(bs_, count) BSEARCH_INIT_SEARCH_FIRST((bs_), (count))
 #define BSEARCH_NEXT_SEARCH_EQUAL(bs_) BSEARCH_NEXT_SEARCH_FIRST(bs_)
-
 #define BSEARCH_STEP_SEARCH_EQUAL(bs_, cmp_) do { \
 	__typeof__(bs_) _bs_ = (bs_); \
 	__typeof__(cmp_) cmp = (cmp); \
