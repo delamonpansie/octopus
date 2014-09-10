@@ -53,16 +53,15 @@
 } while(0)
 
 #define BSEARCH_NEXT_SEARCH_LAST(bs_) ({ \
-	__typeof__(bs_) _bs_ = (bs_); int r; \
-	if ((r = (_bs_->low < _bs_->mid))) \
-		_bs_->mid = _bs_->low + ((_bs_->high - _bs_->low + 1) / 2); \
-	r; \
+	__typeof__(bs_) _bs_ = (bs_); \
+	_bs_->mid = _bs_->low + ((_bs_->high - _bs_->low + 1) / 2); \
+	_bs_->low < _bs_->high; \
 })
 
 #define BSEARCH_STEP_SEARCH_LAST_LE(bs_, cmp_) do { \
 	__typeof__(bs_) _bs_ = (bs_); \
 	__typeof__(cmp_) cmp = (cmp); \
-	if (cmp >= 0) { _bs_->low = _bs_->mid; if (cmp == 0) _bs_->equal = 1; } \
+	if (cmp >= 0) { _bs_->low = _bs_->mid; _bs_->equal = cmp == 0; } \
 	else { _bs_->high = _bs_->mid - 1; } \
 } while(0)
 
@@ -78,16 +77,15 @@
 } while(0)
 
 #define BSEARCH_NEXT_SEARCH_FIRST(bs_) ({ \
-	__typeof__(bs_) _bs_ = (bs_); int r; \
-	if ((r = (_bs_->low < _bs_->mid))) \
-		_bs_->mid = _bs_->low + ((_bs_->high - _bs_->low) / 2); \
-	r; \
+	__typeof__(bs_) _bs_ = (bs_); \
+	_bs_->mid = _bs_->low + ((_bs_->high - _bs_->low) / 2); \
+	_bs_->low < _bs_->high; \
 })
 
 #define BSEARCH_STEP_SEARCH_FIRST_GE(bs_, cmp_) do { \
 	__typeof__(bs_) _bs_ = (bs_); \
 	__typeof__(cmp_) cmp = (cmp); \
-	if (cmp <= 0) { _bs_->high = _bs_->mid; if (cmp == 0) _bs_->equal = 1; } \
+	if (cmp <= 0) { _bs_->high = _bs_->mid; _bs_->equal = cmp == 0; } \
 	else { _bs_->low = _bs_->mid + 1; } \
 } while(0)
 
@@ -105,7 +103,7 @@
 	__typeof__(cmp_) cmp = (cmp); \
 	if (cmp < 0) { _bs_->high = _bs_->mid; } \
 	else if (cmp > 0) { _bs_->high = _bs_->mid - 1; } \
-	else { _bs_->low = _bs_->high = _bs_->mid; _bs_->equal = 0; } \
+	else { _bs_->low = _bs_->high = _bs_->mid; _bs_->equal = 1; } \
 } while(0)
 
 /*
@@ -127,10 +125,10 @@ static inline void bs_init_search_equal(bs_t *bs, int count) { BSEARCH_INIT_SEAR
 static inline int  bs_next_search_last(bs_t *bs) { return BSEARCH_NEXT_SEARCH_LAST(bs); }
 static inline int  bs_next_search_first(bs_t *bs) { return BSEARCH_NEXT_SEARCH_FIRST(bs); }
 static inline int  bs_next_search_equal(bs_t *bs) { return BSEARCH_NEXT_SEARCH_EQUAL(bs); }
-static inline void bs_step_search_last_le(bs_t *bs, long cmp) { BSEARCH_STEP_SEARCH_LAST_LE(bs, cmp); }
-static inline void bs_step_search_last_lt(bs_t *bs, long cmp) { BSEARCH_STEP_SEARCH_LAST_LT(bs, cmp); }
-static inline void bs_step_search_first_ge(bs_t *bs, long cmp) { BSEARCH_STEP_SEARCH_FIRST_GE(bs, cmp); }
-static inline void bs_step_search_first_gt(bs_t *bs, long cmp) { BSEARCH_STEP_SEARCH_FIRST_GT(bs, cmp); }
-static inline void bs_step_search_equal(bs_t *bs, long cmp) { BSEARCH_STEP_SEARCH_EQUAL(bs, cmp); }
+static inline void bs_step_search_last_le(bs_t *bs, int64_t cmp) { BSEARCH_STEP_SEARCH_LAST_LE(bs, cmp); }
+static inline void bs_step_search_last_lt(bs_t *bs, int64_t cmp) { BSEARCH_STEP_SEARCH_LAST_LT(bs, cmp); }
+static inline void bs_step_search_first_ge(bs_t *bs, int64_t cmp) { BSEARCH_STEP_SEARCH_FIRST_GE(bs, cmp); }
+static inline void bs_step_search_first_gt(bs_t *bs, int64_t cmp) { BSEARCH_STEP_SEARCH_FIRST_GT(bs, cmp); }
+static inline void bs_step_search_equal(bs_t *bs, int64_t cmp) { BSEARCH_STEP_SEARCH_EQUAL(bs, cmp); }
 
 #endif
