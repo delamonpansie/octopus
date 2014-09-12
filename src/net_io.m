@@ -47,6 +47,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 
+static struct iovec dummy; /* dummy iovec not adjacent to anything else */
+
 struct slab_cache conn_cache, netmsg_cache;
 
 static struct netmsg *
@@ -61,6 +63,7 @@ netmsg_alloc(struct netmsg_head *h)
 	n->barrier = 0;
 
 	TAILQ_INSERT_HEAD(&h->q, n, link);
+	h->last_used_iov = n->iov;
 	return n;
 }
 
@@ -193,17 +196,22 @@ netmsg_getmark(struct netmsg_head *h, struct netmsg_mark *mark)
 void
 net_add_iov(struct netmsg_head *h, const void *buf, size_t len)
 {
-	struct netmsg *m = TAILQ_FIRST(&h->q);
-	struct iovec *v = m->iov + m->count;
-
+	struct iovec *v = h->last_used_iov;
 	h->bytes += len;
-	v->iov_base = (char *)buf;
-	v->iov_len = len;
 
-	/* *((*m)->ref + (*m)->count) is NULL here. see netmsg_unref() */
+	if (v->iov_base + v->iov_len == buf) {
+		v->iov_len += len;
+	} else {
+		struct netmsg *m = TAILQ_FIRST(&h->q);
+		v = m->iov + m->count;
+		v->iov_base = (char *)buf;
+		v->iov_len = len;
+		h->last_used_iov = v;
 
-	if (unlikely(++(m->count) == nelem(m->iov)))
-		netmsg_alloc(h);
+		/* *((*m)->ref + (*m)->count) is NULL here. see netmsg_unref() */
+		if (unlikely(++(m->count) == nelem(m->iov)))
+			netmsg_alloc(h);
+	}
 }
 
 
@@ -232,6 +240,7 @@ net_add_ref_iov(struct netmsg_head *h, uintptr_t obj, const void *buf, size_t le
 	struct iovec *v = m->iov + m->count;
 	v->iov_base = (char *)buf;
 	v->iov_len = len;
+	h->last_used_iov = &dummy;
 
 	h->bytes += len;
 	m->ref[m->count] = obj;
@@ -267,22 +276,11 @@ static struct iovec *
 netmsg2iovec(struct iovec *buf, struct netmsg *m)
 {
 	int free = IOV_MAX;
-	void *prev = NULL;
 	do {
-		struct iovec *src = m->iov,
-			     *end = src + m->count;
+		memcpy(buf, m->iov, sizeof(*buf) * m->count);
+		buf += m->count;
+		free -= m->count;
 
-		while (src < end) {
-			if (prev == src->iov_base) {
-				(buf - 1)->iov_len += src->iov_len;
-				prev += src->iov_len;
-			} else {
-				*buf++ = *src;
-				free--;
-				prev = src->iov_base + src->iov_len;
-			}
-			src++;
-		}
 		m->barrier = buf;
 		m = TAILQ_PREV(m, netmsg_tailq, link);
 	} while (m != NULL && free >= m->count);

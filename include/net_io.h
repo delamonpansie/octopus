@@ -53,6 +53,7 @@ struct netmsg_head {
 	struct netmsg_tailq q;
 	struct palloc_pool *pool;
 	ssize_t bytes;
+	struct iovec *last_used_iov; /* cache for iovec joining */
 };
 
 #ifndef IOV_MAX
