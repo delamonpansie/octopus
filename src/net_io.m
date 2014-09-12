@@ -54,6 +54,7 @@ netmsg_alloc(struct netmsg_head *h)
 {
 	struct netmsg *n = slab_cache_alloc(&netmsg_cache);
 
+	/* FIXME: use slab ctor & dtor */
 	memset(n->ref, 0, NETMSG_IOV_SIZE * sizeof(n->ref[0]));
 	memset(n->iov, 0, NETMSG_IOV_SIZE * sizeof(n->iov[0]));
 	n->count = 0;
