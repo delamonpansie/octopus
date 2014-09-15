@@ -806,7 +806,7 @@ again:
     }
   } else if (tref_isstr(idx)) {
     GCstr *name = strV(&rd->argv[1]);
-    if (cd->ctypeid == CTID_CTYPEID)
+    if (cd && cd->ctypeid == CTID_CTYPEID)
       ct = ctype_raw(cts, crec_constructor(J, cd, ptr));
     if (ctype_isstruct(ct->info)) {
       CTSize fofs;
@@ -847,6 +847,7 @@ again:
       CType *cct = ctype_rawchild(cts, ct);
       if (ctype_isstruct(cct->info)) {
 	ct = cct;
+	cd = NULL;
 	if (tref_isstr(idx)) goto again;
       }
     }
@@ -859,8 +860,11 @@ again:
 
   /* Resolve reference for field. */
   ct = ctype_get(cts, sid);
-  if (ctype_isref(ct->info))
+  if (ctype_isref(ct->info)) {
     ptr = emitir(IRT(IR_XLOAD, IRT_PTR), ptr, 0);
+    sid = ctype_cid(ct->info);
+    ct = ctype_get(cts, sid);
+  }
 
   while (ctype_isattrib(ct->info))
     ct = ctype_child(cts, ct);  /* Skip attributes. */
@@ -1462,6 +1466,7 @@ void LJ_FASTCALL recff_cdata_arith(jit_State *J, RecordFFData *rd)
       }
     } else if (!tref_isnum(tr)) {
       tr = 0;
+      ct = ctype_get(cts, CTID_P_VOID);
     }
   ok:
     s[i] = ct;
