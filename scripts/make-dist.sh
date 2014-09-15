@@ -1,14 +1,17 @@
-#!/bin/sh
-set -e
+#!/bin/bash
+# for some reason trapping EXIT doesn't work in /bin/sh
 
-# for repo in . client/* mod/*; do (cd $repo; git push); done
+set -e
 
 LANG=C
 
-RDIR=$(pwd)
-DESTDIR=$(mktemp -d)/octopus
-mkdir "$DESTDIR"
-test -n "$DESTDIR" 
+TMPDIR=$(mktemp -d)
+DIR="$TMPDIR/octopus"
+mkdir "$DIR"
+test -n "$DIR"
+function cleanup() { rm -rf "$TMPDIR";  }
+trap cleanup EXIT
+
 modules=""
 clients=""
 conf_modules=""
@@ -22,7 +25,7 @@ clone() {
     [ -d "$repo/.git" ] || { echo "skip"; return; }
 
     local branch=$(cd $repo && git name-rev HEAD | cut -f2 -d' ')
-    git clone --quiet -b $branch $repo "$DESTDIR/$repo"
+    git clone --quiet -b $branch $repo "$DIR/$repo"
     echo "ok"
 
     case $repo in
@@ -63,7 +66,7 @@ name=octopus-${bundle}-${suffix}${mod_suffix}
 
 
 (echo -n "configuring ... "
-    cd "$DESTDIR"
+    cd "$DIR"
     cat > modules.m4 <<EOF
 AC_SUBST([BUNDLE], 1)
 AC_ARG_ENABLE([modules],
@@ -81,5 +84,5 @@ EOF
     mv octopus "$name"
 )
 
-tar zcf "../$name.tar.gz" --exclude-vcs -C "${DESTDIR%/*}" "$name"
-echo "../$name.tar.gz"
+tar zcf "${DESTDIR:-..}/$name.tar.gz" --exclude-vcs -C "${DIR%/*}" "$name"
+echo "${DESTDIR:-..}/$name.tar.gz"
