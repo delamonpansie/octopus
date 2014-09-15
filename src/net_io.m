@@ -47,8 +47,6 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-static struct iovec dummy; /* dummy iovec not adjacent to anything else */
-
 struct slab_cache conn_cache, netmsg_cache;
 
 static struct netmsg *
@@ -233,6 +231,8 @@ net_add_iov_dup(struct netmsg_head *h, const void *buf, size_t len)
 }
 
 #ifdef OCT_OBJECT
+static struct iovec dummy; /* dummy iovec not adjacent to anything else */
+
 void
 net_add_ref_iov(struct netmsg_head *h, uintptr_t obj, const void *buf, size_t len)
 {
