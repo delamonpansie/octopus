@@ -6,6 +6,16 @@ test -f include/config.h.in
 
 mkdir -p mod client
 
+while getopts ":r" opt; do
+    case $opt in
+      "r")
+	    REF="--reference ."
+	    ;;
+      *) echo Unknown option: $opt; exit 1
+	 ;;
+    esac
+done
+shift $(($OPTIND - 1))
 FETCH=${@:-ALL}
 
 todir() { echo $1 | sed 's/_/\//'; }
@@ -43,7 +53,7 @@ git remote show | while read remote_name; do
 	[ -e $dir ] && continue
 	need_fetch $branch_name || continue
 
-	git clone -q --branch $branch_name $remote_url $dir
+	git clone -q $REF --branch $branch_name $remote_url $dir
     done
 done
 
