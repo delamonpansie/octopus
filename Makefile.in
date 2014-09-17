@@ -196,7 +196,7 @@ all_modules = $(sort $(modules) $(foreach path,$(wildcard mod/*),$(notdir $(path
 $(foreach mod,$(all_modules),mod/$(mod)/$(mod)_version.h):
 	@mkdir -p $(dir $@)
 	@echo -n 'const char $(subst -,_,$(subst .h,,$(notdir $@)))_string[] = "' > $@_
-	@cd $(srcdir)/$(dir $@); $(GIT) describe --always HEAD | tr -d \\n | sed 's/.*-g/g/' >> $(notdir $@_)
+	@cd $(srcdir)/$(dir $@); $(GIT) describe --always HEAD | sed 's/.*-g/g/' | tr -d \\n >> $(notdir $@_)
 	@echo '";' >> $@_
 	@diff -q $@ $@_ 2>/dev/null >/dev/null || (echo "GEN	$@"; cp $@_ $@)
 	@rm $@_
