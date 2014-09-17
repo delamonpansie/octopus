@@ -97,13 +97,14 @@ function start(addr)
 end
 
 local function worker_loop()
-    fiber.sleep(60)
-    if addrvalid then
-        for _, msg in ipairs(makemsg()) do
-            ffi.C.sendto(sock, msg, #msg, 0, sockaddr, ffi.sizeof(sockaddr_in))
+    while true do
+        fiber.sleep(60)
+        if addrvalid then
+            for _, msg in ipairs(makemsg()) do
+                ffi.C.sendto(sock, msg, #msg, 0, sockaddr, ffi.sizeof(sockaddr_in))
+            end
         end
     end
-    worker_loop()
 end
 
 if graphite_addr then
