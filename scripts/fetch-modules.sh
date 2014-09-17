@@ -46,7 +46,7 @@ done
 git remote show | while read remote_name; do
     remote_url=$(git remote show -n origin | sed '/Fetch URL:/!d; s/.*Fetch URL:[[:space:]]*//')
 
-    git branch -a | sed -ne "s/^..//; s/^remotes\///; s/^$remote_name\///; /^mod_\|^client_/p" | while read branch_name; do
+    git branch -a | sed -nEe "s/^..//; s/^remotes[/]//; s/^$remote_name[/]//; /^(mod|client)_/p" | while read branch_name; do
 	branch_name=${branch_name#$remote_name/}
 	dir=$(todir $branch_name)
 
