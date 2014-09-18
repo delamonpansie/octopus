@@ -33,6 +33,14 @@
 #include <third_party/qsort_arg.h>
 
 @implementation Hash
+- (id)
+init
+{
+	/* simple init for static conf hashes:
+	   RLimitStorage.primaryIndex = [[CStringHash alloc] init]; */
+
+	return [self init:NULL];
+}
 
 - (struct tnt_object *)
 get:(u32)i
