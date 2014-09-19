@@ -67,7 +67,14 @@ done
 
 for repo in mod/* client/*; do
     branch=$(echo $repo | tr / _)
-    if test -d "$repo/.git" && ( need_fetch "$repo" || local_repo "$repo" ); then
-	(cd "$repo" && echo -n "$repo ... " && git pull --quiet && echo "ok" || echo "fail")
+    if test -d "$repo/.git" && ( need_fetch "$repo" || local_repo "$repo" ) ; then
+	(set -e;
+	 echo -n "$repo ... "
+	 cd "$repo"
+	 if ! git branch --list HEAD | grep -q detached; then
+	     git pull --quiet && echo "ok" || echo "fail"
+	 else
+	     echo "skip (detached)"
+	 fi)
     fi
 done

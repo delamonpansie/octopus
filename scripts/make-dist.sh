@@ -24,8 +24,9 @@ clone() {
 
     [ -d "$repo/.git" ] || { echo "skip"; return; }
 
-    local branch=$(cd $repo && git name-rev HEAD | cut -f2 -d' ')
-    git clone --quiet -b $branch $repo "$DIR/$repo"
+    git clone --quiet $repo "$DIR/$repo" 2>/dev/null
+    # --quiet is not that quiet: it will complain about cloning detached head
+
     echo "ok"
 
     case $repo in
