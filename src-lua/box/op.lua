@@ -60,6 +60,48 @@ function pack.delete(n, key)
         return op.DELETE_1_3, req:pack()
 end
 
+local function pack_mop(req, op)
+        req:u32(op[1])
+        if (op[2] == "set") then
+                req:u8(0)
+                req:field(op[3])
+        elseif (op[2] == "add") then
+                req:u8(1)
+                req:field_u32(op[3])
+        elseif (op[2] == "and") then
+                req:u8(2)
+                req:field_u32(op[3])
+        elseif (op[2] == "or") then
+                req:u8(3)
+                req:field_u32(op[3])
+        elseif (op[2] == "xor") then
+                req:u8(4)
+                req:field_u32(op[3])
+        elseif (op[2] == "splice") then
+                req:u8(5)
+                local s = packer()
+                if (op[3] ~= nil) then
+                        s:field_u32(op[3])
+                else
+                        s:u8(0)
+                end
+                if (op[4] ~= nil) then
+                        s:field_u32(op[4])
+                else
+                        s:u8(0)
+                end
+                s:field(op[5])
+                local buf, len = s:pack()
+                req:varint32(len)
+                req:raw(buf, len)
+        elseif (op[2] == "delete") then
+                req:string("\006\000")
+        elseif (op[2] == "insert") then
+                req:u8(7)
+                req:field(op[3])
+        end
+end
+
 function pack.update(n, key, ...)
         local tabarg = false
         local nmops = select('#', ...)
@@ -89,55 +131,13 @@ function pack.update(n, key, ...)
         end
         req:u32(nmops)
 
-        local function pack_mop(op)
-                req:u32(op[1])
-                if (op[2] == "set") then
-                        req:u8(0)
-                        req:field(op[3])
-                elseif (op[2] == "add") then
-                        req:u8(1)
-                        req:field_u32(op[3])
-                elseif (op[2] == "and") then
-                        req:u8(2)
-                        req:field_u32(op[3])
-                elseif (op[2] == "or") then
-                        req:u8(3)
-                        req:field_u32(op[3])
-                elseif (op[2] == "xor") then
-                        req:u8(4)
-                        req:field_u32(op[3])
-                elseif (op[2] == "splice") then
-                        req:u8(5)
-                        local s = packer()
-                        if (op[3] ~= nil) then
-                                s:field_u32(op[3])
-                        else
-                                s:u8(0)
-                        end
-                        if (op[4] ~= nil) then
-                                s:field_u32(op[4])
-                        else
-                                s:u8(0)
-                        end
-			s:field(op[5])
-			local buf, len = s:pack()
-			req:varint32(len)
-			req:raw(buf, len)
-                elseif (op[2] == "delete") then
-                        req:string("\006\000")
-                elseif (op[2] == "insert") then
-                        req:u8(7)
-                        req:field(op[3])
-                end
-        end
-
         if tabarg then
                 for _, op in ipairs(select(1, ...)) do
-                    pack_mop(op)
+                    pack_mop(req, op)
                 end
         else
                 for k = 1, nmops do
-                    pack_mop(select(k, ...))
+                    pack_mop(req, select(k, ...))
                 end
         end
         return op.UPDATE_FIELDS, req:pack()
