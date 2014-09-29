@@ -71,13 +71,22 @@ function pack.update(n, key, ...)
             end
         end
 
-        local flags, key_cardinality = 1, 1
+        local flags = 1
         local req = packer()
 
         req:u32(tonumber(n))
         req:u32(flags)
-        req:u32(key_cardinality)
-        req:field(key)
+        if type(key) == 'table' then
+            local key_cardinality = #key
+            req:u32(key_cardinality)
+            for i, val in ipairs(key) do
+                req:field(val)
+            end
+        else
+            local key_cardinality = 1
+            req:u32(key_cardinality)
+            req:field(key)
+        end
         req:u32(nmops)
 
         local function pack_mop(op)

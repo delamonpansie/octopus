@@ -40,6 +40,16 @@ object_space[1].index[3].unique = 0
 object_space[1].index[3].key_field[0].fieldno = 0
 object_space[1].index[3].key_field[0].type = "NUM32"
 
+
+object_space[2].enabled = 1
+object_space[2].index[0].type = "TREE"
+object_space[2].index[0].unique = 1
+object_space[2].index[0].key_field[0].fieldno = 0
+object_space[2].index[0].key_field[0].type = "NUM32"
+object_space[2].index[0].key_field[1].fieldno = 1
+object_space[2].index[0].key_field[1].type = "NUM32"
+
+
 EOD
   end
 end
@@ -47,8 +57,9 @@ end
 Env.connect_eval do
   100.times {|i| insert [i.to_s, i, i.to_s] }
   insert ["\0\0\0\0", "\0\0\0\0", "\0\0\0\0\0\0\0\0"], :object_space => 1
+  insert ["\0\0\0\0", "\0\0\0\0", "----"], :object_space => 2
 
-  (1..6).each do |i|
+  (1..8).each do |i|
     lua "user_proc.test#{i}"
   end
 end

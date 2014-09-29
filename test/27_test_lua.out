@@ -301,6 +301,9 @@
 # box.insert(["\x00\x00\x00\x00", "\x00\x00\x00\x00", "\x00\x00\x00\x00\x00\x00\x00\x00"], {:object_space=>1})
 1
 
+# box.insert(["\x00\x00\x00\x00", "\x00\x00\x00\x00", "----"], {:object_space=>2})
+1
+
 # box.lua("user_proc.test1")
 [["abc", "defg", "foobar"], ["abc", "defg"], ["abc"]]
 
@@ -318,4 +321,10 @@
 
 # box.lua("user_proc.test6")
 [["\x00\x00\x00\x00", "\x00\x00\x00\x00", "\x00\x00\x00\x00"]]
+
+# box.lua("user_proc.test7")
+[["99", "c\x00\x00\x00", "99"], ["99", "c\x00\x00\x00", "9999"]]
+
+# box.lua("user_proc.test8")
+[["\x00\x00\x00\x00", "\x00\x00\x00\x00", "----"], ["\x00\x00\x00\x00", "\x00\x00\x00\x00", "9999"]]
 

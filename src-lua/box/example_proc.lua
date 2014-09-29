@@ -329,7 +329,20 @@ local function test6()
     return 0, {box.replace(0, "\0\0\0\0", "\0\0\0\0", "\0\0\0\0")}
 end
 
+local function test7()
+    return 0, {
+        box.object_space[0]:index(0):find("99"),
+        box.update(0, "99", {2,"set","9999"})}
+end
+
+local function test8()
+    return 0, {
+        box.object_space[2]:index(0):find(0, 0),
+        box.update(2, {"\0\0\0\0","\0\0\0\0"}, {2,"set","9999"})
+    }
+end
+
 user_proc.test0 = box.wrap(test0)
-for i, f in ipairs({test1, test2, test3, test4, test5, test6}) do
+for i, f in ipairs({test1, test2, test3, test4, test5, test6, test7, test8}) do
    user_proc["test" .. tostring(i)] = box.wrap(f)
 end
