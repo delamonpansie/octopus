@@ -68,12 +68,6 @@ tbuf_alloc(struct palloc_pool *pool)
 	return e;
 }
 
-#if SIZEOF_VOID_P == 8
-#define _clz(x) __builtin_clzl(x)
-#elif SIZEOF_VOID_P == 4
-#define _clz(x) __builtin_clz(x)
-#endif
-
 void
 tbuf_ensure_resize(struct tbuf *e, size_t required)
 {
@@ -82,12 +76,10 @@ tbuf_ensure_resize(struct tbuf *e, size_t required)
 
 	size_t size = tbuf_size(e);
 	size_t len = tbuf_len(e);
-	size_t req = required - (size - len);
+	size_t req = required - e->free;
 	size_t diff = size / 2;
 	if (diff < req) {
-		diff = 1 << (sizeof(req) * 8 - 1 - _clz(req));
-		size_t d = diff | (diff >> 1);
-		diff = ((req & d) == d) ? diff << 1 : d;
+		diff = req + required / 2;
 	}
 
 	void *p = prealloc(e->pool, e->ptr, size, size + diff);
