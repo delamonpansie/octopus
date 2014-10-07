@@ -423,6 +423,8 @@ enum recovery_status { LOADING = 1, PRIMARY, STANDBY };
 
 	i64 next_skip_scn;
 	struct tbuf skip_scn;
+
+	void (*print_row)(struct tbuf *out, u16 tag, struct tbuf *r);
 }
 
 - (const char *) status;

@@ -234,6 +234,10 @@ recover_row:(struct row_v12 *)r
 	}
 	@catch (Error *e) {
 		say_error("Recovery: %s at %s:%i", e->reason, e->file, e->line);
+		struct tbuf *out = tbuf_alloc(fiber->pool);
+		print_gen_row(out, r, self->print_row);
+		printf("Failed row: %.*s\n", tbuf_len(out), (char *)out->ptr);
+
 		@throw;
 	}
 	@finally {
@@ -1038,11 +1042,19 @@ status_changed
 @end
 
 
+static void
+hexdump(struct tbuf *out, u16 tag __attribute__((unused)), struct tbuf *row)
+{
+	tbuf_printf(out, "%s", tbuf_to_hex(row));
+}
 
 void
 print_gen_row(struct tbuf *out, const struct row_v12 *row,
 	      void (*handler)(struct tbuf *out, u16 tag, struct tbuf *row))
 {
+	if (handler == NULL)
+		handler = hexdump;
+
 	tbuf_printf(out, "lsn:%" PRIi64 " scn:%" PRIi64 " tm:%.3f t:%s %s ",
 		    row->lsn, row->scn, row->tm,
 		    xlog_tag_to_a(row->tag),
