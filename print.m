@@ -208,8 +208,8 @@ snap_print(struct tbuf *out, struct tbuf *row)
 }
 
 
-static void
-print_row(struct tbuf *out, u16 tag, struct tbuf *r)
+void
+box_print_row(struct tbuf *out, u16 tag, struct tbuf *r)
 {
 	int tag_type = tag & ~TAG_MASK;
 	tag &= TAG_MASK;
@@ -256,7 +256,7 @@ recover_row:(struct row_v12 *)r
 {
 	[super recover_row:r];
 	struct tbuf *out = tbuf_alloc(fiber->pool);
-	print_gen_row(out, r, print_row);
+	print_gen_row(out, r, box_print_row);
 	puts(out->ptr);
 	if (r->scn >= stop_scn && (r->tag & ~TAG_MASK) == TAG_WAL)
 		exit(0);
@@ -297,6 +297,6 @@ box_cat(const char *filename)
 	} else {
 		quote = quote_non_printable;
 	}
-	read_log(filename, print_row);
+	read_log(filename, box_print_row);
 	return 0; /* ignore return status of read_log */
 }

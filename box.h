@@ -159,4 +159,5 @@ ssize_t tuple_bsize(u32 cardinality, const void *data, u32 max_len);
 
 int box_cat_scn(i64 stop_scn);
 int box_cat(const char *filename);
+void box_print_row(struct tbuf *out, u16 tag, struct tbuf *r);
 #endif

@@ -476,6 +476,7 @@ init(void)
 				      rows_per_wal:cfg.rows_per_wal
 				      feeder_param:&feeder
 					     flags:init_storage ? RECOVER_READONLY : 0];
+	recovery->print_row = box_print_row;
 
 	if (init_storage)
 		return;
