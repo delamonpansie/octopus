@@ -101,6 +101,8 @@ SlaveEnv.new.env_eval do
   slave.select 0,1,2,3,5
 
   restart
+  master_env.stop
+
   puts "Slave\n" + `./octopus --cat 00000000000000000002.xlog 2>/dev/null| sed 's/tm:[^ ]* //'` + "\n"
   master_env.cd do
     puts "Master\n" + `./octopus --cat 00000000000000000002.xlog 2>/dev/null| sed 's/tm:[^ ]* //'` + "\n"
