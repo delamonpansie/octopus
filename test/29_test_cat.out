@@ -21,8 +21,8 @@ Failed with: {code: 0x202, message: 'key isn't fully specified'}
 # box.select(["1"])
 [["1", "2a", "3"], ["1", "aa", "3"]]
 
-lsn:2 scn:2 t:wal/usr13 0.0.0.0:0 INSERT n:0 <"1", "2", "3">
+lsn:2 scn:2 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <"1", "2", "3">
 lsn:3 scn:3 t:wal/usr20 0.0.0.0:0 DELETE_1_3 n:0 <"1", "2">
-lsn:4 scn:4 t:wal/usr13 0.0.0.0:0 INSERT n:0 <"1", "2", "3">
-lsn:5 scn:5 t:wal/usr13 0.0.0.0:0 INSERT n:0 <"1", 24882:"2a", "3">
+lsn:4 scn:4 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <"1", "2", "3">
+lsn:5 scn:5 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <"1", 24882:"2a", "3">
 lsn:6 scn:6 t:wal/usr19 0.0.0.0:0 UPDATE_FIELDS n:0 flags:00000000 <"1", "2"> [field_no:1 op:set <24929:"aa">] 

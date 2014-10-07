@@ -96,29 +96,29 @@ XLOG
 Created-by: octopus
 SCN: 10
 
-lsn:10 scn:10 t:wal/usr13 0.0.0.0:0 INSERT n:0 <1:"\x01\x00\x00\x00">
-lsn:11 scn:11 t:wal/usr13 0.0.0.0:0 INSERT n:0 <1:"\x01\x00\x00\x00">
-lsn:12 scn:12 t:wal/usr13 0.0.0.0:0 INSERT n:0 <1:"\x01\x00\x00\x00">
-lsn:13 scn:13 t:wal/usr13 0.0.0.0:0 INSERT n:0 <1:"\x01\x00\x00\x00">
-lsn:14 scn:14 t:wal/usr13 0.0.0.0:0 INSERT n:0 <1:"\x01\x00\x00\x00">
-lsn:15 scn:15 t:wal/usr13 0.0.0.0:0 INSERT n:0 <1:"\x01\x00\x00\x00">
-lsn:16 scn:16 t:wal/usr13 0.0.0.0:0 INSERT n:0 <1:"\x01\x00\x00\x00">
-lsn:17 scn:17 t:wal/usr13 0.0.0.0:0 INSERT n:0 <1:"\x01\x00\x00\x00">
-lsn:18 scn:18 t:wal/usr13 0.0.0.0:0 INSERT n:0 <1:"\x01\x00\x00\x00">
-lsn:19 scn:19 t:wal/usr13 0.0.0.0:0 INSERT n:0 <1:"\x01\x00\x00\x00">
+lsn:10 scn:10 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
+lsn:11 scn:11 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
+lsn:12 scn:12 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
+lsn:13 scn:13 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
+lsn:14 scn:14 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
+lsn:15 scn:15 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
+lsn:16 scn:16 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
+lsn:17 scn:17 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
+lsn:18 scn:18 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
+lsn:19 scn:19 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
 
 XLOG
 0.12
 Created-by: octopus
 SCN: 20
 
-lsn:20 scn:20 t:wal/usr13 0.0.0.0:0 INSERT n:0 <1:"\x01\x00\x00\x00">
-lsn:21 scn:21 t:wal/usr13 0.0.0.0:0 INSERT n:0 <1:"\x01\x00\x00\x00">
-lsn:22 scn:22 t:wal/usr13 0.0.0.0:0 INSERT n:0 <1:"\x01\x00\x00\x00">
-lsn:23 scn:23 t:wal/usr13 0.0.0.0:0 INSERT n:0 <1:"\x01\x00\x00\x00">
-lsn:24 scn:24 t:wal/usr13 0.0.0.0:0 INSERT n:0 <1:"\x01\x00\x00\x00">
-lsn:25 scn:25 t:wal/usr13 0.0.0.0:0 INSERT n:0 <1:"\x01\x00\x00\x00">
-lsn:26 scn:26 t:wal/usr13 0.0.0.0:0 INSERT n:0 <1:"\x01\x00\x00\x00">
-lsn:27 scn:27 t:wal/usr13 0.0.0.0:0 INSERT n:0 <1:"\x01\x00\x00\x00">
-lsn:28 scn:28 t:wal/usr13 0.0.0.0:0 INSERT n:0 <1:"\x01\x00\x00\x00">
-lsn:29 scn:29 t:wal/usr13 0.0.0.0:0 INSERT n:0 <1:"\x01\x00\x00\x00">
+lsn:20 scn:20 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
+lsn:21 scn:21 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
+lsn:22 scn:22 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
+lsn:23 scn:23 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
+lsn:24 scn:24 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
+lsn:25 scn:25 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
+lsn:26 scn:26 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
+lsn:27 scn:27 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
+lsn:28 scn:28 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
+lsn:29 scn:29 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">

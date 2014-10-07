@@ -113,6 +113,7 @@ xlog_print(struct tbuf *out, u16 op, struct tbuf *b)
 		u32 data_len = tbuf_len(b);
 		void *data = read_bytes(b, data_len);
 
+		tbuf_printf(out, "flags:%08X ", flags);
 		if (tuple_bsize(cardinality, data, data_len) == data_len)
 			tuple_print(out, cardinality, data);
 		else
