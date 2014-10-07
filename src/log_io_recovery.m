@@ -971,6 +971,7 @@ nop_hb_writer(va_list ap)
 	memset(&feeder, 0, sizeof(feeder));
 
 	wal_timer.data = self;
+	wal_dir->recovery = snap_dir->recovery = self;
 
 	if ((flags & RECOVER_READONLY) == 0) {
 		if (wal_rows_per_file <= 4)
