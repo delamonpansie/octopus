@@ -257,7 +257,8 @@ iproto_wakeup_workers(ev_prepare *ev)
 
 	fiber->pool = saved_pool;
 
-	if (palloc_allocated(service->pool) - service->pool_allocated > 64 * 1024 * 1024) {
+	size_t diff = palloc_allocated(service->pool) - service->pool_allocated;
+	if (diff > 4 * 1024 * 1024 && diff > service->pool_allocated) {
 		palloc_gc(service->pool);
 		service->pool_allocated = palloc_allocated(service->pool);
 	}
