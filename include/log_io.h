@@ -350,7 +350,7 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 @end
 
 @interface XLogWriter: Object <RecoveryState> {
-	i64 lsn, scn, last_scn;
+	i64 lsn, scn;
 	XLogDir *wal_dir, *snap_dir;
 	bool configured;
 	SnapWriter *snap_writer;
