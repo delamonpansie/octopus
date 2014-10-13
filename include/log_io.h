@@ -352,13 +352,11 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 @interface XLogWriter: Object <RecoveryState> {
 	i64 lsn, scn, last_scn;
 	XLogDir *wal_dir, *snap_dir;
-	ev_timer wal_timer;
 	bool configured;
 	SnapWriter *snap_writer;
 @public
 	bool local_writes;
 	struct child *wal_writer;
-	XLog *current_wal;	/* the WAL we'r currently reading/writing from/to */
 
 	u32 run_crc_log;
 	struct crc_hist { i64 scn; u32 log; } crc_hist[512]; /* should be larger than
@@ -413,6 +411,8 @@ enum recovery_status { LOADING = 1, PRIMARY, STANDBY };
 	ev_tstamp lag, last_update_tstamp, run_crc_verify_tstamp;
 	enum recovery_status status, prev_status;
 	char status_buf[64];
+	ev_timer wal_timer;
+	XLog *current_wal;	/* the WAL we'r currently reading/writing from/to */
 
 	XLogPuller *remote_puller;
 	struct feeder_param feeder;
