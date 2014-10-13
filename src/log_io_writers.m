@@ -470,22 +470,6 @@ wal_pack_submit
 	say_debug("%s: => rows:%i", __func__, reply->row_count);
 	return reply->row_count;
 }
-
-- (SnapWriter *)
-snap_writer
-{
-	if (snap_writer)
-		return snap_writer;
-	snap_writer = [[SnapWriter alloc] init_state:self snap_dir:snap_dir];
-	return snap_writer;
-}
-
-- (int)
-write_initial_state
-{
-	lsn = scn = 1;
-	return [[self snap_writer] snapshot_write];
-}
 @end
 
 @implementation SnapWriter

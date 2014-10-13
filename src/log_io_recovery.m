@@ -1039,6 +1039,22 @@ status_update:(enum recovery_status)new_status fmt:(const char *)fmt, ...
 status_changed
 {
 }
+
+- (SnapWriter *)
+snap_writer
+{
+	if (snap_writer)
+		return snap_writer;
+	snap_writer = [[SnapWriter alloc] init_state:self snap_dir:snap_dir];
+	return snap_writer;
+}
+
+- (int)
+write_initial_state
+{
+	lsn = scn = 1;
+	return [[self snap_writer] snapshot_write];
+}
 @end
 
 

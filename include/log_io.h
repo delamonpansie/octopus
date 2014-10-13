@@ -353,7 +353,6 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 	i64 lsn, scn;
 	XLogDir *wal_dir, *snap_dir;
 	bool configured;
-	SnapWriter *snap_writer;
 @public
 	bool local_writes;
 	struct child *wal_writer;
@@ -376,8 +375,6 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 /* entry points: modules should call this */
 - (int) submit:(const void *)data len:(u32)len tag:(u16)tag;
 
-- (SnapWriter *) snap_writer;
-- (int) write_initial_state;
 @end
 
 @interface XLogWriter (Fold)
@@ -413,6 +410,7 @@ enum recovery_status { LOADING = 1, PRIMARY, STANDBY };
 	char status_buf[64];
 	ev_timer wal_timer;
 	XLog *current_wal;	/* the WAL we'r currently reading/writing from/to */
+	SnapWriter *snap_writer;
 
 	XLogPuller *remote_puller;
 	struct feeder_param feeder;
@@ -477,6 +475,9 @@ enum recovery_status { LOADING = 1, PRIMARY, STANDBY };
 
 - (void) status_update:(enum recovery_status)s fmt:(const char *)fmt, ...;
 - (void) status_changed;
+
+- (SnapWriter *) snap_writer;
+- (int) write_initial_state;
 @end
 
 @interface Recovery (Deprecated)
