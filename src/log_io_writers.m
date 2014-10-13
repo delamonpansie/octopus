@@ -367,9 +367,17 @@ exit:
 - (void) set_lsn:(i64)lsn_ { lsn = lsn_; }
 - (void) set_scn:(i64)scn_ { scn = scn_; }
 
-- (void)
-configure_wal_writer
+- init_wal_dir: (XLogDir*)wal_dir_
 {
+	struct fiber *wal_out = fiber_create("wal_writer/output_flusher", conn_flusher);
+	struct fiber *wal_in = fiber_create("wal_writer/input_dispatcher",
+						wal_disk_writer_input_dispatch);
+	wal_writer = spawn_child("wal_writer", wal_in, wal_out, wal_disk_writer, wal_dir_);
+
+	ev_set_priority(&wal_writer->c->in, 1);
+	ev_set_priority(&wal_writer->c->out, 1);
+	ev_io_start(&wal_writer->c->in);
+
 	say_info("Configuring WAL writer LSN:%"PRIi64" SCN:%"PRIi64, lsn, scn);
 
 	struct netmsg_head *h = &wal_writer->c->out_messages;
@@ -378,6 +386,8 @@ configure_wal_writer
 	net_add_iov_dup(h, &run_crc_log, sizeof(run_crc_log));
 	ev_io_start(&wal_writer->c->out);
 	configured = true;
+
+	return self;
 }
 
 

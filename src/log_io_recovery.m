@@ -977,33 +977,29 @@ nop_hb_writer(va_list ap)
 	wal_timer.data = self;
 	wal_dir->recovery = snap_dir->recovery = self;
 
-	if ((flags & RECOVER_READONLY) == 0) {
-		if (wal_rows_per_file <= 4)
-			panic("inacceptable value of 'rows_per_file'");
+	(void)flags;
+	if (wal_rows_per_file <= 4)
+		panic("inacceptable value of 'rows_per_file'");
 
-		wal_dir->rows_per_file = wal_rows_per_file;
-		wal_dir->fsync_delay = cfg.wal_fsync_delay;
-
-		struct fiber *wal_out = fiber_create("wal_writer/output_flusher", conn_flusher);
-		struct fiber *wal_in = fiber_create("wal_writer/input_dispatcher",
-							wal_disk_writer_input_dispatch);
-		wal_writer = spawn_child("wal_writer", wal_in, wal_out, wal_disk_writer, wal_dir);
-
-		ev_set_priority(&wal_writer->c->in, 1);
-		ev_set_priority(&wal_writer->c->out, 1);
-		ev_io_start(&wal_writer->c->in);
-
-		if (!cfg.io_compat && cfg.run_crc_delay > 0)
-			fiber_create("run_crc", run_crc_writer, self, cfg.run_crc_delay);
-
-		if (!cfg.io_compat && cfg.nop_hb_delay > 0)
-			fiber_create("nop_hb", nop_hb_writer, self, cfg.nop_hb_delay);
-	}
+	wal_dir->rows_per_file = wal_rows_per_file;
+	wal_dir->fsync_delay = cfg.wal_fsync_delay;
 
 	if (feeder_ != NULL)
 		[self feeder_changed: feeder_];
 
 	return self;
+}
+
+- (void)
+configure_wal_writer
+{
+	[self init_wal_dir: wal_dir];
+
+	if (!cfg.io_compat && cfg.run_crc_delay > 0)
+		fiber_create("run_crc", run_crc_writer, self, cfg.run_crc_delay);
+
+	if (!cfg.io_compat && cfg.nop_hb_delay > 0)
+		fiber_create("nop_hb", nop_hb_writer, self, cfg.nop_hb_delay);
 }
 
 - (struct sockaddr_in)

@@ -362,13 +362,13 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 								cfg.wal_writer_inbox_size */
 	unsigned crc_hist_i;
 }
+- (id) init_wal_dir: (XLogDir*)wal_dir;
 
 - (i64) scn;
 - (void) set_scn:(i64)scn;
 - (i64) lsn;
 
 - (struct child *) wal_writer;
-- (void) configure_wal_writer;
 
 - (int) wal_pack_submit;
 
@@ -433,6 +433,8 @@ enum recovery_status { LOADING = 1, PRIMARY, STANDBY };
 
 - (void) simple;
 - (void) lock; /* lock wal_dir & snap_dir */
+
+- (void) configure_wal_writer;
 
 - (void) recover_row:(struct row_v12 *)row;
 - (void) verify_run_crc:(struct tbuf *)buf;
