@@ -318,62 +318,60 @@ static struct child_spawn_queue *child_spawn_queue = NULL;
 
 static void do_child_spawn(void)
 {
-next:
 	assert(fiber == &sched);
-	if (child_spawn_queue == NULL)
-		return;
-	struct child_spawn_queue *cur = child_spawn_queue;
-	cur->result = NULL;
+	while (child_spawn_queue != NULL) {
+		struct child_spawn_queue *cur = child_spawn_queue;
+		cur->result = NULL;
 
-	int one = 1, socks[2];
-	int pid;
+		int one = 1, socks[2];
+		int pid;
 
-	if (socketpair(AF_UNIX, SOCK_STREAM, 0, socks) == -1) {
-		say_syserror("socketpair");
-		goto wake_issuer;
-	}
-
-	if ((pid = tnt_fork()) == -1) {
-		say_syserror("fork");
-		goto wake_issuer;
-	}
-
-	if (pid) {
-		close(socks[0]);
-		if (ioctl(socks[1], FIONBIO, &one) < 0) {
-			close(socks[1]);
+		if (socketpair(AF_UNIX, SOCK_STREAM, 0, socks) == -1) {
+			say_syserror("socketpair");
 			goto wake_issuer;
 		}
 
-		struct child *child = xmalloc(sizeof(*child));
-		child->pid = pid;
+		if ((pid = tnt_fork()) == -1) {
+			say_syserror("fork");
+			goto wake_issuer;
+		}
 
-		struct palloc_pool *p = palloc_create_pool(cur->name);
-		child->c = conn_init(NULL, p, socks[1], cur->in, cur->out, MO_MALLOC);
-		palloc_register_gc_root(p, child->c, conn_gc);
+		if (pid) {
+			close(socks[0]);
+			if (ioctl(socks[1], FIONBIO, &one) < 0) {
+				close(socks[1]);
+				goto wake_issuer;
+			}
 
-		cur->result = child;
-		goto wake_issuer;
-	} else {
-		extern id recovery;
-		recovery = nil;
-		salloc_destroy();
-		close_all_xcpt(3, socks[0], stderrfd, sayfd);
-		sched.name = cur->name;
-		title("%s", cur->name);
-		say_info("%s spawned", cur->name);
-		_exit(cur->handler(socks[0], cur->state));
+			struct child *child = xmalloc(sizeof(*child));
+			child->pid = pid;
+
+			struct palloc_pool *p = palloc_create_pool(cur->name);
+			child->c = conn_init(NULL, p, socks[1], cur->in, cur->out, MO_MALLOC);
+			palloc_register_gc_root(p, child->c, conn_gc);
+
+			cur->result = child;
+			goto wake_issuer;
+		} else {
+			extern id recovery;
+			recovery = nil;
+			salloc_destroy();
+			close_all_xcpt(3, socks[0], stderrfd, sayfd);
+			sched.name = cur->name;
+			title("%s", cur->name);
+			say_info("%s spawned", cur->name);
+			_exit(cur->handler(socks[0], cur->state));
+		}
+	wake_issuer:
+		child_spawn_queue = cur->next;
+		if (child_spawn_queue == NULL)
+			ev_prepare_stop(&child_spawner);
+
+		if (cur->issuer == NULL)
+			return;
+		else
+			fiber_wake(cur->issuer, NULL);
 	}
-wake_issuer:
-	child_spawn_queue = cur->next;
-	if (child_spawn_queue == NULL)
-		ev_prepare_stop(&child_spawner);
-
-	if (cur->issuer == NULL)
-		return;
-	else
-		fiber_wake(cur->issuer, NULL);
-	goto next;
 }
 
 struct child *
