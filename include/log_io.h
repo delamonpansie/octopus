@@ -401,7 +401,7 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 - (const char *)error;
 @end
 
-enum recovery_status { LOADING = 1, PRIMARY, STANDBY };
+enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 @interface Recovery: XLogWriter {
 @public
 	i64 last_wal_lsn;

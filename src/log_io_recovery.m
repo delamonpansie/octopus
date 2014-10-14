@@ -447,7 +447,7 @@ wal_lock(va_list ap)
 local_hot_standby
 {
 	[self recover_follow:cfg.wal_dir_rescan_delay]; /* FIXME: make this conf */
-	[self status_update:STANDBY fmt:"hot_standby/local"];
+	[self status_update:LOCAL_STANDBY fmt:"hot_standby/local"];
 
 	fiber_create("wal_lock", wal_lock, self);
 }
@@ -730,7 +730,7 @@ pull_from_remote:(id<XLogPullerAsync>)puller
 static void
 hot_standby_status(Recovery *r, const char *status, const char *reason)
 {
-	[r status_update:STANDBY fmt:"hot_standby/%s/%s%s%s",
+	[r status_update:REMOTE_STANDBY fmt:"hot_standby/%s/%s%s%s",
 	   sintoa(&r->feeder.addr), status, reason ? ":" : "", reason ?: ""];
 	if (strcmp([r status], "fail") == 0)
 		say_error("replication failure: %s", reason);
