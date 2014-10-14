@@ -28,6 +28,7 @@
 #define PICKLE_H
 
 #include <util.h>
+#include <string.h>
 
 struct tbuf;
 
@@ -47,7 +48,10 @@ void *read_field(struct tbuf *buf);
 void *read_bytes(struct tbuf *buf, u32 data_len);
 void *read_ptr(struct tbuf *buf);
 void read_to(struct tbuf *buf, void *p, u32 len);
-#define read_into(buf, stract) read_to((buf), (stract), sizeof(*(stract)))
+static inline void _read_to(struct tbuf *buf, void *p, u32 len) {
+	memcpy(p, read_bytes(buf, len), len);
+}
+#define read_into(buf, struct) _read_to((buf), (struct), sizeof(*(struct)))
 
 u8 read_field_u8(struct tbuf *b);
 u16 read_field_u16(struct tbuf *b);
