@@ -162,6 +162,17 @@ tbuf_append(struct tbuf *b, const void *data, size_t len)
 	b->free -= len;
 }
 
+void*
+tbuf_expand(struct tbuf *b, size_t len)
+{
+	tbuf_assert(b);
+	tbuf_ensure(b, len);
+	void *res = b->end;
+	b->end += len;
+	b->free -= len;
+	return res;
+}
+
 void
 tbuf_append_field(struct tbuf *b, void *f)
 {
