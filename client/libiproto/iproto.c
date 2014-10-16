@@ -433,8 +433,14 @@ li_connect(struct iproto_connection_t *c, const char *server, int port, u_int32_
 
 #ifdef SO_REUSEPORT
 	if (setsockopt(c->fd, SOL_SOCKET, SO_REUSEPORT, &flags, sizeof(flags)) < 0) {
-		c->connectState = ConnectionError;
-		return ERR_CODE_CONNECT_ERR;
+		/*
+		 * CentOS release 6.4 has only SO_REUSEPORT macros but
+		 * not an underlying setsockopt
+		 */
+		if (errno != ENOPROTOOPT) {
+			c->connectState = ConnectionError;
+			return ERR_CODE_CONNECT_ERR;
+		}
 	}
 #endif
 
