@@ -108,7 +108,7 @@ third_party/luajit/src/luajit third_party/luajit/src/jit/vmdef.lua third_party/l
 	$(Q)echo 'include $$(VPATH)Makefile' | $(MAKE) -C third_party/luajit/src -f - \
 		VPATH=$(LUAJIT_VPATH) \
 		CC="$(CC)" E="$(E)" Q="$(Q)" \
-		CCDEBUG=$(filter -g%,$(CFLAGS)) BUILDMODE=static \
+		CCDEBUG="$(filter -g%,$(CFLAGS))" BUILDMODE=static \
 		TARGET_CFLAGS='-funwind-tables -DLUAJIT_UNWIND_EXTERNAL' \
 		$(subst third_party/luajit/src/,,$@)
 
