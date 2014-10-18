@@ -233,7 +233,8 @@ recover_row:(struct row_v12 *)r
 		}
 	}
 	@catch (Error *e) {
-		say_error("Recovery: %s at %s:%i", e->reason, e->file, e->line);
+		say_error("Recovery: %s at %s:%i\n%s", e->reason, e->file, e->line,
+				e->backtrace);
 		struct tbuf *out = tbuf_alloc(fiber->pool);
 		print_gen_row(out, r, self->print_row);
 		printf("Failed row: %.*s\n", tbuf_len(out), (char *)out->ptr);
