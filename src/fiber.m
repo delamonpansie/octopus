@@ -302,6 +302,7 @@ fiber_destroy_all()
 
 		palloc_destroy_pool(f->pool);
 		octopus_coro_destroy(&f->coro);
+		free(f);
 	}
 }
 

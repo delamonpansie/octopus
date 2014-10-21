@@ -50,9 +50,8 @@
 void
 octopus_coro_destroy(struct octopus_coro *coro)
 {
-	if (coro && coro->mmap != MAP_FAILED)
+	if (coro->mmap != MAP_FAILED)
 		munmap(coro->mmap, coro->mmap_size);
-	free(coro);
 }
 
 struct octopus_coro *
@@ -60,12 +59,7 @@ octopus_coro_create(struct octopus_coro *coro, void (*f) (void *), void *data)
 {
 	const int page = sysconf(_SC_PAGESIZE);
 
-	if (coro == NULL)
-		coro = malloc(sizeof(*coro));
-
-	if (coro == NULL)
-		return NULL;
-
+	assert(coro != NULL);
 	memset(coro, 0, sizeof(*coro));
 
 	coro->mmap_size = page * 16;
