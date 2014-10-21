@@ -1073,7 +1073,7 @@ print_gen_row(struct tbuf *out, const struct row_v12 *row,
 		    xlog_tag_to_a(row->tag),
 		    sintoa((void *)&row->cookie));
 
-	struct tbuf row_data = TBUF(row->data, row->len, NULL);
+	struct tbuf row_data = TBUF(row->data, row->len, fiber->pool);
 
 	int tag = row->tag & TAG_MASK;
 	switch (tag) {
