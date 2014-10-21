@@ -36,6 +36,7 @@
 
 
 enum say_level {
+	TRACE = 0,		/* hardcore debugging */
 	FATAL = 1,		/* do not this value use directly */
 	ERROR,
 	WARN,
@@ -57,6 +58,8 @@ void _say(int level, const char *filename, unsigned line, const char *format, ..
 void _say_err(int level, const char *filename, unsigned line, const char *format, ...)
     __attribute__ ((format(FORMAT_PRINTF, 4, 5)));
 
+void say_TRACE(const char *filename, unsigned line, const char *format, ...)
+	__attribute__ ((format(FORMAT_PRINTF, 3, 4)));
 void say_ERROR(const char *filename, unsigned line, const char *format, ...)
 	__attribute__ ((format(FORMAT_PRINTF, 3, 4)));
 void say_ERRORno(const char *filename, unsigned line, const char *format, ...) /* appends strerror(errno) */
@@ -72,8 +75,6 @@ void say_DEBUG2(const char *filename, unsigned line, const char *format, ...)
 void say_DEBUG3(const char *filename, unsigned line, const char *format, ...)
     __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
 void say_INFO(const char *filename, unsigned line, const char *format, ...)
-    __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
-void say_CRIT(const char *filename, unsigned line, const char *format, ...)
     __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
 
 
@@ -97,7 +98,14 @@ void say_register_source(const char *file, int *level);
 #define say_debug(...)		say(, DEBUG, __VA_ARGS__)
 #define say_debug2(...)		say(, DEBUG2, __VA_ARGS__)
 #define say_debug3(...)		say(, DEBUG3, __VA_ARGS__)
+#define say_trace(...)		say_TRACE(__FILE__, __LINE__, __VA_ARGS__)
 
+#define ftrace()		say_trace("%s", __func__)
+#define ftracef(format, ...)	say_trace("%s:"format, __func__, ##__VA_ARGS__)
+#define ctrace()		say_trace("%s@%s", __func__, [self name])
+#define ctracef(format, ...)	say_trace("%s@%s:"format, __func__, [self name], ##__VA_ARGS__)
+#define otrace()		say_trace("%s@%s", __func__, [[self class] name])
+#define otracef(format, ...)	say_trace("%s@%s:"format, __func__, [[self class] name], ##__VA_ARGS__)
 
 
 void

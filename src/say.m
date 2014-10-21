@@ -79,6 +79,8 @@ level_to_char(int level)
 	switch (level) {
 	case FATAL:
 		return 'F';
+	case TRACE:
+		return 'T';
 	case ERROR:
 		return 'E';
 	case WARN:
@@ -254,7 +256,7 @@ vsay(int level, const char *filename, unsigned line,
 	if (nonblocking && level <= ERROR)
 		ioctl(sayfd, FIONBIO, &one);
 
-	if (sayfd != STDERR_FILENO && (level <= dup_to_stderr || level == FATAL)) {
+	if (sayfd != STDERR_FILENO && (level <= dup_to_stderr || level <= FATAL)) {
 		r = write(stderrfd, buf, p);
 	}
 
@@ -290,6 +292,7 @@ say_f(WARN, no, strerror(errno))
 say_f(INFO, , NULL)
 say_f(ERROR, , NULL)
 say_f(ERROR, no, strerror(errno))
+say_f(TRACE, , NULL)
 
 void __attribute__((format(FORMAT_PRINTF, 6, 0), noreturn))
 vpanic(int status, const char *file, unsigned line,
