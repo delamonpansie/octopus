@@ -46,6 +46,7 @@ enum say_level {
 };
 
 extern int stderrfd, sayfd, max_level, default_level, dup_to_stderr;
+static int local_level = INFO;
 
 void say_logger_init(int nonblock);
 void vsay(int level, const char *filename, unsigned line, const char *error,
@@ -78,16 +79,15 @@ void say_CRIT(const char *filename, unsigned line, const char *format, ...)
 
 int say_level_source(const char *file, int diff);
 void say_list_sources(void);
-void say_register_source(const char *file);
+void say_register_source(const char *file, int *level);
 #define register_source()				\
 	__attribute__((constructor)) static void	\
 	register_source_(void) {			\
-		say_register_source(__FILE__);		\
+		say_register_source(__FILE__, &local_level); \
 	}
 
-int say_filter(int, const char *);
 
-#define say(suffix, level, ...) ({ if(unlikely(max_level >= level))	\
+#define say(suffix, level, ...) ({ if(unlikely(local_level >= level || level <= FATAL))	\
 				say_##level##suffix(__FILE__, __LINE__, __VA_ARGS__); })
 #define say_syserror(...)	say(no, ERROR, __VA_ARGS__)
 #define say_syswarn(...)	say(no, WARN, __VA_ARGS__)

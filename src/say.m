@@ -43,12 +43,12 @@
 
 typedef const char* cstr;
 struct node {
-	int value;
+	int* value;
 	cstr key;
 } __attribute__((packed));
 #define mh_name _cstr
 #define mh_key_t cstr
-#define mh_val_t int
+#define mh_val_t int*
 #if SIZEOF_VOID_P == 8
 # define mh_hash(a) ({ (uint32_t)(((uintptr_t)a)>>33^((uintptr_t)a)^((uintptr_t)a)<<11); })
 #else
@@ -93,14 +93,14 @@ level_to_char(int level)
 }
 
 void
-say_register_source(const char *file)
+say_register_source(const char *file, int *level)
 {
 	if (unlikely(filter == NULL)) {
 		filter = mh_cstr_init(xrealloc);
 		max_level = default_level;
 	}
 
-	mh_cstr_put(filter, file, default_level, NULL);
+	mh_cstr_put(filter, file, level, NULL);
 }
 
 int
@@ -113,11 +113,11 @@ say_level_source(const char *file, int diff)
 		    continue;
 		struct node *n = mh_slot(filter, k);
 		if (strcmp(file, "ALL") == 0 || strcmp(file, n->key) == 0) {
-			n->value += diff;
+			*(n->value) += diff;
 			found = 1;
 		}
-		if (n->value > max)
-			max = n->value;
+		if (*(n->value) > max)
+			max = *(n->value);
 	}
 	max_level = max;
 	return found;
@@ -134,14 +134,6 @@ say_list_sources(void)
 		puts(n->key);
 	}
 }
-
-int
-say_filter(int level, const char *file)
-{
-	int k = file ? mh_cstr_get(filter, file) : mh_end(filter);
-	return mh_end(filter) == k || mh_cstr_value(filter, k) >= level;
-}
-
 
 void
 say_logger_init(int nonblock)
@@ -219,9 +211,6 @@ vsay(int level, const char *filename, unsigned line,
 	const char *f;
 	static __thread char buf[PIPE_BUF];
 
-	if (level > FATAL && !say_filter(level, filename))
-		return;
-
 	if (booting) {
 		fprintf(stderr, "%s: ", binary_filename);
 		vfprintf(stderr, format, ap);
@@ -241,8 +230,10 @@ vsay(int level, const char *filename, unsigned line,
 			if (*f == '/' && *(f + 1) != '\0')
 				filename = f + 1;
 
-	if (level <= ERROR && filename != NULL)
-		p += snprintf(buf + p, len - p, " %s:%i", filename, line);
+	if (level <= ERROR || level >= DEBUG) {
+		if (filename != NULL)
+			p += snprintf(buf + p, len - p, " %s:%i", filename, line);
+	}
 
 	p += snprintf(buf + p, len - p, " %c> ", level_to_char(level));
 	/* until here it is guaranteed that p < len */
