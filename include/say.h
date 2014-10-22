@@ -36,6 +36,7 @@
 
 
 enum say_level {
+	TRACE = 0,		/* hardcore debugging */
 	FATAL = 1,		/* do not this value use directly */
 	ERROR,
 	WARN,
@@ -46,6 +47,7 @@ enum say_level {
 };
 
 extern int stderrfd, sayfd, max_level, default_level, dup_to_stderr;
+static int local_level = INFO;
 
 void say_logger_init(int nonblock);
 void vsay(int level, const char *filename, unsigned line, const char *error,
@@ -56,6 +58,8 @@ void _say(int level, const char *filename, unsigned line, const char *format, ..
 void _say_err(int level, const char *filename, unsigned line, const char *format, ...)
     __attribute__ ((format(FORMAT_PRINTF, 4, 5)));
 
+void say_TRACE(const char *filename, unsigned line, const char *format, ...)
+	__attribute__ ((format(FORMAT_PRINTF, 3, 4)));
 void say_ERROR(const char *filename, unsigned line, const char *format, ...)
 	__attribute__ ((format(FORMAT_PRINTF, 3, 4)));
 void say_ERRORno(const char *filename, unsigned line, const char *format, ...) /* appends strerror(errno) */
@@ -72,22 +76,19 @@ void say_DEBUG3(const char *filename, unsigned line, const char *format, ...)
     __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
 void say_INFO(const char *filename, unsigned line, const char *format, ...)
     __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
-void say_CRIT(const char *filename, unsigned line, const char *format, ...)
-    __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
 
 
 int say_level_source(const char *file, int diff);
 void say_list_sources(void);
-void say_register_source(const char *file);
+void say_register_source(const char *file, int *level);
 #define register_source()				\
 	__attribute__((constructor)) static void	\
 	register_source_(void) {			\
-		say_register_source(__FILE__);		\
+		say_register_source(__FILE__, &local_level); \
 	}
 
-int say_filter(int, const char *);
 
-#define say(suffix, level, ...) ({ if(unlikely(max_level >= level))	\
+#define say(suffix, level, ...) ({ if(unlikely(local_level >= level || level <= FATAL))	\
 				say_##level##suffix(__FILE__, __LINE__, __VA_ARGS__); })
 #define say_syserror(...)	say(no, ERROR, __VA_ARGS__)
 #define say_syswarn(...)	say(no, WARN, __VA_ARGS__)
@@ -97,7 +98,14 @@ int say_filter(int, const char *);
 #define say_debug(...)		say(, DEBUG, __VA_ARGS__)
 #define say_debug2(...)		say(, DEBUG2, __VA_ARGS__)
 #define say_debug3(...)		say(, DEBUG3, __VA_ARGS__)
+#define say_trace(...)		say_TRACE(__FILE__, __LINE__, __VA_ARGS__)
 
+#define ftrace()		say_trace("%s", __func__)
+#define ftracef(format, ...)	say_trace("%s:"format, __func__, ##__VA_ARGS__)
+#define ctrace()		say_trace("%s@%s", __func__, [self name])
+#define ctracef(format, ...)	say_trace("%s@%s:"format, __func__, [self name], ##__VA_ARGS__)
+#define otrace()		say_trace("%s@%s", __func__, [[self class] name])
+#define otracef(format, ...)	say_trace("%s@%s:"format, __func__, [[self class] name], ##__VA_ARGS__)
 
 
 void
