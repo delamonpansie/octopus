@@ -210,7 +210,7 @@ vsay(int level, const char *filename, unsigned line,
      const char *error, const char *format, va_list ap)
 {
 	size_t p = 0, len = PIPE_BUF;
-	const char *f;
+	const char *f, *cur;
 	static __thread char buf[PIPE_BUF];
 
 	if (booting) {
@@ -227,14 +227,12 @@ vsay(int level, const char *filename, unsigned line,
 	p += snprintf(buf + p, len - p, "%.3f %i %i/%s",
 		      ev_now(), getpid(), fiber->fid, fiber->name);
 
-	if (filename != NULL)
-		for (f = filename; *f; f++)
+	if ((level <= ERROR || level >= DEBUG) && filename != NULL) {
+		for (f = filename, cur = __FILE__; *f && *f == *cur; f++, cur++)
 			if (*f == '/' && *(f + 1) != '\0')
 				filename = f + 1;
 
-	if (level <= ERROR || level >= DEBUG) {
-		if (filename != NULL)
-			p += snprintf(buf + p, len - p, " %s:%i", filename, line);
+		p += snprintf(buf + p, len - p, " %s:%i", filename, line);
 	}
 
 	p += snprintf(buf + p, len - p, " %c> ", level_to_char(level));
