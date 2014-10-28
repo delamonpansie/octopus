@@ -1,4 +1,4 @@
-#!/usr/bin/ruby1.9.1
+#!/usr/bin/ruby
 
 $: << File.dirname($0) + '/lib'
 require 'run_env'
@@ -18,7 +18,7 @@ Env.connect_eval do |env|
     insert [i, i + 1, i + 2]
   end
 
-  wait_for { open('|./octopus --cat 00000000000000000002.xlog 2>/dev/null').lines.grep(/run_crc/).length > 0 }
+  wait_for { open('|./octopus --cat 00000000000000000002.xlog 2>/dev/null').each_line.grep(/run_crc/).length > 0 }
   env.stop
 
   puts `./octopus --cat 00000000000000000002.xlog 2>/dev/null | sed 's/tm:[^ ]* //' | grep run_crc` + "\n"

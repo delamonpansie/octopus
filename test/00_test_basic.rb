@@ -1,4 +1,4 @@
-#!/usr/bin/ruby1.9.1
+#!/usr/bin/ruby
 
 $: << File.dirname($0) + '/lib'
 require 'run_env'
@@ -44,8 +44,8 @@ env.connect_eval do
 
   puts Dir.glob("*.snap").sort + ["\n"]
   puts Dir.glob("*.xlog").sort + ["\n"]
-  puts File.open("00000000000000001001.snap").lines.take_while {|l| l != "\n" } + ["\n"]
-  puts File.open("00000000000000001002.xlog").lines.take_while {|l| l != "\n" } + ["\n"]
+  puts File.open("00000000000000001001.snap").each_line.take_while {|l| l != "\n" } + ["\n"]
+  puts File.open("00000000000000001002.xlog").each_line.take_while {|l| l != "\n" } + ["\n"]
   puts `./octopus --cat 00000000000000000500.xlog | sed 's/tm:[^ ]* //'` + "\n"
   puts `./octopus --cat 00000000000000001002.xlog | sed 's/tm:[^ ]* //'` + "\n"
   puts `./octopus --cat 00000000000000001001.snap | sed 's/tm:[^ ]* //' | egrep 't:snap_(initial|final)_tag'`

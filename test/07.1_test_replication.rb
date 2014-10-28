@@ -1,4 +1,4 @@
-#!/usr/bin/ruby1.9.1
+#!/usr/bin/ruby
 
 $:.push 'test'
 $io_compat="io_compat=1"

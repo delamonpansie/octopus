@@ -1,4 +1,4 @@
-#!/usr/bin/ruby1.9.1
+#!/usr/bin/ruby
 
 $: << File.dirname($0) + '/lib'
 require 'run_env'
@@ -17,7 +17,7 @@ RunEnv.env_eval do
   octopus [], :out => "/dev/null", :err => "/dev/null"
 
   log_line = wait_for "expected failure" do
-    File.open('octopus.log').lines.grep(/not all WALs have been successfully read/)[0].sub(/.*> /, '')
+    File.open('octopus.log').each_line.grep(/not all WALs have been successfully read/)[0].sub(/.*> /, '')
   end
   puts log_line
 end
@@ -28,7 +28,7 @@ RunEnv.env_eval do
   stop
 
   x = File.open('00000000000000000002.xlog.tmp', 'w')
-  File.open('00000000000000000002.xlog').lines.each do |l|
+  File.open('00000000000000000002.xlog').each_line.each do |l|
     x.write(l)
     break if l == "\n"
   end
@@ -37,7 +37,7 @@ RunEnv.env_eval do
 
   octopus [], :out => "/dev/null", :err => "/dev/null"
   log_line = wait_for "expected failure" do
-    File.open('octopus.log').lines.grep(/no valid rows were read/)[0].sub(/.*> /, '')
+    File.open('octopus.log').each_line.grep(/no valid rows were read/)[0].sub(/.*> /, '')
   end
   puts log_line
 end

@@ -1,4 +1,4 @@
-#!/usr/bin/ruby1.9.1
+#!/usr/bin/ruby
 
 %w{fileutils erb stringio optparse timeout}.each {|f| require f}
 $:.push('test/lib')

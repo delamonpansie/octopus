@@ -1,4 +1,4 @@
-#!/usr/bin/ruby1.9.1
+#!/usr/bin/ruby
 
 $: << File.dirname($0) + '/lib'
 require 'run_env'
