@@ -44,7 +44,7 @@
 #include <sys/socket.h>
 #include <netinet/tcp.h>
 
-static struct mhash_t *req_registry;
+static struct mh_i32_t *req_registry;
 
 void __attribute__((constructor))
 iproto_registry_init()

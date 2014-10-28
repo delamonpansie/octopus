@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2011, 2012, 2013 Mail.RU
- * Copyright (C) 2011, 2012, 2013 Yuriy Vostrikov
+ * Copyright (C) 2011, 2012, 2013, 2014 Mail.RU
+ * Copyright (C) 2011, 2012, 2013, 2014 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -16,7 +16,7 @@
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED.  IN NO EVENT SHALL AUTHOR OR CONTRIBUTORS BE LIABLE
  * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-e * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
  * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
  * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
@@ -49,23 +49,65 @@ e * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
    SOFTWARE.
 */
 
+
+/* Examples:
+
+   // map: int -> int
+#define mh_name _intmap
+#define mh_key_t int
+#define mh_val_t int
+#include "m2hash.h"
+
+// map2: int -> int, exisiting slot struct
+#define mh_name _intmap2
+struct intmap2_slot {
+	int val;
+	int val2;
+	int key;
+};
+#define mh_slot_t intmap2_slot
+#define mh_slot_key(slot) (slot)->key
+#define mh_slot_value(slot) (slot)->val
+#include "m2hash.h"
+
+// set: int
+#define mh_name _intset
+#define mh_key_t int
+#include "m2hash.h"
+
+
+// string set with inline bitmap: low 2 bits of pointer used for hash housekeeping
+#include "murmur_hash2.c"
+#define mh_name _str
+#define mh_slot_t cstr_slot
+struct cstr_slot {
+	union {
+		const char *key;
+		uintptr_t bits;
+	};
+	//int value;
+};
+#define mh_node_size sizeof(struct cstr_slot)
+
+#define mh_hash(h, key) ({ MurmurHash2((key), strlen((key)), 13); })
+#define mh_eq(h, a, b) ({ strcmp((a), (b)) == 0; })
+
+# define mh_exist(h, i)		(h->slots[i].bits & 1)
+# define mh_setfree(h, i)	h->slots[i].bits &= ~1
+# define mh_setexist(h, i)	h->slots[i].bits |= 1
+# define mh_dirty(h, i)		(h->slots[i].bits & 2)
+# define mh_setdirty(h, i)	h->slots[i].bits |= 2
+
+#define mh_slot_key(slot) ((const char *)((slot)->bits >> 2))
+#define mh_slot_set_key(slot, key) (slot)->bits = ((slot)->bits & 3UL) | ((uintptr_t)key << 2)
+#define mh_slot_copy(new, old) (new)->bits = (((old)->bits & ~3UL) | 1UL)
+#include "m2hash.h"
+*/
+
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
 #include <math.h>
-
-#ifndef MH_INCREMENTAL_RESIZE
-#define MH_INCREMENTAL_RESIZE 1
-#endif
-
-#ifdef MH_STATIC
-#define MH_SOURCE
-#define MH_DECL static inline
-#endif
-
-#ifndef MH_DECL
-#define MH_DECL
-#endif
 
 #ifndef MH_HELPER_MACRO
 #define MH_HELPER_MACRO
@@ -73,22 +115,97 @@ e * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
 #define mh_ecat(a, b) mh_cat(a, b)
 #define _mh(x) mh_ecat(mh_name, x)
 #define mh_unlikely(x)  __builtin_expect((x),0)
+#endif
 
-#define mh_exist(h, i)		({ h->bitmap[i >> 4] & (1 << (i % 16)); })
-#define mh_dirty(h, i)		({ h->bitmap[i >> 4] & (1 << (i % 16 + 16)); })
+#ifndef MH_INCREMENTAL_RESIZE
+#define MH_INCREMENTAL_RESIZE 0
+/* incremental resize interacts badly with slot mutation and should be enabled explicitly */
+#endif
 
-#define mh_setfree(h, i)	({ h->bitmap[i >> 4] &= ~(1 << (i % 16)); })
-#define mh_setexist(h, i)	({ h->bitmap[i >> 4] |= (1 << (i % 16)); })
-#define mh_setdirty(h, i)	({ h->bitmap[i >> 4] |= (1 << (i % 16 + 16)); })
+#if MH_INCREMENTAL_RESIZE
+# define MH_INCREMENTAL_CONST const
+#else
+# define MH_INCREMENTAL_CONST
+#endif
 
-#define mh_slot(h, i)		({ ((h)->nodes + (size_t)(h)->node_size * (i)); })
-#define mh_node_key(node) 	*(mh_key_t *)((void *)node + sizeof(mh_val_t))
+#ifdef MH_STATIC
+#define MH_SOURCE
+#define MH_DECL static inline
+#else
+#define MH_DECL
+#endif
 
-#define mh_size(h)		({ (h)->size; 		})
-#define mh_begin(h)		({ 0;	})
-#define mh_end(h)		({ (h)->n_buckets;	})
+#ifndef mh_slot_t
+# ifndef mh_key_t
+#  error Either mh_slot_t or mh_key_t must be defined
+# endif
+#define mh_slot_t struct _mh(slot)
+struct _mh(slot) {
+#ifdef mh_val_t
+	mh_val_t val;
+#define mh_slot_val(slot) (slot)->val
+#endif
+	mh_key_t key;
+#ifndef mh_slot_key
+# define mh_slot_key(h, slot) 	(slot)->key
+#endif
+} __attribute__((packed));
+#else
+# ifdef mh_key_t
+#  error Either mh_slot_t or mh_key_t must be defined
+# endif
+# ifndef mh_slot_key
+#  error mh_slot_key must be defined if mh_slot_t defined
+# endif
+# define mh_key_t typeof(mh_slot_key(NULL, (mh_slot_t *)0))
+# ifdef mh_slot_val
+#  define mh_val_t typeof(mh_slot_val((mh_slot_t *)0))
+# endif
+#endif
 
-#define mh_foreach(h, i)	for(uint32_t (i) = mh_begin(h); (i) < mh_end(h); (i)++) if (mh_exist((h), (i)))
+#ifndef mh_slot_size
+#  define mh_slot_size sizeof(mh_slot_t)
+#endif
+
+#ifndef mh_hash
+# define mh_hash(h, a) a
+#endif
+
+#ifndef mh_eq
+# define mh_eq(h, a, b) ((a) == (b))
+#endif
+
+#ifndef mh_slot
+# define mh_slot(h, i)		((h)->slots + i)
+#endif
+
+#ifndef mh_slot_key_eq
+# define mh_slot_key_eq(h, i, key) mh_eq(h, mh_slot_key(h, mh_slot(h, i)), key)
+#endif
+
+#ifndef mh_slot_set_key
+# define mh_slot_set_key(h, slot, key) memcpy(&mh_slot_key(h, slot), &(key), sizeof(mh_key_t))
+#endif
+
+#ifndef mh_slot_copy
+# define mh_slot_copy(a, b) memcpy(a, b, mh_slot_size);
+#endif
+
+#ifndef mh_exist
+# define mh_bitmap
+# define mh_exist(h, i)		(h->bitmap[i >> 5] & (1UL << (i & 0x1f)))
+# define mh_setfree(h, i)	h->bitmap[i >> 5] &= ~(1UL << (i & 0x1f))
+# define mh_setexist(h, i)	h->bitmap[i >> 5] |= (1UL << (i & 0x1f))
+# define mh_dirty(h, i)		((h->bitmap[i >> 5] >> 32) & (1UL << (i & 0x1f)))
+# define mh_setdirty(h, i)	h->bitmap[i >> 5] |= (0x100000000UL << (i & 0x1f))
+#endif
+
+#ifdef mh_arg_t
+# define _mh_arg_t ,mh_arg arg
+# define _mh_arg ,arg
+#else
+# define _mh_arg_t
+# define _mh_arg
 #endif
 
 #ifndef __ac_HASH_PRIME_SIZE
@@ -105,85 +222,295 @@ static const uint32_t __ac_prime_list[__ac_HASH_PRIME_SIZE] = {
 };
 #endif
 
-#ifndef MH_HASH_T
-#define MH_HASH_T
-struct index_node;
-struct mhash_t {
-	void *nodes;
+#define mhash_t _mh(t)
+struct _mh(t) {
+	mh_slot_t *slots;
+#ifdef mh_bitmap
+	uint64_t *bitmap;
+#endif
 	uint32_t node_size;
-	uint32_t *bitmap;
 	uint32_t n_buckets, n_occupied, size, upper_bound;
 	uint32_t prime;
 
-	uint32_t resize_cnt;
-	uint32_t resizing, batch;
+	uint32_t resize_position, resize_pending_put, resize_batch;
 	struct mhash_t *shadow;
 	void *(*realloc)(void *, size_t);
+#ifdef mh_arg
+	mh_arg arg;
+#endif
 };
-#endif
-
-
-#ifndef mh_node_size
-#define mh_node_size (sizeof(mh_val_t) + sizeof(mh_key_t))
-#endif
 
 /* public api */
 MH_DECL struct mhash_t * _mh(init)(void *(*custom_realloc)(void *, size_t));
-static inline mh_key_t _mh(key)(struct mhash_t *h, uint32_t i);
-static inline mh_val_t _mh(value)(struct mhash_t *h, uint32_t i);
-static inline void     _mh(put_value)(struct mhash_t *h, uint32_t i, mh_val_t val);
-static inline uint32_t _mh(get)(struct mhash_t *h, const mh_key_t key);
-static inline uint32_t _mh(put)(struct mhash_t *h, mh_key_t key, mh_val_t val, int *ret);
-static inline uint32_t _mh(put_node)(struct mhash_t *h, struct index_node *node);
-static inline uint32_t _mh(get_node)(struct mhash_t *h, const struct index_node *node);
-static inline uint32_t _mh(get_slot)(struct mhash_t *h, const mh_key_t key);
-static inline uint32_t _mh(put_slot)(struct mhash_t *h, mh_key_t key);
+MH_DECL void _mh(destroy)(struct mhash_t *h);
+MH_DECL void _mh(clear)(struct mhash_t *h);
+MH_DECL size_t _mh(bytes)(struct mhash_t *h);
+#define mh_size(h)		({ (h)->size; 		})
+#define mh_begin(h)		({ 0;	})
+#define mh_end(h)		({ (h)->n_buckets;	})
+#define mh_foreach(type, h, x)	for (int x = 0; x < (h)->n_buckets; x++) if (mh_##type##_slot_occupied(h, x))
+
+/* basic */
+static inline uint32_t _mh(get)(const struct mhash_t *h, const mh_key_t key);
+static inline uint32_t _mh(iput)(struct mhash_t *h, const mh_key_t key, int *ret);
 static inline void _mh(del)(struct mhash_t *h, uint32_t x);
-MH_DECL void mh_clear(struct mhash_t *h);
-MH_DECL size_t mh_bytes(struct mhash_t *h);
-MH_DECL void mh_destroy(struct mhash_t *h);
+static inline int _mh(remove)(struct mhash_t *h, mh_key_t key);
+static inline int _mh(exist)(struct mhash_t *h, mh_key_t key);
+
+/*  slot */
+static inline uint32_t _mh(sget)(const struct mhash_t *h, const mh_slot_t *slot);
+static inline int _mh(sput)(struct mhash_t *h, const mh_slot_t *slot);
+static inline int _mh(sremove)(struct mhash_t *h, const mh_slot_t *slot);
+
+/* kv */
+static inline mh_key_t _mh(key)(struct mhash_t *h, uint32_t x);
+#ifdef mh_val_t
+static inline int _mh(put)(struct mhash_t *h, const mh_key_t key, mh_val_t val, mh_val_t *prev_val);
+static inline void _mh(set_value)(struct mhash_t *h, uint32_t x, mh_val_t val);
+static inline mh_val_t _mh(value)(struct mhash_t *h, uint32_t x);
+static inline MH_INCREMENTAL_CONST mh_val_t * _mh(pvalue)(struct mhash_t *h, uint32_t x);
+
+#endif
 
 /* internal api */
-MH_DECL void _mh(resize)(struct mhash_t *h);
-MH_DECL void _mh(start_resize)(struct mhash_t *h, uint32_t buckets, uint32_t batch);
-MH_DECL void _mh(put_resize)(struct mhash_t *h, mh_key_t key, mh_val_t val);
-MH_DECL void _mh(put_node_resize)(struct mhash_t *h, struct index_node *node);
-MH_DECL void _mh(del_resize)(struct mhash_t *h, uint32_t x);
-MH_DECL void *mh_malloc(struct mhash_t *h, size_t size);
-MH_DECL void *mh_calloc(struct mhash_t *h, size_t nmemb, size_t size);
-MH_DECL void mh_free(struct mhash_t *h, void *ptr);
+static inline mh_slot_t * _mh(slot)(const struct mhash_t *h, uint32_t x) { return mh_slot(h, x); }
+MH_DECL void _mh(slot_copy)(struct mhash_t *d, uint32_t dx, const mh_slot_t *source);
+MH_DECL void _mh(slot_move)(struct mhash_t *h, uint32_t dx, uint32_t sx);
+MH_DECL void _mh(resize_step)(struct mhash_t *h);
+MH_DECL void _mh(start_resize)(struct mhash_t *h, uint32_t buckets);
+
+#define mh_malloc(h, size) (h)->realloc(NULL, (size))
+#define mh_calloc(h, nmemb, size) ({			\
+	size_t __size = (size) * (nmemb);		\
+	void *__ptr = (h)->realloc(NULL, __size);	\
+	memset(__ptr, 0, __size);			\
+	__ptr; })
+#define mh_free(h, ptr) (h)->realloc((ptr), 0)
+
 #ifdef MH_DEBUG
 MH_DECL void _mh(dump)(struct mhash_t *h);
 #endif
 
-static inline mh_key_t
-_mh(key)(struct mhash_t *h, uint32_t i)
+
+static inline uint32_t
+_mh(get)(const struct mhash_t *h, const mh_key_t key)
 {
-	return mh_node_key(mh_slot(h, i));
+	int inc, k, i;
+	k = mh_hash(h, key);
+	i = k % h->n_buckets;
+	inc = 1 + k % (h->n_buckets - 1);
+	for (;;) {
+		if (mh_exist(h, i) && mh_slot_key_eq(h, i, key))
+			return i;
+
+		if (!mh_dirty(h, i))
+			return h->n_buckets;
+
+		if ((i -= inc) < 0)
+			i += h->n_buckets;
+	}
 }
 
-static inline mh_val_t
-_mh(value)(struct mhash_t *h, uint32_t i)
+static inline uint32_t
+_mh(mark)(struct mhash_t *h, const mh_key_t key)
 {
-	return *(mh_val_t *)mh_slot(h, i);
+	int inc, i, k, p = -1;
+	unsigned n_buckets = h->n_buckets;
+	k = mh_hash(h, key);
+	i = k % n_buckets;
+	inc = 1 + k % (n_buckets - 1);
+
+	do {
+		if (mh_exist(h, i)) {
+			if (mh_slot_key_eq(h, i, key))
+				return i;
+			else
+				mh_setdirty(h, i);
+		} else {
+			if (!mh_dirty(h, i)) {
+				h->n_occupied++;
+				return i;
+			} else {
+				p = i;
+			}
+		}
+
+		if ((i -= inc) < 0)
+			i += n_buckets;
+	} while (p < 0);
+
+	for (;;) {
+		if (!mh_exist(h, i)) {
+			if (!mh_dirty(h, i)) {
+				h->n_occupied++;
+				return p;
+			}
+		} else {
+			if (mh_slot_key_eq(h, i, key))
+				return i;
+		}
+		if ((i -= inc) < 0)
+			i += n_buckets;
+	}
+}
+
+
+static inline uint32_t
+_mh(iput)(struct mhash_t *h, const mh_key_t key, int *ret)
+{
+#if MH_INCREMENTAL_RESIZE
+	if (mh_unlikely(h->resize_position))
+		_mh(resize_step)(h);
+	else
+#endif
+	if (mh_unlikely(h->n_occupied >= h->upper_bound))
+		_mh(start_resize)(h, 0);
+
+	uint32_t x = _mh(mark)(h, key);
+#if MH_INCREMENTAL_RESIZE
+	if (x < h->resize_position)
+		h->resize_pending_put = x;
+#endif
+	int exist = mh_exist(h, x);
+	if (!exist) {
+		mh_setexist(h, x);
+		h->size++;
+
+		mh_slot_set_key(h, mh_slot(h, x), key);
+	}
+
+	if (ret)
+		*ret = !exist;
+	return x;
 }
 
 static inline void
-_mh(put_value)(struct mhash_t *h, uint32_t i, mh_val_t val)
+_mh(del)(struct mhash_t *h, uint32_t x)
 {
-        *(mh_val_t*)mh_slot(h, i) = val;
+	mh_setfree(h, x);
+	h->size--;
+	if (!mh_dirty(h, x))
+		h->n_occupied--;
+
 #if MH_INCREMENTAL_RESIZE
-        if (h->resizing) {
-                _mh(put)(h->shadow, _mh(key)(h, i), val, NULL);
-        }
+	if (mh_unlikely(h->resize_position)) {
+		if (x < h->resize_position) {
+			mh_key_t key = mh_slot_key(h, mh_slot(h, x)); /* mh_setfree() MUST keep key valid */
+			struct mhash_t *s = h->shadow;
+			uint32_t y = _mh(get)(s, key);
+
+			if (y != s->n_buckets)
+				_mh(del)(s, y);
+
+			if (h->resize_pending_put == x)
+				h->resize_pending_put = -1;
+
+			_mh(resize_step)(h);
+		}
+	}
 #endif
 }
 
-static inline mh_val_t *
-_mh(pvalue)(struct mhash_t *h, uint32_t i)
+static inline int
+_mh(remove)(struct mhash_t *h, mh_key_t key)
 {
-	return (mh_val_t *)mh_slot(h, i);
+	uint32_t x = _mh(get)(h, key);
+	if (x != h->n_buckets)
+		_mh(del)(h, x);
+	return x != h->n_buckets;
 }
+
+/* slot variants */
+static inline uint32_t
+_mh(sget)(const struct mhash_t *h, const mh_slot_t *slot)
+{
+	return _mh(get)(h, mh_slot_key(h, slot));
+}
+
+static inline int
+_mh(sput)(struct mhash_t *h, const mh_slot_t *slot)
+{
+#if MH_INCREMENTAL_RESIZE
+	if (mh_unlikely(h->resize_position))
+		_mh(resize_step)(h);
+	else
+#endif
+	if (mh_unlikely(h->n_occupied >= h->upper_bound))
+		_mh(start_resize)(h, 0);
+
+	uint32_t x = _mh(mark)(h, mh_slot_key(h, slot));
+#if MH_INCREMENTAL_RESIZE
+	if (x < h->resize_position)
+		h->resize_pending_put = x;
+#endif
+	int exist = mh_exist(h, x);
+	if (!exist)
+		h->size++; /* exists bit will be set by slot_copy() */
+
+	_mh(slot_copy)(h, x, slot); /* always copy: overwrite old slot val if exists */
+
+	return !exist;
+}
+
+static inline int
+_mh(sremove)(struct mhash_t *h, const mh_slot_t *slot)
+{
+	uint32_t x = _mh(get)(h, mh_slot_key(h, slot));
+	if (x != h->n_buckets)
+		_mh(del)(h, x);
+	return x != h->n_buckets;
+}
+
+static inline mh_key_t _mh(key)(struct mhash_t *h, uint32_t x)
+{
+	return mh_slot_key(h, mh_slot(h, x));
+}
+
+#ifdef mh_val_t
+static inline int
+_mh(put)(struct mhash_t *h, const mh_key_t key, mh_val_t val, mh_val_t *prev_val)
+{
+
+	int ret;
+	uint32_t x = _mh(iput)(h, key, &ret);
+
+	mh_slot_t *slot = mh_slot(h, x);
+	if (ret && prev_val)
+		*prev_val = mh_slot_val(slot);
+
+	_mh(set_value)(h, x, val);
+	return ret;
+}
+
+static inline void
+_mh(set_value)(struct mhash_t *h, uint32_t x, mh_val_t val)
+{
+	mh_slot_t *slot = mh_slot(h, x);
+#ifndef mh_slot_set_val
+	memcpy(&mh_slot_val(slot), &(val), sizeof(mh_val_t));
+#else
+	mh_slot_set_val(slot, val);
+#endif
+
+#if MH_INCREMENTAL_RESIZE
+	if (x < h->resize_position)
+		h->resize_pending_put = x;
+#endif
+}
+
+static inline mh_val_t
+_mh(value)(struct mhash_t *h, uint32_t x)
+{
+	return mh_slot_val(mh_slot(h, x));
+}
+
+static inline MH_INCREMENTAL_CONST mh_val_t *
+_mh(pvalue)(struct mhash_t *h, uint32_t x)
+{
+	return &mh_slot_val(mh_slot(h, x));
+}
+
+#endif
 
 static inline int
 _mh(exist)(struct mhash_t *h, mh_key_t key)
@@ -194,217 +521,16 @@ _mh(exist)(struct mhash_t *h, mh_key_t key)
 	return (k != mh_end(h));
 }
 
-static inline uint32_t
-_mh(get_slot)(struct mhash_t *h, const mh_key_t key)
+
+static inline int
+_mh(slot_occupied)(struct mhash_t *h, uint32_t x)
 {
-	uint32_t inc, k, i;
-	k = mh_hash(key);
-	i = k % h->n_buckets;
-	inc = 1 + k % (h->n_buckets - 1);
-	for (;;) {
-		if ((mh_exist(h, i) && mh_eq(mh_slot(h, i), key)))
-			return i;
-
-		if (!mh_dirty(h, i))
-			return h->n_buckets;
-
-		i += inc;
-		if (i >= h->n_buckets)
-			i -= h->n_buckets;
-	}
+	return mh_exist(h, x);
 }
 
-#if 0
-static inline uint32_t
-_mh(put_slot)(struct mhash_t *h, mh_key_t key)
-{
-	uint32_t inc, k, i, p = h->n_buckets;
-	k = mh_hash(key);
-	i = k % h->n_buckets;
-	inc = 1 + k % (h->n_buckets - 1);
-	for (;;) {
-		if (mh_exist(h, i)) {
-			if (mh_eq(mh_slot(h, i), key))
-				return i;
-			if (p == h->n_buckets)
-				mh_setdirty(h, i);
-		} else {
-			if (p == h->n_buckets)
-				p = i;
-			if (!mh_dirty(h, i))
-				return p;
-		}
+#ifdef MH_SOURCE
 
-		i += inc;
-		if (i >= h->n_buckets)
-			i -= h->n_buckets;
-	}
-}
-#endif
-
-/* Faster variant of above loop */
-static inline uint32_t
-_mh(put_slot)(struct mhash_t *h, mh_key_t key)
-{
-	uint32_t inc, k, i, p = h->n_buckets;
-	void *loop = &&marking_loop;
-	k = mh_hash(key);
-	i = k % h->n_buckets;
-	inc = 1 + k % (h->n_buckets - 1);
-marking_loop:
-	if (mh_exist(h, i)) {
-		if (mh_eq(mh_slot(h, i), key))
-			return i;
-
-		mh_setdirty(h, i);
-		goto next_slot;
-	} else {
-		p = i;
-		loop = &&nonmarking_loop;
-		goto continue_nonmarking;
-	}
-
-nonmarking_loop:
-	if (mh_exist(h, i)) {
-		if (mh_eq(mh_slot(h, i), key))
-			return i;
-	} else {
-	continue_nonmarking:
-		if (!mh_dirty(h, i))
-			return p;
-	}
-
-next_slot:
-	i += inc;
-	if (i >= h->n_buckets)
-		i -= h->n_buckets;
-	goto *loop;
-}
-
-
-static inline uint32_t
-_mh(get)(struct mhash_t *h, const mh_key_t key)
-{
-	uint32_t i = _mh(get_slot)(h, key);
-	if (!mh_exist(h, i))
-		return i = h->n_buckets;
-#ifdef MH_PARANOIA
-	assert(mh_eq(mh_slot(h, i), key));
-#endif
-	return i;
-}
-
-static inline uint32_t
-_mh(get_node)(struct mhash_t *h, const struct index_node *node)
-{
-	uint32_t i = _mh(get)(h, mh_node_key(node));
-#ifdef MH_PARANOIA
-	assert(i == h->n_buckets || mh_eq(mh_slot(h, i), mh_node_key(node)));
-	assert(i <= h->n_buckets);
-#endif
-	return i;
-}
-
-static inline uint32_t
-_mh(put)(struct mhash_t *h, mh_key_t key, mh_val_t val, int *ret)
-{
-#if MH_INCREMENTAL_RESIZE
-	if (mh_unlikely(h->n_occupied >= h->upper_bound || h->resizing > 0))
-		_mh(put_resize)(h, key, val);
-#else
-	if (mh_unlikely(h->n_occupied >= h->upper_bound))
-		_mh(start_resize)(h, 0, -1);
-#endif
-	uint32_t x = _mh(put_slot)(h, key);
-	int found = !mh_exist(h, x);
-	if (ret)
-		*ret = found;
-
-	void *node = mh_slot(h, x);
-
-	memcpy(node, &val, sizeof(val));
-
-	if (found) {
-		mh_setexist(h, x);
-		h->size++;
-		if (!mh_dirty(h, x))
-			h->n_occupied++;
-
-		memcpy(node + sizeof(val), &key, sizeof(key));
-	}
-
-	return x;
-}
-
-static inline uint32_t
-_mh(put_node)(struct mhash_t *h, struct index_node *node)
-{
-	mh_key_t key = mh_node_key(node);
-#if MH_INCREMENTAL_RESIZE
-	if (mh_unlikely(h->n_occupied >= h->upper_bound || h->resizing > 0))
-		_mh(put_node_resize)(h, node);
-#else
-	if (mh_unlikely(h->n_occupied >= h->upper_bound))
-		_mh(start_resize)(h, 0, -1);
-#endif
-	uint32_t x = _mh(put_slot)(h, key);
-
-	if (!mh_exist(h, x)) {
-		mh_setexist(h, x);
-		h->size++;
-		if (!mh_dirty(h, x))
-			h->n_occupied++;
-	}
-	memcpy(mh_slot(h, x), node, mh_node_size);
-	return x;
-}
-
-static inline void
-_mh(del)(struct mhash_t *h, uint32_t x)
-{
-	if (x != h->n_buckets && mh_exist(h, x)) {
-		mh_setfree(h, x);
-		h->size--;
-		if (!mh_dirty(h, x))
-			h->n_occupied--;
-#if MH_INCREMENTAL_RESIZE
-		if (mh_unlikely(h->resizing))
-			_mh(del_resize)(h, x);
-#endif
-	}
-}
-
-#if defined(MH_SOURCE)
-MH_DECL void
-_mh(put_resize)(struct mhash_t *h, mh_key_t key, mh_val_t val)
-{
-	if (h->resizing > 0)
-		_mh(resize)(h);
-	else
-		_mh(start_resize)(h, 0, 0);
-	if (h->resizing)
-		_mh(put)(h->shadow, key, val, NULL);
-}
-
-MH_DECL void
-_mh(put_node_resize)(struct mhash_t *h, struct index_node *node)
-{
-	if (h->resizing > 0)
-		_mh(resize)(h);
-	else
-		_mh(start_resize)(h, 0, 0);
-	if (h->resizing)
-		_mh(put_node)(h->shadow, node);
-}
-
-MH_DECL void
-_mh(del_resize)(struct mhash_t *h, uint32_t x)
-{
-	struct mhash_t *s = h->shadow;
-	uint32_t y = _mh(get_slot)(s, mh_node_key(mh_slot(h, x)));
-	_mh(del)(s, y);
-	_mh(resize)(h);
-}
+#define load_factor 0.8
 
 MH_DECL struct mhash_t *
 _mh(init)(void *(*custom_realloc)(void *, size_t))
@@ -413,47 +539,83 @@ _mh(init)(void *(*custom_realloc)(void *, size_t))
 	struct mhash_t *h = custom_realloc(NULL, sizeof(*h));
 	memset(h, 0, sizeof(*h));
 	h->realloc = custom_realloc;
-	h->node_size = mh_node_size;
+	h->node_size = mh_slot_size;
 	h->shadow = mh_calloc(h, 1, sizeof(*h));
 	h->n_buckets = 3;
-	h->nodes = mh_calloc(h, h->n_buckets, h->node_size);
-	h->bitmap = mh_calloc(h, h->n_buckets / 16 + 1, sizeof(uint32_t));
-	h->upper_bound = h->n_buckets * 0.7;
+	h->slots = mh_calloc(h, h->n_buckets, h->node_size);
+#ifdef mh_bitmap
+	h->bitmap = mh_calloc(h, 1 + h->n_buckets / ( 4 * sizeof(*h->bitmap)), sizeof(*h->bitmap)); /* 4 maps per char */
+#endif
+	h->upper_bound = h->n_buckets * load_factor;
 	return h;
 }
 
 MH_DECL void
-_mh(resize)(struct mhash_t *h)
+_mh(slot_copy)(struct mhash_t *d, uint32_t dx, const mh_slot_t *source)
 {
-	struct mhash_t *s = h->shadow;
-#if MH_INCREMENTAL_RESIZE
-	uint32_t batch = h->batch;
+	mh_slot_copy(mh_slot(d, dx), source);
+#ifdef mh_bitmap
+	/* mh_slot_copy must set exist bit for inline bitmaps */
+	mh_setexist(d, dx);
 #endif
-	for (uint32_t o = h->resizing; o < h->n_buckets; o++) {
-#if MH_INCREMENTAL_RESIZE
-		if (batch-- == 0) {
-			h->resizing = o;
-			return;
-		}
-#endif
-		if (!mh_exist(h, o))
-			continue;
-		uint32_t n = _mh(put_slot)(s, mh_node_key(mh_slot(h, o)));
-		memcpy(mh_slot(s, n), mh_slot(h, o), mh_node_size);
-		mh_setexist(s, n);
-		s->n_occupied++;
-	}
-	mh_free(h, h->nodes);
-	mh_free(h, h->bitmap);
-	s->size = h->size;
-	memcpy(h, s, sizeof(*h));
-	h->resize_cnt++;
 }
 
 MH_DECL void
-_mh(start_resize)(struct mhash_t *h, uint32_t want_size, uint32_t batch)
+_mh(slot_move)(struct mhash_t *h, uint32_t dx, uint32_t sx)
 {
-	if (h->resizing)
+	_mh(slot_copy)(h, dx, mh_slot(h, sx));
+	mh_setfree(h, sx);
+}
+
+static inline void
+_mh(slot_copy_to_shadow)(struct mhash_t *h, uint32_t o)
+{
+	struct mhash_t *s = h->shadow;
+	if (!mh_exist(h, o))
+		return;
+
+	mh_slot_t *slot = mh_slot(h, o);
+	uint32_t n = _mh(mark)(s, mh_slot_key(s, slot));
+	_mh(slot_copy)(s, n, slot);
+}
+
+MH_DECL void
+_mh(resize_step)(struct mhash_t *h)
+{
+	struct mhash_t *s = h->shadow;
+	uint32_t start = h->resize_position,
+		   end = h->n_buckets;
+
+#if MH_INCREMENTAL_RESIZE
+	if (h->resize_pending_put != -1) {
+		_mh(slot_copy_to_shadow)(h, h->resize_pending_put);
+		h->resize_pending_put = -1;
+	}
+
+	uint32_t batch_end = h->resize_position + h->resize_batch;
+	if (batch_end < end)
+		end = batch_end;
+
+	h->resize_position += h->resize_batch;
+#endif
+
+	for (uint32_t o = start; o < end; o++)
+		_mh(slot_copy_to_shadow)(h, o);
+
+	if (end == h->n_buckets) {
+		mh_free(h, h->slots);
+#ifdef mh_bitmap
+		mh_free(h, h->bitmap);
+#endif
+		s->size = h->size;
+		memcpy(h, s, sizeof(*h));
+	}
+}
+
+MH_DECL void
+_mh(start_resize)(struct mhash_t *h, uint32_t want_size)
+{
+	if (h->resize_position)
 		return;
 	struct mhash_t *s = h->shadow;
 	uint32_t size = h->size > want_size ? h->size : want_size;
@@ -465,20 +627,68 @@ _mh(start_resize)(struct mhash_t *h, uint32_t want_size, uint32_t batch)
 				break;
 			}
 	}
-	h->batch = batch > 0 ? batch : h->n_buckets / (256 * 1024);
-	if (h->batch < 256) /* minimum batch is 3 */
-		h->batch = 256;
+#if MH_INCREMENTAL_RESIZE
+	h->resize_batch = h->n_buckets / (256 * 1024);
+	if (h->resize_batch < 256) /* minimum resize_batch is 3 */
+		h->resize_batch = 256;
+	h->resize_pending_put = -1;
+#endif
 	memcpy(s, h, sizeof(*h));
-	s->resizing = 0;
+	s->resize_position = 0;
 	s->n_buckets = __ac_prime_list[h->prime];
-	s->upper_bound = s->n_buckets * 0.7;
+	s->upper_bound = s->n_buckets * load_factor;
 	s->n_occupied = 0;
-	s->nodes = mh_malloc(h, (size_t)s->n_buckets * h->node_size);
-	s->bitmap = mh_calloc(h, s->n_buckets / 16 + 1, sizeof(uint32_t));
-	_mh(resize)(h);
+#ifdef mh_bitmap
+	s->slots = mh_malloc(h, (size_t)s->n_buckets * h->node_size);
+	s->bitmap = mh_calloc(h, 1 + s->n_buckets / ( 4 * sizeof(*s->bitmap)), sizeof(*s->bitmap)); /* 4 maps per char */
+#else
+	s->slots = mh_calloc(h, s->n_buckets, h->node_size);
+#endif
+
+	_mh(resize_step)(h);
 }
 
-#  ifdef MH_DEBUG
+MH_DECL size_t
+_mh(bytes)(struct mhash_t *h)
+{
+	return h->resize_position ? _mh(bytes)(h->shadow) : 0 +
+		sizeof(*h) +
+		(size_t)h->n_buckets * h->node_size +
+		((size_t)h->n_buckets / 16 + 1) *  sizeof(uint32_t);
+
+}
+
+MH_DECL void
+_mh(clear)(struct mhash_t *h)
+{
+	mh_free(h, h->slots);
+#ifdef mh_bitmap
+	mh_free(h, h->bitmap);
+#endif
+	h->n_buckets = 3;
+	h->prime = 0;
+	h->upper_bound = h->n_buckets * load_factor;
+#ifdef mh_bitmap
+	h->slots = mh_malloc(h, (size_t)h->n_buckets * h->node_size);
+	h->bitmap = mh_calloc(h, h->n_buckets / 16 + 1, sizeof(uint32_t));
+#else
+	h->slots = mh_calloc(h, h->n_buckets, h->node_size);
+#endif
+}
+
+MH_DECL void
+_mh(destroy)(struct mhash_t *h)
+{
+	mh_free(h, h->shadow);
+#ifdef mh_bitmap
+	mh_free(h, h->bitmap);
+#endif
+	mh_free(h, h->slots);
+	mh_free(h, h);
+}
+
+#ifdef MH_DEBUG
+#include <stdio.h>
 MH_DECL void
 _mh(dump)(struct mhash_t *h)
 {
@@ -488,7 +698,7 @@ _mh(dump)(struct mhash_t *h)
 		if (mh_dirty(h, i) || mh_exist(h, i)) {
 			printf("   [%i] ", i);
 			if (mh_exist(h, i)) {
-				printf("   -> %i", (int)h->p[i].key);
+				printf("   -> %s", h->slots[i].key);
 				k++;
 			}
 			if (mh_dirty(h, i))
@@ -503,64 +713,30 @@ _mh(dump)(struct mhash_t *h)
 
 #undef mh_key_t
 #undef mh_val_t
-#undef mh_name
+#undef mh_slot_t
+
+#undef mh_slot
+#undef mh_slot_key
+#undef mh_slot_val
+#undef mh_slot_size
+
 #undef mh_hash
 #undef mh_eq
+#undef mh_slot_key_eq
+#undef mh_slot_set_key
+#undef mh_slot_copy
 
+#undef mh_arg
 
-#if defined(MH_SOURCE) && !defined(MH_COMMON_SOURCE)
-#define MH_COMMON_SOURCE
+#undef mh_bitmap
+#undef mh_exist
+#undef mh_setfree
+#undef mh_setexist
+#undef mh_dirty
+#undef mh_setdirty
 
-MH_DECL void
-mh_clear(struct mhash_t *h)
-{
-	mh_free(h, h->nodes);
-	mh_free(h, h->bitmap);
-	h->n_buckets = 3;
-	h->prime = 0;
-	h->upper_bound = h->n_buckets * 0.7;
-	h->nodes = mh_malloc(h, (size_t)h->n_buckets * h->node_size);
-	h->bitmap = mh_calloc(h, h->n_buckets / 16 + 1, sizeof(uint32_t));
-}
+#undef mh_malloc
+#undef mh_calloc
+#undef mh_free
 
-MH_DECL void
-mh_destroy(struct mhash_t *h)
-{
-	mh_free(h, h->shadow);
-	mh_free(h, h->bitmap);
-	mh_free(h, h->nodes);
-	mh_free(h, h);
-}
-
-MH_DECL size_t
-mh_bytes(struct mhash_t *h)
-{
-	return h->resizing ? mh_bytes(h->shadow) : 0 +
-		sizeof(*h) +
-		(size_t)h->n_buckets * h->node_size +
-		((size_t)h->n_buckets / 16 + 1) *  sizeof(uint32_t);
-
-}
-
-MH_DECL void *
-mh_malloc(struct mhash_t *h, size_t size)
-{
-	return h->realloc(NULL, size);
-}
-
-MH_DECL void *
-mh_calloc(struct mhash_t *h, size_t nmemb, size_t size)
-{
-	size *= nmemb;
-	void *ptr = h->realloc(NULL, size);
-	memset(ptr, 0, size);
-	return ptr;
-}
-
-MH_DECL void
-mh_free(struct mhash_t *h, void *ptr)
-{
-	h->realloc(ptr, 0);
-}
-
-#endif
+#undef mh_name

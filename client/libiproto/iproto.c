@@ -72,8 +72,6 @@ enum li_error_codes ENUM_INITIALIZER(SUM_ERROR_CODES);
 #define mh_name _sp_request
 #define mh_key_t u_int32_t
 #define mh_val_t struct iproto_request_t*
-#define mh_hash(a) ({ (a); })
-#define mh_eq(a, b) ({ *(mh_key_t *)((a) + sizeof(mh_val_t)) == (b); })
 #include <mhash.h>
 
 
@@ -218,7 +216,7 @@ struct iproto_connection_t {
 		} un;
 	}					serv_addr;
 	memalloc				sp_alloc;
-	struct mhash_t				*requestHash;
+	struct mh_sp_request_t			*requestHash;
 	u_int32_t				mirrorCnt;
 	u_int32_t				nReqInProgress;
 
@@ -561,10 +559,10 @@ li_close(struct iproto_connection_t *c) {
 	}
 	memset(&c->serv_addr, 0, sizeof(c->serv_addr));
 
-	mh_foreach(c->requestHash, k)
+	mh_foreach(sp_request, c->requestHash, k)
 		freeData(mh_sp_request_value(c->requestHash, k));
 
-	mh_clear(c->requestHash);
+	mh_sp_request_clear(c->requestHash);
 
 	TAILQ_INIT(&c->sendList);
 	TAILQ_INIT(&c->recvList);
@@ -582,7 +580,7 @@ li_free(struct iproto_connection_t *c) {
 	if (c->connectState != NotConnected)
 		li_close(c);
 
-	mh_destroy(c->requestHash);
+	mh_sp_request_destroy(c->requestHash);
 
 	if (c->iovSend)
 		c->sp_alloc(c->iovSend, 0);

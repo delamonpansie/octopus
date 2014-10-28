@@ -148,17 +148,24 @@ struct dtor_conf {
 
 @interface Hash: Index {
 	size_t iter;
-	struct mhash_t *h;
 }
 @end
 
-@interface LStringHash: Hash <HashIndex>
+@interface LStringHash: Hash <HashIndex> {
+	struct mh_lstr_t *h;
+}
 @end
-@interface CStringHash: Hash <HashIndex>
+@interface CStringHash: Hash <HashIndex> {
+	struct mh_cstr_t *h;
+}
 @end
-@interface Int32Hash: Hash <HashIndex>
+@interface Int32Hash: Hash <HashIndex> {
+	struct mh_i32_t *h;
+}
 @end
-@interface Int64Hash: Hash <HashIndex>
+@interface Int64Hash: Hash <HashIndex> {
+	struct mh_i64_t *h;
+}
 @end
 
 /* must be same as sptree_direction_t */

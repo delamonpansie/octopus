@@ -41,25 +41,25 @@
 # include <sys/param.h>
 #endif
 
-typedef const char* cstr;
 struct node {
 	int* value;
-	cstr key;
+	const char *key;
 } __attribute__((packed));
 #define mh_name _cstr
-#define mh_key_t cstr
-#define mh_val_t int*
+#define mh_slot_t struct node
+#define mh_slot_key(h, node) (node)->key
+#define mh_slot_val(node) (node)->value
 #if SIZEOF_VOID_P == 8
-# define mh_hash(a) ({ (uint32_t)(((uintptr_t)a)>>33^((uintptr_t)a)^((uintptr_t)a)<<11); })
+# define mh_hash(h, a) ({ (uint32_t)(((uintptr_t)a)>>33^((uintptr_t)a)^((uintptr_t)a)<<11); })
 #else
-# define mh_hash(a) ({ (uintptr_t)a; })
+# define mh_hash(h, a) ({ (uintptr_t)a; })
 #endif
 
-#define mh_eq(a, b) ({ strcmp(*(mh_key_t *)((a) + sizeof(mh_val_t)), (b)) == 0; })
+#define mh_eq(h, a, b) ({ strcmp((a), (b)) == 0; })
 #define MH_STATIC
 #include <mhash.h>
 
-static struct mhash_t *filter;
+static struct mh_cstr_t *filter;
 
 int stderrfd, sayfd = STDERR_FILENO;
 int dup_to_stderr = 0;
@@ -111,9 +111,9 @@ say_level_source(const char *file, int diff)
 	int max = 0;
 	int found = 0;
 	for (int k = 0; k < mh_end(filter); k++) {
-		if (!mh_exist(filter, k))
+		if (!mh_cstr_slot_occupied(filter, k))
 		    continue;
-		struct node *n = mh_slot(filter, k);
+		struct node *n = mh_cstr_slot(filter, k);
 		if (strcmp(file, "ALL") == 0 || strcmp(file, n->key) == 0) {
 			*(n->value) += diff;
 			found = 1;
@@ -130,10 +130,9 @@ say_list_sources(void)
 {
 	puts("ALL");
 	for (int k = 0; k < mh_end(filter); k++) {
-		if (!mh_exist(filter, k))
+		if (!mh_cstr_slot_occupied(filter, k))
 		    continue;
-		struct node *n = mh_slot(filter, k);
-		puts(n->key);
+		puts(mh_cstr_slot(filter, k)->key);
 	}
 }
 
