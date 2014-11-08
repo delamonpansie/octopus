@@ -212,16 +212,6 @@ net_add_iov(struct netmsg_head *h, const void *buf, size_t len)
 	}
 }
 
-
-struct iovec *
-net_reserve_iov(struct netmsg_head *h)
-{
-	struct netmsg *m = TAILQ_FIRST(&h->q);
-	struct iovec *v = m->iov + m->count;
-	net_add_iov(h, NULL, 0);
-	return v;
-}
-
 void
 net_add_iov_dup(struct netmsg_head *h, const void *buf, size_t len)
 {
