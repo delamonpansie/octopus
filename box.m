@@ -331,6 +331,7 @@ snapshot_fold
 			tuple = box_tuple(obj);
 #ifdef FOLD_DEBUG
 			struct tbuf *b = tbuf_alloc(fiber->pool);
+			extern void tuple_print(struct tbuf *buf, u32 cardinality, void *f);
 			tuple_print(b, tuple->cardinality, tuple->data);
 			say_info("row %i: %.*s", count++, tbuf_len(b), (char *)b->ptr);
 #endif
