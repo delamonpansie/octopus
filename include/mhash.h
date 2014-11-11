@@ -167,12 +167,13 @@ struct _mh(slot) {
 #  define mh_slot_size sizeof(mh_slot_t)
 #endif
 
+/* value of mh_hash(h, a) should be unsigned */
 #ifndef mh_hash
-# define mh_hash(h, a) a
+# define mh_hash(h, a) mh_def_hash(a)
 #endif
 
 #ifndef mh_eq
-# define mh_eq(h, a, b) ((a) == (b))
+# define mh_eq(h, a, b) mh_def_eq(a, b)
 #endif
 
 #ifndef mh_slot
@@ -192,20 +193,24 @@ struct _mh(slot) {
 #endif
 
 #ifndef mh_exist
-# define mh_bitmap
-# define mh_exist(h, i)		(h->bitmap[i >> 5] & (1UL << (i & 0x1f)))
-# define mh_setfree(h, i)	h->bitmap[i >> 5] &= ~(1UL << (i & 0x1f))
-# define mh_setexist(h, i)	h->bitmap[i >> 5] |= (1UL << (i & 0x1f))
-# define mh_dirty(h, i)		((h->bitmap[i >> 5] >> 32) & (1UL << (i & 0x1f)))
-# define mh_setdirty(h, i)	h->bitmap[i >> 5] |= (0x100000000UL << (i & 0x1f))
-#endif
-
-#ifdef mh_arg_t
-# define _mh_arg_t ,mh_arg arg
-# define _mh_arg ,arg
-#else
-# define _mh_arg_t
-# define _mh_arg
+# if SIZEOF_VOID_P == 8
+/* assumes sizeof(void *) == sizeof(usigned long) */
+# define mh_bitmap_t uint64_t
+# define hash_t uint64_t
+#  define mh_exist(h, i)	(h->bitmap[i >> 5] & (1UL << (i & 0x1f)))
+#  define mh_setfree(h, i)	h->bitmap[i >> 5] &= ~(1UL << (i & 0x1f))
+#  define mh_setexist(h, i)	h->bitmap[i >> 5] |= (1UL << (i & 0x1f))
+#  define mh_dirty(h, i)	((h->bitmap[i >> 5] >> 0x20) & (1UL << (i & 0x1f)))
+#  define mh_setdirty(h, i)	h->bitmap[i >> 5] |= (0x100000000UL << (i & 0x1f))
+# else
+# define hash_t uint32_t
+# define mh_bitmap_t uint32_t
+#  define mh_exist(h, i)	(h->bitmap[i >> 4] & (1UL << (i & 0xf)))
+#  define mh_setfree(h, i)	h->bitmap[i >> 4] &= ~(1UL << (i & 0xf))
+#  define mh_setexist(h, i)	h->bitmap[i >> 4] |= (1UL << (i & 0xf))
+#  define mh_dirty(h, i)	((h->bitmap[i >> 4] >> 0x10) & (1UL << (i & 0xf)))
+#  define mh_setdirty(h, i)	h->bitmap[i >> 4] |= (0x10000UL << (i & 0xf))
+# endif
 #endif
 
 #ifndef __ac_HASH_PRIME_SIZE
@@ -225,8 +230,8 @@ static const uint32_t __ac_prime_list[__ac_HASH_PRIME_SIZE] = {
 #define mhash_t _mh(t)
 struct _mh(t) {
 	mh_slot_t *slots;
-#ifdef mh_bitmap
-	uint64_t *bitmap;
+#ifdef mh_bitmap_t
+	mh_bitmap_t *bitmap;
 #endif
 	uint32_t node_size;
 	uint32_t n_buckets, n_occupied, size, upper_bound;
@@ -235,8 +240,8 @@ struct _mh(t) {
 	uint32_t resize_position, resize_pending_put, resize_batch;
 	struct mhash_t *shadow;
 	void *(*realloc)(void *, size_t);
-#ifdef mh_arg
-	mh_arg arg;
+#ifdef mh_arg_t
+	mh_arg_t arg;
 #endif
 };
 
@@ -292,13 +297,113 @@ MH_DECL void _mh(dump)(struct mhash_t *h);
 #endif
 
 
+#ifndef mh_def_hash
+static inline unsigned mh_u64_hash(uint64_t kk) { return  (kk >> 34) ^ ((kk  >> 17) & 0xffff8000) ^ kk; }
+//-----------------------------------------------------------------------------
+// MurmurHash2, by Austin Appleby
+
+// Note - This code makes a few assumptions about how your machine behaves -
+
+// 1. We can read a 4-byte value from any address without crashing
+// 2. sizeof(int) == 4
+
+// And it has a few limitations -
+
+// 1. It will not work incrementally.
+// 2. It will not produce the same results on little-endian and big-endian
+//    machines.
+
+static inline unsigned int mh_MurmurHash2 ( const void * key, int len, unsigned int seed )
+{
+	// 'm' and 'r' are mixing constants generated offline.
+	// They're not really 'magic', they just happen to work well.
+
+	const unsigned int m = 0x5bd1e995;
+	const int r = 24;
+
+	// Initialize the hash to a 'random' value
+
+	unsigned int h = seed ^ len;
+
+	// Mix 4 bytes at a time into the hash
+
+	const unsigned char * data = (const unsigned char *)key;
+
+	while(len >= 4)
+	{
+		unsigned int k = *(unsigned int *)data;
+
+		k *= m;
+		k ^= k >> r;
+		k *= m;
+
+		h *= m;
+		h ^= k;
+
+		data += 4;
+		len -= 4;
+	}
+
+	// Handle the last few bytes of the input array
+
+	switch(len)
+	{
+	case 3: h ^= data[2] << 16;
+	case 2: h ^= data[1] << 8;
+	case 1: h ^= data[0];
+	        h *= m;
+	};
+
+	// Do a few final mixes of the hash to ensure the last few
+	// bytes are well-incorporated.
+
+	h ^= h >> 13;
+	h *= m;
+	h ^= h >> 15;
+
+	return h;
+}
+
+static inline unsigned mh_str_hash(const char *kk) { return  mh_MurmurHash2(kk, strlen(kk), 13); }
+#define mh_def_hash(key) ({						\
+	unsigned ret;							\
+	if (__builtin_types_compatible_p(mh_key_t, uint32_t) ||		\
+	    __builtin_types_compatible_p(mh_key_t, int32_t))		\
+		ret = (key);						\
+	else if (__builtin_types_compatible_p(mh_key_t, uint64_t) ||	\
+		 __builtin_types_compatible_p(mh_key_t, int64_t))	\
+		ret = mh_u64_hash(key);					\
+	else if (__builtin_types_compatible_p(mh_key_t, char *))	\
+		ret = mh_str_hash((const char *)(uintptr_t)key);	\
+	else								\
+		abort();						\
+	ret;								\
+})
+
+#define mh_def_eq(a, b) ({						\
+	int ret;							\
+	if (__builtin_types_compatible_p(mh_key_t, uint32_t) ||		\
+	    __builtin_types_compatible_p(mh_key_t, int32_t) ||		\
+	    __builtin_types_compatible_p(mh_key_t, uint64_t) ||		\
+	    __builtin_types_compatible_p(mh_key_t, int64_t))		\
+		ret = (a) == (b);					\
+	else if (__builtin_types_compatible_p(mh_key_t, char *))	\
+		ret = !strcmp((const char *)(uintptr_t)(a), (const char *)(uintptr_t)(b)); \
+	else								\
+		abort();						\
+	ret;								\
+})
+
+#endif
+
 static inline uint32_t
 _mh(get)(const struct mhash_t *h, const mh_key_t key)
 {
-	int inc, k, i;
-	k = mh_hash(h, key);
-	i = k % h->n_buckets;
-	inc = 1 + k % (h->n_buckets - 1);
+	int inc, i;
+	unsigned n_buckets = h->n_buckets;
+	unsigned k = mh_hash(h, key);
+	i = k % n_buckets;
+	inc = 1 + k % (n_buckets - 1);
 	for (;;) {
 		if (mh_exist(h, i) && mh_slot_key_eq(h, i, key))
 			return i;
@@ -314,9 +419,9 @@ _mh(get)(const struct mhash_t *h, const mh_key_t key)
 static inline uint32_t
 _mh(mark)(struct mhash_t *h, const mh_key_t key)
 {
-	int inc, i, k, p = -1;
+	int i, inc, p = -1;
 	unsigned n_buckets = h->n_buckets;
-	k = mh_hash(h, key);
+	unsigned k = mh_hash(h, key);
 	i = k % n_buckets;
 	inc = 1 + k % (n_buckets - 1);
 
@@ -485,6 +590,10 @@ _mh(put)(struct mhash_t *h, const mh_key_t key, mh_val_t val, mh_val_t *prev_val
 static inline void
 _mh(set_value)(struct mhash_t *h, uint32_t x, mh_val_t val)
 {
+#if MH_INCREMENTAL_RESIZE
+	if (mh_unlikely(h->resize_position))
+		_mh(resize_step)(h);
+#endif
 	mh_slot_t *slot = mh_slot(h, x);
 #ifndef mh_slot_set_val
 	memcpy(&mh_slot_val(slot), &(val), sizeof(mh_val_t));
@@ -543,8 +652,8 @@ _mh(init)(void *(*custom_realloc)(void *, size_t))
 	h->shadow = mh_calloc(h, 1, sizeof(*h));
 	h->n_buckets = 3;
 	h->slots = mh_calloc(h, h->n_buckets, h->node_size);
-#ifdef mh_bitmap
-	h->bitmap = mh_calloc(h, 1 + h->n_buckets / ( 4 * sizeof(*h->bitmap)), sizeof(*h->bitmap)); /* 4 maps per char */
+#ifdef mh_bitmap_t
+	h->bitmap = mh_calloc(h, 1 + h->n_buckets / (4 * sizeof(*h->bitmap)), sizeof(*h->bitmap)); /* 4 maps per char */
 #endif
 	h->upper_bound = h->n_buckets * load_factor;
 	return h;
@@ -554,7 +663,7 @@ MH_DECL void
 _mh(slot_copy)(struct mhash_t *d, uint32_t dx, const mh_slot_t *source)
 {
 	mh_slot_copy(mh_slot(d, dx), source);
-#ifdef mh_bitmap
+#ifdef mh_bitmap_t
 	/* mh_slot_copy must set exist bit for inline bitmaps */
 	mh_setexist(d, dx);
 #endif
@@ -604,7 +713,7 @@ _mh(resize_step)(struct mhash_t *h)
 
 	if (end == h->n_buckets) {
 		mh_free(h, h->slots);
-#ifdef mh_bitmap
+#ifdef mh_bitmap_t
 		mh_free(h, h->bitmap);
 #endif
 		s->size = h->size;
@@ -638,9 +747,9 @@ _mh(start_resize)(struct mhash_t *h, uint32_t want_size)
 	s->n_buckets = __ac_prime_list[h->prime];
 	s->upper_bound = s->n_buckets * load_factor;
 	s->n_occupied = 0;
-#ifdef mh_bitmap
+#ifdef mh_bitmap_t
 	s->slots = mh_malloc(h, (size_t)s->n_buckets * h->node_size);
-	s->bitmap = mh_calloc(h, 1 + s->n_buckets / ( 4 * sizeof(*s->bitmap)), sizeof(*s->bitmap)); /* 4 maps per char */
+	s->bitmap = mh_calloc(h, 1 + s->n_buckets / (4 * sizeof(*s->bitmap)), sizeof(*s->bitmap)); /* 4 maps per char */
 #else
 	s->slots = mh_calloc(h, s->n_buckets, h->node_size);
 #endif
@@ -662,13 +771,13 @@ MH_DECL void
 _mh(clear)(struct mhash_t *h)
 {
 	mh_free(h, h->slots);
-#ifdef mh_bitmap
+#ifdef mh_bitmap_t
 	mh_free(h, h->bitmap);
 #endif
 	h->n_buckets = 3;
 	h->prime = 0;
 	h->upper_bound = h->n_buckets * load_factor;
-#ifdef mh_bitmap
+#ifdef mh_bitmap_t
 	h->slots = mh_malloc(h, (size_t)h->n_buckets * h->node_size);
 	h->bitmap = mh_calloc(h, h->n_buckets / 16 + 1, sizeof(uint32_t));
 #else
@@ -680,7 +789,7 @@ MH_DECL void
 _mh(destroy)(struct mhash_t *h)
 {
 	mh_free(h, h->shadow);
-#ifdef mh_bitmap
+#ifdef mh_bitmap_t
 	mh_free(h, h->bitmap);
 #endif
 	mh_free(h, h->slots);
@@ -726,9 +835,9 @@ _mh(dump)(struct mhash_t *h)
 #undef mh_slot_set_key
 #undef mh_slot_copy
 
-#undef mh_arg
+#undef mh_arg_t
 
-#undef mh_bitmap
+#undef mh_bitmap_t
 #undef mh_exist
 #undef mh_setfree
 #undef mh_setexist

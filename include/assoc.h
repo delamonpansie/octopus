@@ -40,7 +40,6 @@
 #define mh_name _i64
 #define mh_key_t i64
 #define mh_val_t void *
-#define mh_hash(h, a) ({ (uint32_t)((a)>>33^(a)^(a)<<11); })
 #include <mhash.h>
 
 #define mh_name _cstr
