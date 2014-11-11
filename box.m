@@ -325,7 +325,6 @@ snapshot_fold
 		if ([pk respondsTo:@selector(ordered_iterator_init)])
 			[pk ordered_iterator_init];
 		else
-
 			[pk iterator_init];
 
 		while ((obj = [pk iterator_next])) {
