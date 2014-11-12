@@ -756,7 +756,8 @@ _mh(resize_step)(struct mhash_t *h)
 	h->resize_position += h->resize_batch;
 #endif
 
-	for (uint32_t o = start; o < end; o++)
+	uint32_t o;
+	for (o = start; o < end; o++)
 		_mh(slot_copy_to_shadow)(h, o);
 
 	if (end == h->n_buckets) {
@@ -778,7 +779,8 @@ _mh(start_resize)(struct mhash_t *h, uint32_t want_size)
 	uint32_t size = h->size > want_size ? h->size : want_size;
 
 	if (size > h->n_buckets / 2) {
-		for (int k = h->prime; k < __ac_HASH_PRIME_SIZE; k++)
+		int k;
+		for (k = h->prime; k < __ac_HASH_PRIME_SIZE; k++)
 			if (__ac_prime_list[k] > size) {
 				h->prime = k + 1;
 				break;
