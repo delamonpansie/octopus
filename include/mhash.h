@@ -639,7 +639,7 @@ _mh(slot_occupied)(struct mhash_t *h, uint32_t x)
 
 #ifdef MH_SOURCE
 
-#define load_factor 0.8
+#define load_factor 0.7
 
 MH_DECL struct mhash_t *
 _mh(init)(void *(*custom_realloc)(void *, size_t))
