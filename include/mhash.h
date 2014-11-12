@@ -52,7 +52,35 @@
 
 /* Examples:
 
-   // map: int -> int
+#define mh_name _x
+#define mh_key_t int
+#define mh_val_t char
+#define MH_STATIC
+#include "mhash.h"
+
+int main() {
+	int ret, is_missing;
+	uint32_t k;
+	struct mh_x_t *h = mh_x_init(NULL);
+	k = mh_x_iput(h, 5, &ret);
+	if (!ret)
+		mh_x_del(h, k);
+	*mh_x_pvalue(h, k) = 10;
+	k = mh_x_get(h, 10);
+	is_missing = (k == mh_end(h));
+	k = mh_x_get(h, 5);
+	mh_x_del(h, k);
+
+	for (k = mh_begin(h); k != mh_end(h); ++k)
+		if (mh_x_slot_occupied(h, k))
+			*mh_x_pvalue(h, k) = 1;
+
+	mh_x_destroy(h);
+	return 0;
+}
+
+
+// map: int -> int
 #define mh_name _intmap
 #define mh_key_t int
 #define mh_val_t int
