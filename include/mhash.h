@@ -253,10 +253,14 @@ MH_DECL size_t _mh(bytes)(struct mhash_t *h);
 #define mh_size(h)		({ (h)->size; 		})
 #define mh_begin(h)		({ 0;	})
 #define mh_end(h)		({ (h)->n_buckets;	})
-#define mh_foreach(type, h, x)	for (int x = 0; x < (h)->n_buckets; x++) if (mh_##type##_slot_occupied(h, x))
+#define mh_foreach(name, h, x)	for (int x = 0; x < (h)->n_buckets; x++) if (mh_ecat(name, slot_occupied)(h, x))
 
 /* basic */
 static inline uint32_t _mh(get)(const struct mhash_t *h, const mh_key_t key);
+/* it's safe (and fast) to set value via pvalue() pointer right after iput():
+   uint32_t x = mh_name_iput(h, new_key, NULL);
+   *mh_pvalue(h, x) = new_value;
+ */
 static inline uint32_t _mh(iput)(struct mhash_t *h, const mh_key_t key, int *ret);
 static inline void _mh(del)(struct mhash_t *h, uint32_t x);
 static inline int _mh(remove)(struct mhash_t *h, mh_key_t key);
@@ -271,6 +275,18 @@ static inline int _mh(sremove)(struct mhash_t *h, const mh_slot_t *slot);
 static inline mh_key_t _mh(key)(struct mhash_t *h, uint32_t x);
 #ifdef mh_val_t
 static inline int _mh(put)(struct mhash_t *h, const mh_key_t key, mh_val_t val, mh_val_t *prev_val);
+/* as long as incremental resize is disabled and value is simple scalar (no mh_slot_set_val macro),
+   it can be mutated via pvalue() pointer:
+
+   uint32_t x = mh_name_get(h, key);
+   if (x != mh_end(h))
+	*mh_name_pvalue(h, x) = new_value;
+
+   otherwise set_value() must be used:
+   uint32_t x = mh_name_get(h, key);
+   if (x != mh_end(h))
+	mh_name_set_value(h, x, new_value);
+*/
 static inline void _mh(set_value)(struct mhash_t *h, uint32_t x, mh_val_t val);
 static inline mh_val_t _mh(value)(struct mhash_t *h, uint32_t x);
 static inline MH_INCREMENTAL_CONST mh_val_t * _mh(pvalue)(struct mhash_t *h, uint32_t x);
@@ -583,7 +599,11 @@ _mh(put)(struct mhash_t *h, const mh_key_t key, mh_val_t val, mh_val_t *prev_val
 	if (ret && prev_val)
 		*prev_val = mh_slot_val(slot);
 
-	_mh(set_value)(h, x, val);
+#ifndef mh_slot_set_val
+	memcpy(&mh_slot_val(slot), &(val), sizeof(mh_val_t));
+#else
+	mh_slot_set_val(slot, val);
+#endif
 	return ret;
 }
 

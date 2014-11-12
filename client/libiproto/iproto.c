@@ -559,7 +559,7 @@ li_close(struct iproto_connection_t *c) {
 	}
 	memset(&c->serv_addr, 0, sizeof(c->serv_addr));
 
-	mh_foreach(sp_request, c->requestHash, k)
+	mh_foreach(_sp_request, c->requestHash, k)
 		freeData(mh_sp_request_value(c->requestHash, k));
 
 	mh_sp_request_clear(c->requestHash);
