@@ -45,13 +45,13 @@ typedef const void* cstr;
 #define MH_INCREMENTAL_RESIZE 1
 #define MH_STATIC 1
 
-#define mh_var_slot(h,i) ((typeof((h)->slots))((char *)(h)->slots + (i) * mh_slot_size))
+#define mh_var_slot(h,i) ((typeof((h)->slots))((char *)(h)->slots + (i) * mh_slot_size(h)))
 
 #define mh_name _i32
 #define mh_slot_t struct index_node
 #define mh_slot_key(h, slot) (slot)->key.u32
 #define mh_slot_val(slot) (slot)->obj
-#define mh_slot_size (sizeof(void *) + sizeof(u32))
+#define mh_slot_size(h) (sizeof(void *) + sizeof(u32))
 #define mh_slot mh_var_slot
 #include <mhash.h>
 #undef mh_slot_t
@@ -61,7 +61,7 @@ typedef const void* cstr;
 #define mh_slot_t struct index_node
 #define mh_slot_key(h, slot) (slot)->key.u64
 #define mh_slot_val(slot) (slot)->obj
-#define mh_slot_size (sizeof(void *) + sizeof(u64))
+#define mh_slot_size(h) (sizeof(void *) + sizeof(u64))
 #define mh_slot mh_var_slot
 #define mh_hash(h, a) ({ (uint32_t)((a)>>33^(a)^(a)<<11); })
 #include <mhash.h>
@@ -87,7 +87,7 @@ static inline int lstrcmp(const void *a, const void *b)
 #define mh_slot_t struct index_node
 #define mh_slot_key(h, slot) (slot)->key.ptr
 #define mh_slot_val(slot) (slot)->obj
-#define mh_slot_size (sizeof(void *) + sizeof(void *))
+#define mh_slot_size(h) (sizeof(void *) + sizeof(void *))
 #define mh_slot mh_var_slot
 #define mh_hash(h, key) ({ const void *_k = (key); int l = LOAD_VARINT32(_k); MurmurHash2(_k, l, 13); })
 #define mh_eq(h, a, b) ({ lstrcmp((a), (b)) == 0; })
@@ -98,7 +98,7 @@ static inline int lstrcmp(const void *a, const void *b)
 #define mh_slot_t struct index_node
 #define mh_slot_key(h, slot) (slot)->key.ptr
 #define mh_slot_val(slot) (slot)->obj
-#define mh_slot_size (sizeof(void *) + sizeof(void *))
+#define mh_slot_size(h) (sizeof(void *) + sizeof(void *))
 #define mh_slot mh_var_slot
 #define mh_hash(h, key) ({ MurmurHash2((key), strlen(key), 13); })
 #define mh_eq(h, a, b) ({ strcmp((a), (b)) == 0; })
