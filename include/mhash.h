@@ -239,7 +239,7 @@ static const uint32_t __ac_prime_list[] = {
 	393241ul,	786433ul,	1572869ul,	3145739ul,
 	6291469ul,	12582917ul,	25165843ul,	50331653ul,
 	100663319ul,	201326611ul,	402653189ul,	805306457ul,
-	1610612741ul
+	1610612741ul,	3221225473ul,	4294967291ul
 };
 #define __ac_HASH_PRIME_SIZE (sizeof(__ac_prime_list)/sizeof(__ac_prime_list[0]))
 #endif
@@ -777,12 +777,12 @@ _mh(start_resize)(struct mhash_t *h, uint32_t want_size)
 	if (h->resize_position)
 		return;
 	struct mhash_t *s = h->shadow;
-	uint32_t n_buckets, upper_bound;
+	uint32_t upper_bound;
+	uint64_t n_buckets;
 	int k = 0;
 
 	if (h->size > want_size) want_size = h->size;
 	n_buckets = want_size / (load_factor * 0.85) + 1;
-	assert(n_buckets > want_size);
 
 	while(k < __ac_HASH_PRIME_SIZE && __ac_prime_list[k] <= n_buckets)
 		k++;
