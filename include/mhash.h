@@ -744,6 +744,8 @@ _mh(slot_copy_to_shadow)(struct mhash_t *h, uint32_t o)
 
 	mh_slot_t *slot = mh_slot(h, o);
 	uint32_t n = _mh(mark)(s, mh_slot_key(s, slot));
+	if (!mh_exist(s, n))
+		s->size++;
 	_mh(slot_copy)(s, n, slot);
 }
 
@@ -776,7 +778,7 @@ _mh(resize_step)(struct mhash_t *h)
 #ifdef mh_bitmap_t
 		mh_free(h, h->bitmap);
 #endif
-		s->size = h->size;
+		assert(s->size == h->size);
 		memcpy(h, s, sizeof(*h));
 		memset(s, 0, sizeof(*s));
 	}
@@ -809,6 +811,7 @@ _mh(start_resize)(struct mhash_t *h, uint32_t want_size)
 	s->n_buckets = __ac_prime_list[h->prime];
 	s->upper_bound = s->n_buckets * load_factor;
 	s->n_occupied = 0;
+	s->size = 0;
 #ifdef mh_bitmap_t
 	s->slots = mh_malloc(h, (size_t)s->n_buckets * mh_slot_size(h));
 	s->bitmap = mh_calloc(h, 1 + s->n_buckets / (4 * sizeof(*s->bitmap)), sizeof(*s->bitmap)); /* 4 maps per char */
