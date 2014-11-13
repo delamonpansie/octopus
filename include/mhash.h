@@ -928,3 +928,4 @@ _mh(dump)(struct mhash_t *h)
 #undef mh_free
 
 #undef mh_name
+#undef mhash_t
