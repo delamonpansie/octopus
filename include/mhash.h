@@ -626,7 +626,7 @@ _mh(put)(struct mhash_t *h, const mh_key_t key, mh_val_t val, mh_val_t *prev_val
 	uint32_t x = _mh(iput)(h, key, &ret);
 
 	mh_slot_t *slot = mh_slot(h, x);
-	if (ret && prev_val)
+	if (!ret && prev_val)
 		*prev_val = mh_slot_val(slot);
 
 #ifndef mh_slot_set_val
