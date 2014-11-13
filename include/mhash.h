@@ -666,7 +666,7 @@ _mh(value)(struct mhash_t *h, uint32_t x)
 static inline MH_INCREMENTAL_CONST mh_val_t *
 _mh(pvalue)(struct mhash_t *h, uint32_t x)
 {
-	return &mh_slot_val(mh_slot(h, x));
+	return (MH_INCREMENTAL_CONST mh_val_t*)&mh_slot_val(mh_slot(h, x));
 }
 
 #endif
