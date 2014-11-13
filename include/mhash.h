@@ -263,7 +263,6 @@ struct _mh(t) {
 #endif
 	uint32_t node_size;
 	uint32_t n_buckets, n_occupied, size, upper_bound;
-	uint32_t prime;
 
 	uint32_t resize_position, resize_pending_put, resize_batch;
 	struct mhash_t *shadow;
@@ -790,15 +789,24 @@ _mh(start_resize)(struct mhash_t *h, uint32_t want_size)
 	if (h->resize_position)
 		return;
 	struct mhash_t *s = h->shadow;
-	uint32_t size = h->size > want_size ? h->size : want_size;
+	uint32_t n_buckets, upper_bound;
+	int k = 0;
 
-	if (size > h->n_buckets / 2) {
-		int k;
-		for (k = h->prime; k < __ac_HASH_PRIME_SIZE; k++)
-			if (__ac_prime_list[k] > size) {
-				h->prime = k + 1;
-				break;
-			}
+	if (h->size > want_size) want_size = h->size;
+	n_buckets = want_size / (load_factor * 0.85) + 1;
+	assert(n_buckets > want_size);
+
+	while(k < __ac_HASH_PRIME_SIZE && __ac_prime_list[k] <= n_buckets)
+		k++;
+
+	if (k < __ac_HASH_PRIME_SIZE) {
+		n_buckets = __ac_prime_list[k];
+		upper_bound = n_buckets * load_factor;
+	} else if (__ac_prime_list[k-1] > want_size) {
+		n_buckets = __ac_prime_list[k-1];
+		upper_bound = want_size + (n_buckets - want_size) / 2;
+	} else {
+		abort();
 	}
 #if MH_INCREMENTAL_RESIZE
 	h->resize_batch = h->n_buckets / (256 * 1024);
@@ -808,7 +816,7 @@ _mh(start_resize)(struct mhash_t *h, uint32_t want_size)
 #endif
 	memcpy(s, h, sizeof(*h));
 	s->resize_position = 0;
-	s->n_buckets = __ac_prime_list[h->prime];
+	s->n_buckets = __ac_prime_list[k];
 	s->upper_bound = s->n_buckets * load_factor;
 	s->n_occupied = 0;
 	s->size = 0;
@@ -840,7 +848,6 @@ _mh(clear)(struct mhash_t *h)
 	mh_free(h, h->bitmap);
 #endif
 	h->n_buckets = 3;
-	h->prime = 0;
 	h->upper_bound = h->n_buckets * load_factor;
 #ifdef mh_bitmap_t
 	h->slots = mh_malloc(h, (size_t)h->n_buckets * mh_slot_size(h));
