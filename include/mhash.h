@@ -318,7 +318,7 @@ static inline int _mh(put)(struct mhash_t *h, const mh_key_t key, mh_val_t val, 
 */
 static inline void _mh(set_value)(struct mhash_t *h, uint32_t x, mh_val_t val);
 static inline mh_val_t _mh(value)(struct mhash_t *h, uint32_t x);
-static inline MH_INCREMENTAL_CONST mh_val_t * _mh(pvalue)(struct mhash_t *h, uint32_t x);
+static inline mh_val_t MH_INCREMENTAL_CONST * _mh(pvalue)(struct mhash_t *h, uint32_t x);
 
 #endif
 
@@ -662,10 +662,10 @@ _mh(value)(struct mhash_t *h, uint32_t x)
 	return mh_slot_val(mh_slot(h, x));
 }
 
-static inline MH_INCREMENTAL_CONST mh_val_t *
+static inline mh_val_t MH_INCREMENTAL_CONST *
 _mh(pvalue)(struct mhash_t *h, uint32_t x)
 {
-	return (MH_INCREMENTAL_CONST mh_val_t*)&mh_slot_val(mh_slot(h, x));
+	return &mh_slot_val(mh_slot(h, x));
 }
 
 #endif
