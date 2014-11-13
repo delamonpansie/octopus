@@ -816,8 +816,8 @@ _mh(start_resize)(struct mhash_t *h, uint32_t want_size)
 #endif
 	memcpy(s, h, sizeof(*h));
 	s->resize_position = 0;
-	s->n_buckets = __ac_prime_list[k];
-	s->upper_bound = s->n_buckets * load_factor;
+	s->n_buckets = __ac_prime_list[n_buckets];
+	s->upper_bound = upper_bound;
 	s->n_occupied = 0;
 	s->size = 0;
 #ifdef mh_bitmap_t
