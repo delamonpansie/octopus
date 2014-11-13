@@ -778,6 +778,7 @@ _mh(resize_step)(struct mhash_t *h)
 #endif
 		s->size = h->size;
 		memcpy(h, s, sizeof(*h));
+		memset(s, 0, sizeof(*s));
 	}
 }
 
@@ -849,6 +850,14 @@ _mh(clear)(struct mhash_t *h)
 MH_DECL void
 _mh(destruct)(struct mhash_t *h)
 {
+#ifdef MH_INCREMENTAL_RESIZE
+	if (h->shadow->slots) {
+		mh_free(h, h->shadow->slots);
+#ifdef mh_bitmap_t
+		mh_free(h, h->shadow->bitmap);
+#endif
+	}
+#endif
 	mh_free(h, h->shadow);
 #ifdef mh_bitmap_t
 	mh_free(h, h->bitmap);
