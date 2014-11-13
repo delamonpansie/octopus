@@ -221,24 +221,13 @@ struct _mh(slot) {
 #endif
 
 #ifndef mh_exist
-# if SIZEOF_VOID_P == 8
-/* assumes sizeof(void *) == sizeof(usigned long) */
-# define mh_bitmap_t uint64_t
-# define hash_t uint64_t
-#  define mh_exist(h, i)	(h->bitmap[i >> 5] & (1UL << (i & 0x1f)))
-#  define mh_setfree(h, i)	h->bitmap[i >> 5] &= ~(1UL << (i & 0x1f))
-#  define mh_setexist(h, i)	h->bitmap[i >> 5] |= (1UL << (i & 0x1f))
-#  define mh_dirty(h, i)	((h->bitmap[i >> 5] >> 0x20) & (1UL << (i & 0x1f)))
-#  define mh_setdirty(h, i)	h->bitmap[i >> 5] |= (0x100000000UL << (i & 0x1f))
-# else
 # define hash_t uint32_t
 # define mh_bitmap_t uint32_t
-#  define mh_exist(h, i)	(h->bitmap[i >> 4] & (1UL << (i & 0xf)))
-#  define mh_setfree(h, i)	h->bitmap[i >> 4] &= ~(1UL << (i & 0xf))
-#  define mh_setexist(h, i)	h->bitmap[i >> 4] |= (1UL << (i & 0xf))
-#  define mh_dirty(h, i)	((h->bitmap[i >> 4] >> 0x10) & (1UL << (i & 0xf)))
-#  define mh_setdirty(h, i)	h->bitmap[i >> 4] |= (0x10000UL << (i & 0xf))
-# endif
+# define mh_exist(h, i)		(h->bitmap[i >> 4] & (1 << (i & 0xf)))
+# define mh_setfree(h, i)	h->bitmap[i >> 4] &= ~(1 << (i & 0xf))
+# define mh_setexist(h, i)	h->bitmap[i >> 4] |= (1 << (i & 0xf))
+# define mh_dirty(h, i)		(h->bitmap[i >> 4] & (1 << ((i & 0xf) + 0x10)))
+# define mh_setdirty(h, i)	h->bitmap[i >> 4] |= (0x10000UL << (i & 0xf))
 #endif
 
 #ifndef __ac_HASH_PRIME_SIZE
@@ -444,11 +433,10 @@ static inline unsigned mh_str_hash(const char *kk) { return  mh_MurmurHash2(kk, 
 static inline uint32_t
 _mh(get)(const struct mhash_t *h, const mh_key_t key)
 {
-	int inc, i;
-	unsigned n_buckets = h->n_buckets;
+	unsigned inc, i;
 	unsigned k = mh_hash(h, key);
-	i = k % n_buckets;
-	inc = 1 + k % (n_buckets - 1);
+	i = k % h->n_buckets;
+	inc = 1 + k % (h->n_buckets - 1);
 	for (;;) {
 		if (mh_exist(h, i) && mh_slot_key_eq(h, i, key))
 			return i;
@@ -456,15 +444,15 @@ _mh(get)(const struct mhash_t *h, const mh_key_t key)
 		if (!mh_dirty(h, i))
 			return h->n_buckets;
 
-		if ((i -= inc) < 0)
-			i += h->n_buckets;
+		i += inc;
+		if (i >= h->n_buckets) i -= h->n_buckets;
 	}
 }
 
 static inline uint32_t
 _mh(mark)(struct mhash_t *h, const mh_key_t key)
 {
-	int i, inc, p = -1;
+	unsigned i, inc, p = 0;
 	unsigned n_buckets = h->n_buckets;
 	unsigned k = mh_hash(h, key);
 	i = k % n_buckets;
@@ -481,26 +469,26 @@ _mh(mark)(struct mhash_t *h, const mh_key_t key)
 				h->n_occupied++;
 				return i;
 			} else {
-				p = i;
+				p = i+1;
 			}
 		}
 
-		if ((i -= inc) < 0)
-			i += n_buckets;
-	} while (p < 0);
+		i += inc;
+		if (i >= n_buckets) i -= n_buckets;
+	} while (!p);
 
 	for (;;) {
 		if (!mh_exist(h, i)) {
 			if (!mh_dirty(h, i)) {
 				h->n_occupied++;
-				return p;
+				return p-1;
 			}
 		} else {
 			if (mh_slot_key_eq(h, i, key))
 				return i;
 		}
-		if ((i -= inc) < 0)
-			i += n_buckets;
+		i += inc;
+		if (i >= n_buckets) i -= n_buckets;
 	}
 }
 
