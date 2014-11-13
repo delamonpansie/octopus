@@ -128,7 +128,7 @@ struct cstr_slot {
 
 #define mh_slot_key(slot) ((const char *)((slot)->bits >> 2))
 #define mh_slot_set_key(slot, key) (slot)->bits = ((slot)->bits & 3UL) | ((uintptr_t)key << 2)
-#define mh_slot_copy(new, old) (new)->bits = (((old)->bits & ~3UL) | 1UL)
+#define mh_slot_copy(h, new, old) (new)->bits = (((old)->bits & ~3UL) | 1UL)
 #include "m2hash.h"
 */
 
@@ -192,7 +192,7 @@ struct _mh(slot) {
 #endif
 
 #ifndef mh_slot_size
-#  define mh_slot_size sizeof(mh_slot_t)
+#  define mh_slot_size(h) sizeof(mh_slot_t)
 #endif
 
 /* value of mh_hash(h, a) should be unsigned */
@@ -217,7 +217,7 @@ struct _mh(slot) {
 #endif
 
 #ifndef mh_slot_copy
-# define mh_slot_copy(a, b) memcpy(a, b, mh_slot_size);
+# define mh_slot_copy(h, a, b) memcpy(a, b, mh_slot_size(h));
 #endif
 
 #ifndef mh_exist
@@ -275,7 +275,9 @@ struct _mh(t) {
 
 /* public api */
 MH_DECL struct mhash_t * _mh(init)(void *(*custom_realloc)(void *, size_t));
+MH_DECL void _mh(initialize)(struct mhash_t *h);
 MH_DECL void _mh(destroy)(struct mhash_t *h);
+MH_DECL void _mh(destruct)(struct mhash_t *h); /* doesn't free hash itself */
 MH_DECL void _mh(clear)(struct mhash_t *h);
 MH_DECL size_t _mh(bytes)(struct mhash_t *h);
 #define mh_size(h)		({ (h)->size; 		})
@@ -696,21 +698,30 @@ _mh(init)(void *(*custom_realloc)(void *, size_t))
 	struct mhash_t *h = custom_realloc(NULL, sizeof(*h));
 	memset(h, 0, sizeof(*h));
 	h->realloc = custom_realloc;
-	h->node_size = mh_slot_size;
+	_mh(initialize)(h);
+	return h;
+}
+
+MH_DECL void
+_mh(initialize)(struct mhash_t *h)
+{
+	h->realloc = h->realloc ?: realloc;
+	h->node_size = h->node_size ?: sizeof(mh_slot_t);
+
 	h->shadow = mh_calloc(h, 1, sizeof(*h));
-	h->n_buckets = 3;
-	h->slots = mh_calloc(h, h->n_buckets, h->node_size);
+	h->n_buckets = h->n_buckets ?: 3;
+
+	h->slots = mh_calloc(h, h->n_buckets, mh_slot_size(h));
 #ifdef mh_bitmap_t
 	h->bitmap = mh_calloc(h, 1 + h->n_buckets / (4 * sizeof(*h->bitmap)), sizeof(*h->bitmap)); /* 4 maps per char */
 #endif
 	h->upper_bound = h->n_buckets * load_factor;
-	return h;
 }
 
 MH_DECL void
 _mh(slot_copy)(struct mhash_t *d, uint32_t dx, const mh_slot_t *source)
 {
-	mh_slot_copy(mh_slot(d, dx), source);
+	mh_slot_copy(d, mh_slot(d, dx), source);
 #ifdef mh_bitmap_t
 	/* mh_slot_copy must set exist bit for inline bitmaps */
 	mh_setexist(d, dx);
@@ -798,10 +809,10 @@ _mh(start_resize)(struct mhash_t *h, uint32_t want_size)
 	s->upper_bound = s->n_buckets * load_factor;
 	s->n_occupied = 0;
 #ifdef mh_bitmap_t
-	s->slots = mh_malloc(h, (size_t)s->n_buckets * h->node_size);
+	s->slots = mh_malloc(h, (size_t)s->n_buckets * mh_slot_size(h));
 	s->bitmap = mh_calloc(h, 1 + s->n_buckets / (4 * sizeof(*s->bitmap)), sizeof(*s->bitmap)); /* 4 maps per char */
 #else
-	s->slots = mh_calloc(h, s->n_buckets, h->node_size);
+	s->slots = mh_calloc(h, s->n_buckets, mh_slot_size(h));
 #endif
 
 	_mh(resize_step)(h);
@@ -812,7 +823,7 @@ _mh(bytes)(struct mhash_t *h)
 {
 	return h->resize_position ? _mh(bytes)(h->shadow) : 0 +
 		sizeof(*h) +
-		(size_t)h->n_buckets * h->node_size +
+		(size_t)h->n_buckets * mh_slot_size(h) +
 		((size_t)h->n_buckets / 16 + 1) *  sizeof(uint32_t);
 
 }
@@ -828,21 +839,27 @@ _mh(clear)(struct mhash_t *h)
 	h->prime = 0;
 	h->upper_bound = h->n_buckets * load_factor;
 #ifdef mh_bitmap_t
-	h->slots = mh_malloc(h, (size_t)h->n_buckets * h->node_size);
+	h->slots = mh_malloc(h, (size_t)h->n_buckets * mh_slot_size(h));
 	h->bitmap = mh_calloc(h, h->n_buckets / 16 + 1, sizeof(uint32_t));
 #else
-	h->slots = mh_calloc(h, h->n_buckets, h->node_size);
+	h->slots = mh_calloc(h, h->n_buckets, mh_slot_size(h));
 #endif
 }
 
 MH_DECL void
-_mh(destroy)(struct mhash_t *h)
+_mh(destruct)(struct mhash_t *h)
 {
 	mh_free(h, h->shadow);
 #ifdef mh_bitmap_t
 	mh_free(h, h->bitmap);
 #endif
 	mh_free(h, h->slots);
+}
+
+MH_DECL void
+_mh(destroy)(struct mhash_t *h)
+{
+	_mh(destruct)(h);
 	mh_free(h, h);
 }
 
