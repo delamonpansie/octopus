@@ -84,7 +84,7 @@ int main() {
 #define mh_name _intmap
 #define mh_key_t int
 #define mh_val_t int
-#include "m2hash.h"
+#include "mhash.h"
 
 // map2: int -> int, exisiting slot struct
 #define mh_name _intmap2
@@ -95,13 +95,13 @@ struct intmap2_slot {
 };
 #define mh_slot_t intmap2_slot
 #define mh_slot_key(slot) (slot)->key
-#define mh_slot_value(slot) (slot)->val
-#include "m2hash.h"
+#define mh_slot_val(slot) (slot)->val
+#include "mhash.h"
 
 // set: int
 #define mh_name _intset
 #define mh_key_t int
-#include "m2hash.h"
+#include "mhash.h"
 
 
 // string set with inline bitmap: low 2 bits of pointer used for hash housekeeping
@@ -661,7 +661,7 @@ _mh(pvalue)(struct mhash_t *h, uint32_t x)
 static inline int
 _mh(exist)(struct mhash_t *h, mh_key_t key)
 {
-	u_int32_t k;
+	uint32_t k;
 
 	k = _mh(get)(h, key);
 	return (k != mh_end(h));
