@@ -433,10 +433,11 @@ static inline unsigned mh_str_hash(const char *kk) { return  mh_MurmurHash2(kk, 
 static inline uint32_t
 _mh(get)(const struct mhash_t *h, const mh_key_t key)
 {
-	unsigned inc, i;
+	unsigned inc, i, step;
 	unsigned k = mh_hash(h, key);
 	i = k % h->n_buckets;
-	inc = 1 + k % (h->n_buckets - 1);
+	inc = 2 + k % (h->n_buckets - 2);
+	step = 1;
 	for (;;) {
 		if (mh_exist(h, i) && mh_slot_key_eq(h, i, key))
 			return i;
@@ -444,19 +445,21 @@ _mh(get)(const struct mhash_t *h, const mh_key_t key)
 		if (!mh_dirty(h, i))
 			return h->n_buckets;
 
-		i += inc;
+		i += step;
 		if (i >= h->n_buckets) i -= h->n_buckets;
+		step = inc - step;
 	}
 }
 
 static inline uint32_t
 _mh(mark)(struct mhash_t *h, const mh_key_t key)
 {
-	unsigned i, inc, p = 0;
+	unsigned i, inc, step, p = 0;
 	unsigned n_buckets = h->n_buckets;
 	unsigned k = mh_hash(h, key);
 	i = k % n_buckets;
-	inc = 1 + k % (n_buckets - 1);
+	inc = 2 + k % (n_buckets - 2);
+	step = 1;
 
 	do {
 		if (mh_exist(h, i)) {
@@ -473,8 +476,9 @@ _mh(mark)(struct mhash_t *h, const mh_key_t key)
 			}
 		}
 
-		i += inc;
-		if (i >= n_buckets) i -= n_buckets;
+		i += step;
+		if (i >= h->n_buckets) i -= h->n_buckets;
+		step = inc - step;
 	} while (!p);
 
 	for (;;) {
@@ -487,8 +491,9 @@ _mh(mark)(struct mhash_t *h, const mh_key_t key)
 			if (mh_slot_key_eq(h, i, key))
 				return i;
 		}
-		i += inc;
-		if (i >= n_buckets) i -= n_buckets;
+		i += step;
+		if (i >= h->n_buckets) i -= h->n_buckets;
+		step = inc - step;
 	}
 }
 
