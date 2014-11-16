@@ -597,8 +597,10 @@ _mh(sput)(struct mhash_t *h, const mh_slot_t *slot)
 
 	uint32_t x = _mh(mark)(h, mh_slot_key(h, slot));
 #if MH_INCREMENTAL_RESIZE
-	if (x < h->resize_position)
+	if (x < h->resize_position) {
 		h->resize_pending_put = x;
+		_mh(resize_step)(h);
+	}
 #endif
 	int exist = mh_exist(h, x);
 	if (!exist)
@@ -640,16 +642,17 @@ _mh(put)(struct mhash_t *h, const mh_key_t key, mh_val_t val, mh_val_t *prev_val
 #else
 	mh_slot_set_val(slot, val);
 #endif
+
+#if MH_INCREMENTAL_RESIZE
+	if (x < h->resize_position)
+		_mh(resize_step)(h);
+#endif
 	return ret;
 }
 
 static inline void
 _mh(set_value)(struct mhash_t *h, uint32_t x, mh_val_t val)
 {
-#if MH_INCREMENTAL_RESIZE
-	if (mh_unlikely(h->resize_position))
-		_mh(resize_step)(h);
-#endif
 	mh_slot_t *slot = mh_slot(h, x);
 #ifndef mh_slot_set_val
 	memcpy(&mh_slot_val(slot), &(val), sizeof(mh_val_t));
@@ -658,8 +661,10 @@ _mh(set_value)(struct mhash_t *h, uint32_t x, mh_val_t val)
 #endif
 
 #if MH_INCREMENTAL_RESIZE
-	if (x < h->resize_position)
+	if (x < h->resize_position) {
 		h->resize_pending_put = x;
+		_mh(resize_step)(h);
+	}
 #endif
 }
 
