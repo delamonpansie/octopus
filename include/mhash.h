@@ -232,7 +232,7 @@ struct _mh(slot) {
 
 #ifndef __ac_HASH_PRIME_SIZE
 static const uint32_t __ac_prime_list[] = {
-	3ul,		11ul,		23ul,		53ul,
+			11ul,		23ul,		53ul,
 	97ul,		193ul,		389ul,		769ul,
 	1543ul,		3079ul,		6151ul,		12289ul,
 	24593ul,	49157ul,	98317ul,	196613ul,
@@ -430,14 +430,16 @@ static inline unsigned mh_str_hash(const char *kk) { return  mh_MurmurHash2(kk, 
 
 #endif
 
+#define mh_neighbors 4
+
 static inline uint32_t
 _mh(get)(const struct mhash_t *h, const mh_key_t key)
 {
 	unsigned inc, i, step;
 	unsigned k = mh_hash(h, key);
 	i = k % h->n_buckets;
-	inc = 2 + k % (h->n_buckets - 2);
-	step = 1;
+	inc = k % (h->n_buckets - mh_neighbors);
+	step = mh_neighbors;
 	for (;;) {
 		if (mh_exist(h, i) && mh_slot_key_eq(h, i, key))
 			return i;
@@ -445,9 +447,13 @@ _mh(get)(const struct mhash_t *h, const mh_key_t key)
 		if (!mh_dirty(h, i))
 			return h->n_buckets;
 
-		i += step;
+		step--;
+		i += 1;
+		if (!step) {
+			step = mh_neighbors;
+			i += inc;
+		}
 		if (i >= h->n_buckets) i -= h->n_buckets;
-		step = inc - step;
 	}
 }
 
@@ -458,8 +464,8 @@ _mh(mark)(struct mhash_t *h, const mh_key_t key)
 	unsigned n_buckets = h->n_buckets;
 	unsigned k = mh_hash(h, key);
 	i = k % n_buckets;
-	inc = 2 + k % (n_buckets - 2);
-	step = 1;
+	inc = k % (h->n_buckets - mh_neighbors);
+	step = mh_neighbors;
 
 	do {
 		if (mh_exist(h, i)) {
@@ -476,9 +482,13 @@ _mh(mark)(struct mhash_t *h, const mh_key_t key)
 			}
 		}
 
-		i += step;
+		step--;
+		i += 1;
+		if (!step) {
+			step = mh_neighbors;
+			i += inc;
+		}
 		if (i >= h->n_buckets) i -= h->n_buckets;
-		step = inc - step;
 	} while (!p);
 
 	for (;;) {
@@ -491,9 +501,13 @@ _mh(mark)(struct mhash_t *h, const mh_key_t key)
 			if (mh_slot_key_eq(h, i, key))
 				return i;
 		}
-		i += step;
+		step--;
+		i += 1;
+		if (!step) {
+			step = mh_neighbors;
+			i += inc;
+		}
 		if (i >= h->n_buckets) i -= h->n_buckets;
-		step = inc - step;
 	}
 }
 
@@ -701,7 +715,7 @@ _mh(initialize)(struct mhash_t *h)
 	h->node_size = h->node_size ?: sizeof(mh_slot_t);
 
 	h->shadow = mh_calloc(h, 1, sizeof(*h));
-	h->n_buckets = h->n_buckets ?: 3;
+	h->n_buckets = h->n_buckets ?: __ac_prime_list[0];
 
 	h->slots = mh_calloc(h, h->n_buckets, mh_slot_size(h));
 #ifdef mh_bitmap_t
