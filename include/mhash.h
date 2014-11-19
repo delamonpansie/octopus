@@ -285,8 +285,10 @@ static inline int _mh(exist)(struct mhash_t *h, mh_key_t key);
 
 /*  slot */
 static inline uint32_t _mh(sget)(const struct mhash_t *h, const mh_slot_t *slot);
-static inline int _mh(sput)(struct mhash_t *h, const mh_slot_t *slot, mh_slot_t *prev_slot);
+static inline uint32_t _mh(sget_by_key)(const struct mhash_t *h, const mh_key_t key);
 static inline int _mh(sremove)(struct mhash_t *h, const mh_slot_t *slot, mh_slot_t *prev_slot);
+static inline int _mh(sremove_by_key)(struct mhash_t *h, const mh_key_t key, mh_slot_t *prev_slot);
+static inline int _mh(sput)(struct mhash_t *h, const mh_slot_t *slot, mh_slot_t *prev_slot);
 
 /* kv */
 static inline mh_key_t _mh(key)(struct mhash_t *h, uint32_t x);
@@ -587,6 +589,12 @@ _mh(remove)(struct mhash_t *h, mh_key_t key, mh_val_t *prev_val)
 
 /* slot variants */
 static inline uint32_t
+_mh(sget_by_key)(const struct mhash_t *h, const mh_key_t key)
+{
+	return _mh(get)(h, key);
+}
+
+static inline uint32_t
 _mh(sget)(const struct mhash_t *h, const mh_slot_t *slot)
 {
 	return _mh(get)(h, mh_slot_key(h, slot));
@@ -621,9 +629,9 @@ _mh(sput)(struct mhash_t *h, const mh_slot_t *slot, mh_slot_t *prev_slot)
 }
 
 static inline int
-_mh(sremove)(struct mhash_t *h, const mh_slot_t *slot, mh_slot_t *prev_slot)
+_mh(sremove_by_key)(struct mhash_t *h, const mh_key_t key, mh_slot_t *prev_slot)
 {
-	uint32_t x = _mh(get)(h, mh_slot_key(h, slot));
+	uint32_t x = _mh(get)(h, key);
 	if (x != h->n_buckets) {
 		if (prev_slot)
 			mh_slot_copy(d, prev_slot, mh_slot(h, x));
@@ -631,6 +639,11 @@ _mh(sremove)(struct mhash_t *h, const mh_slot_t *slot, mh_slot_t *prev_slot)
 		_mh(del)(h, x);
 	}
 	return x != h->n_buckets;
+}
+static inline int
+_mh(sremove)(struct mhash_t *h, const mh_slot_t *slot, mh_slot_t *prev_slot)
+{
+	return _mh(sremove_by_key)(h, mh_slot_key(h, slot), prev_slot);
 }
 
 static inline mh_key_t _mh(key)(struct mhash_t *h, uint32_t x)
