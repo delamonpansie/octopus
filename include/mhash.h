@@ -516,9 +516,8 @@ _mh(mark)(struct mhash_t *h, const mh_key_t key)
 	}
 }
 
-
 static inline uint32_t
-_mh(iput)(struct mhash_t *h, const mh_key_t key, int *ret)
+_mh(will_put)(struct mhash_t *h, mh_key_t const key, int *exist)
 {
 #if MH_INCREMENTAL_RESIZE
 	if (mh_unlikely(h->resize_position))
@@ -529,11 +528,21 @@ _mh(iput)(struct mhash_t *h, const mh_key_t key, int *ret)
 		_mh(start_resize)(h, 0);
 
 	uint32_t x = _mh(mark)(h, key);
-	int exist = mh_exist(h, x);
+	*exist = mh_exist(h, x);
+	if (!*exist) {
+		h->size++;
+		mh_setexist(h, x);
+	}
+	return x;
+}
+
+static inline uint32_t
+_mh(iput)(struct mhash_t *h, const mh_key_t key, int *ret)
+{
+	int exist;
+	uint32_t x = _mh(will_put)(h, key, &exist);
 	if (!exist) {
 		mh_slot_set_key(h, mh_slot(h, x), key);
-		mh_setexist(h, x);
-		h->size++;
 	}
 
 	if (ret)
@@ -599,18 +608,8 @@ _mh(sget)(const struct mhash_t *h, const mh_slot_t *slot)
 static inline int
 _mh(sput)(struct mhash_t *h, const mh_slot_t *slot, mh_slot_t *prev_slot)
 {
-#if MH_INCREMENTAL_RESIZE
-	if (mh_unlikely(h->resize_position))
-		_mh(resize_step)(h);
-	else
-#endif
-	if (mh_unlikely(h->n_occupied >= h->upper_bound))
-		_mh(start_resize)(h, 0);
-
-	uint32_t x = _mh(mark)(h, mh_slot_key(h, slot));
-	int exist = mh_exist(h, x);
-	if (!exist)
-		h->size++; /* exists bit will be set by slot_copy() */
+	int exist;
+	uint32_t x = _mh(will_put)(h, mh_slot_key(h, slot), &exist);
 
 	if (exist && prev_slot)
 		mh_slot_copy(d, prev_slot, mh_slot(h, x));
@@ -651,21 +650,11 @@ static inline mh_key_t _mh(key)(struct mhash_t *h, uint32_t x)
 static inline int
 _mh(put)(struct mhash_t *h, const mh_key_t key, mh_val_t val, mh_val_t *prev_val)
 {
-#if MH_INCREMENTAL_RESIZE
-	if (mh_unlikely(h->resize_position))
-		_mh(resize_step)(h);
-	else
-#endif
-	if (mh_unlikely(h->n_occupied >= h->upper_bound))
-		_mh(start_resize)(h, 0);
-
-	uint32_t x = _mh(mark)(h, key);
-	int exist = mh_exist(h, x);
+	int exist;
+	uint32_t x = _mh(will_put)(h, key, &exist);
 	mh_slot_t *slot = mh_slot(h, x);
 	if (!exist) {
 		mh_slot_set_key(h, slot, key);
-		mh_setexist(h, x);
-		h->size++;
 	}
 
 	if (exist && prev_val)
@@ -734,10 +723,6 @@ static inline void
 _mh(slot_copy)(struct mhash_t *d, uint32_t dx, const mh_slot_t *source)
 {
 	mh_slot_copy(d, mh_slot(d, dx), source);
-#ifdef mh_bitmap_t
-	/* mh_slot_copy must set exist bit for inline bitmaps */
-	mh_setexist(d, dx);
-#endif
 }
 
 static inline void
@@ -746,9 +731,8 @@ _mh(slot_copy_to_shadow)(struct mhash_t *h, uint32_t o)
 	struct mhash_t *s = h->shadow;
 
 	mh_slot_t *slot = mh_slot(h, o);
-	uint32_t n = _mh(mark)(s, mh_slot_key(s, slot));
-	if (!mh_exist(s, n))
-		s->size++;
+	int exist;
+	uint32_t n = _mh(will_put)(s, mh_slot_key(s, slot), &exist);
 	_mh(slot_copy)(s, n, slot);
 }
 
