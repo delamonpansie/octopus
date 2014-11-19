@@ -665,12 +665,13 @@ _mh(put)(struct mhash_t *h, const mh_key_t key, mh_val_t val, mh_val_t *prev_val
 
 	uint32_t x = _mh(mark)(h, key);
 	int exist = mh_exist(h, x);
+	mh_slot_t *slot = mh_slot(h, x);
 	if (!exist) {
+		mh_slot_set_key(h, slot, key);
 		mh_setexist(h, x);
 		h->size++;
 	}
 
-	mh_slot_t *slot = mh_slot(h, x);
 	if (exist && prev_val)
 		*prev_val = mh_slot_val(slot);
 
