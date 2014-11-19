@@ -135,6 +135,7 @@ struct cstr_slot {
 #include <stdint.h>
 #include <string.h>
 #include <math.h>
+#include <assert.h>
 
 #ifndef MH_HELPER_MACRO
 #define MH_HELPER_MACRO
@@ -402,14 +403,15 @@ static inline unsigned mh_str_hash(const char *kk) { return  mh_MurmurHash2(kk, 
 	unsigned ret;							\
 	if (__builtin_types_compatible_p(mh_key_t, uint32_t) ||		\
 	    __builtin_types_compatible_p(mh_key_t, int32_t))		\
-		ret = (key);						\
+		ret = (uintptr_t)(key);					\
 	else if (__builtin_types_compatible_p(mh_key_t, uint64_t) ||	\
 		 __builtin_types_compatible_p(mh_key_t, int64_t))	\
-		ret = mh_u64_hash(key);					\
-	else if (__builtin_types_compatible_p(mh_key_t, char *))	\
+		ret = mh_u64_hash((uintptr_t)key);			\
+	else if (__builtin_types_compatible_p(mh_key_t, char *) ||	\
+		 __builtin_types_compatible_p(mh_key_t, const char *))	\
 		ret = mh_str_hash((const char *)(uintptr_t)key);	\
 	else								\
-		abort();						\
+		assert("key type unmatched: provide your own mh_hash()" && NULL); \
 	ret;								\
 })
 
@@ -420,10 +422,11 @@ static inline unsigned mh_str_hash(const char *kk) { return  mh_MurmurHash2(kk, 
 	    __builtin_types_compatible_p(mh_key_t, uint64_t) ||		\
 	    __builtin_types_compatible_p(mh_key_t, int64_t))		\
 		ret = (a) == (b);					\
-	else if (__builtin_types_compatible_p(mh_key_t, char *))	\
+	else if (__builtin_types_compatible_p(mh_key_t, char *) ||	\
+		 __builtin_types_compatible_p(mh_key_t, const char *))	\
 		ret = !strcmp((const char *)(uintptr_t)(a), (const char *)(uintptr_t)(b)); \
 	else								\
-		abort();						\
+		assert("key type unmatched: provide your own mh_eq()" && NULL); \
 	ret;								\
 })
 
