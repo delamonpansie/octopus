@@ -281,7 +281,6 @@ static inline uint32_t _mh(get)(const struct mhash_t *h, const mh_key_t key);
  */
 static inline uint32_t _mh(iput)(struct mhash_t *h, const mh_key_t key, int *ret);
 static inline void _mh(del)(struct mhash_t *h, uint32_t x);
-static inline int _mh(remove)(struct mhash_t *h, mh_key_t key, mh_val_t *prev_val);
 static inline int _mh(exist)(struct mhash_t *h, mh_key_t key);
 
 /*  slot */
@@ -308,7 +307,7 @@ static inline int _mh(put)(struct mhash_t *h, const mh_key_t key, mh_val_t val, 
 static inline void _mh(set_value)(struct mhash_t *h, uint32_t x, mh_val_t val);
 static inline mh_val_t _mh(value)(struct mhash_t *h, uint32_t x);
 static inline mh_val_t MH_INCREMENTAL_CONST * _mh(pvalue)(struct mhash_t *h, uint32_t x);
-
+static inline int _mh(remove)(struct mhash_t *h, mh_key_t key, mh_val_t *prev_val);
 #endif
 
 /* internal api */
