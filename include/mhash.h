@@ -253,7 +253,7 @@ struct _mh(t) {
 	uint32_t node_size;
 	uint32_t n_buckets, n_occupied, size, upper_bound;
 
-	uint32_t resize_position, resize_pending_put, resize_batch;
+	uint32_t resize_position, resize_batch;
 	struct mhash_t *shadow;
 	void *(*realloc)(void *, size_t);
 #ifdef mh_arg_t
@@ -542,7 +542,6 @@ _mh(iput)(struct mhash_t *h, const mh_key_t key, int *ret)
 #if MH_INCREMENTAL_RESIZE
 	if (x < h->resize_position) {
 		_mh(slot_copy_to_shadow)(h, x);
-		h->resize_pending_put = x;
 	}
 #endif
 	return x;
@@ -564,9 +563,6 @@ _mh(del)(struct mhash_t *h, uint32_t x)
 			uint32_t y = _mh(get)(s, key);
 			assert(y != s->n_buckets);
 			_mh(del)(s, y);
-
-			if (h->resize_pending_put == x)
-				h->resize_pending_put = -1;
 
 			_mh(resize_step)(h);
 		}
@@ -803,11 +799,6 @@ _mh(resize_step)(struct mhash_t *h)
 		   end = h->n_buckets;
 
 #if MH_INCREMENTAL_RESIZE
-	if (h->resize_pending_put != -1) {
-		_mh(slot_copy_to_shadow)(h, h->resize_pending_put);
-		h->resize_pending_put = -1;
-	}
-
 	uint32_t batch_end = h->resize_position + h->resize_batch;
 	if (batch_end < end)
 		end = batch_end;
@@ -860,7 +851,6 @@ _mh(start_resize)(struct mhash_t *h, uint32_t want_size)
 	h->resize_batch = h->n_buckets / (256 * 1024);
 	if (h->resize_batch < 256) /* minimum resize_batch is 3 */
 		h->resize_batch = 256;
-	h->resize_pending_put = -1;
 #endif
 	memcpy(s, h, sizeof(*h));
 	s->resize_position = 0;
