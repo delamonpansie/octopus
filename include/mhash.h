@@ -105,7 +105,6 @@ struct intmap2_slot {
 
 
 // string set with inline bitmap: low 2 bits of pointer used for hash housekeeping
-#include "murmur_hash2.c"
 #define mh_name _str
 #define mh_slot_t cstr_slot
 struct cstr_slot {
