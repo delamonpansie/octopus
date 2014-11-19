@@ -281,13 +281,13 @@ static inline uint32_t _mh(get)(const struct mhash_t *h, const mh_key_t key);
  */
 static inline uint32_t _mh(iput)(struct mhash_t *h, const mh_key_t key, int *ret);
 static inline void _mh(del)(struct mhash_t *h, uint32_t x);
-static inline int _mh(remove)(struct mhash_t *h, mh_key_t key);
+static inline int _mh(remove)(struct mhash_t *h, mh_key_t key, mh_val_t *prev_val);
 static inline int _mh(exist)(struct mhash_t *h, mh_key_t key);
 
 /*  slot */
 static inline uint32_t _mh(sget)(const struct mhash_t *h, const mh_slot_t *slot);
-static inline int _mh(sput)(struct mhash_t *h, const mh_slot_t *slot);
-static inline int _mh(sremove)(struct mhash_t *h, const mh_slot_t *slot);
+static inline int _mh(sput)(struct mhash_t *h, const mh_slot_t *slot, mh_slot_t *prev_slot);
+static inline int _mh(sremove)(struct mhash_t *h, const mh_slot_t *slot, mh_slot_t *prev_slot);
 
 /* kv */
 static inline mh_key_t _mh(key)(struct mhash_t *h, uint32_t x);
@@ -571,11 +571,15 @@ _mh(del)(struct mhash_t *h, uint32_t x)
 }
 
 static inline int
-_mh(remove)(struct mhash_t *h, mh_key_t key)
+_mh(remove)(struct mhash_t *h, mh_key_t key, mh_val_t *prev_val)
 {
 	uint32_t x = _mh(get)(h, key);
-	if (x != h->n_buckets)
+	if (x != h->n_buckets) {
+		if (prev_val)
+			*prev_val = mh_slot_val(mh_slot(h, x));
+
 		_mh(del)(h, x);
+	}
 	return x != h->n_buckets;
 }
 
@@ -587,7 +591,7 @@ _mh(sget)(const struct mhash_t *h, const mh_slot_t *slot)
 }
 
 static inline int
-_mh(sput)(struct mhash_t *h, const mh_slot_t *slot)
+_mh(sput)(struct mhash_t *h, const mh_slot_t *slot, mh_slot_t *prev_slot)
 {
 #if MH_INCREMENTAL_RESIZE
 	if (mh_unlikely(h->resize_position))
@@ -608,17 +612,24 @@ _mh(sput)(struct mhash_t *h, const mh_slot_t *slot)
 	if (!exist)
 		h->size++; /* exists bit will be set by slot_copy() */
 
+	if (exist && prev_slot)
+		mh_slot_copy(d, prev_slot, mh_slot(h, x));
+
 	_mh(slot_copy)(h, x, slot); /* always copy: overwrite old slot val if exists */
 
 	return !exist;
 }
 
 static inline int
-_mh(sremove)(struct mhash_t *h, const mh_slot_t *slot)
+_mh(sremove)(struct mhash_t *h, const mh_slot_t *slot, mh_slot_t *prev_slot)
 {
 	uint32_t x = _mh(get)(h, mh_slot_key(h, slot));
-	if (x != h->n_buckets)
+	if (x != h->n_buckets) {
+		if (prev_slot)
+			mh_slot_copy(d, prev_slot, mh_slot(h, x));
+
 		_mh(del)(h, x);
+	}
 	return x != h->n_buckets;
 }
 
