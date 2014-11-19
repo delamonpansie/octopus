@@ -902,8 +902,8 @@ MH_DECL void
 _mh(dump)(struct mhash_t *h)
 {
 	printf("slots:\n");
-	int k = 0;
-	for(int i = 0; i < h->n_buckets; i++) {
+	int k = 0, i = 0;
+	for(i = 0; i < h->n_buckets; i++) {
 		if (mh_dirty(h, i) || mh_exist(h, i)) {
 			printf("   [%i] ", i);
 			if (mh_exist(h, i)) {
