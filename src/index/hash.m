@@ -166,7 +166,7 @@ find_node:(const struct index_node *)node				\
 replace:(struct tnt_object *)obj					\
 {									\
 	struct index_node *node_ = GET_NODE(obj, node_a);		\
-        mh_##type##_sput(h, (void *)node_);				\
+        mh_##type##_sput(h, (void *)node_, NULL);			\
 }									\
 - (int)									\
 remove:(struct tnt_object *)obj						\
