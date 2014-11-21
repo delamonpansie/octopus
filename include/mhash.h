@@ -225,7 +225,7 @@ struct _mh(slot) {
 # define mh_bitmap_t uint32_t
 # define mh_exist(h, i)		(h->bitmap[i >> 4] & (1 << (i & 0xf)))
 # define mh_setfree(h, i)	h->bitmap[i >> 4] &= ~(1 << (i & 0xf))
-# define mh_setexist(h, i)	h->bitmap[i >> 4] |= (1 << (i & 0xf))
+# define mh_setexist(h, i)	h->bitmap[(i) >> 4] |= (1 << ((i) & 0xf))
 # define mh_dirty(h, i)		(h->bitmap[i >> 4] & (1 << ((i & 0xf) + 0x10)))
 # define mh_setdirty(h, i)	h->bitmap[i >> 4] |= (0x10000UL << (i & 0xf))
 #endif
@@ -525,8 +525,16 @@ _mh(mark)(struct mhash_t *h, const mh_key_t key)
 				return p-1;
 			}
 		} else {
-			if (mh_slot_key_eq(h, l.i, key))
-				return l.i;
+			if (mh_slot_key_eq(h, l.i, key)) {
+#if MH_INCREMENTAL_RESIZE
+				if (mh_unlikely(h->resize_position))
+					return l.i;
+#endif
+				_mh(slot_copy)(h, p-1, mh_slot(h, l.i));
+				mh_setfree(h, l.i);
+				mh_setexist(h, p-1);
+				return p-1;
+			}
 		}
 		mh_find_loop_step(&l, h->n_buckets);
 	}
@@ -628,7 +636,7 @@ _mh(sput)(struct mhash_t *h, const mh_slot_t *slot, mh_slot_t *prev_slot)
 	uint32_t x = _mh(will_put)(h, mh_slot_key(h, slot), &exist);
 
 	if (exist && prev_slot)
-		mh_slot_copy(d, prev_slot, mh_slot(h, x));
+		mh_slot_copy(h, prev_slot, mh_slot(h, x));
 
 	_mh(slot_copy)(h, x, slot); /* always copy: overwrite old slot val if exists */
 #if MH_INCREMENTAL_RESIZE
@@ -645,7 +653,7 @@ _mh(sremove_by_key)(struct mhash_t *h, const mh_key_t key, mh_slot_t *prev_slot)
 	uint32_t x = _mh(get)(h, key);
 	if (x != h->n_buckets) {
 		if (prev_slot)
-			mh_slot_copy(d, prev_slot, mh_slot(h, x));
+			mh_slot_copy(h, prev_slot, mh_slot(h, x));
 
 		_mh(del)(h, x);
 	}
