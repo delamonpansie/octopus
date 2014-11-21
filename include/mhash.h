@@ -903,18 +903,8 @@ _mh(bytes)(struct mhash_t *h)
 MH_DECL void
 _mh(clear)(struct mhash_t *h)
 {
-	mh_free(h, h->slots);
-#ifdef mh_bitmap_t
-	mh_free(h, h->bitmap);
-#endif
-	h->n_buckets = 3;
-	h->upper_bound = h->n_buckets * load_factor;
-#ifdef mh_bitmap_t
-	h->slots = mh_malloc(h, (size_t)h->n_buckets * mh_slot_size(h));
-	h->bitmap = mh_calloc(h, h->n_buckets / 16 + 1, sizeof(uint32_t));
-#else
-	h->slots = mh_calloc(h, h->n_buckets, mh_slot_size(h));
-#endif
+	_mh(destruct)(h);
+	_mh(initialize)(h);
 }
 
 MH_DECL void
