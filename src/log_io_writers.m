@@ -39,6 +39,15 @@
 #include <stdio.h>
 #include <sysexits.h>
 #include <sys/socket.h>
+#include <limits.h>
+
+struct wal_disk_writer_conf {
+	char dir_name[_POSIX_PATH_MAX];
+	i64 lsn, scn;
+	u32 run_crc;
+	int wal_rows_per_file;
+	double wal_fsync_delay;
+};
 
 @interface WALDiskWriter: Object {
 @public
@@ -47,14 +56,14 @@
 	XLog *wal_to_close;
 	XLogDir *wal_dir;
 }
-- (id) init:(XLogDir *)wal_dir_;
+- (id) init_wal_dir:(XLogDir *)wal_dir_;
 @end
 
 
 @implementation WALDiskWriter
 
 - (id)
-init:(XLogDir *)wal_dir_
+init_wal_dir:(XLogDir *)wal_dir_
 {
 	wal_dir = wal_dir_;
 	return self;
@@ -171,12 +180,19 @@ wal_disk_writer_input_dispatch(va_list ap __attribute__((unused)))
 int
 wal_disk_writer(int fd, void *state)
 {
-	WALDiskWriter *writer = [[WALDiskWriter alloc] init:state];
+
+	const struct wal_disk_writer_conf *conf = state;
+	XLogDir *wal_dir = [[WALDir alloc] init_dirname:conf->dir_name];
+	wal_dir->rows_per_file = conf->wal_rows_per_file;
+	wal_dir->fsync_delay = conf->wal_fsync_delay;
+
+	WALDiskWriter *writer = [[WALDiskWriter alloc] init_wal_dir:wal_dir];
+	writer->lsn = conf->lsn;
 
 	struct tbuf rbuf = TBUF(NULL, 0, fiber->pool);
 	int result = EXIT_FAILURE;
-	i64 start_lsn, next_scn = 0;
-	u32 crc;
+	i64 start_lsn, next_scn = conf->scn;
+	u32 crc = conf->run_crc;
 	bool io_failure = false, delay_read = false;
 	ssize_t r;
 	int requests_processed, rows_processed;
@@ -193,20 +209,8 @@ wal_disk_writer(int fd, void *state)
 	ev_tstamp start_time = ev_now();
 	palloc_register_gc_root(fiber->pool, &rbuf, tbuf_gc);
 
-	struct wal_conf { i64 lsn; i64 scn; u32 run_crc; } __attribute__((packed)) wal_conf;
-	if ((r = recv(fd, &wal_conf, sizeof(wal_conf), 0)) != sizeof(wal_conf)) {
-		if (r == 0) {
-			result = EX_OK;
-			goto exit;
-		}
-		say_syserror("recv: failed");
-		panic("unable to start WAL writer");
-	}
-	writer->lsn = wal_conf.lsn;
-	next_scn = wal_conf.scn;
-	crc = wal_conf.run_crc;
 	say_debug("%s: configured LSN:%"PRIi64 " SCN:%"PRIi64" run_crc_log:0x%x",
-		  __func__, wal_conf.lsn, wal_conf.scn, wal_conf.run_crc);
+		  __func__, conf->lsn, conf->scn, conf->run_crc);
 
 	/* since wal_writer have bidirectional communiction to master
 	   and checks for errors on send/recv,
@@ -369,22 +373,23 @@ exit:
 
 - init_wal_dir: (XLogDir*)wal_dir_
 {
+	say_info("Configuring WAL writer LSN:%"PRIi64" SCN:%"PRIi64, lsn, scn);
+
 	struct fiber *wal_out = fiber_create("wal_writer/output_flusher", conn_flusher);
-	struct fiber *wal_in = fiber_create("wal_writer/input_dispatcher",
-						wal_disk_writer_input_dispatch);
-	wal_writer = spawn_child("wal_writer", wal_in, wal_out, wal_disk_writer, wal_dir_);
+	struct fiber *wal_in = fiber_create("wal_writer/input_dispatcher", wal_disk_writer_input_dispatch);
+	struct wal_disk_writer_conf conf =  { .lsn = lsn,
+					      .scn = scn,
+					      .run_crc = run_crc_log,
+					      .wal_rows_per_file = wal_dir_->rows_per_file,
+					      .wal_fsync_delay = wal_dir_->fsync_delay };
+	assert(strlen(wal_dir_->dirname) < sizeof(conf.dir_name));
+	strcpy(conf.dir_name, wal_dir_->dirname);
+	wal_writer = spawn_child("wal_writer", wal_in, wal_out, wal_disk_writer, &conf, sizeof(conf));
 
 	ev_set_priority(&wal_writer->c->in, 1);
 	ev_set_priority(&wal_writer->c->out, 1);
 	ev_io_start(&wal_writer->c->in);
 
-	say_info("Configuring WAL writer LSN:%"PRIi64" SCN:%"PRIi64, lsn, scn);
-
-	struct netmsg_head *h = &wal_writer->c->out_messages;
-	net_add_iov_dup(h, &lsn, sizeof(lsn));
-	net_add_iov_dup(h, &scn, sizeof(scn));
-	net_add_iov_dup(h, &run_crc_log, sizeof(run_crc_log));
-	ev_io_start(&wal_writer->c->out);
 	configured = true;
 
 	return self;

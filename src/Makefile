@@ -16,6 +16,7 @@ obj += src/util.o
 obj += src/assoc.o
 obj += src/octopus.o
 obj += src/errcode.o
+obj += src/spawn_child.o
 
 obj-log-io += src/log_io.o
 obj-log-io += src/log_io_writers.o

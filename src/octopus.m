@@ -904,6 +904,11 @@ octopus(int argc, char **argv)
 	ev_io_start(&keepalive_ev);
 
 	fiber_init(); /* must be initialized before Lua */
+
+	extern int fork_spawner();
+	if (fork_spawner() < 0)
+		panic("unable to fork spawner");
+
 	luaT_init();
 
 	/* run Lua pre_init before module init */

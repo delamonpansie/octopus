@@ -68,8 +68,6 @@ static uint32_t last_used_fid;
 static ev_prepare wake_prep;
 static ev_async wake_async;
 
-static ev_prepare child_spawner;
-
 static struct mh_i32_t *fibers_registry;
 
 TAILQ_HEAD(, fiber) wake_list;
@@ -302,100 +300,6 @@ fiber_destroy_all()
 	}
 }
 
-struct child_spawn_queue {
-	const char *name;
-	struct fiber *in, *out;
-	int (*handler)(int fd, void *state);
-	void *state;
-	struct child *result;
-	struct fiber *issuer;
-	struct child_spawn_queue *next;
-};
-static struct child_spawn_queue *child_spawn_queue = NULL;
-
-static void do_child_spawn(void)
-{
-	assert(fiber == &sched);
-	while (child_spawn_queue != NULL) {
-		struct child_spawn_queue *cur = child_spawn_queue;
-		cur->result = NULL;
-
-		int one = 1, socks[2];
-		int pid;
-
-		if (socketpair(AF_UNIX, SOCK_STREAM, 0, socks) == -1) {
-			say_syserror("socketpair");
-			goto wake_issuer;
-		}
-
-		if ((pid = tnt_fork()) == -1) {
-			say_syserror("fork");
-			goto wake_issuer;
-		}
-
-		if (pid) {
-			close(socks[0]);
-			if (ioctl(socks[1], FIONBIO, &one) < 0) {
-				close(socks[1]);
-				goto wake_issuer;
-			}
-
-			struct child *child = xmalloc(sizeof(*child));
-			child->pid = pid;
-
-			struct palloc_pool *p = palloc_create_pool(cur->name);
-			child->c = conn_init(NULL, p, socks[1], cur->in, cur->out, MO_MALLOC);
-			palloc_register_gc_root(p, child->c, conn_gc);
-
-			cur->result = child;
-			goto wake_issuer;
-		} else {
-			extern id recovery;
-			recovery = nil;
-			salloc_destroy();
-			close_all_xcpt(3, socks[0], stderrfd, sayfd);
-			sched.name = cur->name;
-			title("%s", cur->name);
-			say_info("%s spawned", cur->name);
-			_exit(cur->handler(socks[0], cur->state));
-		}
-	wake_issuer:
-		child_spawn_queue = cur->next;
-		if (child_spawn_queue == NULL)
-			ev_prepare_stop(&child_spawner);
-
-		if (cur->issuer == NULL)
-			return;
-		else
-			fiber_wake(cur->issuer, NULL);
-	}
-}
-
-struct child *
-spawn_child(const char *name, struct fiber *in, struct fiber *out,
-	    int (*handler)(int fd, void *state), void *state)
-{
-	struct child_spawn_queue request = {
-		.name = name,
-		.in = in,
-		.out = out,
-		.handler = handler,
-		.state = state,
-		.next = child_spawn_queue,
-		.result = NULL,
-	};
-	child_spawn_queue = &request;
-	if (fiber == &sched) {
-		request.issuer = NULL;
-		do_child_spawn();
-	} else {
-		request.issuer = fiber;
-		ev_prepare_start(&child_spawner);
-		yield();
-	}
-	return request.result;
-}
-
 void
 fiber_info(struct tbuf *out)
 {
@@ -451,7 +355,6 @@ fiber_init(void)
 
 	ev_prepare_init(&wake_prep, (void *)fiber_wakeup_pending);
 	ev_prepare_start(&wake_prep);
-	ev_prepare_init(&child_spawner, (void *)do_child_spawn);
 	ev_async_init(&wake_async, (void *)unzero_io_collect_interval);
 	ev_async_start(&wake_async);
 	say_debug("fibers initialized");
