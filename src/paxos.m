@@ -1139,7 +1139,7 @@ learn_wal:(id<XLogPullerAsync>)puller
 - (id)
 init_snap_dir:(const char *)snap_dirname
       wal_dir:(const char *)wal_dirname
- rows_per_wal:(int)wal_rows_per_file
+ rows_per_wal:(int)wal_rows_per_file_
  feeder_param:(struct feeder_param*)param
 	flags:(int)flags
 {
@@ -1147,7 +1147,7 @@ init_snap_dir:(const char *)snap_dirname
 
 	[super init_snap_dir:snap_dirname
 		     wal_dir:wal_dirname
-		rows_per_wal:wal_rows_per_file
+		rows_per_wal:wal_rows_per_file_
 		feeder_param:param
 		       flags:flags];
 

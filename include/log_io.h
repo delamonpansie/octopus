@@ -113,9 +113,6 @@ typedef void (follow_cb)(ev_stat *w, int events);
 @interface XLogDir: Object {
 	int fd;
 @public
-	size_t rows_per_file;
-	double fsync_delay;
-
 	const char *filetype;
 	const char *suffix;
 	const char *dirname;
@@ -353,6 +350,10 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 	i64 lsn, scn;
 	XLogDir *wal_dir, *snap_dir;
 	bool configured;
+
+	const char *dir_name;
+	int rows_per_file;
+	ev_tstamp fsync_delay;
 @public
 	bool local_writes;
 	struct child *wal_writer;
@@ -362,7 +363,9 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 								cfg.wal_writer_inbox_size */
 	unsigned crc_hist_i;
 }
-- (id) init_wal_dir: (XLogDir*)wal_dir;
+- (id) init_dirname:(const char*)dir_name_
+      rows_per_file:(int)rows_per_file_
+        fsync_delay:(double)fsync_delay_;
 
 - (i64) scn;
 - (void) set_scn:(i64)scn;
@@ -417,7 +420,7 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 
 	bool run_crc_log_mismatch, run_crc_mod_mismatch;
 	i64 recovered_rows;
-	u32 estimated_snap_rows;
+	u32 estimated_snap_rows, wal_rows_per_file;
 
 	i64 next_skip_scn;
 	struct tbuf skip_scn;

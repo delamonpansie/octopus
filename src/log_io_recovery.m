@@ -965,7 +965,7 @@ nop_hb_writer(va_list ap)
 
 - (id) init_snap_dir:(const char *)snap_dirname
              wal_dir:(const char *)wal_dirname
-	rows_per_wal:(int)wal_rows_per_file
+	rows_per_wal:(int)wal_rows_per_file_
 	feeder_param:(struct feeder_param*)feeder_
                flags:(int)flags
 {
@@ -977,14 +977,9 @@ nop_hb_writer(va_list ap)
 
 	wal_timer.data = self;
 	wal_dir->recovery = snap_dir->recovery = self;
+	wal_rows_per_file = wal_rows_per_file_;
 
 	(void)flags;
-	if (wal_rows_per_file <= 4)
-		panic("inacceptable value of 'rows_per_file'");
-
-	wal_dir->rows_per_file = wal_rows_per_file;
-	wal_dir->fsync_delay = cfg.wal_fsync_delay;
-
 	if (feeder_ != NULL)
 		[self feeder_changed: feeder_];
 
@@ -994,7 +989,9 @@ nop_hb_writer(va_list ap)
 - (void)
 configure_wal_writer
 {
-	[self init_wal_dir: wal_dir];
+	[self init_dirname: wal_dir->dirname
+	     rows_per_file: wal_rows_per_file
+	       fsync_delay: cfg.wal_fsync_delay];
 
 	if (!cfg.io_compat && cfg.run_crc_delay > 0)
 		fiber_create("run_crc", run_crc_writer, self, cfg.run_crc_delay);
@@ -1161,11 +1158,11 @@ init_snap_dir:(const char *)snap_dirname
 
 - (id) init_snap_dir:(const char *)snap_dirname
              wal_dir:(const char *)wal_dirname
-        rows_per_wal:(int)wal_rows_per_file
+        rows_per_wal:(int)wal_rows_per_file_
 	feeder_param:(struct feeder_param *)feeder_param_
                flags:(int)flags
 {
-	(void)wal_rows_per_file;
+	(void)wal_rows_per_file_;
 	(void)feeder_param_;
 	(void)flags;
 	return [self init_snap_dir:snap_dirname wal_dir:wal_dirname];
