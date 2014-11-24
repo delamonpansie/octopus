@@ -441,7 +441,7 @@ static inline unsigned mh_str_hash(const char *kk) { return  mh_MurmurHash2(kk, 
 
 #endif
 
-#define mh_neighbors 4
+#define mh_neighbors 8
 
 #ifndef mh_find_loop_def
 #define mh_find_loop_def
