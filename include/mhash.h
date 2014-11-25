@@ -442,8 +442,12 @@ static inline unsigned mh_str_hash(const char *kk) { return  mh_MurmurHash2(kk, 
 
 #endif
 
+#ifndef mh_neighbors
 #define mh_neighbors 8
+#endif
+#ifndef mh_may_skip
 #define mh_may_skip (mh_byte_map && mh_neighbors > 1)
+#endif
 
 #ifndef mh_find_loop_def
 #define mh_find_loop_def
