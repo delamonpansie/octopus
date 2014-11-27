@@ -32,61 +32,22 @@
 
 #include <stdlib.h>
 
-typedef void* ptr_t;
-typedef const void* lstr;
-typedef const void* cstr;
-
-/* All hashes use same layout
-   {
-      mh_val_t obj;
-      mh_key_t key;
-   }
-*/
-
 #define mh_name _i32
 #define mh_key_t i32
-#define mh_val_t ptr_t
-#define mh_hash(a) ({ (a); })
-#define mh_eq(a, b) ({ *(mh_key_t *)((a) + sizeof(mh_val_t)) == (b); })
+#define mh_val_t void *
 #include <mhash.h>
 
 #define mh_name _i64
 #define mh_key_t i64
-#define mh_val_t ptr_t
-#define mh_hash(a) ({ (uint32_t)((a)>>33^(a)^(a)<<11); })
-#define mh_eq(a, b) ({ *(mh_key_t *)((a) + sizeof(mh_val_t)) == (b); })
+#define mh_val_t void *
 #include <mhash.h>
-
-static inline int lstrcmp(const void *a, const void *b)
-{
-	int al, bl;
-	int r;
-
-	al = LOAD_VARINT32(a);
-	bl = LOAD_VARINT32(b);
-
-	if (al != bl)
-		r = al - bl;
-	else
-		r = memcmp(a, b, al);
-
-	return r;
-}
-
-#include <third_party/murmur_hash2.c>
-#define mh_name _lstr
-#define mh_key_t lstr
-#define mh_val_t ptr_t
-#define mh_hash(key) ({ const void *_k = (const void *)(key); int l = LOAD_VARINT32(_k); MurmurHash2(_k, l, 13); })
-#define mh_eq(a, b) ({ lstrcmp(*(mh_key_t *)((a) + sizeof(mh_val_t)), (b)) == 0; })
-#include <mhash.h>
-
 
 #define mh_name _cstr
-#define mh_key_t cstr
-#define mh_val_t ptr_t
-#define mh_hash(key) ({ MurmurHash2((key), strlen(key), 13); })
-#define mh_eq(a, b) ({ strcmp(*(mh_key_t *)((a) + sizeof(mh_val_t)), (b)) == 0; })
+#define mh_key_t const char *
+#define mh_val_t void *
+#include <third_party/murmur_hash2.c>
+#define mh_hash(h, key) ({ MurmurHash2((key), strlen(key), 13); })
+#define mh_eq(h, a, b) ({ strcmp((a), (b)) == 0; })
 #include <mhash.h>
 
 #endif

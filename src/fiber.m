@@ -70,7 +70,7 @@ static ev_async wake_async;
 
 static ev_prepare child_spawner;
 
-static struct mhash_t *fibers_registry;
+static struct mh_i32_t *fibers_registry;
 
 TAILQ_HEAD(, fiber) wake_list;
 
@@ -172,10 +172,7 @@ struct fiber *
 fid2fiber(int fid)
 {
 	u32 k = mh_i32_get(fibers_registry, fid);
-
 	if (k == mh_end(fibers_registry))
-		return NULL;
-	if (!mh_exist(fibers_registry, k))
 		return NULL;
 	return mh_i32_value(fibers_registry, k);
 }
@@ -189,8 +186,7 @@ register_fid(struct fiber *fiber)
 static void
 unregister_fid(struct fiber *fiber)
 {
-	u32 k = mh_i32_get(fibers_registry, fiber->fid);
-	mh_i32_del(fibers_registry, k);
+	mh_i32_remove(fibers_registry, fiber->fid, NULL);
 }
 
 
