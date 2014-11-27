@@ -153,6 +153,7 @@ extern const char* errcode_desc(u_int32_t errcode);
 #define LIBIPROTO_OPT_NONE		0x00
 #define LIBIPROTO_OPT_NONBLOCK		0x01
 #define LIBIPROTO_OPT_HAS_4BYTE_ERRCODE	0x02
+#define LIBIPROTO_OPT_TCP_NODELAY	0x04
 
 struct iproto_connection_t;
 struct iproto_request_t;
@@ -165,6 +166,7 @@ u_int32_t			li_uconnect(struct iproto_connection_t *c, const char *path, u_int32
 u_int32_t			li_connect_timeout(struct iproto_connection_t *c, const char *server, int port, u_int32_t opt, u_int32_t timeout);
 u_int32_t			li_uconnect_timeout(struct iproto_connection_t *c, const char *path, u_int32_t opt, u_int32_t timeout);
 int				li_get_fd(struct iproto_connection_t *c);
+const char*			li_get_addr(struct iproto_connection_t *c);
 void				li_close(struct iproto_connection_t *c);
 void				li_free(struct iproto_connection_t *c);
 

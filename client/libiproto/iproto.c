@@ -36,6 +36,7 @@
 #include <sys/socket.h>
 #include <limits.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <sys/un.h>
 #include <sys/param.h>
 #include <arpa/inet.h>
@@ -46,6 +47,7 @@
 #include <unistd.h>
 #include <stdbool.h>
 #include <time.h>
+#include <sys/time.h>
 
 #ifdef LIBIPROTO_OCTOPUS
 #include <client/libiproto/libiproto.h>
@@ -431,6 +433,13 @@ li_connect(struct iproto_connection_t *c, const char *server, int port, u_int32_
 		return ERR_CODE_CONNECT_ERR;
 	}
 
+	if (opt & LIBIPROTO_OPT_TCP_NODELAY) {
+		if (setsockopt(c->fd, IPPROTO_TCP, TCP_NODELAY, &flags, sizeof(flags)) < 0) {
+			c->connectState = ConnectionError;
+			return ERR_CODE_CONNECT_ERR;
+		}
+	}
+
 #ifdef SO_REUSEPORT
 	if (setsockopt(c->fd, SOL_SOCKET, SO_REUSEPORT, &flags, sizeof(flags)) < 0) {
 		/*
@@ -519,6 +528,21 @@ li_get_fd(struct iproto_connection_t *c) {
 	if (c->connectState == ConnectInProgress || c->connectState == Connected)
 		return c->fd;
 	return -1;
+}
+
+const char *
+li_get_addr(struct iproto_connection_t *c) {
+	if (c->connectState == NotConnected)
+		return NULL;
+
+	switch (c->connectFamily) {
+	case TcpFamily:
+		return c->serv_addr.inet.server;
+	case UnixFamily:
+		return c->serv_addr.un.path;
+	default:
+		abort();
+	}
 }
 
 static void
