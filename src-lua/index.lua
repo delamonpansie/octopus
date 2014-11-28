@@ -156,43 +156,6 @@ local function iter_next(index)
    return object(iterator_next(index))
 end
 
-local function iter(index, ...)
-    if select('#', ...) == 0 or select(1, ...) == nil then
-        iterator_init(index)
-    elseif type(select(1, ...)) == 'table' then
-        local init = select(1, ...)
-        assert(init.__obj)
-        iterator_init_with_object(index, init.__obj)
-    else
-        local ok, node = pcall(packnode, index, ...)
-        if not ok then
-            packerr(node, "iter", index, ...)
-        end
-        iterator_init_with_node(index, node)
-    end
-    return iter_next, index
-end
-
-local function diter(index, direction, ...)
-    if type(direction) == 'string' then
-        direction = dir_decode[direction]
-    end
-    if select('#', ...) == 0 or select(1, ...) == nil then
-        iterator_init_with_direction(index, int(direction))
-    elseif type(select(1, ...)) == 'table' then
-        local init = select(1, ...)
-        assert(init.__obj)
-        iterator_init_with_object_direction(index, init.__obj, int(direction))
-    else
-        local ok, node = pcall(packnode, index, ...)
-        if not ok then
-            packerr(node, "iter", index, ...)
-        end
-        iterator_init_with_node_direction(index, node, int(direction))
-    end
-    return iter_next, index
-end
-
 local basicindex_mt = {
     __index = {
 	find = function(index, ...)
@@ -221,25 +184,52 @@ local basicindex_mt = {
                 error("bad index type", 2)
             end
         end,
-
-        iter = iter
+        iter = function (index, ...)
+            if select('#', ...) == 0 or select(1, ...) == nil then
+                iterator_init(index)
+            elseif type(select(1, ...)) == 'table' then
+                local init = select(1, ...)
+                assert(init.__obj)
+                iterator_init_with_object(index, init.__obj)
+            else
+                local ok, node = pcall(packnode, index, ...)
+                if not ok then
+                    packerr(node, "iter", index, ...)
+                end
+                iterator_init_with_node(index, node)
+            end
+            return iter_next, index
+        end
    }
 }
 ffi.metatype('struct BasicIndex', basicindex_mt)
 
 local tree_mt = {
     __index = {
-	find = basicindex_mt.__index.find,
-        size = basicindex_mt.__index.size,
-        slots = basicindex_mt.__index.slots,
-        get = basicindex_mt.__index.get,
-        type = basicindex_mt.__index.type,
-
-        diter = diter,
-        iter = function(index, ...) return diter(index, "forward", ...) end,
-	riter = function(index, ...) return diter(index, "backward", ...) end
+        diter = function (index, direction, ...)
+            if type(direction) == 'string' then
+                direction = dir_decode[direction]
+            end
+            if select('#', ...) == 0 or select(1, ...) == nil then
+                iterator_init_with_direction(index, int(direction))
+            elseif type(select(1, ...)) == 'table' then
+                local init = select(1, ...)
+                assert(init.__obj)
+                iterator_init_with_object_direction(index, init.__obj, int(direction))
+            else
+                local ok, node = pcall(packnode, index, ...)
+                if not ok then
+                    packerr(node, "iter", index, ...)
+                end
+                iterator_init_with_node_direction(index, node, int(direction))
+            end
+            return iter_next, index
+        end,
+        iter = function(index, ...) return index:diter("forward", ...) end,
+	riter = function(index, ...) return index:diter("backward", ...) end
    }
 }
+setmetatable(tree_mt.__index, basicindex_mt)
 ffi.metatype('struct Tree', tree_mt)
 
 function cast(index)
