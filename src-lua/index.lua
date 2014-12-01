@@ -19,7 +19,6 @@ local printf = printf
 module(...)
 
 ffi.cdef[[
-struct OpaqueIndex;
 struct BasicIndex {
 	struct { void *isa; };
 	const struct index_conf conf;
@@ -87,6 +86,53 @@ local function packnode(index, ...)
     end
     return node
 end
+local function packnode1(index, k)
+    if index.conf.field_type[0] == ffi.C.STRING then
+	if #k > 0xffff then
+	    error("key too big")
+	end
+	local n = varint32.write(strbuf, #k)
+	ffi.copy(strbuf + n, k, #k)
+	node.key.ptr = strbuf
+    else
+        local field = ffi.cast(index_field, node.key.chr + index.conf.offset[0])
+        packfield(index.conf.field_type[0], field, k)
+    end
+    node.obj = ffi.cast(void, 1)
+    return node
+end
+local function packnode2(index, k1, k2)
+    local field = ffi.cast(index_field, node.key.chr + index.conf.offset[0])
+    packfield(index.conf.field_type[0], field, k1)
+    node.obj = ffi.cast(void, 1)
+    if k2 ~= nil then
+        field = ffi.cast(index_field, node.key.chr + index.conf.offset[1])
+        packfield(index.conf.field_type[1], field, k2)
+        node.obj = ffi.cast(void, 2)
+    end
+    return node
+end
+local function packnode3(index, k1, k2, k3)
+    local field = ffi.cast(index_field, node.key.chr + index.conf.offset[0])
+    packfield(index.conf.field_type[0], field, k1)
+    node.obj = ffi.cast(void, 1)
+    if k2 ~= nil then
+        field = ffi.cast(index_field, node.key.chr + index.conf.offset[1])
+        packfield(index.conf.field_type[1], field, k2)
+        node.obj = ffi.cast(void, 2)
+        if k3 ~= nil then
+            field = ffi.cast(index_field, node.key.chr + index.conf.offset[2])
+            packfield(index.conf.field_type[2], field, k3)
+            node.obj = ffi.cast(void, 3)
+        end
+    end
+    return node
+end
+local packnode_reg = setmetatable( { [1] = packnode1,
+                                     [2] = packnode2,
+                                     [3] = packnode3 },
+                                   { __index = function () return packnode end } )
+
 local function packerr(err, fname, index, ...)
     local itype = {}
     local atype = {}
@@ -115,35 +161,32 @@ local function packerr(err, fname, index, ...)
     error(msg, 3)
 end
 
-local opaquet = ffi.typeof('const struct OpaqueIndex *')
-local indext = ffi.typeof('const struct BasicIndex *')
-local treet = ffi.typeof('const struct Tree *')
-
+local magic_key = {}
+local legacy_mt
 -- legacy iter interface interface
 function iter(index, key)
-   if ffi.typeof(index) == opaquet then
-      index = ffi.cast(indext, index)
-   end
-   assertarg(index, indext, 1, 2)
-   if index.conf.field_type[0] ~= ffi.C.STRING and type(key) == 'string' then
-       key = tonumber(key)
-   end
-   return index:iter(key)
+    assertarg(index, legacy_mt, 1, 2)
+    index = index[magic_key]
+
+    if index.__ptr.conf.field_type[0] ~= ffi.C.STRING and type(key) == 'string' then
+        key = tonumber(key)
+    end
+    return index:iter(key)
 end
 
-local legacy_mt = {
-   __index = function(index, key)
-      if ffi.typeof(index) == opaquet then
-         index = ffi.cast(indext, index)
-      end
-      if index.conf.field_type[0] ~= ffi.C.STRING and type(key) == 'string' then
-         key = tonumber(key)
-      end
-      return index:find(key)
-   end,
-   __metatable = {}
+legacy_mt = {
+    __index = function(index, key)
+        assertarg(index, legacy_mt, 1, 2)
+        index = index[magic_key]
+        if index.__ptr.conf.field_type[0] ~= ffi.C.STRING and type(key) == 'string' then
+            key = tonumber(key)
+        end
+        return index:find(key)
+    end,
 }
-ffi.metatype('struct OpaqueIndex', legacy_mt)
+local function legacy_proxy(index)
+    return setmetatable({[magic_key] = index}, legacy_mt)
+end
 
 local int32_t = ffi.typeof('int32_t')
 local uint32_t = ffi.typeof('uint32_t')
@@ -153,89 +196,91 @@ local dir_decode = setmetatable({ forward = ffi.C.iterator_forward,
                                 { __index = function() return ffi.C.iterator_forward end })
 
 local function iter_next(index)
-   return object(iterator_next(index))
+    return object(iterator_next(index.__ptr))
 end
 
-local basicindex_mt = {
+local basic_mt = {
     __index = {
-	find = function(index, ...)
-	    local ok, node = pcall(packnode, index, ...)
-	    if not ok then
-		packerr(node, "find", index, ...)
-	    end
-	    return object(find_node(index, node))
-	end,
-        size = function(index)
-            return tonumber(ffi.cast(uint32_t, objc.msg_send(index, "size")))
+        packnode = function(self, ...)
+            local ok, node = pcall(self.__packnode or packnode, self.__ptr, ...)
+            if not ok then
+                packerr(node, "find", self.__ptr, ...)
+            end
+            return node
         end,
-	slots = function(index)
-	    return tonumber(ffi.cast(uint32_t, objc.msg_send(index, "slots")))
-	end,
-	get = function(index, i)
-	    assert(index.conf.type == ffi.C.HASH)
-	    return object(get(index, ffi.cast(int32_t, i)))
-	end,
-        type = function(index)
-            if index.conf.type == ffi.C.HASH then
+        find = function(self, ...)
+            local node = self:packnode(...)
+            return object(find_node(self.__ptr, node))
+        end,
+        size = function(self)
+            return tonumber(ffi.cast(uint32_t, objc.msg_send(self.__ptr, "size")))
+        end,
+        slots = function(self)
+            return tonumber(ffi.cast(uint32_t, objc.msg_send(self.__ptr, "slots")))
+        end,
+        get = function(self, i)
+            assert(self.__ptr.conf.type == ffi.C.HASH)
+            return object(get(self.__ptr, ffi.cast(int32_t, i)))
+        end,
+        type = function(self)
+            if self.__ptr.conf.type == ffi.C.HASH then
                 return "HASH"
-            elseif index.conf.type == ffi.C.TREE then
+            elseif self.__ptr.conf.type == ffi.C.TREE then
                 return "TREE"
             else
                 error("bad index type", 2)
             end
         end,
-        iter = function (index, ...)
+        iter = function (self, ...)
             if select('#', ...) == 0 or select(1, ...) == nil then
-                iterator_init(index)
+                iterator_init(self.__ptr)
             elseif type(select(1, ...)) == 'table' then
                 local init = select(1, ...)
                 assert(init.__obj)
-                iterator_init_with_object(index, init.__obj)
+                iterator_init_with_object(self.__ptr, init.__obj)
             else
-                local ok, node = pcall(packnode, index, ...)
-                if not ok then
-                    packerr(node, "iter", index, ...)
-                end
-                iterator_init_with_node(index, node)
+                local node = self:packnode(...)
+                iterator_init_with_node(self.__ptr, node)
             end
-            return iter_next, index
+            return iter_next, self
         end
-   }
+    }
 }
-ffi.metatype('struct BasicIndex', basicindex_mt)
 
 local tree_mt = {
     __index = {
-        diter = function (index, direction, ...)
+        diter = function (self, direction, ...)
             if type(direction) == 'string' then
                 direction = dir_decode[direction]
             end
             if select('#', ...) == 0 or select(1, ...) == nil then
-                iterator_init_with_direction(index, int(direction))
+                iterator_init_with_direction(self.__ptr, int(direction))
             elseif type(select(1, ...)) == 'table' then
                 local init = select(1, ...)
                 assert(init.__obj)
-                iterator_init_with_object_direction(index, init.__obj, int(direction))
+                iterator_init_with_object_direction(self.__ptr, init.__obj, int(direction))
             else
-                local ok, node = pcall(packnode, index, ...)
-                if not ok then
-                    packerr(node, "iter", index, ...)
-                end
-                iterator_init_with_node_direction(index, node, int(direction))
+                local node = self:packnode(...)
+                iterator_init_with_node_direction(self.__ptr, node, int(direction))
             end
-            return iter_next, index
+            return iter_next, self
         end,
-        iter = function(index, ...) return index:diter("forward", ...) end,
-	riter = function(index, ...) return index:diter("backward", ...) end
+        iter = function(self, ...) return self:diter("forward", ...) end,
+	riter = function(self, ...) return self:diter("backward", ...) end
    }
 }
-setmetatable(tree_mt.__index, basicindex_mt)
-ffi.metatype('struct Tree', tree_mt)
+setmetatable(tree_mt.__index, basic_mt)
 
-function cast(index)
-    local legacy = ffi.cast(opaquet, index)
-    if index:type() == 'TREE' then
-        index = ffi.cast(treet, index)
-    end
-    return legacy, index
+local index_mt = { [tonumber(ffi.C.TREE)] = tree_mt,
+                   [tonumber(ffi.C.HASH)] = basic_mt }
+setmetatable(index_mt, { __index = function() assert(false) end })
+
+local function proxy(index)
+    local p = { __ptr = index,
+                __packnode = packnode_reg[index.conf.cardinality] }
+    return setmetatable(p, index_mt[tonumber(index.conf.type)])
+end
+function cast(cdata)
+    local index = proxy(cdata)
+    return legacy_proxy(index), index
 end
