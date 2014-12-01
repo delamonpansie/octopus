@@ -46,14 +46,6 @@ local __tuple_index = {
 	 error('invalid field index', 2 + level or 0)
       end
       i = i * 2
-      local j = #self.__cache - 1
-      while j < i do
-	 local offt = self.__cache[j] + self.__cache[j + 1]
-	 local len, vlen = varint32.read(self.data + offt)
-	 self.__cache[j + 2], self.__cache[j + 3] = len, offt + vlen
-	 j = j + 2
-      end
-
       return self.__cache[i], self.__cache[i + 1]
    end,
    strfield = function(self, i)
@@ -138,14 +130,13 @@ local tuple_mt = {
 }
 
 local box_tuple = ffi.typeof('const struct box_tuple *')
-
+ffi.cdef 'u32 *box_tuple_cache_update(int cardinality, const unsigned char *data);' -- palloc allocated!
 obj_type = ffi.C.BOX_TUPLE
 obj_cast = function(obj)
     local tuple = ffi.cast(box_tuple, obj + 1) --  tuple starts right after 'struct tnt_object'
-    local len0, offt0 = varint32.read(tuple.data)
     return setmetatable({ __obj = obj,
                           __tuple = tuple,
-                          __cache = {[0] = len0, offt0}, -- {len0, offt0, len1, offt1, ...}
+                          __cache = ffi.C.box_tuple_cache_update(tuple.cardinality, tuple.data),
                           cardinality = tonumber(tuple.cardinality),
                           data = tuple.data,
                           bsize = tonumber(tuple.bsize)},
@@ -156,7 +147,7 @@ end
 function new(obj, cardinality, data, bsize)
     local len0, offt0 = varint32.read(data)
     return setmetatable({ __obj = obj,
-                          __cache = {[0] = len0, offt0}, -- {len0, offt0, len1, offt1, ...}
+                          __cache = ffi.C.box_tuple_cache_update(cardinality, data),
                           cardinality = cardinality,
                           data = data,
                           bsize = bsize},

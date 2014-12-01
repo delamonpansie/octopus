@@ -44,6 +44,20 @@
 #import <mod/box/box.h>
 #import <mod/box/moonbox.h>
 
+u32 *
+box_tuple_cache_update(int cardinality, const unsigned char *data)
+{
+	u32 *cache = palloc(fiber->pool, 2 * cardinality * sizeof(u32));
+	const unsigned char *field = data;
+	for (int i = 0; i < cardinality; i++) {
+		u32 len = LOAD_VARINT32(field);
+		cache[i * 2] = len;
+		cache[i * 2 + 1] = field - data;
+		field = field + len;
+	}
+	return cache;
+}
+
 static int
 luaT_box_dispatch(struct lua_State *L)
 {
