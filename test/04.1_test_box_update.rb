@@ -18,7 +18,7 @@ Env.env_eval do
   c2 = connect
   c4 = connect
 
-  wal_writer_pid = pid + 4 # hack!
+  wal_writer_pid = pid + 5 # hack!
   c1.insert [3, "baz"]
   puts "# wal_writer stop"
   Process.kill "STOP", wal_writer_pid
