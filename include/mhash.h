@@ -780,7 +780,7 @@ _mh(slot_copy)(struct mhash_t *d, uint32_t dx, const mh_slot_t *source)
 
 #ifdef MH_SOURCE
 
-#define load_factor 0.7
+#define load_factor 0.73
 
 MH_DECL struct mhash_t *
 _mh(init)(void *(*custom_realloc)(void *, size_t))
