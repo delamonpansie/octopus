@@ -39,6 +39,7 @@
 #include <stdio.h>
 #include <sysexits.h>
 #include <sys/socket.h>
+#include <sys/uio.h>
 #include <limits.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -51,6 +52,21 @@ struct wal_disk_writer_conf {
 	int rows_per_file;
 	double fsync_delay;
 };
+
+struct wal_reply {
+	u32 packet_len;
+	u32 row_count;
+	struct fiber *sender;
+	u32 fid;
+
+	struct row_info {
+		u16 tag;
+		i64 lsn;
+		i64 scn;
+		u32 run_crc;
+	} __attribute__((packed)) row_info[];
+} __attribute__((packed));
+
 
 @interface WALDiskWriter: Object {
 	int rows_per_file;
@@ -170,7 +186,7 @@ wal_disk_writer_input_dispatch(va_list ap __attribute__((unused)))
 		while (tbuf_len(c->rbuf) > sizeof(u32) &&
 		       tbuf_len(c->rbuf) >= *(u32 *)c->rbuf->ptr)
 		{
-			struct wal_reply *r = read_bytes(c->rbuf, sizeof(*r));
+			struct wal_reply *r = read_bytes(c->rbuf, *(u32 *)c->rbuf->ptr);
 			if (unlikely(r->sender->fid != r->fid)) {
 				say_warn("orphan WAL reply");
 				continue;
@@ -195,19 +211,13 @@ wal_disk_writer(int fd, void *state)
 	struct tbuf rbuf = TBUF(NULL, 0, fiber->pool);
 	int result = EXIT_FAILURE;
 	i64 start_lsn, next_scn = conf->scn;
-	u32 crc = conf->run_crc;
+	u32 run_crc = conf->run_crc;
 	bool io_failure = false, delay_read = false;
 	ssize_t r;
-	int requests_processed, rows_processed;
-	struct {
-		struct fiber *sender;
-		u32 fid;
-		u32 row_count;
-	} request[1024];
-	struct {
-		i64 lsn, scn;
-		u32 crc;
-	} row[nelem(request) * 8];
+	int reply_count = 0;
+
+	struct wal_reply *reply[1024];
+	struct iovec reply_iov[nelem(reply)];
 
 	ev_tstamp start_time = ev_now();
 	palloc_register_gc_root(fiber->pool, &rbuf, tbuf_gc);
@@ -246,36 +256,36 @@ wal_disk_writer(int fd, void *state)
 		}
 
 		start_lsn = writer->lsn;
-		requests_processed = 0;
-		rows_processed = 0;
 		delay_read = false;
 		io_failure = [writer prepare_write:next_scn + 1] == -1;
 
 		/* we're not running inside ev_loop, so update ev_now manually just before write */
 		ev_now_update();
 
-		for (int i = 0; i < nelem(request); i++) {
+		for (int i = 0; i < nelem(reply); i++) {
 			if (tbuf_len(&rbuf) < sizeof(u32) ||
 			    tbuf_len(&rbuf) < *(u32 *)rbuf.ptr)
 				break;
 
 			u32 row_count = ((u32 *)rbuf.ptr)[1];
-			u32 rows_available = MIN([writer->current_wal wet_rows_offset_available],
-						 nelem(row) - rows_processed);
-			if (!io_failure && row_count > rows_available) {
-				assert(requests_processed != 0);
+			if (!io_failure && row_count > [writer->current_wal wet_rows_offset_available]) {
+				assert(reply_count != 0);
 				delay_read = true;
 				break;
 			}
+			say_debug("request[%i] rows:%i", i, row_count);
 
-			tbuf_ltrim(&rbuf, sizeof(u32)); /* drop packet_len */
-			request[i].row_count = read_u32(&rbuf);
-			request[i].sender = read_ptr(&rbuf);
-			request[i].fid = read_u32(&rbuf);
+			tbuf_ltrim(&rbuf, sizeof(u32) * 2); /* drop packet_len & row_count */
+			reply[i] = p0alloc(fiber->pool,
+					   sizeof(struct wal_reply) +
+					   row_count * sizeof(struct row_info));
+			reply[i]->row_count = row_count;
+			reply[i]->sender = read_ptr(&rbuf);
+			reply[i]->fid = read_u32(&rbuf);
 
-			assert(request[i].row_count > 0);
-			say_debug("request[%i] rows:%i", i, request[i].row_count);
-			for (int j = 0; j < request[i].row_count; j++) {
+
+			struct row_info *row_info = reply[i]->row_info;
+			for (int j = 0; j < row_count; j++) {
 				struct row_v12 *h = read_bytes(&rbuf, sizeof(*h));
 				void *data = read_bytes(&rbuf, h->len);
 
@@ -292,58 +302,59 @@ wal_disk_writer(int fd, void *state)
 					continue;
 				}
 
-				int tag_type = h->tag & ~TAG_MASK;
-				int tag = h->tag & TAG_MASK;
+				int tag_type = ret->tag & ~TAG_MASK;
+				int tag = ret->tag & TAG_MASK;
 				if (tag_type == TAG_WAL && (tag == wal_data || tag > user_tag))
-					crc = crc32c(crc, data, h->len);
+					run_crc = crc32c(run_crc, data, h->len);
 
-				/* next_scn is used for writing XLog header, which is turn used to
-				   find correct file for replication replay.
-				   so, next_scn should be updated only when data modification occurs */
-				if (scn_changer(h->tag)) {
-					if (cfg.panic_on_scn_gap && ret->scn - next_scn != 1)
-						panic("GAP %"PRIi64" rows:%i", ret->scn - next_scn,
-						      request[requests_processed].row_count);
-					next_scn = ret->scn;
-				}
-
-				row[rows_processed].lsn = ret->lsn;
-				row[rows_processed].scn = next_scn;
-				row[rows_processed].crc = crc;
-				rows_processed++;
+				*row_info++ = (struct row_info){ .lsn = ret->lsn,
+								 .scn = ret->scn,
+								 .tag = ret->tag,
+								 .run_crc = run_crc };
 			}
-			requests_processed++;
+			reply_count++;
 		}
-		if (requests_processed == 0)
+		if (reply_count == 0)
 			continue;
 
 		assert(start_lsn > 0);
 		u32 rows_confirmed = [writer confirm_write] - start_lsn;
 
-		size_t reply_len = sizeof(struct wal_reply) * requests_processed;
-		struct wal_reply *reply = palloc(fiber->pool, reply_len);
-		for (int i = 0, j = 0; i < requests_processed; i++) {
-			reply[i] = (struct wal_reply){ .packet_len = sizeof(struct wal_reply),
-						       .row_count = 0,
-						       .sender = request[i].sender,
-						       .fid = request[i].fid,
-						       .lsn = 0,
-						       .scn = 0};
+		for (int i = 0; i < reply_count; i++) {
+			int reply_row_count = MIN(rows_confirmed, reply[i]->row_count);
+			int reply_len = sizeof(struct wal_reply) +
+					reply_row_count * sizeof(struct row_info);
 
-			if (rows_confirmed > 0) {
-				reply[i].row_count = MIN(rows_confirmed, request[i].row_count);
-				rows_confirmed -= reply[i].row_count;
-				j += reply[i].row_count;
-				/* row[j - 1] is the last written row in the request */
-				reply[i].lsn = row[j - 1].lsn;
-				reply[i].scn = row[j - 1].scn;
-				reply[i].run_crc = row[j - 1].crc;
+			reply[i]->packet_len = reply_len;
+			reply[i]->row_count = reply_row_count; /* real number rows written to disk */
+
+			reply_iov[i].iov_base = reply[i];
+			reply_iov[i].iov_len = reply_len;
+
+			for (int k = 0; k < reply[i]->row_count; k++) {
+				struct row_info *ri = &reply[i]->row_info[k];
+				/* next_scn is used for writing XLog header, which is turn used to
+				   find correct file for replication replay.
+				   so, next_scn should be updated only when data modification occurs */
+				if (scn_changer(ri->tag)) {
+					if (cfg.panic_on_scn_gap && ri->scn - next_scn != 1)
+						panic("GAP %"PRIi64" rows:%i", ri->scn - next_scn,
+						      reply[i]->row_count);
+					next_scn = ri->scn;
+				}
 			}
+
+			rows_confirmed -= reply_row_count;
+
 			say_debug("reply[%i] rows:%i LSN:%"PRIi64" SCN:%"PRIi64,
-				  i, reply[i].row_count, reply[i].lsn, reply[i].scn);
+				  i, reply[i]->row_count,
+				  reply[i]->row_count ? reply[i]->row_info[reply[i]->row_count - 1].lsn : -1,
+				  reply[i]->row_count ? reply[i]->row_info[reply[i]->row_count - 1].scn : -1);
 		}
+
+		struct iovec *iov = reply_iov;
 		do {
-			r = write(fd, reply, reply_len);
+			r = writev(fd, iov, reply_count);
 			if (r < 0) {
 				if (errno == EINTR)
 					continue;
@@ -351,9 +362,18 @@ wal_disk_writer(int fd, void *state)
 				result = EX_OK;
 				goto exit;
 			}
-			reply = (void *)reply + r;
-			reply_len -= r;
-		} while (reply_len > 0);
+			do {
+				if (iov->iov_len <= r) {
+					r -= iov->iov_len;
+					reply_count--;
+					iov++;
+				} else {
+					iov->iov_base += r;
+					iov->iov_len -= r;
+					break;
+				}
+			} while (r);
+		} while (reply_count > 0);
 
 		fiber_gc();
 	}
@@ -479,22 +499,26 @@ wal_pack_submit
 	assert(configured);
 	ev_io_start(&wal_writer->c->out);
 	struct wal_reply *reply = yield();
-	assert(reply->lsn != -1);
-	if (reply->lsn == 0) {
+	if (reply->row_count == 0) {
 		say_warn("wal writer returned error status");
-		assert(reply->row_count == 0);
 		return 0;
 	}
 
-	if (cfg.sync_scn_with_lsn && reply->lsn != reply->scn)
-		panic("out ouf sync SCN:%"PRIi64 " != LSN:%"PRIi64,
-		      reply->scn, reply->lsn);
+	for (int i = 0; i < reply->row_count; i++) {
+		struct row_info *ri = &reply->row_info[i];
 
-	/* update recovery state */
-	lsn = reply->lsn;
-	scn = reply->scn; /* only TAG_WAL rows affect reply->scn & reply->run_crc */
-	run_crc_log = reply->run_crc;
-	crc_hist[++crc_hist_i % nelem(crc_hist)] = (struct crc_hist){ scn, run_crc_log };
+		if (cfg.sync_scn_with_lsn && ri->lsn != ri->scn)
+			panic("out ouf sync SCN:%"PRIi64 " != LSN:%"PRIi64,
+			      ri->scn, ri->lsn);
+
+		/* update recovery state */
+		lsn = ri->lsn;
+		if (scn_changer(ri->tag)) {
+			scn = ri->scn; /* only TAG_WAL rows affect reply->scn & reply->run_crc */
+			run_crc_log = ri->run_crc;
+			crc_hist[++crc_hist_i % nelem(crc_hist)] = (struct crc_hist){ scn, run_crc_log };
+		}
+	}
 
 	say_debug("%s: => rows:%i", __func__, reply->row_count);
 	return reply->row_count;

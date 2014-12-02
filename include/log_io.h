@@ -243,16 +243,6 @@ struct wal_pack {
 	u32 fid;
 } __attribute__((packed));
 
-struct wal_reply {
-	u32 packet_len;
-	u32 row_count;
-	struct fiber *sender;
-	u32 fid;
-	i64 lsn;
-	i64 scn;
-	u32 run_crc;
-} __attribute__((packed));
-
 #define replication_handshake_base_fields \
 	u32 ver; \
 	i64 scn; \
