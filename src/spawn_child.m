@@ -100,7 +100,7 @@ fork_spawner()
 
 	close_all_xcpt(3, fsock, stderrfd, sayfd);
 	sched.name = "spawner";
-	title("%s", "spawner");
+	title("");
 
 	for (;;) {
 		struct fork_request request;
@@ -147,7 +147,7 @@ fork_spawner()
 		} else {
 			close(fsock);
 			sched.name = request.name;
-			title("%s", request.name);
+			title("");
 			say_info("%s spawned", request.name);
 			struct symbol *sym = addr2symbol(request.handler);
 			say_debug("worker %p:%s(fd:%d)",

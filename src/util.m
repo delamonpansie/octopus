@@ -459,7 +459,8 @@ title(const char *fmt, ...)
 		va_start(ap, fmt);
 		vsnprintf(tmp, sizeof(tmp), fmt, ap);
 		va_end(ap);
-		cat(buf, sizeof(buf), ":", tmp);
+		if (strlen(tmp) > 0)
+			cat(buf, sizeof(buf), ":", tmp);
 	} else {
 		/* This block can be put under #ifdef too */
 		@try {
