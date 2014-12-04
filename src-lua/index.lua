@@ -14,7 +14,10 @@ local table = table
 local assertarg = assertarg
 local setmetatable = setmetatable
 
-local printf = printf
+local ipairs, pairs = ipairs, pairs
+local string = string
+local loadstring = loadstring
+local print, printf = print, printf
 
 module(...)
 
@@ -42,6 +45,7 @@ local get = objc.msg_lookup('get:')
 local maxnodesize = ffi.sizeof('struct index_node') + 8 * ffi.sizeof('union index_field')
 local node = ffi.cast('struct index_node *', ffi.C.malloc(maxnodesize))
 local strbuf = ffi.new('char[?]', 5 + 0xffff)
+gen = {node = node, strbuf = strbuf}
 
 local function packfield(ftype, field, key)
     if ftype == ffi.C.NUM16 then
@@ -65,73 +69,113 @@ local function packfield(ftype, field, key)
     end
 end
 
-local index_field = ffi.typeof('union index_field *')
-local void = ffi.typeof('void *')
-local function packnode(index, ...)
-    if index.conf.cardinality == 1 and index.conf.field_type[0] == ffi.C.STRING then
-	local key = ...
-	if #key > 0xffff then
-	    error("key too big")
-	end
-	local n = varint32.write(strbuf, #key)
-	ffi.copy(strbuf + n, key, #key)
-	node.key.ptr = strbuf
-	node.obj = ffi.cast(void, 1)
-    else
-	for i = 0, select('#', ...) - 1 do
-	    local field = ffi.cast(index_field, node.key.chr + index.conf.offset[i])
-	    packfield(index.conf.field_type[i], field, select(i + 1, ...))
-	end
-	node.obj = ffi.cast(void, select('#', ...))
-    end
-    return node
-end
-local function packnode1(index, k)
-    if index.conf.field_type[0] == ffi.C.STRING then
-	if #k > 0xffff then
-	    error("key too big")
-	end
-	local n = varint32.write(strbuf, #k)
-	ffi.copy(strbuf + n, k, #k)
-	node.key.ptr = strbuf
-    else
-        local field = ffi.cast(index_field, node.key.chr + index.conf.offset[0])
-        packfield(index.conf.field_type[0], field, k)
-    end
-    node.obj = ffi.cast(void, 1)
-    return node
-end
-local function packnode2(index, k1, k2)
-    local field = ffi.cast(index_field, node.key.chr + index.conf.offset[0])
-    packfield(index.conf.field_type[0], field, k1)
-    node.obj = ffi.cast(void, 1)
-    if k2 ~= nil then
-        field = ffi.cast(index_field, node.key.chr + index.conf.offset[1])
-        packfield(index.conf.field_type[1], field, k2)
-        node.obj = ffi.cast(void, 2)
-    end
-    return node
-end
-local function packnode3(index, k1, k2, k3)
-    local field = ffi.cast(index_field, node.key.chr + index.conf.offset[0])
-    packfield(index.conf.field_type[0], field, k1)
-    node.obj = ffi.cast(void, 1)
-    if k2 ~= nil then
-        field = ffi.cast(index_field, node.key.chr + index.conf.offset[1])
-        packfield(index.conf.field_type[1], field, k2)
-        node.obj = ffi.cast(void, 2)
-        if k3 ~= nil then
-            field = ffi.cast(index_field, node.key.chr + index.conf.offset[2])
-            packfield(index.conf.field_type[2], field, k3)
-            node.obj = ffi.cast(void, 3)
+local cgen_mt = {
+    __index = {
+        emit = function (self, fmt, lbindings)
+            for k, v in pairs(lbindings or {}) do
+                fmt = string.gsub(fmt, '$' .. k, v)
+            end
+            for k, v in pairs(self.bindings) do
+                fmt = string.gsub(fmt, '$' .. k, v)
+            end
+            table.insert(self.code, fmt)
+        end,
+        bind = function (self, sym, value)
+            self.bindings[sym] = value
+            table.insert(self.sym_stack, sym)
+        end,
+        bind_pop = function (self, n)
+            for i = 1, n or 1 do
+                local sym = table.remove(self.sym_stack)
+                self.bindings[sym] = nil
+            end
+        end,
+        gen = function (self)
+            local code = table.concat(self.code, "\n")
+            return code
         end
-    end
-    return node
+    }
+}
+
+local function cgen(bindings)
+    return setmetatable({code = {},
+                         bindings = bindings or {},
+                         sym_stack = {}},
+                        cgen_mt)
 end
-local packnode_reg = setmetatable( { [1] = packnode1,
-                                     [2] = packnode2,
-                                     [3] = packnode3 },
-                                   { __index = function () return packnode end } )
+
+local function gen_packfield(e, index, i, key)
+    e:bind('offset', index.conf.offset[i])
+    e:bind('key', key)
+
+    e:emit('do')
+    e:emit("    local field = ffi.cast(index_field, node.key.chr + $offset)")
+    local ftype = index.conf.field_type[i]
+    if ftype == ffi.C.NUM16 then
+	e:emit("    field.u16 = $key", {key = key})
+    elseif ftype == ffi.C.NUM32 then
+        e:emit("    field.u32 = $key", {key = key})
+    elseif ftype == ffi.C.NUM64 then
+        e:emit("    field.u64 = $key", {key = key})
+    elseif ftype == ffi.C.STRING then
+        e:emit('    if #$key > 0xffff then error("key too big", 4) end')
+        e:emit('    field.str.len = #$key')
+	e:emit('    if #$key <= 8 then')
+	e:emit('        ffi.copy(field.str.data.bytes, $key, #$key)')
+	e:emit('    else')
+	e:emit('        field.str.data.ptr = $key')
+	e:emit('    end')
+    else
+	error("unknown index field_type:" .. tostring(ftype), 4)
+    end
+    e:emit('end')
+    e:bind_pop(2)
+end
+
+local function gen_packnode(index)
+    local e = cgen()
+
+    e:emit('local ffi = require("ffi")')
+    e:emit('local node = index.gen.node')
+    e:emit('local strbuf = index.gen.strbuf')
+    e:emit('local void = ffi.typeof("void *")')
+    e:emit('local index_field = ffi.typeof("union index_field *")')
+
+    if index.conf.cardinality == 1 and index.conf.field_type[0] == ffi.C.STRING then
+        e:emit('return function(self, key)')
+        e:emit('    if #key > 0xffff then error("key too big") end')
+        e:emit('    local n = varint32.write(strbuf, #key)')
+        e:emit('    ffi.copy(strbuf + n, key, #key)')
+        e:emit('    node.key.ptr = strbuf')
+        e:emit('    node.obj = ffi.cast(void, 1)')
+        e:emit('    return node')
+        e:emit('end')
+        return loadstring(e:gen())()
+    end
+
+    local keys = {}
+    for i = 1, index.conf.cardinality do
+        table.insert(keys, 'k' .. i)
+    end
+    e:bind('args', 'self, ' .. table.concat(keys, ', '))
+
+    e:emit('return function ($args)')
+    for i, key in ipairs(keys) do
+        e:bind('key',  key)
+        if i == 1 then
+            e:emit('    if $key == nil then error("empty key") end')
+        else
+            e:emit('    if $key == nil then return node end')
+        end
+        gen_packfield(e, index, i - 1, key)
+        e:emit('    node.obj = ffi.cast(void, $i)', {i = i})
+        e:bind_pop()
+    end
+    e:emit('     return node')
+    e:emit('end')
+
+    return loadstring(e:gen())()
+end
 
 local function packerr(err, fname, index, ...)
     local itype = {}
@@ -202,7 +246,7 @@ end
 local basic_mt = {
     __index = {
         packnode = function(self, ...)
-            local ok, node = pcall(self.__packnode or packnode, self.__ptr, ...)
+            local ok, node = pcall(self.__packnode, self.__ptr, ...)
             if not ok then
                 packerr(node, "find", self.__ptr, ...)
             end
@@ -277,7 +321,7 @@ setmetatable(index_mt, { __index = function() assert(false) end })
 
 local function proxy(index)
     local p = { __ptr = index,
-                __packnode = packnode_reg[index.conf.cardinality] }
+                __packnode = gen_packnode(index) }
     return setmetatable(p, index_mt[tonumber(index.conf.type)])
 end
 function cast(cdata)
