@@ -1003,7 +1003,7 @@ loop:
 			goto loop;
 		}
 		if (p->tag == (run_crc | TAG_WAL))
-			[r verify_run_crc:&TBUF(p->value, p->value_len, NULL)];
+			run_crc_verify(&r->run_crc_state, &TBUF(p->value, p->value_len, NULL));
 
 
 		p->flags |= P_CLOSED;
@@ -1467,7 +1467,7 @@ recover_row:(struct row_v12 *)r
 submit_run_crc
 {
 	/* history overflow */
-	if (max_scn - scn > nelem(crc_hist))
+	if (max_scn - scn > nelem(run_crc_state.hist))
 		return -1;
 
 	return [super submit_run_crc];

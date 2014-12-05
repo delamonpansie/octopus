@@ -319,6 +319,23 @@ u32 wal_pack_append_row(struct wal_pack *pack, struct row_v12 *row);
 void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 			  const void *data, size_t len);
 
+struct run_crc {
+	struct run_crc_hist {
+		i64 scn;
+		u32 value;
+	} hist[512]; /* should be larger than
+			cfg.wal_writer_inbox_size */
+	int i;
+	bool mismatch;
+	ev_tstamp verify_tstamp;
+};
+void run_crc_calc(u32 *crc, u16 row_tag, const void *data, int len);
+void run_crc_record(struct run_crc* state, u16 row_tag, i64 scn, u32 crc);
+void run_crc_verify(struct run_crc *run_crc, struct tbuf *buf);
+ev_tstamp run_crc_lag(struct run_crc *run_crc);
+const char *run_crc_status(struct run_crc *run_crc);
+
+
 @protocol RecoveryState
 - (i64) lsn;
 - (i64) scn;
@@ -349,9 +366,7 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 	struct child *wal_writer;
 
 	u32 run_crc_log;
-	struct crc_hist { i64 scn; u32 log; } crc_hist[512]; /* should be larger than
-								cfg.wal_writer_inbox_size */
-	unsigned crc_hist_i;
+	struct run_crc run_crc_state;
 }
 - (id) init_dirname:(const char*)dir_name_
       rows_per_file:(int)rows_per_file_
@@ -398,7 +413,7 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 @interface Recovery: XLogWriter {
 @public
 	i64 last_wal_lsn;
-	ev_tstamp lag, last_update_tstamp, run_crc_verify_tstamp;
+	ev_tstamp lag, last_update_tstamp;
 	enum recovery_status status, prev_status;
 	char status_buf[64];
 	ev_timer wal_timer;
@@ -408,7 +423,6 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 	XLogPuller *remote_puller;
 	struct feeder_param feeder;
 
-	bool run_crc_log_mismatch, run_crc_mod_mismatch;
 	i64 recovered_rows;
 	u32 estimated_snap_rows, wal_rows_per_file;
 
@@ -430,7 +444,6 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 - (void) configure_wal_writer;
 
 - (void) recover_row:(struct row_v12 *)row;
-- (void) verify_run_crc:(struct tbuf *)buf;
 
 - (i64) recover_snap;
 - (void) recover_remaining_wals;

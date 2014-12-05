@@ -103,38 +103,6 @@ dummy_row_lsn:(i64)lsn_ scn:(i64)scn_ tag:(u16)tag
 
 
 - (void)
-verify_run_crc:(struct tbuf *)buf
-{
-	i64 scn_of_crc = read_u64(buf);
-	u32 log = read_u32(buf);
-	read_u32(buf); /* ignore run_crc_mod */
-
-	struct crc_hist *h = NULL;
-	for (unsigned i = crc_hist_i, j = 0; j < nelem(crc_hist); j++, i--) {
-		struct crc_hist *p = &crc_hist[i % nelem(crc_hist)];
-		if (p->scn == scn_of_crc) {
-			h = p;
-			break;
-		}
-	}
-
-	if (!h) {
-		say_warn("unable to track run_crc: crc history too short"
-			 " SCN:%"PRIi64" CRC_SCN:%"PRIi64, scn, scn_of_crc);
-		return;
-	}
-
-	if (h->log != log) {
-		run_crc_log_mismatch |= 1;
-		say_error("run_crc_log mismatch: SCN:%"PRIi64" saved:0x%08x computed:0x%08x",
-			  scn_of_crc, log, h->log);
-	} else {
-		say_info("run_crc verified SCN:%"PRIi64, h->scn);
-	}
-	run_crc_verify_tstamp = ev_now();
-}
-
-- (void)
 apply_sys:(const struct row_v12 *)r
 {
 	int tag = r->tag & TAG_MASK;
@@ -166,7 +134,7 @@ apply_sys:(const struct row_v12 *)r
 		if (r->len != sizeof(i64) + sizeof(u32) * 2)
 			break;
 
-		[self verify_run_crc:&TBUF(r->data, r->len, NULL)];
+		run_crc_verify(&run_crc_state, &TBUF(r->data, r->len, NULL));
 		break;
 	}
 }
@@ -193,8 +161,7 @@ recover_row:(struct row_v12 *)r
 			}
 		}
 
-		if (tag_type == TAG_WAL)
-			run_crc_log = crc32c(run_crc_log, r->data, r->len);
+		run_crc_calc(&run_crc_log, r->tag, r->data, r->len);
 
 		if (r->scn == next_skip_scn) {
 			say_info("skip SCN:%"PRIi64 " tag:%s", next_skip_scn, xlog_tag_to_a(r->tag));
@@ -227,9 +194,7 @@ recover_row:(struct row_v12 *)r
 				panic("non consecutive SCN %"PRIi64 " -> %"PRIi64, scn, r->scn);
 
 			scn = r->scn;
-			say_debug("save crc_hist SCN:%"PRIi64" log:0x%08x", scn, run_crc_log);
-			crc_hist[++crc_hist_i % nelem(crc_hist)] =
-				(struct crc_hist){ scn, run_crc_log };
+			run_crc_record(&run_crc_state, r->tag, scn, run_crc_log);
 		}
 	}
 	@catch (Error *e) {
@@ -909,19 +874,13 @@ submit_run_crc
 - (ev_tstamp)
 run_crc_lag
 {
-	return ev_now() - run_crc_verify_tstamp;
+	return run_crc_lag(&run_crc_state);
 }
 
 - (const char *)
 run_crc_status
 {
-	if (run_crc_log_mismatch && run_crc_mod_mismatch)
-		return "ALL_CRC_MISMATCH";
-	if (run_crc_log_mismatch)
-		return "LOG_CRC_MISMATCH";
-	if (run_crc_mod_mismatch)
-		return "MOD_CRC_MISMATCH";
-	return "ok";
+	return run_crc_status(&run_crc_state);
 }
 
 static void

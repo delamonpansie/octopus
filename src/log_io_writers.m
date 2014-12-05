@@ -302,10 +302,7 @@ wal_disk_writer(int fd, void *state)
 					continue;
 				}
 
-				int tag_type = ret->tag & ~TAG_MASK;
-				int tag = ret->tag & TAG_MASK;
-				if (tag_type == TAG_WAL && (tag == wal_data || tag > user_tag))
-					run_crc = crc32c(run_crc, data, h->len);
+				run_crc_calc(&run_crc, ret->tag, data, ret->len);
 
 				*row_info++ = (struct row_info){ .lsn = ret->lsn,
 								 .scn = ret->scn,
@@ -516,7 +513,7 @@ wal_pack_submit
 		if (scn_changer(ri->tag)) {
 			scn = ri->scn; /* only TAG_WAL rows affect reply->scn & reply->run_crc */
 			run_crc_log = ri->run_crc;
-			crc_hist[++crc_hist_i % nelem(crc_hist)] = (struct crc_hist){ scn, run_crc_log };
+			run_crc_record(&run_crc_state, ri->tag, ri->scn, run_crc_log);
 		}
 	}
 

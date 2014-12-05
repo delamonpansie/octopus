@@ -22,6 +22,7 @@ obj-log-io += src/log_io.o
 obj-log-io += src/log_io_writers.o
 obj-log-io += src/log_io_recovery.o
 obj-log-io += src/log_io_puller.o
+obj-log-io += src/log_io_run_crc.o
 
 ifeq (1,$(HAVE_RAGEL))
 	dist-clean += src/admin.m
