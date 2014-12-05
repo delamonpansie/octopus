@@ -128,22 +128,24 @@ fork_spawner()
 			struct iovec iov = { .iov_base = &reply,
 					     .iov_len = sizeof(reply) };
 			struct msghdr msg = { .msg_iov = &iov,
-					      .msg_iovlen = 1,
-					      .msg_control = cmsgbuf,
-					      .msg_controllen = CMSG_LEN(sizeof(int)) };
+					      .msg_iovlen = 1 };
 
-			struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
-			cmsg->cmsg_len = CMSG_LEN(sizeof(int));
-			cmsg->cmsg_level = SOL_SOCKET;
-			cmsg->cmsg_type = SCM_RIGHTS;
-			*(int*)CMSG_DATA(cmsg) = sock;
+			if (pid > 0) {
+				msg.msg_control = cmsgbuf;
+				msg.msg_controllen = CMSG_LEN(sizeof(int));
 
-			if(sendmsg(fsock, &msg, 0) < 0) {
-				say_syserror("sendmsg");
-				if (errno != EAGAIN || errno != EINTR)
-					break;
+				struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
+				cmsg->cmsg_len = CMSG_LEN(sizeof(int));
+				cmsg->cmsg_level = SOL_SOCKET;
+				cmsg->cmsg_type = SCM_RIGHTS;
+				*(int*)CMSG_DATA(cmsg) = sock;
 			}
 
+			while (sendmsg(fsock, &msg, 0) < 0) {
+				say_syserror("sendmsg");
+				if (errno != EAGAIN || errno != EINTR)
+					_exit(0);
+			}
 		} else {
 			close(fsock);
 			sched.name = request.name;
@@ -223,6 +225,8 @@ spawn_child(const char *name, struct fiber *in, struct fiber *out,
 			memcpy(&fd, CMSG_DATA(cmsg), sizeof(int));
 
 			/* fd is in non blocking mode, fork_pair() already did ioctl() */
+		} else {
+			say_error("unable to spawn %s", name);
 		}
 	}
 
