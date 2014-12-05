@@ -199,7 +199,7 @@ spawn_child(const char *name, struct fiber *in, struct fiber *out,
 		io_ready(EV_WRITE);
 		ssize_t ret = sendmsg(spawner_fd, &msg, 0);
 		if (ret < 0 || ret != sizeof(request) + len) {
-			say_syserror("send");
+			say_syserror("sendmsg");
 			return NULL;
 		}
 
