@@ -396,6 +396,7 @@ rows_per_file:(int)rows_per_file_
 	strcpy(conf.dir_name, dir_name);
 	wal_writer = spawn_child("wal_writer", wal_in, wal_out, wal_disk_writer, &conf, sizeof(conf));
 
+	assert(wal_writer != NULL);
 	ev_set_priority(&wal_writer->c->in, 1);
 	ev_set_priority(&wal_writer->c->out, 1);
 	ev_io_start(&wal_writer->c->in);
