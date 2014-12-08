@@ -437,112 +437,98 @@ static inline unsigned mh_str_hash(const char *kk) { return  mh_MurmurHash2(kk, 
 
 #define mh_neighbors 4
 
+#ifndef mh_find_loop_def
+#define mh_find_loop_def
+struct mh_find_loop {
+	unsigned i, inc, step;
+};
+static inline void mh_find_loop_init(struct mh_find_loop *l, unsigned k, unsigned buckets) {
+	l->step = mh_neighbors;
+	l->i = k % buckets;
+	l->inc = k % (buckets - 2*mh_neighbors);
+}
+static inline void mh_find_loop_step(struct mh_find_loop *l, unsigned buckets) {
+	l->step--;
+	l->i++;
+	if (!l->step) {
+		l->step += mh_neighbors;
+		l->i += l->inc;
+	}
+	if (l->i >= buckets) l->i -= buckets;
+}
+#endif
+
 static inline uint32_t
 _mh(get)(const struct mhash_t *h, const mh_key_t key)
 {
-	unsigned inc, i, step;
 	unsigned k = mh_hash(h, key);
-	i = k % h->n_buckets;
-	inc = k % (h->n_buckets - mh_neighbors);
-	step = mh_neighbors;
+	struct mh_find_loop l;
+	mh_find_loop_init(&l, k, h->n_buckets);
 	for (;;) {
-		if (mh_exist(h, i) && mh_slot_key_eq(h, i, key))
-			return i;
+		if (mh_exist(h, l.i) && mh_slot_key_eq(h, l.i, key))
+			return l.i;
 
-		if (!mh_dirty(h, i))
+		if (!mh_dirty(h, l.i))
 			return h->n_buckets;
 
-		step--;
-		i += 1;
-		if (!step) {
-			step = mh_neighbors;
-			i += inc;
-		}
-		if (i >= h->n_buckets) i -= h->n_buckets;
+		mh_find_loop_step(&l, h->n_buckets);
 	}
 }
 
 static inline uint32_t
 _mh(short_mark)(struct mhash_t *h, const mh_key_t key)
 {
-	unsigned i, inc, step;
-	unsigned n_buckets = h->n_buckets;
 	unsigned k = mh_hash(h, key);
-	i = k % n_buckets;
-	inc = k % (h->n_buckets - mh_neighbors);
-	step = mh_neighbors;
-
+	struct mh_find_loop l;
+	mh_find_loop_init(&l, k, h->n_buckets);
 	for(;;) {
-		if (mh_exist(h, i)) {
-			mh_setdirty(h, i);
+		if (mh_exist(h, l.i)) {
+			mh_setdirty(h, l.i);
 		} else {
-			if (!mh_dirty(h, i)) {
+			if (!mh_dirty(h, l.i)) {
 				h->n_occupied++;
 			}
-			return i;
+			return l.i;
 		}
 
-		step--;
-		i += 1;
-		if (!step) {
-			step = mh_neighbors;
-			i += inc;
-		}
-		if (i >= h->n_buckets) i -= h->n_buckets;
+		mh_find_loop_step(&l, h->n_buckets);
 	}
 }
 
 static inline uint32_t
 _mh(mark)(struct mhash_t *h, const mh_key_t key)
 {
-	unsigned i, inc, step, p = 0;
-	unsigned n_buckets = h->n_buckets;
-	unsigned k = mh_hash(h, key);
-	i = k % n_buckets;
-	inc = k % (h->n_buckets - mh_neighbors);
-	step = mh_neighbors;
+	unsigned k = mh_hash(h, key), p = 0;
+	struct mh_find_loop l;
+	mh_find_loop_init(&l, k, h->n_buckets);
 
 	do {
-		if (mh_exist(h, i)) {
-			if (mh_slot_key_eq(h, i, key))
-				return i;
+		if (mh_exist(h, l.i)) {
+			if (mh_slot_key_eq(h, l.i, key))
+				return l.i;
 			else
-				mh_setdirty(h, i);
+				mh_setdirty(h, l.i);
 		} else {
-			if (!mh_dirty(h, i)) {
+			if (!mh_dirty(h, l.i)) {
 				h->n_occupied++;
-				return i;
-			} else {
-				p = i+1;
+				return l.i;
 			}
+			p = l.i+1;
 		}
 
-		step--;
-		i += 1;
-		if (!step) {
-			step = mh_neighbors;
-			i += inc;
-		}
-		if (i >= h->n_buckets) i -= h->n_buckets;
+		mh_find_loop_step(&l, h->n_buckets);
 	} while (!p);
 
 	for (;;) {
-		if (!mh_exist(h, i)) {
-			if (!mh_dirty(h, i)) {
-				h->n_occupied++;
+		if (!mh_exist(h, l.i)) {
+			if (!mh_dirty(h, l.i)) {
 				return p-1;
 			}
 		} else {
-			if (mh_slot_key_eq(h, i, key))
-				return i;
+			if (mh_slot_key_eq(h, l.i, key))
+				return l.i;
 		}
-		step--;
-		i += 1;
-		if (!step) {
-			step = mh_neighbors;
-			i += inc;
-		}
-		if (i >= h->n_buckets) i -= h->n_buckets;
+		mh_find_loop_step(&l, h->n_buckets);
 	}
 }
 
