@@ -426,19 +426,32 @@ static inline unsigned mh_str_hash(const char *kk) { return  mh_MurmurHash2(kk, 
 #ifndef mh_find_loop_def
 #define mh_find_loop_def
 struct mh_find_loop {
-	unsigned i, inc, step;
+	unsigned i, inc, dlt, step;
 };
+/* original formula:
+ * init:
+ *   start_i = k & mask;
+ *   dlt = k % (mask / (2 * mh_neighbors)) * 2 + 1;
+ *   inc = 0
+ *   i = start_i + inc;
+ * step:
+ *   inc = inc * 5 + dlt
+ *   i = start_i + inc
+ */
 static inline void mh_find_loop_init(struct mh_find_loop *l, unsigned k, unsigned mask) {
 	l->step = mh_neighbors;
 	l->i = k & mask;
-	l->inc = k % (mask / (2 * mh_neighbors)) * (2 * mh_neighbors);
+	l->dlt = k % (mask / (2 * mh_neighbors)) * 2;
+	l->inc = 0;
 }
 static inline void mh_find_loop_step(struct mh_find_loop *l, unsigned mask) {
 	l->step--;
 	l->i++;
 	if (!l->step) {
+		uint32_t d = l->inc * 4 + l->dlt;
 		l->step += mh_neighbors;
-		l->i += l->inc;
+		l->i += d * mh_neighbors;
+		l->inc += d + 1;
 	}
 	l->i &= mask;
 }
