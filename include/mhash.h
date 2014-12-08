@@ -319,7 +319,7 @@ MH_DECL void _mh(resize_step)(struct mhash_t *h);
 MH_DECL void _mh(start_resize)(struct mhash_t *h, uint32_t buckets);
 
 static inline void _mh(slot_copy)(struct mhash_t *d, uint32_t dx, const mh_slot_t *source);
-static inline void _mh(slot_copy_to_shadow)(struct mhash_t *h, uint32_t o);
+MH_DECL void _mh(slot_copy_to_shadow)(struct mhash_t *h, uint32_t o, int exist);
 
 #define mh_malloc(h, size) (h)->realloc(NULL, (size))
 #define mh_calloc(h, nmemb, size) ({			\
@@ -463,6 +463,36 @@ _mh(get)(const struct mhash_t *h, const mh_key_t key)
 }
 
 static inline uint32_t
+_mh(short_mark)(struct mhash_t *h, const mh_key_t key)
+{
+	unsigned i, inc, step;
+	unsigned n_buckets = h->n_buckets;
+	unsigned k = mh_hash(h, key);
+	i = k % n_buckets;
+	inc = k % (h->n_buckets - mh_neighbors);
+	step = mh_neighbors;
+
+	for(;;) {
+		if (mh_exist(h, i)) {
+			mh_setdirty(h, i);
+		} else {
+			if (!mh_dirty(h, i)) {
+				h->n_occupied++;
+			}
+			return i;
+		}
+
+		step--;
+		i += 1;
+		if (!step) {
+			step = mh_neighbors;
+			i += inc;
+		}
+		if (i >= h->n_buckets) i -= h->n_buckets;
+	}
+}
+
+static inline uint32_t
 _mh(mark)(struct mhash_t *h, const mh_key_t key)
 {
 	unsigned i, inc, step, p = 0;
@@ -550,7 +580,7 @@ _mh(iput)(struct mhash_t *h, const mh_key_t key, int *ret)
 
 #if MH_INCREMENTAL_RESIZE
 	if (x < h->resize_position) {
-		_mh(slot_copy_to_shadow)(h, x);
+		_mh(slot_copy_to_shadow)(h, x, exist);
 	}
 #endif
 	return x;
@@ -617,7 +647,7 @@ _mh(sput)(struct mhash_t *h, const mh_slot_t *slot, mh_slot_t *prev_slot)
 	_mh(slot_copy)(h, x, slot); /* always copy: overwrite old slot val if exists */
 #if MH_INCREMENTAL_RESIZE
 	if (x < h->resize_position)
-		_mh(slot_copy_to_shadow)(h, x);
+		_mh(slot_copy_to_shadow)(h, x, exist);
 #endif
 
 	return !exist;
@@ -667,7 +697,7 @@ _mh(put)(struct mhash_t *h, const mh_key_t key, mh_val_t val, mh_val_t *prev_val
 #endif
 #if MH_INCREMENTAL_RESIZE
 	if (x < h->resize_position)
-		_mh(slot_copy_to_shadow)(h, x);
+		_mh(slot_copy_to_shadow)(h, x, exist);
 #endif
 
 	return !exist;
@@ -685,7 +715,7 @@ _mh(set_value)(struct mhash_t *h, uint32_t x, mh_val_t val)
 
 #if MH_INCREMENTAL_RESIZE
 	if (x < h->resize_position)
-		_mh(slot_copy_to_shadow)(h, x);
+		_mh(slot_copy_to_shadow)(h, x, 1);
 #endif
 }
 
@@ -723,17 +753,6 @@ static inline void
 _mh(slot_copy)(struct mhash_t *d, uint32_t dx, const mh_slot_t *source)
 {
 	mh_slot_copy(d, mh_slot(d, dx), source);
-}
-
-static inline void
-_mh(slot_copy_to_shadow)(struct mhash_t *h, uint32_t o)
-{
-	struct mhash_t *s = h->shadow;
-
-	mh_slot_t *slot = mh_slot(h, o);
-	int exist;
-	uint32_t n = _mh(will_put)(s, mh_slot_key(s, slot), &exist);
-	_mh(slot_copy)(s, n, slot);
 }
 
 #ifdef MH_SOURCE
@@ -791,8 +810,13 @@ _mh(resize_step)(struct mhash_t *h)
 #endif
 	uint32_t o;
 	for (o = start; o < end; o++) {
-		if (mh_exist(h, o))
-			_mh(slot_copy_to_shadow)(h, o);
+		if (mh_exist(h, o)) {
+			mh_slot_t *slot = mh_slot(h, o);
+			uint32_t n = _mh(short_mark)(s, mh_slot_key(s, slot));
+			_mh(slot_copy)(s, n, slot);
+			mh_setexist(s, n);
+			s->size++;
+		}
 	}
 
 	if (end == h->n_buckets) {
@@ -803,6 +827,20 @@ _mh(resize_step)(struct mhash_t *h)
 		assert(s->size == h->size);
 		memcpy(h, s, sizeof(*h));
 		memset(s, 0, sizeof(*s));
+	}
+}
+
+MH_DECL void
+_mh(slot_copy_to_shadow)(struct mhash_t *h, uint32_t o, int exist)
+{
+	struct mhash_t *s = h->shadow;
+
+	mh_slot_t *slot = mh_slot(h, o);
+	if (exist) {
+		uint32_t n = _mh(get)(s, mh_slot_key(s, slot));
+		_mh(slot_copy)(s, n, slot);
+	} else {
+		_mh(sput)(s, slot, NULL);
 	}
 }
 
