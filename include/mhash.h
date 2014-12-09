@@ -632,19 +632,6 @@ _mh(del)(struct mhash_t *h, uint32_t x)
 #endif
 }
 
-static inline int
-_mh(remove)(struct mhash_t *h, mh_key_t key, mh_val_t *prev_val)
-{
-	uint32_t x = _mh(get)(h, key);
-	if (x != mh_end(h)) {
-		if (prev_val)
-			*prev_val = mh_slot_val(mh_slot(h, x));
-
-		_mh(del)(h, x);
-	}
-	return x != mh_end(h);
-}
-
 /* slot variants */
 static inline uint32_t
 _mh(sget_by_key)(const struct mhash_t *h, const mh_key_t key)
@@ -754,6 +741,18 @@ _mh(pvalue)(struct mhash_t *h, uint32_t x)
 	return &mh_slot_val(mh_slot(h, x));
 }
 
+static inline int
+_mh(remove)(struct mhash_t *h, mh_key_t key, mh_val_t *prev_val)
+{
+	uint32_t x = _mh(get)(h, key);
+	if (x != mh_end(h)) {
+		if (prev_val)
+			*prev_val = mh_slot_val(mh_slot(h, x));
+
+		_mh(del)(h, x);
+	}
+	return x != mh_end(h);
+}
 #endif
 
 static inline int
