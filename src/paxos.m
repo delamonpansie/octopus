@@ -542,17 +542,18 @@ proposal(PaxosRecovery *r, i64 scn)
 })
 
 static int
-submit(XLogWriter *r, const void *data, u32 data_len, i64 scn, u16 tag)
+submit(Recovery *r, const void *data, u32 data_len, i64 scn, u16 tag)
 {
+	XLogWriter *writer = [r writer];
 	struct row_v12 row = { .scn = scn,
 			       .tag = tag };
 
 	struct wal_pack pack;
-	if (!wal_pack_prepare(r, &pack))
+	if (!wal_pack_prepare(writer, &pack))
 		return 0;
 	wal_pack_append_row(&pack, &row);
 	wal_pack_append_data(&pack, &row, data, data_len);
-	return [r wal_pack_submit];
+	return [writer wal_pack_submit];
 }
 
 static void
@@ -1230,7 +1231,7 @@ enable_local_writes
 	} else {
 		[self configure_wal_writer];
 	}
-	assert(configured);
+	assert(writer != nil);
 
 	fiber_create("remote_hot_standby", remote_hot_standby, self);
 
@@ -1323,7 +1324,7 @@ check_replica
 - (int)
 submit:(const void *)data len:(u32)len tag:(u16)tag
 {
-	if (!configured)
+	if (writer == nil)
 		return 0;
 
 	@try {

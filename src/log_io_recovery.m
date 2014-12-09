@@ -84,6 +84,41 @@ ours:
 - (ev_tstamp) lag { return lag; }
 - (ev_tstamp) last_update_tstamp { return last_update_tstamp; }
 
+- (i64) lsn { return lsn; }
+- (i64) scn { return scn; }
+- (u32) run_crc_log { return run_crc_log; }
+- (bool) local_writes { return local_writes; }
+- (void) update_state_rci:(const struct row_commit_info *)rci count:(int)count
+{
+	for (int i = 0; i < count; i++, rci++) {
+		if (cfg.sync_scn_with_lsn && rci->lsn != rci->scn)
+			panic("out ouf sync SCN:%"PRIi64 " != LSN:%"PRIi64,
+			      rci->scn, rci->lsn);
+
+		lsn = rci->lsn;
+
+		/* only TAG_WAL rows affect scn & run_crc */
+		if (scn_changer(rci->tag)) {
+			scn = rci->scn;
+			run_crc_log = rci->run_crc;
+			run_crc_record(&run_crc_state, rci->tag, rci->scn, rci->run_crc);
+		}
+	}
+}
+
+- (XLogWriter *) writer { return writer; }
+- (struct child *) wal_writer { return [[self writer] wal_writer]; }
+
+- (int)submit:(const void *)data len:(u32)len tag:(u16)tag
+{
+	if (!local_writes) {
+		say_warn("local writes disabled");
+		return 0;
+	}
+
+	return [writer submit:data len:len tag:tag];
+}
+
 - (struct row_v12 *)
 dummy_row_lsn:(i64)lsn_ scn:(i64)scn_ tag:(u16)tag
 {
@@ -602,14 +637,14 @@ pull_wal:(id<XLogPullerAsync>)puller
 		while (confirmed != pack_rows) {
 			struct wal_pack pack;
 
-			if (!wal_pack_prepare(self, &pack)) {
+			if (!wal_pack_prepare(writer, &pack)) {
 				fiber_sleep(0.1);
 				continue;
 			}
 			for (int i = confirmed; i < pack_rows; i++)
 				wal_pack_append_row(&pack, rows[i]);
 
-			confirmed += [self wal_pack_submit];
+			confirmed += [writer wal_pack_submit];
 			if (confirmed != pack_rows) {
 				say_warn("WAL write failed confirmed:%i != sent:%i",
 					 confirmed, pack_rows);
@@ -955,9 +990,10 @@ nop_hb_writer(va_list ap)
 - (void)
 configure_wal_writer
 {
-	[self init_dirname: wal_dir->dirname
-	     rows_per_file: wal_rows_per_file
-	       fsync_delay: cfg.wal_fsync_delay];
+	writer = [[XLogWriter alloc] init_state:self
+					dirname:wal_dir->dirname
+				  rows_per_file:wal_rows_per_file
+				    fsync_delay:cfg.wal_fsync_delay];
 
 	if (!cfg.io_compat && cfg.run_crc_delay > 0)
 		fiber_create("run_crc", run_crc_writer, self, cfg.run_crc_delay);

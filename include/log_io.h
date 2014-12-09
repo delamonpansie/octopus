@@ -162,6 +162,13 @@ struct row_v12 {
 	u8 data[0];
 } __attribute__((packed));
 
+struct row_commit_info {
+	u16 tag;
+	i64 lsn;
+	i64 scn;
+	u32 run_crc;
+} __attribute__((packed));
+
 typedef struct marker_desc {
 	u64 marker, eof;
 	off_t size, eof_size;
@@ -340,6 +347,9 @@ const char *run_crc_status(struct run_crc *run_crc);
 - (i64) lsn;
 - (i64) scn;
 - (u32) run_crc_log;
+- (bool) local_writes;
+- (void) update_state_rci:(const struct row_commit_info *)rci
+		    count:(int)count;
 @end
 
 @interface SnapWriter: Object {
@@ -353,40 +363,25 @@ const char *run_crc_status(struct run_crc *run_crc);
 - (int) snapshot_write_rows:(XLog *)snap;
 @end
 
-@interface XLogWriter: Object <RecoveryState> {
-	i64 lsn, scn;
+@interface XLogWriter: Object {
+	id<RecoveryState> state;
 	XLogDir *wal_dir, *snap_dir;
-	bool configured;
 
 	const char *dir_name;
 	int rows_per_file;
 	ev_tstamp fsync_delay;
-@public
-	bool local_writes;
 	struct child *wal_writer;
-
-	u32 run_crc_log;
-	struct run_crc run_crc_state;
 }
-- (id) init_dirname:(const char*)dir_name_
+- (id) init_state:(id<RecoveryState>)state
+	  dirname:(const char*)dir_name_
       rows_per_file:(int)rows_per_file_
         fsync_delay:(double)fsync_delay_;
-
-- (i64) scn;
-- (void) set_scn:(i64)scn;
-- (i64) lsn;
 
 - (struct child *) wal_writer;
 
 - (int) wal_pack_submit;
-
 /* entry points: modules should call this */
 - (int) submit:(const void *)data len:(u32)len tag:(u16)tag;
-
-@end
-
-@interface XLogWriter (Fold)
-- (int) snapshot_fold;
 @end
 
 @interface XLogPuller: Object <XLogPuller, XLogPullerAsync> {
@@ -410,7 +405,14 @@ const char *run_crc_status(struct run_crc *run_crc);
 @end
 
 enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
-@interface Recovery: XLogWriter {
+@interface Recovery: Object <RecoveryState> {
+	XLogWriter *writer;
+
+	XLogDir *wal_dir, *snap_dir;
+
+
+	i64 lsn, scn;
+	bool local_writes;
 @public
 	i64 last_wal_lsn;
 	ev_tstamp lag, last_update_tstamp;
@@ -423,6 +425,9 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 	XLogPuller *remote_puller;
 	struct feeder_param feeder;
 
+	u32 run_crc_log;
+	struct run_crc run_crc_state;
+
 	i64 recovered_rows;
 	u32 estimated_snap_rows, wal_rows_per_file;
 
@@ -431,6 +436,13 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 
 	void (*print_row)(struct tbuf *out, u16 tag, struct tbuf *r);
 }
+- (i64) lsn;
+- (i64) scn;
+- (u32) run_crc_log;
+
+- (struct child *) wal_writer;
+- (XLogWriter *)writer;
+- (int) submit:(const void *)data len:(u32)len tag:(u16)tag;
 
 - (const char *) status;
 - (ev_tstamp) lag;
@@ -494,6 +506,9 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 - (void) apply:(struct tbuf *)op tag:(u16)tag;
 @end
 
+@interface Recovery (Fold)
+- (int) snapshot_fold;
+@end
 
 @interface NoWALRecovery: Recovery
 - (id) init_snap_dir:(const char *)snap_dirname

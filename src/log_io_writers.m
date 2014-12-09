@@ -59,12 +59,7 @@ struct wal_reply {
 	struct fiber *sender;
 	u32 fid;
 
-	struct row_info {
-		u16 tag;
-		i64 lsn;
-		i64 scn;
-		u32 run_crc;
-	} __attribute__((packed)) row_info[];
+	struct row_commit_info row_info[];
 } __attribute__((packed));
 
 
@@ -278,13 +273,13 @@ wal_disk_writer(int fd, void *state)
 			tbuf_ltrim(&rbuf, sizeof(u32) * 2); /* drop packet_len & row_count */
 			reply[i] = p0alloc(fiber->pool,
 					   sizeof(struct wal_reply) +
-					   row_count * sizeof(struct row_info));
+					   row_count * sizeof(struct row_commit_info));
 			reply[i]->row_count = row_count;
 			reply[i]->sender = read_ptr(&rbuf);
 			reply[i]->fid = read_u32(&rbuf);
 
 
-			struct row_info *row_info = reply[i]->row_info;
+			struct row_commit_info *row_info = reply[i]->row_info;
 			for (int j = 0; j < row_count; j++) {
 				struct row_v12 *h = read_bytes(&rbuf, sizeof(*h));
 				void *data = read_bytes(&rbuf, h->len);
@@ -304,10 +299,10 @@ wal_disk_writer(int fd, void *state)
 
 				run_crc_calc(&run_crc, ret->tag, data, ret->len);
 
-				*row_info++ = (struct row_info){ .lsn = ret->lsn,
-								 .scn = ret->scn,
-								 .tag = ret->tag,
-								 .run_crc = run_crc };
+				*row_info++ = (struct row_commit_info){ .lsn = ret->lsn,
+									.scn = ret->scn,
+									.tag = ret->tag,
+									.run_crc = run_crc };
 			}
 			reply_count++;
 		}
@@ -320,7 +315,7 @@ wal_disk_writer(int fd, void *state)
 		for (int i = 0; i < reply_count; i++) {
 			int reply_row_count = MIN(rows_confirmed, reply[i]->row_count);
 			int reply_len = sizeof(struct wal_reply) +
-					reply_row_count * sizeof(struct row_info);
+					reply_row_count * sizeof(struct row_commit_info);
 
 			reply[i]->packet_len = reply_len;
 			reply[i]->row_count = reply_row_count; /* real number rows written to disk */
@@ -329,15 +324,15 @@ wal_disk_writer(int fd, void *state)
 			reply_iov[i].iov_len = reply_len;
 
 			for (int k = 0; k < reply[i]->row_count; k++) {
-				struct row_info *ri = &reply[i]->row_info[k];
+				struct row_commit_info *rci = &reply[i]->row_info[k];
 				/* next_scn is used for writing XLog header, which is turn used to
 				   find correct file for replication replay.
 				   so, next_scn should be updated only when data modification occurs */
-				if (scn_changer(ri->tag)) {
-					if (cfg.panic_on_scn_gap && ri->scn - next_scn != 1)
-						panic("GAP %"PRIi64" rows:%i", ri->scn - next_scn,
+				if (scn_changer(rci->tag)) {
+					if (cfg.panic_on_scn_gap && rci->scn - next_scn != 1)
+						panic("GAP %"PRIi64" rows:%i", rci->scn - next_scn,
 						      reply[i]->row_count);
-					next_scn = ri->scn;
+					next_scn = rci->scn;
 				}
 			}
 
@@ -383,19 +378,15 @@ exit:
 
 @implementation XLogWriter
 
-- (i64) lsn { return lsn; }
-- (i64) scn { return scn; }
-- (u32) run_crc_log { return run_crc_log; }
 - (struct child *) wal_writer { return wal_writer; };
 
-- (void) set_lsn:(i64)lsn_ { lsn = lsn_; }
-- (void) set_scn:(i64)scn_ { scn = scn_; }
-
 - (id)
-init_dirname:(const char*)dir_name_
+init_state:(id<RecoveryState>)state_
+   dirname:(const char*)dir_name_
 rows_per_file:(int)rows_per_file_
- fsync_delay:(double)fsync_delay_
+fsync_delay:(double)fsync_delay_
 {
+	state = state_;
 	dir_name = strdup(dir_name_);
 	rows_per_file = rows_per_file_;
 	fsync_delay = fsync_delay_;
@@ -404,15 +395,15 @@ rows_per_file:(int)rows_per_file_
 	if (rows_per_file <= 4)
 		panic("inacceptable value of 'rows_per_file'");
 
-	say_info("Configuring WAL writer LSN:%"PRIi64" SCN:%"PRIi64, lsn, scn);
+	say_info("Configuring WAL writer LSN:%"PRIi64" SCN:%"PRIi64, [state lsn], [state scn]);
 
 	struct fiber *wal_out = fiber_create("wal_writer/output_flusher", conn_flusher);
 	struct fiber *wal_in = fiber_create("wal_writer/input_dispatcher", wal_disk_writer_input_dispatch);
-	struct wal_disk_writer_conf conf =  { .lsn = lsn,
-					      .scn = scn,
-					      .run_crc = run_crc_log,
-					      .rows_per_file = rows_per_file,
-					      .fsync_delay = fsync_delay };
+	struct wal_disk_writer_conf conf = { .lsn = [state lsn],
+					     .scn = [state scn],
+					     .run_crc = [state run_crc_log],
+					     .rows_per_file = rows_per_file,
+					     .fsync_delay = fsync_delay };
 	strcpy(conf.dir_name, dir_name);
 	wal_writer = spawn_child("wal_writer", wal_in, wal_out, wal_disk_writer, &conf, sizeof(conf));
 
@@ -420,8 +411,6 @@ rows_per_file:(int)rows_per_file_
 	ev_set_priority(&wal_writer->c->in, 1);
 	ev_set_priority(&wal_writer->c->out, 1);
 	ev_io_start(&wal_writer->c->in);
-
-	configured = true;
 
 	return self;
 }
@@ -453,7 +442,7 @@ submit:(const void *)data len:(u32)data_len tag:(u16)tag
 int
 wal_pack_prepare(XLogWriter *w, struct wal_pack *pack)
 {
-	if (!w->local_writes) {
+	if (![w->state local_writes]) {
 		say_warn("local writes disabled");
 		return 0;
 	}
@@ -493,30 +482,12 @@ wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 - (int)
 wal_pack_submit
 {
-	assert(configured);
 	ev_io_start(&wal_writer->c->out);
 	struct wal_reply *reply = yield();
-	if (reply->row_count == 0) {
+	if (reply->row_count == 0)
 		say_warn("wal writer returned error status");
-		return 0;
-	}
 
-	for (int i = 0; i < reply->row_count; i++) {
-		struct row_info *ri = &reply->row_info[i];
-
-		if (cfg.sync_scn_with_lsn && ri->lsn != ri->scn)
-			panic("out ouf sync SCN:%"PRIi64 " != LSN:%"PRIi64,
-			      ri->scn, ri->lsn);
-
-		/* update recovery state */
-		lsn = ri->lsn;
-		if (scn_changer(ri->tag)) {
-			scn = ri->scn; /* only TAG_WAL rows affect reply->scn & reply->run_crc */
-			run_crc_log = ri->run_crc;
-			run_crc_record(&run_crc_state, ri->tag, ri->scn, run_crc_log);
-		}
-	}
-
+	[state update_state_rci:reply->row_info count:reply->row_count];
 	say_debug("%s: => rows:%i", __func__, reply->row_count);
 	return reply->row_count;
 }
