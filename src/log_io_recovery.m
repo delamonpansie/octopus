@@ -105,6 +105,30 @@ ours:
 		}
 	}
 }
+- (void) update_state_r:(const struct row_v12 *)r
+{
+	/* note: it's to late to raise here: txn is already commited */
+	if (unlikely(r->lsn - lsn > 1 && cfg.panic_on_lsn_gap))
+		panic("LSN sequence has gap after %"PRIi64 " -> %"PRIi64, lsn, r->lsn);
+
+	if (cfg.sync_scn_with_lsn && r->lsn != r->scn)
+		panic("out of sync SCN:%"PRIi64 " != LSN:%"PRIi64, r->scn, r->lsn);
+
+	lsn = r->lsn;
+	last_update_tstamp = ev_now();
+	lag = last_update_tstamp - r->tm;
+
+	int tag = r->tag & TAG_MASK;
+
+	if (scn_changer(r->tag) || tag == snap_final) {
+		if (unlikely(tag != snap_final && r->scn - scn != 1 &&
+			     cfg.panic_on_scn_gap && [[self class] name] == [Recovery name]))
+			panic("non consecutive SCN %"PRIi64 " -> %"PRIi64, scn, r->scn);
+
+		scn = r->scn;
+		run_crc_record(&run_crc_state, r->tag, scn, run_crc_log);
+	}
+}
 
 - (XLogWriter *) writer { return writer; }
 - (struct child *) wal_writer { return [[self writer] wal_writer]; }
@@ -177,7 +201,6 @@ apply_sys:(const struct row_v12 *)r
 - (void)
 recover_row:(struct row_v12 *)r
 {
-	int tag = r->tag & TAG_MASK;
 	int tag_type = r->tag & ~TAG_MASK;
 
 	@try {
@@ -212,25 +235,7 @@ recover_row:(struct row_v12 *)r
 				[self apply_sys:r];
 		}
 
-		/* note: it's to late to raise here: txn is already commited */
-		if (unlikely(r->lsn - lsn > 1 && cfg.panic_on_lsn_gap))
-			panic("LSN sequence has gap after %"PRIi64 " -> %"PRIi64, lsn, r->lsn);
-
-		if (cfg.sync_scn_with_lsn && r->lsn != r->scn)
-			panic("out of sync SCN:%"PRIi64 " != LSN:%"PRIi64, r->scn, r->lsn);
-
-		lsn = r->lsn;
-		last_update_tstamp = ev_now();
-		lag = last_update_tstamp - r->tm;
-
-		if (scn_changer(r->tag) || tag == snap_final) {
-			if (unlikely(tag != snap_final && r->scn - scn != 1 &&
-				     cfg.panic_on_scn_gap && [[self class] name] == [Recovery name]))
-				panic("non consecutive SCN %"PRIi64 " -> %"PRIi64, scn, r->scn);
-
-			scn = r->scn;
-			run_crc_record(&run_crc_state, r->tag, scn, run_crc_log);
-		}
+		[self update_state_r:r];
 	}
 	@catch (Error *e) {
 		say_error("Recovery: %s at %s:%i\n%s", e->reason, e->file, e->line,

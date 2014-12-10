@@ -350,6 +350,7 @@ const char *run_crc_status(struct run_crc *run_crc);
 - (bool) local_writes;
 - (void) update_state_rci:(const struct row_commit_info *)rci
 		    count:(int)count;
+- (void) update_state_r:(const struct row_v12 *)r;
 @end
 
 @interface SnapWriter: Object {
