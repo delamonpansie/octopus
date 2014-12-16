@@ -160,16 +160,6 @@ i64_init_pattern(struct tbuf *key, int cardinality,
 	}
 }
 
-static bool
-twl_tuple_2_index_key(void *index_key, const void *tuple_key, void *arg)
-{
-	TWLTree* t = (TWLTree*)arg;
-	struct tnt_object **obj = (typeof(obj))tuple_key;
-	struct index_node *node = (typeof(node))index_key;
-	t->dtor(*obj, node, t->dtor_arg);
-	return true;
-}
-
 static int
 twl_index_key_cmp(const void *a, const void *b, void *arg)
 {
@@ -202,15 +192,11 @@ twl_realloc(void *old, size_t new_size)
 
 static struct twltree_conf_t twltree_gen_conf = {
 	.index_key_free = NULL,
-	.tuple_key_2_index_key = twl_tuple_2_index_key,
-	.tuple_key_cmp = NULL,
-	.index_key_cmp = twl_index_key_cmp,
-	.page_sizes = (u32[3]){8, 12, 16},
-	.page_sizes_n = 3,
-	/*
+	.tuple_key_2_index_key = NULL,
+	.tuple_key_cmp = twl_index_key_cmp,
+	.index_key_cmp = NULL,
 	.page_sizes = NULL,
 	.page_sizes_n = 0,
-	*/
 };
 
 static void
@@ -284,7 +270,7 @@ init:(struct index_conf *)ic
 	tree.arg = self;
 	tree.tlrealloc = twl_realloc;
 	tree.sizeof_index_key = node_size;
-	tree.sizeof_tuple_key = sizeof(struct tnt_object *);
+	tree.sizeof_tuple_key = node_size;
 	enum twlerrcode_t r = twltree_init(&tree);
 	twl_raise(r);
 	return self;
@@ -322,23 +308,23 @@ find:(const char *)key
 find_key:(struct tbuf *)key_data cardinalty:(u32)cardinality
 {
 	init_pattern(key_data, cardinality, &node_a, dtor_arg);
-	struct tnt_object** o = twltree_find_by_index_key(&tree, &node_a, NULL);
-	return o ? *o : NULL;
+	struct index_node* r = twltree_find_by_index_key(&tree, &node_a, NULL);
+	return r != NULL ? r->obj : NULL;
 }
 
 - (struct tnt_object *)
 find_obj:(struct tnt_object *)obj
 {
 	dtor(obj, &node_a, dtor_arg);
-	struct tnt_object** o = twltree_find_by_index_key(&tree, &node_a, NULL);
-	return o ? *o : NULL;
+	struct index_node* r = twltree_find_by_index_key(&tree, &node_a, NULL);
+	return r != NULL ? r->obj : NULL;
 }
 
 - (struct tnt_object *)
 find_node:(const struct index_node *)node
 {
-	struct tnt_object** o = twltree_find_by_index_key(&tree, node, NULL);
-	return o ? *o : NULL;
+	struct index_node* r = twltree_find_by_index_key(&tree, node, NULL);
+	return r != NULL ? r->obj : NULL;
 }
 
 - (u32)
@@ -362,7 +348,8 @@ bytes
 - (void)
 replace:(struct tnt_object *)obj
 {
-	twlerrcode_t r = twltree_insert(&tree, &obj, true);
+	dtor(obj, &node_a, dtor_arg);
+	twlerrcode_t r = twltree_insert(&tree, &node_a, true);
 	if (r != TWL_OK)
 		twl_raise(r);
 }
@@ -370,7 +357,8 @@ replace:(struct tnt_object *)obj
 - (int)
 remove:(struct tnt_object *)obj
 {
-	twlerrcode_t r = twltree_delete(&tree, &obj);
+	dtor(obj, &node_a, dtor_arg);
+	twlerrcode_t r = twltree_delete(&tree, &node_a);
 	if (r != TWL_OK && r != TWL_NOTFOUND)
 		twl_raise(r);
 	return r == TWL_OK;
@@ -439,17 +427,17 @@ iterator_init_with_node:(const struct index_node *)node direction:(enum iterator
 - (struct tnt_object *)
 iterator_next
 {
-	return *(struct tnt_object**)twltree_iterator_next(&iter);
+	struct index_node *r = twltree_iterator_next(&iter);
+	return likely(r != NULL) ? r->obj : NULL;
 }
 
 - (struct tnt_object *)
 iterator_next_check:(index_cmp)check
 {
-	struct tnt_object **o;
-	while ((o = twltree_iterator_next(&iter))) {
-		struct index_node *r = GET_NODE((*o), node_b);
+	struct index_node *r;
+	while ((r = twltree_iterator_next(&iter))) {
 		switch (check(&search_pattern, r, self->dtor_arg)) {
-		case 0: return *o;
+		case 0: return r->obj;
 		case -1:
 		case 1: return NULL;
 		case 2: continue;
