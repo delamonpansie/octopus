@@ -125,6 +125,8 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 		d->type = HASH;
 	else if (strcmp(c->type, "TREE") == 0)
 		d->type = TREE;
+	else if (strcmp(c->type, "TWLTREE") == 0)
+		d->type = TWLTREE;
 	else
 		panic("unknown index type");
 

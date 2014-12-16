@@ -513,6 +513,7 @@ process_select(struct netmsg_head *h, Index<BasicIndex> *index,
 	} else {
 		/* The only non unique index type is Tree */
 		Tree *tree = (Tree *)index;
+		index_cmp cmp = [tree pattern_compare];
 		for (u32 i = 0; i < count; i++) {
 			u32 c = read_u32(data);
 			[tree iterator_init_with_key:data cardinalty:c];
@@ -520,7 +521,7 @@ process_select(struct netmsg_head *h, Index<BasicIndex> *index,
 			if (unlikely(limit == 0))
 				continue;
 
-			while ((obj = [tree iterator_next_check:tree->pattern_compare]) != NULL) {
+			while ((obj = [tree iterator_next_check:cmp]) != NULL) {
 				if (unlikely(ghost(obj)))
 					continue;
 				if (unlikely(offset > 0)) {
