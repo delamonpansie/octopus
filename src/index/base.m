@@ -41,7 +41,7 @@
 new_conf:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 {
 	Index *i;
-	if (ic->cardinality == 1) {
+	if (ic->cardinality == 1 && ic->type != TWLTREE) {
 		if (ic->type == HASH && ic->unique == false)
 			return nil;
 
@@ -65,6 +65,26 @@ new_conf:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 		}
 
 		i->dtor_arg = (void *)(uintptr_t)ic->field_index[0];
+	} else if (ic->type == TWLTREE) {
+		i = [TWLTree alloc];
+		if (ic->cardinality == 1) {
+			switch (ic->field_type[0]) {
+			case NUM32:
+				i->dtor = dc->u32;
+				i->dtor_arg = (void *)(uintptr_t)ic->field_index[0];
+				break;
+			case NUM64:
+				i->dtor = dc->u64;
+				i->dtor_arg = (void *)(uintptr_t)ic->field_index[0];
+				break;
+			default:
+				break;
+			}
+		}
+		if (i->dtor == NULL) {
+			i->dtor = dc->generic;
+			i->dtor_arg = (void *)&i->conf;
+		}
 	} else {
 		assert(ic->type == TREE);
 		i = [GenTree alloc];

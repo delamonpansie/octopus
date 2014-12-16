@@ -217,6 +217,11 @@ iterator_next_check:(index_cmp)check
 	return NULL;
 }
 
+- (index_cmp)
+pattern_compare
+{
+	return pattern_compare;
+}
 @end
 
 @implementation Int32Tree

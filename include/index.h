@@ -33,6 +33,7 @@
 
 #include <stdbool.h>
 #include <string.h>
+#include <third_party/twltree/twltree.h>
 
 
 union index_field {
@@ -63,7 +64,7 @@ struct index_conf {
 	enum sort_order { ASC = 1, DESC = -1 } sort_order[8];
 	enum index_field_type { UNDEF, NUM16, NUM32, NUM64, STRING } field_type[8];
 	int min_tuple_cardinality, cardinality;
-	enum index_type { HASH, TREE } type;
+	enum index_type { HASH, TREE, TWLTREE } type;
 	bool unique;
 	int n;
 };
@@ -194,6 +195,7 @@ enum iterator_direction {
 - (void)iterator_init_with_node:(const struct index_node *)node direction:(enum iterator_direction)direction;
 
 - (struct tnt_object *)iterator_next_check:(index_cmp)check;
+- (index_cmp) pattern_compare;
 @end
 
 
@@ -216,6 +218,23 @@ void gen_set_field(union index_field *f, enum index_field_type type, int len, co
 	     __foreach_idx = (void *)((uintptr_t)__foreach_idx + 1))
 
 @interface IndexError: Error
+@end
+
+@interface TWLTree : Index <BasicIndex> {
+	struct twltree_t tree;
+	struct twliterator_t iter;
+	void (*init_pattern)(struct tbuf *key, int cardinality,
+			     struct index_node *pattern, void *);
+	struct index_node search_pattern;
+	char __tree_padding[256]; /* FIXME: overflow */
+}
+- (void)iterator_init_with_direction:(enum iterator_direction)direction;
+- (void)iterator_init_with_key:(struct tbuf *)key_data cardinalty:(u32)cardinality direction:(enum iterator_direction)direction;
+- (void)iterator_init_with_object:(struct tnt_object *)obj direction:(enum iterator_direction)direction;
+- (void)iterator_init_with_node:(const struct index_node *)node direction:(enum iterator_direction)direction;
+
+- (struct tnt_object *)iterator_next_check:(index_cmp)check;
+- (index_cmp) pattern_compare;
 @end
 
 
