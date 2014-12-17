@@ -1029,3 +1029,16 @@ twltree_iterator_next(twliterator_t *it) {
 
 	return tuple_key;
 }
+
+size_t
+twltree_bytes(twltree_t *tt)
+{
+	size_t res = 0;
+	res += sizeof(*tt);
+	res += (tt->sizeof_index_key + TWLIKTHDRSZ + 8) / 8 * 8 * 3; /* search_index_key */
+	res += tt->sizeof_tuple_key * tt->n_tuple_keys;
+	res += offsetof(twlpage_t, data) * (tt->n_index_keys + 1);
+	if (tt->page_index)
+		res += twltree_bytes(tt->page_index);
+	return res;
+}

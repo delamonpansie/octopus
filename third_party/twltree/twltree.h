@@ -160,5 +160,7 @@ int  twltree_iterator_init_set_index_key(twltree_t *tt, twliterator_t *it, void 
 			       twlscan_direction_t direction);
 void* twltree_iterator_next(twliterator_t *it);
 
+size_t twltree_bytes(twltree_t *tt);
+
 size_t twltree_page_header_size();
 #endif
