@@ -342,7 +342,7 @@ slots
 - (size_t)
 bytes
 {
-	return tree.n_tuple_space * sizeof(struct tnt_object*);
+	return twltree_bytes(&tree);
 }
 
 - (void)
