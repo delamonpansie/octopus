@@ -523,8 +523,6 @@ process_select(struct netmsg_head *h, Index<BasicIndex> *index,
 			while ((obj = [tree iterator_next_check:tree->pattern_compare]) != NULL) {
 				if (unlikely(ghost(obj)))
 					continue;
-				if (unlikely(limit == 0))
-					continue;
 				if (unlikely(offset > 0)) {
 					offset--;
 					continue;
@@ -532,7 +530,9 @@ process_select(struct netmsg_head *h, Index<BasicIndex> *index,
 
 				(*found)++;
 				tuple_add(h, obj);
-				--limit;
+
+				if (--limit == 0)
+					break;
 			}
 		}
 	}
