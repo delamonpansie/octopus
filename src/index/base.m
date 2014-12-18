@@ -41,70 +41,96 @@
 new_conf:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 {
 	Index *i;
-	if (ic->cardinality == 1 && (ic->type == HASH || ic->type == TREE)) {
+	if (ic->cardinality == 1 && ic->type == HASH) {
 		if (ic->type == HASH && ic->unique == false)
 			return nil;
 
 		switch (ic->field_type[0]) {
 		case NUM32:
-			i = ic->type == HASH ? [Int32Hash alloc] : [Int32Tree alloc];
-			i->dtor = dc->u32;
+			i = [Int32Hash alloc];
 			break;
 		case NUM64:
-			i = ic->type == HASH ? [Int64Hash alloc] : [Int64Tree alloc];
-			i->dtor = dc->u64;
+			i = [Int64Hash alloc];
 			break;
 		case STRING:
-			i = ic->type == HASH ? [LStringHash alloc] : [StringTree alloc];
-			i->dtor = dc->lstr;
+			i = [LStringHash alloc];
 			break;
 		case NUM16:
 			index_raise("NUM16 single column indexes unupported");
 		default:
 			abort();
 		}
-
-		i->dtor_arg = (void *)(uintptr_t)ic->field_index[0];
-	} else if (ic->type == FASTTREE || ic->type == COMPACTTREE) {
-		i = ic->type == FASTTREE ? [TWLFastTree alloc] : [TWLCompactTree alloc];
-		if (ic->cardinality == 1) {
-			switch (ic->field_type[0]) {
-			case NUM32:
-				i->dtor = dc->u32;
-				i->dtor_arg = (void *)(uintptr_t)ic->field_index[0];
-				break;
-			case NUM64:
-				i->dtor = dc->u64;
-				i->dtor_arg = (void *)(uintptr_t)ic->field_index[0];
-				break;
-			case STRING:
-				i->dtor = dc->lstr;
-				i->dtor_arg = (void *)(uintptr_t)ic->field_index[0];
-				break;
-			default:
-				break;
-			}
-		}
-		if (i->dtor == NULL) {
-			i->dtor = dc->generic;
-			i->dtor_arg = (void *)&i->conf;
-		}
+	} else if (ic->type == TREE) {
+		i = [SPTree alloc];
+	} else if (ic->type == FASTTREE) {
+		i = [TWLFastTree alloc];
+	} else if (ic->type == COMPACTTREE) {
+		i = [TWLCompactTree alloc];
 	} else {
-		assert(ic->type == TREE);
-		i = [GenTree alloc];
-		i->dtor = dc->generic;
-		i->dtor_arg = (void *)&i->conf;
+		abort();
 	}
 
-	return [i init:ic];
+	return [i init:ic dtor:dc];
 }
 
+#define COMPARE(type)										\
+	conf.sort_order[0] != DESC ?								\
+	(conf.unique ? (index_cmp)type##_compare : (index_cmp)type##_compare_with_addr) :	\
+	(conf.unique ? (index_cmp)type##_compare_desc : (index_cmp)type##_compare_with_addr_desc)
+
 - (Index *)
-init:(struct index_conf *)ic
+init:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 {
 	[super init];
-	if (ic != NULL)
-		memcpy(&conf, ic, sizeof(*ic));
+	if (ic == NULL)
+		return self;
+	memcpy(&conf, ic, sizeof(*ic));
+	if (ic->cardinality == 1) {
+		switch(ic->field_type[0]) {
+		case NUM32:
+			node_size = sizeof(struct tnt_object *) + sizeof(i32);
+			init_pattern = i32_init_pattern;
+			pattern_compare = (index_cmp)i32_compare;
+			compare = COMPARE(i32);
+			dtor = dc->u32;
+			dtor_arg = (void *)(uintptr_t)ic->field_index[0];
+			break;
+		case NUM64:
+			node_size = sizeof(struct tnt_object *) + sizeof(i64);
+			init_pattern = i64_init_pattern;
+			pattern_compare = (index_cmp)i64_compare;
+			compare = COMPARE(i64);
+			dtor = dc->u64;
+			dtor_arg = (void *)(uintptr_t)ic->field_index[0];
+			break;
+		case STRING:
+			node_size = sizeof(struct tnt_object *) + sizeof(void *);
+			init_pattern = lstr_init_pattern;
+			pattern_compare = (index_cmp)lstr_compare;
+			compare = COMPARE(lstr);
+			dtor = dc->lstr;
+			dtor_arg = (void *)(uintptr_t)ic->field_index[0];
+		default:
+			break;
+		}
+	}
+	if (node_size == 0) {
+		node_size = sizeof(struct tnt_object *);
+		for (int i = 0; i < ic->cardinality; i++)
+			switch (ic->field_type[i]) {
+			case NUM16: node_size += field_sizeof(union index_field, u16); break;
+			case NUM32: node_size += field_sizeof(union index_field, u32); break;
+			case NUM64: node_size += field_sizeof(union index_field, u64); break;
+			case STRING: node_size += field_sizeof(union index_field, str); break;
+			case UNDEF: abort();
+			}
+
+		init_pattern = gen_init_pattern;
+		pattern_compare = (index_cmp)tree_node_compare;
+		compare = conf.unique ? (index_cmp)tree_node_compare : (index_cmp)tree_node_compare_with_addr;
+		dtor = dc->generic;
+		dtor_arg = &conf;
+	}
 	return self;
 }
 
@@ -117,15 +143,16 @@ valid_object:(struct tnt_object*)obj
 - (u32)
 cardinality
 {
-	return 1;
+	return conf.cardinality;
 }
 
 - (int)
 eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 {
+	struct index_node node_b[8];
 	dtor(obj_a, &node_a, dtor_arg);
-	dtor(obj_b, &node_b, dtor_arg);
-	return memcmp(&node_a.key, &node_b.key, node_size - sizeof(struct tnt_object *)) == 0;
+	dtor(obj_b, node_b, dtor_arg);
+	return memcmp(&node_a.key, &node_b[0].key, node_size - sizeof(struct tnt_object *)) == 0;
 }
 
 @end
@@ -138,3 +165,4 @@ index_raise_(const char *file, int line, const char *msg)
 				    backtrace:NULL
 				       reason:msg];
 }
+

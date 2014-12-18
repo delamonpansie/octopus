@@ -119,15 +119,17 @@ struct dtor_conf {
 
 	int (*compare)(const void *a, const void *b, void *);
 	int (*pattern_compare)(const void *a, const void *b, void *);
+	void (*init_pattern)(struct tbuf *key, int cardinality,
+			     struct index_node *pattern, void *);
 
 	struct index_node node_a;
-	char __padding_a[512]; /* FIXME: check for overflow */
-	struct index_node node_b;
-	char __padding_b[512];
+	struct index_node __padding_a[7];
+	struct index_node search_pattern;
+	struct index_node __tree_padding[7];
 }
 
 + (Index *)new_conf:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc;
-- (Index *)init:(struct index_conf *)ic;
+- (Index *)init:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc;
 - (void) valid_object:(struct tnt_object*)obj;
 - (u32)cardinality;
 @end
@@ -182,34 +184,34 @@ enum iterator_direction {
 - (void)iterator_init_with_node:(const struct index_node *)node direction:(enum iterator_direction)direction;
 
 - (struct tnt_object *)iterator_next_check:(index_cmp)check;
+
+- (void)set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated;
+- (index_cmp) pattern_compare;
 @end
 
-@interface Tree: Index <BasicIndex, IterIndex> {
+@interface Tree: Index <BasicIndex, IterIndex>
+- (void)set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated;
+- (index_cmp) pattern_compare;
+@end
+
+@interface SPTree: Tree {
 @public
         struct sptree_t *tree;
-	void *nodes;
-
-	void (*init_pattern)(struct tbuf *key, int cardinality,
-			     struct index_node *pattern, void *);
-
 	struct sptree_iterator *iterator;
-	struct index_node search_pattern;
-	char __tree_padding[256]; /* FIXME: overflow */
 }
-- (void)set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated;
 @end
 
-
-@interface Int32Tree: Tree
-@end
-@interface Int64Tree: Tree
-@end
-@interface StringTree: Tree
+@interface TWLTree : Tree {
+	struct twltree_t tree;
+	struct twliterator_t iter;
+}
 @end
 
-@interface GenTree: Tree
+@interface TWLFastTree : TWLTree
 @end
-void gen_set_field(union index_field *f, enum index_field_type type, int len, const void *data);
+
+@interface TWLCompactTree : TWLTree
+@end
 
 #define foreach_index(ivar, obj_space)					\
 	for (Index<BasicIndex>						\
@@ -221,30 +223,6 @@ void gen_set_field(union index_field *f, enum index_field_type type, int len, co
 @interface IndexError: Error
 @end
 
-@interface TWLTree : Index <BasicIndex> {
-	struct twltree_t tree;
-	struct twliterator_t iter;
-	void (*init_pattern)(struct tbuf *key, int cardinality,
-			     struct index_node *pattern, void *);
-	struct index_node search_pattern;
-	char __tree_padding[256]; /* FIXME: overflow */
-}
-- (void)init_common:(struct index_conf*)ic;
-- (void)iterator_init_with_direction:(enum iterator_direction)direction;
-- (void)iterator_init_with_key:(struct tbuf *)key_data cardinalty:(u32)cardinality direction:(enum iterator_direction)direction;
-- (void)iterator_init_with_object:(struct tnt_object *)obj direction:(enum iterator_direction)direction;
-- (void)iterator_init_with_node:(const struct index_node *)node direction:(enum iterator_direction)direction;
-
-- (struct tnt_object *)iterator_next_check:(index_cmp)check;
-- (index_cmp) pattern_compare;
-@end
-
-@interface TWLFastTree : TWLTree
-@end
-
-@interface TWLCompactTree : TWLTree
-@end
-
 void index_raise_(const char *file, int line, const char *msg)
 	__attribute__((noreturn)) oct_cold;
 #define index_raise(msg) index_raise_(__FILE__, __LINE__, (msg))
@@ -252,10 +230,16 @@ void index_raise_(const char *file, int line, const char *msg)
 
 int i32_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
 int i32_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+void i32_init_pattern(struct tbuf *key, int cardinality,
+		 struct index_node *pattern, void *x __attribute__((unused)));
 int i64_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
 int i64_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+void i64_init_pattern(struct tbuf *key, int cardinality,
+		 struct index_node *pattern, void *x __attribute__((unused)));
 int lstr_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
 int lstr_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+void lstr_init_pattern(struct tbuf *key, int cardinality,
+		 struct index_node *pattern, void *x __attribute__((unused)));
 int cstr_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
 int cstr_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
 
@@ -268,6 +252,10 @@ int lstr_compare_with_addr_desc(const struct index_node *na, const struct index_
 int cstr_compare_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
 int cstr_compare_with_addr_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
 
+int tree_node_compare(struct index_node *na, struct index_node *nb, struct index_conf *ic);
+int tree_node_compare_with_addr(struct index_node *na, struct index_node *nb, struct index_conf *ic);
+void gen_init_pattern(struct tbuf *key_data, int cardinality, struct index_node *pattern_, void *arg);
+void gen_set_field(union index_field *f, enum index_field_type type, int len, const void *data);
 
 static inline int llexstrcmp(const void *a, const void *b)
 {

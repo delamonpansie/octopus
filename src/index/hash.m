@@ -106,15 +106,6 @@ static inline int lstrcmp(const void *a, const void *b)
 
 
 @implementation Hash
-- (id)
-init
-{
-	/* simple init for static conf hashes:
-	   RLimitStorage.primaryIndex = [[CStringHash alloc] init]; */
-
-	return [self init:NULL];
-}
-
 - (void)
 iterator_init
 {
@@ -125,12 +116,10 @@ iterator_init
 
 #define DEFINE_METHODS(type)						\
 - (id)									\
-init:(struct index_conf *)ic						\
+init:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc          \
 {									\
-	[super init:ic];						\
+	[super init:ic dtor:dc];						\
 	h = mh_##type##_init(xrealloc);					\
-	node_size = sizeof(struct tnt_object *) + sizeof(type);		\
-	compare = pattern_compare = (index_cmp)type##_compare;		\
 	return self;							\
 }									\
 - (struct tnt_object *)							\
@@ -233,6 +222,7 @@ DEFINE_METHODS(i32)
 - (int)
 eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 {
+	struct index_node node_b;
 	struct index_node *na = GET_NODE(obj_a, node_a),
 			  *nb = GET_NODE(obj_b, node_b);
 	return na->key.u32 == nb->key.u32;
@@ -284,6 +274,7 @@ DEFINE_METHODS(i64)
 - (int)
 eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 {
+	struct index_node node_b;
 	struct index_node *na = GET_NODE(obj_a, node_a),
 			  *nb = GET_NODE(obj_b, node_b);
 	return na->key.u64 == nb->key.u64;
@@ -335,6 +326,7 @@ DEFINE_METHODS(lstr)
 - (int)
 eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 {
+	struct index_node node_b;
 	struct index_node *na = GET_NODE(obj_a, node_a),
 			  *nb = GET_NODE(obj_b, node_b);
 	return lstrcmp(na->key.ptr, nb->key.ptr) == 0;
@@ -375,9 +367,21 @@ iterator_init_with_key:(struct tbuf *)key_data cardinalty:(u32)cardinality
 @implementation CStringHash
 DEFINE_METHODS(cstr)
 
+- (id)
+init:(void *)ic
+{
+	[super init];
+	(void)ic;
+	h = mh_cstr_init(xrealloc);
+	node_size = sizeof(struct tnt_object *) + sizeof(cstr);
+	compare = pattern_compare = (index_cmp)cstr_compare;
+	return self;
+}
+
 - (int)
 eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 {
+	struct index_node node_b;
 	struct index_node *na = GET_NODE(obj_a, node_a),
 			  *nb = GET_NODE(obj_b, node_b);
 	return strcmp(na->key.ptr, nb->key.ptr) == 0;
