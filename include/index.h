@@ -64,7 +64,7 @@ struct index_conf {
 	enum sort_order { ASC = 1, DESC = -1 } sort_order[8];
 	enum index_field_type { UNDEF, NUM16, NUM32, NUM64, STRING } field_type[8];
 	int min_tuple_cardinality, cardinality;
-	enum index_type { HASH, TREE, TWLTREE } type;
+	enum index_type { HASH, TREE, FASTTREE, COMPACTTREE } type;
 	bool unique;
 	int n;
 };
@@ -228,6 +228,7 @@ void gen_set_field(union index_field *f, enum index_field_type type, int len, co
 	struct index_node search_pattern;
 	char __tree_padding[256]; /* FIXME: overflow */
 }
+- (void)init_common:(struct index_conf*)ic;
 - (void)iterator_init_with_direction:(enum iterator_direction)direction;
 - (void)iterator_init_with_key:(struct tbuf *)key_data cardinalty:(u32)cardinality direction:(enum iterator_direction)direction;
 - (void)iterator_init_with_object:(struct tnt_object *)obj direction:(enum iterator_direction)direction;
@@ -237,6 +238,11 @@ void gen_set_field(union index_field *f, enum index_field_type type, int len, co
 - (index_cmp) pattern_compare;
 @end
 
+@interface TWLFastTree : TWLTree
+@end
+
+@interface TWLCompactTree : TWLTree
+@end
 
 void index_raise_(const char *file, int line, const char *msg)
 	__attribute__((noreturn)) oct_cold;

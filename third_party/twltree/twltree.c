@@ -347,7 +347,7 @@ fixup_iterator(twliterator_t *it, twlscan_direction_t direction) {
 }
 
 static inline twlerrcode_t
-binary_search_i(twltree_t *tt, search_result_t *res, void *tuple_key, void const *index_key, twlscan_direction_t direction) {
+binary_search_i(twltree_t *tt, search_result_t *res, void const *tuple_key, void const *index_key, twlscan_direction_t direction) {
 	bs_t		bs;
 	twlpage_t	*page = res->page;
 	int		diff;
@@ -387,17 +387,17 @@ binary_search_i(twltree_t *tt, search_result_t *res, void *tuple_key, void const
 }
 
 static twlerrcode_t
-binary_search(twltree_t *tt, search_result_t *res, void *tuple_key, void const *index_key) {
+binary_search(twltree_t *tt, search_result_t *res, void const *tuple_key, void const *index_key) {
 	return binary_search_i(tt, res, tuple_key, index_key, twlscan_search);
 }
 
 static twlerrcode_t
-binary_search_forward(twltree_t *tt, search_result_t *res, void *tuple_key, void *index_key) {
+binary_search_forward(twltree_t *tt, search_result_t *res, void const *tuple_key, void const *index_key) {
 	return binary_search_i(tt, res, tuple_key, index_key, twlscan_forward);
 }
 
 static twlerrcode_t
-binary_search_backward(twltree_t *tt, search_result_t *res, void *tuple_key, void *index_key) {
+binary_search_backward(twltree_t *tt, search_result_t *res, void const *tuple_key, void const *index_key) {
 	return binary_search_i(tt, res, tuple_key, index_key, twlscan_backward);
 }
 
@@ -473,7 +473,7 @@ find_index_key_t_backward(twltree_t *top, void *index_key) {
 }
 
 static inline twlerrcode_t
-search_tuple(twltree_t *tt, search_result_t *search, void *tuple_key, void const *index_key) {
+search_tuple(twltree_t *tt, search_result_t *search, void const *tuple_key, void const *index_key) {
 	search->page = NULL;
 	search->isEq = false;
 	search->pos = 0;
@@ -894,7 +894,10 @@ twltree_find_by_index_key_rc(twltree_t *tt, void const *index_key, void **tuple_
 	if (tt->n_tuple_keys == 0) /* empty tree */
 		return TWL_NOTFOUND;
 
-	r = search_tuple(tt, &s, NULL, index_key);
+	if (tt->conf->index_key_cmp == tt->conf->tuple_key_cmp)
+		r = search_tuple(tt, &s, index_key, index_key);
+	else
+		r = search_tuple(tt, &s, NULL, index_key);
 	if (r != TWL_OK)
 		return r;
 	if (!s.isEq)
@@ -988,7 +991,10 @@ twltree_iterator_init_set_index_key(twltree_t *tt, twliterator_t *it, void *inde
 	if (tt->n_tuple_keys == 0) /* empty tree */
 		return TWL_OK;
 
-	r = search_border(tt, &s, NULL, index_key, direction);
+	if (tt->conf->index_key_cmp == tt->conf->tuple_key_cmp)
+		r = search_border(tt, &s, index_key, index_key, direction);
+	else
+		r = search_border(tt, &s, NULL, index_key, direction);
 	if (r != TWL_OK)
 		return r;
 	if (s.key == NULL)

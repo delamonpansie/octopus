@@ -41,7 +41,7 @@
 new_conf:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 {
 	Index *i;
-	if (ic->cardinality == 1 && ic->type != TWLTREE) {
+	if (ic->cardinality == 1 && (ic->type == HASH || ic->type == TREE)) {
 		if (ic->type == HASH && ic->unique == false)
 			return nil;
 
@@ -65,8 +65,8 @@ new_conf:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 		}
 
 		i->dtor_arg = (void *)(uintptr_t)ic->field_index[0];
-	} else if (ic->type == TWLTREE) {
-		i = [TWLTree alloc];
+	} else if (ic->type == FASTTREE || ic->type == COMPACTTREE) {
+		i = ic->type == FASTTREE ? [TWLFastTree alloc] : [TWLCompactTree alloc];
 		if (ic->cardinality == 1) {
 			switch (ic->field_type[0]) {
 			case NUM32:
@@ -75,6 +75,10 @@ new_conf:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 				break;
 			case NUM64:
 				i->dtor = dc->u64;
+				i->dtor_arg = (void *)(uintptr_t)ic->field_index[0];
+				break;
+			case STRING:
+				i->dtor = dc->lstr;
 				i->dtor_arg = (void *)(uintptr_t)ic->field_index[0];
 				break;
 			default:
