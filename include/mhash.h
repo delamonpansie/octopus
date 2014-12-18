@@ -807,7 +807,11 @@ _mh(initialize)(struct mhash_t *h)
 #else
 	h->map = mh_calloc(h, mh_end(h) / 16, 4); /* 4 maps per char */
 #endif
+	h->size = 0;
+	h->n_occupied = 0;
 	h->upper_bound = h->n_mask * load_factor;
+	h->resize_position = 0;
+	h->resize_batch = 0;
 }
 
 MH_DECL void
@@ -842,9 +846,9 @@ _mh(resize_step)(struct mhash_t *h)
 	}
 
 	if (end == mh_end(h)) {
+		assert(s->size == h->size);
 		mh_free(h, h->slots);
 		mh_free(h, h->map);
-		assert(s->size == h->size);
 		memcpy(h, s, sizeof(*h));
 		memset(s, 0, sizeof(*s));
 	}
