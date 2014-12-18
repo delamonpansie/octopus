@@ -114,7 +114,7 @@ say_level_source(const char *file, int diff)
 		if (!mh_cstr_slot_occupied(filter, k))
 		    continue;
 		struct node *n = mh_cstr_slot(filter, k);
-		if (strcmp(file, "ALL") == 0 || strcmp(file, n->key) == 0) {
+		if (strcmp(file, "ALL") == 0 || strncmp(file, n->key, strlen(file)) == 0) {
 			*(n->value) += diff;
 			found = 1;
 		}
