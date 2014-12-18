@@ -176,58 +176,59 @@ struct child *
 spawn_child(const char *name, struct fiber *in, struct fiber *out,
 	    int (*handler)(int fd, void *state), void *state, int len)
 {
-	int fd;
+	int fd = -1;
 	pid_t pid;
 
-	if (fiber == &sched) {
-		pid = fork_pair(SOCK_STREAM, &fd);
-	} else {
-		assert(spawner_fd != -1);
-		struct iovec iov[2];
-		struct msghdr msg;
+	assert(spawner_fd != -1);
+	struct iovec iov[2];
+	struct msghdr msg;
 
-		struct fork_request request = { .handler = handler };
-		assert(strlen(name) < sizeof(request.name));
-		strcpy(request.name, name);
-		iov[0] = (struct iovec){ .iov_base = &request,
-					 .iov_len = sizeof(request) };
-		iov[1] = (struct iovec){ .iov_base = state,
-					 .iov_len = len };
-		msg = (struct msghdr){ .msg_iov = iov,
-				       .msg_iovlen = 2 };
+	struct fork_request request = { .handler = handler };
+	assert(strlen(name) < sizeof(request.name));
+	strcpy(request.name, name);
+	iov[0] = (struct iovec){ .iov_base = &request,
+				 .iov_len = sizeof(request) };
+	iov[1] = (struct iovec){ .iov_base = state,
+				 .iov_len = len };
+	msg = (struct msghdr){ .msg_iov = iov,
+			       .msg_iovlen = 2 };
 
+	if (fiber != &sched)
 		io_ready(EV_WRITE);
-		ssize_t ret = sendmsg(spawner_fd, &msg, 0);
-		if (ret < 0 || ret != sizeof(request) + len) {
-			say_syserror("sendmsg");
-			return NULL;
-		}
+	while (sendmsg(spawner_fd, &msg, 0) !=  sizeof(request) + len) {
+		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+			continue;
+		say_syserror("sendmsg");
+		return NULL;
+	}
 
-		char buf[CMSG_SPACE(sizeof(int))];
-		struct fork_reply reply;
-		iov[0] = (struct iovec){ .iov_base = &reply,
-					 .iov_len = sizeof(reply) };
-		msg = (struct msghdr){ .msg_iov = iov,
-				       .msg_iovlen = 1,
-				       .msg_control = buf,
-				       .msg_controllen = sizeof(buf) };
-		struct cmsghdr *cmsg;
+	char buf[CMSG_SPACE(sizeof(int))];
+	struct fork_reply reply;
+	iov[0] = (struct iovec){ .iov_base = &reply,
+				 .iov_len = sizeof(reply) };
+	msg = (struct msghdr){ .msg_iov = iov,
+			       .msg_iovlen = 1,
+			       .msg_control = buf,
+			       .msg_controllen = sizeof(buf) };
+	struct cmsghdr *cmsg;
 
+	if (fiber != &sched)
 		io_ready(EV_READ);
-		if (recvmsg(spawner_fd, &msg, 0) != sizeof(reply)) {
-			say_syserror("recvmsg");
-			return NULL;
-		}
+	while (recvmsg(spawner_fd, &msg, 0) != sizeof(reply)) {
+		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+			continue;
+		say_syserror("recvmsg");
+		return NULL;
+	}
 
-		pid = reply.pid;
-		if (pid > 0) {
-			cmsg = CMSG_FIRSTHDR(&msg);
-			memcpy(&fd, CMSG_DATA(cmsg), sizeof(int));
+	pid = reply.pid;
+	if (pid > 0) {
+		cmsg = CMSG_FIRSTHDR(&msg);
+		memcpy(&fd, CMSG_DATA(cmsg), sizeof(int));
 
-			/* fd is in non blocking mode, fork_pair() already did ioctl() */
-		} else {
-			say_error("unable to spawn %s", name);
-		}
+		/* fd is in non blocking mode, fork_pair() already did ioctl() */
+	} else {
+		say_error("unable to spawn %s", name);
 	}
 
 	if (pid < 0)
