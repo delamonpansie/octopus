@@ -175,7 +175,16 @@ enum iterator_direction {
 	iterator_backward = -1
 };
 
-@interface Tree: Index <BasicIndex> {
+@protocol IterIndex
+- (void)iterator_init_with_direction:(enum iterator_direction)direction;
+- (void)iterator_init_with_key:(struct tbuf *)key_data cardinalty:(u32)cardinality direction:(enum iterator_direction)direction;
+- (void)iterator_init_with_object:(struct tnt_object *)obj direction:(enum iterator_direction)direction;
+- (void)iterator_init_with_node:(const struct index_node *)node direction:(enum iterator_direction)direction;
+
+- (struct tnt_object *)iterator_next_check:(index_cmp)check;
+@end
+
+@interface Tree: Index <BasicIndex, IterIndex> {
 @public
         struct sptree_t *tree;
 	void *nodes;
@@ -188,14 +197,6 @@ enum iterator_direction {
 	char __tree_padding[256]; /* FIXME: overflow */
 }
 - (void)set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated;
-
-- (void)iterator_init_with_direction:(enum iterator_direction)direction;
-- (void)iterator_init_with_key:(struct tbuf *)key_data cardinalty:(u32)cardinality direction:(enum iterator_direction)direction;
-- (void)iterator_init_with_object:(struct tnt_object *)obj direction:(enum iterator_direction)direction;
-- (void)iterator_init_with_node:(const struct index_node *)node direction:(enum iterator_direction)direction;
-
-- (struct tnt_object *)iterator_next_check:(index_cmp)check;
-- (index_cmp) pattern_compare;
 @end
 
 
