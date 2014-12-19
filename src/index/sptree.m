@@ -37,8 +37,6 @@ set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated
 {
 	assert(node_size > 0);
 	sptree_destroy(tree);
-	free(tree->members);
-	free(tree->lrpointers);
 	if (nodes_ == NULL) {
 		if (allocated == 0)
 			allocated = 64;
