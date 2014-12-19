@@ -322,6 +322,66 @@ tree_node_compare_with_addr(struct index_node *na, struct index_node *nb, struct
 		return 0;
 }
 
+static u32
+dumb_hash(const char *d, u32 l, u32 h)
+{
+	const unsigned int m = 0x53215249;
+	while (l >= 4) {
+		u32 k = *(u32*)d;
+		h = (h ^ k) * m;
+		h = (h << 13) | (h >> 19);
+		d += 4;
+		l -= 4;
+	}
+	if (l & 1) h ^= d[0];
+	if (l & 2) h ^= *(u16*)(d+(l&1)) << ((l&1) * 8);
+	h ^= l << 24;
+	h *= m;
+	return h;
+}
+
+u32
+gen_hash_node(const struct index_node *n, struct index_conf *ic)
+{
+	const unsigned int m = 0x53215249;
+	u32 h = 0x33;
+	int c = ic->cardinality;
+
+	if (c == 1 && ic->field_type[0] == STRING) {
+		const void *k = n->key.ptr;
+		u32 l = LOAD_VARINT32(k);
+		h = dumb_hash(k, l, h);
+		h = (h << 13) | (h >> 19);
+		return h;
+	}
+
+	for (int i = 0; i < c; ++i) {
+		char const *d;
+		u32 len;
+		union index_field *key = (void *)&n->key + ic->offset[i];
+		switch(ic->field_type[i]) {
+		case NUM16:
+			h = (h ^ key->u16) * m;
+			break;
+		case NUM32:
+			h = (h ^ key->u32) * m;
+			break;
+		case NUM64:
+			h = (h ^ (u32)(key->u64)) * m;
+			h = (h ^ (u32)(key->u64 >> 32)) * m;
+			break;
+		case STRING:
+			d = key->str.len <= sizeof(key->str.data) ? key->str.data.bytes : key->str.data.ptr;
+			len = key->str.len;
+			h = dumb_hash(d, len, h);
+		case UNDEF:
+			abort();
+		}
+		h = (h << 13) | (h >> 19);
+	}
+	return h;
+}
+
 void
 gen_set_field(union index_field *f, enum index_field_type type, int len, const void *data)
 {

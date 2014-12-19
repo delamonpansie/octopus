@@ -418,3 +418,162 @@ iterator_init_with_key:(struct tbuf *)key_data cardinalty:(u32)cardinality
 }
 
 @end
+
+#define mh_byte_map 1
+#define mh_may_skip 1
+#define mh_name _gen
+#define mh_slot_t struct tnt_object*
+#define mh_arg_t GenHash*
+static const struct index_node* gen_hash_slot_key(struct mh_gen_t const * h, struct tnt_object * const * slot);
+#define mh_slot_key(h, slot) gen_hash_slot_key(h, slot)
+#define mh_slot_key_eq(h, i, key) ({ \
+		GenHash *hs = (h)->arg; \
+		hs->dtor(*mh_slot(h, i), &hs->search_pattern, hs->dtor_arg); \
+		hs->compare(&hs->node_a, &hs->search_pattern, &hs->conf) == 0 ; \
+		})
+#define mh_slot_set_key(h, slot, key)
+#define mh_hash(h, key) ({ gen_hash_node((key), &(h)->arg->conf); })
+#include <mhash.h>
+
+static const struct index_node*
+gen_hash_slot_key(struct mh_gen_t const * h, struct tnt_object* const * slot)
+{
+	GenHash *hs = (h)->arg;
+	hs->dtor(*(slot), &hs->node_a, hs->dtor_arg);
+	return &hs->node_a;
+}
+
+@implementation GenHash
+- (id)
+init:(struct index_conf*)ic dtor:(const struct dtor_conf*)dc
+{
+	[super init:ic dtor:dc];
+	h = mh_gen_init(xrealloc);
+	h->arg = self;
+	return self;
+}
+- (int)
+eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
+{
+	struct index_node node_b;
+	struct index_node *na = GET_NODE(obj_a, node_a),
+			  *nb = GET_NODE(obj_b, node_b);
+	return compare(na, nb, self->dtor_arg) == 0;
+}
+
+- (struct tnt_object*)
+get:(u32)i
+{
+	if (i > mh_end(h) || !mh_gen_slot_occupied(h, i)) {
+		return NULL;
+	}
+	return *mh_gen_slot(h, i);
+}
+- (void)
+resize:(u32)buckets
+{
+	mh_gen_start_resize(h, buckets);
+}
+- (struct tnt_object*)
+find_obj:(struct tnt_object*)obj
+{
+	u32 k = mh_gen_sget(h, &obj);
+	if (k != mh_end(h))
+		return *mh_gen_slot(h, k);
+	return NULL;
+}
+- (struct tnt_object*)
+find_node:(const struct index_node *)node
+{
+	u32 k = mh_gen_sget_by_key(h, node);
+	if (k != mh_end(h))
+		return *mh_gen_slot(h, k);
+	return NULL;
+}
+- (void)
+replace:(struct tnt_object *)obj
+{
+	mh_gen_sput(h, &obj, NULL);
+}
+- (int)
+remove:(struct tnt_object *)obj
+{
+	return mh_gen_sremove(h, &obj, NULL);
+}
+- (void)
+iterator_init_with_object:(struct tnt_object*)obj
+{
+	iter = mh_gen_sget(h, &obj);
+}
+- (void)
+iterator_init_with_node:(const struct index_node*)node
+{
+	iter = mh_gen_sget_by_key(h, node);
+}
+- (struct tnt_object*)
+iterator_next
+{
+	for (; iter < mh_end(h); iter++) {
+		if (!mh_gen_slot_occupied(h, iter))
+			continue;
+		return *mh_gen_slot(h, iter++);
+	}
+	return NULL;
+}
+- (void)
+ordered_iterator_init
+{
+	int j = 0;
+	[self iterator_init];
+	/* assert(j + 1 == ..) assumes that hash has at least one elem */
+	if (mh_size(h) == 0)
+		return;
+	for (int i = 1; i < mh_end(h); i++) {
+		if (!mh_gen_slot_occupied(h, i))
+			continue;
+		while (mh_gen_slot_occupied(h, j) && j < i)
+			j++;
+		if (j == i)
+			continue;
+		assert(!mh_gen_slot_occupied(h, j));
+		mh_gen_slot_move(h, j, i);
+	}
+	assert(j + 1 == mh_size(h));
+	//qsort_arg(h->slots, mh_size(h), node_size, compare, self);
+}
+- (u32) size { return mh_size(h); }
+- (u32) slots { return mh_end(h); }
+- (size_t) bytes { return mh_gen_bytes(h); }
+
+- (struct tnt_object *)
+find:(const char *)key
+{
+	switch (conf.field_type[0]) {
+	case NUM16: node_a.key.u16 = *(u16 *)key; break;
+	case NUM32: node_a.key.u32 = *(u32 *)key; break;
+	case NUM64: node_a.key.u64 = *(u64 *)key; break;
+	case STRING: node_a.key.ptr = key; break;
+	default: abort();
+	}
+	node_a.obj = (void *)(uintptr_t)1; /* cardinality */
+	return [self find_node: &node_a];
+}
+
+- (struct tnt_object *)
+find_key:(struct tbuf *)key_data cardinalty:(u32)cardinality
+{
+	if (cardinality != conf.cardinality)
+		index_raise("cardinality should match");
+	init_pattern(key_data, cardinality, &node_a, dtor_arg);
+	return [self find_node: &node_a];
+}
+
+- (void)
+iterator_init_with_key:(struct tbuf *)key_data cardinalty:(u32)cardinality
+{
+	if (cardinality != conf.cardinality)
+		index_raise("cardinality should match");
+	init_pattern(key_data, cardinality, &node_a, dtor_arg);
+	[self iterator_init_with_node: &node_a];
+}
+@end

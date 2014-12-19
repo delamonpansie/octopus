@@ -60,6 +60,8 @@ new_conf:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 		default:
 			abort();
 		}
+	} else if (ic->type == GENHASH) {
+		i = [GenHash alloc];
 	} else if (ic->type == TREE) {
 		i = [SPTree alloc];
 	} else if (ic->type == FASTTREE) {

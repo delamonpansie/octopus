@@ -64,7 +64,7 @@ struct index_conf {
 	enum sort_order { ASC = 1, DESC = -1 } sort_order[8];
 	enum index_field_type { UNDEF, NUM16, NUM32, NUM64, STRING } field_type[8];
 	int min_tuple_cardinality, cardinality;
-	enum index_type { HASH, TREE, FASTTREE, COMPACTTREE } type;
+	enum index_type { HASH, GENHASH, TREE, FASTTREE, COMPACTTREE } type;
 	bool unique;
 	int n;
 };
@@ -170,6 +170,10 @@ struct dtor_conf {
 	struct mh_i64_t *h;
 }
 @end
+@interface GenHash: Hash <HashIndex> {
+	struct mh_gen_t *h;
+}
+@end
 
 /* must be same as sptree_direction_t */
 enum iterator_direction {
@@ -256,6 +260,7 @@ int tree_node_compare(struct index_node *na, struct index_node *nb, struct index
 int tree_node_compare_with_addr(struct index_node *na, struct index_node *nb, struct index_conf *ic);
 void gen_init_pattern(struct tbuf *key_data, int cardinality, struct index_node *pattern_, void *arg);
 void gen_set_field(union index_field *f, enum index_field_type type, int len, const void *data);
+u32 gen_hash_node(const struct index_node *n, struct index_conf *ic);
 
 static inline int llexstrcmp(const void *a, const void *b)
 {
