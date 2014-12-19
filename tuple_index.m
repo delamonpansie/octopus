@@ -123,6 +123,8 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 	d->unique = c->unique;
 	if (strcmp(c->type, "HASH") == 0)
 		d->type = HASH;
+	else if (strcmp(c->type, "GENHASH") == 0)
+		d->type = GENHASH;
 	else if (strcmp(c->type, "TREE") == 0)
 		d->type = TREE;
 	else if (strcmp(c->type, "FASTTREE") == 0)

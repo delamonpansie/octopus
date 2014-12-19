@@ -485,15 +485,16 @@ process_select(struct netmsg_head *h, Index<BasicIndex> *index,
 	struct tnt_object *obj;
 	uint32_t *found;
 	u32 count = read_u32(data);
+	index_cmp cmp = NULL;
 
 	say_debug("SELECT");
 	found = palloc(h->pool, sizeof(*found));
 	net_add_iov(h, found, sizeof(*found));
 	*found = 0;
 
-	if (index->conf.type == HASH || (index->conf.unique && index->conf.cardinality == 1)) {
-		for (u32 i = 0; i < count; i++) {
-			u32 c = read_u32(data);
+	for (u32 i = 0; i < count; i++) {
+		u32 c = read_u32(data);
+		if (index->conf.unique && index->conf.cardinality == c) {
 			obj = [index find_key:data cardinalty:c];
 			if (obj == NULL)
 				continue;
@@ -509,15 +510,12 @@ process_select(struct netmsg_head *h, Index<BasicIndex> *index,
 			(*found)++;
 			tuple_add(h, obj);
 			limit--;
-		}
-	} else {
-		/* The only non unique index type is Tree */
-		Tree *tree = (Tree *)index;
-		index_cmp cmp = [tree pattern_compare];
-		for (u32 i = 0; i < count; i++) {
-			u32 c = read_u32(data);
+		} else if (index->conf.type == HASH || index->conf.type == GENHASH) {
+			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "cardinality mismatch");
+		} else {
+			Tree *tree = (Tree *)index;
+			cmp = cmp ?: [tree pattern_compare];
 			[tree iterator_init_with_key:data cardinalty:c];
-
 			if (unlikely(limit == 0))
 				continue;
 
