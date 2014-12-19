@@ -805,7 +805,7 @@ _mh(initialize)(struct mhash_t *h)
 #if mh_byte_map
 	h->map = mh_calloc(h, mh_end(h), sizeof(mh_map_t)); /* 4 maps per char */
 #else
-	h->map = mh_calloc(h, mh_end(h) / 16, 4); /* 4 maps per char */
+	h->map = mh_calloc(h, (mh_end(h) + 15) / 16, 4); /* 4 maps per char */
 #endif
 	h->size = 0;
 	h->n_occupied = 0;
@@ -908,7 +908,7 @@ _mh(start_resize)(struct mhash_t *h, uint32_t want_size)
 #if mh_byte_map
 	s->map = mh_calloc(h, mh_end(s), sizeof(mh_map_t)); /* 4 maps per char */
 #else
-	s->map = mh_calloc(h, mh_end(s) / 16, 4); /* 4 maps per char */
+	s->map = mh_calloc(h, (mh_end(s) + 15) / 16, 4); /* 4 maps per char */
 #endif
 
 	_mh(resize_step)(h);
