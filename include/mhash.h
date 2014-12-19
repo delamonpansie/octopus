@@ -475,7 +475,7 @@ static inline void mh_find_loop_step(struct mh_find_loop *l, unsigned mask) {
 	l->i++;
 	if (!l->step) {
 		uint32_t d = l->inc * 4 + l->dlt;
-		l->step += mh_neighbors;
+		l->step = mh_neighbors;
 		l->i += d * mh_neighbors;
 		l->inc += d + 1;
 	}
