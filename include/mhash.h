@@ -281,26 +281,26 @@ MH_DECL size_t _mh(bytes)(struct mhash_t *h);
 #define mh_foreach(name, h, x)	for (int x = 0; x <= (h)->n_mask; x++) if (mh_ecat(name, slot_occupied)(h, x))
 
 /* basic */
-static inline uint32_t _mh(get)(const struct mhash_t *h, const mh_key_t key);
+static inline uint32_t _mh(get)(const struct mhash_t *h, mh_key_t const key);
 /* it's safe (and fast) to set value via pvalue() pointer right after iput():
    uint32_t x = mh_name_iput(h, new_key, NULL);
    *mh_pvalue(h, x) = new_value;
  */
-static inline uint32_t _mh(iput)(struct mhash_t *h, const mh_key_t key, int *ret);
+static inline uint32_t _mh(iput)(struct mhash_t *h, mh_key_t const key, int *ret);
 static inline void _mh(del)(struct mhash_t *h, uint32_t x);
 static inline int _mh(exist)(struct mhash_t *h, mh_key_t key);
 
 /*  slot */
-static inline uint32_t _mh(sget)(const struct mhash_t *h, const mh_slot_t *slot);
-static inline uint32_t _mh(sget_by_key)(const struct mhash_t *h, const mh_key_t key);
-static inline int _mh(sremove)(struct mhash_t *h, const mh_slot_t *slot, mh_slot_t *prev_slot);
-static inline int _mh(sremove_by_key)(struct mhash_t *h, const mh_key_t key, mh_slot_t *prev_slot);
-static inline int _mh(sput)(struct mhash_t *h, const mh_slot_t *slot, mh_slot_t *prev_slot);
+static inline uint32_t _mh(sget)(const struct mhash_t *h, mh_slot_t const *slot);
+static inline uint32_t _mh(sget_by_key)(const struct mhash_t *h, mh_key_t key);
+static inline int _mh(sremove)(struct mhash_t *h, mh_slot_t const *slot, mh_slot_t *prev_slot);
+static inline int _mh(sremove_by_key)(struct mhash_t *h, mh_key_t key, mh_slot_t *prev_slot);
+static inline int _mh(sput)(struct mhash_t *h, mh_slot_t const *slot, mh_slot_t *prev_slot);
 
 /* kv */
 static inline mh_key_t _mh(key)(struct mhash_t *h, uint32_t x);
 #ifdef mh_val_t
-static inline int _mh(put)(struct mhash_t *h, const mh_key_t key, mh_val_t val, mh_val_t *prev_val);
+static inline int _mh(put)(struct mhash_t *h, mh_key_t key, mh_val_t val, mh_val_t *prev_val);
 /* as long as incremental resize is disabled and value is simple scalar (no mh_slot_set_val macro),
    it can be mutated via pvalue() pointer:
 
@@ -325,7 +325,7 @@ MH_DECL void _mh(slot_move)(struct mhash_t *h, uint32_t dx, uint32_t sx);
 MH_DECL void _mh(resize_step)(struct mhash_t *h);
 MH_DECL void _mh(start_resize)(struct mhash_t *h, uint32_t buckets);
 
-static inline void _mh(slot_copy)(struct mhash_t *d, uint32_t dx, const mh_slot_t *source);
+static inline void _mh(slot_copy)(struct mhash_t *d, uint32_t dx, mh_slot_t const *source);
 MH_DECL void _mh(slot_copy_to_shadow)(struct mhash_t *h, uint32_t o, int exist);
 
 #define mh_malloc(h, size) (h)->realloc(NULL, (size))
@@ -484,7 +484,7 @@ static inline void mh_find_loop_step(struct mh_find_loop *l, unsigned mask) {
 #endif
 
 static inline uint32_t
-_mh(get)(const struct mhash_t *h, const mh_key_t key)
+_mh(get)(const struct mhash_t *h, mh_key_t key)
 {
 	unsigned k = mh_hash(h, key);
 	mh_map_t hk = mh_get_hashik(k);
@@ -502,7 +502,7 @@ _mh(get)(const struct mhash_t *h, const mh_key_t key)
 }
 
 static inline uint32_t
-_mh(short_mark)(struct mhash_t *h, const mh_key_t key)
+_mh(short_mark)(struct mhash_t *h, mh_key_t key)
 {
 	unsigned k = mh_hash(h, key);
 	struct mh_find_loop l;
@@ -524,7 +524,7 @@ _mh(short_mark)(struct mhash_t *h, const mh_key_t key)
 }
 
 static inline uint32_t
-_mh(mark)(struct mhash_t *h, const mh_key_t key, int *exist)
+_mh(mark)(struct mhash_t *h, mh_key_t key, int *exist)
 {
 	unsigned k = mh_hash(h, key), p = 0;
 	mh_map_t hk = mh_get_hashik(k);
@@ -575,8 +575,8 @@ _mh(mark)(struct mhash_t *h, const mh_key_t key, int *exist)
 	}
 }
 
-static inline uint32_t
-_mh(will_put)(struct mhash_t *h, mh_key_t const key, int *exist)
+static inline void
+_mh(resize_if_need)(struct mhash_t *h)
 {
 #if MH_INCREMENTAL_RESIZE
 	if (mh_unlikely(h->resize_position))
@@ -585,15 +585,14 @@ _mh(will_put)(struct mhash_t *h, mh_key_t const key, int *exist)
 #endif
 	if (mh_unlikely(h->n_occupied >= h->upper_bound))
 		_mh(start_resize)(h, 0);
-
-	return _mh(mark)(h, key, exist);
 }
 
 static inline uint32_t
-_mh(iput)(struct mhash_t *h, const mh_key_t key, int *ret)
+_mh(iput)(struct mhash_t *h, mh_key_t key, int *ret)
 {
 	int exist;
-	uint32_t x = _mh(will_put)(h, key, &exist);
+	_mh(resize_if_need)(h);
+	uint32_t x = _mh(mark)(h, key, &exist);
 	if (!exist) {
 		mh_slot_set_key(h, mh_slot(h, x), key);
 	}
@@ -634,22 +633,23 @@ _mh(del)(struct mhash_t *h, uint32_t x)
 
 /* slot variants */
 static inline uint32_t
-_mh(sget_by_key)(const struct mhash_t *h, const mh_key_t key)
+_mh(sget_by_key)(const struct mhash_t *h, mh_key_t key)
 {
 	return _mh(get)(h, key);
 }
 
 static inline uint32_t
-_mh(sget)(const struct mhash_t *h, const mh_slot_t *slot)
+_mh(sget)(const struct mhash_t *h, mh_slot_t const *slot)
 {
 	return _mh(get)(h, mh_slot_key(h, slot));
 }
 
 static inline int
-_mh(sput)(struct mhash_t *h, const mh_slot_t *slot, mh_slot_t *prev_slot)
+_mh(sput)(struct mhash_t *h, mh_slot_t const *slot, mh_slot_t *prev_slot)
 {
 	int exist;
-	uint32_t x = _mh(will_put)(h, mh_slot_key(h, slot), &exist);
+	_mh(resize_if_need)(h);
+	uint32_t x = _mh(mark)(h, mh_slot_key(h, slot), &exist);
 
 	if (exist && prev_slot)
 		mh_slot_copy(d, prev_slot, mh_slot(h, x));
@@ -664,7 +664,7 @@ _mh(sput)(struct mhash_t *h, const mh_slot_t *slot, mh_slot_t *prev_slot)
 }
 
 static inline int
-_mh(sremove_by_key)(struct mhash_t *h, const mh_key_t key, mh_slot_t *prev_slot)
+_mh(sremove_by_key)(struct mhash_t *h, mh_key_t key, mh_slot_t *prev_slot)
 {
 	uint32_t x = _mh(get)(h, key);
 	if (x != mh_end(h)) {
@@ -676,7 +676,7 @@ _mh(sremove_by_key)(struct mhash_t *h, const mh_key_t key, mh_slot_t *prev_slot)
 	return x != mh_end(h);
 }
 static inline int
-_mh(sremove)(struct mhash_t *h, const mh_slot_t *slot, mh_slot_t *prev_slot)
+_mh(sremove)(struct mhash_t *h, mh_slot_t const *slot, mh_slot_t *prev_slot)
 {
 	return _mh(sremove_by_key)(h, mh_slot_key(h, slot), prev_slot);
 }
@@ -688,10 +688,11 @@ static inline mh_key_t _mh(key)(struct mhash_t *h, uint32_t x)
 
 #ifdef mh_val_t
 static inline int
-_mh(put)(struct mhash_t *h, const mh_key_t key, mh_val_t val, mh_val_t *prev_val)
+_mh(put)(struct mhash_t *h, mh_key_t key, mh_val_t val, mh_val_t *prev_val)
 {
 	int exist;
-	uint32_t x = _mh(will_put)(h, key, &exist);
+	_mh(resize_if_need)(h);
+	uint32_t x = _mh(mark)(h, key, &exist);
 	mh_slot_t *slot = mh_slot(h, x);
 	if (!exist) {
 		mh_slot_set_key(h, slot, key);
@@ -772,7 +773,7 @@ _mh(slot_occupied)(struct mhash_t *h, uint32_t x)
 }
 
 static inline void
-_mh(slot_copy)(struct mhash_t *d, uint32_t dx, const mh_slot_t *source)
+_mh(slot_copy)(struct mhash_t *d, uint32_t dx, mh_slot_t const *source)
 {
 	mh_slot_copy(d, mh_slot(d, dx), source);
 }
@@ -920,7 +921,14 @@ _mh(bytes)(struct mhash_t *h)
 	return h->resize_position ? _mh(bytes)(h->shadow) : 0 +
 		sizeof(*h) +
 		((size_t)mh_end(h)) * mh_slot_size(h) +
-		((size_t)h->n_mask / 16 + 1) *  sizeof(uint32_t);
+#if mh_byte_map == 0
+		((size_t)h->n_mask / 16 + 1) *  sizeof(uint32_t)
+#elif mh_byte_map == 1
+		(size_t)h->n_mask
+#elif mh_byte_map == 2
+		(size_t)h->n_mask * 2
+#endif
+		;
 
 }
 
