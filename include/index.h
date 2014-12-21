@@ -41,14 +41,16 @@ union index_field {
 	u32 u32;
 	u64 u64;
 	const void *ptr;
-	char chr[0]; /* for LuaJIT casts */
-	struct {
-		i16 len;
-		union {
-			u8 bytes[sizeof(u64)];
-			const void *ptr;
-		} data;
-	} str __attribute__((packed));
+	union {
+		char chr[1]; /* for LuaJIT casts */
+		struct {
+			i16 len;
+			union {
+				u8 bytes[sizeof(u64)];
+				const void *ptr;
+			} data;
+		} str __attribute__((packed));
+	};
 };
 
 struct index_node {
