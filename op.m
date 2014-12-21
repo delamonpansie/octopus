@@ -510,7 +510,7 @@ process_select(struct netmsg_head *h, Index<BasicIndex> *index,
 			(*found)++;
 			tuple_add(h, obj);
 			limit--;
-		} else if (index->conf.type == HASH || index->conf.type == GENHASH) {
+		} else if (index->conf.type == HASH || index->conf.type == NUMHASH) {
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "cardinality mismatch");
 		} else {
 			Tree *tree = (Tree *)index;
