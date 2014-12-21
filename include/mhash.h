@@ -449,9 +449,7 @@ static inline unsigned mh_str_hash(const char *kk) { return  mh_MurmurHash2(kk, 
 #define mh_may_skip (mh_byte_map && mh_neighbors > 1)
 #endif
 
-#ifndef mh_find_loop_def
-#define mh_find_loop_def
-struct mh_find_loop {
+struct _mh(find_loop) {
 	unsigned i, inc, dlt, step;
 };
 /* original formula:
@@ -464,13 +462,13 @@ struct mh_find_loop {
  *   inc = inc * 5 + dlt
  *   i = start_i + inc
  */
-static inline void mh_find_loop_init(struct mh_find_loop *l, unsigned k, unsigned mask) {
+static inline void _mh(find_loop_init)(struct _mh(find_loop) *l, unsigned k, unsigned mask) {
 	l->step = mh_neighbors;
 	l->i = k % mask;
-	l->dlt = k % (mask / (2 * mh_neighbors)) * 2 * mh_neighbors;
+	l->dlt = (k % (mask / (2 * mh_neighbors))) * 2 * mh_neighbors;
 	l->inc = 0;
 }
-static inline void mh_find_loop_step(struct mh_find_loop *l, unsigned mask) {
+static inline void _mh(find_loop_step)(struct _mh(find_loop) *l, unsigned mask) {
 	l->step--;
 	l->i++;
 	if (!l->step) {
@@ -481,15 +479,14 @@ static inline void mh_find_loop_step(struct mh_find_loop *l, unsigned mask) {
 	}
 	l->i &= mask;
 }
-#endif
 
 static inline uint32_t
 _mh(get)(const struct mhash_t *h, const mh_key_t key)
 {
 	unsigned k = mh_hash(h, key);
 	mh_map_t hk = mh_get_hashik(k);
-	struct mh_find_loop l;
-	mh_find_loop_init(&l, k, h->n_mask);
+	struct _mh(find_loop) l;
+	_mh(find_loop_init)(&l, k, h->n_mask);
 	for (;;) {
 		if (mh_mayequal(h, l.i, hk) && mh_slot_key_eq(h, l.i, key))
 			return l.i;
@@ -497,7 +494,7 @@ _mh(get)(const struct mhash_t *h, const mh_key_t key)
 		if ((!mh_may_skip || (l.step & 1)) && !mh_dirty(h, l.i))
 			return mh_end(h);
 
-		mh_find_loop_step(&l, h->n_mask);
+		_mh(find_loop_step)(&l, h->n_mask);
 	}
 }
 
@@ -505,8 +502,8 @@ static inline uint32_t
 _mh(short_mark)(struct mhash_t *h, const mh_key_t key)
 {
 	unsigned k = mh_hash(h, key);
-	struct mh_find_loop l;
-	mh_find_loop_init(&l, k, h->n_mask);
+	struct _mh(find_loop) l;
+	_mh(find_loop_init)(&l, k, h->n_mask);
 	for(;;) {
 		if (mh_exist(h, l.i)) {
 			if (!mh_may_skip || (l.step & 1)) mh_setdirty(h, l.i);
@@ -519,7 +516,7 @@ _mh(short_mark)(struct mhash_t *h, const mh_key_t key)
 			return l.i;
 		}
 
-		mh_find_loop_step(&l, h->n_mask);
+		_mh(find_loop_step)(&l, h->n_mask);
 	}
 }
 
@@ -528,8 +525,8 @@ _mh(mark)(struct mhash_t *h, const mh_key_t key, int *exist)
 {
 	unsigned k = mh_hash(h, key), p = 0;
 	mh_map_t hk = mh_get_hashik(k);
-	struct mh_find_loop l;
-	mh_find_loop_init(&l, k, h->n_mask);
+	struct _mh(find_loop) l;
+	_mh(find_loop_init)(&l, k, h->n_mask);
 
 	*exist = 1;
 	do {
@@ -549,7 +546,7 @@ _mh(mark)(struct mhash_t *h, const mh_key_t key, int *exist)
 			p = l.i+1;
 		}
 
-		mh_find_loop_step(&l, h->n_mask);
+		_mh(find_loop_step)(&l, h->n_mask);
 	} while (!p);
 
 	for (;;) {
@@ -571,7 +568,7 @@ _mh(mark)(struct mhash_t *h, const mh_key_t key, int *exist)
 			*exist = 0;
 			return p-1;
 		}
-		mh_find_loop_step(&l, h->n_mask);
+		_mh(find_loop_step)(&l, h->n_mask);
 	}
 }
 
