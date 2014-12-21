@@ -267,9 +267,10 @@ local basic_mt = {
             return object(get(self.__ptr, ffi.cast(int32_t, i)))
         end,
         type = function(self)
-            if self.__ptr.conf.type == ffi.C.HASH then
+            local tpe = self.__ptr.conf.type
+            if tpe == ffi.C.HASH or tpe == ffi.C.NUMHASH then
                 return "HASH"
-            elseif self.__ptr.conf.type == ffi.C.TREE then
+            elseif tpe == ffi.C.COMPACTTREE or tpe == ffi.C.FASTTREE or tpe == ffi.C.SPTREE then
                 return "TREE"
             else
                 error("bad index type", 2)
@@ -315,8 +316,13 @@ local tree_mt = {
 }
 setmetatable(tree_mt.__index, basic_mt)
 
-local index_mt = { [tonumber(ffi.C.TREE)] = tree_mt,
-                   [tonumber(ffi.C.HASH)] = basic_mt }
+local index_mt = {
+    [tonumber(ffi.C.SPTREE)] = tree_mt,
+    [tonumber(ffi.C.FASTTREE)] = tree_mt,
+    [tonumber(ffi.C.COMPACTTREE)] = tree_mt,
+    [tonumber(ffi.C.HASH)] = basic_mt,
+    [tonumber(ffi.C.NUMHASH)] = basic_mt,
+}
 setmetatable(index_mt, { __index = function() assert(false) end })
 
 local function proxy(index)

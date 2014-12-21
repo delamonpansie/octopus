@@ -64,7 +64,7 @@ struct index_conf {
 	enum sort_order { ASC = 1, DESC = -1 } sort_order[8];
 	enum index_field_type { UNDEF, NUM16, NUM32, NUM64, STRING } field_type[8];
 	int min_tuple_cardinality, cardinality;
-	enum index_type { HASH, NUMHASH, TREE, FASTTREE, COMPACTTREE } type;
+	enum index_type { HASH, NUMHASH, SPTREE, FASTTREE, COMPACTTREE } type;
 	bool unique;
 	int n;
 };

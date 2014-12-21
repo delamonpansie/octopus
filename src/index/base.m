@@ -59,7 +59,7 @@ new_conf:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 		}
 	} else if (ic->type == HASH) {
 		i = [GenHash alloc];
-	} else if (ic->type == TREE) {
+	} else if (ic->type == SPTREE) {
 		i = [SPTree alloc];
 	} else if (ic->type == FASTTREE) {
 		i = [TWLFastTree alloc];
