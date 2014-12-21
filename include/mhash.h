@@ -226,7 +226,7 @@ struct _mh(slot) {
 #if mh_byte_map
 # if mh_byte_map == 1
 #  define mh_map_t		uint8_t
-#  define mh_divider		127
+#  define mh_divider		125
 # elif mh_byte_map == 2
 #  define mh_map_t		uint16_t
 #  define mh_divider		32713
