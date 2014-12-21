@@ -350,7 +350,8 @@ iterator_init_with_object:(struct tnt_object *)obj direction:(enum iterator_dire
 - (struct tnt_object *)
 iterator_next
 {
-	return *(struct tnt_object**)twltree_iterator_next(&iter);
+	struct tnt_object** r = twltree_iterator_next(&iter);
+	return r ? *r : NULL;
 }
 
 - (struct tnt_object *)

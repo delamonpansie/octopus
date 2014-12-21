@@ -360,7 +360,7 @@ static const struct index_node* gen_hash_slot_key(struct mh_gen_t const * h, str
 #define mh_slot_key_eq(h, i, key) ({ \
 		GenHash *hs = (h)->arg; \
 		hs->dtor(*mh_slot(h, i), &hs->search_pattern, hs->dtor_arg); \
-		hs->eq(&hs->node_a, &hs->search_pattern, &hs->conf); \
+		hs->eq(key, &hs->search_pattern, &hs->conf); \
 		})
 #define mh_slot_set_key(h, slot, key)
 #define mh_hash(h, key) ({ gen_hash_node((key), &(h)->arg->conf); })

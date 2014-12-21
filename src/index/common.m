@@ -238,7 +238,7 @@ lstr_eq(const struct index_node *na, const struct index_node *nb, void *x __attr
 	al = LOAD_VARINT32(a);
 	bl = LOAD_VARINT32(b);
 
-	return al == bl && memcmp(a, b, al <= bl ? al : bl) == 0;
+	return al == bl && memcmp(a, b, al) == 0;
 }
 
 int
