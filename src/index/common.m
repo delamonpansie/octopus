@@ -184,7 +184,7 @@ i64_init_pattern(struct tbuf *key, int cardinality,
 		break;
 	case 1: len = read_varint32(key);
 		if (len != sizeof(u64))
-			index_raise("key is not u64");
+			index_raise("key is not i64");
 		pattern->key.u64 = read_u64(key);
 		break;
 	default:
