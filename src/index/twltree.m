@@ -293,7 +293,7 @@ set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated
 			}
 			size_t i;
 			for (i = 0; i < count; i++) {
-				nodes[i] = ((struct index_node*)((char*)nodes + node_size*i))->obj;
+				nodes[i] = ((struct index_node*)((char*)nodes_ + node_size*i))->obj;
 			}
 			free(nodes_);
 			enum twlerrcode_t r = twltree_bulk_load(&tree, nodes, count);
