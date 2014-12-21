@@ -443,7 +443,7 @@ static inline unsigned mh_str_hash(const char *kk) { return  mh_MurmurHash2(kk, 
 #endif
 
 #ifndef mh_neighbors
-#define mh_neighbors 8
+#define mh_neighbors 4
 #endif
 #ifndef mh_may_skip
 #define mh_may_skip (mh_byte_map && mh_neighbors > 1)
@@ -1000,6 +1000,7 @@ _mh(dump)(struct mhash_t *h)
 
 #undef mh_byte_map
 #undef mh_may_skip
+#undef mh_neighbors
 #undef mh_exist
 #undef mh_map_t
 #undef mh_divider
