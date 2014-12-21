@@ -48,7 +48,7 @@ twl_index_key_cmp(const void *a, const void *b, void *arg)
 	TWLTree* t = (TWLTree*)arg;
 	struct index_node const *an = (typeof(an))a;
 	struct index_node const *bn = (typeof(bn))b;
-	return t->compare(an, bn, t->dtor_arg);
+	return -t->compare(bn, an, t->dtor_arg);
 }
 
 static void*
