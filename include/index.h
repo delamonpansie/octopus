@@ -64,7 +64,7 @@ struct index_conf {
 	enum sort_order { ASC = 1, DESC = -1 } sort_order[8];
 	enum index_field_type { UNDEF, NUM16, NUM32, NUM64, STRING } field_type[8];
 	int min_tuple_cardinality, cardinality;
-	enum index_type { HASH, GENHASH, TREE, FASTTREE, COMPACTTREE } type;
+	enum index_type { HASH, NUMHASH, TREE, FASTTREE, COMPACTTREE } type;
 	bool unique;
 	int n;
 };
@@ -117,6 +117,7 @@ struct dtor_conf {
 	index_dtor *dtor;
 	void *dtor_arg;
 
+	int (*eq)(const void *a, const void *b, void *);
 	int (*compare)(const void *a, const void *b, void *);
 	int (*pattern_compare)(const void *a, const void *b, void *);
 	void (*init_pattern)(struct tbuf *key, int cardinality,
@@ -154,10 +155,6 @@ struct dtor_conf {
 }
 @end
 
-@interface LStringHash: Hash <HashIndex> {
-	struct mh_lstr_t *h;
-}
-@end
 @interface CStringHash: Hash <HashIndex> {
 	struct mh_cstr_t *h;
 }
@@ -234,18 +231,26 @@ void index_raise_(const char *file, int line, const char *msg)
 
 int i32_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
 int i32_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int i32_eq(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int i32_eq_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
 void i32_init_pattern(struct tbuf *key, int cardinality,
 		 struct index_node *pattern, void *x __attribute__((unused)));
 int i64_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
 int i64_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int i64_eq(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int i64_eq_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
 void i64_init_pattern(struct tbuf *key, int cardinality,
 		 struct index_node *pattern, void *x __attribute__((unused)));
 int lstr_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
 int lstr_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int lstr_eq(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int lstr_eq_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
 void lstr_init_pattern(struct tbuf *key, int cardinality,
 		 struct index_node *pattern, void *x __attribute__((unused)));
 int cstr_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
 int cstr_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int cstr_eq(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int cstr_eq_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
 
 int i32_compare_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
 int i32_compare_with_addr_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
@@ -258,6 +263,8 @@ int cstr_compare_with_addr_desc(const struct index_node *na, const struct index_
 
 int tree_node_compare(struct index_node *na, struct index_node *nb, struct index_conf *ic);
 int tree_node_compare_with_addr(struct index_node *na, struct index_node *nb, struct index_conf *ic);
+int tree_node_eq(struct index_node *na, struct index_node *nb, struct index_conf *ic);
+int tree_node_eq_with_addr(struct index_node *na, struct index_node *nb, struct index_conf *ic);
 void gen_init_pattern(struct tbuf *key_data, int cardinality, struct index_node *pattern_, void *arg);
 void gen_set_field(union index_field *f, enum index_field_type type, int len, const void *data);
 u32 gen_hash_node(const struct index_node *n, struct index_conf *ic);

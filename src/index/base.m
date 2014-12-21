@@ -41,7 +41,7 @@
 new_conf:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 {
 	Index *i;
-	if (ic->cardinality == 1 && ic->type == HASH) {
+	if (ic->cardinality == 1 && ic->type == NUMHASH) {
 		if (ic->type == HASH && ic->unique == false)
 			return nil;
 
@@ -52,15 +52,12 @@ new_conf:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 		case NUM64:
 			i = [Int64Hash alloc];
 			break;
-		case STRING:
-			i = [LStringHash alloc];
-			break;
 		case NUM16:
 			index_raise("NUM16 single column indexes unupported");
 		default:
 			abort();
 		}
-	} else if (ic->type == GENHASH) {
+	} else if (ic->type == HASH) {
 		i = [GenHash alloc];
 	} else if (ic->type == TREE) {
 		i = [SPTree alloc];
@@ -79,6 +76,8 @@ new_conf:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 	conf.sort_order[0] != DESC ?								\
 	(conf.unique ? (index_cmp)type##_compare : (index_cmp)type##_compare_with_addr) :	\
 	(conf.unique ? (index_cmp)type##_compare_desc : (index_cmp)type##_compare_with_addr_desc)
+#define EQ(type) \
+	conf.unique ? (index_cmp)type##_eq : (index_cmp)type##_eq_with_addr;
 
 - (Index *)
 init:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
@@ -93,6 +92,7 @@ init:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 			node_size = sizeof(struct tnt_object *) + sizeof(i32);
 			init_pattern = i32_init_pattern;
 			pattern_compare = (index_cmp)i32_compare;
+			eq = EQ(i32);
 			compare = COMPARE(i32);
 			dtor = dc->u32;
 			dtor_arg = (void *)(uintptr_t)ic->field_index[0];
@@ -101,6 +101,7 @@ init:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 			node_size = sizeof(struct tnt_object *) + sizeof(i64);
 			init_pattern = i64_init_pattern;
 			pattern_compare = (index_cmp)i64_compare;
+			eq = EQ(i64);
 			compare = COMPARE(i64);
 			dtor = dc->u64;
 			dtor_arg = (void *)(uintptr_t)ic->field_index[0];
@@ -109,6 +110,7 @@ init:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 			node_size = sizeof(struct tnt_object *) + sizeof(void *);
 			init_pattern = lstr_init_pattern;
 			pattern_compare = (index_cmp)lstr_compare;
+			eq = EQ(lstr);
 			compare = COMPARE(lstr);
 			dtor = dc->lstr;
 			dtor_arg = (void *)(uintptr_t)ic->field_index[0];
@@ -129,6 +131,7 @@ init:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 
 		init_pattern = gen_init_pattern;
 		pattern_compare = (index_cmp)tree_node_compare;
+		eq = conf.unique ? (index_cmp)tree_node_eq : (index_cmp)tree_node_eq_with_addr;
 		compare = conf.unique ? (index_cmp)tree_node_compare : (index_cmp)tree_node_compare_with_addr;
 		dtor = dc->generic;
 		dtor_arg = &conf;

@@ -47,6 +47,7 @@ typedef const void* cstr;
 
 #define mh_var_slot(h,i) ((typeof((h)->slots))((char *)(h)->slots + (i) * mh_slot_size(h)))
 
+#define mh_may_skip 1
 #define mh_name _i32
 #define mh_slot_t struct index_node
 #define mh_slot_key(h, slot) (slot)->key.u32
@@ -66,34 +67,8 @@ typedef const void* cstr;
 #define mh_hash(h, a) ({ (uint32_t)((a)>>33^(a)^(a)<<11); })
 #include <mhash.h>
 
-static inline int lstrcmp(const void *a, const void *b)
-{
-	int al, bl;
-	int r;
-
-	al = LOAD_VARINT32(a);
-	bl = LOAD_VARINT32(b);
-
-	if (al != bl)
-		r = al - bl;
-	else
-		r = memcmp(a, b, al);
-
-	return r;
-}
 
 #include <third_party/murmur_hash2.c>
-#define mh_name _lstr
-#define mh_slot_t struct index_node
-#define mh_slot_key(h, slot) (slot)->key.ptr
-#define mh_slot_val(slot) (slot)->obj
-#define mh_slot_size(h) (sizeof(void *) + sizeof(void *))
-#define mh_slot mh_var_slot
-#define mh_hash(h, key) ({ const void *_k = (key); int l = LOAD_VARINT32(_k); MurmurHash2(_k, l, 13); })
-#define mh_eq(h, a, b) ({ lstrcmp((a), (b)) == 0; })
-#include <mhash.h>
-
-
 #define mh_name _cstr
 #define mh_slot_t struct index_node
 #define mh_slot_key(h, slot) (slot)->key.ptr
@@ -320,50 +295,6 @@ iterator_init_with_key:(struct tbuf *)key_data cardinalty:(u32)cardinality
 
 @end
 
-@implementation LStringHash
-DEFINE_METHODS(lstr)
-
-- (int)
-eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
-{
-	struct index_node node_b;
-	struct index_node *na = GET_NODE(obj_a, node_a),
-			  *nb = GET_NODE(obj_b, node_b);
-	return lstrcmp(na->key.ptr, nb->key.ptr) == 0;
-}
-
-- (struct tnt_object *)
-find_key:(struct tbuf *)key_data cardinalty:(u32)key_cardinality
-{
-        if (key_cardinality != 1)
-                index_raise("hashed key has cardinality != 1");
-
-	void *f = read_field(key_data);
-        u32 k = mh_lstr_get(h, f);
-        if (k != mh_end(h))
-		return mh_lstr_value(h, k);
-	return NULL;
-}
-
-- (struct tnt_object *)
-find:(const char *)key
-{
-	u32 k = mh_lstr_get(h, key);
-	if (k != mh_end(h))
-		return mh_lstr_value(h, k);
-	return NULL;
-}
-
-- (void)
-iterator_init_with_key:(struct tbuf *)key_data cardinalty:(u32)cardinality
-{
-	if (cardinality != 1)
-		index_raise("cardinality too big");
-	iter = mh_lstr_get(h, read_field(key_data));
-}
-
-@end
-
 @implementation CStringHash
 DEFINE_METHODS(cstr)
 
@@ -429,7 +360,7 @@ static const struct index_node* gen_hash_slot_key(struct mh_gen_t const * h, str
 #define mh_slot_key_eq(h, i, key) ({ \
 		GenHash *hs = (h)->arg; \
 		hs->dtor(*mh_slot(h, i), &hs->search_pattern, hs->dtor_arg); \
-		hs->compare(&hs->node_a, &hs->search_pattern, &hs->conf) == 0 ; \
+		hs->eq(&hs->node_a, &hs->search_pattern, &hs->conf); \
 		})
 #define mh_slot_set_key(h, slot, key)
 #define mh_hash(h, key) ({ gen_hash_node((key), &(h)->arg->conf); })
@@ -458,7 +389,7 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 	struct index_node node_b;
 	struct index_node *na = GET_NODE(obj_a, node_a),
 			  *nb = GET_NODE(obj_b, node_b);
-	return compare(na, nb, self->dtor_arg) == 0;
+	return eq(na, nb, self->dtor_arg) == 0;
 }
 
 - (struct tnt_object*)

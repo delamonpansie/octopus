@@ -80,6 +80,20 @@ i32_compare_with_addr_desc(const struct index_node *na, const struct index_node 
 	return i32_compare_with_addr(nb, na, x);
 }
 
+int
+i32_eq(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	i32 a = na->key.u32, b = nb->key.u32;
+	return a == b;
+}
+
+int
+i32_eq_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	i32 a = na->key.u32, b = nb->key.u32;
+	return a == b && na->obj == nb->obj;
+}
+
 void
 i32_init_pattern(struct tbuf *key, int cardinality,
 		 struct index_node *pattern, void *x __attribute__((unused)))
@@ -144,6 +158,20 @@ i64_compare_with_addr_desc(const struct index_node *na, const struct index_node 
 	return i64_compare_with_addr(nb, na, x);
 }
 
+int
+i64_eq(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	i64 a = na->key.u64, b = nb->key.u64;
+	return a == b;
+}
+
+int
+i64_eq_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	i64 a = na->key.u64, b = nb->key.u64;
+	return a == b && na->obj == nb->obj;
+}
+
 void
 i64_init_pattern(struct tbuf *key, int cardinality,
 		 struct index_node *pattern, void *x __attribute__((unused)))
@@ -201,6 +229,24 @@ lstr_compare_with_addr_desc(const struct index_node *na, const struct index_node
 	return lstr_compare_with_addr(nb, na, x);
 }
 
+int
+lstr_eq(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	const u8 *a = na->key.ptr, *b = nb->key.ptr;
+	int al, bl;
+
+	al = LOAD_VARINT32(a);
+	bl = LOAD_VARINT32(b);
+
+	return al == bl && memcmp(a, b, al <= bl ? al : bl) == 0;
+}
+
+int
+lstr_eq_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	return na->obj == nb->obj && lstr_eq(na, nb, x);
+}
+
 void
 lstr_init_pattern(struct tbuf *key, int cardinality,
 		 struct index_node *pattern, void *x __attribute__((unused)))
@@ -253,6 +299,18 @@ int
 cstr_compare_with_addr_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
 	return cstr_compare_with_addr(nb, na, x);
+}
+
+int
+cstr_eq(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+        return strcmp(na->key.ptr, nb->key.ptr) == 0;
+}
+
+int
+cstr_eq_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+        return strcmp(na->key.ptr, nb->key.ptr) == 0 && na->obj == nb->obj;
 }
 
 static int
@@ -322,37 +380,93 @@ tree_node_compare_with_addr(struct index_node *na, struct index_node *nb, struct
 		return 0;
 }
 
-static u32
-dumb_hash(const char *d, u32 l, u32 h)
+static int
+field_eq(union index_field *f1, union index_field *f2, enum index_field_type type)
 {
-	const unsigned int m = 0x53215249;
+	const void *d1, *d2;
+
+	switch (type) {
+	case NUM16:
+		return f1->u16 == f2->u16;
+	case NUM32:
+		return f1->u32 == f2->u32;
+	case NUM64:
+		return f1->u64 == f2->u64;
+	case STRING:
+		d1 = f1->str.len <= sizeof(f1->str.data) ? f1->str.data.bytes : f1->str.data.ptr;
+		d2 = f2->str.len <= sizeof(f2->str.data) ? f2->str.data.bytes : f2->str.data.ptr;
+		return d1 == d2 && memcmp(d1, d2, MIN(f1->str.len, f2->str.len)) == 0;
+	case UNDEF:
+		abort();
+	}
+	abort();
+}
+
+int
+tree_node_eq(struct index_node *na, struct index_node *nb, struct index_conf *ic)
+{
+	/* if pattern is partialy specified compare only significant fields.
+	   it's ok to return 0 here: sptree_iterator_init_set() will select
+	   leftmost node in case of equality.
+	   it is guaranteed that pattern is a first arg.
+	*/
+
+	int n = (uintptr_t)na->obj < nelem(ic->field_index) ? (uintptr_t)na->obj : ic->cardinality;
+
+	for (int i = 0; i < n; ++i) {
+		int j = ic->cmp_order[i];
+		union index_field *akey = (void *)&na->key + ic->offset[j];
+		union index_field *bkey = (void *)&nb->key + ic->offset[j];
+		int r = field_eq(akey, bkey, ic->field_type[j]);
+		if (r == 0)
+			return 0;
+	}
+	return 1;
+}
+
+int
+tree_node_eq_with_addr(struct index_node *na, struct index_node *nb, struct index_conf *ic)
+{
+	return na->obj == nb->obj && tree_node_eq(na, nb, ic);
+}
+
+#define KNUTH_MULT 0x5851f42d4c957f2dULL
+static u32
+dumb_hash(const char *d, u32 l, u64 h)
+{
 	while (l >= 4) {
 		u32 k = *(u32*)d;
-		h = (h ^ k) * m;
-		h = (h << 13) | (h >> 19);
+		h = (h ^ k) * KNUTH_MULT;
+		h = (h << 13) | (h >> 51);
 		d += 4;
 		l -= 4;
 	}
 	if (l & 1) h ^= d[0];
 	if (l & 2) h ^= *(u16*)(d+(l&1)) << ((l&1) * 8);
 	h ^= l << 24;
-	h *= m;
+	h *= KNUTH_MULT;
 	return h;
 }
 
 u32
 gen_hash_node(const struct index_node *n, struct index_conf *ic)
 {
-	const unsigned int m = 0x53215249;
-	u32 h = 0x33;
+	u64 h = 0x33;
 	int c = ic->cardinality;
 
-	if (c == 1 && ic->field_type[0] == STRING) {
-		const void *k = n->key.ptr;
-		u32 l = LOAD_VARINT32(k);
-		h = dumb_hash(k, l, h);
-		h = (h << 13) | (h >> 19);
-		return h;
+	if (c == 1) {
+		if (ic->field_type[0] == NUM32) {
+			return n->key.u32;
+		} else if (ic->field_type[0] == NUM64) {
+			return (u32)((n->key.u64 * KNUTH_MULT) >> 32);
+		} else if (ic->field_type[0] == STRING) {
+			const void *k = n->key.ptr;
+			u32 l = LOAD_VARINT32(k);
+			h = dumb_hash(k, l, h);
+			h ^= h >> 33;
+			h *= KNUTH_MULT;
+			return (u32)(h >> 32);
+		}
 	}
 
 	for (int i = 0; i < c; ++i) {
@@ -361,14 +475,13 @@ gen_hash_node(const struct index_node *n, struct index_conf *ic)
 		union index_field *key = (void *)&n->key + ic->offset[i];
 		switch(ic->field_type[i]) {
 		case NUM16:
-			h = (h ^ key->u16) * m;
+			h = (h ^ key->u16) * KNUTH_MULT;
 			break;
 		case NUM32:
-			h = (h ^ key->u32) * m;
+			h = (h ^ key->u32) * KNUTH_MULT;
 			break;
 		case NUM64:
-			h = (h ^ (u32)(key->u64)) * m;
-			h = (h ^ (u32)(key->u64 >> 32)) * m;
+			h = (h ^ key->u64) * KNUTH_MULT;
 			break;
 		case STRING:
 			d = key->str.len <= sizeof(key->str.data) ? key->str.data.bytes : key->str.data.ptr;
@@ -377,9 +490,10 @@ gen_hash_node(const struct index_node *n, struct index_conf *ic)
 		case UNDEF:
 			abort();
 		}
-		h = (h << 13) | (h >> 19);
+		h = (h << 13) | (h >> 51);
 	}
-	return h;
+	h *= KNUTH_MULT;
+	return (u32)(h >> 32);
 }
 
 void
