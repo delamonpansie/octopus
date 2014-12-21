@@ -326,6 +326,7 @@ set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated
 - (void)
 replace:(struct tnt_object *)obj
 {
+	dtor(obj, &node_a, dtor_arg);
 	twlerrcode_t r = twltree_insert(&tree, &obj, true);
 	if (r != TWL_OK)
 		twl_raise(r);
