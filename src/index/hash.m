@@ -389,7 +389,7 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 	struct index_node node_b;
 	struct index_node *na = GET_NODE(obj_a, node_a),
 			  *nb = GET_NODE(obj_b, node_b);
-	return eq(na, nb, self->dtor_arg) == 0;
+	return eq(na, nb, self->dtor_arg);
 }
 
 - (struct tnt_object*)
