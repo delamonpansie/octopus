@@ -99,7 +99,7 @@ configure(void)
 			if ([index respondsTo:@selector(resize:)])
 				[(id)index resize:cfg.object_space[i]->estimated_rows];
 
-			if (index->conf.type == TREE && j > 0)
+			if ([index isKindOf: [Tree class]] && j > 0)
 				index = [[DummyIndex alloc] init_with_index:index];
 
 			object_space_registry[i].index[j] = (Index<BasicIndex> *)index;

@@ -126,11 +126,11 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 	else if (strcmp(c->type, "NUMHASH") == 0)
 		d->type = NUMHASH;
 	else if (strcmp(c->type, "TREE") == 0)
-		d->type = TREE;
+		d->type = COMPACTTREE;
 	else if (strcmp(c->type, "FASTTREE") == 0)
 		d->type = FASTTREE;
-	else if (strcmp(c->type, "COMPACTTREE") == 0)
-		d->type = COMPACTTREE;
+	else if (strcmp(c->type, "SPTREE") == 0)
+		d->type = SPTREE;
 	else
 		panic("unknown index type");
 
