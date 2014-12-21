@@ -41,8 +41,8 @@ union index_field {
 	u32 u32;
 	u64 u64;
 	const void *ptr;
+	char chr[12]; /* for LuaJIT casts */
 	union {
-		char chr[1]; /* for LuaJIT casts */
 		struct {
 			i16 len;
 			union {
