@@ -466,8 +466,8 @@ struct mh_find_loop {
  */
 static inline void mh_find_loop_init(struct mh_find_loop *l, unsigned k, unsigned mask) {
 	l->step = mh_neighbors;
-	l->i = k & mask;
-	l->dlt = k % (mask / (2 * mh_neighbors)) * 2;
+	l->i = k % mask;
+	l->dlt = k % (mask / (2 * mh_neighbors)) * 2 * mh_neighbors;
 	l->inc = 0;
 }
 static inline void mh_find_loop_step(struct mh_find_loop *l, unsigned mask) {
@@ -476,8 +476,8 @@ static inline void mh_find_loop_step(struct mh_find_loop *l, unsigned mask) {
 	if (!l->step) {
 		uint32_t d = l->inc * 4 + l->dlt;
 		l->step = mh_neighbors;
-		l->i += d * mh_neighbors;
-		l->inc += d + 1;
+		l->i += d;
+		l->inc += d + mh_neighbors;
 	}
 	l->i &= mask;
 }
