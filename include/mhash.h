@@ -278,7 +278,7 @@ MH_DECL size_t _mh(bytes)(struct mhash_t *h);
 #define mh_size(h)		({ (h)->size; 		})
 #define mh_begin(h)		({ 0;	})
 #define mh_end(h)		({ (h)->n_mask + 1;	})
-#define mh_foreach(name, h, x)	for (int x = 0; x <= (h)->n_mask; x++) if (mh_ecat(name, slot_occupied)(h, x))
+#define mh_foreach(name, h, x)	for (uint32_t x = 0; x <= (h)->n_mask; x++) if (mh_ecat(name, slot_occupied)(h, x))
 
 /* basic */
 static inline uint32_t _mh(get)(const struct mhash_t *h, mh_key_t const key);
@@ -878,14 +878,14 @@ _mh(start_resize)(struct mhash_t *h, uint32_t want_size)
 	if (h->size > want_size) want_size = h->size;
 	if ((double)want_size < (uint32_t)(1 << 31) * (load_factor * 0.84)) {
 		want_size = want_size / (load_factor * 0.85) + 1;
-	} else if (want_size < (1 << 31)) {
-		want_size = (1 << 31);
+	} else if (want_size < ((uint32_t)1 << 31)) {
+		want_size = ((uint32_t)1 << 31);
 	} else {
 		abort();
 	}
 	n_buckets = mh_neighbors * 4;
 	while (n_buckets < want_size) n_buckets *= 2;
-	if (n_buckets < (1 << 31)) {
+	if (n_buckets < ((uint32_t)1 << 31)) {
 		upper_bound = n_buckets * load_factor;
 	} else {
 		upper_bound = h->upper_bound + (want_size - h->upper_bound) / 2;
