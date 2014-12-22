@@ -353,13 +353,13 @@ iterator_init_with_key:(struct tbuf *)key_data cardinalty:(u32)cardinality
 #define mh_byte_map 1
 #define mh_may_skip 1
 #define mh_name _gen
-#define mh_slot_t struct tnt_object*
+#define mh_slot_t tnt_ptr
 #define mh_arg_t GenHash*
-static const struct index_node* gen_hash_slot_key(struct mh_gen_t const * h, struct tnt_object * const * slot);
+static const struct index_node* gen_hash_slot_key(struct mh_gen_t const * h, tnt_ptr const * slot);
 #define mh_slot_key(h, slot) gen_hash_slot_key(h, slot)
 #define mh_slot_key_eq(h, i, key) ({ \
 		GenHash *hs = (h)->arg; \
-		hs->dtor(*mh_slot(h, i), &hs->search_pattern, hs->dtor_arg); \
+		hs->dtor(tnt_ptr2obj(*mh_slot(h, i)), &hs->search_pattern, hs->dtor_arg); \
 		hs->eq(key, &hs->search_pattern, &hs->conf); \
 		})
 #define mh_slot_set_key(h, slot, key)
@@ -367,10 +367,10 @@ static const struct index_node* gen_hash_slot_key(struct mh_gen_t const * h, str
 #include <mhash.h>
 
 static const struct index_node*
-gen_hash_slot_key(struct mh_gen_t const * h, struct tnt_object* const * slot)
+gen_hash_slot_key(struct mh_gen_t const * h, tnt_ptr const * slot)
 {
 	GenHash *hs = (h)->arg;
-	hs->dtor(*(slot), &hs->node_a, hs->dtor_arg);
+	hs->dtor(tnt_ptr2obj(*slot), &hs->node_a, hs->dtor_arg);
 	return &hs->node_a;
 }
 
@@ -398,7 +398,7 @@ get:(u32)i
 	if (i > mh_end(h) || !mh_gen_slot_occupied(h, i)) {
 		return NULL;
 	}
-	return *mh_gen_slot(h, i);
+	return tnt_ptr2obj(*mh_gen_slot(h, i));
 }
 - (void)
 resize:(u32)buckets
@@ -408,9 +408,10 @@ resize:(u32)buckets
 - (struct tnt_object*)
 find_obj:(struct tnt_object*)obj
 {
-	u32 k = mh_gen_sget(h, &obj);
+	tnt_ptr p = tnt_obj2ptr(obj);
+	u32 k = mh_gen_sget(h, &p);
 	if (k != mh_end(h))
-		return *mh_gen_slot(h, k);
+		return tnt_ptr2obj(*mh_gen_slot(h, k));
 	return NULL;
 }
 - (struct tnt_object*)
@@ -418,23 +419,26 @@ find_node:(const struct index_node *)node
 {
 	u32 k = mh_gen_sget_by_key(h, node);
 	if (k != mh_end(h))
-		return *mh_gen_slot(h, k);
+		return tnt_ptr2obj(*mh_gen_slot(h, k));
 	return NULL;
 }
 - (void)
 replace:(struct tnt_object *)obj
 {
-	mh_gen_sput(h, &obj, NULL);
+	tnt_ptr p = tnt_obj2ptr(obj);
+	mh_gen_sput(h, &p, NULL);
 }
 - (int)
 remove:(struct tnt_object *)obj
 {
-	return mh_gen_sremove(h, &obj, NULL);
+	tnt_ptr p = tnt_obj2ptr(obj);
+	return mh_gen_sremove(h, &p, NULL);
 }
 - (void)
 iterator_init_with_object:(struct tnt_object*)obj
 {
-	iter = mh_gen_sget(h, &obj);
+	tnt_ptr p = tnt_obj2ptr(obj);
+	iter = mh_gen_sget(h, &p);
 }
 - (void)
 iterator_init_with_node:(const struct index_node*)node
@@ -447,7 +451,7 @@ iterator_next
 	for (; iter < mh_end(h); iter++) {
 		if (!mh_gen_slot_occupied(h, iter))
 			continue;
-		return *mh_gen_slot(h, iter++);
+		return tnt_ptr2obj(*mh_gen_slot(h, iter++));
 	}
 	return NULL;
 }

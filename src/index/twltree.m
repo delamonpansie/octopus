@@ -36,9 +36,9 @@ static bool
 twl_tuple_2_index_key(void *index_key, const void *tuple_key, void *arg)
 {
 	TWLTree* t = (TWLTree*)arg;
-	struct tnt_object **obj = (typeof(obj))tuple_key;
+	tnt_ptr *obj = (typeof(obj))tuple_key;
 	struct index_node *node = (typeof(node))index_key;
-	t->dtor(*obj, node, t->dtor_arg);
+	t->dtor(tnt_ptr2obj(*obj), node, t->dtor_arg);
 	return true;
 }
 
@@ -287,13 +287,13 @@ set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated
 	} else {
 		if (count > 0) {
 			qsort_arg(nodes_, count, node_size, compare, dtor_arg);
-			struct tnt_object **nodes = xcalloc(count, sizeof(*nodes));
+			tnt_ptr* nodes = xcalloc(count, sizeof(*nodes));
 			if (nodes == NULL) {
 				panic("No memory");
 			}
 			size_t i;
 			for (i = 0; i < count; i++) {
-				nodes[i] = ((struct index_node*)((char*)nodes_ + node_size*i))->obj;
+				nodes[i] = tnt_obj2ptr(((struct index_node*)((char*)nodes_ + node_size*i))->obj);
 			}
 			free(nodes_);
 			enum twlerrcode_t r = twltree_bulk_load(&tree, nodes, count);
@@ -317,7 +317,7 @@ set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated
 	tree.arg = self;
 	tree.tlrealloc = twl_compact_realloc;
 	tree.sizeof_index_key = node_size;
-	tree.sizeof_tuple_key = sizeof(struct tnt_object *);
+	tree.sizeof_tuple_key = sizeof(tnt_ptr);
 	enum twlerrcode_t r = twltree_init(&tree);
 	twl_raise(r);
 	return self;
@@ -351,19 +351,19 @@ iterator_init_with_object:(struct tnt_object *)obj direction:(enum iterator_dire
 - (struct tnt_object *)
 iterator_next
 {
-	struct tnt_object** r = twltree_iterator_next(&iter);
-	return r ? *r : NULL;
+	tnt_ptr* r = twltree_iterator_next(&iter);
+	return r ? tnt_ptr2obj(*r) : NULL;
 }
 
 - (struct tnt_object *)
 iterator_next_check:(index_cmp)check
 {
-	struct tnt_object **o;
+	tnt_ptr *o;
 	while ((o = twltree_iterator_next(&iter))) {
 		static struct index_node node_b[8];
-		struct index_node *r = GET_NODE((*o), node_b[0]);
+		struct index_node *r = GET_NODE(tnt_ptr2obj(*o), node_b[0]);
 		switch (check(&search_pattern, r, self->dtor_arg)) {
-		case 0: return *o;
+		case 0: return tnt_ptr2obj(*o);
 		case -1:
 		case 1: return NULL;
 		case 2: continue;

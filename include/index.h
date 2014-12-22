@@ -79,6 +79,19 @@ struct dtor_conf {
 	index_dtor *u32, *u64, *lstr, *generic;
 };
 
+#ifdef __amd64__
+struct ptr_for_index {
+	intptr_t ptr : 48;
+};
+typedef struct ptr_for_index tnt_ptr;
+#define tnt_ptr2obj(p) ( (struct tnt_object*)(intptr_t)(p).ptr )
+#define tnt_obj2ptr(o) ((tnt_ptr){ .ptr = (intptr_t)o })
+#else
+typedef struct tnt_object* tnt_ptr;
+#define tnt_ptr2obj(p) (p)
+#define tnt_obj2ptr(o) (o)
+#endif
+
 /* Following selectors used by LuaJIT bindings and MUST NOT throw exceptions:
    find:
    find_by_node:
