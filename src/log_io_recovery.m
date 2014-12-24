@@ -753,7 +753,7 @@ again:
 	do {
 		[r->remote_puller feeder_param: &r->feeder];
 
-		assert([r scn] > 0); /* snapshot must be loaded */
+		assert([r XXXAllowZeroSCNForRemote] || [r scn] > 0); /* snapshot must be loaded */
 		i64 scn = [r scn] + 1; /* start recover from next scn */
 
 		if ([r->remote_puller handshake:scn] <= 0) {
@@ -1048,6 +1048,11 @@ write_initial_state
 {
 	lsn = scn = 1;
 	return [[self snap_writer] snapshot_write];
+}
+
+- (bool) XXXAllowZeroSCNForRemote
+{
+	return false;
 }
 @end
 

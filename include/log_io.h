@@ -483,6 +483,8 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 
 - (SnapWriter *) snap_writer;
 - (int) write_initial_state;
+
+- (bool) XXXAllowZeroSCNForRemote;
 @end
 
 @interface Recovery (Deprecated)
