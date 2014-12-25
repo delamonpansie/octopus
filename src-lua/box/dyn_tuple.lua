@@ -28,13 +28,22 @@ local u32_ptr = ffi.typeof("uint32_t *")
 local u64_ptr = ffi.typeof("uint64_t *")
 
 
-local ptrof = setmetatable({}, {__index = function (t, k) t[k] = ffi.typeof('$ *', k); return t[k]; end})
+local ptrof = setmetatable({}, {__index = function (t, k)
+    if type(k) ~= "string" then
+        return ffi.typeof('$ *', k)
+    end
+    t[k] = ffi.typeof('$ *', k)
+    return t[k]
+end})
 
 local datacast_type_cache = setmetatable({}, {
    __index = function(t, k)
+      if type(k) ~= "string" then
+         return { ffi.typeof('$ *', k), ffi.sizeof(k) }
+      end
       -- k either 'uintXX_t' or ctype<unsigned XX>
       local ctype = ffi.typeof(k)
-      t[k] = { ptrof[ctype], ffi.sizeof(ctype) }
+      t[k] = { ptrof[k], ffi.sizeof(ctype) }
       return t[k]
    end
 })
@@ -83,12 +92,12 @@ local __tuple_index = {
    end,
    arrfield = function(self, i, ctype)
       local len, offt = self:field(i, 1)
-      ctype = ffi.typeof(ctype)
-      if len % ffi.sizeof(ctype) ~= 0 then
+      local ctinfo = datacast_type_cache[ctype]
+      if len % ctinfo[2] ~= 0 then
 	 error('bad field len', 2)
       end
-      local ptr = ffi.cast(ptrof[ctype], self.data + offt)
-      return safeptr(self.__obj, ptr, len / ffi.sizeof(ctype))
+      local ptr = ffi.cast(ctinfo[1], self.data + offt)
+      return safeptr(self.__obj, ptr, len / ctinfo[2])
    end,
    datacast = function(self, ctype, offt, len)
       if ctype == 'string' then
