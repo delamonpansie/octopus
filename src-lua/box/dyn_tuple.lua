@@ -32,7 +32,7 @@ local ptrof = setmetatable({}, {__index = function (t, k)
     if type(k) ~= "string" then
         return ffi.typeof('$ *', k)
     end
-    t[k] = ffi.typeof('$ *', k)
+    t[k] = ffi.typeof('$ *', ffi.typeof(k))
     return t[k]
 end})
 
