@@ -775,6 +775,21 @@ _mh(slot_copy)(struct mhash_t *d, uint32_t dx, mh_slot_t const *source)
 	mh_slot_copy(d, mh_slot(d, dx), source);
 }
 
+/* This is hijack method. Use it only if you really want to destroy hash and you know what are you doing */
+static inline void
+_mh(hijack_slot_put)(struct mhash_t *d, uint32_t dx, mh_slot_t const *source)
+{
+	mh_slot_copy(d, mh_slot(d, dx), source);
+	mh_setexist(d, dx, 2);
+}
+
+/* This is hijack method. Use it only if you really want to destroy hash and you know what are you doing */
+static inline void
+_mh(hijack_slot_free)(struct mhash_t *d, uint32_t dx)
+{
+	mh_setfree(d, dx);
+}
+
 #ifdef MH_SOURCE
 
 #define load_factor 0.73

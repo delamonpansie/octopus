@@ -458,23 +458,31 @@ iterator_next
 - (void)
 ordered_iterator_init
 {
-	int j = 0;
+	int i = 0;
 	[self iterator_init];
 	/* assert(j + 1 == ..) assumes that hash has at least one elem */
 	if (mh_size(h) == 0)
 		return;
-	for (int i = 1; i < mh_end(h); i++) {
+	char *slots = xcalloc(mh_size(h), node_size);
+	char *current = slots;
+	for (i = 0; i < mh_end(h); i++) {
 		if (!mh_gen_slot_occupied(h, i))
 			continue;
-		while (mh_gen_slot_occupied(h, j) && j < i)
-			j++;
-		if (j == i)
-			continue;
-		assert(!mh_gen_slot_occupied(h, j));
-		mh_gen_slot_move(h, j, i);
+
+		dtor(tnt_ptr2obj(*mh_gen_slot(h, i)), (struct index_node*)current, dtor_arg);
+		current += node_size;
 	}
-	assert(j + 1 == mh_size(h));
-	//qsort_arg(h->slots, mh_size(h), node_size, compare, self);
+	qsort_arg(slots, mh_size(h), node_size, compare, self);
+	current = slots;
+	for (i = 0; i < mh_size(h); i++) {
+		tnt_ptr ptr = tnt_obj2ptr(*(void**)current);
+		mh_gen_hijack_slot_put(h, i, &ptr);
+		current += node_size;
+	}
+	for (; i < mh_end(h); i++) {
+		mh_gen_hijack_slot_free(h, i);
+	}
+	free(slots);
 }
 - (u32) size { return mh_size(h); }
 - (u32) slots { return mh_end(h); }
