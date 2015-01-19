@@ -51,13 +51,22 @@ function pack.add(n, ...)
 end
 
 function pack.delete(n, key)
-        local key_len = 1
         local req = packer()
 
         req:u32(n)
-        req:u32(key_len)
-        req:field(key)
-        return op.DELETE_1_3, req:pack()
+        req:u32(1)
+        if type(key) == 'table' then
+            local key_cardinality = #key
+            req:u32(key_cardinality)
+            for i, val in ipairs(key) do
+                req:field(val)
+            end
+        else
+            local key_cardinality = 1
+            req:u32(key_cardinality)
+            req:field(key)
+        end
+        return op.DELETE, req:pack()
 end
 
 local function pack_mop(req, op)
