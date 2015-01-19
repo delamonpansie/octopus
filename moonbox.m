@@ -83,6 +83,9 @@ luaT_box_dispatch(struct lua_State *L)
 		if (txn.obj != NULL) {
 			lua_pushlightuserdata(L, txn.obj);
 			return 1;
+		} else if (txn.op == DELETE && txn.old_obj != NULL) {
+			lua_pushlightuserdata(L, txn.old_obj);
+			return 1;
 		}
 	}
 	@catch (Error *e) {

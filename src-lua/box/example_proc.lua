@@ -332,13 +332,18 @@ end
 local function test7()
     return 0, {
         box.object_space[0]:index(0):find("99"),
-        box.update(0, "99", {2,"set","9999"})}
+        box.update(0, "99", {2,"set","9999"}),
+        box.delete(0, "99"),
+        box.tuple{ tostring(box.object_space[0]:index(0):find("99")) },
+    }
 end
 
 local function test8()
     return 0, {
         box.object_space[2]:index(0):find(0, 0),
-        box.update(2, {"\0\0\0\0","\0\0\0\0"}, {2,"set","9999"})
+        box.update(2, {"\0\0\0\0","\0\0\0\0"}, {2,"set","9999"}),
+        box.delete(2, {"\0\0\0\0","\0\0\0\0"}),
+        box.tuple{ tostring(box.object_space[2]:index(0):find(0, 0)) },
     }
 end
 
