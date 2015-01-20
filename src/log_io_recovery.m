@@ -753,8 +753,15 @@ again:
 	do {
 		[r->remote_puller feeder_param: &r->feeder];
 
-		assert([r XXXAllowZeroSCNForRemote] || [r scn] > 0); /* snapshot must be loaded */
-		i64 scn = [r scn] + 1; /* start recover from next scn */
+		i64 scn;
+		if ([r scn] > 0) {
+			scn = [r scn] + 1; /* continue loading */
+		} else if ([r XXXAllowZeroSCNForRemote] && [r scn] == 0){
+			/* load snapshot for non-primary puller */
+			scn = 0;
+		} else {
+			assert([r XXXAllowZeroSCNForRemote] || [r scn] > 0);
+		}
 
 		if ([r->remote_puller handshake:scn] <= 0) {
 			/* no more WAL rows in near future, notify module about that */
