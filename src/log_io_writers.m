@@ -378,14 +378,17 @@ exit:
 
 @implementation XLogWriter
 
+- (i64) lsn { return lsn; }
 - (struct child *) wal_writer { return wal_writer; };
 
 - (id)
-init_state:(id<RecoveryState>)state_
-   dirname:(const char*)dir_name_
+init_lsn:(i64)init_lsn
+   state:(id<RecoveryState>)state_
+ dirname:(const char*)dir_name_
 rows_per_file:(int)rows_per_file_
 fsync_delay:(double)fsync_delay_
 {
+	lsn = init_lsn;
 	state = state_;
 	dir_name = strdup(dir_name_);
 	rows_per_file = rows_per_file_;
@@ -395,11 +398,11 @@ fsync_delay:(double)fsync_delay_
 	if (rows_per_file <= 4)
 		panic("inacceptable value of 'rows_per_file'");
 
-	say_info("Configuring WAL writer LSN:%"PRIi64" SCN:%"PRIi64, [state lsn], [state scn]);
+	say_info("Configuring WAL writer LSN:%"PRIi64" SCN:%"PRIi64, lsn, [state scn]);
 
 	struct fiber *wal_out = fiber_create("wal_writer/output_flusher", conn_flusher);
 	struct fiber *wal_in = fiber_create("wal_writer/input_dispatcher", wal_disk_writer_input_dispatch);
-	struct wal_disk_writer_conf conf = { .lsn = [state lsn],
+	struct wal_disk_writer_conf conf = { .lsn = lsn,
 					     .scn = [state scn],
 					     .run_crc = [state run_crc_log],
 					     .rows_per_file = rows_per_file,
@@ -486,9 +489,11 @@ wal_pack_submit
 	struct wal_reply *reply = yield();
 	if (reply->row_count == 0)
 		say_warn("wal writer returned error status");
+	else
+		lsn = reply->row_info[reply->row_count - 1].lsn;
 
 	[state update_state_rci:reply->row_info count:reply->row_count];
-	say_debug("%s: => rows:%i", __func__, reply->row_count);
+	say_debug("%s: => rows:%i LSN:%"PRIi64, __func__, reply->row_count, lsn);
 	return reply->row_count;
 }
 @end

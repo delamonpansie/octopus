@@ -84,7 +84,7 @@ ours:
 - (ev_tstamp) lag { return lag; }
 - (ev_tstamp) last_update_tstamp { return last_update_tstamp; }
 
-- (i64) lsn { return lsn; }
+- (i64) lsn { if (writer != nil) return [writer lsn]; return lsn; }
 - (i64) scn { return scn; }
 - (u32) run_crc_log { return run_crc_log; }
 - (bool) local_writes { return local_writes; }
@@ -94,8 +94,6 @@ ours:
 		if (cfg.sync_scn_with_lsn && rci->lsn != rci->scn)
 			panic("out ouf sync SCN:%"PRIi64 " != LSN:%"PRIi64,
 			      rci->scn, rci->lsn);
-
-		lsn = rci->lsn;
 
 		/* only TAG_WAL rows affect scn & run_crc */
 		if (scn_changer(rci->tag)) {
@@ -600,7 +598,7 @@ pull_wal:(id<XLogPullerAsync>)puller
 	if (pack_rows > 0) {
 		/* we'r use our own lsn numbering */
 		for (int j = 0; j < pack_rows; j++)
-			rows[j]->lsn = lsn + 1 + j;
+			rows[j]->lsn = [writer lsn] + 1 + j;
 
 		if (cfg.io_compat) {
 			for (int j = 0; j < pack_rows; j++) {
@@ -658,7 +656,7 @@ pull_wal:(id<XLogPullerAsync>)puller
 		}
 
 		assert(scn == pack_max_scn);
-		assert(lsn == pack_max_lsn);
+		assert([writer lsn] == pack_max_lsn);
 	}
 
 	fiber_gc();
@@ -728,7 +726,7 @@ load_from_remote:(struct feeder_param *)remote
 - (void)
 pull_from_remote:(id<XLogPullerAsync>)puller
 {
-	assert([self lsn] > 0);
+	assert([writer lsn] > 0);
 	for (;;)
 		[self pull_wal:puller];
 }
@@ -995,7 +993,8 @@ nop_hb_writer(va_list ap)
 - (void)
 configure_wal_writer
 {
-	writer = [[XLogWriter alloc] init_state:self
+	writer = [[XLogWriter alloc] init_lsn:lsn
+					state:self
 					dirname:wal_dir->dirname
 				  rows_per_file:wal_rows_per_file
 				    fsync_delay:cfg.wal_fsync_delay];

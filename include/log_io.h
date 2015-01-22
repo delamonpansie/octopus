@@ -365,6 +365,7 @@ const char *run_crc_status(struct run_crc *run_crc);
 @end
 
 @interface XLogWriter: Object {
+	i64 lsn;
 	id<RecoveryState> state;
 	XLogDir *wal_dir, *snap_dir;
 
@@ -373,15 +374,15 @@ const char *run_crc_status(struct run_crc *run_crc);
 	ev_tstamp fsync_delay;
 	struct child *wal_writer;
 }
-- (id) init_state:(id<RecoveryState>)state
-	  dirname:(const char*)dir_name_
-      rows_per_file:(int)rows_per_file_
-        fsync_delay:(double)fsync_delay_;
+- (id) init_lsn:(i64)lsn
+	  state:(id<RecoveryState>)state
+	dirname:(const char*)dir_name_
+  rows_per_file:(int)rows_per_file_
+    fsync_delay:(double)fsync_delay_;
 
+- (i64) lsn;
 - (struct child *) wal_writer;
-
 - (int) wal_pack_submit;
-/* entry points: modules should call this */
 - (int) submit:(const void *)data len:(u32)len tag:(u16)tag;
 @end
 
