@@ -20,7 +20,7 @@ Env.connect_eval do |server|
   insert ["foo"]
   insert ["foo"], :object_space => 1
 
-  Process.kill('USR1', server.pid)
+  server.snapshot
 
   insert ["bar"]
   insert ["bar"], :object_space => 1

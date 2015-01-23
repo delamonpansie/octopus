@@ -27,7 +27,7 @@ env.connect_eval do
   insert [1,2]
   insert [2,3]
 
-  Process.kill('USR1', env.pid)
+  env.snapshot
 end
 
 env.restart

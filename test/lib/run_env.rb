@@ -213,6 +213,11 @@ EOD
     start
   end
 
+  def snapshot
+    raise "no server running" unless @pid
+    Process.kill('USR1', @pid)
+  end
+
   task :rotate_logs do
     i = 0
     while true do

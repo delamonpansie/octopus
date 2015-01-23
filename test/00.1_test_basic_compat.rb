@@ -16,7 +16,7 @@ Env.connect_eval do |env|
   ping
   insert [1,2,3]
 
-  Process.kill('USR1', env.pid)
+  env.snapshot
 
   wait_for "readable 00000000000000000002.snap" do
     FileTest.readable?("00000000000000000002.snap")
@@ -34,7 +34,7 @@ end
 env.connect_eval do
   select 1, 500, 505, 999, 1001
 
-  Process.kill('USR1', env.pid)
+  env.snapshot
   insert [1]
   insert [2]
   env.stop

@@ -86,7 +86,7 @@ master.connect_eval do
     insert [i, i + 1, "abc", "def"]
     insert [i, i + 1, "abc", "def"], :object_space => 1
     if i == 50 then
-      Process.kill('USR1', master.pid)
+      master.snapshot
       wait_for "readable 00000000000000000154.snap" do
         FileTest.readable?("00000000000000000154.snap")
       end
