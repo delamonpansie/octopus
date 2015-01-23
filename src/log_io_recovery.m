@@ -717,7 +717,7 @@ load_from_remote:(struct feeder_param *)remote
 		while ([self pull_wal:puller] != 1);
 	}
 	@finally {
-		[puller free];
+		[puller free]; //FIXME: do not drop connection after initial loading
 		unzero_io_collect_interval();
 	}
 	return 0;
