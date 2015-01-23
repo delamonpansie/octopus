@@ -1209,10 +1209,15 @@ enable_local_writes
 {
 	say_debug("%s", __func__);
 	[self lock];
-	[self recover_finalize];
+	i64 reader_lsn = [reader recover_finalize];
+	[reader free];
+	reader = nil;
+
+	free(skip_scn.pool);
+	skip_scn = TBUF(NULL, 0, NULL);
 	local_writes = true;
 
-	if (lsn == 0) {
+	if (reader_lsn == 0) {
 		if ([self feeder_addr_configured]) {
 			say_info("initial loading from WAL feeder %s", sintoa(&feeder.addr));
 			[self load_from_remote];
@@ -1225,11 +1230,11 @@ enable_local_writes
 					break;
 			}
 		}
-		if (lsn == 0)
+		if (scn == 0)
 			panic("Unable to pull initial snapshot");
 
 	} else {
-		[self configure_wal_writer];
+		[self configure_wal_writer:reader_lsn];
 	}
 	assert(writer != nil);
 
@@ -1395,7 +1400,6 @@ recover_row:(struct row_v12 *)r
 	if (tag_type == TAG_SYS) {
 		switch (tag) {
 		case paxos_prepare:
-			lsn = r->lsn;
 			buf = TBUF(r->data, r->len, NULL);
 			ballot = read_u64(&buf);
 			p = proposal(self, r->scn);
@@ -1404,7 +1408,6 @@ recover_row:(struct row_v12 *)r
 
 		case paxos_promise:
 		case paxos_nop:
-			lsn = r->lsn;
 			buf = TBUF(r->data, r->len, NULL);
 			ballot = read_u64(&buf);
 			p = proposal(self, r->scn);
@@ -1414,7 +1417,6 @@ recover_row:(struct row_v12 *)r
 
 		case paxos_accept:
 		case paxos_propose:
-			lsn = r->lsn;
 			buf = TBUF(r->data, r->len, NULL);
 			ballot = read_u64(&buf);
 			u16 tag = read_u16(&buf);

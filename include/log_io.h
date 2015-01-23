@@ -353,6 +353,22 @@ const char *run_crc_status(struct run_crc *run_crc);
 - (void) update_state_r:(const struct row_v12 *)r;
 @end
 
+@interface XLogReader : Object {
+	i64 lsn;
+	Recovery* recovery;
+	XLog *current_wal;
+	ev_timer wal_timer;
+}
+- (id) init_recovery:(Recovery *)recovery;
+- (i64) lsn;
+- (i64) load_from_local:(i64)initial_lsn;
+- (void) local_hot_standby;
+- (void) recover_follow:(ev_tstamp)wal_dir_rescan_delay;
+- (i64) recover_snap;
+- (void) recover_remaining_wals;
+- (i64) recover_finalize;
+@end
+
 @interface SnapWriter: Object {
 	id<RecoveryState> state;
 	XLogDir *snap_dir;
@@ -408,20 +424,17 @@ const char *run_crc_status(struct run_crc *run_crc);
 
 enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 @interface Recovery: Object <RecoveryState> {
+	XLogReader *reader;
 	XLogWriter *writer;
 
 	XLogDir *wal_dir, *snap_dir;
 
-
-	i64 lsn, scn;
-	bool local_writes;
+	i64 scn;
+	bool initial_snap, local_writes;
 @public
-	i64 last_wal_lsn;
 	ev_tstamp lag, last_update_tstamp;
 	enum recovery_status status, prev_status;
 	char status_buf[64];
-	ev_timer wal_timer;
-	XLog *current_wal;	/* the WAL we'r currently reading/writing from/to */
 	SnapWriter *snap_writer;
 
 	XLogPuller *remote_puller;
@@ -441,6 +454,9 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 - (i64) lsn;
 - (i64) scn;
 - (u32) run_crc_log;
+- (i64) snap_lsn;
+- (XLogDir *) wal_dir;
+- (XLogDir *) snap_dir;
 
 - (struct child *) wal_writer;
 - (XLogWriter *)writer;
@@ -455,21 +471,13 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 - (void) simple;
 - (void) lock; /* lock wal_dir & snap_dir */
 
-- (void) configure_wal_writer;
+- (void) configure_wal_writer:(i64)lsn;
 
 - (void) recover_row:(struct row_v12 *)row;
-
-- (i64) recover_snap;
-- (void) recover_remaining_wals;
 
 - (i64) load_from_local; /* load from local snap+wal */
 - (int) load_from_remote; /* fetch and load snap+wal from feeder. doesn't persist anything */
 - (int) load_from_remote:(struct feeder_param *)remote;
-
-- (void) local_hot_standby;
-- (void) recover_follow:(ev_tstamp)delay;
-- (void) recover_finalize;
-
 - (void) wal_final_row;
 /* pull_wal & load_from_remote throws exceptions on failure */
 - (int) pull_wal:(id<XLogPullerAsync>)puller;

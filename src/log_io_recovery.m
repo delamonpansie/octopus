@@ -80,12 +80,27 @@ ours:
 	return [super alloc];
 }
 
+- (id)
+init
+{
+	[super init];
+	reader = [[XLogReader alloc] init_recovery:self];
+	return self;
+}
+
 - (const char *) status { return status_buf; }
 - (ev_tstamp) lag { return lag; }
 - (ev_tstamp) last_update_tstamp { return last_update_tstamp; }
 
-- (i64) lsn { if (writer != nil) return [writer lsn]; return lsn; }
+- (i64) lsn {
+	if (unlikely(initial_snap)) return 1;
+	if (writer) return [writer lsn];
+	if (reader) return [reader lsn];
+	return -1;
+}
 - (i64) scn { return scn; }
+- (XLogDir *) wal_dir { return wal_dir; }
+- (XLogDir *) snap_dir { return snap_dir; }
 - (u32) run_crc_log { return run_crc_log; }
 - (bool) local_writes { return local_writes; }
 - (void) update_state_rci:(const struct row_commit_info *)rci count:(int)count
@@ -105,14 +120,9 @@ ours:
 }
 - (void) update_state_r:(const struct row_v12 *)r
 {
-	/* note: it's to late to raise here: txn is already commited */
-	if (unlikely(r->lsn - lsn > 1 && cfg.panic_on_lsn_gap))
-		panic("LSN sequence has gap after %"PRIi64 " -> %"PRIi64, lsn, r->lsn);
-
 	if (cfg.sync_scn_with_lsn && r->lsn != r->scn)
 		panic("out of sync SCN:%"PRIi64 " != LSN:%"PRIi64, r->scn, r->lsn);
 
-	lsn = r->lsn;
 	last_update_tstamp = ev_now();
 	lag = last_update_tstamp - r->tm;
 
@@ -173,7 +183,6 @@ apply_sys:(const struct row_v12 *)r
 			(void)read_u32(&buf); /* ignore run_crc_mod */
 		}
 			/* set initial lsn & scn, otherwise gap check below will fail */
-		lsn = r->lsn;
 		scn = r->scn;
 		say_debug("%s: run_crc_log: 0x%x", __func__, run_crc_log);
 		break;
@@ -245,38 +254,7 @@ recover_row:(struct row_v12 *)r
 		@throw;
 	}
 	@finally {
-		say_debug("%s: => LSN:%"PRIi64" SCN:%"PRIi64, __func__, lsn, scn);
-	}
-}
-
-- (void)
-recover_row_stream:(id<XLogPuller>)stream
-{
-	@try {
-		int row_count = 0;
-		struct row_v12 *row;
-		palloc_register_cut_point(fiber->pool);
-
-		while ((row = [stream fetch_row])) {
-			if (row->lsn > lsn ||
-			    row->tag == (snap_initial|TAG_SYS) ||
-			    row->tag == (snap_final|TAG_SYS) ||
-			    (row->tag & ~TAG_MASK) == TAG_SNAP)
-				break;
-		}
-
-		for (; row; row = [stream fetch_row]) {
-			[self recover_row:row];
-
-			if (row_count++ > 1024) {
-				palloc_cutoff(fiber->pool);
-				palloc_register_cut_point(fiber->pool);
-				row_count = 0;
-			}
-		}
-	}
-	@finally {
-		palloc_cutoff(fiber->pool);
+		say_debug("%s: => LSN:%"PRIi64" SCN:%"PRIi64, __func__, [self lsn], scn);
 	}
 }
 
@@ -299,141 +277,15 @@ snap_lsn
 }
 
 - (i64)
-recover_snap
-{
-	XLog *snap = nil;
-
-	@try {
-		palloc_register_cut_point(fiber->pool);
-
-		i64 snap_lsn = [self snap_lsn];
-		if (snap_lsn == -1)
-			raise_fmt("snap_dir reading failed");
-
-		if (snap_lsn < 1)
-			return 0;
-
-		snap = [snap_dir open_for_read:snap_lsn];
-		if (snap == nil)
-			raise_fmt("can't find/open snapshot");
-
-		say_info("recover from `%s'", snap->filename);
-
-		bool legacy_snap = ![snap isKindOf:[XLog12 class]];
-
-		if (legacy_snap && !cfg.sync_scn_with_lsn)
-			panic("sync_scn_with_lsn is required when loading from v11 snapshots");
-
-		if (legacy_snap)
-			[self recover_row:[self dummy_row_lsn:snap_lsn scn:snap_lsn tag:snap_initial|TAG_SYS]];
-
-		[self recover_row_stream:snap];
-
-		/* old v11 snapshot, scn == lsn from filename */
-		if (legacy_snap)
-			[self recover_row:[self dummy_row_lsn:snap_lsn scn:snap_lsn tag:snap_final|TAG_SYS]];
-
-		if (![snap eof])
-			raise_fmt("unable to fully read snapshot");
-	}
-	@finally {
-		palloc_cutoff(fiber->pool);
-		[snap close];
-		snap = nil;
-	}
-	say_info("snapshot recovered, lsn:%"PRIi64 " scn:%"PRIi64, lsn, scn);
-	return lsn;
-}
-
-- (XLog *)
-next_wal
-{
-	return [wal_dir open_for_read:lsn + 1];
-}
-
-/*
- * this function will not close r->current_wal if recovery was successful
- */
-- (void)
-recover_remaining_wals
-{
-	say_debug("%s: lsn:%"PRIi64, __func__, lsn);
-	i64 wal_greatest_lsn = [wal_dir greatest_lsn];
-	if (wal_greatest_lsn == -1)
-		raise_fmt("wal_dir reading failed");
-
-	/* if the caller already opened WAL for us, recover from it first */
-	if (current_wal != nil) {
-		say_debug("%s: current_wal:%s", __func__, current_wal->filename);
-		goto recover_current_wal;
-	}
-
-	while (lsn < wal_greatest_lsn) {
-		if (current_wal != nil) {
-                        say_warn("wal `%s' wasn't correctly closed", current_wal->filename);
-                        [current_wal close];
-                        current_wal = nil;
-		}
-
-		current_wal = [self next_wal];
-		if (current_wal == nil) /* either no more WALs or current one is broken */
-			break;
-
-		say_info("recover from `%s'", current_wal->filename);
-	recover_current_wal:
-		[self recover_row_stream:current_wal];
-
-		if ([current_wal eof]) {
-			say_info("done `%s' lsn:%"PRIi64" scn:%"PRIi64,
-				 current_wal->filename, lsn, scn);
-
-			[current_wal close];
-			current_wal = nil;
-		}
-		fiber_gc();
-	}
-	fiber_gc();
-
-	/* empty WAL or borken header encountered: unable to parse remaining WALs */
-	if (wal_greatest_lsn > lsn)
-		raise_fmt("not all WALs have been successfully read! "
-		      "greatest_lsn:%"PRIi64" lsn:%"PRIi64" diff:%"PRIi64,
-		      wal_greatest_lsn, lsn, wal_greatest_lsn - lsn);
-}
-
-
-- (i64)
 load_from_local
 {
-	say_info("local recovery start");
-	[self status_update:LOADING fmt:"loading/local"];
-
-	if (lsn == 0) {
-		[self recover_snap];
-		if (lsn == 0)
-			return 0;
-
-		/*
-		 * just after snapshot recovery current_wal isn't known
-		 * so find wal which contains record with next lsn
-		 */
-		current_wal = [wal_dir containg_lsn:lsn + 1];
-	}
-
-	if (current_wal != nil)
-		say_info("recover from `%s'", current_wal->filename);
-	[self recover_remaining_wals];
-	say_info("wals recovered, lsn:%"PRIi64" scn:%"PRIi64, lsn, scn);
-
+	i64 local_lsn = [reader load_from_local:0];
 	/* loading is faster until wal_final_row called because service is not yet initialized and
 	   only pk indexes must be updated. remote feeder will send wal_final_row then all remote
 	   rows are read */
 	if (![self feeder_addr_configured])
-		[self wal_final_row];
-
-	if (last_wal_lsn && last_wal_lsn < lsn)
-		raise_fmt("Snapshot LSN is greater then last WAL LSN");
-	return lsn;
+	    [self wal_final_row];
+	return local_lsn;
 }
 
 void
@@ -445,72 +297,6 @@ wal_lock(va_list ap)
 		fiber_sleep(1);
 
 	[r enable_local_writes];
-}
-
-- (void)
-local_hot_standby
-{
-	[self recover_follow:cfg.wal_dir_rescan_delay]; /* FIXME: make this conf */
-	[self status_update:LOCAL_STANDBY fmt:"hot_standby/local"];
-
-	fiber_create("wal_lock", wal_lock, self);
-}
-
-static void follow_file(ev_stat *, int);
-
-static void
-follow_dir(ev_timer *w, int events __attribute__((unused)))
-{
-	Recovery *r = w->data;
-	static int tick = 5;
-	if (r->current_wal && tick-- > 0)
-		return;
-	tick = 5;
-	[r recover_remaining_wals];
-	[r->current_wal follow:follow_file data:r];
-}
-
-static void
-follow_file(ev_stat *w, int events __attribute__((unused)))
-{
-	Recovery *r = w->data;
-	[r recover_row_stream:r->current_wal];
-	if ([r->current_wal eof]) {
-		say_info("done `%s' LSN:%"PRIi64" SCN:%"PRIi64,
-			 r->current_wal->filename, [r lsn], [r scn]);
-		[r->current_wal close];
-		r->current_wal = nil;
-		follow_dir((ev_timer *)w, 0);
-		return;
-	}
-}
-
-- (void)
-recover_follow:(ev_tstamp)wal_dir_rescan_delay
-{
-	ev_timer_init(&wal_timer, follow_dir,
-		      wal_dir_rescan_delay / 5, wal_dir_rescan_delay / 5);
-	ev_timer_start(&wal_timer);
-	if (current_wal != nil)
-		[current_wal follow:follow_file data:self];
-}
-
-- (void)
-recover_finalize
-{
-	ev_timer_stop(&wal_timer);
-	/* [currert_wal follow] cb will be stopped by [current_wal close] */
-
-	[self recover_remaining_wals];
-
-	if (current_wal != nil)
-                say_warn("wal `%s' wasn't correctly closed", current_wal->filename);
-
-        [current_wal close];
-        current_wal = nil;
-
-	free(skip_scn.pool);
-	skip_scn = TBUF(NULL, 0, NULL);
 }
 
 - (void)
@@ -526,13 +312,15 @@ simple
 
 		}
 	}
-	if (cfg.local_hot_standby)
-		[self local_hot_standby];
-	else
+	if (cfg.local_hot_standby) {
+		[reader local_hot_standby];
+		fiber_create("wal_lock", wal_lock, self);
+	} else {
 		[self enable_local_writes];
+	}
 }
 
-- (void)
+- (i64)
 pull_snapshot:(id<XLogPullerAsync>)puller
 {
 	for (;;) {
@@ -546,7 +334,7 @@ pull_snapshot:(id<XLogPullerAsync>)puller
 			if (tag_type == TAG_SNAP || tag == snap_initial || tag == snap_final) {
 				[self recover_row:row];
 				if (tag == snap_final)
-					return;
+					return row->lsn;
 			} else {
 				raise_fmt("unexpected tag %s", xlog_tag_to_a(row->tag));
 			}
@@ -701,8 +489,12 @@ load_from_remote:(struct feeder_param *)remote
 
 		zero_io_collect_interval();
 
-		[self pull_snapshot:puller];
-		[self configure_wal_writer];
+		i64 snap_lsn = [self pull_snapshot:puller];
+		if (cfg.sync_scn_with_lsn)
+			assert(snap_lsn == scn);
+		else
+			snap_lsn = 1;
+		[self configure_wal_writer:snap_lsn];
 
 		/* don't wait for snapshot. our goal to be replica as fast as possible */
 		if (getenv("SYNC_DUMP") == NULL)
@@ -849,16 +641,21 @@ lock
 enable_local_writes
 {
 	[self lock];
-	[self recover_finalize];
+	i64 reader_lsn = [reader recover_finalize];
+	[reader free];
+	reader = nil;
+
+	free(skip_scn.pool);
+	skip_scn = TBUF(NULL, 0, NULL);
 	local_writes = true;
 
-	if (lsn == 0) {
+	if (reader_lsn == 0) {
 		assert([self feeder_addr_configured]);
 		say_info("initial loading from WAL feeder %s", sintoa(&feeder.addr));
 		assert(fiber != &sched); /* load_from_remote expects being called from fiber */
 		[self load_from_remote];
 	} else {
-		[self configure_wal_writer];
+		[self configure_wal_writer:reader_lsn];
 	}
 
 	fiber_create("remote_hot_standby", remote_hot_standby, self);
@@ -901,10 +698,10 @@ submit_run_crc
 - (id) init_snap_dir:(const char *)snap_dirname
              wal_dir:(const char *)wal_dirname
 {
+	[self init];
 	snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
 	wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
 	snap_dir->recovery = wal_dir->recovery = self;
-	wal_timer.data = self;
 
 	return self;
 }
@@ -975,10 +772,10 @@ nop_hb_writer(va_list ap)
 {
 	/* Recovery object is never released */
 
+	[self init];
 	snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
 	wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
 
-	wal_timer.data = self;
 	wal_dir->recovery = snap_dir->recovery = self;
 	wal_rows_per_file = wal_rows_per_file_;
 
@@ -990,8 +787,9 @@ nop_hb_writer(va_list ap)
 }
 
 - (void)
-configure_wal_writer
+configure_wal_writer:(i64)lsn
 {
+	assert(reader == nil || [reader lsn] > 0);
 	writer = [[XLogWriter alloc] init_lsn:lsn
 					state:self
 					dirname:wal_dir->dirname
@@ -1051,7 +849,8 @@ snap_writer
 - (int)
 write_initial_state
 {
-	lsn = scn = 1;
+	initial_snap = true;;
+	scn = 1;
 	return [[self snap_writer] snapshot_write];
 }
 
@@ -1180,8 +979,9 @@ init_snap_dir:(const char *)snap_dirname
 
 
 - (void)
-configure_wal_writer
+configure_wal_writer:(i64)lsn
 {
+	(void)lsn;
 }
 
 
@@ -1190,7 +990,6 @@ submit:(const void *)data len:(u32)len tag:(u16)tag
 {
 	(void)data; (void)len; (void)tag;
 	scn++;
-	lsn++;
 	return 1;
 }
 
