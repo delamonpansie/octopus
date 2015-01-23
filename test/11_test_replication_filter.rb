@@ -10,10 +10,6 @@ class MasterEnv < RunEnv
 
   def config
     super + <<EOD
-# normaly not needed. but because there is no WAL then test started (and thus no inotify watcher running),
-# feeder will sleep until WAL dir rescan.
-wal_dir_rescan_delay = 0.05
-
 wal_feeder_bind_addr = "0:33034"
 object_space[0].index[0].key_field[0].type = "NUM"
 EOD
@@ -95,7 +91,9 @@ SlaveEnv.new.env_eval do
   master.update_fields 4, [1, :add, 1]
   master.update_fields 5, [1, :add, 1]
 
-  sleep 1.1 # wait fo feeder to find non empty xlog
+  wait_for "non empty xlog" do
+    File.open("00000000000000000002.xlog")
+  end
 
   master.select 0,1,2,3,4,5
   slave.select 0,1,2,3,5
