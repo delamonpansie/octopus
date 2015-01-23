@@ -73,7 +73,7 @@ class RunEnv < TinyRakeEmbed
     cfg << <<EOD
 pid_file = "octopus.pid"
 slab_alloc_arena = 0.1
-log_level = 5
+log_level = 7
 primary_port = #{@primary_port or 33013}
 secondary_port = 33014
 admin_port = #{@admin_port or 33015}
