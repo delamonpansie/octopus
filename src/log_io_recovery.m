@@ -977,7 +977,6 @@ nop_hb_writer(va_list ap)
 
 	snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
 	wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
-	memset(&feeder, 0, sizeof(feeder));
 
 	wal_timer.data = self;
 	wal_dir->recovery = snap_dir->recovery = self;
