@@ -93,9 +93,11 @@ box_tuple_gen_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
 	for (int i = 0, j = 0; i < desc->cardinality; j++) {
 		assert(tuple_data < (const u8 *)tuple->data + tuple->bsize);
 		u32 len = LOAD_VARINT32(tuple_data);
-		while (desc->field_index[i] == j) {
-			union index_field *f = (void *)&node->key + desc->offset[i];
-			gen_set_field(f, desc->field_type[i], len, tuple_data);
+		for (;;) {
+			int indi = desc->fill_order[i];
+			if (desc->field_index[indi] != j) break;
+			union index_field *f = (void *)&node->key + desc->offset[indi];
+			gen_set_field(f, desc->field_type[indi], len, tuple_data);
 			i++;
 		}
 		tuple_data += len;
@@ -118,7 +120,7 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 	struct index_conf *d = xcalloc(1, sizeof(*d));
 
 	for (int i = 0; i < nelem(d->field_index); i++)
-		d->field_index[i] = d->cmp_order[i] = d->offset[i] = -1;
+		d->field_index[i] = d->fill_order[i] = d->offset[i] = -1;
 
 	d->unique = c->unique;
 	if (strcmp(c->type, "HASH") == 0)
@@ -139,10 +141,10 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 		if (c->key_field[k]->fieldno == -1)
 			break;
 
-		assert(d->cmp_order[d->cardinality] == -1);
+		assert(d->fill_order[d->cardinality] == -1);
 		assert(d->field_index[d->cardinality] == -1);
 
-		d->cmp_order[d->cardinality] = d->cardinality;
+		d->fill_order[d->cardinality] = d->cardinality;
 		d->field_index[d->cardinality] = c->key_field[k]->fieldno;
 		d->offset[d->cardinality] = offset;
 
@@ -182,17 +184,15 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 	if (d->cardinality == 0)
 		panic("index cardinality is 0");
 
-	for (int i = 0; i < d->cardinality; i++)
-		for (int j = 0; j < d->cardinality; j++)
-			if (d->field_index[i] < d->field_index[j]) {
-#define swap(f) ({ int t = d->f[i]; d->f[i] = d->f[j]; d->f[j] = t; })
-				swap(field_index);
-				swap(offset);
-				swap(cmp_order);
-				swap(sort_order);
-				swap(field_type);
-#undef swap
+	for (int i = d->cardinality-1; i > 0; i--)
+		for (int j = 0; j < i; j++) {
+			int inda = d->fill_order[j];
+			int indb = d->fill_order[j+1];
+			if (d->field_index[inda] > d->field_index[indb]) {
+				d->fill_order[j+1] = inda;
+				d->fill_order[j] = indb;
 			}
+		}
 
 	return d;
 }
