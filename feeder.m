@@ -172,10 +172,7 @@ send_row: (struct row_v12*) row
 recover_row:(struct row_v12 *)r
 {
 	struct row_v12 *n = filter(r, NULL, 0);
-
 	[self send_row:n];
-	if (!dummy_tag(r->tag))
-		lsn = r->lsn;
 }
 
 - (void)
@@ -232,19 +229,23 @@ recover_start_from_scn:(i64)initial_scn filter:(struct feeder_filter*)_filter
 		filter(NULL, _filter->arg, _filter->arglen);
 	}
 
+	i64 lsn;
 	if (initial_scn != 0) {
 		i64 initial_lsn = [wal_dir containg_scn:initial_scn];
 		if (initial_lsn <= 0)
 			raise_fmt("unable to find WAL containing SCN:%"PRIi64, initial_scn);
 		say_debug("%s: SCN:%"PRIi64" => LSN:%"PRIi64, __func__, initial_scn, initial_lsn);
-		current_wal = [wal_dir containg_lsn:initial_lsn];
-		lsn =  initial_lsn - 1; /* first row read by recovery process will be row
-					   with lsn + 1 ==> equal to initial_lsn */
+		lsn =  initial_lsn;
 		scn = initial_scn;
+	} else {
+		/* load from last valid snapshot */
+		lsn = 0;
+		scn = 0;
 	}
 
-	[self load_from_local];
-	[self recover_follow:cfg.wal_dir_rescan_delay];
+	[reader load_from_local:lsn];
+	[self wal_final_row];
+	[reader recover_follow:cfg.wal_dir_rescan_delay];
 }
 
 @end
