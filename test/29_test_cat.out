@@ -14,7 +14,7 @@
 1
 
 # box.update_fields(["1"], [1, :set, "aa"])
-Failed with: {code: 0x202, message: 'key isn't fully specified'}
+Failed with: {code: 0x202, message: 'key fields count doesn't match'}
 # box.update_fields(["1", "2"], [1, :set, "aa"])
 2
 
