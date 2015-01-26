@@ -186,6 +186,7 @@ typedef struct marker_desc {
 	ev_stat stat;
 
 	FILE *fd;
+	i64 last_read_lsn;
 @public
 	char *filename;
 
@@ -215,6 +216,7 @@ typedef struct marker_desc {
 - (void) fadvise_dont_need;
 - (size_t) rows;
 - (size_t) wet_rows_offset_available;
+- (i64) last_read_lsn;
 - (const struct row_v12 *) append_row:(const void *)data len:(u32)data_len scn:(i64)scn
 				  tag:(u16)tag cookie:(u64)cookie;
 - (const struct row_v12 *) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag;

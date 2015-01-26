@@ -132,6 +132,7 @@ set_file_buf(FILE *fd, const int bufsize)
 @implementation XLog
 - (bool) eof { return eof; }
 - (u32) version { return 0; }
+- (i64) last_read_lsn { return last_read_lsn; }
 
 - (XLog *)
 init_filename:(const char *)filename_
@@ -437,6 +438,7 @@ restart:
 	}
 
 	++rows;
+	last_read_lsn = row->lsn;
 	return row;
 eof:
 	eof_offset = ftello(fd);
