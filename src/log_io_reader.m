@@ -116,29 +116,50 @@ recover_snap
 
 		if (![snap eof])
 			raise_fmt("unable to fully read snapshot");
+
+		say_info("close `%s' LSN:%"PRIi64, snap->filename, lsn);
 	}
 	@finally {
 		palloc_cutoff(fiber->pool);
 		[snap close];
 		snap = nil;
 	}
-	say_info("snapshot recovered, lsn:%"PRIi64, lsn);
+	say_info("snapshot recovered, LSN:%"PRIi64, lsn);
 	return lsn;
 }
 
-- (XLog *)
-next_wal
+- (void)
+close_current_wal
 {
-	return [[recovery wal_dir] open_for_read:lsn + 1];
+	if (current_wal == nil)
+		return;
+
+	if (![current_wal eof])
+		say_warn("WAL `%s' wasn't correctly closed", current_wal->filename);
+	say_info("close `%s' LSN:%"PRIi64, current_wal->filename, lsn);
+	[current_wal close];
+	current_wal = nil;
+}
+
+- (XLog *)
+open_next_wal
+{
+	[self close_current_wal];
+
+	current_wal = [[recovery wal_dir] open_for_read:lsn + 1];
+	if (current_wal != nil)
+		say_info("recover from `%s'", current_wal->filename);
+	return current_wal;
 }
 
 /*
- * this function will not close r->current_wal if recovery was successful
+ * this function will not close current_wal if recovery was successful
  */
 - (void)
 recover_remaining_wals
 {
-	say_debug("%s: lsn:%"PRIi64, __func__, lsn);
+	assert(lsn > 0);
+	say_debug("%s: LSN:%"PRIi64, __func__, lsn);
 	i64 wal_greatest_lsn = [[recovery wal_dir] greatest_lsn];
 	if (wal_greatest_lsn == -1)
 		raise_fmt("wal_dir reading failed");
@@ -146,38 +167,21 @@ recover_remaining_wals
 	/* if the caller already opened WAL for us, recover from it first */
 	if (current_wal != nil) {
 		say_debug("%s: current_wal:%s", __func__, current_wal->filename);
-		goto recover_current_wal;
+		[self recover_row_stream:current_wal];
 	}
 
 	while (lsn < wal_greatest_lsn) {
-		if (current_wal != nil) {
-                        say_warn("wal `%s' wasn't correctly closed", current_wal->filename);
-                        [current_wal close];
-                        current_wal = nil;
-		}
-
-		current_wal = [self next_wal];
-		if (current_wal == nil) /* either no more WALs or current one is broken */
+		if ([self open_next_wal] == nil) /* either no more WALs or current one is broken */
 			break;
 
-		say_info("recover from `%s'", current_wal->filename);
-	recover_current_wal:
 		[self recover_row_stream:current_wal];
-
-		if ([current_wal eof]) {
-			say_info("done `%s' lsn:%"PRIi64, current_wal->filename, lsn);
-
-			[current_wal close];
-			current_wal = nil;
-		}
-		fiber_gc();
 	}
 	fiber_gc();
 
 	/* empty WAL or borken header encountered: unable to parse remaining WALs */
 	if (wal_greatest_lsn > lsn)
-		raise_fmt("not all WALs have been successfully read! "
-			  "greatest_lsn:%"PRIi64" lsn:%"PRIi64" diff:%"PRIi64,
+		raise_fmt("not all WALs have been successfully read "
+			  "greatest_LSN:%"PRIi64" LSN:%"PRIi64" diff:%"PRIi64,
 			  wal_greatest_lsn, lsn, wal_greatest_lsn - lsn);
 }
 
@@ -185,23 +189,34 @@ recover_remaining_wals
 - (i64)
 load_from_local:(i64)initial_lsn
 {
+	say_debug("%s: initial_LSN:%li", __func__, initial_lsn);
+
+	if ([[recovery wal_dir] greatest_lsn] == 0 &&
+	    [[recovery snap_dir] greatest_lsn] == 0)
+	{
+		say_info("local state is empty: no snapshot and xlog found");
+		return 0;
+	}
+
 	say_info("local recovery start");
 	[recovery status_update:LOADING fmt:"loading/local"];
 
+	i64 snap_lsn;
 	if (initial_lsn == 0) {
-		[self recover_snap];
-		if (lsn == 0)
-			return 0;
+		snap_lsn = [self recover_snap];
+		assert(lsn > 0);
 
 		/*
 		 * just after snapshot recovery current_wal isn't known
-		 * so find wal which contains record with next lsn
+		 * so find wal which contains record with _next_ lsn
 		 */
 		current_wal = [[recovery wal_dir] containg_lsn:lsn + 1];
 	} else {
-		lsn = initial_lsn;
+		assert(initial_lsn > 1);
+		lsn = initial_lsn - 1; /* since initial_lsn is > 1, lsn is >= 1
+					  valid lsn is vital for [recover_follow]: [open_next_wal] is relies on valid LSN */
 		current_wal = [[recovery wal_dir] containg_lsn:initial_lsn];
-		say_info("unable to find WAL with LSN:%li, greatest_lsn:%li", initial_lsn, [[recovery wal_dir] greatest_lsn]);
+		say_info("unable to find WAL with LSN:%li, greatest_LSN:%li", initial_lsn, [[recovery wal_dir] greatest_lsn]);
 		if (current_wal == nil)
 			return 0;
 	}
@@ -209,7 +224,13 @@ load_from_local:(i64)initial_lsn
 	if (current_wal != nil)
 		say_info("recover from `%s'", current_wal->filename);
 	[self recover_remaining_wals];
-	say_info("wals recovered, lsn:%"PRIi64, lsn);
+	say_info("WALs recovered, LSN:%"PRIi64, lsn);
+
+	if (snap_lsn == lsn &&
+	    current_wal != nil && /* loading from standalone snapshot is a special case: usefull for debugging */
+	    [current_wal last_read_lsn] < snap_lsn)
+		raise_fmt("last WAL is missing or truncated: snapshot LSN:%li > last WAL row LSN:%li",
+			  snap_lsn, [current_wal last_read_lsn]);
 
 	return lsn;
 }
@@ -222,6 +243,8 @@ follow_dir(ev_timer *w, int events __attribute__((unused)))
 {
 	XLogReader *reader = w->data;
 	static int tick = 5;
+	/* reread directory 5 times faster if current_wal is unknown.
+	   e.g. avoid feeder start delay after initial loading */
 	if (reader->current_wal && tick-- > 0)
 		return;
 	tick = 5;
@@ -239,8 +262,7 @@ follow_file(ev_stat *w, int events __attribute__((unused)))
 	if ([reader->current_wal eof]) {
 		say_info("done `%s' LSN:%"PRIi64,
 			 reader->current_wal->filename, [reader lsn]);
-		[reader->current_wal close];
-		reader->current_wal = nil;
+		[reader close_current_wal];
 		follow_dir((ev_timer *)w, 0);
 		return;
 	}
@@ -256,19 +278,19 @@ recover_follow:(ev_tstamp)wal_dir_rescan_delay
 		[current_wal follow:follow_file data:self];
 }
 
+
 - (i64)
 recover_finalize
 {
 	ev_timer_stop(&wal_timer);
-	/* [currert_wal follow] cb will be stopped by [current_wal close] */
+	/* [currert_wal follow] cb will be stopped by [current_wal close] called by [self close_current_wal] */
 
-	[self recover_remaining_wals];
-
-	if (current_wal != nil)
-                say_warn("wal `%s' wasn't correctly closed", current_wal->filename);
-
-        [current_wal close];
-        current_wal = nil;
+	if (lsn > 0) {
+		[self recover_remaining_wals];
+		[self close_current_wal];
+	} else {
+		assert(current_wal == nil);
+	}
 	return lsn;
 }
 
@@ -283,6 +305,7 @@ local_hot_standby
 free
 {
 	ev_timer_stop(&wal_timer);
+	[self close_current_wal];
 	return [super free];
 }
 
