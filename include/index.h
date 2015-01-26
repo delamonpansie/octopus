@@ -61,7 +61,7 @@ struct index_node {
 
 struct index_conf {
 	int field_index[8];
-	int cmp_order[8];
+	int fill_order[8];
 	int offset[8];
 	enum sort_order { ASC = 1, DESC = -1 } sort_order[8];
 	enum index_field_type { UNDEF, NUM16, NUM32, NUM64, STRING } field_type[8];
