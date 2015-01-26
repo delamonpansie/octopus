@@ -318,8 +318,8 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 	u32 op_cnt;
 
 	u32 key_cardinality = read_u32(data);
-	if (key_cardinality < txn->object_space->index[0]->conf.min_tuple_cardinality)
-		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "key isn't fully specified");
+	if (key_cardinality != txn->object_space->index[0]->conf.cardinality)
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "key fields count doesn't match");
 
 	struct tnt_object *obj;
 	void *ptr = data->ptr;
