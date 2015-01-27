@@ -136,7 +136,9 @@ EOD
       system *%w[tail -n20 octopus.log]
       STDERR.puts "\n-------\n"
       STDERR.puts "\n\nCore found. starting gdb."
-      exec *%w[gdb --quiet octopus core]
+      # spawn gdb in separate process: cleanup callbacks will be called at script exit
+      # e.g. kill master after slave coredump
+      system *%w[gdb --quiet octopus core]
     end
   end
 
