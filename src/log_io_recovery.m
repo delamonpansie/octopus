@@ -543,39 +543,38 @@ hot_standby_status(Recovery *r, const char *status, const char *reason)
 		say_error("replication failure: %s", reason);
 }
 
-void
-remote_hot_standby(va_list ap)
+- (void)
+remote_hot_standby
 {
-	Recovery *r = va_arg(ap, Recovery *);
 	ev_tstamp reconnect_delay = 0.1;
 	bool warning_said = false;
 
-	r->remote_puller = [[objc_lookUpClass("XLogPuller") alloc] init];
+	remote_puller = [[objc_lookUpClass("XLogPuller") alloc] init];
 again:
-	while (![r feeder_addr_configured])
+	while (![self feeder_addr_configured])
 		fiber_sleep(reconnect_delay);
 
-	hot_standby_status(r, "connect", NULL);
+	hot_standby_status(self, "connect", NULL);
 	do {
-		[r->remote_puller feeder_param: &r->feeder];
+		[remote_puller feeder_param: &feeder];
 
-		i64 scn = -1;
-		if ([r scn] > 0) {
-			scn = [r scn] + 1; /* continue loading */
-		} else if ([r XXXAllowZeroSCNForRemote] && [r scn] == 0){
+		i64 remote_scn = -1;
+		if (scn > 0) {
+			remote_scn = scn + 1; /* continue loading */
+		} else if ([self XXXAllowZeroSCNForRemote] && scn == 0){
 			/* load snapshot for non-primary puller */
-			scn = 0;
+			remote_scn = 0;
 		} else {
-			assert([r XXXAllowZeroSCNForRemote] || [r scn] > 0);
+			assert([self XXXAllowZeroSCNForRemote] || scn > 0);
 		}
 
-		if ([r->remote_puller handshake:scn] <= 0) {
+		if ([remote_puller handshake:remote_scn] <= 0) {
 			/* no more WAL rows in near future, notify module about that */
-			[r wal_final_row];
+			[self wal_final_row];
 
 			if (!warning_said) {
-				hot_standby_status(r, "fail", [r->remote_puller error]);
-				say_warn("feeder handshake failed: %s", [r->remote_puller error]);
+				hot_standby_status(self, "fail", [remote_puller error]);
+				say_warn("feeder handshake failed: %s", [remote_puller error]);
 				say_info("will retry every %.2f second", reconnect_delay);
 				warning_said = true;
 			}
@@ -584,22 +583,29 @@ again:
 		warning_said = false;
 
 		@try {
-			hot_standby_status(r, "ok", NULL);
-			[r pull_from_remote:r->remote_puller];
+			hot_standby_status(self, "ok", NULL);
+			[self pull_from_remote:remote_puller];
 		}
 		@catch (Error *e) {
-			[r->remote_puller close];
-			hot_standby_status(r, "fail", e->reason);
+			[remote_puller close];
+			hot_standby_status(self, "fail", e->reason);
 		}
 	sleep:
 		fiber_gc();
 		fiber_sleep(reconnect_delay);
-	} while ([r feeder_addr_configured]);
+	} while ([self feeder_addr_configured]);
 
-	assert(r->local_writes);
-	[r status_update:PRIMARY fmt:"primary"];
+	assert(local_writes);
+	[self status_update:PRIMARY fmt:"primary"];
 
 	goto again;
+}
+
+void
+remote_hot_standby(va_list ap)
+{
+	Recovery *r = va_arg(ap, Recovery *);
+	[r remote_hot_standby];
 }
 
 
