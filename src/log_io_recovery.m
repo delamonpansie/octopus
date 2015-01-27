@@ -270,6 +270,25 @@ wal_final_row
 	[self status_changed];
 }
 
+- (void)
+remote_snap_final_row:(const struct row_v12 *)row
+{
+	i64 snap_lsn = row->lsn;
+	if (cfg.sync_scn_with_lsn)
+		assert(snap_lsn == scn);
+	else
+		snap_lsn = 1;
+
+	[self configure_wal_writer:snap_lsn];
+
+	say_debug("Saving initial replica snapshot LSN:%"PRIi64, snap_lsn);
+	/* don't wait for snapshot. our goal to be replica as fast as possible */
+	if (getenv("SYNC_DUMP") == NULL)
+		[[self snap_writer] snapshot:false];
+	else
+		[[self snap_writer] snapshot_write];
+}
+
 - (i64)
 snap_lsn
 {
@@ -333,8 +352,10 @@ pull_snapshot:(id<XLogPullerAsync>)puller
 
 			if (tag_type == TAG_SNAP || tag == snap_initial || tag == snap_final) {
 				[self recover_row:row];
-				if (tag == snap_final)
+				if (tag == snap_final) {
+					[self remote_snap_final_row:row];
 					return row->lsn;
+				}
 			} else {
 				raise_fmt("unexpected tag %s", xlog_tag_to_a(row->tag));
 			}
@@ -489,18 +510,7 @@ load_from_remote:(struct feeder_param *)remote
 
 		zero_io_collect_interval();
 
-		i64 snap_lsn = [self pull_snapshot:puller];
-		if (cfg.sync_scn_with_lsn)
-			assert(snap_lsn == scn);
-		else
-			snap_lsn = 1;
-		[self configure_wal_writer:snap_lsn];
-
-		/* don't wait for snapshot. our goal to be replica as fast as possible */
-		if (getenv("SYNC_DUMP") == NULL)
-			[[self snap_writer] snapshot:false];
-		else
-			[[self snap_writer] snapshot_write];
+		[self pull_snapshot:puller];
 
 		/* old version doesn's send wal_final_tag for us. */
 		if ([puller version] == 11)

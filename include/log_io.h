@@ -481,6 +481,7 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 - (int) load_from_remote; /* fetch and load snap+wal from feeder. doesn't persist anything */
 - (int) load_from_remote:(struct feeder_param *)remote;
 - (void) wal_final_row;
+- (void) remote_snap_final_row:(const struct row_v12 *)row;
 /* pull_wal & load_from_remote throws exceptions on failure */
 - (int) pull_wal:(id<XLogPullerAsync>)puller;
 - (void) pull_from_remote:(id<XLogPullerAsync>)puller;
