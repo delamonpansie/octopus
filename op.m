@@ -85,7 +85,7 @@ tuple_alloc(unsigned cardinality, unsigned size)
 
 	tuple->bsize = size;
 	tuple->cardinality = cardinality;
-	say_debug("tuple_alloc(%u, %u) = %p", cardinality, size, tuple);
+	say_debug3("tuple_alloc(%u, %u) = %p", cardinality, size, tuple);
 	return obj;
 }
 
@@ -144,7 +144,7 @@ enum obj_age {OLD, YOUNG};
 static struct tnt_object *
 txn_acquire(struct box_txn *txn, struct tnt_object *obj, enum obj_age age)
 {
-	say_debug("%s: obj:%p age:%s", __func__, obj, age == YOUNG ? "young" : "old");
+	say_debug2("%s: obj:%p age:%s", __func__, obj, age == YOUNG ? "young" : "old");
 
 	if (obj == NULL)
 		return NULL;
@@ -742,7 +742,7 @@ box_paxos_proxy_cb(struct iproto *request, struct conn *c)
 static void
 box_cb(struct iproto *request, struct conn *c)
 {
-	say_debug("%s: c:%p op:0x%02x sync:%u", __func__, c, request->msg_code, request->sync);
+	say_debug2("%s: c:%p op:0x%02x sync:%u", __func__, c, request->msg_code, request->sync);
 
 	struct box_txn txn = { .op = request->msg_code };
 	@try {
