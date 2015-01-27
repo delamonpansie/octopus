@@ -370,6 +370,7 @@ pull_wal:(id<XLogPullerAsync>)puller
 	struct row_v12 *row, *final_row = NULL, *rows[WAL_PACK_MAX];
 	/* TODO: use designated palloc_pool */
 	say_debug("%s: scn:%"PRIi64, __func__, scn);
+	assert(writer != nil);
 
 	int pack_rows = 0;
 
