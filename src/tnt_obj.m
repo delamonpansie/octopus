@@ -53,7 +53,7 @@ object_alloc(u8 type, size_t size)
 	obj->type = type;
 	obj->flags = obj->refs = 0;
 
-	say_debug("object_alloc(%zu) = %p", size, obj);
+	say_debug3("object_alloc(%zu) = %p", size, obj);
 	return obj;
 }
 
@@ -82,7 +82,7 @@ object_decr_ref(struct tnt_object *obj)
 	obj->refs--;
 
 	if (obj->refs == 0) {
-		say_debug("object_decr_ref(%p) free", obj);
+		say_debug3("object_decr_ref(%p) free", obj);
 		sfree(obj);
 	}
 }
@@ -124,7 +124,7 @@ object_lock(struct tnt_object *obj)
 	if (obj->flags & WAL_WAIT)
 		iproto_raise(ERR_CODE_NODE_IS_RO, "object is locked");
 
-	say_debug("object_lock(%p)", obj);
+	say_debug2("object_lock(%p)", obj);
 	obj->flags |= WAL_WAIT;
 }
 
@@ -133,7 +133,7 @@ object_unlock(struct tnt_object *obj)
 {
 	assert(obj->flags & WAL_WAIT);
 
-	say_debug("object_unlock(%p)", obj);
+	say_debug2("object_unlock(%p)", obj);
 	obj->flags &= ~WAL_WAIT;
 
 	if (obj->flags & YIELD) {

@@ -410,7 +410,7 @@ restart:
 	if (marker_offset > 0)
 		fseeko(fd, marker_offset + 1, SEEK_SET);
 
-	say_debug("%s: start offt %08" PRIofft, __func__, ftello(fd));
+	say_debug2("%s: start offt %08" PRIofft, __func__, ftello(fd));
 	if (fread(&magic, mdesc.size, 1, fd) != 1)
 		goto eof;
 
@@ -425,7 +425,7 @@ restart:
 	if (good_offset != marker_offset)
 		say_warn("skipped %" PRIofft " bytes after %08" PRIofft " offset",
 			 marker_offset - good_offset, good_offset);
-	say_debug("	magic found at %08" PRIofft, marker_offset);
+	say_debug2("	magic found at %08" PRIofft, marker_offset);
 
 	row = [self read_row];
 
@@ -692,7 +692,7 @@ read_row
 		return NULL;
 	}
 
-	say_debug("read row v04 success lsn:%"PRIu64, _row_v04(m)->lsn);
+	say_debug("%s: LSN:%"PRIu64, __func__, _row_v04(m)->lsn);
 
 	return convert_row_v04_to_v12(m)->ptr;
 }
@@ -822,7 +822,7 @@ read_row
 		return NULL;
 	}
 
-	say_debug("read row v11 success lsn:%" PRIi64, _row_v11(m)->lsn);
+	say_debug("%s: LSN:%" PRIi64, __func__, _row_v11(m)->lsn);
 
 	struct row_v12 *r = convert_row_v11_to_v12(m)->ptr;
 
@@ -1059,7 +1059,7 @@ read_row
 	}
 
 	fixup_row_v12(row_v12(m));
-	say_debug("read row v12 success lsn:%" PRIi64, row_v12(m)->lsn);
+	say_debug("%s: LSN:%" PRIi64, __func__, row_v12(m)->lsn);
 
 	return m->ptr;
 }
