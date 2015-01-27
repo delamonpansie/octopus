@@ -753,7 +753,7 @@ again:
 	do {
 		[r->remote_puller feeder_param: &r->feeder];
 
-		i64 scn;
+		i64 scn = -1;
 		if ([r scn] > 0) {
 			scn = [r scn] + 1; /* continue loading */
 		} else if ([r XXXAllowZeroSCNForRemote] && [r scn] == 0){
