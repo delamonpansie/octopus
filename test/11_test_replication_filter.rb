@@ -92,7 +92,7 @@ SlaveEnv.new.env_eval do
   master.update_fields 5, [1, :add, 1]
 
   wait_for "non empty xlog" do
-    File.open("00000000000000000002.xlog")
+    File.size("00000000000000000002.xlog") > 400
   end
 
   master.select 0,1,2,3,4,5
