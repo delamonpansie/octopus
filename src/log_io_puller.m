@@ -39,6 +39,28 @@
 #include <netinet/tcp.h>
 
 bool
+feeder_param_eq(struct feeder_param *this, struct feeder_param *that)
+{
+	bool equal =
+		this->ver == that->ver &&
+		this->addr.sin_family == that->addr.sin_family &&
+		this->addr.sin_addr.s_addr == that->addr.sin_addr.s_addr &&
+		this->addr.sin_port == that->addr.sin_port &&
+		this->filter.type == that->filter.type &&
+		this->filter.arglen == that->filter.arglen;
+	if (!equal) return false;
+	bool this_name_empty = this->filter.name == NULL || strlen(this->filter.name) == 0;
+	bool that_name_empty = that->filter.name == NULL || strlen(that->filter.name) == 0;
+	equal = (this_name_empty && that_name_empty) ||
+		(!this_name_empty && !that_name_empty &&
+		 strcmp(this->filter.name, that->filter.name) == 0);
+	if (!equal) return false;
+	equal = this->filter.arglen == 0 ||
+		memcmp(this->filter.arg, that->filter.arg, this->filter.arglen) == 0;
+	return equal;
+}
+
+bool
 feeder_param_set_addr(struct feeder_param *feeder, const char *addr)
 {
 	feeder->addr.sin_family = AF_UNSPEC;
