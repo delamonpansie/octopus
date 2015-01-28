@@ -677,9 +677,7 @@ enable_local_writes
 
 	fiber_create("remote_hot_standby", remote_hot_standby, self);
 
-	if ([self feeder_addr_configured])
-		say_info("configured remote hot standby, WAL feeder %s", sintoa(&feeder.addr));
-	else
+	if (![self feeder_addr_configured])
 		[self status_update:PRIMARY fmt:"primary"];
 }
 
