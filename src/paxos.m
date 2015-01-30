@@ -1218,15 +1218,14 @@ enable_local_writes
 	local_writes = true;
 
 	if (reader_lsn == 0) {
-		if ([self feeder_addr_configured]) {
-			say_info("initial loading from WAL feeder %s", sintoa(&feeder.addr));
-			[self load_from_remote];
+		if ([remote feeder_addr_configured]) {
+			[remote load_from_remote];
 		} else {
 			say_warn("No snapshot found, trying to fetch from peers");
 			for (int i = 1; i <= 3; i++) {
 				if (i == self_id)
 					continue;
-				if ([self load_from_remote:&paxos_peer(self, i)->feeder] >= 0)
+				if ([remote load_from_remote:&paxos_peer(self, i)->feeder] >= 0)
 					break;
 			}
 		}
@@ -1238,7 +1237,7 @@ enable_local_writes
 	}
 	assert(writer != nil);
 
-	fiber_create("remote_hot_standby", remote_hot_standby, self);
+	[remote hot_standby];
 
 	XLogPuller *puller = [[XLogPuller alloc] init];
 	for (;;) {
@@ -1253,7 +1252,7 @@ enable_local_writes
 
 			say_debug("loading from %s", p->name);
 			@try {
-				while ([self pull_wal:puller] != 1);
+				while ([remote pull_wal:puller] != 1);
 			}
 			@finally {
 				[puller close];

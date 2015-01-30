@@ -252,54 +252,6 @@ struct wal_pack {
 	u32 fid;
 } __attribute__((packed));
 
-#define replication_handshake_base_fields \
-	u32 ver; \
-	i64 scn; \
-	char filter[32]
-struct replication_handshake_base {
-	replication_handshake_base_fields;
-} __attribute__((packed));
-#define REPLICATION_FILTER_NAME_LEN field_sizeof(struct replication_handshake_base, filter)
-
-#define replication_handshake_v1 replication_handshake_base
-
-struct replication_handshake_v2 {
-	replication_handshake_base_fields;
-	u32 filter_type;
-	u32 filter_arglen;
-	char filter_arg[];
-} __attribute__((packed));
-
-struct feeder_filter {
-	u32 type;
-	u32 arglen;
-	char *name;
-	void *arg;
-};
-
-struct feeder_param {
-	struct sockaddr_in addr;
-	u32 ver;
-	struct feeder_filter filter;
-};
-
-enum feeder_cfg_e {
-	FEEDER_CFG_OK = 0,
-	FEEDER_CFG_BAD_ADDR = 1,
-	FEEDER_CFG_BAD_FILTER = 2,
-	FEEDER_CFG_BAD_VERSION = 4,
-};
-enum feeder_cfg_e feeder_param_fill_from_cfg(struct feeder_param *param, struct octopus_cfg *cfg);
-bool feeder_param_set_addr(struct feeder_param *param, const char *addr);
-bool feeder_param_eq(struct feeder_param *this, struct feeder_param *that);
-
-enum {
-	FILTER_TYPE_ID  = 0,
-	FILTER_TYPE_LUA = 1,
-	FILTER_TYPE_C   = 2,
-	FILTER_TYPE_MAX = 3
-};
-
 
 int wal_pack_prepare(XLogWriter *r, struct wal_pack *);
 u32 wal_pack_append_row(struct wal_pack *pack, struct row_v12 *row);
@@ -402,10 +354,82 @@ const char *run_crc_status(struct run_crc *run_crc);
 - (const char *)error;
 @end
 
+#define replication_handshake_base_fields \
+	u32 ver; \
+	i64 scn; \
+	char filter[32]
+
+struct replication_handshake_base {
+	replication_handshake_base_fields;
+} __attribute__((packed));
+#define REPLICATION_FILTER_NAME_LEN field_sizeof(struct replication_handshake_base, filter)
+
+#define replication_handshake_v1 replication_handshake_base
+
+struct replication_handshake_v2 {
+	replication_handshake_base_fields;
+	u32 filter_type;
+	u32 filter_arglen;
+	char filter_arg[];
+} __attribute__((packed));
+
+struct feeder_filter {
+	u32 type;
+	u32 arglen;
+	char *name;
+	void *arg;
+};
+
+struct feeder_param {
+	struct sockaddr_in addr;
+	u32 ver;
+	struct feeder_filter filter;
+};
+
+enum feeder_cfg_e {
+	FEEDER_CFG_OK = 0,
+	FEEDER_CFG_BAD_ADDR = 1,
+	FEEDER_CFG_BAD_FILTER = 2,
+	FEEDER_CFG_BAD_VERSION = 4,
+};
+enum feeder_cfg_e feeder_param_fill_from_cfg(struct feeder_param *param, struct octopus_cfg *cfg);
+bool feeder_param_set_addr(struct feeder_param *param, const char *addr);
+bool feeder_param_eq(struct feeder_param *this, struct feeder_param *that);
+
+enum {
+	FILTER_TYPE_ID  = 0,
+	FILTER_TYPE_LUA = 1,
+	FILTER_TYPE_C   = 2,
+	FILTER_TYPE_MAX = 3
+};
+
+@interface XLogRemoteReader : Object {
+	XLogPuller *remote_puller;
+	struct feeder_param feeder;
+	Recovery *recovery;
+}
+- (id) init_recovery:(Recovery *)recovery_
+	      feeder:(struct feeder_param *)feeder_;
+
+- (struct sockaddr_in) feeder_addr;
+- (bool) feeder_addr_configured;
+- (bool) feeder_changed:(struct feeder_param*)new;
+- (void) hot_standby;
+@end
+
+@interface XLogReplica : XLogRemoteReader
+- (int) load_from_remote;
+- (int) load_from_remote:(struct feeder_param *)remote;
+/* pull_wal & load_from_remote throws exceptions on failure */
+- (int) pull_wal:(id<XLogPullerAsync>)puller;
+- (void) pull_from_remote:(id<XLogPullerAsync>)puller;
+@end
+
 enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 @interface Recovery: Object <RecoveryState> {
 	XLogReader *reader;
 	XLogWriter *writer;
+	XLogReplica *remote;
 
 	XLogDir *wal_dir, *snap_dir;
 
@@ -416,9 +440,6 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 	enum recovery_status status, prev_status;
 	char status_buf[64];
 	SnapWriter *snap_writer;
-
-	XLogPuller *remote_puller;
-	struct feeder_param feeder;
 
 	u32 run_crc_log;
 	struct run_crc run_crc_state;
@@ -456,16 +477,12 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 - (void) recover_row:(struct row_v12 *)row;
 
 - (i64) load_from_local; /* load from local snap+wal */
-- (int) load_from_remote; /* fetch and load snap+wal from feeder. doesn't persist anything */
-- (int) load_from_remote:(struct feeder_param *)remote;
 - (void) wal_final_row;
 - (void) remote_snap_final_row:(const struct row_v12 *)row;
-/* pull_wal & load_from_remote throws exceptions on failure */
-- (int) pull_wal:(id<XLogPullerAsync>)puller;
-- (void) pull_from_remote:(id<XLogPullerAsync>)puller;
 - (void) enable_local_writes;
 - (bool) is_replica;
 - (void) check_replica;
+- (bool) feeder_changed:(struct feeder_param*)new;
 
 - (int) submit_run_crc;
 
@@ -480,17 +497,12 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 	feeder_param:(struct feeder_param*)feeder_
                flags:(int)flags;
 
-- (struct sockaddr_in) feeder_addr;
-- (bool) feeder_addr_configured;
-- (bool) feeder_changed:(struct feeder_param*)new;
 
 - (void) status_update:(enum recovery_status)s fmt:(const char *)fmt, ...;
 - (void) status_changed;
 
 - (SnapWriter *) snap_writer;
 - (int) write_initial_state;
-
-- (bool) XXXAllowZeroSCNForRemote;
 @end
 
 @interface Recovery (Deprecated)
