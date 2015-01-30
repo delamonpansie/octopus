@@ -349,7 +349,10 @@ snapshot_fold
 
 @end
 
-@implementation SnapWriter (Box)
+@interface BoxSnapWriter : SnapWriter
+@end
+
+@implementation BoxSnapWriter
 - (u32)
 snapshot_estimate
 {
@@ -479,6 +482,7 @@ init(void)
 				      rows_per_wal:cfg.rows_per_wal
 				      feeder_param:&feeder
 					     flags:init_storage ? RECOVER_READONLY : 0];
+	[recovery set_snap_writer:[BoxSnapWriter class]];
 	recovery->print_row = box_print_row;
 
 	if (init_storage)
