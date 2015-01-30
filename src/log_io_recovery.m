@@ -635,39 +635,6 @@ print_gen_row(struct tbuf *out, const struct row_v12 *row,
 	}
 }
 
-/* this little hole shouldn't be used too much */
-int
-read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, struct tbuf *row))
-{
-	XLog *l;
-	const struct row_v12 *row;
-	int row_count = 0;
-	l = [XLog open_for_read_filename:filename dir:NULL];
-	if (l == nil) {
-		say_syserror("unable to open filename `%s'", filename);
-		return -1;
-	}
-
-	palloc_register_cut_point(fiber->pool);
-	while ((row = [l fetch_row])) {
-		struct tbuf *out = tbuf_alloc(fiber->pool);
-		print_gen_row(out, row, handler);
-		printf("%.*s\n", tbuf_len(out), (char *)out->ptr);
-
-		if (row_count++ > 1024) {
-			palloc_cutoff(fiber->pool);
-			palloc_register_cut_point(fiber->pool);
-			row_count = 0;
-		}
-	}
-	palloc_cutoff(fiber->pool);
-
-	if (![l eof]) {
-		say_error("binary log `%s' wasn't correctly closed", filename);
-		return -1;
-	}
-	return 0;
-}
 
 @implementation NoWALRecovery
 - (id)
