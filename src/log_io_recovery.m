@@ -547,12 +547,21 @@ status_changed
 {
 }
 
+- (void)
+set_snap_writer:(Class)class
+{
+	[snap_writer free];
+	if (class == Nil)
+		class = [SnapWriter class];
+	snap_writer = [[class alloc] init_state:self snap_dir:snap_dir];
+}
+
 - (SnapWriter *)
 snap_writer
 {
 	if (snap_writer)
 		return snap_writer;
-	snap_writer = [[SnapWriter alloc] init_state:self snap_dir:snap_dir];
+	[self set_snap_writer:Nil];
 	return snap_writer;
 }
 

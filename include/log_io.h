@@ -501,6 +501,7 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 - (void) status_update:(enum recovery_status)s fmt:(const char *)fmt, ...;
 - (void) status_changed;
 
+- (void) set_snap_writer:(Class)class;
 - (SnapWriter *) snap_writer;
 - (int) write_initial_state;
 @end
