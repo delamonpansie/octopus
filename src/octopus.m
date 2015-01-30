@@ -688,7 +688,6 @@ octopus(int argc, char **argv)
 			foreach_module (m)
 				if (m->cat != NULL)
 					return m->cat(cat_filename);
-			panic("no --cat actions defined");
 		} else {
 			i64 stop_scn = atol(cat_filename);
 			if (!stop_scn) {
@@ -703,6 +702,7 @@ octopus(int argc, char **argv)
 				if (m->cat_scn != NULL)
 					return m->cat_scn(stop_scn);
 		}
+		panic("no --cat action defined");
 	}
 #endif
 
