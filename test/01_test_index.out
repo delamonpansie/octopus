@@ -23,7 +23,7 @@
 1
 
 # box.insert([0])
-Failed with: {code: 0x202, message: 'expected u64'}
+Failed with: {code: 0x202, message: 'expected i64'}
 # box.select([0])
 Failed with: {code: 0x202, message: 'key is not i64'}
 # box.insert(["00000000", "00000000", "1"])

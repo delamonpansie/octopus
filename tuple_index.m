@@ -49,7 +49,7 @@ box_tuple_u32_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
 		index_raise("expected u32");
 
 	node->obj = obj;
-	memcpy(&node->key, f, sizeof(u32));
+	node->key.u32 = *(u32*)f;
 	return node;
 }
 static struct index_node *
@@ -65,7 +65,39 @@ box_tuple_u64_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
 		index_raise("expected u64");
 
 	node->obj = obj;
-	memcpy(&node->key, f, sizeof(u64));
+	node->key.u64 = *(u64*)f;
+	return node;
+}
+static struct index_node *
+box_tuple_i32_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
+{
+	int n = (uintptr_t)arg;
+	struct box_tuple *tuple = box_tuple(obj);
+	if (tuple->cardinality <= n)
+		index_raise("cardinality too small");
+	u8 *f = tuple_field(tuple, n);
+	u32 size = LOAD_VARINT32(f);
+	if (size != sizeof(u32))
+		index_raise("expected i32");
+
+	node->obj = obj;
+	node->key.u32 = *(u32*)f - INT32_MIN;
+	return node;
+}
+static struct index_node *
+box_tuple_i64_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
+{
+	int n = (uintptr_t)arg;
+	struct box_tuple *tuple = box_tuple(obj);
+	if (tuple->cardinality <= n)
+		index_raise("cardinality too small");
+	const u8 *f = tuple_field(tuple, n);
+	u32 size = LOAD_VARINT32(f);
+	if (size != sizeof(u64))
+		index_raise("expected i64");
+
+	node->obj = obj;
+	node->key.u64 = *(u64*)f - INT64_MIN;
 	return node;
 }
 static struct index_node *
@@ -108,11 +140,42 @@ box_tuple_gen_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
 }
 
 struct dtor_conf box_tuple_dtor = {
+	.i32 = box_tuple_i32_dtor,
+	.i64 = box_tuple_i64_dtor,
 	.u32 = box_tuple_u32_dtor,
 	.u64 = box_tuple_u64_dtor,
 	.lstr = box_tuple_lstr_dtor,
 	.generic = box_tuple_gen_dtor
 };
+
+typedef struct {
+	int type;
+	char** name;
+} typenames;
+
+#define eq(t, s) (strcmp((t),(s)) == 0)
+static typenames *one_column_types = (typenames[]){
+	{SNUM32, (char *[]){"NUM", "SNUM", "NUM32", "SNUM32", NULL}},
+	{SNUM64, (char *[]){"NUM64", "SNUM64", NULL}},
+	{STRING, (char *[]){"STR", "STRING", NULL}},
+	{UNUM32, (char *[]){"UNUM", "UNUM32", NULL}},
+	{UNUM64, (char *[]){"UNUM64", NULL}},
+	{SNUM16, (char *[]){"NUM16", "SNUM16", NULL}},
+	{UNUM16, (char *[]){"UNUM16", NULL}},
+	{UNDEF, (char *[]){NULL}}
+};
+
+static typenames *many_column_types = (typenames[]){
+	{UNUM32, (char *[]){"NUM", "UNUM", "NUM32", "UNUM32", NULL}},
+	{UNUM64, (char *[]){"NUM64", "UNUM64", NULL}},
+	{STRING, (char *[]){"STR", "STRING", NULL}},
+	{SNUM32, (char *[]){"SNUM", "SNUM32", NULL}},
+	{SNUM64, (char *[]){"SNUM64", NULL}},
+	{UNUM16, (char *[]){"NUM16", "UNUM16", NULL}},
+	{SNUM16, (char *[]){"SNUM16", NULL}},
+	{UNDEF, (char *[]){NULL}},
+};
+
 
 struct index_conf *
 cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
@@ -136,46 +199,14 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 	else
 		panic("unknown index type");
 
-	int offset = 0;
-	for (int k = 0; c->key_field[k] != NULL; k++) {
-		if (c->key_field[k]->fieldno == -1)
-			break;
+	__typeof__(c->key_field[0]) key_field;
+	for (d->cardinality = 0; c->key_field[d->cardinality] != NULL; d->cardinality++) {
+		key_field = c->key_field[d->cardinality];
+		if (key_field->fieldno == -1)
+			panic("fieldno should be set");
 
-		assert(d->fill_order[d->cardinality] == -1);
-		assert(d->field_index[d->cardinality] == -1);
-
-		d->fill_order[d->cardinality] = d->cardinality;
-		d->field_index[d->cardinality] = c->key_field[k]->fieldno;
-		d->offset[d->cardinality] = offset;
-
-		if (strcmp(c->key_field[k]->sort_order, "ASC") == 0)
-			d->sort_order[d->cardinality] = ASC;
-		else if (strcmp(c->key_field[k]->sort_order, "DESC") == 0)
-			d->sort_order[d->cardinality] = DESC;
-		else
+		if (!eq(key_field->sort_order, "ASC") && !eq(key_field->sort_order, "DESC"))
 			panic("unknown sort order");
-
-		if (strcmp(c->key_field[k]->type, "NUM") == 0) {
-			d->field_type[d->cardinality] = NUM32;
-			offset += field_sizeof(union index_field, u32);
-		} else if (strcmp(c->key_field[k]->type, "NUM16") == 0) {
-			d->field_type[d->cardinality] = NUM16;
-			offset += field_sizeof(union index_field, u16);
-		} else if (strcmp(c->key_field[k]->type, "NUM32") == 0) {
-			d->field_type[d->cardinality] = NUM32;
-			offset += field_sizeof(union index_field, u32);
-		} else if (strcmp(c->key_field[k]->type, "NUM64") == 0) {
-			d->field_type[d->cardinality] = NUM64;
-			offset += field_sizeof(union index_field, u64);
-		} else if (strcmp(c->key_field[k]->type, "STR") == 0) {
-			d->field_type[d->cardinality] = STRING;
-			offset += field_sizeof(union index_field, str);
-		} else
-			panic("unknown field data type: `%s'", c->key_field[k]->type);
-
-		if (c->key_field[k]->fieldno + 1 > d->min_tuple_cardinality)
-			d->min_tuple_cardinality = c->key_field[k]->fieldno + 1;
-		d->cardinality++;
 	}
 
 	if (d->cardinality > nelem(d->field_index))
@@ -183,6 +214,41 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 
 	if (d->cardinality == 0)
 		panic("index cardinality is 0");
+
+	int offset = 0;
+	for (int k = 0; k < d->cardinality; k++) {
+		key_field = c->key_field[k];
+		d->fill_order[k] = k;
+		d->field_index[k] = key_field->fieldno;
+		d->offset[k] = offset;
+		d->sort_order[k] = eq(key_field->sort_order, "ASC") ? ASC : DESC;
+
+		const char *typename = key_field->type;
+		int type = UNDEF;
+		typenames *names = d->cardinality == 1 ? one_column_types : many_column_types;
+		for (;type == UNDEF && names->type != UNDEF; names++) {
+			char **name = names->name;
+			for(;*name != NULL; name++) {
+				if (eq(typename, *name)) {
+					type = names->type;
+					break;
+				}
+			}
+		}
+		if (type == UNDEF) {
+			panic("unknown field data type: `%s'", typename);
+		}
+		d->field_type[k] = type;
+		switch(type & ~SIGNFLAG) {
+		case UNUM32: offset += field_sizeof(union index_field, u32); break;
+		case UNUM16: offset += field_sizeof(union index_field, u16); break;
+		case UNUM64: offset += field_sizeof(union index_field, u64); break;
+		case STRING: offset += field_sizeof(union index_field, str); break;
+		}
+
+		if (key_field->fieldno + 1 > d->min_tuple_cardinality)
+			d->min_tuple_cardinality = key_field->fieldno + 1;
+	}
 
 	for (int i = d->cardinality-1; i > 0; i--)
 		for (int j = 0; j < i; j++) {
@@ -197,5 +263,6 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 	return d;
 }
 
+#undef eq
 
 register_source();
