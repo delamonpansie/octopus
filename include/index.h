@@ -64,7 +64,11 @@ struct index_conf {
 	int fill_order[8];
 	int offset[8];
 	enum sort_order { ASC = 1, DESC = -1 } sort_order[8];
-	enum index_field_type { UNDEF, NUM16, NUM32, NUM64, STRING } field_type[8];
+	enum index_field_type { UNDEF, SIGNFLAG=1,
+		UNUM16=2, SNUM16=3,
+		UNUM32=4, SNUM32=5,
+		UNUM64=6, SNUM64=7,
+		STRING=8 } field_type[8];
 	int min_tuple_cardinality, cardinality;
 	enum index_type { HASH, NUMHASH, SPTREE, FASTTREE, COMPACTTREE } type;
 	bool unique;
@@ -76,7 +80,7 @@ struct lua_State;
 typedef int (*index_cmp)(const void *, const void *, void *);
 
 struct dtor_conf {
-	index_dtor *u32, *u64, *lstr, *generic;
+	index_dtor *i32, *i64, *u32, *u64, *lstr, *generic;
 };
 
 #ifdef __amd64__
@@ -244,16 +248,20 @@ void index_raise_(const char *file, int line, const char *msg)
 #define index_raise(msg) index_raise_(__FILE__, __LINE__, (msg))
 
 
-int i32_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
-int i32_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
-int i32_eq(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
-int i32_eq_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int u32_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int u32_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int u32_eq(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int u32_eq_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+void u32_init_pattern(struct tbuf *key, int cardinality,
+		 struct index_node *pattern, void *x __attribute__((unused)));
 void i32_init_pattern(struct tbuf *key, int cardinality,
 		 struct index_node *pattern, void *x __attribute__((unused)));
-int i64_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
-int i64_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
-int i64_eq(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
-int i64_eq_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int u64_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int u64_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int u64_eq(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int u64_eq_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+void u64_init_pattern(struct tbuf *key, int cardinality,
+		 struct index_node *pattern, void *x __attribute__((unused)));
 void i64_init_pattern(struct tbuf *key, int cardinality,
 		 struct index_node *pattern, void *x __attribute__((unused)));
 int lstr_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
@@ -267,10 +275,10 @@ int cstr_compare_with_addr(const struct index_node *na, const struct index_node 
 int cstr_eq(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
 int cstr_eq_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
 
-int i32_compare_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
-int i32_compare_with_addr_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
-int i64_compare_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
-int i64_compare_with_addr_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int u32_compare_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int u32_compare_with_addr_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int u64_compare_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
+int u64_compare_with_addr_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
 int lstr_compare_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
 int lstr_compare_with_addr_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));
 int cstr_compare_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)));

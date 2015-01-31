@@ -45,14 +45,14 @@ new_conf:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 		if (ic->type == HASH && ic->unique == false)
 			return nil;
 
-		switch (ic->field_type[0]) {
-		case NUM32:
+		switch (ic->field_type[0] & ~SIGNFLAG) {
+		case UNUM32:
 			i = [Int32Hash alloc];
 			break;
-		case NUM64:
+		case UNUM64:
 			i = [Int64Hash alloc];
 			break;
-		case NUM16:
+		case UNUM16:
 			index_raise("NUM16 single column indexes unupported");
 		default:
 			abort();
@@ -87,23 +87,24 @@ init:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 		return self;
 	memcpy(&conf, ic, sizeof(*ic));
 	if (ic->cardinality == 1) {
-		switch(ic->field_type[0]) {
-		case NUM32:
-			node_size = sizeof(struct tnt_object *) + sizeof(i32);
-			init_pattern = i32_init_pattern;
-			pattern_compare = (index_cmp)i32_compare;
-			eq = EQ(i32);
-			compare = COMPARE(i32);
-			dtor = dc->u32;
+		int ftype = ic->field_type[0];
+		switch(ftype & ~SIGNFLAG) {
+		case UNUM32:
+			node_size = sizeof(struct tnt_object *) + sizeof(u32);
+			init_pattern = ftype == SNUM32 ? i32_init_pattern : u32_init_pattern;
+			pattern_compare = (index_cmp)u32_compare;
+			eq = EQ(u32);
+			compare = COMPARE(u32);
+			dtor = ftype == SNUM32 ? dc->i32 : dc->u32;
 			dtor_arg = (void *)(uintptr_t)ic->field_index[0];
 			break;
-		case NUM64:
-			node_size = sizeof(struct tnt_object *) + sizeof(i64);
-			init_pattern = i64_init_pattern;
-			pattern_compare = (index_cmp)i64_compare;
-			eq = EQ(i64);
-			compare = COMPARE(i64);
-			dtor = dc->u64;
+		case UNUM64:
+			node_size = sizeof(struct tnt_object *) + sizeof(u64);
+			init_pattern = ftype == SNUM64 ? i64_init_pattern : u64_init_pattern;
+			pattern_compare = (index_cmp)u64_compare;
+			eq = EQ(u64);
+			compare = COMPARE(u64);
+			dtor = ftype == SNUM64 ? dc->i64 : dc->u64;
 			dtor_arg = (void *)(uintptr_t)ic->field_index[0];
 			break;
 		case STRING:
@@ -121,10 +122,13 @@ init:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 	if (node_size == 0) {
 		node_size = sizeof(struct tnt_object *);
 		for (int i = 0; i < ic->cardinality; i++)
-			switch (ic->field_type[i]) {
-			case NUM16: node_size += field_sizeof(union index_field, u16); break;
-			case NUM32: node_size += field_sizeof(union index_field, u32); break;
-			case NUM64: node_size += field_sizeof(union index_field, u64); break;
+			switch (ic->field_type[i] & ~SIGNFLAG) {
+			case UNUM16:
+				node_size += field_sizeof(union index_field, u16); break;
+			case UNUM32:
+				node_size += field_sizeof(union index_field, u32); break;
+			case UNUM64:
+				node_size += field_sizeof(union index_field, u64); break;
 			case STRING: node_size += field_sizeof(union index_field, str); break;
 			case UNDEF: abort();
 			}

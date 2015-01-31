@@ -47,34 +47,9 @@ local node = ffi.cast('struct index_node *', ffi.C.malloc(maxnodesize))
 local strbuf = ffi.new('char[?]', 5 + 0xffff)
 gen = {node = node, strbuf = strbuf}
 
-local function packfield(ftype, field, key)
-    if ftype == ffi.C.NUM16 then
-	field.u16 = key
-    elseif ftype == ffi.C.NUM32 then
-	field.u32 = key
-    elseif ftype == ffi.C.NUM64 then
-	field.u64 = key
-    elseif ftype == ffi.C.STRING then
-	if #key > 0xffff then
-	    error("key too big", 4)
-	end
-	field.str.len = #key
-	if #key <= 8 then
-	    ffi.copy(field.str.data.bytes, key, #key)
-	else
-	    field.str.data.ptr = key
-	end
-    else
-	error("unknown index field_type:" .. tostring(ftype), 4)
-    end
-end
-
 local cgen_mt = {
     __index = {
         emit = function (self, fmt, lbindings)
-            for k, v in pairs(lbindings or {}) do
-                fmt = string.gsub(fmt, '$' .. k, v)
-            end
             for k, v in pairs(self.bindings) do
                 fmt = string.gsub(fmt, '$' .. k, v)
             end
@@ -104,32 +79,37 @@ local function cgen(bindings)
                         cgen_mt)
 end
 
+local field_code = nil
 local function gen_packfield(e, index, i, key)
-    e:bind('offset', index.conf.offset[i])
-    e:bind('key', key)
+    if field_code == nil then
+        field_code = {
+            [ffi.C.UNUM16] = "    field.u16 = $key",
+            [ffi.C.SNUM16] = "    field.u16 = $key - 0x8000",
+            [ffi.C.UNUM32] = "    field.u32 = $key",
+            [ffi.C.SNUM32] = "    field.u32 = $key - 0x80000000",
+            [ffi.C.UNUM64] = "    field.u64 = $key",
+            [ffi.C.SNUM64] = "    field.u64 = $key - 0x8000000000000000LL",
+            [ffi.C.STRING] = [[
+    if #$key > 0xffff then error("key too big", 4) end
+    field.str.len = #$key
+    if #$key <= 8 then
+        ffi.copy(field.str.data.bytes, $key, #$key)
+    else
+        field.str.data.ptr = $key
+    end]]
+       }
+    end
 
     e:emit('do')
     e:emit("    local field = ffi.cast(index_field, node.key.chr + $offset)")
-    local ftype = index.conf.field_type[i]
-    if ftype == ffi.C.NUM16 then
-	e:emit("    field.u16 = $key", {key = key})
-    elseif ftype == ffi.C.NUM32 then
-        e:emit("    field.u32 = $key", {key = key})
-    elseif ftype == ffi.C.NUM64 then
-        e:emit("    field.u64 = $key", {key = key})
-    elseif ftype == ffi.C.STRING then
-        e:emit('    if #$key > 0xffff then error("key too big", 4) end')
-        e:emit('    field.str.len = #$key')
-	e:emit('    if #$key <= 8 then')
-	e:emit('        ffi.copy(field.str.data.bytes, $key, #$key)')
-	e:emit('    else')
-	e:emit('        field.str.data.ptr = $key')
-	e:emit('    end')
+    local ftype = tonumber(index.conf.field_type[i])
+    local code = field_code[ftype]
+    if code then
+        e:emit(code)
     else
-	error("unknown index field_type:" .. tostring(ftype), 4)
+        error("unknown index field_type:" .. tostring(ftype), 4)
     end
     e:emit('end')
-    e:bind_pop(2)
 end
 
 local function gen_packnode(index)
@@ -162,14 +142,16 @@ local function gen_packnode(index)
     e:emit('return function ($args)')
     for i, key in ipairs(keys) do
         e:bind('key',  key)
+        e:bind('offset', index.conf.offset[i - 1])
+        e:bind('i', i)
         if i == 1 then
             e:emit('    if $key == nil then error("empty key") end')
         else
             e:emit('    if $key == nil then return node end')
         end
         gen_packfield(e, index, i - 1, key)
-        e:emit('    node.obj = ffi.cast(void, $i)', {i = i})
-        e:bind_pop()
+        e:emit('    node.obj = ffi.cast(void, $i)')
+        e:bind_pop(3)
     end
     e:emit('     return node')
     e:emit('end')
@@ -182,13 +164,20 @@ local function packerr(err, fname, index, ...)
     local atype = {}
     for i = 0, index.conf.cardinality - 1 do
 	local t = "UNKNOWN"
-	if index.conf.field_type[i] == ffi.C.NUM16 then
-	    t = "NUM16"
-	elseif index.conf.field_type[i] == ffi.C.NUM32 then
-	    t = "NUM32"
-	elseif index.conf.field_type[i] == ffi.C.NUM64 then
-	    t = "NUM64"
-	elseif index.conf.field_type[i] == ffi.C.STRING then
+        local ftype = tonumber(index.conf.field_type[i])
+	if ftype == ffi.C.UNUM16 then
+	    t = "UNUM16"
+	elseif ftype == ffi.C.SNUM16 then
+	    t = "SNUM16"
+	elseif ftype == ffi.C.UNUM32 then
+	    t = "UNUM32"
+	elseif ftype == ffi.C.SNUM32 then
+	    t = "SNUM32"
+	elseif ftype == ffi.C.UNUM64 then
+	    t = "UNUM64"
+	elseif ftype == ffi.C.SNUM64 then
+	    t = "SNUM64"
+	elseif ftype == ffi.C.STRING then
 	    t = "STRING"
 	else
 	    t = tostring(index.conf.field_type[i])
