@@ -56,17 +56,20 @@ struct index_node {
 	union index_field key;
 };
 
+struct field_desc {
+	int index;
+	int offset;
+	enum sort_order { ASC = 1, DESC = -1 } sort_order;
+	enum index_field_type { UNDEF, UNUM16, SNUM16, UNUM32, SNUM32, UNUM64, SNUM64, STRING } type;
+};
 
 struct index_conf {
-	int field_index[8];
-	int fill_order[8];
-	int offset[8];
-	enum sort_order { ASC = 1, DESC = -1 } sort_order[8];
-	enum index_field_type { UNDEF, UNUM16, SNUM16, UNUM32, SNUM32, UNUM64, SNUM64, STRING } field_type[8];
 	int min_tuple_cardinality, cardinality;
 	enum index_type { HASH, NUMHASH, SPTREE, FASTTREE, COMPACTTREE } type;
 	bool unique;
 	int n;
+	i8 fill_order[8];
+	struct field_desc field[8];
 };
 
 typedef struct index_node *(index_dtor)(struct tnt_object *obj, struct index_node *node, void *arg);

@@ -491,7 +491,7 @@ ordered_iterator_init
 - (struct tnt_object *)
 find:(const char *)key
 {
-	switch (conf.field_type[0]) {
+	switch (conf.field[0].type) {
 	case SNUM16:
 	case UNUM16: node_a.key.u16 = *(u16 *)key; break;
 	case SNUM32:

@@ -45,7 +45,7 @@ new_conf:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 		if (ic->type == HASH && ic->unique == false)
 			return nil;
 
-		switch (ic->field_type[0]) {
+		switch (ic->field[0].type) {
 		case SNUM32:
 		case UNUM32:
 			i = [Int32Hash alloc];
@@ -76,7 +76,7 @@ new_conf:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 }
 
 #define COMPARE(type)										\
-	conf.sort_order[0] != DESC ?								\
+	conf.field[0].sort_order != DESC ?								\
 	(conf.unique ? (index_cmp)type##_compare : (index_cmp)type##_compare_with_addr) :	\
 	(conf.unique ? (index_cmp)type##_compare_desc : (index_cmp)type##_compare_with_addr_desc)
 #define EQ(type) \
@@ -90,8 +90,8 @@ init:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 		return self;
 	memcpy(&conf, ic, sizeof(*ic));
 	if (ic->cardinality == 1) {
-		int ftype = ic->field_type[0];
-		conf.offset[0] = 0;
+		int ftype = ic->field[0].type;
+		conf.field[0].offset = 0;
 		switch(ftype) {
 		case SNUM32:
 		case UNUM32:
@@ -101,7 +101,7 @@ init:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 			eq = EQ(u32);
 			compare = COMPARE(u32);
 			dtor = ftype == SNUM32 ? dc->i32 : dc->u32;
-			dtor_arg = (void *)(uintptr_t)ic->field_index[0];
+			dtor_arg = (void *)(uintptr_t)ic->field[0].index;
 			break;
 		case SNUM64:
 		case UNUM64:
@@ -111,7 +111,7 @@ init:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 			eq = EQ(u64);
 			compare = COMPARE(u64);
 			dtor = ftype == SNUM64 ? dc->i64 : dc->u64;
-			dtor_arg = (void *)(uintptr_t)ic->field_index[0];
+			dtor_arg = (void *)(uintptr_t)ic->field[0].index;
 			break;
 		case STRING:
 			node_size = sizeof(struct tnt_object *) + sizeof(void *);
@@ -120,16 +120,17 @@ init:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 			eq = EQ(lstr);
 			compare = COMPARE(lstr);
 			dtor = dc->lstr;
-			dtor_arg = (void *)(uintptr_t)ic->field_index[0];
+			dtor_arg = (void *)(uintptr_t)ic->field[0].index;
 		default:
 			break;
 		}
 	}
+
 	if (node_size == 0) {
 		int offset = 0;
 		for (int i = 0; i < ic->cardinality; i++) {
-			conf.offset[i] = offset;
-			switch (ic->field_type[i]) {
+			conf.field[i].offset = offset;
+			switch (ic->field[i].type) {
 			case SNUM16:
 			case UNUM16:
 				offset += field_sizeof(union index_field, u16); break;

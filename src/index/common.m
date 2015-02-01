@@ -392,14 +392,20 @@ tree_node_compare(struct index_node *na, struct index_node *nb, struct index_con
 	   it is guaranteed that pattern is a first arg.
 	*/
 
-	int n = (uintptr_t)na->obj < nelem(ic->field_index) ? (uintptr_t)na->obj : ic->cardinality;
+	int n = (uintptr_t)na->obj < nelem(ic->field) ? (uintptr_t)na->obj : ic->cardinality;
 
-	for (int i = 0; i < n; ++i) {
-		union index_field *akey = (void *)&na->key + ic->offset[i];
-		union index_field *bkey = (void *)&nb->key + ic->offset[i];
-		int r = field_compare(akey, bkey, ic->field_type[i]);
+	if (n > 0) {
+		int r = field_compare(&na->key, &nb->key, ic->field[0].type) * ic->field[0].sort_order;
+		if (n == 1 || r != 0)
+			return r;
+	}
+
+	for (int i = 1; i < n; ++i) {
+		union index_field *akey = (void *)&na->key + ic->field[i].offset;
+		union index_field *bkey = (void *)&nb->key + ic->field[i].offset;
+		int r = field_compare(akey, bkey, ic->field[i].type);
 		if (r != 0)
-			return r * ic->sort_order[i];
+			return r * ic->field[i].sort_order;
 	}
 	return 0;
 }
@@ -411,7 +417,7 @@ tree_node_compare_with_addr(struct index_node *na, struct index_node *nb, struct
 	if (r != 0)
 		return r;
 
-	if ((uintptr_t)na->obj < nelem(ic->field_index)) /* `na' is a pattern */
+	if ((uintptr_t)na->obj < nelem(ic->field)) /* `na' is a pattern */
 		return r;
 
 	if (na->obj > nb->obj)
@@ -456,12 +462,17 @@ tree_node_eq(struct index_node *na, struct index_node *nb, struct index_conf *ic
 	   it is guaranteed that pattern is a first arg.
 	*/
 
-	int n = (uintptr_t)na->obj < nelem(ic->field_index) ? (uintptr_t)na->obj : ic->cardinality;
+	int n = (uintptr_t)na->obj < nelem(ic->field) ? (uintptr_t)na->obj : ic->cardinality;
 
-	for (int i = 0; i < n; ++i) {
-		union index_field *akey = (void *)&na->key + ic->offset[i];
-		union index_field *bkey = (void *)&nb->key + ic->offset[i];
-		int r = field_eq(akey, bkey, ic->field_type[i]);
+	if (n > 0) {
+		if (field_eq(&na->key, &nb->key, ic->field[0].type) == 0)
+			return 0;
+	}
+
+	for (int i = 1; i < n; ++i) {
+		union index_field *akey = (void *)&na->key + ic->field[i].offset;
+		union index_field *bkey = (void *)&nb->key + ic->field[i].offset;
+		int r = field_eq(akey, bkey, ic->field[i].type);
 		if (r == 0)
 			return 0;
 	}
@@ -499,7 +510,7 @@ gen_hash_node(const struct index_node *n, struct index_conf *ic)
 	int c = ic->cardinality;
 
 	if (c == 1) {
-		switch (ic->field_type[0]) {
+		switch (ic->field[0].type) {
 		case SNUM32:
 		case UNUM32:
 			return n->key.u32;
@@ -522,8 +533,8 @@ gen_hash_node(const struct index_node *n, struct index_conf *ic)
 	for (int i = 0; i < c; ++i) {
 		char const *d;
 		u32 len;
-		union index_field *key = (void *)&n->key + ic->offset[i];
-		switch(ic->field_type[i]) {
+		union index_field *key = (void *)&n->key + ic->field[i].offset;
+		switch(ic->field[i].type) {
 		case SNUM16:
 		case UNUM16:
 			h = (h ^ key->u16) * KNUTH_MULT;
@@ -605,15 +616,15 @@ gen_init_pattern(struct tbuf *key_data, int cardinality, struct index_node *patt
 	struct index_node *pattern = (void *)pattern_;
 	struct index_conf *ic = arg;
 
-	if (cardinality > ic->cardinality || cardinality > nelem(ic->field_index))
+	if (cardinality > ic->cardinality || cardinality > nelem(ic->field))
                 index_raise("cardinality too big");
 
 	for (int i = 0; i < cardinality; i++) {
 		u32 len = read_varint32(key_data);
 		void *key = read_bytes(key_data, len);
 
-		union index_field *f = (void *)&pattern->key + ic->offset[i];
-		gen_set_field(f, ic->field_type[i], len, key);
+		union index_field *f = (void *)&pattern->key + ic->field[i].offset;
+		gen_set_field(f, ic->field[i].type, len, key);
 		key += len;
 	}
 
