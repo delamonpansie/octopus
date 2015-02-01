@@ -527,6 +527,7 @@ gen_hash_node(const struct index_node *n, struct index_conf *ic)
 			d = key->str.len <= sizeof(key->str.data) ? key->str.data.bytes : key->str.data.ptr;
 			len = key->str.len;
 			h = dumb_hash(d, len, h);
+			break;
 		case UNDEF:
 			abort();
 		}
