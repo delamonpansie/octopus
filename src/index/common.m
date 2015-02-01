@@ -539,7 +539,7 @@ gen_hash_node(const struct index_node *n, struct index_conf *ic)
 void
 gen_set_field(union index_field *f, enum index_field_type type, int len, const void *data)
 {
-	switch (type & ~SIGNFLAG) {
+	switch (type) {
 	case UNUM16:
 		if (len != sizeof(u16))
 			index_raise("key size mismatch, expected u16");
@@ -579,6 +579,7 @@ gen_set_field(union index_field *f, enum index_field_type type, int len, const v
 		else
 			f->str.data.ptr = data;
 		return;
+	case SIGNFLAG:
 	case UNDEF:
 		abort();
 	}
