@@ -661,7 +661,7 @@ restart:
 		if (r == TWL_OK && replace) {
 			memcpy(TUPITH(tt, s.page, s.pos), tuple_key, tt->sizeof_tuple_key);
 
-			if (s.pos == s.page->n_tuple_keys && tt->page_index != NULL) {
+			if (s.pos == s.page->n_tuple_keys-1 && tt->page_index != NULL) {
 				/* update key of upper index */
 				free_index_key(tt, s.key);
 				memcpy(s.key->key, tt->search_index_key->key, tt->sizeof_index_key);
