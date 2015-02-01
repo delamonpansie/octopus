@@ -73,9 +73,10 @@ box_tuple_lstr_dtor(struct tnt_object *obj, struct index_node *node, void  *arg)
 	struct box_tuple *tuple = box_tuple(obj);
 	if (tuple->cardinality <= n)
 		index_raise("cardinality too small");
-	void *f = tuple_field(tuple, n);
+	const u8 *f = tuple_field(tuple, n);
+	size_t size = LOAD_VARINT32(f);
 	node->obj = obj;
-	memcpy(&node->key, &f, sizeof(void *));
+	set_lstr_field(&node->key, size, f);
 	return node;
 }
 static struct index_node *
