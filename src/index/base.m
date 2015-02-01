@@ -114,7 +114,7 @@ init:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 			dtor_arg = (void *)(uintptr_t)ic->field[0].index;
 			break;
 		case STRING:
-			node_size = sizeof(struct tnt_object *) + sizeof(void *);
+			node_size = sizeof(struct tnt_object *) + field_sizeof(union index_field, str);
 			init_pattern = lstr_init_pattern;
 			pattern_compare = (index_cmp)lstr_compare;
 			eq = EQ(lstr);

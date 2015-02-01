@@ -41,8 +41,10 @@ union index_field {
 	u32 u32;
 	u64 u64;
 	const void *ptr;
-	char chr[12]; /* for LuaJIT casts */
+	char chr[16]; /* for LuaJIT casts */
 	struct {
+		u32 prefix1;
+		u16 prefix2;
 		i16 len;
 		union {
 			u8 bytes[sizeof(u64)];
@@ -300,6 +302,37 @@ static inline int llexstrcmp(const void *a, const void *b)
 	r = memcmp(a, b, al <= bl ? al : bl);
 
 	return r != 0 ? r : al - bl;
+}
+
+static inline void
+lstr_load_prefix(union index_field *f, const u8* s, u32 len) {
+	u32 p1 = 0;
+	u16 p2 = 0;
+	switch(len) {
+	case 6: p2 |= s[5];
+	case 5: p2 |= (u16)s[4]<<8;
+	case 4: p1 |= s[3];
+	case 3: p1 |= (u32)s[2]<<8;
+	case 2: p1 |= (u32)s[1]<<16;
+	case 1: p1 |= (u32)s[0]<<24;
+	}
+	f->str.prefix1 = p1;
+	f->str.prefix2 = p2;
+}
+
+static inline void
+set_lstr_field(union index_field *f, u32 len, const u8* s) {
+	f->str.len = len;
+	if (len <= 6) {
+		lstr_load_prefix(f, s, len);
+	} else {
+		lstr_load_prefix(f, s, 6);
+		if (len <= 14) {
+			memcpy(f->str.data.bytes, s+6, len - 6);
+		} else {
+			f->str.data.ptr = s+6;
+		}
+	}
 }
 
 #endif

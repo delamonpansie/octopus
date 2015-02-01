@@ -27,6 +27,7 @@
 #import <config.h>
 #import <index.h>
 #import <assoc.h>
+#import <say.h>
 
 /*
   Note about *_addr() compare functions:
@@ -232,23 +233,57 @@ i64_init_pattern(struct tbuf *key, int cardinality,
 	}
 }
 
+static inline int
+lstr_field_compare(const union index_field *fa, const union index_field *fb)
+{
+	if (fa->str.prefix1 < fb->str.prefix1) return -1;
+	if (fa->str.prefix1 > fb->str.prefix1) return 1;
+	if (fa->str.prefix2 < fb->str.prefix2) return -1;
+	if (fa->str.prefix2 > fb->str.prefix2) return 1;
+	if (fa->str.len < 6) {
+		if (fa->str.len < fb->str.len) return -1;
+		if (fa->str.len > fb->str.len) return 1;
+		return 0;
+	}
+	if (fb->str.len < 6) return 1;
+	const u8 *d1 = fa->str.len <= 14 ? fa->str.data.bytes : fa->str.data.ptr;
+	const u8 *d2 = fb->str.len <= 14 ? fb->str.data.bytes : fb->str.data.ptr;
+	int r = memcmp(d1, d2, MIN(fa->str.len, fb->str.len) - 6);
+	if (r != 0)
+		return r;
+
+	return fa->str.len > fb->str.len ? 1 : fa->str.len == fb->str.len ? 0 : -1;
+}
+
+static inline int
+lstr_field_eq(const union index_field *fa, const union index_field *fb)
+{
+	if (fa->str.len != fb->str.len) return 0;
+	if (fa->str.prefix1 != fb->str.prefix1) return 0;
+	if (fa->str.prefix2 != fb->str.prefix2) return 0;
+	if (fa->str.len < 6) return 1;
+	const u8 *d1 = fa->str.len <= 14 ? fa->str.data.bytes : fa->str.data.ptr;
+	const u8 *d2 = fb->str.len <= 14 ? fb->str.data.bytes : fb->str.data.ptr;
+	return memcmp(d1, d2, MIN(fa->str.len, fb->str.len) - 6) == 0;
+}
+
 int
 lstr_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
-	return llexstrcmp(na->key.ptr, nb->key.ptr);
+	return lstr_field_compare(&na->key, &nb->key);
 }
 
 int
 lstr_compare_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
-	return lstr_compare(nb, na, x);
+	return lstr_field_compare(&nb->key, &na->key);
 }
 
 int
 lstr_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
 
-	int r = llexstrcmp(na->key.ptr, nb->key.ptr);
+	int r = lstr_compare(na, nb, x);
 	if (r != 0)
 		return r;
 
@@ -272,13 +307,7 @@ lstr_compare_with_addr_desc(const struct index_node *na, const struct index_node
 int
 lstr_eq(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
-	const u8 *a = na->key.ptr, *b = nb->key.ptr;
-	int al, bl;
-
-	al = LOAD_VARINT32(a);
-	bl = LOAD_VARINT32(b);
-
-	return al == bl && memcmp(a, b, al) == 0;
+	return lstr_field_eq(&na->key, &nb->key);
 }
 
 int
@@ -292,17 +321,14 @@ lstr_init_pattern(struct tbuf *key, int cardinality,
 		 struct index_node *pattern, void *x __attribute__((unused)))
 {
 	pattern->obj = NULL;
-	static u8 empty[] = {0};
-	void *f;
-
-	if (cardinality == 1)
-		f = read_field(key);
-	else if (cardinality == 0)
-		f = &empty;
+	if (cardinality == 1) {
+		u32 size = read_varint32(key);
+		set_lstr_field(&pattern->key, size, read_bytes(key, size));
+	} else if (cardinality == 0) {
+		set_lstr_field(&pattern->key, 0, NULL);
+	}
 	else
 		index_raise("cardinality too big");
-
-	pattern->key.ptr = f;
 }
 
 int
@@ -356,9 +382,6 @@ cstr_eq_with_addr(const struct index_node *na, const struct index_node *nb, void
 static int
 field_compare(union index_field *f1, union index_field *f2, enum index_field_type type)
 {
-	const void *d1, *d2;
-	int r;
-
 	switch (type) {
 	case SNUM16:
 	case UNUM16:
@@ -370,13 +393,7 @@ field_compare(union index_field *f1, union index_field *f2, enum index_field_typ
 	case UNUM64:
 		return f1->u64 > f2->u64 ? 1 : f1->u64 == f2->u64 ? 0 : -1;
 	case STRING:
-		d1 = f1->str.len <= sizeof(f1->str.data) ? f1->str.data.bytes : f1->str.data.ptr;
-		d2 = f2->str.len <= sizeof(f2->str.data) ? f2->str.data.bytes : f2->str.data.ptr;
-		r = memcmp(d1, d2, MIN(f1->str.len, f2->str.len));
-		if (r != 0)
-			return r;
-
-		return f1->str.len > f2->str.len ? 1 : f1->str.len == f2->str.len ? 0 : -1;
+		return lstr_field_compare(f1, f2);
 	case UNDEF:
 		abort();
 	}
@@ -431,8 +448,6 @@ tree_node_compare_with_addr(struct index_node *na, struct index_node *nb, struct
 static int
 field_eq(union index_field *f1, union index_field *f2, enum index_field_type type)
 {
-	const void *d1, *d2;
-
 	switch (type) {
 	case SNUM16:
 	case UNUM16:
@@ -444,9 +459,7 @@ field_eq(union index_field *f1, union index_field *f2, enum index_field_type typ
 	case UNUM64:
 		return f1->u64 == f2->u64;
 	case STRING:
-		d1 = f1->str.len <= sizeof(f1->str.data) ? f1->str.data.bytes : f1->str.data.ptr;
-		d2 = f2->str.len <= sizeof(f2->str.data) ? f2->str.data.bytes : f2->str.data.ptr;
-		return f1->str.len == f2->str.len && memcmp(d1, d2, MIN(f1->str.len, f2->str.len)) == 0;
+		return lstr_field_eq(f1, f2);
 	case UNDEF:
 		abort();
 	}
@@ -487,7 +500,7 @@ tree_node_eq_with_addr(struct index_node *na, struct index_node *nb, struct inde
 
 #define KNUTH_MULT 0x5851f42d4c957f2dULL
 static u32
-dumb_hash(const char *d, u32 l, u64 h)
+dumb_hash(const u8 *d, u32 l, u64 h)
 {
 	while (l >= 4) {
 		u32 k = *(u32*)d;
@@ -503,10 +516,25 @@ dumb_hash(const char *d, u32 l, u64 h)
 	return h;
 }
 
+static inline u64
+lstr_hash(const union index_field *f, u64 h) {
+	h = (h ^ f->str.prefix1) * KNUTH_MULT;
+	h = (h << 32) | (h >> 32);
+	h = (h ^ f->str.prefix2) * KNUTH_MULT;
+	h = (h << 32) | (h >> 32);
+	if (f->str.len > 6) {
+		const u8 *d = f->str.len <= 14 ? f->str.data.bytes : f->str.data.ptr;
+		h = dumb_hash(d, f->str.len - 6, h);
+	} else {
+		h = (h ^ f->str.len) * KNUTH_MULT;
+	}
+	return h;
+}
+
 u32
 gen_hash_node(const struct index_node *n, struct index_conf *ic)
 {
-	u64 h = 0x33;
+	u64 h = 0xbada5515bad;
 	int c = ic->cardinality;
 
 	if (c == 1) {
@@ -517,22 +545,14 @@ gen_hash_node(const struct index_node *n, struct index_conf *ic)
 		case SNUM64:
 		case UNUM64:
 			return (u32)(((u64)n->key.u64 * KNUTH_MULT) >> 32);
-		case STRING: {
-			const void *k = n->key.ptr;
-			u32 l = LOAD_VARINT32(k);
-			h = dumb_hash(k, l, h);
-			h ^= h >> 33;
-			h *= KNUTH_MULT;
-			return (u32)(h >> 32);
-		     }
+		case STRING:
+			return lstr_hash(&n->key, h) >> 32;
 		default:
 			abort();
 		}
 	}
 
 	for (int i = 0; i < c; ++i) {
-		char const *d;
-		u32 len;
 		union index_field *key = (void *)&n->key + ic->field[i].offset;
 		switch(ic->field[i].type) {
 		case SNUM16:
@@ -548,9 +568,7 @@ gen_hash_node(const struct index_node *n, struct index_conf *ic)
 			h = (h ^ key->u64) * KNUTH_MULT;
 			break;
 		case STRING:
-			d = key->str.len <= sizeof(key->str.data) ? key->str.data.bytes : key->str.data.ptr;
-			len = key->str.len;
-			h = dumb_hash(d, len, h);
+			h = lstr_hash(&n->key, h);
 			break;
 		case UNDEF:
 			abort();
@@ -598,11 +616,7 @@ gen_set_field(union index_field *f, enum index_field_type type, int len, const v
 	case STRING:
 		if (len > 0xffff)
 			index_raise("string key too long");
-		f->str.len = len;
-		if (len <= sizeof(f->str.data))
-			memcpy(f->str.data.bytes, data, len);
-		else
-			f->str.data.ptr = data;
+		set_lstr_field(f, len, data);
 		return;
 	case UNDEF:
 		abort();
@@ -625,8 +639,9 @@ gen_init_pattern(struct tbuf *key_data, int cardinality, struct index_node *patt
 
 		union index_field *f = (void *)&pattern->key + ic->field[i].offset;
 		gen_set_field(f, ic->field[i].type, len, key);
-		key += len;
 	}
 
 	pattern->obj = (void *)(uintptr_t)cardinality;
 }
+
+register_source();
