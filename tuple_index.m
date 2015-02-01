@@ -44,12 +44,11 @@ box_tuple_u32_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
 	if (tuple->cardinality <= n)
 		index_raise("cardinality too small");
 	u8 *f = tuple_field(tuple, n);
-	u32 size = LOAD_VARINT32(f);
-	if (size != sizeof(u32))
+	if (*f != sizeof(u32))
 		index_raise("expected u32");
 
 	node->obj = obj;
-	node->key.u32 = *(u32*)f;
+	node->key.u32 = *(u32*)(f + 1);
 	return node;
 }
 static struct index_node *
@@ -60,12 +59,11 @@ box_tuple_u64_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
 	if (tuple->cardinality <= n)
 		index_raise("cardinality too small");
 	const u8 *f = tuple_field(tuple, n);
-	u32 size = LOAD_VARINT32(f);
-	if (size != sizeof(u64))
+	if (*f != sizeof(u64))
 		index_raise("expected u64");
 
 	node->obj = obj;
-	node->key.u64 = *(u64*)f;
+	node->key.u64 = *(u64*)(f + 1);
 	return node;
 }
 static struct index_node *
@@ -90,20 +88,33 @@ box_tuple_gen_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
 	if (tuple->cardinality < desc->min_tuple_cardinality)
 		index_raise("tuple cardinality too small");
 
-	for (int i = 0, j = 0; i < desc->cardinality; j++) {
+	node->obj = obj;
+
+	if (desc->cardinality == 1) {
+		const u8 *f = tuple_field(tuple, desc->field[0].index);
+		u32 len = LOAD_VARINT32(f);
+		gen_set_field(&node->key, desc->field[0].type, len, f);
+		return node;
+	}
+
+	int i = 0, j = 0;
+	int indi = desc->fill_order[i];
+	struct field_desc *field = &desc->field[indi];
+
+	for (;;j++) {
 		assert(tuple_data < (const u8 *)tuple->data + tuple->bsize);
 		u32 len = LOAD_VARINT32(tuple_data);
-		for (;;) {
-			int indi = desc->fill_order[i];
-			if (desc->field_index[indi] != j) break;
-			union index_field *f = (void *)&node->key + desc->offset[indi];
-			gen_set_field(f, desc->field_type[indi], len, tuple_data);
-			i++;
+		if (field->index == j) {
+			union index_field *f = (void *)&node->key + field->offset;
+			gen_set_field(f, field->type, len, tuple_data);
+			if (++i == desc->cardinality)
+				goto end;
+			indi = desc->fill_order[i];
+			field = &desc->field[indi];
 		}
 		tuple_data += len;
 	}
-
-	node->obj = obj;
+end:
 	return (struct index_node *)node;
 }
 
@@ -148,8 +159,8 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 {
 	struct index_conf *d = xcalloc(1, sizeof(*d));
 
-	for (int i = 0; i < nelem(d->field_index); i++)
-		d->field_index[i] = d->fill_order[i] = d->offset[i] = -1;
+	for (int i = 0; i < nelem(d->field); i++)
+		d->field[i].index = d->fill_order[i] = d->field[i].offset = -1;
 
 	d->unique = c->unique;
 	if (strcmp(c->type, "HASH") == 0)
@@ -175,7 +186,7 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 			panic("unknown sort order");
 	}
 
-	if (d->cardinality > nelem(d->field_index))
+	if (d->cardinality > nelem(d->field))
 		panic("index cardinality is too big");
 
 	if (d->cardinality == 0)
@@ -184,8 +195,8 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 	for (int k = 0; k < d->cardinality; k++) {
 		key_field = c->key_field[k];
 		d->fill_order[k] = k;
-		d->field_index[k] = key_field->fieldno;
-		d->sort_order[k] = eq(key_field->sort_order, "ASC") ? ASC : DESC;
+		d->field[k].index = key_field->fieldno;
+		d->field[k].sort_order = eq(key_field->sort_order, "ASC") ? ASC : DESC;
 
 		const char *typename = key_field->type;
 		int type = UNDEF;
@@ -202,7 +213,7 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 		if (type == UNDEF) {
 			panic("unknown field data type: `%s'", typename);
 		}
-		d->field_type[k] = type;
+		d->field[k].type = type;
 		if (key_field->fieldno + 1 > d->min_tuple_cardinality)
 			d->min_tuple_cardinality = key_field->fieldno + 1;
 	}
@@ -211,9 +222,12 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 		for (int j = 0; j < i; j++) {
 			int inda = d->fill_order[j];
 			int indb = d->fill_order[j+1];
-			if (d->field_index[inda] > d->field_index[indb]) {
+
+			if (d->field[inda].index > d->field[indb].index) {
 				d->fill_order[j+1] = inda;
 				d->fill_order[j] = indb;
+			} else if (d->field[inda].index == d->field[indb].index) {
+				panic("field indices should not repeat");
 			}
 		}
 
