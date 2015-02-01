@@ -434,7 +434,7 @@ field_eq(union index_field *f1, union index_field *f2, enum index_field_type typ
 	case STRING:
 		d1 = f1->str.len <= sizeof(f1->str.data) ? f1->str.data.bytes : f1->str.data.ptr;
 		d2 = f2->str.len <= sizeof(f2->str.data) ? f2->str.data.bytes : f2->str.data.ptr;
-		return d1 == d2 && memcmp(d1, d2, MIN(f1->str.len, f2->str.len)) == 0;
+		return f1->str.len == f2->str.len && memcmp(d1, d2, MIN(f1->str.len, f2->str.len)) == 0;
 	case UNDEF:
 		abort();
 	}
