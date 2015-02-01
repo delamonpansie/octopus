@@ -305,7 +305,8 @@ static inline int llexstrcmp(const void *a, const void *b)
 }
 
 static inline void
-lstr_load_prefix(union index_field *f, const u8* s, u32 len) {
+lstr_load_prefix(union index_field *f, const u8* s, u32 len)
+{
 	u32 p1 = 0;
 	u16 p2 = 0;
 	switch(len) {
@@ -321,7 +322,8 @@ lstr_load_prefix(union index_field *f, const u8* s, u32 len) {
 }
 
 static inline void
-set_lstr_field(union index_field *f, u32 len, const u8* s) {
+set_lstr_field(union index_field *f, u32 len, const u8* s)
+{
 	f->str.len = len;
 	if (len <= 6) {
 		lstr_load_prefix(f, s, len);
@@ -334,5 +336,7 @@ set_lstr_field(union index_field *f, u32 len, const u8* s) {
 		}
 	}
 }
+
+void set_lstr_field_noninline(union index_field *f, u32 len, const u8* s);
 
 #endif

@@ -91,18 +91,14 @@ local function gen_packfield(e, index, i, key)
             [ffi.C.SNUM64] = "    field.u64 = $key + 0x8000000000000000LL",
             [ffi.C.STRING] = [[
     if #$key > 0xffff then error("key too big", 4) end
-    field.str.len = #$key
-    if #$key <= 8 then
-        ffi.copy(field.str.data.bytes, $key, #$key)
-    else
-        field.str.data.ptr = $key
-    end]]
+    ffi.C.set_lstr_field_noninline(field, #$key, $key)
+    ]]
        }
     end
 
     e:emit('do')
     e:emit("    local field = ffi.cast(index_field, node.key.chr + $offset)")
-    local ftype = tonumber(index.conf.field_type[i])
+    local ftype = tonumber(index.conf.field[i].type)
     local code = field_code[ftype]
     if code then
         e:emit(code)
@@ -121,18 +117,6 @@ local function gen_packnode(index)
     e:emit('local void = ffi.typeof("void *")')
     e:emit('local index_field = ffi.typeof("union index_field *")')
 
-    if index.conf.cardinality == 1 and index.conf.field_type[0] == ffi.C.STRING then
-        e:emit('return function(self, key)')
-        e:emit('    if #key > 0xffff then error("key too big") end')
-        e:emit('    local n = varint32.write(strbuf, #key)')
-        e:emit('    ffi.copy(strbuf + n, key, #key)')
-        e:emit('    node.key.ptr = strbuf')
-        e:emit('    node.obj = ffi.cast(void, 1)')
-        e:emit('    return node')
-        e:emit('end')
-        return loadstring(e:gen())()
-    end
-
     local keys = {}
     for i = 1, index.conf.cardinality do
         table.insert(keys, 'k' .. i)
@@ -142,7 +126,7 @@ local function gen_packnode(index)
     e:emit('return function ($args)')
     for i, key in ipairs(keys) do
         e:bind('key',  key)
-        e:bind('offset', index.conf.offset[i - 1])
+        e:bind('offset', index.conf.field[i - 1].offset)
         e:bind('i', i)
         if i == 1 then
             e:emit('    if $key == nil then error("empty key") end')
@@ -164,7 +148,7 @@ local function packerr(err, fname, index, ...)
     local atype = {}
     for i = 0, index.conf.cardinality - 1 do
 	local t = "UNKNOWN"
-        local ftype = tonumber(index.conf.field_type[i])
+        local ftype = tonumber(index.conf.field[i].type)
 	if ftype == ffi.C.UNUM16 then
 	    t = "UNUM16"
 	elseif ftype == ffi.C.SNUM16 then
@@ -180,7 +164,7 @@ local function packerr(err, fname, index, ...)
 	elseif ftype == ffi.C.STRING then
 	    t = "STRING"
 	else
-	    t = tostring(index.conf.field_type[i])
+	    t = tostring(index.conf.field[i].type)
 	end
 	table.insert(itype, t)
     end
@@ -201,7 +185,7 @@ function iter(index, key)
     assertarg(index, legacy_mt, 1, 2)
     index = index[magic_key]
 
-    if index.__ptr.conf.field_type[0] ~= ffi.C.STRING and type(key) == 'string' then
+    if index.__ptr.conf.field[0].type ~= ffi.C.STRING and type(key) == 'string' then
         key = tonumber(key)
     end
     return index:iter(key)
@@ -211,7 +195,7 @@ legacy_mt = {
     __index = function(index, key)
         assertarg(index, legacy_mt, 1, 2)
         index = index[magic_key]
-        if index.__ptr.conf.field_type[0] ~= ffi.C.STRING and type(key) == 'string' then
+        if index.__ptr.conf.field[0].type ~= ffi.C.STRING and type(key) == 'string' then
             key = tonumber(key)
         end
         return index:find(key)

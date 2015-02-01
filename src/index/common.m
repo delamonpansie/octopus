@@ -233,6 +233,11 @@ i64_init_pattern(struct tbuf *key, int cardinality,
 	}
 }
 
+void set_lstr_field_noninline(union index_field *f, u32 len, const u8* s)
+{
+	set_lstr_field(f, len, s);
+}
+
 static inline int
 lstr_field_compare(const union index_field *fa, const union index_field *fb)
 {
