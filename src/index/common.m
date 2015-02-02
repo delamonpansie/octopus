@@ -111,15 +111,8 @@ cstr_compare_desc(const struct index_node *na, const struct index_node *nb, void
 	return cstr_compare(nb, na, x);
 }
 
-int
-u32_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+static inline int addr_compare(const struct index_node *na, const struct index_node *nb)
 {
-	u32 a = na->key.u32, b = nb->key.u32;
-	if (a > b)
-		return 1;
-	else if (a < b)
-		return -1;
-
 	if ((uintptr_t)na->obj <= 1)
 		return 0;
 
@@ -129,6 +122,18 @@ u32_compare_with_addr(const struct index_node *na, const struct index_node *nb, 
 		return -1;
 	else
 		return 0;
+}
+
+int
+u32_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	u32 a = na->key.u32, b = nb->key.u32;
+	if (a > b)
+		return 1;
+	else if (a < b)
+		return -1;
+
+	return addr_compare(na, nb);
 }
 int
 u64_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
@@ -139,15 +144,7 @@ u64_compare_with_addr(const struct index_node *na, const struct index_node *nb, 
 	else if (a < b)
 		return -1;
 
-	if ((uintptr_t)na->obj <= 1)
-		return 0;
-
-	if (na->obj > nb->obj)
-		return 1;
-	else if (na->obj < nb->obj)
-		return -1;
-	else
-		return 0;
+	return addr_compare(na, nb);
 }
 int
 lstr_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
@@ -157,15 +154,7 @@ lstr_compare_with_addr(const struct index_node *na, const struct index_node *nb,
 	if (r != 0)
 		return r;
 
-	if ((uintptr_t)na->obj <= 1)
-		return 0;
-
-	if (na->obj > nb->obj)
-		return 1;
-	else if (na->obj < nb->obj)
-		return -1;
-	else
-		return 0;
+	return addr_compare(na, nb);
 }
 int
 cstr_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
@@ -174,15 +163,7 @@ cstr_compare_with_addr(const struct index_node *na, const struct index_node *nb,
 	if (r != 0)
 		return r;
 
-	if ((uintptr_t)na->obj <= 1)
-		return 0;
-
-	if (na->obj > nb->obj)
-		return 1;
-	else if (na->obj < nb->obj)
-		return -1;
-	else
-		return 0;
+	return addr_compare(na, nb);
 }
 
 
