@@ -239,11 +239,18 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 			panic("unknown field data type: `%s'", typename);
 		}
 		d->field_type[k] = type;
-		switch(type & ~SIGNFLAG) {
-		case UNUM32: offset += field_sizeof(union index_field, u32); break;
-		case UNUM16: offset += field_sizeof(union index_field, u16); break;
-		case UNUM64: offset += field_sizeof(union index_field, u64); break;
-		case STRING: offset += field_sizeof(union index_field, str); break;
+		switch(type) {
+		case SNUM32:
+		case UNUM32:
+			offset += field_sizeof(union index_field, u32); break;
+		case SNUM16:
+		case UNUM16:
+			offset += field_sizeof(union index_field, u16); break;
+		case SNUM64:
+		case UNUM64:
+			offset += field_sizeof(union index_field, u64); break;
+		case STRING:
+			offset += field_sizeof(union index_field, str); break;
 		}
 
 		if (key_field->fieldno + 1 > d->min_tuple_cardinality)
