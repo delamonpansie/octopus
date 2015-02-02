@@ -91,6 +91,7 @@ init:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 	memcpy(&conf, ic, sizeof(*ic));
 	if (ic->cardinality == 1) {
 		int ftype = ic->field_type[0];
+		conf.offset[0] = 0;
 		switch(ftype) {
 		case SNUM32:
 		case UNUM32:
@@ -125,21 +126,25 @@ init:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 		}
 	}
 	if (node_size == 0) {
-		node_size = sizeof(struct tnt_object *);
-		for (int i = 0; i < ic->cardinality; i++)
+		int offset = 0;
+		for (int i = 0; i < ic->cardinality; i++) {
+			conf.offset[i] = offset;
 			switch (ic->field_type[i]) {
 			case SNUM16:
 			case UNUM16:
-				node_size += field_sizeof(union index_field, u16); break;
+				offset += field_sizeof(union index_field, u16); break;
 			case SNUM32:
 			case UNUM32:
-				node_size += field_sizeof(union index_field, u32); break;
+				offset += field_sizeof(union index_field, u32); break;
 			case SNUM64:
 			case UNUM64:
-				node_size += field_sizeof(union index_field, u64); break;
-			case STRING: node_size += field_sizeof(union index_field, str); break;
+				offset += field_sizeof(union index_field, u64); break;
+			case STRING:
+				offset += field_sizeof(union index_field, str); break;
 			case UNDEF: abort();
 			}
+		}
+		node_size = sizeof(struct tnt_object *) + offset;
 
 		init_pattern = gen_init_pattern;
 		pattern_compare = (index_cmp)tree_node_compare;
