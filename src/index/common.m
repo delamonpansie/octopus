@@ -359,11 +359,14 @@ field_compare(union index_field *f1, union index_field *f2, enum index_field_typ
 	const void *d1, *d2;
 	int r;
 
-	switch (type & ~SIGNFLAG) {
+	switch (type) {
+	case SNUM16:
 	case UNUM16:
 		return f1->u16 > f2->u16 ? 1 : f1->u16 == f2->u16 ? 0 : -1;
+	case SNUM32:
 	case UNUM32:
 		return f1->u32 > f2->u32 ? 1 : f1->u32 == f2->u32 ? 0 : -1;
+	case SNUM64:
 	case UNUM64:
 		return f1->u64 > f2->u64 ? 1 : f1->u64 == f2->u64 ? 0 : -1;
 	case STRING:
@@ -424,11 +427,14 @@ field_eq(union index_field *f1, union index_field *f2, enum index_field_type typ
 {
 	const void *d1, *d2;
 
-	switch (type & ~SIGNFLAG) {
+	switch (type) {
+	case SNUM16:
 	case UNUM16:
 		return f1->u16 == f2->u16;
+	case SNUM32:
 	case UNUM32:
 		return f1->u32 == f2->u32;
+	case SNUM64:
 	case UNUM64:
 		return f1->u64 == f2->u64;
 	case STRING:
@@ -493,9 +499,11 @@ gen_hash_node(const struct index_node *n, struct index_conf *ic)
 	int c = ic->cardinality;
 
 	if (c == 1) {
-		switch (ic->field_type[0] & ~SIGNFLAG) {
+		switch (ic->field_type[0]) {
+		case SNUM32:
 		case UNUM32:
 			return n->key.u32;
+		case SNUM64:
 		case UNUM64:
 			return (u32)(((u64)n->key.u64 * KNUTH_MULT) >> 32);
 		case STRING: {
@@ -506,6 +514,8 @@ gen_hash_node(const struct index_node *n, struct index_conf *ic)
 			h *= KNUTH_MULT;
 			return (u32)(h >> 32);
 		     }
+		default:
+			abort();
 		}
 	}
 
@@ -513,13 +523,16 @@ gen_hash_node(const struct index_node *n, struct index_conf *ic)
 		char const *d;
 		u32 len;
 		union index_field *key = (void *)&n->key + ic->offset[i];
-		switch(ic->field_type[i] & ~SIGNFLAG) {
+		switch(ic->field_type[i]) {
+		case SNUM16:
 		case UNUM16:
 			h = (h ^ key->u16) * KNUTH_MULT;
 			break;
+		case SNUM32:
 		case UNUM32:
 			h = (h ^ key->u32) * KNUTH_MULT;
 			break;
+		case SNUM64:
 		case UNUM64:
 			h = (h ^ key->u64) * KNUTH_MULT;
 			break;
@@ -580,7 +593,6 @@ gen_set_field(union index_field *f, enum index_field_type type, int len, const v
 		else
 			f->str.data.ptr = data;
 		return;
-	case SIGNFLAG:
 	case UNDEF:
 		abort();
 	}

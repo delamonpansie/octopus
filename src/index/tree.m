@@ -48,9 +48,12 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 - (struct tnt_object *)
 find:(const char *)key
 {
-	switch (conf.field_type[0] & ~SIGNFLAG) {
+	switch (conf.field_type[0]) {
+	case SNUM16:
 	case UNUM16: node_a.key.u16 = *(u16 *)key; break;
+	case SNUM32:
 	case UNUM32: node_a.key.u32 = *(u32 *)key; break;
+	case SNUM64:
 	case UNUM64: node_a.key.u64 = *(u64 *)key; break;
 	case STRING: node_a.key.ptr = key; break;
 	default: abort();
