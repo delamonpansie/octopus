@@ -48,11 +48,67 @@ u32_compare(const struct index_node *na, const struct index_node *nb, void *x __
 	else
 		return 0;
 }
+int
+u64_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	u64 a = na->key.u64, b = nb->key.u64;
+	if (a > b)
+		return 1;
+	else if (a < b)
+		return -1;
+	else
+		return 0;
+}
+static inline int
+lstr_field_compare(const union index_field *fa, const union index_field *fb)
+{
+	if (fa->str.prefix1 < fb->str.prefix1) return -1;
+	if (fa->str.prefix1 > fb->str.prefix1) return 1;
+	if (fa->str.prefix2 < fb->str.prefix2) return -1;
+	if (fa->str.prefix2 > fb->str.prefix2) return 1;
+	if (fa->str.len <= 6) {
+		return (int)fa->str.len - (int)fb->str.len;
+	}
+	if (fb->str.len <= 6) return 1;
+	const char *d1 = fa->str.len <= 14 ? fa->str.data.bytes : fa->str.data.ptr;
+	const char *d2 = fb->str.len <= 14 ? fb->str.data.bytes : fb->str.data.ptr;
+	int r = memcmp(d1, d2, MIN(fa->str.len, fb->str.len) - 6);
+	if (r != 0)
+		return r;
+
+	return (int)fa->str.len - (int)fb->str.len;
+}
+int
+lstr_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	return lstr_field_compare(&na->key, &nb->key);
+}
+int
+cstr_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+        return strcmp(na->key.ptr, nb->key.ptr);
+}
+
 
 int
 u32_compare_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
 	return u32_compare(nb, na, x);
+}
+int
+u64_compare_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	return u64_compare(nb, na, x);
+}
+int
+lstr_compare_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	return lstr_compare(nb, na, x);
+}
+int
+cstr_compare_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	return cstr_compare(nb, na, x);
 }
 
 int
@@ -74,12 +130,83 @@ u32_compare_with_addr(const struct index_node *na, const struct index_node *nb, 
 	else
 		return 0;
 }
+int
+u64_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	u64 a = na->key.u64, b = nb->key.u64;
+	if (a > b)
+		return 1;
+	else if (a < b)
+		return -1;
+
+	if ((uintptr_t)na->obj <= 1)
+		return 0;
+
+	if (na->obj > nb->obj)
+		return 1;
+	else if (na->obj < nb->obj)
+		return -1;
+	else
+		return 0;
+}
+int
+lstr_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+
+	int r = lstr_field_compare(&nb->key, &na->key);
+	if (r != 0)
+		return r;
+
+	if ((uintptr_t)na->obj <= 1)
+		return 0;
+
+	if (na->obj > nb->obj)
+		return 1;
+	else if (na->obj < nb->obj)
+		return -1;
+	else
+		return 0;
+}
+int
+cstr_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+        int r = strcmp(na->key.ptr, nb->key.ptr);
+	if (r != 0)
+		return r;
+
+	if ((uintptr_t)na->obj <= 1)
+		return 0;
+
+	if (na->obj > nb->obj)
+		return 1;
+	else if (na->obj < nb->obj)
+		return -1;
+	else
+		return 0;
+}
+
 
 int
 u32_compare_with_addr_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
 	return u32_compare_with_addr(nb, na, x);
 }
+int
+u64_compare_with_addr_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	return u64_compare_with_addr(nb, na, x);
+}
+int
+lstr_compare_with_addr_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	return lstr_compare_with_addr(nb, na, x);
+}
+int
+cstr_compare_with_addr_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	return cstr_compare_with_addr(nb, na, x);
+}
+
 
 int
 u32_eq(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
@@ -87,12 +214,59 @@ u32_eq(const struct index_node *na, const struct index_node *nb, void *x __attri
 	u32 a = na->key.u32, b = nb->key.u32;
 	return a == b;
 }
+int
+u64_eq(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	u64 a = na->key.u64, b = nb->key.u64;
+	return a == b;
+}
+static inline int
+lstr_field_eq(const union index_field *fa, const union index_field *fb)
+{
+	if (fa->str.len != fb->str.len) return 0;
+	if (fa->str.prefix1 != fb->str.prefix1) return 0;
+	if (fa->str.prefix2 != fb->str.prefix2) return 0;
+	if (fa->str.len <= 6) return 1;
+	if (fa->str.len <= 14) {
+		return fa->str.data.u64 == fb->str.data.u64;
+	} else {
+		const u8 *d1 = fa->str.data.ptr;
+		const u8 *d2 = fb->str.data.ptr;
+		return memcmp(d1, d2, fa->str.len - 6) == 0;
+	}
+}
+int
+lstr_eq(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	return lstr_field_eq(&na->key, &nb->key);
+}
+int
+cstr_eq(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+        return strcmp(na->key.ptr, nb->key.ptr) == 0;
+}
 
 int
 u32_eq_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
 	u32 a = na->key.u32, b = nb->key.u32;
 	return a == b && na->obj == nb->obj;
+}
+int
+u64_eq_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	u64 a = na->key.u64, b = nb->key.u64;
+	return a == b && na->obj == nb->obj;
+}
+int
+lstr_eq_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	return  lstr_eq(na, nb, x) && na->obj == nb->obj;
+}
+int
+cstr_eq_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+        return cstr_eq(na, nb, x) && na->obj == nb->obj;
 }
 
 void
@@ -134,65 +308,6 @@ i32_init_pattern(struct tbuf *key, int cardinality,
 		index_raise("cardinality too big");
 	}
 }
-
-int
-u64_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
-{
-	u64 a = na->key.u64, b = nb->key.u64;
-	if (a > b)
-		return 1;
-	else if (a < b)
-		return -1;
-	else
-		return 0;
-}
-
-int
-u64_compare_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
-{
-	return u64_compare(nb, na, x);
-}
-
-int
-u64_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
-{
-	u64 a = na->key.u64, b = nb->key.u64;
-	if (a > b)
-		return 1;
-	else if (a < b)
-		return -1;
-
-	if ((uintptr_t)na->obj <= 1)
-		return 0;
-
-	if (na->obj > nb->obj)
-		return 1;
-	else if (na->obj < nb->obj)
-		return -1;
-	else
-		return 0;
-}
-
-int
-u64_compare_with_addr_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
-{
-	return u64_compare_with_addr(nb, na, x);
-}
-
-int
-u64_eq(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
-{
-	u64 a = na->key.u64, b = nb->key.u64;
-	return a == b;
-}
-
-int
-u64_eq_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
-{
-	u64 a = na->key.u64, b = nb->key.u64;
-	return a == b && na->obj == nb->obj;
-}
-
 void
 u64_init_pattern(struct tbuf *key, int cardinality,
 		 struct index_node *pattern, void *x __attribute__((unused)))
@@ -233,94 +348,10 @@ i64_init_pattern(struct tbuf *key, int cardinality,
 	}
 }
 
-void set_lstr_field_noninline(union index_field *f, u32 len, const u8* s)
+void
+set_lstr_field_noninline(union index_field *f, u32 len, const u8* s)
 {
 	set_lstr_field(f, len, s);
-}
-
-static inline int
-lstr_field_compare(const union index_field *fa, const union index_field *fb)
-{
-	if (fa->str.prefix1 < fb->str.prefix1) return -1;
-	if (fa->str.prefix1 > fb->str.prefix1) return 1;
-	if (fa->str.prefix2 < fb->str.prefix2) return -1;
-	if (fa->str.prefix2 > fb->str.prefix2) return 1;
-	if (fa->str.len <= 6) {
-		return (int)fa->str.len - (int)fb->str.len;
-	}
-	if (fb->str.len <= 6) return 1;
-	const char *d1 = fa->str.len <= 14 ? fa->str.data.bytes : fa->str.data.ptr;
-	const char *d2 = fb->str.len <= 14 ? fb->str.data.bytes : fb->str.data.ptr;
-	int r = memcmp(d1, d2, MIN(fa->str.len, fb->str.len) - 6);
-	if (r != 0)
-		return r;
-
-	return (int)fa->str.len - (int)fb->str.len;
-}
-
-static inline int
-lstr_field_eq(const union index_field *fa, const union index_field *fb)
-{
-	if (fa->str.len != fb->str.len) return 0;
-	if (fa->str.prefix1 != fb->str.prefix1) return 0;
-	if (fa->str.prefix2 != fb->str.prefix2) return 0;
-	if (fa->str.len <= 6) return 1;
-	if (fa->str.len <= 14) {
-		return fa->str.data.u64 == fb->str.data.u64;
-	} else {
-		const u8 *d1 = fa->str.data.ptr;
-		const u8 *d2 = fb->str.data.ptr;
-		return memcmp(d1, d2, fa->str.len - 6) == 0;
-	}
-}
-
-int
-lstr_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
-{
-	return lstr_field_compare(&na->key, &nb->key);
-}
-
-int
-lstr_compare_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
-{
-	return lstr_field_compare(&nb->key, &na->key);
-}
-
-int
-lstr_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
-{
-
-	int r = lstr_compare(na, nb, x);
-	if (r != 0)
-		return r;
-
-	if ((uintptr_t)na->obj <= 1)
-		return 0;
-
-	if (na->obj > nb->obj)
-		return 1;
-	else if (na->obj < nb->obj)
-		return -1;
-	else
-		return 0;
-}
-
-int
-lstr_compare_with_addr_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
-{
-	return lstr_compare_with_addr(nb, na, x);
-}
-
-int
-lstr_eq(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
-{
-	return lstr_field_eq(&na->key, &nb->key);
-}
-
-int
-lstr_eq_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
-{
-	return na->obj == nb->obj && lstr_eq(na, nb, x);
 }
 
 void
@@ -338,53 +369,7 @@ lstr_init_pattern(struct tbuf *key, int cardinality,
 		index_raise("cardinality too big");
 }
 
-int
-cstr_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
-{
-        return strcmp(na->key.ptr, nb->key.ptr);
-}
 
-int
-cstr_compare_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
-{
-	return cstr_compare(nb, na, x);
-}
-
-int
-cstr_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
-{
-        int r = strcmp(na->key.ptr, nb->key.ptr);
-	if (r != 0)
-		return r;
-
-	if ((uintptr_t)na->obj <= 1)
-		return 0;
-
-	if (na->obj > nb->obj)
-		return 1;
-	else if (na->obj < nb->obj)
-		return -1;
-	else
-		return 0;
-}
-
-int
-cstr_compare_with_addr_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
-{
-	return cstr_compare_with_addr(nb, na, x);
-}
-
-int
-cstr_eq(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
-{
-        return strcmp(na->key.ptr, nb->key.ptr) == 0;
-}
-
-int
-cstr_eq_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
-{
-        return strcmp(na->key.ptr, nb->key.ptr) == 0 && na->obj == nb->obj;
-}
 
 static int
 field_compare(union index_field *f1, union index_field *f2, enum index_field_type type)
