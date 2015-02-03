@@ -96,21 +96,15 @@ init:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 		case SNUM32:
 		case UNUM32:
 			node_size = sizeof(struct tnt_object *) + sizeof(u32);
-			init_pattern = ftype == SNUM32 ? i32_init_pattern : u32_init_pattern;
-			pattern_compare = (index_cmp)u32_compare;
 			eq = EQ(u32);
-			compare = COMPARE(u32);
-			dtor = ftype == SNUM32 ? dc->i32 : dc->u32;
+			dtor = dc->u32;
 			dtor_arg = (void *)(uintptr_t)ic->field[0].index;
 			break;
 		case SNUM64:
 		case UNUM64:
 			node_size = sizeof(struct tnt_object *) + sizeof(u64);
-			init_pattern = ftype == SNUM64 ? i64_init_pattern : u64_init_pattern;
-			pattern_compare = (index_cmp)u64_compare;
 			eq = EQ(u64);
-			compare = COMPARE(u64);
-			dtor = ftype == SNUM64 ? dc->i64 : dc->u64;
+			dtor = dc->u64;
 			dtor_arg = (void *)(uintptr_t)ic->field[0].index;
 			break;
 		case STRING:
@@ -124,6 +118,30 @@ init:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 		default:
 			break;
 		}
+
+		switch(ftype) {
+		case SNUM32:
+			init_pattern = i32_init_pattern;
+			pattern_compare = (index_cmp)i32_compare;
+			compare = COMPARE(i32);
+		case UNUM32:
+			init_pattern = u32_init_pattern;
+			pattern_compare = (index_cmp)u32_compare;
+			compare = COMPARE(u32);
+			break;
+		case SNUM64:
+			init_pattern = i64_init_pattern;
+			pattern_compare = (index_cmp)i64_compare;
+			compare = COMPARE(i64);
+		case UNUM64:
+			init_pattern = u64_init_pattern;
+			pattern_compare = (index_cmp)u64_compare;
+			compare = COMPARE(u64);
+			break;
+		default:
+			break;
+		}
+
 	}
 
 	if (node_size == 0) {

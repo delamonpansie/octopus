@@ -36,11 +36,21 @@
   it is guaranteed that pattern is a first arg.
 */
 
-
 int
 u32_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
 	u32 a = na->key.u32, b = nb->key.u32;
+	if (a > b)
+		return 1;
+	else if (a < b)
+		return -1;
+	else
+		return 0;
+}
+int
+i32_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	u32 a = na->key.i32, b = nb->key.i32;
 	if (a > b)
 		return 1;
 	else if (a < b)
@@ -79,6 +89,17 @@ lstr_field_compare(const union index_field *fa, const union index_field *fb)
 	return (int)fa->str.len - (int)fb->str.len;
 }
 int
+i64_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	u64 a = na->key.i64, b = nb->key.i64;
+	if (a > b)
+		return 1;
+	else if (a < b)
+		return -1;
+	else
+		return 0;
+}
+int
 lstr_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
 	return lstr_field_compare(&na->key, &nb->key);
@@ -96,7 +117,17 @@ u32_compare_desc(const struct index_node *na, const struct index_node *nb, void 
 	return u32_compare(nb, na, x);
 }
 int
+i32_compare_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	return i32_compare(nb, na, x);
+}
+int
 u64_compare_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	return u64_compare(nb, na, x);
+}
+int
+i64_compare_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
 	return u64_compare(nb, na, x);
 }
@@ -136,9 +167,31 @@ u32_compare_with_addr(const struct index_node *na, const struct index_node *nb, 
 	return addr_compare(na, nb);
 }
 int
+i32_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	u32 a = na->key.i32, b = nb->key.i32;
+	if (a > b)
+		return 1;
+	else if (a < b)
+		return -1;
+
+	return addr_compare(na, nb);
+}
+int
 u64_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
 	u64 a = na->key.u64, b = nb->key.u64;
+	if (a > b)
+		return 1;
+	else if (a < b)
+		return -1;
+
+	return addr_compare(na, nb);
+}
+int
+i64_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	u64 a = na->key.i64, b = nb->key.i64;
 	if (a > b)
 		return 1;
 	else if (a < b)
@@ -173,9 +226,19 @@ u32_compare_with_addr_desc(const struct index_node *na, const struct index_node 
 	return u32_compare_with_addr(nb, na, x);
 }
 int
+i32_compare_with_addr_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	return i32_compare_with_addr(nb, na, x);
+}
+int
 u64_compare_with_addr_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
 	return u64_compare_with_addr(nb, na, x);
+}
+int
+i64_compare_with_addr_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
+{
+	return i64_compare_with_addr(nb, na, x);
 }
 int
 lstr_compare_with_addr_desc(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
@@ -278,12 +341,12 @@ i32_init_pattern(struct tbuf *key, int cardinality,
 
 	u32 len;
 	switch (cardinality) {
-	case 0: pattern->key.u32 = 0;
+	case 0: pattern->key.u32 = INT32_MIN;
 		break;
 	case 1: len = read_varint32(key);
 		if (len != sizeof(u32))
 			index_raise("key is not i32");
-		pattern->key.u32 = read_u32(key) - INT32_MIN;
+		pattern->key.u32 = read_u32(key);
 		break;
 	default:
 		index_raise("cardinality too big");
@@ -317,12 +380,12 @@ i64_init_pattern(struct tbuf *key, int cardinality,
 
 	u32 len;
 	switch (cardinality) {
-	case 0: pattern->key.u64 = 0;
+	case 0: pattern->key.u64 = INT64_MIN;
 		break;
 	case 1: len = read_varint32(key);
 		if (len != sizeof(u64))
 			index_raise("key is not i64");
-		pattern->key.u64 = read_u64(key) - INT64_MIN;
+		pattern->key.u64 = read_u64(key);
 		break;
 	default:
 		index_raise("cardinality too big");
@@ -357,12 +420,15 @@ field_compare(union index_field *f1, union index_field *f2, enum index_field_typ
 {
 	switch (type) {
 	case SNUM16:
+		return f1->i16 > f2->i16 ? 1 : f1->i16 == f2->i16 ? 0 : -1;
 	case UNUM16:
 		return f1->u16 > f2->u16 ? 1 : f1->u16 == f2->u16 ? 0 : -1;
 	case SNUM32:
+		return f1->i32 > f2->i32 ? 1 : f1->i32 == f2->i32 ? 0 : -1;
 	case UNUM32:
 		return f1->u32 > f2->u32 ? 1 : f1->u32 == f2->u32 ? 0 : -1;
 	case SNUM64:
+		return f1->i64 > f2->i64 ? 1 : f1->i64 == f2->i64 ? 0 : -1;
 	case UNUM64:
 		return f1->u64 > f2->u64 ? 1 : f1->u64 == f2->u64 ? 0 : -1;
 	case STRING:
@@ -556,34 +622,22 @@ gen_set_field(union index_field *f, enum index_field_type type, int len, const v
 {
 	switch (type) {
 	case UNUM16:
+	case SNUM16:
 		if (len != sizeof(u16))
 			index_raise("key size mismatch, expected u16");
 		f->u16 = *(u16 *)data;
 		return;
-	case SNUM16:
-		if (len != sizeof(i16))
-			index_raise("key size mismatch, expected i16");
-		f->u16 = *(u16 *)data - INT16_MIN;
-		return;
 	case UNUM32:
+	case SNUM32:
 		if (len != sizeof(u32))
 			index_raise("key size mismatch, expected u32");
 		f->u32 = *(u32 *)data;
 		return;
-	case SNUM32:
-		if (len != sizeof(i32))
-			index_raise("key size mismatch, expected i32");
-		f->u32 = *(u32 *)data - INT32_MIN;
-		return;
 	case UNUM64:
+	case SNUM64:
 		if (len != sizeof(u64))
 			index_raise("key size mismatch, expected u64");
 		f->u64 = *(u64 *)data;
-		return;
-	case SNUM64:
-		if (len != sizeof(i64))
-			index_raise("key size mismatch, expected i64");
-		f->u64 = *(u64 *)data - INT64_MIN;
 		return;
 	case STRING:
 		if (len > 0xffff)

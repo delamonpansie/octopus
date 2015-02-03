@@ -84,11 +84,11 @@ local function gen_packfield(e, index, i, key)
     if field_code == nil then
         field_code = {
             [ffi.C.UNUM16] = "    field.u16 = $key",
-            [ffi.C.SNUM16] = "    field.u16 = $key + 0x8000",
+            [ffi.C.SNUM16] = "    field.i16 = $key",
             [ffi.C.UNUM32] = "    field.u32 = $key",
-            [ffi.C.SNUM32] = "    field.u32 = $key + 0x80000000",
+            [ffi.C.SNUM32] = "    field.i32 = $key",
             [ffi.C.UNUM64] = "    field.u64 = $key",
-            [ffi.C.SNUM64] = "    field.u64 = $key + 0x8000000000000000LL",
+            [ffi.C.SNUM64] = "    field.i64 = $key",
             [ffi.C.STRING] = [[
     if #$key > 0xffff then error("key too big", 4) end
     ffi.C.set_lstr_field_noninline(field, #$key, $key)

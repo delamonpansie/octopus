@@ -31,10 +31,6 @@
 #import <say.h>
 
 @implementation Tree
-#define COMPARE(type)										\
-	conf.sort_order[0] == ASC ?								\
-	(conf.unique ? (index_cmp)type##_compare : (index_cmp)type##_compare_with_addr) :	\
-	(conf.unique ? (index_cmp)type##_compare_desc : (index_cmp)type##_compare_with_addr_desc)
 
 - (int)
 eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
