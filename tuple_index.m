@@ -215,12 +215,10 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 	if (d->cardinality == 0)
 		panic("index cardinality is 0");
 
-	int offset = 0;
 	for (int k = 0; k < d->cardinality; k++) {
 		key_field = c->key_field[k];
 		d->fill_order[k] = k;
 		d->field_index[k] = key_field->fieldno;
-		d->offset[k] = offset;
 		d->sort_order[k] = eq(key_field->sort_order, "ASC") ? ASC : DESC;
 
 		const char *typename = key_field->type;
@@ -239,20 +237,6 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 			panic("unknown field data type: `%s'", typename);
 		}
 		d->field_type[k] = type;
-		switch(type) {
-		case SNUM32:
-		case UNUM32:
-			offset += field_sizeof(union index_field, u32); break;
-		case SNUM16:
-		case UNUM16:
-			offset += field_sizeof(union index_field, u16); break;
-		case SNUM64:
-		case UNUM64:
-			offset += field_sizeof(union index_field, u64); break;
-		case STRING:
-			offset += field_sizeof(union index_field, str); break;
-		}
-
 		if (key_field->fieldno + 1 > d->min_tuple_cardinality)
 			d->min_tuple_cardinality = key_field->fieldno + 1;
 	}
