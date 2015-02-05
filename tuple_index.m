@@ -69,38 +69,6 @@ box_tuple_u64_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
 	return node;
 }
 static struct index_node *
-box_tuple_i32_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
-{
-	int n = (uintptr_t)arg;
-	struct box_tuple *tuple = box_tuple(obj);
-	if (tuple->cardinality <= n)
-		index_raise("cardinality too small");
-	u8 *f = tuple_field(tuple, n);
-	u32 size = LOAD_VARINT32(f);
-	if (size != sizeof(u32))
-		index_raise("expected i32");
-
-	node->obj = obj;
-	node->key.u32 = *(u32*)f - INT32_MIN;
-	return node;
-}
-static struct index_node *
-box_tuple_i64_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
-{
-	int n = (uintptr_t)arg;
-	struct box_tuple *tuple = box_tuple(obj);
-	if (tuple->cardinality <= n)
-		index_raise("cardinality too small");
-	const u8 *f = tuple_field(tuple, n);
-	u32 size = LOAD_VARINT32(f);
-	if (size != sizeof(u64))
-		index_raise("expected i64");
-
-	node->obj = obj;
-	node->key.u64 = *(u64*)f - INT64_MIN;
-	return node;
-}
-static struct index_node *
 box_tuple_lstr_dtor(struct tnt_object *obj, struct index_node *node, void  *arg)
 {
 	int n = (uintptr_t)arg;
@@ -140,8 +108,6 @@ box_tuple_gen_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
 }
 
 struct dtor_conf box_tuple_dtor = {
-	.i32 = box_tuple_i32_dtor,
-	.i64 = box_tuple_i64_dtor,
 	.u32 = box_tuple_u32_dtor,
 	.u64 = box_tuple_u64_dtor,
 	.lstr = box_tuple_lstr_dtor,
