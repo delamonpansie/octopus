@@ -47,7 +47,8 @@ union index_field {
 		u16 prefix2;
 		i16 len;
 		union {
-			u8 bytes[sizeof(u64)];
+			char bytes[sizeof(u64)];
+			u64 u64;
 			const void *ptr;
 		} data;
 	} str __attribute__((packed));
@@ -330,6 +331,7 @@ set_lstr_field(union index_field *f, u32 len, const u8* s)
 	} else {
 		lstr_load_prefix(f, s, 6);
 		if (len <= 14) {
+			f->str.data.u64 = 0;
 			memcpy(f->str.data.bytes, s+6, len - 6);
 		} else {
 			f->str.data.ptr = s+6;

@@ -251,8 +251,8 @@ lstr_field_compare(const union index_field *fa, const union index_field *fb)
 		return 0;
 	}
 	if (fb->str.len < 6) return 1;
-	const u8 *d1 = fa->str.len <= 14 ? fa->str.data.bytes : fa->str.data.ptr;
-	const u8 *d2 = fb->str.len <= 14 ? fb->str.data.bytes : fb->str.data.ptr;
+	const char *d1 = fa->str.len <= 14 ? fa->str.data.bytes : fa->str.data.ptr;
+	const char *d2 = fb->str.len <= 14 ? fb->str.data.bytes : fb->str.data.ptr;
 	int r = memcmp(d1, d2, MIN(fa->str.len, fb->str.len) - 6);
 	if (r != 0)
 		return r;
@@ -266,10 +266,14 @@ lstr_field_eq(const union index_field *fa, const union index_field *fb)
 	if (fa->str.len != fb->str.len) return 0;
 	if (fa->str.prefix1 != fb->str.prefix1) return 0;
 	if (fa->str.prefix2 != fb->str.prefix2) return 0;
-	if (fa->str.len < 6) return 1;
-	const u8 *d1 = fa->str.len <= 14 ? fa->str.data.bytes : fa->str.data.ptr;
-	const u8 *d2 = fb->str.len <= 14 ? fb->str.data.bytes : fb->str.data.ptr;
-	return memcmp(d1, d2, MIN(fa->str.len, fb->str.len) - 6) == 0;
+	if (fa->str.len <= 6) return 1;
+	if (fa->str.len <= 14) {
+		return fa->str.data.u64 == fb->str.data.u64;
+	} else {
+		const char *d1 = fa->str.data.ptr;
+		const char *d2 = fb->str.data.ptr;
+		return memcmp(d1, d2, MIN(fa->str.len, fb->str.len) - 6) == 0;
+	}
 }
 
 int
@@ -504,35 +508,34 @@ tree_node_eq_with_addr(struct index_node *na, struct index_node *nb, struct inde
 }
 
 #define KNUTH_MULT 0x5851f42d4c957f2dULL
-static u32
-dumb_hash(const u8 *d, u32 l, u64 h)
-{
-	while (l >= 4) {
-		u32 k = *(u32*)d;
-		h = (h ^ k) * KNUTH_MULT;
-		h = (h << 13) | (h >> 51);
-		d += 4;
-		l -= 4;
-	}
-	if (l & 1) h ^= d[0];
-	if (l & 2) h ^= *(u16*)(d+(l&1)) << ((l&1) * 8);
-	h ^= l << 24;
-	h *= KNUTH_MULT;
-	return h;
-}
 
 static inline u64
 lstr_hash(const union index_field *f, u64 h) {
-	h = (h ^ f->str.prefix1) * KNUTH_MULT;
-	h = (h << 32) | (h >> 32);
-	h = (h ^ f->str.prefix2) * KNUTH_MULT;
-	h = (h << 32) | (h >> 32);
+	h = (h ^ f->str.len) * KNUTH_MULT;
+	h = (h << 13) | (h >> 51);
 	if (f->str.len > 6) {
-		const u8 *d = f->str.len <= 14 ? f->str.data.bytes : f->str.data.ptr;
-		h = dumb_hash(d, f->str.len - 6, h);
-	} else {
-		h = (h ^ f->str.len) * KNUTH_MULT;
+		if (f->str.len > 14) {
+			const u8 *d = f->str.data.ptr;
+			u32 l = f->str.len - 6;
+			while (l >= 4) {
+				u32 k = *(u32*)d;
+				h = (h ^ k) * KNUTH_MULT;
+				h = (h << 13) | (h >> 51);
+				d += 4;
+				l -= 4;
+			}
+			if (l & 1) h ^= d[0];
+			if (l & 2) h ^= *(u16*)(d+(l&1)) << ((l&1) * 8);
+			h *= KNUTH_MULT;
+			h = (h << 13) | (h >> 51);
+		} else {
+			h = (h ^ f->str.data.u64) * KNUTH_MULT;
+			h = (h << 13) | (h >> 51);
+		}
 	}
+	h = (h ^ f->str.prefix2) * KNUTH_MULT;
+	h = (h << 13) | (h >> 51);
+	h = (h ^ f->str.prefix1) * KNUTH_MULT;
 	return h;
 }
 
