@@ -245,19 +245,17 @@ lstr_field_compare(const union index_field *fa, const union index_field *fb)
 	if (fa->str.prefix1 > fb->str.prefix1) return 1;
 	if (fa->str.prefix2 < fb->str.prefix2) return -1;
 	if (fa->str.prefix2 > fb->str.prefix2) return 1;
-	if (fa->str.len < 6) {
-		if (fa->str.len < fb->str.len) return -1;
-		if (fa->str.len > fb->str.len) return 1;
-		return 0;
+	if (fa->str.len <= 6) {
+		return (int)fa->str.len - (int)fb->str.len;
 	}
-	if (fb->str.len < 6) return 1;
+	if (fb->str.len <= 6) return 1;
 	const char *d1 = fa->str.len <= 14 ? fa->str.data.bytes : fa->str.data.ptr;
 	const char *d2 = fb->str.len <= 14 ? fb->str.data.bytes : fb->str.data.ptr;
 	int r = memcmp(d1, d2, MIN(fa->str.len, fb->str.len) - 6);
 	if (r != 0)
 		return r;
 
-	return fa->str.len > fb->str.len ? 1 : fa->str.len == fb->str.len ? 0 : -1;
+	return (int)fa->str.len - (int)fb->str.len;
 }
 
 static inline int
@@ -270,9 +268,9 @@ lstr_field_eq(const union index_field *fa, const union index_field *fb)
 	if (fa->str.len <= 14) {
 		return fa->str.data.u64 == fb->str.data.u64;
 	} else {
-		const char *d1 = fa->str.data.ptr;
-		const char *d2 = fb->str.data.ptr;
-		return memcmp(d1, d2, MIN(fa->str.len, fb->str.len) - 6) == 0;
+		const u8 *d1 = fa->str.data.ptr;
+		const u8 *d2 = fb->str.data.ptr;
+		return memcmp(d1, d2, fa->str.len - 6) == 0;
 	}
 }
 

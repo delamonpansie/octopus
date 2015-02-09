@@ -45,7 +45,7 @@ union index_field {
 	struct {
 		u32 prefix1;
 		u16 prefix2;
-		i16 len;
+		u16 len;
 		union {
 			char bytes[sizeof(u64)];
 			u64 u64;
