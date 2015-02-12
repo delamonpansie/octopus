@@ -327,7 +327,8 @@ set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated
 replace:(struct tnt_object *)obj
 {
 	dtor(obj, &node_a, dtor_arg);
-	twlerrcode_t r = twltree_insert(&tree, &obj, true);
+	tnt_ptr ptr = tnt_obj2ptr(obj);
+	twlerrcode_t r = twltree_insert(&tree, &ptr, true);
 	if (r != TWL_OK)
 		twl_raise(r);
 }
@@ -335,7 +336,8 @@ replace:(struct tnt_object *)obj
 - (int)
 remove:(struct tnt_object *)obj
 {
-	twlerrcode_t r = twltree_delete(&tree, &obj);
+	tnt_ptr ptr = tnt_obj2ptr(obj);
+	twlerrcode_t r = twltree_delete(&tree, &ptr);
 	if (r != TWL_OK && r != TWL_NOTFOUND)
 		twl_raise(r);
 	return r == TWL_OK;
@@ -344,7 +346,8 @@ remove:(struct tnt_object *)obj
 - (void)
 iterator_init_with_object:(struct tnt_object *)obj direction:(enum iterator_direction)direction
 {
-	twltree_iterator_init_set(&tree, &iter, &obj,
+	tnt_ptr ptr = tnt_obj2ptr(obj);
+	twltree_iterator_init_set(&tree, &iter, &ptr,
 				direction == iterator_forward ? twlscan_forward : twlscan_backward);
 }
 
