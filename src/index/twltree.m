@@ -103,7 +103,7 @@ twl_compact_realloc(void *old, size_t new_size)
 		twl_compact_slabs = xcalloc(twltree_compact_conf.page_sizes_n, sizeof(*twl_compact_slabs));
 		for (i = 0; i < twltree_compact_conf.page_sizes_n; i++) {
 			slab_cache_init(&twl_compact_slabs[i],
-					twltree_page_header_size()+sizeof(void*)*twltree_compact_conf.page_sizes[i],
+					twltree_page_header_size()+sizeof(tnt_ptr)*twltree_compact_conf.page_sizes[i],
 					SLAB_FIXED, "twl_compact");
 		}
 	}
