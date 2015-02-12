@@ -66,17 +66,16 @@ struct twlpage_t {
 	memmove(TUPITH((tt), (pageto), (to)), TUPITH((tt), (pagefrom), (from)), (cnt) * (tt)->sizeof_tuple_key); \
 } while(0)
 
+size_t
+twltree_page_header_size() {
+	return TWLPAGEHDRSZ;
+}
 
 typedef struct index_key_t {
 	twlpage_t 	*page;
 	char		key[1];
 } index_key_t;
-
 #define  TWLIKTHDRSZ	(offsetof(index_key_t, key))
-size_t
-twltree_page_header_size() {
-	return TWLIKTHDRSZ;
-}
 
 static int
 inner_tuple_key_t_cmp(const void* a, const void* b, void* arg) {
