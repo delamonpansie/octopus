@@ -124,6 +124,7 @@ init:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 			init_pattern = i32_init_pattern;
 			pattern_compare = (index_cmp)i32_compare;
 			compare = COMPARE(i32);
+			break;
 		case UNUM32:
 			init_pattern = u32_init_pattern;
 			pattern_compare = (index_cmp)u32_compare;
@@ -133,6 +134,7 @@ init:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 			init_pattern = i64_init_pattern;
 			pattern_compare = (index_cmp)i64_compare;
 			compare = COMPARE(i64);
+			break;
 		case UNUM64:
 			init_pattern = u64_init_pattern;
 			pattern_compare = (index_cmp)u64_compare;
