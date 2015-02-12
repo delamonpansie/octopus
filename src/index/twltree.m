@@ -287,25 +287,21 @@ set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated
 	} else {
 		if (count > 0) {
 			qsort_arg(nodes_, count, node_size, compare, dtor_arg);
-			tnt_ptr* nodes = xcalloc(count, sizeof(*nodes));
-			if (nodes == NULL) {
-				panic("No memory");
-			}
+			/* compress index nodes to pointers */
+			tnt_ptr* nodes = (tnt_ptr*)nodes_;
 			size_t i;
 			for (i = 0; i < count; i++) {
 				nodes[i] = tnt_obj2ptr(((struct index_node*)((char*)nodes_ + node_size*i))->obj);
 			}
-			free(nodes_);
+			tnt_ptr* _nodes = realloc(nodes, sizeof(nodes[0])*count);
+			if (_nodes != NULL) nodes = _nodes;
 			enum twlerrcode_t r = twltree_bulk_load(&tree, nodes, count);
-			if (r != TWL_OK) {
-				@try {
-					twl_raise(r);
-				} @finally {
-					/* free nodes only if exception is caught somewhere */
-					free(nodes);
-				}
+			@try {
+				twl_raise(r);
+			} @finally {
+				/* free nodes only if exception is caught somewhere */
+				free(nodes);
 			}
-			free(nodes);
 		}
 	}
 }
