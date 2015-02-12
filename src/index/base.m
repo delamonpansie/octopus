@@ -110,7 +110,6 @@ init:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 		case STRING:
 			node_size = sizeof(struct tnt_object *) + field_sizeof(union index_field, str);
 			init_pattern = lstr_init_pattern;
-			pattern_compare = (index_cmp)lstr_compare;
 			eq = EQ(lstr);
 			compare = COMPARE(lstr);
 			dtor = dc->lstr;
@@ -122,22 +121,18 @@ init:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 		switch(ftype) {
 		case SNUM32:
 			init_pattern = i32_init_pattern;
-			pattern_compare = (index_cmp)i32_compare;
 			compare = COMPARE(i32);
 			break;
 		case UNUM32:
 			init_pattern = u32_init_pattern;
-			pattern_compare = (index_cmp)u32_compare;
 			compare = COMPARE(u32);
 			break;
 		case SNUM64:
 			init_pattern = i64_init_pattern;
-			pattern_compare = (index_cmp)i64_compare;
 			compare = COMPARE(i64);
 			break;
 		case UNUM64:
 			init_pattern = u64_init_pattern;
-			pattern_compare = (index_cmp)u64_compare;
 			compare = COMPARE(u64);
 			break;
 		default:
@@ -168,7 +163,6 @@ init:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 		node_size = sizeof(struct tnt_object *) + offset;
 
 		init_pattern = gen_init_pattern;
-		pattern_compare = (index_cmp)tree_node_compare;
 		eq = conf.unique ? (index_cmp)tree_node_eq : (index_cmp)tree_node_eq_with_addr;
 		compare = conf.unique ? (index_cmp)tree_node_compare : (index_cmp)tree_node_compare_with_addr;
 		dtor = dc->generic;

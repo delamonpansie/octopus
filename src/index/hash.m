@@ -305,7 +305,7 @@ init:(void *)ic
 	(void)ic;
 	h = mh_cstr_init(xrealloc);
 	node_size = sizeof(struct tnt_object *) + sizeof(cstr);
-	compare = pattern_compare = (index_cmp)cstr_compare;
+	compare = (index_cmp)cstr_compare;
 	return self;
 }
 

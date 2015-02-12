@@ -59,9 +59,9 @@ find:(const char *)key
 }
 
 - (index_cmp)
-pattern_compare
+compare
 {
-	return pattern_compare;
+	return compare;
 }
 
 - (u32)

@@ -141,7 +141,6 @@ typedef struct tnt_object* tnt_ptr;
 
 	int (*eq)(const void *a, const void *b, void *);
 	int (*compare)(const void *a, const void *b, void *);
-	int (*pattern_compare)(const void *a, const void *b, void *);
 	void (*init_pattern)(struct tbuf *key, int cardinality,
 			     struct index_node *pattern, void *);
 
@@ -209,12 +208,11 @@ enum iterator_direction {
 - (struct tnt_object *)iterator_next_check:(index_cmp)check;
 
 - (void)set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated;
-- (index_cmp) pattern_compare;
+- (index_cmp) compare;
 @end
 
 @interface Tree: Index <BasicIndex, IterIndex>
 - (void)set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated;
-- (index_cmp) pattern_compare;
 @end
 
 @interface SPTree: Tree {
