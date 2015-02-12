@@ -514,7 +514,7 @@ process_select(struct netmsg_head *h, Index<BasicIndex> *index,
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "cardinality mismatch");
 		} else {
 			Tree *tree = (Tree *)index;
-			cmp = cmp ?: [tree pattern_compare];
+			cmp = cmp ?: [tree compare];
 			[tree iterator_init_with_key:data cardinalty:c];
 			if (unlikely(limit == 0))
 				continue;
