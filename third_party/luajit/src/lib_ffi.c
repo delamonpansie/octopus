@@ -1,6 +1,6 @@
 /*
 ** FFI library.
-** Copyright (C) 2005-2014 Mike Pall. See Copyright Notice in luajit.h
+** Copyright (C) 2005-2015 Mike Pall. See Copyright Notice in luajit.h
 */
 
 #define lib_ffi_c
@@ -138,7 +138,7 @@ static int ffi_index_meta(lua_State *L, CTState *cts, CType *ct, MMS mm)
       }
     }
     copyTV(L, base, L->top);
-    tv = L->top-1;
+    tv = L->top-1-LJ_FR2;
   }
   return lj_meta_tailcall(L, tv);
 }
@@ -559,6 +559,31 @@ LJLIB_CF(ffi_typeof)	LJLIB_REC(.)
   return 1;
 }
 
+/* Internal and unsupported API. */
+LJLIB_CF(ffi_typeinfo)
+{
+  CTState *cts = ctype_cts(L);
+  CTypeID id = (CTypeID)ffi_checkint(L, 1);
+  if (id > 0 && id < cts->top) {
+    CType *ct = ctype_get(cts, id);
+    GCtab *t;
+    lua_createtable(L, 0, 4);  /* Increment hash size if fields are added. */
+    t = tabV(L->top-1);
+    setintV(lj_tab_setstr(L, t, lj_str_newlit(L, "info")), (int32_t)ct->info);
+    if (ct->size != CTSIZE_INVALID)
+      setintV(lj_tab_setstr(L, t, lj_str_newlit(L, "size")), (int32_t)ct->size);
+    if (ct->sib)
+      setintV(lj_tab_setstr(L, t, lj_str_newlit(L, "sib")), (int32_t)ct->sib);
+    if (gcref(ct->name)) {
+      GCstr *s = gco2str(gcref(ct->name));
+      setstrV(L, lj_tab_setstr(L, t, lj_str_newlit(L, "name")), s);
+    }
+    lj_gc_check(L);
+    return 1;
+  }
+  return 0;
+}
+
 LJLIB_CF(ffi_istype)	LJLIB_REC(.)
 {
   CTState *cts = ctype_cts(L);
@@ -726,6 +751,9 @@ LJLIB_CF(ffi_abi)	LJLIB_REC(.)
   case H_(4ab624a8,4ab624a8): b = 1; break;  /* win */
 #endif
   case H_(3af93066,1f001464): b = 1; break;  /* le/be */
+#if LJ_GC64
+  case H_(9e89d2c9,13c83c92): b = 1; break;  /* gc64 */
+#endif
   default:
     break;
   }
