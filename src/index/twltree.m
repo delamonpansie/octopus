@@ -160,13 +160,6 @@ bytes
 	return twltree_bytes(&tree);
 }
 
-- (struct tnt_object *)
-find_node:(const struct index_node *)node
-{
-	struct index_node* r = twltree_find_by_index_key(&tree, node, NULL);
-	return r != NULL ? r->obj : NULL;
-}
-
 - (void)
 iterator_init_with_direction:(enum iterator_direction)direction
 {
@@ -273,6 +266,13 @@ iterator_next_check:(index_cmp)check
 	return NULL;
 }
 
+- (struct tnt_object *)
+find_node:(const struct index_node *)node
+{
+	struct index_node* r = twltree_find_by_index_key(&tree, node, NULL);
+	return r != NULL ? r->obj : NULL;
+}
+
 @end
 
 @implementation TWLCompactTree
@@ -291,7 +291,8 @@ set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated
 			tnt_ptr* nodes = (tnt_ptr*)nodes_;
 			size_t i;
 			for (i = 0; i < count; i++) {
-				nodes[i] = tnt_obj2ptr(((struct index_node*)((char*)nodes_ + node_size*i))->obj);
+				struct index_node *node = nodes_ + i * node_size;
+				nodes[i] = tnt_obj2ptr(node->obj);
 			}
 			tnt_ptr* _nodes = realloc(nodes, sizeof(nodes[0])*count);
 			if (_nodes != NULL) nodes = _nodes;
@@ -370,6 +371,14 @@ iterator_next_check:(index_cmp)check
 	}
 	return NULL;
 }
+
+- (struct tnt_object *)
+find_node:(const struct index_node *)node
+{
+	tnt_ptr* r = twltree_find_by_index_key(&tree, node, NULL);
+	return r != NULL ? tnt_ptr2obj(*r) : NULL;
+}
+
 @end
 
 register_source();

@@ -89,7 +89,7 @@ struct dtor_conf {
 #ifdef __amd64__
 struct ptr_for_index {
 	intptr_t ptr : 48;
-};
+} __attribute__((packed));
 typedef struct ptr_for_index tnt_ptr;
 #define tnt_ptr2obj(p) ( (struct tnt_object*)(intptr_t)(p).ptr )
 #define tnt_obj2ptr(o) ((tnt_ptr){ .ptr = (intptr_t)o })
