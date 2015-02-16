@@ -157,11 +157,11 @@ twltree_init(twltree_t *tt) {
 	tt->firstpage = (index_key_t*)((char*)tt->stored_index_key + index_key_alloc);
 		 
 	tt->firstpage->page = twltree_new_page(tt, next_size(tt, 0, 1));
-	assert(tt->firstpage->page->page_n > 0);
 	if (tt->firstpage->page == NULL) {
 		tt->tlrealloc(tt->search_index_key, 0);
 		return TWL_NOMEMORY;
 	}
+	assert(tt->firstpage->page->page_n > 0);
 	tt->page_index = NULL;
 	memset(&tt->pi_iterator, 0, sizeof(tt->pi_iterator));
 
@@ -730,31 +730,38 @@ twltree_bulk_load(twltree_t *tt, void *tuple_key, u_int32_t nkeys) {
 	}
 	page_size = SMALLEST(tt) > (nkeys+1) ? next_size(tt, nkeys, 1) : SMALLEST(tt);
 	page = twltree_new_page(tt, page_size);
-	if (page == NULL)
+	if (page == NULL) {
+		r = TWL_NOMEMORY;
 		goto fail;
+	}
+	tt->tlrealloc(tt->firstpage->page, 0);
 	tt->firstpage->page = page;
-	i = 1;
-	goto cpy;
-	while (nkeys > 0) {
-		left = page;
-		i = (i + 1) % (tt->conf->page_sizes_n / 2 + 1);
-		page_size = SMALLEST(tt) > (nkeys+1) ? LARGEST(tt) : tt->conf->page_sizes[i];
-		page = twltree_new_page(tt, page_size);
-		if (page == NULL)
-			goto fail;
-		page->left = left;
-		left->right = page;
-cpy:
+	i = 0;
+	for (;;) {
 		page_size = (page_size - 1) > nkeys ? nkeys : (page_size - 1);
 		memcpy(TUPITH(tt, page, 0), tuple_key, tt->sizeof_tuple_key * page_size);
 		page->n_tuple_keys = page_size;
 		tuple_key += tt->sizeof_tuple_key * page_size;
 		nkeys -= page_size;
 		tt->n_tuple_keys += page_size;
+
+		if (nkeys == 0)
+			break;
+
+		left = page;
+		i = (i + 1) % (tt->conf->page_sizes_n / 2 + 1);
+		page_size = LARGEST(tt) > (nkeys+1) ? LARGEST(tt) : tt->conf->page_sizes[i];
+		page = twltree_new_page(tt, page_size);
+		if (page == NULL)
+			goto fail;
+		page->left = left;
+		left->right = page;
 	}
 	tt->page_index = twltree_alloc_inner(tt);
-	if (tt->page_index == NULL)
+	if (tt->page_index == NULL) {
+		r = TWL_NOMEMORY;
 		goto fail;
+	}
 	page = tt->firstpage->page;
 	while (page != NULL) {
 		if ((r = make_search_key(tt, TUPITH(tt, page, page->n_tuple_keys-1))) != TWL_OK)
@@ -771,7 +778,7 @@ cpy:
 	return TWL_OK;
 fail:
 	twltree_free(tt);
-	return TWL_NOMEMORY;
+	return r;
 }
 
 static twlerrcode_t
