@@ -78,7 +78,6 @@ struct index_conf {
 	struct field_desc field[8];
 };
 
-struct lua_State;
 typedef int (*index_cmp)(const void *, const void *, void *);
 
 typedef struct index_node *(index_dtor)(struct tnt_object *obj, struct index_node *node, void *arg);
