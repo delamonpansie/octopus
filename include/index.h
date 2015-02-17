@@ -78,10 +78,10 @@ struct index_conf {
 	struct field_desc field[8];
 };
 
-typedef struct index_node *(index_dtor)(struct tnt_object *obj, struct index_node *node, void *arg);
 struct lua_State;
 typedef int (*index_cmp)(const void *, const void *, void *);
 
+typedef struct index_node *(index_dtor)(struct tnt_object *obj, struct index_node *node, void *arg);
 struct dtor_conf {
 	index_dtor *u32, *u64, *lstr, *generic;
 };
