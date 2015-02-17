@@ -59,23 +59,30 @@ union index_field {
 
 struct index_node {
 	struct tnt_object *obj;
-	union index_field key;
+	union index_field key; /* array with overlapping tails.
+				  Unused tail part of union used by next key */
 };
 
-struct field_desc {
-	int index;
-	int offset;
-	enum sort_order { ASC = 1, DESC = -1 } sort_order;
-	enum index_field_type { UNDEF, UNUM16, SNUM16, UNUM32, SNUM32, UNUM64, SNUM64, STRING } type;
+enum index_sort_order { ASC = 1, DESC = -1 } sort_order;
+enum index_field_type { UNDEF, UNUM16, SNUM16, UNUM32, SNUM32, UNUM64, SNUM64, STRING } type;
+
+struct index_field_desc {
+	u8 offset /* offset of key part in index_node,
+		     union index_field *key = &node->key + index_conf->field[i].offset */,
+	   index /* of tuple field */;
+	char sort_order, type;
 };
 
+enum index_type { HASH, NUMHASH, SPTREE, FASTTREE, COMPACTTREE };
 struct index_conf {
-	int min_tuple_cardinality, cardinality;
-	enum index_type { HASH, NUMHASH, SPTREE, FASTTREE, COMPACTTREE } type;
+	char min_tuple_cardinality /* minimum required tuple cardinality */,
+	     cardinality;
+	char type;
 	bool unique;
-	int n;
-	i8 fill_order[8];
-	struct field_desc field[8];
+	short n;
+	char fill_order[8]; /* indexes of field[] ordered as they appear in tuple,
+			       used by sequential scan in box_tuple_gen_dtor */
+	struct index_field_desc field[8]; /* key fields ordered as they appear in index */
 };
 
 typedef struct index_node *(index_dtor)(struct tnt_object *obj, struct index_node *node, void *arg);
