@@ -78,8 +78,6 @@ struct index_conf {
 	struct field_desc field[8];
 };
 
-typedef int (*index_cmp)(const void *, const void *, void *);
-
 typedef struct index_node *(index_dtor)(struct tnt_object *obj, struct index_node *node, void *arg);
 struct dtor_conf {
 	index_dtor *u32, *u64, *lstr, *generic;
@@ -204,6 +202,7 @@ enum iterator_direction {
 - (void)iterator_init_with_object:(struct tnt_object *)obj direction:(enum iterator_direction)direction;
 - (void)iterator_init_with_node:(const struct index_node *)node direction:(enum iterator_direction)direction;
 
+typedef int (*index_cmp)(const void *, const void *, void *);
 - (struct tnt_object *)iterator_next_check:(index_cmp)check;
 - (index_cmp) compare;
 @end
