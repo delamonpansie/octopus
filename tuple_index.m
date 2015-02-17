@@ -82,7 +82,7 @@ box_tuple_lstr_dtor(struct tnt_object *obj, struct index_node *node, void  *arg)
 static struct index_node *
 box_tuple_gen_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
 {
-	struct index_conf *desc = arg;
+	const struct index_conf *desc = arg;
 	struct box_tuple *tuple = box_tuple(obj);
 	const u8 *tuple_data = tuple->data;
 
@@ -100,7 +100,7 @@ box_tuple_gen_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
 
 	int i = 0, j = 0;
 	int indi = desc->fill_order[i];
-	struct field_desc *field = &desc->field[indi];
+	const struct index_field_desc *field = &desc->field[indi];
 
 	for (;;j++) {
 		assert(tuple_data < (const u8 *)tuple->data + tuple->bsize);
@@ -178,17 +178,17 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 		panic("unknown index type");
 
 	__typeof__(c->key_field[0]) key_field;
-	for (d->cardinality = 0; c->key_field[d->cardinality] != NULL; d->cardinality++) {
-		key_field = c->key_field[d->cardinality];
+	for (d->cardinality = 0; c->key_field[(int)d->cardinality] != NULL; d->cardinality++) {
+		key_field = c->key_field[(int)d->cardinality];
 		if (key_field->fieldno == -1)
 			panic("fieldno should be set");
-
+		if (key_field->fieldno > 255)
+			panic("fieldno must be between 0 and 255");
 		if (!eq(key_field->sort_order, "ASC") && !eq(key_field->sort_order, "DESC"))
 			panic("unknown sort order");
+		if (d->cardinality > nelem(d->field))
+			panic("index cardinality is too big");
 	}
-
-	if (d->cardinality > nelem(d->field))
-		panic("index cardinality is too big");
 
 	if (d->cardinality == 0)
 		panic("index cardinality is 0");
