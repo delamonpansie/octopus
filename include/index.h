@@ -205,8 +205,6 @@ enum iterator_direction {
 - (void)iterator_init_with_node:(const struct index_node *)node direction:(enum iterator_direction)direction;
 
 - (struct tnt_object *)iterator_next_check:(index_cmp)check;
-
-- (void)set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated;
 - (index_cmp) compare;
 @end
 
