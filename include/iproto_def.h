@@ -94,7 +94,7 @@ union iproto_any_header {
 	_(ERR_CODE_NAUTH_OK,              0x00004000, "non authoritative ok") \
 	_(ERR_CODE_REDIRECT,              0x00004102, "redirect")	\
 	_(ERR_CODE_LEADER_UNKNOW,	  0x00004202, "leader unknown") \
-	_(ERR_CODE_TIMEOUT,	  	  0x00004301, "server timeout") \
+	_(ERR_CODE_SERVER_TIMEOUT,	  0x00004301, "server timeout") \
  	_(ERR_CODE_BAD_CONNECTION,        0x00004402, "connect to other server is bad") \
 	/* rlimit error codes */ \
 	_(ERR_CODE_RATE_LIMIT_REACHED,	  0x00005002, "rate limit is reached")
