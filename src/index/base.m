@@ -61,6 +61,8 @@ new_conf:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 			abort();
 		}
 	} else if (ic->type == HASH) {
+		if (ic->unique == false)
+			return nil;
 		i = [GenHash alloc];
 	} else if (ic->type == SPTREE) {
 		i = [SPTree alloc];
