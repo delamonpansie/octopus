@@ -79,7 +79,7 @@ struct index_conf {
 	     cardinality;
 	char type;
 	bool unique;
-	short n;
+	char n;
 	char fill_order[8]; /* indexes of field[] ordered as they appear in tuple,
 			       used by sequential scan in box_tuple_gen_dtor */
 	struct index_field_desc field[8]; /* key fields ordered as they appear in index */
