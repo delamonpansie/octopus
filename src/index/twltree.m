@@ -51,25 +51,6 @@ twl_index_key_cmp(const void *a, const void *b, void *arg)
 	return -t->compare(bn, an, t->dtor_arg);
 }
 
-static void*
-twl_realloc(void *old, size_t new_size)
-{
-	if (new_size == 0) {
-		if (old)
-			sfree(old);
-		return NULL;
-	}
-	void *new = salloc(new_size);
-	if (new == NULL)
-		return NULL;
-	if (old != NULL) {
-		struct slab_cache *old_slab = slab_cache_of_ptr(old);
-		memcpy(new, old, MIN(new_size, old_slab->item_size));
-		sfree(old);
-	}
-	return new;
-}
-
 static struct twltree_conf_t twltree_fast_conf = {
 	.index_key_free = NULL,
 	.tuple_key_2_index_key = NULL,
@@ -88,6 +69,41 @@ static struct twltree_conf_t twltree_compact_conf = {
 	.page_sizes_n = 0,
 };
 
+static int twl_slabs_n = 0;
+static struct slab_cache *twl_slabs = NULL;
+static void*
+twl_realloc(void *old, size_t new_size)
+{
+	int i;
+	if (new_size == 0) {
+		if (old)
+			sfree(old);
+		return NULL;
+	}
+	struct slab_cache *cache = NULL;
+	for (i = 0; i < twl_slabs_n; i++) {
+		if (new_size == twl_slabs[i].item_size) {
+			cache = &twl_slabs[i];
+			break;
+		}
+	}
+	if (cache == NULL) {
+		twl_slabs = xrealloc(twl_slabs, sizeof(twl_slabs[0])*(twl_slabs_n+1));
+		memmove(twl_slabs+i+1, twl_slabs+i, sizeof(twl_slabs[0])*(twl_slabs_n-i));
+		slab_cache_init(&twl_slabs[i], new_size, SLAB_GROW, "twl_common");
+		cache = &twl_slabs[i];
+	}
+	void *new = slab_cache_alloc(cache);
+	if (new == NULL)
+		panic("Out of memory");
+	if (old != NULL) {
+		struct slab_cache *old_slab = slab_cache_of_ptr(old);
+		memcpy(new, old, MIN(new_size, old_slab->item_size));
+		sfree(old);
+	}
+	return new;
+}
+
 static struct slab_cache *twl_compact_slabs = NULL;
 static void*
 twl_compact_realloc(void *old, size_t new_size)
@@ -104,21 +120,20 @@ twl_compact_realloc(void *old, size_t new_size)
 		for (i = 0; i < twltree_compact_conf.page_sizes_n; i++) {
 			slab_cache_init(&twl_compact_slabs[i],
 					twltree_page_header_size()+sizeof(tnt_ptr)*twltree_compact_conf.page_sizes[i],
-					SLAB_FIXED, "twl_compact");
+					SLAB_GROW, "twl_compact");
 		}
 	}
 	void *new = NULL;
 	for (i = 0; i < twltree_compact_conf.page_sizes_n; i++) {
 		if (new_size == twl_compact_slabs[i].item_size) {
 			new = slab_cache_alloc(&twl_compact_slabs[i]);
+			if (new == NULL)
+				panic("Out of memory");
 			break;
 		}
 	}
 	if (new == NULL)
-		new = salloc(new_size);
-	if (new == NULL)
-		return NULL;
-
+		return twl_realloc(old, new_size);
 	if (old != NULL) {
 		struct slab_cache *old_slab = slab_cache_of_ptr(old);
 		memcpy(new, old, MIN(new_size, old_slab->item_size));
@@ -134,7 +149,7 @@ twl_raise(twlerrcode_t r)
 	switch(r) {
 	case TWL_OK: break;
 	case TWL_WRONG_CONFIG: index_raise("Wrong config"); break;
-	case TWL_NOMEMORY: index_raise("No memory"); break;
+	case TWL_NOMEMORY: panic("Out of memory"); break;
 	case TWL_SUPPORT: index_raise("twl support"); break;
 	case TWL_DUPLICATE: index_raise("Duplicate"); break;
 	case TWL_NOTFOUND: index_raise("Not found"); break;
