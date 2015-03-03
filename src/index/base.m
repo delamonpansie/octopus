@@ -42,7 +42,7 @@ new_conf:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 {
 	Index *i;
 	if (ic->cardinality == 1 && ic->type == NUMHASH) {
-		if (ic->type == HASH && ic->unique == false)
+		if (ic->unique == false)
 			return nil;
 
 		switch (ic->field[0].type) {
@@ -56,13 +56,16 @@ new_conf:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 			break;
 		case SNUM16:
 		case UNUM16:
-			index_raise("NUM16 single column indexes unupported");
+			index_raise("NUM16 single column indexes unsupported");
 		default:
 			abort();
 		}
 	} else if (ic->type == HASH) {
 		if (ic->unique == false)
 			return nil;
+		if (ic->cardinality == 1 &&
+				(ic->field[0].type == SNUM16 || ic->field[0].type == UNUM16))
+			index_raise("NUM16 single column indexes unsupported");
 		i = [GenHash alloc];
 	} else if (ic->type == SPTREE) {
 		i = [SPTree alloc];
