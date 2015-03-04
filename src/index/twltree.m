@@ -70,7 +70,7 @@ static struct twltree_conf_t twltree_compact_conf = {
 };
 
 static int twl_slabs_n = 0;
-static struct slab_cache *twl_slabs = NULL;
+static struct slab_cache **twl_slabs = NULL;
 static void*
 twl_realloc(void *old, size_t new_size)
 {
@@ -82,16 +82,20 @@ twl_realloc(void *old, size_t new_size)
 	}
 	struct slab_cache *cache = NULL;
 	for (i = 0; i < twl_slabs_n; i++) {
-		if (new_size == twl_slabs[i].item_size) {
-			cache = &twl_slabs[i];
+		if (new_size == twl_slabs[i]->item_size) {
+			cache = twl_slabs[i];
+			break;
+		} else if (new_size > twl_slabs[i]->item_size) {
 			break;
 		}
 	}
 	if (cache == NULL) {
+		cache = xmalloc(sizeof(struct slab_cache));
+		slab_cache_init(cache, new_size, SLAB_GROW, "twl_common");
 		twl_slabs = xrealloc(twl_slabs, sizeof(twl_slabs[0])*(twl_slabs_n+1));
 		memmove(twl_slabs+i+1, twl_slabs+i, sizeof(twl_slabs[0])*(twl_slabs_n-i));
-		slab_cache_init(&twl_slabs[i], new_size, SLAB_GROW, "twl_common");
-		cache = &twl_slabs[i];
+		twl_slabs[i] = cache;
+		twl_slabs_n++;
 	}
 	void *new = slab_cache_alloc(cache);
 	if (new == NULL)
