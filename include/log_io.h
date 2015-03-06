@@ -318,14 +318,12 @@ const char *run_crc_status(struct run_crc *run_crc);
 	XLogDir *wal_dir, *snap_dir;
 
 	const char *dir_name;
-	int rows_per_file;
 	ev_tstamp fsync_delay;
 	struct child *wal_writer;
 }
 - (id) init_lsn:(i64)lsn
 	  state:(id<RecoveryState>)state
 	dirname:(const char*)dir_name_
-  rows_per_file:(int)rows_per_file_
     fsync_delay:(double)fsync_delay_;
 
 - (i64) lsn;
@@ -445,7 +443,7 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 	struct run_crc run_crc_state;
 
 	i64 recovered_rows;
-	u32 estimated_snap_rows, wal_rows_per_file;
+	u32 estimated_snap_rows;
 
 	i64 next_skip_scn;
 	struct tbuf skip_scn;
@@ -493,7 +491,6 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 
 - (id) init_snap_dir:(const char *)snap_dir
              wal_dir:(const char *)wal_dir
-        rows_per_wal:(int)rows_per_wal
 	feeder_param:(struct feeder_param*)feeder_
                flags:(int)flags;
 

@@ -486,7 +486,6 @@ nop_hb_writer(va_list ap)
 
 - (id) init_snap_dir:(const char *)snap_dirname
              wal_dir:(const char *)wal_dirname
-	rows_per_wal:(int)wal_rows_per_file_
 	feeder_param:(struct feeder_param*)feeder_
                flags:(int)flags
 {
@@ -497,7 +496,6 @@ nop_hb_writer(va_list ap)
 	wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
 
 	wal_dir->recovery = snap_dir->recovery = self;
-	wal_rows_per_file = wal_rows_per_file_;
 
 	remote = [[XLogReplica alloc] init_recovery:self
 					     feeder:feeder_];
@@ -514,7 +512,6 @@ configure_wal_writer:(i64)lsn
 	writer = [[XLogWriter alloc] init_lsn:lsn
 					state:self
 					dirname:wal_dir->dirname
-				  rows_per_file:wal_rows_per_file
 				    fsync_delay:cfg.wal_fsync_delay];
 
 	if (!cfg.io_compat && cfg.run_crc_delay > 0)

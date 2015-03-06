@@ -49,7 +49,6 @@ struct wal_disk_writer_conf {
 	char dir_name[_POSIX_PATH_MAX];
 	i64 lsn, scn;
 	u32 run_crc;
-	int rows_per_file;
 	double fsync_delay;
 };
 
@@ -64,7 +63,6 @@ struct wal_reply {
 
 
 @interface WALDiskWriter: Object {
-	int rows_per_file;
 	ev_tstamp fsync_delay;
 @public
 	i64 lsn;
@@ -82,7 +80,6 @@ struct wal_reply {
 init_conf:(const struct wal_disk_writer_conf *)conf
 {
 	wal_dir = [[WALDir alloc] init_dirname:conf->dir_name];
-	rows_per_file = conf->rows_per_file;
 	fsync_delay = conf->fsync_delay;
 	return self;
 }
@@ -147,8 +144,8 @@ confirm_write
 			}
 		}
 
-		if (rows_per_file <= [current_wal rows] ||
-		    (lsn + 1) % rows_per_file == 0)
+		if (cfg.rows_per_wal <= [current_wal rows] ||
+		    (lsn + 1) % cfg.rows_per_wal == 0)
 		{
 			wal_to_close = current_wal;
 			current_wal = nil;
@@ -385,18 +382,16 @@ exit:
 init_lsn:(i64)init_lsn
    state:(id<RecoveryState>)state_
  dirname:(const char*)dir_name_
-rows_per_file:(int)rows_per_file_
 fsync_delay:(double)fsync_delay_
 {
 	lsn = init_lsn;
 	state = state_;
 	dir_name = strdup(dir_name_);
-	rows_per_file = rows_per_file_;
 	fsync_delay = fsync_delay_;
 
 	assert(strlen(dir_name) + 1 <= field_sizeof(struct wal_disk_writer_conf, dir_name));
-	if (rows_per_file <= 4)
-		panic("inacceptable value of 'rows_per_file'");
+	if (cfg.rows_per_wal <= 4)
+		panic("inacceptable value of 'rows_per_wal'");
 
 	say_info("Configuring WAL writer LSN:%"PRIi64" SCN:%"PRIi64, lsn, [state scn]);
 
@@ -405,7 +400,6 @@ fsync_delay:(double)fsync_delay_
 	struct wal_disk_writer_conf conf = { .lsn = lsn,
 					     .scn = [state scn],
 					     .run_crc = [state run_crc_log],
-					     .rows_per_file = rows_per_file,
 					     .fsync_delay = fsync_delay };
 	strcpy(conf.dir_name, dir_name);
 	wal_writer = spawn_child("wal_writer", wal_in, wal_out, wal_disk_writer, &conf, sizeof(conf));
