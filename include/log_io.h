@@ -491,8 +491,7 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 
 - (id) init_snap_dir:(const char *)snap_dir
              wal_dir:(const char *)wal_dir
-	feeder_param:(struct feeder_param*)feeder_
-               flags:(int)flags;
+	feeder_param:(struct feeder_param*)feeder_;
 
 
 - (void) status_update:(enum recovery_status)s fmt:(const char *)fmt, ...;

@@ -487,7 +487,6 @@ nop_hb_writer(va_list ap)
 - (id) init_snap_dir:(const char *)snap_dirname
              wal_dir:(const char *)wal_dirname
 	feeder_param:(struct feeder_param*)feeder_
-               flags:(int)flags
 {
 	/* Recovery object is never released */
 
@@ -499,8 +498,6 @@ nop_hb_writer(va_list ap)
 
 	remote = [[XLogReplica alloc] init_recovery:self
 					     feeder:feeder_];
-
-	(void)flags;
 
 	return self;
 }
