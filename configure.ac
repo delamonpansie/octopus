@@ -70,7 +70,7 @@ AC_SEARCH_LIBS(setproctitle, util)
 # Checks for header files.
 AC_HEADER_ASSERT
 AC_HEADER_STDBOOL
-AC_CHECK_HEADERS([ucontext.h sys/prctl.h sys/pstat.h sys/param.h valgrind/valgrind.h])
+AC_CHECK_HEADERS([ucontext.h sys/prctl.h sys/pstat.h sys/param.h valgrind/valgrind.h linux/falloc.h])
 AC_DEFINE(HAVE_THIRD_PARTY_QUEUE_H, 1, [x])
 
 OBJCFLAGS=$CFLAGS
