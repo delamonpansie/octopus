@@ -318,13 +318,11 @@ const char *run_crc_status(struct run_crc *run_crc);
 	XLogDir *wal_dir, *snap_dir;
 
 	const char *dir_name;
-	ev_tstamp fsync_delay;
 	struct child *wal_writer;
 }
 - (id) init_lsn:(i64)lsn
 	  state:(id<RecoveryState>)state
-	dirname:(const char*)dir_name_
-    fsync_delay:(double)fsync_delay_;
+	dirname:(const char*)dir_name_;
 
 - (i64) lsn;
 - (struct child *) wal_writer;

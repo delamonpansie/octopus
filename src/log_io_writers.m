@@ -49,7 +49,6 @@ struct wal_disk_writer_conf {
 	char dir_name[_POSIX_PATH_MAX];
 	i64 lsn, scn;
 	u32 run_crc;
-	double fsync_delay;
 };
 
 struct wal_reply {
@@ -63,7 +62,6 @@ struct wal_reply {
 
 
 @interface WALDiskWriter: Object {
-	ev_tstamp fsync_delay;
 @public
 	i64 lsn;
 	XLog *current_wal;	/* the WAL we'r currently reading/writing from/to */
@@ -80,7 +78,6 @@ struct wal_reply {
 init_conf:(const struct wal_disk_writer_conf *)conf
 {
 	wal_dir = [[WALDir alloc] init_dirname:conf->dir_name];
-	fsync_delay = conf->fsync_delay;
 	return self;
 }
 
@@ -133,7 +130,7 @@ confirm_write
 
 		lsn = confirmed_lsn;
 
-		if (fsync_delay >= 0 && ev_now() - last_flush >= fsync_delay) {
+		if (cfg.wal_fsync_delay >= 0 && ev_now() - last_flush >= cfg.wal_fsync_delay) {
 			/* note: [flush] silently drops unwritten rows.
 			   it's ok here because of previous call to [confirm_write] */
 			if ([current_wal flush] < 0) {
@@ -382,12 +379,10 @@ exit:
 init_lsn:(i64)init_lsn
    state:(id<RecoveryState>)state_
  dirname:(const char*)dir_name_
-fsync_delay:(double)fsync_delay_
 {
 	lsn = init_lsn;
 	state = state_;
 	dir_name = strdup(dir_name_);
-	fsync_delay = fsync_delay_;
 
 	assert(strlen(dir_name) + 1 <= field_sizeof(struct wal_disk_writer_conf, dir_name));
 	if (cfg.rows_per_wal <= 4)
@@ -399,8 +394,7 @@ fsync_delay:(double)fsync_delay_
 	struct fiber *wal_in = fiber_create("wal_writer/input_dispatcher", wal_disk_writer_input_dispatch);
 	struct wal_disk_writer_conf conf = { .lsn = lsn,
 					     .scn = [state scn],
-					     .run_crc = [state run_crc_log],
-					     .fsync_delay = fsync_delay };
+					     .run_crc = [state run_crc_log]};
 	strcpy(conf.dir_name, dir_name);
 	wal_writer = spawn_child("wal_writer", wal_in, wal_out, wal_disk_writer, &conf, sizeof(conf));
 

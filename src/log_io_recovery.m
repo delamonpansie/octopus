@@ -508,8 +508,7 @@ configure_wal_writer:(i64)lsn
 	assert(reader == nil || [reader lsn] > 0);
 	writer = [[XLogWriter alloc] init_lsn:lsn
 					state:self
-					dirname:wal_dir->dirname
-				    fsync_delay:cfg.wal_fsync_delay];
+					dirname:wal_dir->dirname];
 
 	if (!cfg.io_compat && cfg.run_crc_delay > 0)
 		fiber_create("run_crc", run_crc_writer, self, cfg.run_crc_delay);
