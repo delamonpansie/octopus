@@ -76,7 +76,7 @@ recover_row_stream:(id<XLogPuller>)stream
 	}
 }
 
-
+i64 snap_lsn = 0;
 - (i64)
 recover_snap
 {
@@ -85,7 +85,8 @@ recover_snap
 	@try {
 		palloc_register_cut_point(fiber->pool);
 
-		i64 snap_lsn = [recovery snap_lsn];
+		if (snap_lsn == 0)
+			snap_lsn = [[recovery snap_dir] greatest_lsn];
 		if (snap_lsn == -1)
 			raise_fmt("snap_dir reading failed");
 
@@ -123,6 +124,7 @@ recover_snap
 		palloc_cutoff(fiber->pool);
 		[snap close];
 		snap = nil;
+		snap_lsn = 0;
 	}
 	say_info("snapshot recovered, LSN:%"PRIi64, lsn);
 	return lsn;

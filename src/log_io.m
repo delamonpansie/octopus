@@ -829,8 +829,8 @@ read_row
 	/* some of old tarantool snapshots has all rows with lsn == 0,
 	   so using lsn from record will reset recovery lsn set by snap_initial_tag to 0,
 	   also v11 snapshots imply that SCN === LSN */
-	if (r->lsn == 0 && (r->tag & TAG_SNAP) == TAG_SNAP && dir != nil && dir->recovery != nil)
-		r->scn = r->lsn = [dir->recovery lsn];
+	if (r->lsn == 0 && (r->tag & TAG_SNAP) == TAG_SNAP && snap_lsn > 0)
+		r->scn = r->lsn = snap_lsn;
 
 	return r;
 }

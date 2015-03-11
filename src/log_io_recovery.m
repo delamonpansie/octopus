@@ -168,6 +168,7 @@ apply_sys:(const struct row_v12 *)r
 
 	switch (tag) {
 	case snap_initial:
+		assert(snap_lsn == 0 || r->lsn == snap_lsn);
 		if (r->len == sizeof(u32) * 3) { /* not a dummy row */
 			struct tbuf buf = TBUF(r->data, r->len, NULL);
 			estimated_snap_rows = read_u32(&buf);
@@ -279,12 +280,6 @@ remote_snap_final_row:(const struct row_v12 *)row
 		[[self snap_writer] snapshot:false];
 	else
 		[[self snap_writer] snapshot_write];
-}
-
-- (i64)
-snap_lsn
-{
-	return [snap_dir greatest_lsn];
 }
 
 - (i64)
@@ -421,7 +416,6 @@ submit_run_crc
 	[self init];
 	snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
 	wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
-	snap_dir->recovery = wal_dir->recovery = self;
 
 	return self;
 }
@@ -493,8 +487,6 @@ nop_hb_writer(va_list ap)
 	[self init];
 	snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
 	wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
-
-	wal_dir->recovery = snap_dir->recovery = self;
 
 	remote = [[XLogReplica alloc] init_recovery:self
 					     feeder:feeder_];
@@ -672,10 +664,13 @@ submit:(const void *)data len:(u32)len tag:(u16)tag
 
 @implementation FoldRecovery
 
-- (i64)
-snap_lsn
+- (id)
+init_snap_dir:(const char *)snap_dirname
+      wal_dir:(const char *)wal_dirname
 {
-	return [snap_dir containg_scn:fold_scn];
+	[super init_snap_dir:snap_dirname wal_dir:wal_dirname];
+	snap_lsn = [snap_dir containg_scn:fold_scn];
+	return self;
 }
 
 - (void)

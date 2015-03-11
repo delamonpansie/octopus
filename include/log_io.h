@@ -116,7 +116,6 @@ typedef void (follow_cb)(ev_stat *w, int events);
 	const char *filetype;
 	const char *suffix;
 	const char *dirname;
-	Recovery *recovery;
 };
 - (id) init_dirname:(const char *)dirname_;
 - (XLog *) open_for_read:(i64)lsn;
@@ -285,6 +284,8 @@ const char *run_crc_status(struct run_crc *run_crc);
 - (void) update_state_r:(const struct row_v12 *)r;
 @end
 
+extern i64 snap_lsn; /* may be used for overriding initial snapshot,
+			valid while loading snapshot */
 @interface XLogReader : Object {
 	i64 lsn;
 	Recovery* recovery;
@@ -451,7 +452,6 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 - (i64) lsn;
 - (i64) scn;
 - (u32) run_crc_log;
-- (i64) snap_lsn;
 - (XLogDir *) wal_dir;
 - (XLogDir *) snap_dir;
 
