@@ -94,7 +94,7 @@ prepare_write:(i64)scn_
 		current_wal = [wal_dir open_for_write:lsn + 1 scn:scn_];
 
         if (current_wal == nil) {
-                say_error("can't open wal");
+                say_syserror("can't open wal");
                 return -1;
         }
 
