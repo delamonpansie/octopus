@@ -43,7 +43,9 @@ endif
 
 # link with pthread if thread_pool used
 ifneq ($(findstring src/thread_pool.o,$(obj)),)
-  LIBS += -lpthread
+  XCFLAGS += -DTHREADS
+  src/octopus_ev.o: XCFLAGS += -DTHREADS
+  LIBS += -lpthread -lrt
 endif
 
 # no warns at all: it complains even with -Wall
