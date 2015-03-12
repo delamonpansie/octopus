@@ -670,6 +670,7 @@ octopus(int argc, char **argv)
 		say_list_sources();
 		return 0;
 	}
+
 #if defined(STORAGE) || defined(FEEDER)
 	if (gopt_arg(opt, 'C', &cat_filename)) {
 		salloc_init(0, 0, 0);
