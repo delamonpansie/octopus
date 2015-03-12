@@ -46,7 +46,6 @@
 #include <fcntl.h>
 
 struct wal_disk_writer_conf {
-	char dir_name[_POSIX_PATH_MAX];
 	i64 lsn, scn;
 	u32 run_crc;
 };
@@ -66,7 +65,6 @@ struct wal_reply {
 	i64 lsn;
 	XLog *current_wal;	/* the WAL we'r currently reading/writing from/to */
 	XLog *wal_to_close;
-	XLogDir *wal_dir;
 }
 - (id) init_conf:(const struct wal_disk_writer_conf *)conf_;
 @end
@@ -77,7 +75,8 @@ struct wal_reply {
 - (id)
 init_conf:(const struct wal_disk_writer_conf *)conf
 {
-	wal_dir = [[WALDir alloc] init_dirname:conf->dir_name];
+	[self init];
+	lsn = conf->lsn;
 	return self;
 }
 
@@ -195,7 +194,6 @@ wal_disk_writer(int fd, void *state)
 	const struct wal_disk_writer_conf *conf = state;
 
 	WALDiskWriter *writer = [[WALDiskWriter alloc] init_conf:conf];
-	writer->lsn = conf->lsn;
 
 	struct tbuf rbuf = TBUF(NULL, 0, fiber->pool);
 	int result = EXIT_FAILURE;
@@ -378,13 +376,10 @@ exit:
 - (id)
 init_lsn:(i64)init_lsn
    state:(id<RecoveryState>)state_
- dirname:(const char*)dir_name_
 {
 	lsn = init_lsn;
 	state = state_;
-	dir_name = strdup(dir_name_);
 
-	assert(strlen(dir_name) + 1 <= field_sizeof(struct wal_disk_writer_conf, dir_name));
 	if (cfg.rows_per_wal <= 4)
 		panic("inacceptable value of 'rows_per_wal'");
 
@@ -395,7 +390,6 @@ init_lsn:(i64)init_lsn
 	struct wal_disk_writer_conf conf = { .lsn = lsn,
 					     .scn = [state scn],
 					     .run_crc = [state run_crc_log]};
-	strcpy(conf.dir_name, dir_name);
 	wal_writer = spawn_child("wal_writer", wal_in, wal_out, wal_disk_writer, &conf, sizeof(conf));
 
 	assert(wal_writer != NULL);
@@ -489,11 +483,10 @@ wal_pack_submit
 @implementation SnapWriter
 
 - (id)
-init_state:(id<RecoveryState>)state_ snap_dir:(XLogDir *)snap_dir_
+init_state:(id<RecoveryState>)state_
 {
-	[super init];
+	[self init];
 	state = state_;
-	snap_dir = snap_dir_;
 	return self;
 }
 

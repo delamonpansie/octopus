@@ -81,6 +81,7 @@ struct octopus_cfg cfg;
 
 ev_io keepalive_ev = { .coro = 0 };
 Recovery *recovery;
+XLogDir *wal_dir = nil, *snap_dir = nil;
 int keepalive_pipe[2];
 
 extern int daemonize(int nochdir, int noclose);
@@ -679,6 +680,9 @@ octopus(int argc, char **argv)
 		if (fill_default_octopus_cfg(&cfg) != 0 || load_cfg(&cfg, 0) != 0)
 			panic("can't load config: %s", cfg_err);
 
+		snap_dir = [[SnapDir alloc] init_dirname:strdup(cfg.snap_dir)];
+		wal_dir = [[WALDir alloc] init_dirname:strdup(cfg.wal_dir)];
+
 		if (strchr(cat_filename, '.') || strchr(cat_filename, '/')) {
 			if (access(cat_filename, R_OK) == -1) {
 				say_syserror("access(\"%s\")", cat_filename);
@@ -837,6 +841,9 @@ octopus(int argc, char **argv)
 		say_warn("config warnings: %s", cfg_err);
 
 #ifdef STORAGE
+	snap_dir = [[SnapDir alloc] init_dirname:strdup(cfg.snap_dir)];
+	wal_dir = [[WALDir alloc] init_dirname:strdup(cfg.wal_dir)];
+
 	if (gopt(opt, 'i')) {
 		init_storage = true;
 		salloc_init(0, 0, 0);

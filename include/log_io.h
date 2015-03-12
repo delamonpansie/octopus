@@ -133,6 +133,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 @interface WALDir: XLogDir
 @end
 
+extern XLogDir *wal_dir, *snap_dir;
 struct _row_v04 {
 	i64 lsn;
 	u16 type;
@@ -304,9 +305,8 @@ extern i64 snap_lsn; /* may be used for overriding initial snapshot,
 
 @interface SnapWriter: Object {
 	id<RecoveryState> state;
-	XLogDir *snap_dir;
 }
-- (id) init_state:(id<RecoveryState>)state snap_dir:(XLogDir *)snap_dir;
+- (id) init_state:(id<RecoveryState>)state;
 - (int) snapshot:(bool)sync;
 - (int) snapshot_write;
 - (u32) snapshot_estimate;
@@ -316,14 +316,10 @@ extern i64 snap_lsn; /* may be used for overriding initial snapshot,
 @interface XLogWriter: Object {
 	i64 lsn;
 	id<RecoveryState> state;
-	XLogDir *wal_dir, *snap_dir;
-
-	const char *dir_name;
 	struct child *wal_writer;
 }
 - (id) init_lsn:(i64)lsn
-	  state:(id<RecoveryState>)state
-	dirname:(const char*)dir_name_;
+	  state:(id<RecoveryState>)state;
 
 - (i64) lsn;
 - (struct child *) wal_writer;
@@ -428,8 +424,6 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 	XLogWriter *writer;
 	XLogReplica *remote;
 
-	XLogDir *wal_dir, *snap_dir;
-
 	i64 scn;
 	bool initial_snap, local_writes;
 @public
@@ -452,8 +446,6 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 - (i64) lsn;
 - (i64) scn;
 - (u32) run_crc_log;
-- (XLogDir *) wal_dir;
-- (XLogDir *) snap_dir;
 
 - (struct child *) wal_writer;
 - (XLogWriter *)writer;
@@ -484,12 +476,7 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 
 - (struct row_v12 *)dummy_row_lsn:(i64)lsn_ scn:(i64)scn_ tag:(u16)tag;
 
-- (id) init_snap_dir:(const char *)snap_dir
-             wal_dir:(const char *)wal_dir;
-
-- (id) init_snap_dir:(const char *)snap_dir
-             wal_dir:(const char *)wal_dir
-	feeder_param:(struct feeder_param*)feeder_;
+- (id) init_feeder_param:(struct feeder_param*)feeder_;
 
 
 - (void) status_update:(enum recovery_status)s fmt:(const char *)fmt, ...;
@@ -509,8 +496,6 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 @end
 
 @interface NoWALRecovery: Recovery
-- (id) init_snap_dir:(const char *)snap_dirname
-	     wal_dir:(const char *)wal_dirname;
 @end
 
 @interface FoldRecovery: NoWALRecovery

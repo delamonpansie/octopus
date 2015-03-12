@@ -86,14 +86,14 @@ recover_snap
 		palloc_register_cut_point(fiber->pool);
 
 		if (snap_lsn == 0)
-			snap_lsn = [[recovery snap_dir] greatest_lsn];
+			snap_lsn = [snap_dir greatest_lsn];
 		if (snap_lsn == -1)
 			raise_fmt("snap_dir reading failed");
 
 		if (snap_lsn < 1)
 			return 0;
 
-		snap = [[recovery snap_dir] open_for_read:snap_lsn];
+		snap = [snap_dir open_for_read:snap_lsn];
 		if (snap == nil)
 			raise_fmt("can't find/open snapshot");
 
@@ -148,7 +148,7 @@ open_next_wal
 {
 	[self close_current_wal];
 
-	current_wal = [[recovery wal_dir] open_for_read:lsn + 1];
+	current_wal = [wal_dir open_for_read:lsn + 1];
 	if (current_wal != nil)
 		say_info("recover from `%s'", current_wal->filename);
 	return current_wal;
@@ -162,7 +162,7 @@ recover_remaining_wals
 {
 	assert(lsn > 0);
 	say_debug("%s: LSN:%"PRIi64, __func__, lsn);
-	i64 wal_greatest_lsn = [[recovery wal_dir] greatest_lsn];
+	i64 wal_greatest_lsn = [wal_dir greatest_lsn];
 	if (wal_greatest_lsn == -1)
 		raise_fmt("wal_dir reading failed");
 
@@ -193,9 +193,7 @@ load_from_local:(i64)initial_lsn
 {
 	say_debug("%s: initial_LSN:%li", __func__, initial_lsn);
 
-	if ([[recovery wal_dir] greatest_lsn] == 0 &&
-	    [[recovery snap_dir] greatest_lsn] == 0)
-	{
+	if ([wal_dir greatest_lsn] == 0 && [snap_dir greatest_lsn] == 0) {
 		say_info("local state is empty: no snapshot and xlog found");
 		return 0;
 	}
@@ -213,13 +211,13 @@ load_from_local:(i64)initial_lsn
 		 * just after snapshot recovery current_wal isn't known
 		 * so find wal which contains record with _next_ lsn
 		 */
-		current_wal = [[recovery wal_dir] containg_lsn:lsn + 1];
+		current_wal = [wal_dir containg_lsn:lsn + 1];
 	} else {
 		assert(initial_lsn > 1);
 		lsn = initial_lsn - 1; /* since initial_lsn is > 1, lsn is >= 1
 					  valid lsn is vital for [recover_follow]: [open_next_wal] is relies on valid LSN */
-		current_wal = [[recovery wal_dir] containg_lsn:initial_lsn];
-		say_info("unable to find WAL with LSN:%li, greatest_LSN:%li", initial_lsn, [[recovery wal_dir] greatest_lsn]);
+		current_wal = [wal_dir containg_lsn:initial_lsn];
+		say_info("unable to find WAL with LSN:%li, greatest_LSN:%li", initial_lsn, [wal_dir greatest_lsn]);
 		if (current_wal == nil)
 			return 0;
 	}

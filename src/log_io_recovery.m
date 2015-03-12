@@ -91,8 +91,6 @@ init
 	return -1;
 }
 - (i64) scn { return scn; }
-- (XLogDir *) wal_dir { return wal_dir; }
-- (XLogDir *) snap_dir { return snap_dir; }
 - (u32) run_crc_log { return run_crc_log; }
 - (bool) local_writes { return local_writes; }
 - (void) update_state_rci:(const struct row_commit_info *)rci count:(int)count
@@ -299,7 +297,7 @@ wal_lock(va_list ap)
 {
 	Recovery *r = va_arg(ap, Recovery *);
 
-	while ([r->wal_dir lock] != 0)
+	while ([wal_dir lock] != 0)
 		fiber_sleep(1);
 
 	[r enable_local_writes];
@@ -410,16 +408,6 @@ submit_run_crc
 	return [self submit:b->ptr len:tbuf_len(b) tag:run_crc|TAG_SYS];
 }
 
-- (id) init_snap_dir:(const char *)snap_dirname
-             wal_dir:(const char *)wal_dirname
-{
-	[self init];
-	snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
-	wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
-
-	return self;
-}
-
 - (ev_tstamp)
 run_crc_lag
 {
@@ -478,16 +466,10 @@ nop_hb_writer(va_list ap)
 	}
 }
 
-- (id) init_snap_dir:(const char *)snap_dirname
-             wal_dir:(const char *)wal_dirname
-	feeder_param:(struct feeder_param*)feeder_
+- (id) init_feeder_param:(struct feeder_param*)feeder_
 {
 	/* Recovery object is never released */
-
 	[self init];
-	snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
-	wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
-
 	remote = [[XLogReplica alloc] init_recovery:self
 					     feeder:feeder_];
 
@@ -499,8 +481,7 @@ configure_wal_writer:(i64)lsn
 {
 	assert(reader == nil || [reader lsn] > 0);
 	writer = [[XLogWriter alloc] init_lsn:lsn
-					state:self
-					dirname:wal_dir->dirname];
+					state:self];
 
 	if (!cfg.io_compat && cfg.run_crc_delay > 0)
 		fiber_create("run_crc", run_crc_writer, self, cfg.run_crc_delay);
@@ -538,7 +519,7 @@ set_snap_writer:(Class)class
 	[snap_writer free];
 	if (class == Nil)
 		class = [SnapWriter class];
-	snap_writer = [[class alloc] init_state:self snap_dir:snap_dir];
+	snap_writer = [[class alloc] init_state:self];
 }
 
 - (SnapWriter *)
@@ -622,29 +603,6 @@ print_gen_row(struct tbuf *out, const struct row_v12 *row,
 
 
 @implementation NoWALRecovery
-- (id)
-init_snap_dir:(const char *)snap_dirname
-      wal_dir:(const char *)wal_dirname
-{
-	[super init];
-        snap_dir = [[SnapDir alloc] init_dirname:snap_dirname];
-        wal_dir = [[WALDir alloc] init_dirname:wal_dirname];
-	return self;
-}
-
-- (id) init_snap_dir:(const char *)snap_dirname
-             wal_dir:(const char *)wal_dirname
-        rows_per_wal:(int)wal_rows_per_file_
-	feeder_param:(struct feeder_param *)feeder_param_
-               flags:(int)flags
-{
-	(void)wal_rows_per_file_;
-	(void)feeder_param_;
-	(void)flags;
-	return [self init_snap_dir:snap_dirname wal_dir:wal_dirname];
-}
-
-
 - (void)
 configure_wal_writer:(i64)lsn
 {
@@ -663,12 +621,10 @@ submit:(const void *)data len:(u32)len tag:(u16)tag
 @end
 
 @implementation FoldRecovery
-
 - (id)
-init_snap_dir:(const char *)snap_dirname
-      wal_dir:(const char *)wal_dirname
+init
 {
-	[super init_snap_dir:snap_dirname wal_dir:wal_dirname];
+	[super init];
 	snap_lsn = [snap_dir containg_scn:fold_scn];
 	return self;
 }

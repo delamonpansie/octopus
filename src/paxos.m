@@ -1138,15 +1138,11 @@ learn_wal:(id<XLogPullerAsync>)puller
 }
 
 - (id)
-init_snap_dir:(const char *)snap_dirname
-      wal_dir:(const char *)wal_dirname
- feeder_param:(struct feeder_param*)param
+init_feeder_param:(struct feeder_param*)param
 {
 	struct octopus_cfg_paxos_peer *c;
 
-	[super init_snap_dir:snap_dirname
-		     wal_dir:wal_dirname
-		feeder_param:param];
+	[super init_feeder_param:param];
 
 	SLIST_INIT(&group);
 	RB_INIT(&proposals);
