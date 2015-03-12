@@ -33,9 +33,14 @@
 
 #define SECS 5
 
+enum { STAT_COUNTER = 1, STAT_DOUBLE = 2 };
+
 struct {
 	const char *name;
-	i64 value;
+	int type;
+	i64 cnt;
+	double sum;
+	double max;
 } *stats = NULL;
 static int stats_size = 0;
 static int stats_max = 0;
@@ -59,7 +64,10 @@ stat_register(char * const * name, size_t count)
 		if (*name == NULL)
 			continue;
 
-		stats[base].value = 0;
+		stats[base].type = 0;
+		stats[base].cnt = 0;
+		stats[base].sum = 0;
+		stats[base].max = 0;
 
 		stats_max = base;
 	}
@@ -70,7 +78,18 @@ stat_register(char * const * name, size_t count)
 void
 stat_collect(int base, int name, i64 value)
 {
-	stats[base + name].value += value;
+	stats[base + name].type = STAT_COUNTER;
+	stats[base + name].cnt += value;
+}
+
+void
+stat_collect_double(int base, int name, double value)
+{
+	stats[base + name].type = STAT_DOUBLE;
+	stats[base + name].cnt++;
+	stats[base + name].sum += value;
+	if ( stats[base + name].max < value )
+		stats[base + name].max = value;
 }
 
 void
@@ -100,15 +119,40 @@ stat_record(lua_State *L)
 		if (stats[i].name == NULL)
 			continue;
 
-		lua_pushstring(L, stats[i].name);
-		lua_pushnumber(L, stats[i].value);
-		lua_settable(L, -3);
+		switch (stats[i].type) {
+		case STAT_COUNTER:
+			lua_pushstring(L, stats[i].name);
+			lua_pushnumber(L, stats[i].cnt);
+			lua_settable(L, -3);
+			break;
+		case STAT_DOUBLE:
+			lua_pushstring(L, stats[i].name);
+			lua_pushvalue(L, -1);
+			lua_pushstring(L, ".count");
+			lua_concat(L, 2);
+			lua_pushnumber(L, stats[i].cnt);
+			lua_settable(L, -4);
+			lua_pushvalue(L, -1);
+			lua_pushstring(L, ".avg");
+			lua_concat(L, 2);
+			lua_pushnumber(L, stats[i].sum / stats[i].cnt);
+			lua_settable(L, -4);
+			lua_pushvalue(L, -1);
+			lua_pushstring(L, ".max");
+			lua_concat(L, 2);
+			lua_pushnumber(L, stats[i].max);
+			lua_settable(L, -4);
+			lua_pop(L, 1);
+			break;
+		}
 	}
 
 	for (int i = 0; i <= stats_max; i++) {
 			if (stats[i].name == NULL)
 				continue;
-			stats[i].value = 0;
+			stats[i].cnt = 0;
+			stats[i].sum = 0;
+			stats[i].max = 0;
 	}
 
 	return 1;

@@ -35,6 +35,8 @@
 void stat_init(void);
 int stat_register(char * const *name, size_t count);
 void stat_collect(int base, int name, i64 value);
+/* should be separate name from stat_collect */
+void stat_collect_double(int base, int name, double value);
 void stat_print(struct lua_State *L, struct tbuf *buf);
 
 #endif
