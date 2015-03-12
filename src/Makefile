@@ -41,16 +41,16 @@ ifneq ($(findstring src/paxos.o,$(obj)),)
   src/log_io_recovery.o: XCFLAGS += -DPAXOS
 endif
 
+# no warns at all: it complains even with -Wall
+no-extra-warns += src/octopus_ev.o
+src/octopus_ev.o: XCFLAGS := -U_FORTIFY_SOURCE $(filter-out -W%,$(CFLAGS_EXTRA))
+
 # link with pthread if thread_pool used
 ifneq ($(findstring src/thread_pool.o,$(obj)),)
   XCFLAGS += -DTHREADS
   src/octopus_ev.o: XCFLAGS += -DTHREADS
   LIBS += -lpthread -lrt
 endif
-
-# no warns at all: it complains even with -Wall
-no-extra-warns += src/octopus_ev.o
-src/octopus_ev.o: XCFLAGS := -U_FORTIFY_SOURCE $(filter-out -W%,$(CFLAGS_EXTRA))
 
 ifneq (,$(TRACE))
 	obj += src/trace.o
