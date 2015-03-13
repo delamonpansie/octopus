@@ -344,11 +344,11 @@ same_dir(XLogDir *a, XLogDir *b)
 lock
 {
 	if ([wal_dir lock] < 0)
-		panic("Can't lock wal_dir:%s", wal_dir->dirname);
+		panic_syserror("Can't lock wal_dir:%s", wal_dir->dirname);
 
 	if (!same_dir(wal_dir, snap_dir)) {
 		if ([snap_dir lock] < 0)
-			panic("Can't lock snap_dir:%s", snap_dir->dirname);
+			panic_syserror("Can't lock snap_dir:%s", snap_dir->dirname);
 	}
 }
 
