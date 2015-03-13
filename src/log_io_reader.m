@@ -298,7 +298,7 @@ recover_finalize
 - (void)
 local_hot_standby
 {
-	[self recover_follow:cfg.wal_dir_rescan_delay]; /* FIXME: make this conf */
+	[self recover_follow:cfg.wal_dir_rescan_delay];
 	if ([recovery respondsTo:@selector(status_update:fmt:)])
 		[recovery status_update:LOCAL_STANDBY fmt:"hot_standby/local"];
 }

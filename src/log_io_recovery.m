@@ -264,15 +264,15 @@ wal_final_row
 - (void)
 remote_snap_final_row:(const struct row_v12 *)row
 {
-	i64 snap_lsn = row->lsn;
+	i64 lsn = row->lsn;
 	if (cfg.sync_scn_with_lsn)
-		assert(snap_lsn == scn);
+		assert(lsn == scn);
 	else
-		snap_lsn = 1;
+		lsn = 1;
 
-	[self configure_wal_writer:snap_lsn];
+	[self configure_wal_writer:lsn];
 
-	say_debug("Saving initial replica snapshot LSN:%"PRIi64, snap_lsn);
+	say_debug("Saving initial replica snapshot LSN:%"PRIi64, lsn);
 	/* don't wait for snapshot. our goal to be replica as fast as possible */
 	if (getenv("SYNC_DUMP") == NULL)
 		[[self snap_writer] snapshot:false];
