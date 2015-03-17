@@ -29,6 +29,7 @@
 
 #include <stdlib.h>
 #include <third_party/libcoro/coro.h>
+#include <inttypes.h>
 
 struct octopus_coro {
 	coro_context ctx;
@@ -40,5 +41,17 @@ struct octopus_coro {
 struct octopus_coro *
 octopus_coro_create(struct octopus_coro *ctx, void (*f) (void *), void *data);
 void octopus_coro_destroy(struct octopus_coro *ctx);
+
+/* counter for context switches.
+ * it has type `int` for fast retreiving from luajit.
+ * located in fiber.m for performance issue. */
+extern int coro_switch_cnt;
+static inline void
+oc_coro_transfer(coro_context *from, coro_context *to)
+{
+	/* do not rely on signed integer overflow. We believe, 30bit it is safe enough :) */
+	coro_switch_cnt = (coro_switch_cnt & 0x3fffffff) + 1;
+	coro_transfer(from, to);
+}
 
 #endif

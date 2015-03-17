@@ -55,7 +55,7 @@ if ((watcher)->coro) {						\
 	fiber = (struct fiber *)(watcher)->cb;			\
 	((struct octopus_coro *)fiber)->w = (watcher);		\
 	EV_CB_LOG((watcher));					\
-	coro_transfer(sched_ctx, (coro_context *)fiber);	\
+	oc_coro_transfer(sched_ctx, (coro_context *)fiber);	\
 } else								\
 	(watcher)->cb((watcher), (revents));			\
 })

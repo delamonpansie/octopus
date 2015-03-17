@@ -1,6 +1,7 @@
 local ffi = require('ffi')
 local objc = require('objc')
 local object, varint32 = object, varint32
+local fiber = fiber
 
 local assert = assert
 local tonumber = tonumber
@@ -213,6 +214,9 @@ local dir_decode = setmetatable({ forward = ffi.C.iterator_forward,
                                 { __index = function() return ffi.C.iterator_forward end })
 
 local function iter_next(index)
+    if index.__switchcnt ~= fiber.switch_cnt then
+        error("context switch during index iteration", 2)
+    end
     return object(iterator_next(index.__ptr))
 end
 
@@ -250,6 +254,7 @@ local basic_mt = {
             end
         end,
         iter = function (self, ...)
+            self.__switchcnt = fiber.switch_cnt
             if select('#', ...) == 0 or select(1, ...) == nil then
                 iterator_init(self.__ptr)
             elseif type(select(1, ...)) == 'table' then
@@ -268,6 +273,7 @@ local basic_mt = {
 local tree_mt = {
     __index = {
         diter = function (self, direction, ...)
+            self.__switchcnt = fiber.switch_cnt
             if type(direction) == 'string' then
                 direction = dir_decode[direction]
             end
@@ -300,7 +306,9 @@ setmetatable(index_mt, { __index = function() assert(false) end })
 
 local function proxy(index)
     local p = { __ptr = index,
-                __packnode = gen_packnode(index) }
+                __packnode = gen_packnode(index),
+                __switchcnt = 0,
+              }
     return setmetatable(p, index_mt[tonumber(index.conf.type)])
 end
 function cast(cdata)

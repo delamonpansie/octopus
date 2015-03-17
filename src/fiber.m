@@ -61,6 +61,7 @@
 struct fiber sched;
 struct fiber *fiber = &sched;
 coro_context *sched_ctx = &sched.coro.ctx;
+int coro_switch_cnt;
 void *watcher;
 int events;
 static uint32_t last_used_fid;
@@ -92,7 +93,7 @@ resume(struct fiber *callee, void *w)
 	callee->caller = caller;
 	fiber = callee;
 	callee->coro.w = w;
-	coro_transfer(&caller->coro.ctx, &callee->coro.ctx);
+	oc_coro_transfer(&caller->coro.ctx, &callee->coro.ctx);
 	callee->caller = &sched;
 }
 
@@ -106,7 +107,7 @@ yield(void)
 		  callee->caller->fid, callee->caller->name);
 #endif
 	fiber = callee->caller;
-	coro_transfer(&callee->coro.ctx, &callee->caller->coro.ctx);
+	oc_coro_transfer(&callee->coro.ctx, &callee->caller->coro.ctx);
 #ifdef FIBER_DEBUG
 	say_debug("%s: return arg:%p", __func__, fiber->coro.w);
 #endif

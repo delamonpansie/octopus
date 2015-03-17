@@ -10,6 +10,8 @@ setmetatable(fiber, {
     __index = function(f, k)
         if k == 'current' then
             return C.fiber.fid
+        elseif k == 'switch_cnt' then
+            return C.coro_switch_cnt
         end
     end
 })
