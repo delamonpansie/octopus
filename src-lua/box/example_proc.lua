@@ -246,6 +246,15 @@ user_proc.iterator2r = box.wrap(function (n, key)
         return 0, result
 end)
 
+user_proc.iterator3 = box.wrap(function ()
+	local os = box.object_space[0]
+        local pk = os:index(0)
+        for tuple in pk:iter() do
+            fiber.sleep(0.000001)
+        end
+        return 0, nil
+end)
+
 
 local function test1()
    return 0, {box.tuple("abc", "defg", "foobar"),
