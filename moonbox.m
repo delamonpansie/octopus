@@ -81,9 +81,13 @@ luaT_box_dispatch(struct lua_State *L)
 		box_commit(&txn);
 
 		if (txn.obj != NULL) {
+			object_incr_ref(txn.obj);
 			lua_pushlightuserdata(L, txn.obj);
 			return 1;
 		} else if (txn.op == DELETE && txn.old_obj != NULL) {
+			/* object_incr_ref is require because box_cleanup() is called before
+			   lua has chance to increase ref counter on passed pointer */
+			object_incr_ref(txn.old_obj);
 			lua_pushlightuserdata(L, txn.old_obj);
 			return 1;
 		}
