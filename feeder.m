@@ -434,7 +434,7 @@ init(void)
 	int server, client;
 	struct sockaddr_in server_addr;
 
-	if (cfg.wal_feeder_bind_addr == NULL) {
+	if (cfg.wal_feeder_bind_addr == NULL || cfg.wal_writer_inbox_size == 0) {
 		say_info("WAL feeder is disabled");
 		return;
 	}
