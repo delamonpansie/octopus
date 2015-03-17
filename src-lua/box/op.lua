@@ -112,12 +112,12 @@ local function pack_mop(req, op)
 end
 
 function pack.update(n, key, ...)
-        local tabarg = false
+        local tabarg = nil
         local nmops = select('#', ...)
         if nmops == 1 then
             local arg = select(1, ...)
             if type(arg[1]) == 'table' then
-                tabarg = true
+                tabarg = arg
                 nmops = #arg
             end
         end
@@ -141,7 +141,7 @@ function pack.update(n, key, ...)
         req:u32(nmops)
 
         if tabarg then
-                for _, op in ipairs(select(1, ...)) do
+                for _, op in ipairs(tabarg) do
                     pack_mop(req, op)
                 end
         else

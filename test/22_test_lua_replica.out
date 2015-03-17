@@ -23,12 +23,12 @@
 Failed with: {code: 0x102, message: 'replica is readonly
 stack traceback:
 	[C]: in function '_dispatch'
-	mod/box/src-lua/box.lua:210: in function 'update'
+	mod/box/src-lua/box.lua:211: in function 'update'
 	box_init.lua:11: in function 'proc'
-	mod/box/src-lua/box.lua:320: in function <mod/box/src-lua/box.lua:315>'}
+	mod/box/src-lua/box.lua:325: in function <mod/box/src-lua/box.lua:320>'}
 # box.lua("user_proc.error", "0")
 Failed with: {code: 0x202, message: 'box_init.lua:16: fooo
 stack traceback:
 	[C]: in function 'error'
 	box_init.lua:16: in function 'proc'
-	mod/box/src-lua/box.lua:320: in function <mod/box/src-lua/box.lua:315>'}
+	mod/box/src-lua/box.lua:325: in function <mod/box/src-lua/box.lua:320>'}
