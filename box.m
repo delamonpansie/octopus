@@ -146,6 +146,7 @@ build_object_space_trees(struct object_space *object_space)
 	say_info("Building tree indexes of object space %i", object_space->n);
 
         if (n_tuples > 0) {
+		title("building_indexes/object_space:%i ", object_space->n);
 		for (int i = 0; i < tree_count; i++) {
                         nodes[i] = xmalloc(estimated_tuples * ts[i]->node_size);
 			if (nodes[i] == NULL)
@@ -175,7 +176,6 @@ build_object_space_trees(struct object_space *object_space)
 static void
 build_secondary_indexes()
 {
-	title("building_indexes");
 	@try {
 		for (u32 n = 0; n < object_space_count; n++) {
 			if (object_space_registry[n].enabled)
