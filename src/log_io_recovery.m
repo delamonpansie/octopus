@@ -74,12 +74,6 @@ alloc
 	if (strcmp([[self class] name], "Recovery") != 0) /* break recursion */
 	    goto ours;
 
-	if (fold_scn > 0)
-		return [FoldRecovery alloc];
-
-	if (cfg.wal_writer_inbox_size == 0)
-		return [NoWALRecovery alloc];
-
 #ifdef PAXOS
 	if (cfg.paxos_enabled)
 		return [PaxosRecovery alloc];
@@ -150,6 +144,11 @@ init
 
 - (int)submit:(const void *)data len:(u32)len tag:(u16)tag
 {
+	if (cfg.wal_writer_inbox_size == 0) {
+		scn++;
+		return 1;
+	}
+
 	if (!local_writes) {
 		say_warn("local writes disabled");
 		return 0;
@@ -234,6 +233,14 @@ recover_row:(struct row_v12 *)r
 		}
 
 		[self update_state_r:r];
+
+		if (unlikely(fold_scn)) {
+			if (r->scn == fold_scn && (r->tag & ~TAG_MASK) == TAG_WAL) {
+				if ([self respondsTo:@selector(snapshot_fold)])
+					exit([self snapshot_fold]);
+				exit([[self snap_writer] snapshot_write]);
+			}
+		}
 	}
 	@catch (Error *e) {
 		say_error("Recovery: %s at %s:%i\n%s", e->reason, e->file, e->line,
@@ -259,6 +266,10 @@ wal_final_row
 	   in order to avoid stuck proctitle set it after every pull done,
 	   not after service initialization */
 	[self status_changed];
+	if (unlikely(fold_scn)) {
+		say_error("unable to find record with SCN:%"PRIi64, fold_scn);
+		exit(EX_OSFILE);
+	}
 }
 
 - (void)
@@ -283,6 +294,8 @@ remote_snap_final_row:(const struct row_v12 *)row
 - (i64)
 load_from_local
 {
+	if (fold_scn)
+		snap_lsn = [snap_dir containg_scn:fold_scn]; /* select snapshot before desired scn */
 	i64 local_lsn = [reader load_from_local:0];
 	/* loading is faster until wal_final_row called because service is not yet initialized and
 	   only pk indexes must be updated. remote feeder will send wal_final_row then all remote
@@ -480,6 +493,9 @@ nop_hb_writer(va_list ap)
 configure_wal_writer:(i64)lsn
 {
 	assert(reader == nil || [reader lsn] > 0);
+	if (cfg.wal_writer_inbox_size == 0 || fold_scn)
+		return;
+
 	writer = [[XLogWriter alloc] init_lsn:lsn
 					state:self];
 
@@ -623,54 +639,5 @@ print_gen_row(struct tbuf *out, const struct row_v12 *row,
 	print_row_header(out, row);
 	handler(out, row->tag, &TBUF(row->data, row->len, fiber->pool));
 }
-
-
-@implementation NoWALRecovery
-- (void)
-configure_wal_writer:(i64)lsn
-{
-	(void)lsn;
-}
-
-
-- (int)
-submit:(const void *)data len:(u32)len tag:(u16)tag
-{
-	(void)data; (void)len; (void)tag;
-	scn++;
-	return 1;
-}
-
-@end
-
-@implementation FoldRecovery
-- (id)
-init
-{
-	[super init];
-	snap_lsn = [snap_dir containg_scn:fold_scn];
-	return self;
-}
-
-- (void)
-recover_row:(struct row_v12 *)r
-{
-	[super recover_row:r];
-
-	if (r->scn == fold_scn && (r->tag & ~TAG_MASK) == TAG_WAL) {
-		if ([self respondsTo:@selector(snapshot_fold)])
-			exit([self snapshot_fold]);
-		exit([[self snap_writer] snapshot_write]);
-	}
-}
-
-- (void)
-wal_final_row
-{
-	say_error("unable to find record with SCN:%"PRIi64, fold_scn);
-	exit(EX_OSFILE);
-}
-
-@end
 
 register_source();

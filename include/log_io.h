@@ -498,11 +498,6 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 - (int) snapshot_fold;
 @end
 
-@interface NoWALRecovery: Recovery
-@end
-
-@interface FoldRecovery: NoWALRecovery
-@end
 extern i64 fold_scn;
 
 int wal_disk_writer(int fd, void *state);
