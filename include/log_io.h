@@ -286,15 +286,19 @@ const char *run_crc_status(struct run_crc *run_crc);
 - (void) update_state_r:(const struct row_v12 *)r;
 @end
 
+@protocol RecoverRow
+- (void) recover_row:(struct row_v12 *)row;
+@end
+
 extern i64 snap_lsn; /* may be used for overriding initial snapshot,
 			valid while loading snapshot */
 @interface XLogReader : Object {
 	i64 lsn;
-	Recovery* recovery;
+	id<RecoverRow> recovery;
 	XLog *current_wal;
 	ev_timer wal_timer;
 }
-- (id) init_recovery:(Recovery *)recovery;
+- (id) init_recovery:(id<RecoverRow>)recovery;
 - (i64) lsn;
 - (i64) load_from_local:(i64)initial_lsn;
 - (void) local_hot_standby;
@@ -420,7 +424,7 @@ enum {
 @end
 
 enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
-@interface Recovery: Object <RecoveryState> {
+@interface Recovery: Object <RecoveryState, RecoverRow> {
 	XLogReader *reader;
 	XLogWriter *writer;
 	XLogReplica *remote;
