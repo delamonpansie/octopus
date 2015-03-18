@@ -494,17 +494,22 @@ configure_wal_writer:(i64)lsn
 - (void)
 status_update:(enum recovery_status)new_status fmt:(const char *)fmt, ...
 {
-	prev_status = status;
-	status = new_status;
-
+	char buf[sizeof(status_buf)];
 	va_list ap;
 	va_start(ap, fmt);
-	vsnprintf(status_buf, sizeof(status_buf), fmt, ap);
+	vsnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
 
-	if (prev_status != status) {
-		say_info("recovery status: %s", status_buf);
-		[self status_changed];
+	if (strcmp(buf, status_buf) != 0 || new_status != status) {
+		say_info("recovery status: %i %s", new_status, buf);
+		strncpy(status_buf, buf, sizeof(status_buf));
+		title(NULL);
+
+		if (new_status != status) {
+			prev_status = status;
+			status = new_status;
+			[self status_changed];
+		}
 	}
 }
 
