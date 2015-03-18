@@ -215,6 +215,10 @@ pull_wal:(id<XLogPullerAsync>)puller
 	i64 min_scn = [recovery scn];
 	int pack_rows = 0;
 
+	/* old version doesn's send wal_final_tag for us. */
+	if ([puller version] == 11)
+		[recovery wal_final_row];
+
 	[puller recv_row];
 
 	while ((row = [puller fetch_row])) {
@@ -344,9 +348,6 @@ load_from_remote:(struct feeder_param *)param
 		zero_io_collect_interval();
 
 		[self pull_snapshot:puller];
-		/* old version doesn's send wal_final_tag for us. */
-		if ([puller version] == 11)
-			[recovery wal_final_row];
 		while ([self pull_wal:puller] != 1);
 	}
 	@finally {
