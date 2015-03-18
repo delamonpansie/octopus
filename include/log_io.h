@@ -161,6 +161,7 @@ struct row_v12 {
 	u32 data_crc32c;
 	u8 data[0];
 } __attribute__((packed));
+struct row_v12 *dummy_row(i64 lsn, i64 scn, u16 tag);
 
 struct row_commit_info {
 	u16 tag;
@@ -473,8 +474,6 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 - (bool) feeder_changed:(struct feeder_param*)new;
 
 - (int) submit_run_crc;
-
-- (struct row_v12 *)dummy_row_lsn:(i64)lsn_ scn:(i64)scn_ tag:(u16)tag;
 
 - (id) init_feeder_param:(struct feeder_param*)feeder_;
 

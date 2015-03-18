@@ -50,6 +50,23 @@
 
 i64 fold_scn = 0;
 
+struct row_v12 *
+dummy_row(i64 lsn, i64 scn, u16 tag)
+{
+	struct row_v12 *r = palloc(fiber->pool, sizeof(struct row_v12));
+
+	r->lsn = lsn;
+	r->scn = scn;
+	r->tm = ev_now();
+	r->tag = tag;
+	r->cookie = default_cookie;
+	r->len = 0;
+	r->data_crc32c = crc32c(0, (unsigned char *)"", 0);
+	r->header_crc32c = crc32c(0, (unsigned char *)r + sizeof(r->header_crc32c),
+				  sizeof(*r) - sizeof(r->header_crc32c));
+	return r;
+}
+
 @implementation Recovery
 + (id)
 alloc
@@ -139,23 +156,6 @@ init
 	}
 
 	return [writer submit:data len:len tag:tag];
-}
-
-- (struct row_v12 *)
-dummy_row_lsn:(i64)lsn_ scn:(i64)scn_ tag:(u16)tag
-{
-	struct row_v12 *r = palloc(fiber->pool, sizeof(struct row_v12));
-
-	r->lsn = lsn_;
-	r->scn = scn_;
-	r->tm = ev_now();
-	r->tag = tag;
-	r->cookie = default_cookie;
-	r->len = 0;
-	r->data_crc32c = crc32c(0, (unsigned char *)"", 0);
-	r->header_crc32c = crc32c(0, (unsigned char *)r + sizeof(r->header_crc32c),
-				  sizeof(*r) - sizeof(r->header_crc32c));
-	return r;
 }
 
 

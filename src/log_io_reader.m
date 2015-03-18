@@ -107,13 +107,13 @@ recover_snap
 		lsn = snap_lsn;
 
 		if (legacy_snap)
-			[recovery recover_row:[recovery dummy_row_lsn:snap_lsn scn:snap_lsn tag:snap_initial|TAG_SYS]];
+			[recovery recover_row:dummy_row(snap_lsn, snap_lsn, snap_initial|TAG_SYS)];
 
 		[self recover_row_stream:snap];
 
 		/* old v11 snapshot, scn == lsn from filename */
 		if (legacy_snap)
-			[recovery recover_row:[recovery dummy_row_lsn:snap_lsn scn:snap_lsn tag:snap_final|TAG_SYS]];
+			[recovery recover_row:dummy_row(snap_lsn, snap_lsn, snap_final|TAG_SYS)];
 
 		if (![snap eof])
 			raise_fmt("unable to fully read snapshot");
