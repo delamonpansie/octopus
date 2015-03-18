@@ -554,33 +554,39 @@ hexdump(struct tbuf *out, u16 tag __attribute__((unused)), struct tbuf *row)
 }
 
 void
-print_gen_row(struct tbuf *out, const struct row_v12 *row,
-	      void (*handler)(struct tbuf *out, u16 tag, struct tbuf *row))
+print_row_header(struct tbuf *buf, const struct row_v12 *row)
 {
-	if (handler == NULL)
-		handler = hexdump;
-
-	tbuf_printf(out, "lsn:%" PRIi64 " scn:%" PRIi64 " tm:%.3f t:%s %s ",
+	tbuf_printf(buf, "lsn:%" PRIi64 " scn:%" PRIi64 " tm:%.3f t:%s %s ",
 		    row->lsn, row->scn, row->tm,
 		    xlog_tag_to_a(row->tag),
 		    sintoa((void *)&row->cookie));
+}
 
+int
+print_sys_row(struct tbuf *buf, const struct row_v12 *row)
+{
 	struct tbuf row_data = TBUF(row->data, row->len, fiber->pool);
 
 	int tag = row->tag & TAG_MASK;
+	int tag_type = row->tag & ~TAG_MASK;
+
+	if (tag_type != TAG_SYS)
+		return 0;
+
+	print_row_header(buf, row);
 	switch (tag) {
 	case snap_initial:
 		if (tbuf_len(&row_data) == sizeof(u32) * 3) {
 			u32 count = read_u32(&row_data);
 			u32 log = read_u32(&row_data);
 			u32 mod = read_u32(&row_data);
-			tbuf_printf(out, "count:%u run_crc_log:0x%08x run_crc_mod:0x%08x",
+			tbuf_printf(buf, "count:%u run_crc_log:0x%08x run_crc_mod:0x%08x",
 				    count, log, mod);
 		}
 		break;
 	case snap_skip_scn:
 		while (tbuf_len(&row_data) > 0)
-			tbuf_printf(out, "%"PRIi64" ", read_u64(&row_data));
+			tbuf_printf(buf, "%"PRIi64" ", read_u64(&row_data));
 		break;
 	case run_crc: {
 		i64 scn = -1;
@@ -588,9 +594,10 @@ print_gen_row(struct tbuf *out, const struct row_v12 *row,
 			scn = read_u64(&row_data);
 		u32 log = read_u32(&row_data);
 		(void)read_u32(&row_data); /* ignore run_crc_mod */
-		tbuf_printf(out, "SCN:%"PRIi64 " log:0x%08x", scn, log);
+		tbuf_printf(buf, "SCN:%"PRIi64 " log:0x%08x", scn, log);
 		break;
 	}
+	case snap_final:
 	case nop:
 		break;
 #ifdef PAXOS
@@ -598,12 +605,23 @@ print_gen_row(struct tbuf *out, const struct row_v12 *row,
 	case paxos_promise:
 	case paxos_propose:
 	case paxos_accept:
-		paxos_print(out, handler, row);
+		paxos_print(buf, hexdump, row);
 		break;
 #endif
 	default:
-		handler(out, row->tag, &row_data);
+		hexdump(buf, row->tag, &row_data);
 	}
+	return 1;
+}
+
+void
+print_gen_row(struct tbuf *out, const struct row_v12 *row,
+	      void (*handler)(struct tbuf *out, u16 tag, struct tbuf *row))
+{
+	if (print_sys_row(out, row))
+		return;
+	print_row_header(out, row);
+	handler(out, row->tag, &TBUF(row->data, row->len, fiber->pool));
 }
 
 
