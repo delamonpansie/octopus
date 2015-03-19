@@ -423,11 +423,19 @@ enum {
 - (void) pull_from_remote:(id<XLogPullerAsync>)puller;
 @end
 
+@protocol RecoveryClient
+- (void) apply:(struct tbuf *)data tag:(u16)tag;
+- (void) wal_final_row;
+- (void) status_changed;
+- (void) print:(const struct row_v12 *)row into:(struct tbuf *)buf;
+@end
+
 enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 @interface Recovery: Object <RecoveryState, RecoverRow> {
 	XLogReader *reader;
 	XLogWriter *writer;
 	XLogReplica *remote;
+	id<RecoveryClient> client;
 
 	i64 scn;
 	bool initial_snap, local_writes;
@@ -445,8 +453,6 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 
 	i64 next_skip_scn;
 	struct tbuf skip_scn;
-
-	void (*print_row)(struct tbuf *out, u16 tag, struct tbuf *r);
 }
 - (i64) lsn;
 - (i64) scn;
@@ -467,8 +473,6 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 
 - (void) configure_wal_writer:(i64)lsn;
 
-- (void) recover_row:(struct row_v12 *)row;
-
 - (i64) load_from_local; /* load from local snap+wal */
 - (void) wal_final_row;
 - (void) remote_snap_final_row:(const struct row_v12 *)row;
@@ -484,6 +488,8 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 
 - (void) status_update:(enum recovery_status)s fmt:(const char *)fmt, ...;
 - (void) status_changed;
+
+- (void) set_client:(id<RecoveryClient>)obj;
 
 - (void) set_snap_writer:(Class)class;
 - (SnapWriter *) snap_writer;

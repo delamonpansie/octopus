@@ -227,7 +227,7 @@ recover_row:(struct row_v12 *)r
 				next_skip_scn = tbuf_len(&skip_scn) > 0 ?
 						read_u64(&skip_scn) : 0;
 		} else {
-			[self apply:&TBUF(r->data, r->len, fiber->pool) tag:r->tag];
+			[client apply:&TBUF(r->data, r->len, fiber->pool) tag:r->tag];
 			if (tag_type == TAG_SYS)
 				[self apply_sys:r];
 		}
@@ -236,8 +236,8 @@ recover_row:(struct row_v12 *)r
 
 		if (unlikely(fold_scn)) {
 			if (r->scn == fold_scn && (r->tag & ~TAG_MASK) == TAG_WAL) {
-				if ([self respondsTo:@selector(snapshot_fold)])
-					exit([self snapshot_fold]);
+				if ([(id)client respondsTo:@selector(snapshot_fold)])
+					exit([(id)client snapshot_fold]);
 				exit([[self snap_writer] snapshot_write]);
 			}
 		}
@@ -246,7 +246,7 @@ recover_row:(struct row_v12 *)r
 		say_error("Recovery: %s at %s:%i\n%s", e->reason, e->file, e->line,
 				e->backtrace);
 		struct tbuf *out = tbuf_alloc(fiber->pool);
-		print_gen_row(out, r, self->print_row);
+		[client print:r into:out];
 		printf("Failed row: %.*s\n", tbuf_len(out), (char *)out->ptr);
 
 		@throw;
@@ -260,16 +260,12 @@ recover_row:(struct row_v12 *)r
 - (void)
 wal_final_row
 {
-	/* recovery of empty local_hot_standby & remote_hot_standby replica done in reverse:
-	   first: primary port bound & service initialized (and proctitle set)
-	   second: pull rows from remote (ans proctitle set to "loading %xx.yy")
-	   in order to avoid stuck proctitle set it after every pull done,
-	   not after service initialization */
-	[self status_changed];
 	if (unlikely(fold_scn)) {
 		say_error("unable to find record with SCN:%"PRIi64, fold_scn);
 		exit(EX_OSFILE);
 	}
+	[client wal_final_row];
+	title(NULL);
 }
 
 - (void)
@@ -532,6 +528,13 @@ status_update:(enum recovery_status)new_status fmt:(const char *)fmt, ...
 - (void)
 status_changed
 {
+	[client status_changed];
+}
+
+- (void)
+set_client:(id<RecoveryClient>)obj
+{
+	client = obj;
 }
 
 - (void)
