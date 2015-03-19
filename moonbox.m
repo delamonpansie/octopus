@@ -73,7 +73,8 @@ luaT_box_dispatch(struct lua_State *L)
 		req = luaL_checklstring(L, 2, &len);
 	}
 	@try {
-		[recovery check_replica];
+		if ([recovery is_replica])
+			iproto_raise(ERR_CODE_NONMASTER, "replica is readonly");
 
 		box_prepare(&txn, &TBUF(req, len, NULL));
 		if (txn.obj_affected > 0 && txn.object_space->wal) {

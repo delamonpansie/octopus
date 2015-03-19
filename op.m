@@ -748,7 +748,8 @@ box_cb(struct iproto *request, struct conn *c)
 	@try {
 		ev_tstamp start = ev_now(), stop;
 
-		[recovery check_replica];
+		if ([recovery is_replica])
+			iproto_raise(ERR_CODE_NONMASTER, "replica is readonly");
 
 		box_prepare(&txn, &TBUF(request->data, request->data_len, NULL));
 

@@ -230,46 +230,30 @@ box_print_row(struct tbuf *out, u16 tag, struct tbuf *r)
 	}
 }
 
-@interface CatRecovery: FoldRecovery {
+
+@interface BoxPrint: Box <RecoverRow> {
 	i64 stop_scn;
 }
 @end
 
-@implementation CatRecovery
+@implementation BoxPrint
 - (id)
-init_snap_dir:(const char *)snap_dirname
-      wal_dir:(const char *)wal_dirname
-     stop_scn:(i64)scn_
+init_stop_scn:(i64)stop_scn_
 {
-	[super init_snap_dir:snap_dirname
-		     wal_dir:wal_dirname];
-	stop_scn = scn_;
+	[super init];
+	stop_scn = stop_scn_;
 	return self;
-}
-- (i64)
-snap_lsn
-{
-	return [snap_dir containg_scn:stop_scn];
 }
 
 - (void)
 recover_row:(struct row_v12 *)r
 {
-	[super recover_row:r];
-	struct tbuf *out = tbuf_alloc(fiber->pool);
-	print_gen_row(out, r, box_print_row);
-	puts(out->ptr);
+	struct tbuf *buf = tbuf_alloc(fiber->pool);
+	[self print:r into:buf];
+	puts(buf->ptr);
 	if (r->scn >= stop_scn && (r->tag & ~TAG_MASK) == TAG_WAL)
 		exit(0);
 }
-
-- (void)
-apply:(struct tbuf *)op tag:(u16)tag
-{
-	(void)op;
-	(void)tag;
-}
-
 - (void)
 wal_final_row
 {
@@ -279,13 +263,13 @@ wal_final_row
 
 @end
 
-
 int
 box_cat_scn(i64 stop_scn)
 {
-	[[[CatRecovery alloc] init_snap_dir:cfg.snap_dir
-				    wal_dir:cfg.wal_dir
-				   stop_scn:stop_scn] load_from_local];
+	BoxPrint *printer = [[BoxPrint alloc] init_stop_scn:stop_scn];
+	XLogReader *reader = [[XLogReader alloc] init_recovery:printer];
+	snap_lsn = [snap_dir containg_scn:stop_scn];
+	[reader load_from_local:0];
 	return 0;
 }
 

@@ -148,9 +148,11 @@ void box_service_ro(struct service *s);
 enum messages ENUM_INITIALIZER(MESSAGES);
 extern char * const box_ops[];
 
-@interface Recovery (Box)
-@end
 extern Recovery *recovery;
+
+@interface Box : Object <RecoveryClient>
+@end
+
 
 void *next_field(void *f);
 void append_field(struct tbuf *b, void *f);

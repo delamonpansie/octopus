@@ -215,8 +215,7 @@ initialize_service()
 	say_info("(silver)box initialized (%i workers)", cfg.wal_writer_inbox_size);
 }
 
-
-@implementation Recovery (Box)
+@implementation Box
 
 - (void)
 apply:(struct tbuf *)data tag:(u16)tag
@@ -276,12 +275,6 @@ apply:(struct tbuf *)data tag:(u16)tag
 	}
 }
 
-- (void)
-check_replica
-{
-	if ([self is_replica])
-		iproto_raise(ERR_CODE_NONMASTER, "replica is readonly");
-}
 
 - (void)
 wal_final_row
@@ -290,23 +283,27 @@ wal_final_row
 		build_secondary_indexes();
 		initialize_service();
 	}
-	[self status_changed]; /* should be [super wal_final_row], but because of category .. */
 }
 
 - (void)
 status_changed
 {
-	/* ugly hack: since it's a category it also breaks feeders title() */
-	if (self == recovery) {
-		title(NULL);
-
-		if (status == PRIMARY) {
-			box_service(&box_primary);
-			return;
-		}
-		if (prev_status == PRIMARY)
-			box_service_ro(&box_primary);
+	if (recovery->status == PRIMARY) {
+		box_service(&box_primary);
+		return;
 	}
+	if (recovery->prev_status == PRIMARY)
+		box_service_ro(&box_primary);
+}
+
+- (void)
+print:(const struct row_v12 *)row into:(struct tbuf *)buf
+{
+	if (print_sys_row(buf, row))
+		return;
+
+	print_row_header(buf, row);
+	box_print_row(buf, row->tag, &TBUF(row->data, row->len, fiber->pool));
 }
 
 - (int)
@@ -477,13 +474,9 @@ init(void)
 	enum feeder_cfg_e fid_err = feeder_param_fill_from_cfg(&feeder, NULL);
 	if (fid_err) panic("wrong feeder conf");
 
-	recovery = [[Recovery alloc] init_snap_dir:strdup(cfg.snap_dir)
-					   wal_dir:strdup(cfg.wal_dir)
-				      rows_per_wal:cfg.rows_per_wal
-				      feeder_param:&feeder
-					     flags:init_storage ? RECOVER_READONLY : 0];
+	recovery = [[Recovery alloc] init_feeder_param:&feeder];
+	[recovery set_client:[[Box alloc] init]];
 	[recovery set_snap_writer:[BoxSnapWriter class]];
-	recovery->print_row = box_print_row;
 
 	if (init_storage)
 		return;
@@ -506,7 +499,6 @@ init_second_stage(va_list ap __attribute__((unused)))
 	} else {
 		[recovery simple];
 	}
-	title(NULL);
 }
 
 static void
