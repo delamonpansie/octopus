@@ -45,8 +45,6 @@
 #include <stdint.h>
 
 
-const int object_space_count = 256, object_space_max_idx = MAX_IDX;
-
 static int stat_base;
 char * const box_ops[] = ENUM_STR_INITIALIZER(MESSAGES);
 
@@ -564,17 +562,12 @@ box_prepare(struct box_txn *txn, struct tbuf *data)
 	say_debug("%s op:%i", __func__, txn->op);
 
 	i32 n = read_u32(data);
-	if (n < 0 || n > object_space_count - 1)
-		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "bad namespace number");
-
-	if (!object_space_registry[n].enabled)
-		iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "object_space %i is not enabled", n);
-
-	if (object_space_registry[n].ignored)
+	txn->object_space = object_space(n);
+	if (txn->object_space->ignored) {
 		/* txn->object_space == NULL means this txn will be ignored */
+		txn->object_space = NULL;
 		return;
-
-	txn->object_space = &object_space_registry[n];
+	}
 	txn->index = txn->object_space->index[0];
 
 	switch (txn->op) {
@@ -799,28 +792,22 @@ box_select_cb(struct netmsg_head *h, struct iproto *request, struct conn *c __at
 {
 	struct tbuf data = TBUF(request->data, request->data_len, fiber->pool);
 	struct iproto_retcode *reply = iproto_reply(h, request, ERR_CODE_OK);
-	struct object_space *object_space;
+	struct object_space *obj_spc;
 
 	i32 n = read_u32(&data);
 	u32 i = read_u32(&data);
 	u32 offset = read_u32(&data);
 	u32 limit = read_u32(&data);
 
-	if (n < 0 || n > object_space_count - 1)
-		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "bad namespace number");
-
-	if (!object_space_registry[n].enabled)
-		iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "object_space %i is not enabled", n);
+	obj_spc = object_space(n);
 
 	if (i > MAX_IDX)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index too big");
 
-	object_space = &object_space_registry[n];
-
-	if ((object_space->index[i]) == NULL)
+	if ((obj_spc->index[i]) == NULL)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index is invalid");
 
-	process_select(h, object_space->index[i], limit, offset, &data);
+	process_select(h, obj_spc->index[i], limit, offset, &data);
 	iproto_reply_fixup(h, reply);
 	stat_collect(stat_base, request->msg_code, 1);
 }

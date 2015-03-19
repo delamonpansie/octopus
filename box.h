@@ -43,13 +43,14 @@ struct index;
 #define MAX_IDX 10
 struct object_space {
 	int n;
-	bool enabled, ignored, snap, wal;
+	bool ignored, snap, wal;
 	int cardinality;
 	Index<BasicIndex> *index[MAX_IDX];
 };
 
-extern struct object_space *object_space_registry;
-extern const int object_space_count, object_space_max_idx;
+extern struct object_space *object_space_registry[256];
+extern const int object_space_max_idx;
+struct object_space *object_space(int n);
 
 enum object_type {
 	BOX_TUPLE = 1

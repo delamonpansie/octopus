@@ -52,7 +52,20 @@
 #include <sysexits.h>
 
 static struct service box_primary, box_secondary;
-struct object_space *object_space_registry;
+struct object_space *object_space_registry[256];
+struct object_space *
+object_space(int n)
+{
+	if (n < 0 || n > nelem(object_space_registry) - 1)
+		iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "bad namespace number %i", n);
+
+	if (!object_space_registry[n])
+		iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "object_space %i is not enabled", n);
+
+	return object_space_registry[n];
+}
+
+const int object_space_max_idx = MAX_IDX;
 
 static void
 configure(void)
@@ -60,28 +73,26 @@ configure(void)
 	if (cfg.object_space == NULL)
 		panic("at least one object_space should be configured");
 
-	for (int i = 0; i < object_space_count; i++) {
+	for (int i = 0; i < nelem(object_space_registry); i++) {
 		if (cfg.object_space[i] == NULL)
 			break;
 
+		struct object_space *obj_spc;
 		if (!CNF_STRUCT_DEFINED(cfg.object_space[i]))
-			object_space_registry[i].enabled = false;
-		else
-			object_space_registry[i].enabled = !!cfg.object_space[i]->enabled;
-
-		if (!object_space_registry[i].enabled)
 			continue;
 
-		object_space_registry[i].ignored = !!cfg.object_space[i]->ignored;
-		object_space_registry[i].snap = !!cfg.object_space[i]->snap;
-		object_space_registry[i].wal = object_space_registry[i].snap &&
-						!!cfg.object_space[i]->wal;
-		object_space_registry[i].cardinality = cfg.object_space[i]->cardinality;
+		obj_spc = object_space_registry[i] = xcalloc(1, sizeof(struct object_space));
+
+		obj_spc->n = i;
+		obj_spc->ignored = !!cfg.object_space[i]->ignored;
+		obj_spc->snap = !!cfg.object_space[i]->snap;
+		obj_spc->wal = obj_spc->snap && !!cfg.object_space[i]->wal;
+		obj_spc->cardinality = cfg.object_space[i]->cardinality;
 
 		if (cfg.object_space[i]->index == NULL)
 			panic("(object_space = %" PRIu32 ") at least one index must be defined", i);
 
-		for (int j = 0; j < nelem(object_space_registry[i].index); j++) {
+		for (int j = 0; j < nelem(obj_spc->index); j++) {
 
 			if (cfg.object_space[i]->index[j] == NULL)
 				break;
@@ -105,15 +116,13 @@ configure(void)
 			if ([index isKindOf: [Tree class]] && j > 0)
 				index = [[DummyIndex alloc] init_with_index:index];
 
-			object_space_registry[i].index[j] = (Index<BasicIndex> *)index;
+			obj_spc->index[j] = (Index<BasicIndex> *)index;
 		}
 
-		Index *pk = object_space_registry[i].index[0];
+		Index *pk = obj_spc->index[0];
 
 		if (pk->conf.unique == false)
 			panic("(object_space = %" PRIu32 ") object_space PK index must be unique", i);
-
-		object_space_registry[i].enabled = true;
 
 		say_info("object space %i successfully configured", i);
 		say_info("  PK %i:%s", pk->conf.n, [[pk class] name]);
@@ -177,21 +186,22 @@ static void
 build_secondary_indexes()
 {
 	@try {
-		for (u32 n = 0; n < object_space_count; n++) {
-			if (object_space_registry[n].enabled)
-				build_object_space_trees(&object_space_registry[n]);
+		for (u32 n = 0; n < nelem(object_space_registry); n++) {
+			if (object_space_registry[n])
+				build_object_space_trees(object_space_registry[n]);
 		}
 	}
 	@catch (Error *e) {
 		raise_fmt("unable to built tree indexes: %s", e->reason);
 	}
 
-	for (u32 n = 0; n < object_space_count; n++) {
-		if (!object_space_registry[n].enabled)
+	for (u32 n = 0; n < nelem(object_space_registry); n++) {
+		struct object_space *obj_spc = object_space_registry[n];
+		if (obj_spc == NULL)
 			continue;
 
 		struct tbuf *i = tbuf_alloc(fiber->pool);
-		foreach_index(index, &object_space_registry[n])
+		foreach_index(index, obj_spc)
 			tbuf_printf(i, " %i:%s", index->conf.n, [[index class] name]);
 
 		say_info("Object space %i indexes:%.*s", n, tbuf_len(i), (char *)i->ptr);
@@ -246,8 +256,8 @@ apply:(struct tbuf *)data tag:(u16)tag
 				return;
 
 			const struct box_snap_row *snap = box_snap_row(data);
-			txn.object_space = &object_space_registry[snap->object_space];
-			if (!txn.object_space->enabled)
+			txn.object_space = object_space_registry[snap->object_space];
+			if (txn.object_space == NULL)
 				raise_fmt("object_space %i is not configured", txn.object_space->n);
 			if (txn.object_space->ignored) {
 				txn.object_space = NULL;
@@ -316,11 +326,11 @@ snapshot_fold
 #ifdef FOLD_DEBUG
 	int count = 0;
 #endif
-	for (int n = 0; n < object_space_count; n++) {
-		if (!object_space_registry[n].enabled || !object_space_registry[n].snap)
+	for (int n = 0; n < nelem(object_space_registry); n++) {
+		if (object_space_registry[n] == NULL || !object_space_registry[n]->snap)
 			continue;
 
-		id pk = object_space_registry[n].index[0];
+		id pk = object_space_registry[n]->index[0];
 
 		if ([pk respondsTo:@selector(ordered_iterator_init)])
 			[pk ordered_iterator_init];
@@ -354,9 +364,9 @@ snapshot_fold
 snapshot_estimate
 {
 	size_t total_rows = 0;
-	for (int n = 0; n < object_space_count; n++)
-		if (object_space_registry[n].enabled && object_space_registry[n].snap)
-			total_rows += [object_space_registry[n].index[0] size];
+	for (int n = 0; n < nelem(object_space_registry); n++)
+		if (object_space_registry[n] && object_space_registry[n]->snap)
+			total_rows += [object_space_registry[n]->index[0] size];
 	return total_rows;
 }
 
@@ -371,12 +381,12 @@ snapshot_write_rows:(XLog *)l
 	int ret = 0;
 	size_t rows = 0, pk_rows, total_rows = [self snapshot_estimate];
 
-	for (int n = 0; n < object_space_count; n++) {
-		if (!object_space_registry[n].enabled || !object_space_registry[n].snap)
+	for (int n = 0; n < nelem(object_space_registry); n++) {
+		if (object_space_registry[n] == NULL || !object_space_registry[n]->snap)
 			continue;
 
 		pk_rows = 0;
-		id pk = object_space_registry[n].index[0];
+		id pk = object_space_registry[n]->index[0];
 		[pk iterator_init];
 		while ((obj = [pk iterator_next])) {
 			if (unlikely(ghost(obj)))
@@ -420,7 +430,7 @@ snapshot_write_rows:(XLog *)l
 				[l confirm_write];
 		}
 
-		foreach_index(index, &object_space_registry[n]) {
+		foreach_index(index, object_space_registry[n]) {
 			if (index->conf.n == 0)
 				continue;
 
@@ -460,10 +470,6 @@ static void init_second_stage(va_list ap __attribute__((unused)));
 static void
 init(void)
 {
-	object_space_registry = xcalloc(object_space_count, sizeof(struct object_space));
-	for (int i = 0; i < object_space_count; i++)
-		object_space_registry[i].n = i;
-
 	title("loading");
 	if (cfg.paxos_enabled) {
 		if (cfg.local_hot_standby)
@@ -529,13 +535,13 @@ info(struct tbuf *out, const char *what)
 		tbuf_printf(out, "  config: \"%s\""CRLF, cfg_filename);
 
 		tbuf_printf(out, "  namespaces:" CRLF);
-		for (uint32_t n = 0; n < object_space_count; ++n) {
-			if (!object_space_registry[n].enabled)
+		for (uint32_t n = 0; n < nelem(object_space_registry); ++n) {
+			if (object_space_registry[n] == NULL)
 				continue;
 			tbuf_printf(out, "  - n: %i"CRLF, n);
-			tbuf_printf(out, "    objects: %i"CRLF, [object_space_registry[n].index[0] size]);
+			tbuf_printf(out, "    objects: %i"CRLF, [object_space_registry[n]->index[0] size]);
 			tbuf_printf(out, "    indexes:"CRLF);
-			foreach_index(index, &object_space_registry[n])
+			foreach_index(index, object_space_registry[n])
 				tbuf_printf(out, "    - { index: %i, slots: %i, bytes: %zi }" CRLF,
 					    index->conf.n, [index slots], [index bytes]);
 		}

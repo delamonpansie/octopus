@@ -114,12 +114,12 @@ user_proc = {}
 ffi.cdef[[
 struct object_space {
 	int n;
-	bool enabled, ignored, snap, wal;
+	bool ignored, snap, wal;
 	int cardinality;
 	const struct BasicIndex *index[10];
 };
-extern const struct object_space *object_space_registry;
-extern const int object_space_count, object_space_max_idx;
+struct object_space *object_space(int n);
+extern const int object_space_max_idx;
 ]]
 
 local object_space_mt = {
@@ -166,15 +166,14 @@ object_space_registry = setmetatable({}, {
 	 i = k
       end
 
-      if type(i) ~= 'number' or
-	 i >= ffi.C.object_space_count or
-	 not ffi.C.object_space_registry[i].enabled or
-	 ffi.C.object_space_registry[i].ignored
-      then
+      if type(i) ~= 'number' then
 	 return nil
       end
 
-      local ptr = ffi.C.object_space_registry + i
+      local ptr = ffi.C.object_space(i)
+      if ptr == nil or ptr.ignored then
+          return nil
+      end
       local index_registry = setmetatable({ __object_space = ptr }, index_registry_mt)
       local object_space = setmetatable({ __ptr = ptr,
 					  n = ptr.n,
@@ -193,7 +192,7 @@ space, object_space = object_space_registry, object_space_registry
 -- install automatic cast of object() return value
 object_cast[dyn_tuple.obj_type] = dyn_tuple.obj_cast
 
-
+local object_space = object_space
 function select(n, ...)
         local index = object_space[n].index[0]
         local result = {}
