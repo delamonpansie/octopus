@@ -29,7 +29,7 @@
 
 typedef struct row_v12 *(*filter_callback)(struct row_v12 *r, const char *arg, int arglen);
 
-@interface Feeder: Recovery {
+@interface Feeder : Object <RecoverRow> {
 	int fd;
 	filter_callback filter;
 }

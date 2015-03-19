@@ -62,12 +62,9 @@ struct registered_callbacks {
 static struct registered_callbacks registered = {NULL, 0, 0};
 
 @implementation Feeder
-- (id) init_snap_dir:(const char *)snap_dirname
-             wal_dir:(const char *)wal_dirname
-		  fd:(int)fd_
+- (id) init_fd:(int)fd_
 {
-	[super init_snap_dir:snap_dirname
-		     wal_dir:wal_dirname];
+	[super init];
 	fd = fd_;
 	return self;
 }
@@ -178,7 +175,7 @@ recover_row:(struct row_v12 *)r
 - (void)
 wal_final_row
 {
-	[self recover_row:[self dummy_row_lsn:0 scn:0 tag:wal_final|TAG_SYS]];
+	[self recover_row:dummy_row(0, 0, wal_final|TAG_SYS)];
 }
 
 
@@ -236,13 +233,12 @@ recover_start_from_scn:(i64)initial_scn filter:(struct feeder_filter*)_filter
 			raise_fmt("unable to find WAL containing SCN:%"PRIi64, initial_scn);
 		say_debug("%s: SCN:%"PRIi64" => LSN:%"PRIi64, __func__, initial_scn, initial_lsn);
 		lsn =  initial_lsn;
-		scn = initial_scn;
 	} else {
 		/* load from last valid snapshot */
 		lsn = 0;
-		scn = 0;
 	}
 
+	XLogReader *reader = [[XLogReader alloc] init_recovery:self];
 	[reader load_from_local:lsn];
 	[self wal_final_row];
 	[reader recover_follow:cfg.wal_dir_rescan_delay];
@@ -349,7 +345,7 @@ static void
 keepalive_send(va_list ap)
 {
 	Feeder *feeder = va_arg(ap, typeof(feeder));
-	struct row_v12* sysnop = [feeder dummy_row_lsn: 0 scn: 0 tag: nop | TAG_SYS];
+	struct row_v12* sysnop = dummy_row(0, 0, nop|TAG_SYS);
 
 	for (;;) {
 		if (cfg.wal_feeder_keepalive_timeout > 0.0) {
@@ -380,9 +376,7 @@ recover_feed_slave(int sock)
 	luaT_require_or_panic("feeder_init", false, NULL);
 	luaT_require_or_panic("init", false, NULL);
 
-	feeder = [[Feeder alloc] init_snap_dir:cfg.snap_dir
-				       wal_dir:cfg.wal_dir
-					    fd:sock];
+	feeder = [[Feeder alloc] init_fd:sock];
 	i64 initial_scn = handshake(sock, &filter);
 	if (filter.type == FILTER_TYPE_ID)
 		say_info("connect peer:%s initial SCN:%"PRIi64" filter: type=ID", peer_name, initial_scn);
