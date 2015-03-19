@@ -297,7 +297,7 @@ load_from_local
 	   only pk indexes must be updated. remote feeder will send wal_final_row then all remote
 	   rows are read */
 	if (![remote feeder_addr_configured])
-	    [self wal_final_row];
+		[self wal_final_row];
 	return local_lsn;
 }
 
