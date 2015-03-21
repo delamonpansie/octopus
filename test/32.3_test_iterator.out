@@ -1,7 +1,7 @@
 # box.lua("user_proc.iterator3")
-Failed with: {code: 0x202, message: '../../../mod/box/src-lua/box/example_proc.lua:252: context switch during index iteration
+Failed with: {code: 0x202, message: 'mod/box/src-lua/box/example_proc.lua:252: context switch during index iteration
 stack traceback:
 	[C]: in function 'error'
-	../../../src-lua/index.lua:218: in function '(for generator)'
-	../../../mod/box/src-lua/box/example_proc.lua:252: in function 'proc'
-	../../../mod/box/src-lua/box.lua:320: in function <../../../mod/box/src-lua/box.lua:315>'}
+	src-lua/index.lua:218: in function '(for generator)'
+	mod/box/src-lua/box/example_proc.lua:252: in function 'proc'
+	mod/box/src-lua/box.lua:325: in function <mod/box/src-lua/box.lua:320>'}

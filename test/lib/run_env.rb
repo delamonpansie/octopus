@@ -22,6 +22,7 @@ def log_try(&block)
   yield
 rescue => e
   err = "Failed with: #{e}\n" #FIXME: e.inspect
+  err.gsub!('../','')
   err += e.backtrace.reject{|l| l =~ /runtest\.rb/}.join("\n") if $options[:backtrace]
   log err
 end
