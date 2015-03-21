@@ -73,6 +73,9 @@ configure(void)
 			continue;
 
 		object_space_registry[i].ignored = !!cfg.object_space[i]->ignored;
+		object_space_registry[i].snap = !!cfg.object_space[i]->snap;
+		object_space_registry[i].wal = object_space_registry[i].snap;
+		object_space_registry[i].wal &&= !!cfg.object_space[i]->nowal;
 		object_space_registry[i].cardinality = cfg.object_space[i]->cardinality;
 
 		if (cfg.object_space[i]->index == NULL)
@@ -317,7 +320,7 @@ snapshot_fold
 	int count = 0;
 #endif
 	for (int n = 0; n < object_space_count; n++) {
-		if (!object_space_registry[n].enabled)
+		if (!object_space_registry[n].enabled || !object_space_registry[n].snap)
 			continue;
 
 		id pk = object_space_registry[n].index[0];
@@ -352,7 +355,7 @@ snapshot_estimate
 {
 	size_t total_rows = 0;
 	for (int n = 0; n < object_space_count; n++)
-		if (object_space_registry[n].enabled)
+		if (object_space_registry[n].enabled && object_space_registry[n].snap)
 			total_rows += [object_space_registry[n].index[0] size];
 	return total_rows;
 }
@@ -369,7 +372,7 @@ snapshot_write_rows:(XLog *)l
 	size_t rows = 0, pk_rows, total_rows = [self snapshot_estimate];
 
 	for (int n = 0; n < object_space_count; n++) {
-		if (!object_space_registry[n].enabled)
+		if (!object_space_registry[n].enabled || !object_space_registry[n].snap)
 			continue;
 
 		pk_rows = 0;

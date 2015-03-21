@@ -6,6 +6,8 @@ object_space = [
   {
     enabled = -1, required
     ignored = 0
+    wal = 1
+    snap = 1
     cardinality = -1
     estimated_rows = 0
     index = [
