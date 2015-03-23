@@ -17,7 +17,7 @@ RunEnv.env_eval do
   octopus [], :out => "/dev/null", :err => "/dev/null"
 
   log_line = wait_for "expected failure" do
-    File.open('octopus.log').each_line.grep(/not all WALs have been successfully read/)[0].sub(/.*> /, '')
+    File.open('octopus.log').each_line.grep(/not all WALs have been successfully read/)[0].sub(/.*> /, '').gsub('../','')
   end
   puts log_line
 end
