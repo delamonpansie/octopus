@@ -193,7 +193,7 @@ octopus_version.h: FORCE
 
 all_modules = $(sort $(modules) $(foreach path,$(wildcard mod/*),$(notdir $(path))))
 
-$(foreach mod,$(all_modules),mod/$(mod)/$(mod)_version.h):
+$(foreach mod,$(all_modules),mod/$(mod)/$(mod)_version.h): FORCE
 	@mkdir -p $(dir $@)
 	@echo -n 'const char $(subst -,_,$(subst .h,,$(notdir $@)))_string[] = "' > $@_
 	@cd $(srcdir)/$(dir $@); $(GIT) describe --always HEAD | sed 's/.*-g/g/' | tr -d \\n >> $(notdir $@_)
