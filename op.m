@@ -755,7 +755,7 @@ box_cb(struct iproto *request, struct conn *c)
 		if (!txn.object_space)
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "ignored object space");
 
-		if (txn.obj_affected > 0 && txn->object_space->wal) {
+		if (txn.obj_affected > 0 && txn.object_space->wal) {
 			if ([recovery submit:request->data
 					 len:request->data_len
 					 tag:request->msg_code<<5|TAG_WAL] != 1)

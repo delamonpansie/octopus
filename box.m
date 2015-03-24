@@ -74,8 +74,8 @@ configure(void)
 
 		object_space_registry[i].ignored = !!cfg.object_space[i]->ignored;
 		object_space_registry[i].snap = !!cfg.object_space[i]->snap;
-		object_space_registry[i].wal = object_space_registry[i].snap;
-		object_space_registry[i].wal &&= !!cfg.object_space[i]->nowal;
+		object_space_registry[i].wal = object_space_registry[i].snap &&
+						!!cfg.object_space[i]->wal;
 		object_space_registry[i].cardinality = cfg.object_space[i]->cardinality;
 
 		if (cfg.object_space[i]->index == NULL)
