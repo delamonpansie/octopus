@@ -156,11 +156,8 @@ build_object_space_trees(struct object_space *object_space)
 
         if (n_tuples > 0) {
 		title("building_indexes/object_space:%i ", object_space->n);
-		for (int i = 0; i < tree_count; i++) {
+		for (int i = 0; i < tree_count; i++)
                         nodes[i] = xmalloc(estimated_tuples * ts[i]->node_size);
-			if (nodes[i] == NULL)
-                                panic("can't allocate node array");
-                }
 
 		struct tnt_object *obj;
 		u32 t = 0;
