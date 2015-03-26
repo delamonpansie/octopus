@@ -67,21 +67,21 @@ compare
 - (u32)
 size
 {
-	raise("Subclass responsibility");
+	raise_fmt("Subclass responsibility");
 	return 0;
 }
 
 - (u32)
 slots
 {
-	raise("Subclass responsibility");
+	raise_fmt("Subclass responsibility");
 	return 0;
 }
 
 - (size_t)
 bytes
 {
-	raise("Subclass responsibility");
+	raise_fmt("Subclass responsibility");
 	return 0;
 }
 
@@ -102,7 +102,7 @@ find_obj:(struct tnt_object *)obj
 - (struct tnt_object *)
 find_node:(const struct index_node *)node
 {
-	raise("Subclass responsibility");
+	raise_fmt("Subclass responsibility");
 	(void)node;
 	return 0;
 }
@@ -110,14 +110,14 @@ find_node:(const struct index_node *)node
 - (void)
 replace:(struct tnt_object *)obj
 {
-	raise("Subclass responsibility");
+	raise_fmt("Subclass responsibility");
 	(void)obj;
 }
 
 - (int)
 remove:(struct tnt_object *)obj
 {
-	raise("Subclass responsibility");
+	raise_fmt("Subclass responsibility");
 	(void)obj;
 	return 0;
 }
@@ -150,7 +150,7 @@ iterator_init_with_node:(const struct index_node *)node
 iterator_init_with_direction:(enum iterator_direction)direction
 {
 	(void)direction;
-	raise("Subclass responsibility");
+	raise_fmt("Subclass responsibility");
 }
 
 - (void)
@@ -169,28 +169,28 @@ iterator_init_with_key:(struct tbuf *)key_data
 - (void)
 iterator_init_with_node:(const struct index_node *)node direction:(enum iterator_direction)direction
 {
-	raise("Subclass responsibility");
+	raise_fmt("Subclass responsibility");
 	(void)node; (void)direction;
 }
 
 - (void)
 iterator_init_with_object:(struct tnt_object *)obj direction:(enum iterator_direction)direction
 {
-	raise("Subclass responsibility");
+	raise_fmt("Subclass responsibility");
 	(void)obj; (void)direction;
 }
 
 - (struct tnt_object *)
 iterator_next
 {
-	raise("Subclass responsibility");
+	raise_fmt("Subclass responsibility");
 	return NULL;
 }
 
 - (struct tnt_object *)
 iterator_next_check:(index_cmp)check
 {
-	raise("Subclass responsibility");
+	raise_fmt("Subclass responsibility");
 	(void)check;
 	return NULL;
 }
@@ -198,7 +198,7 @@ iterator_next_check:(index_cmp)check
 - (void)
 set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated
 {
-	raise("Subclass responsibility");
+	raise_fmt("Subclass responsibility");
 	(void)nodes_; (void)count; (void)allocated;
 }
 

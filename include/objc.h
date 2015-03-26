@@ -70,7 +70,7 @@ size_t class_getInstanceSize(Class class);
 @end
 
 
-#define raise(fmt, ...)							\
+#define raise_fmt(fmt, ...)						\
 	({								\
 		say_debug("raise at %s:%i " fmt,			\
 			  __FILE__, __LINE__, ##__VA_ARGS__);		\

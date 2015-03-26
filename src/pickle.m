@@ -152,7 +152,7 @@ _safe_load_varint32(struct tbuf *buf)
 		tbuf_too_short();
 	}
 	if (v > ((u32)0xffffffff >> 7) || ((*p & 0x80) != 0)) {
-		raise("bad varint32");
+		raise_fmt("bad varint32");
 	}
 	v |= *p & 0x7f;
 	buf->ptr = p + 1;
@@ -235,7 +235,7 @@ read_ptr(struct tbuf *buf)
 	{								\
 		_read_must_have(b, bits/8 + 1);				\
 		if (unlikely(*(u8*)b->ptr != bits/8))			\
-			raise("bad field");				\
+			raise_fmt("bad field");				\
 		u##bits r = *(u##bits *)(b->ptr + 1);			\
 		b->ptr += bits/8 + 1;					\
 		return r;						\
@@ -246,7 +246,7 @@ read_ptr(struct tbuf *buf)
 	{								\
 		_read_must_have(b, bits/8 + 1);				\
 		if (unlikely(*(u8*)b->ptr != bits/8))			\
-			raise("bad field");				\
+			raise_fmt("bad field");				\
 		i##bits r = *(i##bits *)(b->ptr + 1);			\
 		b->ptr += bits/8 + 1;					\
 		return r;						\

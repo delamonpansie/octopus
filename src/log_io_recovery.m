@@ -305,14 +305,14 @@ recover_snap
 
 		i64 snap_lsn = [self snap_lsn];
 		if (snap_lsn == -1)
-			raise("snap_dir reading failed");
+			raise_fmt("snap_dir reading failed");
 
 		if (snap_lsn < 1)
 			return 0;
 
 		snap = [snap_dir open_for_read:snap_lsn];
 		if (snap == nil)
-			raise("can't find/open snapshot");
+			raise_fmt("can't find/open snapshot");
 
 		say_info("recover from `%s'", snap->filename);
 
@@ -331,7 +331,7 @@ recover_snap
 			[self recover_row:[self dummy_row_lsn:snap_lsn scn:snap_lsn tag:snap_final|TAG_SYS]];
 
 		if (![snap eof])
-			raise("unable to fully read snapshot");
+			raise_fmt("unable to fully read snapshot");
 	}
 	@finally {
 		palloc_cutoff(fiber->pool);
@@ -357,7 +357,7 @@ recover_remaining_wals
 	say_debug("%s: lsn:%"PRIi64, __func__, lsn);
 	i64 wal_greatest_lsn = [wal_dir greatest_lsn];
 	if (wal_greatest_lsn == -1)
-		raise("wal_dir reading failed");
+		raise_fmt("wal_dir reading failed");
 
 	/* if the caller already opened WAL for us, recover from it first */
 	if (current_wal != nil) {
@@ -393,7 +393,7 @@ recover_remaining_wals
 
 	/* empty WAL or borken header encountered: unable to parse remaining WALs */
 	if (wal_greatest_lsn > lsn)
-		raise("not all WALs have been successfully read! "
+		raise_fmt("not all WALs have been successfully read! "
 		      "greatest_lsn:%"PRIi64" lsn:%"PRIi64" diff:%"PRIi64,
 		      wal_greatest_lsn, lsn, wal_greatest_lsn - lsn);
 }
@@ -429,7 +429,7 @@ load_from_local
 		[self wal_final_row];
 
 	if (last_wal_lsn && last_wal_lsn < lsn)
-		raise("Snapshot LSN is greater then last WAL LSN");
+		raise_fmt("Snapshot LSN is greater then last WAL LSN");
 	return lsn;
 }
 
@@ -545,7 +545,7 @@ pull_snapshot:(id<XLogPullerAsync>)puller
 				if (tag == snap_final)
 					return;
 			} else {
-				raise("unexpected tag %s", xlog_tag_to_a(row->tag));
+				raise_fmt("unexpected tag %s", xlog_tag_to_a(row->tag));
 			}
 		}
 		fiber_gc();
@@ -880,7 +880,7 @@ is_replica
 check_replica
 {
 	if ([self is_replica])
-		raise("replica is readonly");
+		raise_fmt("replica is readonly");
 }
 
 - (int)

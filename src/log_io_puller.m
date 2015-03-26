@@ -371,17 +371,17 @@ recv_with_timeout: (ev_tstamp)timeout
 recv
 {
 	if (abort)
-		raise("recv aborted");
+		raise_fmt("recv aborted");
 
 	tbuf_ensure(c.rbuf, 256 * 1024);
 	ssize_t r = [self recv_with_timeout: cfg.wal_feeder_keepalive_timeout];
 
 	if (r <= 0) {
 		switch (r) {
-		case 0: raise("unexpected EOF");
-		case -2: raise("timeout");
-		case -3: raise("recv aborted");
-		default: raise("unknown error: %s", strerror(errno));
+		case 0: raise_fmt("unexpected EOF");
+		case -2: raise_fmt("timeout");
+		case -3: raise_fmt("recv aborted");
+		default: raise_fmt("unknown error: %s", strerror(errno));
 		}
 	}
 
@@ -414,7 +414,7 @@ fetch_row
 
 		data_crc = crc32c(0, row_v12(buf)->data, row_v12(buf)->len);
 		if (row_v12(buf)->data_crc32c != data_crc)
-			raise("data crc32c mismatch");
+			raise_fmt("data crc32c mismatch");
 
 		fixup_row_v12(row_v12(buf));
 		break;
@@ -427,7 +427,7 @@ fetch_row
 
 		data_crc = crc32c(0, _row_v11(buf)->data, _row_v11(buf)->len);
 		if (_row_v11(buf)->data_crc32c != data_crc)
-			raise("data crc32c mismatch");
+			raise_fmt("data crc32c mismatch");
 
 		buf = convert_row_v11_to_v12(buf);
 		break;
