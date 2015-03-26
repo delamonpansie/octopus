@@ -183,7 +183,7 @@ build_secondary_indexes()
 		}
 	}
 	@catch (Error *e) {
-		raise("unable to built tree indexes: %s", e->reason);
+		raise_fmt("unable to built tree indexes: %s", e->reason);
 	}
 
 	for (u32 n = 0; n < object_space_count; n++) {
@@ -249,7 +249,7 @@ apply:(struct tbuf *)data tag:(u16)tag
 			const struct box_snap_row *snap = box_snap_row(data);
 			txn.object_space = &object_space_registry[snap->object_space];
 			if (!txn.object_space->enabled)
-				raise("object_space %i is not configured", txn.object_space->n);
+				raise_fmt("object_space %i is not configured", txn.object_space->n);
 			if (txn.object_space->ignored) {
 				txn.object_space = NULL;
 				return;

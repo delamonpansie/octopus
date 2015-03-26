@@ -53,7 +53,7 @@ char * const box_ops[] = ENUM_STR_INITIALIZER(MESSAGES);
 void __attribute__((noreturn))
 bad_object_type()
 {
-	raise("bad object type");
+	raise_fmt("bad object type");
 }
 
 void *
