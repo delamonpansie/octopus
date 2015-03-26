@@ -322,7 +322,7 @@ _panic_syserror(const char *file, unsigned line, const char *format, ...)
 }
 
 void __attribute__((noreturn))
-panic_exc_aux(Error *exc, const char *format, ...)
+panic_exc_fmt(Error *exc, const char *format, ...)
 {
 	va_list ap;
 	va_start(ap, format);
@@ -332,6 +332,6 @@ panic_exc_aux(Error *exc, const char *format, ...)
 void __attribute__((noreturn))
 panic_exc(Error *exc)
 {
-	panic_exc_aux(exc, "exception: %s", exc->reason);
+	panic_exc_fmt(exc, "exception: %s", exc->reason);
 }
 

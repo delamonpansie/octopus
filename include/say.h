@@ -121,7 +121,7 @@ void _panic_syserror(const char *file, unsigned line, const char *format, ...)
 
 @class Error;
 void panic_exc(Error *exc) __attribute__((noreturn));
-
+void panic_exc_fmt(Error *exc, const char *format, ...) __attribute__((noreturn));
 #define panic(...) _panic(__FILE__, __LINE__, __VA_ARGS__)
 #define panic_syserror(...) _panic_syserror(__FILE__, __LINE__, __VA_ARGS__)
 
