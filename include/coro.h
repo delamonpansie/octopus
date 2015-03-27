@@ -50,7 +50,7 @@ static inline void
 oc_coro_transfer(coro_context *from, coro_context *to)
 {
 	/* do not rely on signed integer overflow. We believe, 30bit it is safe enough :) */
-	coro_switch_cnt = (coro_switch_cnt & 0x3fffffff) + 1;
+	coro_switch_cnt = (int)((unsigned)coro_switch_cnt + 1);
 	coro_transfer(from, to);
 }
 
