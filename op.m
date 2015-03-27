@@ -737,50 +737,58 @@ box_cb(struct iproto *request, struct conn *c)
 {
 	say_debug2("%s: c:%p op:0x%02x sync:%u", __func__, c, request->msg_code, request->sync);
 
+	if ([recovery is_replica])
+		iproto_raise(ERR_CODE_NONMASTER, "replica is readonly");
+
 	struct box_txn txn = { .op = request->msg_code };
 	@try {
 		ev_tstamp start = ev_now(), stop;
+		@try {
+			box_prepare(&txn, &TBUF(request->data, request->data_len, NULL));
 
-		if ([recovery is_replica])
-			iproto_raise(ERR_CODE_NONMASTER, "replica is readonly");
+			if (!txn.object_space)
+				iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "ignored object space");
 
-		box_prepare(&txn, &TBUF(request->data, request->data_len, NULL));
-
-		if (!txn.object_space)
-			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "ignored object space");
-
-		if (txn.obj_affected > 0 && txn.object_space->wal) {
-			if ([recovery submit:request->data
-					 len:request->data_len
-					 tag:request->msg_code<<5|TAG_WAL] != 1)
-				iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
+			if (txn.obj_affected > 0 && txn.object_space->wal) {
+				if ([recovery submit:request->data
+						 len:request->data_len
+						 tag:request->msg_code<<5|TAG_WAL] != 1)
+					iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
+			}
 		}
-		box_commit(&txn);
-
-		struct netmsg_head *h = &c->out_messages;
-		struct iproto_retcode *reply = iproto_reply(h, request, ERR_CODE_OK);
-		net_add_iov_dup(h, &txn.obj_affected, sizeof(u32));
-		if (txn.flags & BOX_RETURN_TUPLE) {
-			if (txn.obj)
-				tuple_add(h, txn.obj);
-			else if (request->msg_code == DELETE && txn.old_obj)
-				tuple_add(h, txn.old_obj);
+		@catch (Error *e) {
+			if (e->file && strcmp(e->file, "src/paxos.m") != 0) {
+				say_warn("aborting txn, [%s reason:\"%s\"] at %s:%d peer:%s",
+					 [[e class] name], e->reason, e->file, e->line, conn_peer_name(c));
+				if (e->backtrace)
+					say_debug("backtrace:\n%s", e->backtrace);
+			}
+			box_rollback(&txn);
+			@throw;
 		}
-		iproto_reply_fixup(h, reply);
+		@try {
+			box_commit(&txn);
+			struct netmsg_head *h = &c->out_messages;
+			struct iproto_retcode *reply = iproto_reply(h, request, ERR_CODE_OK);
+			net_add_iov_dup(h, &txn.obj_affected, sizeof(u32));
+			if (txn.flags & BOX_RETURN_TUPLE) {
+				if (txn.obj)
+					tuple_add(h, txn.obj);
+				else if (request->msg_code == DELETE && txn.old_obj)
+					tuple_add(h, txn.old_obj);
+			}
+			iproto_reply_fixup(h, reply);
 
-		stop = ev_now();
-		if (stop - start > cfg.too_long_threshold)
-			say_warn("too long %s: %.3f sec", box_ops[txn.op], stop - start);
-	}
-	@catch (Error *e) {
-		if (e->file && strcmp(e->file, "src/paxos.m") != 0) {
-			say_warn("aborting txn, [%s reason:\"%s\"] at %s:%d peer:%s",
-				 [[e class] name], e->reason, e->file, e->line, conn_peer_name(c));
-			if (e->backtrace)
-				say_debug("backtrace:\n%s", e->backtrace);
+			stop = ev_now();
+			if (stop - start > cfg.too_long_threshold)
+				say_warn("too long %s: %.3f sec", box_ops[txn.op], stop - start);
 		}
-		box_rollback(&txn);
-		@throw;
+		@catch (Error *e) {
+			panic_exc_fmt(e, "can't handle exception after WAL write: %s", e->reason);
+		}
+		@catch (id e) {
+			panic_exc_fmt(e, "can't handle unknown exception after WAL write");
+		}
 	}
 	@finally {
 		box_cleanup(&txn);
