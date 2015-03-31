@@ -7,7 +7,7 @@ no-extra-warns += cfg/prscfg.o
 # no warns at all: it complains even with -Wall
 cfg/octopus.o: XCFLAGS := $(filter-out -W%,$(XCFLAGS))
 
-cfg/warning.o: cfg/prscfg.h
+cfg/warning.o cfg/octopus.o: cfg/prscfg.h
 
 ifeq (1, $(HAVE_CONFETTI))
     dist-clean += cfg/prscfg.h
