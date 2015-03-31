@@ -43,7 +43,7 @@ new_conf:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 	Index *i;
 	if (ic->cardinality == 1 && ic->type == NUMHASH) {
 		if (ic->unique == false)
-			return nil;
+			index_raise("NUMHASH index must be unique");
 
 		switch (ic->field[0].type) {
 		case SNUM32:
