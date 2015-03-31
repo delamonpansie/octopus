@@ -197,7 +197,7 @@ xlog_print(struct tbuf *out, u16 op, struct tbuf *b)
 	}
 
 	if (tbuf_len(b) > 0)
-		tbuf_printf(out, "ERROR, %i bytes unparsed", tbuf_len(b));
+		tbuf_printf(out, ", %i bytes unparsed %s", tbuf_len(b), tbuf_to_hex(b));
 }
 
 static void
