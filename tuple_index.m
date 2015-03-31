@@ -30,11 +30,11 @@
 #import <fiber.h>
 #import <pickle.h>
 #import <index.h>
+#import <cfg/cfg_octopus.h>
 
 #include <stdbool.h>
 
 #import <mod/box/box.h>
-#import <cfg/octopus.h>
 
 static struct index_node *
 box_tuple_u32_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
