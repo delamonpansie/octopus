@@ -670,4 +670,93 @@ gen_init_pattern(struct tbuf *key_data, int cardinality, struct index_node *patt
 	pattern->obj = (void *)(uintptr_t)cardinality;
 }
 
+void
+index_conf_validate(struct index_conf *d)
+{
+	if (d->n > 8)
+		index_raise("index_conf.n is too big");
+	if (d->cardinality == 0)
+		index_raise("index_conf.cardinality is 0");
+	if (d->cardinality > nelem(d->field))
+		index_raise("index_conf.cardinality is too big");
+	if (d->type < 0 || d->type > COMPACTTREE)
+		index_raise("index_conf.type is invalid");
+	if (d->unique > 1)
+		index_raise("index_conf.unique is not bool");
+
+	for (int k = 0; k < d->cardinality; k++) {
+		d->fill_order[k] = k;
+		if (d->field[k].sort_order != ASC && d->field[k].sort_order != DESC)
+			index_raise("index_conf.field[_].sort_order is invalid");
+		if (d->field[k].type < UNUM16 || d->field[k].type > STRING)
+			index_raise("index_conf.field[_].type is invalid");
+		if (d->field[k].index + 1 > d->min_tuple_cardinality)
+			d->min_tuple_cardinality = d->field[k].index + 1;
+	}
+
+	for (int i = d->cardinality-1; i > 0; i--)
+		for (int j = 0; j < i; j++) {
+			int inda = d->fill_order[j];
+			int indb = d->fill_order[j+1];
+
+			if (d->field[inda].index > d->field[indb].index) {
+				d->fill_order[j+1] = inda;
+				d->fill_order[j] = indb;
+			} else if (d->field[inda].index == d->field[indb].index) {
+				index_raise("index_conf.field[_].index is duplicate");
+			}
+		}
+}
+
+void
+index_conf_read(struct tbuf *data, struct index_conf *c)
+{
+	char version = read_i8(data);
+	if (version != 1)
+		index_raise("index_conf bad version");
+
+	c->min_tuple_cardinality = read_u8(data);
+	c->cardinality = read_u8(data);
+	c->type = read_i8(data);
+	c->unique = read_u8(data);
+
+	if (c->cardinality > nelem(c->field))
+		index_raise("index_conf.cardinality is too big");
+
+	for (int i = 0; i < c->cardinality; i++) {
+		c->field[i].index = read_u8(data);
+		c->field[i].sort_order = read_i8(data);
+		c->field[i].type = read_i8(data);
+	}
+}
+
+void
+index_conf_print(struct tbuf *out, const struct index_conf *c)
+{
+	tbuf_printf(out, "min_tuple_cardinality:%i cardinality:%i type:%i unique:%i",
+		    c->min_tuple_cardinality, c->cardinality, c->type, c->unique);
+	for (int i = 0; i < c->cardinality; i++)
+		tbuf_printf(out, " field%i:{index:%i type:%i sort:%i}", i,
+			    c->field[i].index, c->field[i].type, c->field[i].sort_order);
+}
+
+void
+index_conf_write(struct tbuf *data, struct index_conf *c)
+{
+	char version = 1;
+	write_i8(data, version);
+
+	write_i8(data, c->min_tuple_cardinality);
+	write_i8(data, c->cardinality);
+	write_i8(data, c->type);
+	write_i8(data, c->unique);
+
+	for (int i = 0; i < c->cardinality; i++) {
+		write_i8(data, c->field[i].index);
+		write_i8(data, c->field[i].sort_order);
+		write_i8(data, c->field[i].type);
+	}
+}
+
+
 register_source();

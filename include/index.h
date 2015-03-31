@@ -84,6 +84,10 @@ struct index_conf {
 			       used by sequential scan in box_tuple_gen_dtor */
 	struct index_field_desc field[8]; /* key fields ordered as they appear in index */
 };
+void index_conf_validate(struct index_conf *d);
+void index_conf_write(struct tbuf *data, struct index_conf *c);
+void index_conf_read(struct tbuf *data, struct index_conf *c);
+void index_conf_print(struct tbuf *out, const struct index_conf *c);
 
 typedef struct index_node *(index_dtor)(struct tnt_object *obj, struct index_node *node, void *arg);
 struct dtor_conf {
