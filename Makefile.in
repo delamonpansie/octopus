@@ -163,17 +163,17 @@ ifeq (1,$(HAVE_CONFETTI))
 %.cfg: %.cfg_tmpl
 	@mkdir -p $(dir $@)
 	$(E) "CNFTI	$@"
-	$(Q)$(CONFETTI) -i $< -n octopus_cfg -f $@
+	$(Q)$(CONFETTI) -i $< -n $(notdir $(basename $<))$(if $(findstring _cfg,$<),,_cfg) -f $@
 
-cfg/%.h: cfg/%.cfg_tmpl
+%.h: %.cfg_tmpl
 	@mkdir -p $(dir $@)
 	$(E) "CNFTI	$@"
-	$(Q)$(CONFETTI) -i $< -n octopus_cfg -h $@
+	$(Q)$(CONFETTI) -i $< -n $(notdir $(basename $<))$(if $(findstring _cfg,$<),,_cfg) -h $@
 
-cfg/%.c: cfg/%.cfg_tmpl
+%.c: %.cfg_tmpl | %.h %.cfg
 	@mkdir -p $(dir $@)
 	$(E) "CNFTI	$@"
-	$(Q)$(CONFETTI) -i $< -n octopus_cfg -c $@
+	$(Q)$(CONFETTI) -i $< -n $(notdir $(basename $<))$(if $(findstring _cfg,$<),,_cfg) -c $@
 endif
 
 
