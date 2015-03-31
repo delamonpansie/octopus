@@ -30,7 +30,7 @@ cfg_tmpl += cfg/admin.cfg_tmpl
 cfg_tmpl += cfg/iproto.cfg_tmpl
 cfg_tmpl += cfg/log_io.cfg_tmpl
 cfg_tmpl += cfg/paxos.cfg_tmpl
-cfg_tmpl += mod/box/box.cfg_tmpl
+cfg_tmpl += mod/box/object_space.cfg_tmpl
 
 
 test: box_test
