@@ -38,7 +38,7 @@
 @implementation Index
 
 + (Index *)
-new_conf:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
+new_conf:(const struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 {
 	Index *i;
 	if (ic->cardinality == 1 && ic->type == NUMHASH) {
@@ -88,7 +88,7 @@ new_conf:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 	conf.unique ? (index_cmp)type##_eq : (index_cmp)type##_eq_with_addr;
 
 - (Index *)
-init:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc
+init:(const struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 {
 	[super init];
 	if (ic == NULL)
