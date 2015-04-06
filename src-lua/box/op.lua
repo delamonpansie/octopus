@@ -74,6 +74,15 @@ local function pack_mop(req, op)
         if (op[2] == "set") then
                 req:u8(0)
                 req:field(op[3])
+        elseif (op[2] == "set16") then
+                req:u8(0)
+                req:field_u16(op[3])
+        elseif (op[2] == "set32") then
+                req:u8(0)
+                req:field_u32(op[3])
+        elseif (op[2] == "set64") then
+            req:u8(0)
+                req:field_u64(op[3])
         elseif (op[2] == "add") then
                 req:u8(1)
                 req:field_u32(op[3])
