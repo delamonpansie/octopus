@@ -86,6 +86,42 @@ local function pack_mop(req, op)
         elseif (op[2] == "xor") then
                 req:u8(4)
                 req:field_u32(op[3])
+        elseif (op[2] == "add16") then
+                req:u8(1)
+                req:field_u16(op[3])
+        elseif (op[2] == "and16") then
+                req:u8(2)
+                req:field_u16(op[3])
+        elseif (op[2] == "or16") then
+                req:u8(3)
+                req:field_u16(op[3])
+        elseif (op[2] == "xor16") then
+                req:u8(4)
+                req:field_u16(op[3])
+        elseif (op[2] == "add32") then
+                req:u8(1)
+                req:field_u32(op[3])
+        elseif (op[2] == "and32") then
+                req:u8(2)
+                req:field_u32(op[3])
+        elseif (op[2] == "or32") then
+                req:u8(3)
+                req:field_u32(op[3])
+        elseif (op[2] == "xor32") then
+                req:u8(4)
+                req:field_u32(op[3])
+        elseif (op[2] == "add64") then
+                req:u8(1)
+                req:field_u64(op[3])
+        elseif (op[2] == "and64") then
+                req:u8(2)
+                req:field_u64(op[3])
+        elseif (op[2] == "or64") then
+                req:u8(3)
+                req:field_u64(op[3])
+        elseif (op[2] == "xor64") then
+                req:u8(4)
+                req:field_u64(op[3])
         elseif (op[2] == "splice") then
                 req:u8(5)
                 local s = packer()

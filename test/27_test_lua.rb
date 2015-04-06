@@ -60,7 +60,7 @@ Env.connect_eval do
   insert ["\0\0\0\0", "\0\0\0\0", "\0\0\0\0\0\0\0\0"], :object_space => 1
   insert ["\0\0\0\0", "\0\0\0\0", "----"], :object_space => 2
 
-  (1..8).each do |i|
+  (1..9).each do |i|
     lua "user_proc.test#{i}"
   end
 end
