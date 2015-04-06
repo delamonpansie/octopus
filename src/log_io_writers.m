@@ -40,6 +40,9 @@
 #include <sysexits.h>
 #include <sys/socket.h>
 #include <limits.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 struct wal_disk_writer_conf {
 	char dir_name[_POSIX_PATH_MAX];
@@ -661,6 +664,11 @@ snapshot:(bool)sync
 		palloc_unmap_unused();
 		close_all_xcpt(2, stderrfd, sayfd);
 
+		int fd = open("/proc/self/oom_score_adj", O_WRONLY);
+		if (fd) {
+			write(fd, "900\n", 4);
+			close(fd);
+		}
 		int r = [self snapshot_write];
 
 #ifdef COVERAGE
