@@ -81,6 +81,7 @@ tbuf_ensure_resize(struct tbuf *e, size_t required)
 	if (diff < req) {
 		diff = req + required / 2;
 	}
+	assert(size + diff < 256 * 1024 * 1024);
 
 	void *p = prealloc(e->pool, e->ptr, size, size + diff);
 
