@@ -47,7 +47,7 @@ string.getu8 = function(s, i)
 end
 string.getu16 = function(s, i)
     if not i then i = 1 end
-    ptr.ch[0], ptg.ch[1] = s:byte(i, i+1)
+    ptg.ch[0], ptg.ch[1] = s:byte(i, i+1)
     return ptg.u16
 end
 string.getu32 = function(s, i)
@@ -68,7 +68,7 @@ string.geti8 = function(s, i)
 end
 string.geti16 = function(s, i)
     if not i then i = 1 end
-    ptr.ch[0], ptg.ch[1] = s:byte(i, i+1)
+    ptg.ch[0], ptg.ch[1] = s:byte(i, i+1)
     return ptg.i16
 end
 string.geti32 = function(s, i)
