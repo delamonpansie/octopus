@@ -477,11 +477,13 @@ luaT_pushtraceback(lua_State *L)
 }
 
 
+
 static void
 luaT_init()
 {
 	struct lua_State *L;
 	L = sched.L = root_L = luaL_newstate();
+	assert(L != NULL);
 
 	/* any lua error during initial load is fatal */
 	lua_atpanic(L, luaT_panic);
