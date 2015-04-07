@@ -191,7 +191,7 @@ recover_remaining_wals
 - (i64)
 load_from_local:(i64)initial_lsn
 {
-	say_debug("%s: initial_LSN:%li", __func__, initial_lsn);
+	say_debug("%s: initial_LSN:%"PRIi64, __func__, initial_lsn);
 
 	if ([wal_dir greatest_lsn] == 0 && [snap_dir greatest_lsn] == 0) {
 		say_info("local state is empty: no snapshot and xlog found");
@@ -217,7 +217,7 @@ load_from_local:(i64)initial_lsn
 		lsn = initial_lsn - 1; /* since initial_lsn is > 1, lsn is >= 1
 					  valid lsn is vital for [recover_follow]: [open_next_wal] is relies on valid LSN */
 		current_wal = [wal_dir containg_lsn:initial_lsn];
-		say_info("unable to find WAL with LSN:%li, greatest_LSN:%li", initial_lsn, [wal_dir greatest_lsn]);
+		say_info("unable to find WAL with LSN:%"PRIi64", greatest_LSN:%"PRIi64, initial_lsn, [wal_dir greatest_lsn]);
 		if (current_wal == nil)
 			return 0;
 	}
@@ -230,7 +230,7 @@ load_from_local:(i64)initial_lsn
 	if (snap_lsn == lsn &&
 	    current_wal != nil && /* loading from standalone snapshot is a special case: usefull for debugging */
 	    [current_wal last_read_lsn] < snap_lsn)
-		raise_fmt("last WAL is missing or truncated: snapshot LSN:%li > last WAL row LSN:%li",
+		raise_fmt("last WAL is missing or truncated: snapshot LSN:%"PRIi64" > last WAL row LSN:%"PRIi64,
 			  snap_lsn, [current_wal last_read_lsn]);
 
 	return lsn;
