@@ -159,8 +159,8 @@ typedef struct tnt_object* tnt_ptr;
 	struct index_node __tree_padding[7];
 }
 
-+ (Index *)new_conf:(const struct index_conf *)ic dtor:(const struct dtor_conf *)dc;
-- (Index *)init:(const struct index_conf *)ic dtor:(const struct dtor_conf *)dc;
++ (id)new_conf:(const struct index_conf *)ic dtor:(const struct dtor_conf *)dc;
+- (id)init:(const struct index_conf *)ic dtor:(const struct dtor_conf *)dc;
 - (void) valid_object:(struct tnt_object*)obj;
 - (u32)cardinality;
 @end

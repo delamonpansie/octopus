@@ -37,7 +37,7 @@
 
 @implementation Index
 
-+ (Index *)
++ (id)
 new_conf:(const struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 {
 	Index *i;
@@ -87,7 +87,7 @@ new_conf:(const struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 #define EQ(type) \
 	conf.unique ? (index_cmp)type##_eq : (index_cmp)type##_eq_with_addr;
 
-- (Index *)
+- (id)
 init:(const struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 {
 	[super init];
