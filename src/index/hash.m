@@ -93,7 +93,7 @@ iterator_init
 - (id)									\
 init:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc          \
 {									\
-	[super init:ic dtor:dc];						\
+	[super init:ic dtor:dc];					\
 	h = mh_##type##_init(xrealloc);					\
 	return self;							\
 }									\
