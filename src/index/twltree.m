@@ -195,6 +195,18 @@ iterator_init_with_node:(const struct index_node *)node direction:(enum iterator
 			direction == iterator_forward ? twlscan_forward : twlscan_backward);
 }
 
+- (void)
+clear
+{
+	twltree_free(&tree);
+}
+
+- (id)
+free
+{
+	twltree_free(&tree);
+	return [super free];
+}
 @end
 
 @implementation TWLFastTree

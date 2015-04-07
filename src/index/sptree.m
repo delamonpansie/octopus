@@ -137,5 +137,33 @@ iterator_next_check:(index_cmp)check
 	}
 	return NULL;
 }
+
+- (void)
+clear
+{
+	if (iterator != NULL) {
+		sptree_iterator_free(&iterator);
+		iterator = NULL;
+	}
+	if (tree != NULL) {
+		sptree_destroy(tree);
+		sptree_init(tree, node_size, NULL, 0, 0, compare, self->dtor_arg);
+	}
+}
+
+- (id)
+free
+{
+	if (iterator != NULL) {
+		sptree_iterator_free(&iterator);
+		iterator = NULL;
+	}
+	if (tree != NULL) {
+		sptree_destroy(tree);
+		free(tree);
+		tree = NULL;
+	}
+	return [super free];
+}
 @end
 

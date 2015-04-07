@@ -166,8 +166,14 @@ sptree_destroy(sptree_t *t)
 {
     void *null;
 
-    null = realloc(t->members, 0);
-    null = realloc(t->lrpointers, 0);
+    if (t->members != NULL) {
+	    null = realloc(t->members, 0);
+	    t->members = NULL;
+    }
+    if (t->lrpointers != NULL) {
+	    null = realloc(t->lrpointers, 0);
+	    t->lrpointers = NULL;
+    }
     (void)null;
 }
 
