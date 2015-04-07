@@ -97,6 +97,17 @@ init:(struct index_conf *)ic dtor:(const struct dtor_conf *)dc          \
 	h = mh_##type##_init(xrealloc);					\
 	return self;							\
 }									\
+- (void)								\
+clear									\
+{									\
+	mh_##type##_clear(h);						\
+}									\
+- (id)									\
+free									\
+{									\
+	mh_##type##_destroy(h);						\
+	return [super free];						\
+}									\
 - (struct tnt_object *)							\
 get:(u32)i								\
 {									\
@@ -382,6 +393,17 @@ init:(struct index_conf*)ic dtor:(const struct dtor_conf*)dc
 	h = mh_gen_init(xrealloc);
 	h->arg = self;
 	return self;
+}
+- (void)
+clear
+{
+	mh_gen_clear(h);
+}
+- (id)
+free
+{
+	mh_gen_destroy(h);
+	return [super free];
 }
 - (int)
 eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b

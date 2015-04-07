@@ -85,6 +85,12 @@ bytes
 	return 0;
 }
 
+- (void)
+clear
+{
+	raise_fmt("Subclass responsibility");
+}
+
 - (struct tnt_object *)
 find_key:(struct tbuf *)key_data cardinalty:(u32)cardinality
 {

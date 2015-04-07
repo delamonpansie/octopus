@@ -132,6 +132,7 @@ typedef struct tnt_object* tnt_ptr;
 - (u32)slots;
 - (size_t) bytes;
 - (u32)cardinality;
+- (void)clear;
 @end
 
 #define GET_NODE(obj, node) ({ dtor(obj, &node, dtor_arg); &node; })

@@ -163,4 +163,8 @@ find_node:(const struct index_node *)node
 	(void)node;
 	return NULL;
 }
+- (void)
+clear
+{
+}
 @end
