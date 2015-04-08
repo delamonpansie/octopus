@@ -224,7 +224,10 @@ twltree_free(twltree_t *tt) {
 		page = page->right;
 		tt->tlrealloc(tp, 0);
 	}
-	tt->tlrealloc(tt->search_index_key, 0);
+	if (tt->search_index_key != NULL) {
+		tt->tlrealloc(tt->search_index_key, 0);
+		tt->search_index_key = NULL;
+	}
 }
 
 static twlpage_t*

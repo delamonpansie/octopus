@@ -199,6 +199,8 @@ iterator_init_with_node:(const struct index_node *)node direction:(enum iterator
 clear
 {
 	twltree_free(&tree);
+	enum twlerrcode_t r = twltree_init(&tree);
+	twl_raise(r);
 }
 
 - (id)
