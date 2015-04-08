@@ -198,11 +198,9 @@ build_secondary_indexes()
 		if (obj_spc == NULL)
 			continue;
 
-		struct tbuf *i = tbuf_alloc(fiber->pool);
+		say_info("Object space %i", n);
 		foreach_index(index, obj_spc)
-			tbuf_printf(i, " %i:%s", index->conf.n, [[index class] name]);
-
-		say_info("Object space %i indexes:%.*s", n, tbuf_len(i), (char *)i->ptr);
+			say_info("\tindex[%i]: %s", index->conf.n, [[index class] name]);
 	}
 }
 
