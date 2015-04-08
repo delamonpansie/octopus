@@ -33,9 +33,6 @@
 #import <objc.h>
 #import <log_io.h>
 
-extern bool box_updates_allowed;
-
-struct namespace;
 struct box_tuple;
 struct index;
 
