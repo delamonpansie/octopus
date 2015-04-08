@@ -207,6 +207,84 @@ class SilverBox < IProtoRetCode
     msg :code => 90, :raw => ''
   end
 
+  def pack_index_conf(conf)
+    cardinalty = 0
+    version = 1
+    field_descr = []
+    conf.select {|key| key.match /^field_\d+$/ } .sort.each do |key, field|
+      field_descr << case field[:index]
+                     when 0..255 then field[:index]
+                     else fail "invalid field :index (#{key})"
+                     end
+      field_descr << case field[:sort_order]
+                     when nil, :ASC then 1
+                     when :DESC then -1
+                     else fail "invalid field :sort_order (#{key})"
+                     end
+      field_descr << case field[:type]
+                     when :UNUM16 then 1
+                     when :SNUM16 then 2
+                     when :UNUM32 then 3
+                     when :SNUM32 then 4
+                     when :UNUM64 then 5
+                     when :SNUM64 then 6
+                     when :STRING then 7
+                     else fail "invalid field :type (#{key})"
+                     end
+      cardinalty += 1
+    end
+    fail "cardinality invalid" if cardinalty < 1 or cardinalty > 8
+    descr = [version]
+    descr << case conf[:min_tuple_cardinality]
+             when nil, 0..255 then conf[:min_tuple_cardinality] || 0
+             else fail ":min_tuple_cardinality invalid"
+             end
+    descr << cardinalty
+    descr << case conf[:type]
+             when nil, :HASH then 1
+             when :NUMHASH then 2
+             when :SPTREE then 3
+             when :FASTTREE then 4
+             when :COMPACTTREE then 5
+             else fail ":type invalid"
+             end
+    descr << case conf[:unique]
+             when 0, false, nil then 0
+             when 1, true then 1
+             else fail ":unique invalid"
+             end
+    descr += field_descr
+  end
+
+  def create_object_space(n, conf)
+    flags = 0
+    cardinalty = conf[:cardinalty] || 0
+    snap = conf[:snap] || 1
+    wal = conf[:wal] || 1
+    fail ":index missing" unless conf[:index]
+    msg :code => 240, :raw => [n, flags, cardinalty, snap, wal, *pack_index_conf(conf[:index])].pack("LLC*")
+  end
+
+  def create_index(i, index_conf)
+    flags = 0
+    msg :code => 241, :raw => [@object_space, flags, i, *pack_index_conf(index_conf)].pack("LLCC*")
+  end
+
+  def drop_object_space(n)
+    flags = 0
+    msg :code => 242, :raw => [n, flags].pack("LL")
+  end
+
+  def drop_index(i)
+    flags = 0
+    msg :code => 243, :raw => [@object_space, flags, i].pack("LLC")
+  end
+
+  def truncate
+    flags = 0
+    msg :code => 244, :raw => [@object_space, flags].pack("LL")
+  end
+
   def pks(*args)
     param = args[-1].is_a?(Hash) ? args.pop : {}
     object_space = param[:object_space] || @object_space

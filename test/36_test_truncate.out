@@ -1,0 +1,33 @@
+# box.create_object_space(0, {:index=>{:type=>:FASTTREE, :unique=>1, :field_0=>{:type=>:STRING, :index=>0, :sort_order=>:DESC}}})
+""
+
+# box.insert(["foo0"])
+1
+
+# box.insert(["foo1"])
+1
+
+# box.insert(["foo2"])
+1
+
+# box.insert(["foo3"])
+1
+
+# box.insert(["foo4"])
+1
+
+# box.select("foo0", "foo1", "foo2", "foo3", "foo4")
+[["foo0"], ["foo1"], ["foo2"], ["foo3"], ["foo4"]]
+
+# box.truncate()
+""
+
+# box.truncate()
+""
+
+# box.truncate()
+""
+
+# box.select("foo0", "foo1", "foo2", "foo3", "foo4")
+[]
+

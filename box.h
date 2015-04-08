@@ -102,11 +102,23 @@ struct box_txn {
 	bool closed;
 };
 
+struct box_meta_txn {
+	u16 op;
+	u32 flags;
+
+	struct object_space *object_space;
+	Index<BasicIndex> *index;
+};
+
 void box_prepare(struct box_txn *txn, struct tbuf *data);
 void box_commit(struct box_txn *txn);
 void box_rollback(struct box_txn *txn);
 void box_cleanup(struct box_txn *txn);
 void prepare_replace(struct box_txn *txn, size_t cardinality, const void *data, u32 data_len);
+
+void box_prepare_meta(struct box_meta_txn *txn, struct tbuf *data);
+void box_commit_meta(struct box_meta_txn *txn);
+void box_rollback_meta(struct box_meta_txn *txn);
 
 void box_service(struct service *s);
 void box_service_ro(struct service *s);
@@ -144,7 +156,12 @@ void box_service_ro(struct service *s);
 	_(DELETE, 21)				\
 	_(EXEC_LUA, 22)				\
 	_(PAXOS_LEADER, 90)			\
-	_(SELECT_KEYS, 99)
+	_(SELECT_KEYS, 99)			\
+	_(CREATE_OBJECT_SPACE, 240)		\
+	_(CREATE_INDEX, 241)			\
+	_(DROP_OBJECT_SPACE, 242)		\
+	_(DROP_INDEX, 243)			\
+	_(TRUNCATE, 244)
 
 enum messages ENUM_INITIALIZER(MESSAGES);
 extern char * const box_ops[];

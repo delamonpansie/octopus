@@ -732,6 +732,99 @@ box_paxos_proxy_cb(struct iproto *request, struct conn *c)
 	net_add_iov_dup(&c->out_messages, reply, sizeof(*reply) + reply->data_len);
 }
 
+
+struct rwlock {
+	bool locked;
+	SLIST_HEAD(, fiber) wait;
+	int readers;
+};
+
+void
+wlock(struct rwlock *lock)
+{
+	while (lock->locked) {
+		SLIST_INSERT_HEAD(&lock->wait, fiber, worker_link);
+		yield();
+	}
+	lock->locked++;
+	ev_prepare w = { .coro = 1 };
+	ev_prepare_init(&w, (void *)fiber);
+	ev_prepare_start(&w);
+	while (lock->readers > 0)
+		yield();
+	ev_prepare_stop(&w);
+}
+
+void
+wunlock(struct rwlock *lock)
+{
+	lock->locked--;
+	struct fiber *waiter = SLIST_FIRST(&lock->wait), *next;
+	SLIST_INIT(&lock->wait);
+	while (waiter) {
+		next = SLIST_NEXT(waiter, worker_link);
+		fiber_wake(waiter, NULL);
+		waiter = next;
+	}
+}
+
+void
+rlock(struct rwlock *lock)
+{
+	while (lock->locked) {
+		SLIST_INSERT_HEAD(&lock->wait, fiber, worker_link);
+		yield();
+	}
+	lock->readers++;
+}
+
+void
+runlock(struct rwlock *lock)
+{
+	lock->readers--;
+}
+
+static struct rwlock lock;
+
+void
+box_meta_cb(struct iproto *request, struct conn *c)
+{
+	say_debug2("%s: c:%p op:0x%02x sync:%u", __func__, c, request->msg_code, request->sync);
+	if ([recovery is_replica])
+		iproto_raise(ERR_CODE_NONMASTER, "replica is readonly");
+
+	wlock(&lock);
+	struct box_meta_txn txn = { .op = request->msg_code };
+	@try {
+		@try {
+			box_prepare_meta(&txn, &TBUF(request->data, request->data_len, NULL));
+			if ([recovery submit:request->data
+					 len:request->data_len
+					 tag:request->msg_code<<5|TAG_WAL] != 1)
+				iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
+		}
+		@catch (id e) {
+			box_rollback_meta(&txn);
+			@throw;
+		}
+		@try {
+			box_commit_meta(&txn);
+			struct netmsg_head *h = &c->out_messages;
+			struct iproto_retcode *reply = iproto_reply(h, request, ERR_CODE_OK);
+			iproto_reply_fixup(h, reply);
+		}
+		@catch (Error *e) {
+			panic_exc_fmt(e, "can't handle exception after WAL write: %s", e->reason);
+		}
+		@catch (id e) {
+			panic_exc_fmt(e, "can't handle unknown exception after WAL write");
+		}
+	}
+	@finally {
+		wunlock(&lock);
+	}
+}
+
 static void
 box_cb(struct iproto *request, struct conn *c)
 {
@@ -741,6 +834,7 @@ box_cb(struct iproto *request, struct conn *c)
 		iproto_raise(ERR_CODE_NONMASTER, "replica is readonly");
 
 	struct box_txn txn = { .op = request->msg_code };
+	rlock(&lock);
 	@try {
 		ev_tstamp start = ev_now(), stop;
 		@try {
@@ -791,6 +885,7 @@ box_cb(struct iproto *request, struct conn *c)
 		}
 	}
 	@finally {
+		runlock(&lock);
 		box_cleanup(&txn);
 	}
 }
@@ -830,6 +925,8 @@ box_service(struct service *s)
 	service_register_iproto_stream(s, PAXOS_LEADER, box_paxos_cb, 0);
 	foreach_op(INSERT, UPDATE_FIELDS, DELETE, DELETE_1_3)
 		service_register_iproto_block(s, *op, box_cb, 0);
+	foreach_op(CREATE_OBJECT_SPACE, CREATE_INDEX, DROP_OBJECT_SPACE, DROP_INDEX, TRUNCATE)
+		service_register_iproto_block(s, *op, box_meta_cb, 0);
 	service_register_iproto_block(s, EXEC_LUA, box_lua_cb, 0);
 }
 
@@ -849,10 +946,12 @@ box_service_ro(struct service *s)
 	service_register_iproto_stream(s, PAXOS_LEADER, box_paxos_cb, 0);
 
 	if (cfg.paxos_enabled) {
-		foreach_op(INSERT, UPDATE_FIELDS, DELETE, DELETE_1_3, EXEC_LUA)
+		foreach_op(INSERT, UPDATE_FIELDS, DELETE, DELETE_1_3, EXEC_LUA,
+			   CREATE_OBJECT_SPACE, CREATE_INDEX, DROP_OBJECT_SPACE, DROP_INDEX, TRUNCATE)
 			service_register_iproto_block(s, *op, box_paxos_proxy_cb, 0);
 	} else {
-		foreach_op(INSERT, UPDATE_FIELDS, DELETE, DELETE_1_3, PAXOS_LEADER)
+		foreach_op(INSERT, UPDATE_FIELDS, DELETE, DELETE_1_3, PAXOS_LEADER,
+			   CREATE_OBJECT_SPACE, CREATE_INDEX, DROP_OBJECT_SPACE, DROP_INDEX, TRUNCATE)
 			service_register_iproto_stream(s, *op, box_roerr, 0);
 
 		/* allow select only lua procedures

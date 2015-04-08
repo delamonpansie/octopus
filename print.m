@@ -102,6 +102,7 @@ xlog_print(struct tbuf *out, u16 op, struct tbuf *b)
 	u32 cardinality, field_no;
 	u32 flags = 0;
 	u32 op_cnt;
+	struct index_conf ic = { .n = 0 };
 
 	n = read_u32(b);
 
@@ -192,6 +193,40 @@ xlog_print(struct tbuf *out, u16 op, struct tbuf *b)
 	case NOP:
 		tbuf_printf(out, "NOP");
 		break;
+
+	case CREATE_OBJECT_SPACE:
+		tbuf_printf(out, "%s n:%i ", box_ops[op], n);
+		flags = read_u32(b);
+		tbuf_printf(out, "flags:%08X ", flags);
+		tbuf_printf(out, "cardinalty:%i ", read_i8(b));
+		tbuf_printf(out, "snap:%i ", read_u8(b));
+		tbuf_printf(out, "wal:%i ", read_u8(b));
+		index_conf_read(b, &ic);
+		tbuf_printf(out, "PK: ");
+		index_conf_print(out, &ic);
+		break;
+	case CREATE_INDEX:
+		tbuf_printf(out, "%s n:%i ", box_ops[op], n);
+		flags = read_u32(b);
+		tbuf_printf(out, "flags:%08X ", flags);
+		ic.n = read_i8(b);
+		index_conf_read(b, &ic);
+		index_conf_print(out, &ic);
+		break;
+	case DROP_OBJECT_SPACE:
+		tbuf_printf(out, "%s n:%i ", box_ops[op], n);
+		flags = read_u32(b);
+		tbuf_printf(out, "flags:%08X ", flags);
+		break;
+	case DROP_INDEX:
+		tbuf_printf(out, "%s n:%i ", box_ops[op], n);
+		flags = read_u32(b);
+		tbuf_printf(out, "flags:%08X ", flags);
+		tbuf_printf(out, "index:%i", read_i8(b));
+		break;
+	case TRUNCATE:
+		tbuf_printf(out, "%s n:%i ", box_ops[op], n);
+		flags = read_u32(b);
 	default:
 		tbuf_printf(out, "unknown wal op %" PRIi32, op);
 	}
@@ -224,9 +259,13 @@ box_print_row(struct tbuf *out, u16 tag, struct tbuf *r)
 		xlog_print(out, op, r);
 		return;
 	}
-	if (tag == snap_data) {
-		snap_print(out, r);
-		return;
+	if (tag_type == TAG_SNAP) {
+		if (tag == snap_data) {
+			snap_print(out, r);
+		} else {
+			u16 op = tag >> 5;
+			xlog_print(out, op, r);
+		}
 	}
 }
 

@@ -69,7 +69,7 @@ class RunEnv < TinyRakeEmbed
     "0:#@primary_port"
   end
 
-  def config
+  def config(object_space: true)
     cfg = ""
     cfg << <<EOD
 pid_file = "octopus.pid"
@@ -87,7 +87,7 @@ EOD
       cfg << %Q{logger = "exec cat - >> octopus.log"\n}
     end
 
-    cfg << <<EOD
+    cfg << <<EOD  if object_space
 object_space[0].enabled = 1
 object_space[0].index[0].type = "HASH"
 object_space[0].index[0].unique = 1

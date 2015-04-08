@@ -71,7 +71,9 @@ static void
 configure(void)
 {
 	if (cfg.object_space == NULL)
-		panic("at least one object_space should be configured");
+		return;
+
+	say_warn("legacy configuration mode");
 
 	for (int i = 0; i < nelem(object_space_registry); i++) {
 		if (cfg.object_space[i] == NULL)
@@ -158,7 +160,6 @@ build_object_space_trees(struct object_space *object_space)
 		title("building_indexes/object_space:%i ", object_space->n);
 		for (int i = 0; i < tree_count; i++)
                         nodes[i] = xmalloc(estimated_tuples * ts[i]->node_size);
-
 		struct tnt_object *obj;
 		u32 t = 0;
 		[pk iterator_init];
@@ -227,58 +228,68 @@ initialize_service()
 - (void)
 apply:(struct tbuf *)data tag:(u16)tag
 {
-	struct box_txn txn = { .op = 0 };
+	say_debug("%s tag:%s data:%s", __func__,
+		   xlog_tag_to_a(tag), tbuf_to_hex(data));
 
-	@try {
+	int tag_type = tag & ~TAG_MASK;
+	tag &= TAG_MASK;
 
-		say_debug("%s tag:%s data:%s", __func__,
-			  xlog_tag_to_a(tag), tbuf_to_hex(data));
+	if (tag >= CREATE_OBJECT_SPACE << 5) {
+		struct box_meta_txn txn = { .op = tag >> 5 };
+		@try {
+			box_prepare_meta(&txn, data);
+			box_commit_meta(&txn);
+		}
+		@catch (id e) {
+			box_rollback_meta(&txn);
+			@throw;
+		}
+	} else {
+		struct box_txn txn = { .op = 0 };
+		@try {
+			switch (tag_type) {
+			case TAG_WAL:
+				if (tag == wal_data)
+					txn.op = read_u16(data);
+				else if(tag >= user_tag)
+					txn.op = tag >> 5;
+				else
+					return;
 
-		int tag_type = tag & ~TAG_MASK;
-		tag &= TAG_MASK;
+				box_prepare(&txn, data);
+				break;
+			case TAG_SNAP:
+				if (tag != snap_data)
+					return;
 
-		switch (tag_type) {
-		case TAG_WAL:
-			if (tag == wal_data)
-				txn.op = read_u16(data);
-			else if(tag >= user_tag)
-				txn.op = tag >> 5;
-			else
-				return;
+				const struct box_snap_row *snap = box_snap_row(data);
+				txn.object_space = object_space_registry[snap->object_space];
+				if (txn.object_space == NULL)
+					raise_fmt("object_space %i is not configured", snap->object_space);
+				if (txn.object_space->ignored) {
+					txn.object_space = NULL;
+					return;
+				}
 
-			box_prepare(&txn, data);
-			break;
-		case TAG_SNAP:
-			if (tag != snap_data)
-				return;
+				txn.op = INSERT;
+				txn.index = txn.object_space->index[0];
+				assert(txn.index != nil);
 
-			const struct box_snap_row *snap = box_snap_row(data);
-			txn.object_space = object_space_registry[snap->object_space];
-			if (txn.object_space == NULL)
-				raise_fmt("object_space %i is not configured", txn.object_space->n);
-			if (txn.object_space->ignored) {
-				txn.object_space = NULL;
+				prepare_replace(&txn, snap->tuple_size, snap->data, snap->data_size);
+				break;
+			case TAG_SYS:
 				return;
 			}
 
-			txn.op = INSERT;
-			txn.index = txn.object_space->index[0];
-			assert(txn.index != nil);
-
-			prepare_replace(&txn, snap->tuple_size, snap->data, snap->data_size);
-			break;
-		case TAG_SYS:
-			return;
+			box_commit(&txn);
 		}
-
-		box_commit(&txn);
-	}
-	@catch (id e) {
-		box_rollback(&txn);
-		@throw;
-	}
-	@finally {
-		box_cleanup(&txn);
+		@catch (id e) {
+			box_rollback(&txn);
+			@throw;
+		}
+		@finally {
+			box_cleanup(&txn);
+		}
 	}
 }
 
@@ -351,12 +362,6 @@ snapshot_fold
 	return 0;
 }
 
-@end
-
-@interface BoxSnapWriter : SnapWriter
-@end
-
-@implementation BoxSnapWriter
 - (u32)
 snapshot_estimate
 {
@@ -382,8 +387,25 @@ snapshot_write_rows:(XLog *)l
 		if (object_space_registry[n] == NULL || !object_space_registry[n]->snap)
 			continue;
 
+		struct object_space *o = object_space_registry[n];
+		Index<BasicIndex> *pk = o->index[0];
+
+		if (cfg.object_space == NULL) {
+			tbuf_reset(row);
+			write_i32(row, n);
+			write_i32(row, 0); // flags
+			write_i8(row, o->cardinality);
+			write_i8(row, o->snap);
+			write_i8(row, o->wal);
+			index_conf_write(row, &pk->conf);
+
+			if (snapshot_write_row(l, CREATE_OBJECT_SPACE << 5, row) < 0) {
+				ret = -1;
+				goto out;
+			}
+		}
+
 		pk_rows = 0;
-		id pk = object_space_registry[n]->index[0];
 		[pk iterator_init];
 		while ((obj = [pk iterator_next])) {
 			if (unlikely(ghost(obj)))
@@ -427,7 +449,24 @@ snapshot_write_rows:(XLog *)l
 				[l confirm_write];
 		}
 
-		foreach_index(index, object_space_registry[n]) {
+		foreach_index(index, o) {
+			if (index->conf.n == 0)
+				continue;
+			if (cfg.object_space == NULL) {
+				tbuf_reset(row);
+				write_i32(row, n);
+				write_i32(row, 0); // flags
+				write_i8(row, index->conf.n);
+				index_conf_write(row, &index->conf);
+
+				if (snapshot_write_row(l, CREATE_INDEX << 5, row) < 0) {
+					ret = -1;
+					goto out;
+				}
+			}
+		}
+
+		foreach_index(index, o) {
 			if (index->conf.n == 0)
 				continue;
 
@@ -479,7 +518,6 @@ init(void)
 
 	recovery = [[Recovery alloc] init_feeder_param:&feeder];
 	[recovery set_client:[[Box alloc] init]];
-	[recovery set_snap_writer:[BoxSnapWriter class]];
 
 	if (init_storage)
 		return;

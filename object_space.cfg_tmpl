@@ -24,4 +24,4 @@ object_space = [
       }, ro, required
     ], required
   }, ro
-], ro, required
+], rw

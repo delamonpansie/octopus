@@ -11,6 +11,7 @@ src/octopus.o src/net_io.o: XCFLAGS += -DOCT_OBJECT
 
 obj += mod/box/box.o
 obj += mod/box/op.o
+obj += mod/box/meta_op.o
 obj += mod/box/print.o
 obj += mod/box/moonbox.o
 obj += mod/box/tuple_index.o
