@@ -173,8 +173,16 @@ prepare_replace(struct box_txn *txn, size_t cardinality, const void *data, u32 d
 	memcpy(tuple->data, data, data_len);
 
 	struct tnt_object *obj;
-	while ((obj = [txn->index find_obj:txn->obj]) && obj->flags & WAL_WAIT)
+	ev_tstamp wait_st = ev_now();
+	int wait_cnt = 0;
+	while ((obj = [txn->index find_obj:txn->obj]) && obj->flags & WAL_WAIT) {
 		object_yield(obj);
+		wait_cnt++;
+	}
+	if (ev_now() > wait_st+1) {
+		say_warn("%s: object_yield cycle %4.3fsec %d times", __func__,
+				ev_now() - wait_st, wait_cnt);
+	}
 
 	txn_acquire(txn, obj, OLD);
 	txn->obj_affected = txn->old_obj != NULL ? 2 : 1;
@@ -323,9 +331,16 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 
 	struct tnt_object *obj;
 	void *ptr = data->ptr;
+	ev_tstamp wait_st = ev_now();
+	int wait_cnt = 0;
 	while ((obj = [txn->index find_key:data cardinalty:key_cardinality]) && obj->flags & WAL_WAIT) {
 		data->ptr = ptr;
 		object_yield(obj);
+		wait_cnt++;
+	}
+	if (ev_now() > wait_st+1) {
+		say_warn("%s: object_yield cycle %4.3fsec %d times", __func__,
+				ev_now() - wait_st, wait_cnt);
 	}
 
 	txn_acquire(txn, obj, OLD);
@@ -549,9 +564,16 @@ prepare_delete(struct box_txn *txn, struct tbuf *key_data)
 
 	struct tnt_object *obj;
 	void *ptr = key_data->ptr;
+	ev_tstamp wait_st = ev_now();
+	int wait_cnt = 0;
 	while ((obj = [txn->index find_key:key_data cardinalty:c]) && obj->flags & WAL_WAIT) {
 		key_data->ptr = ptr;
 		object_yield(obj);
+		wait_cnt++;
+	}
+	if (ev_now() > wait_st+1) {
+		say_warn("%s: object_yield cycle %4.3fsec %d times", __func__,
+				ev_now() - wait_st, wait_cnt);
 	}
 
 	txn_acquire(txn, obj, OLD);
