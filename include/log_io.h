@@ -276,6 +276,15 @@ ev_tstamp run_crc_lag(struct run_crc *run_crc);
 const char *run_crc_status(struct run_crc *run_crc);
 
 
+@protocol RecoveryClient
+- (void) apply:(struct tbuf *)data tag:(u16)tag;
+- (void) wal_final_row;
+- (void) status_changed;
+- (void) print:(const struct row_v12 *)row into:(struct tbuf *)buf;
+- (u32) snapshot_estimate;
+- (int) snapshot_write_rows:(XLog *)snap;
+@end
+
 @protocol RecoveryState
 - (i64) lsn;
 - (i64) scn;
@@ -284,6 +293,7 @@ const char *run_crc_status(struct run_crc *run_crc);
 - (void) update_state_rci:(const struct row_commit_info *)rci
 		    count:(int)count;
 - (void) update_state_r:(const struct row_v12 *)r;
+- (id<RecoveryClient>)client;
 @end
 
 @protocol RecoverRow
@@ -312,10 +322,7 @@ extern i64 snap_lsn; /* may be used for overriding initial snapshot,
 	id<RecoveryState> state;
 }
 - (id) init_state:(id<RecoveryState>)state;
-- (int) snapshot:(bool)sync;
 - (int) snapshot_write;
-- (u32) snapshot_estimate;
-- (int) snapshot_write_rows:(XLog *)snap;
 @end
 
 @interface XLogWriter: Object {
@@ -423,13 +430,6 @@ enum {
 - (void) pull_from_remote:(id<XLogPullerAsync>)puller;
 @end
 
-@protocol RecoveryClient
-- (void) apply:(struct tbuf *)data tag:(u16)tag;
-- (void) wal_final_row;
-- (void) status_changed;
-- (void) print:(const struct row_v12 *)row into:(struct tbuf *)buf;
-@end
-
 enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 @interface Recovery: Object <RecoveryState, RecoverRow> {
 	XLogReader *reader;
@@ -491,9 +491,8 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 
 - (void) set_client:(id<RecoveryClient>)obj;
 
-- (void) set_snap_writer:(Class)class;
-- (SnapWriter *) snap_writer;
 - (int) write_initial_state;
+- (int) fork_and_snapshot:(bool)wait_for_child;
 @end
 
 @interface Recovery (Deprecated)

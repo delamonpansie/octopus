@@ -91,6 +91,7 @@ init
 	return self;
 }
 
+- (id<RecoveryClient>) client { return client; }
 - (const char *) status { return status_buf; }
 - (ev_tstamp) lag { return lag; }
 - (ev_tstamp) last_update_tstamp { return last_update_tstamp; }
@@ -238,7 +239,7 @@ recover_row:(struct row_v12 *)r
 			if (r->scn == fold_scn && (r->tag & ~TAG_MASK) == TAG_WAL) {
 				if ([(id)client respondsTo:@selector(snapshot_fold)])
 					exit([(id)client snapshot_fold]);
-				exit([[self snap_writer] snapshot_write]);
+				exit([snap_writer snapshot_write]);
 			}
 		}
 	}
@@ -281,10 +282,7 @@ remote_snap_final_row:(const struct row_v12 *)row
 
 	say_debug("Saving initial replica snapshot LSN:%"PRIi64, lsn);
 	/* don't wait for snapshot. our goal to be replica as fast as possible */
-	if (getenv("SYNC_DUMP") == NULL)
-		[[self snap_writer] snapshot:false];
-	else
-		[[self snap_writer] snapshot_write];
+	[self fork_and_snapshot:(getenv("SYNC_DUMP") == NULL)];
 }
 
 - (i64)
@@ -479,6 +477,7 @@ nop_hb_writer(va_list ap)
 {
 	/* Recovery object is never released */
 	[self init];
+	snap_writer = [[SnapWriter alloc] init_state:self];
 	remote = [[XLogReplica alloc] init_recovery:self
 					     feeder:feeder_];
 
@@ -537,30 +536,48 @@ set_client:(id<RecoveryClient>)obj
 	client = obj;
 }
 
-- (void)
-set_snap_writer:(Class)class
-{
-	[snap_writer free];
-	if (class == Nil)
-		class = [SnapWriter class];
-	snap_writer = [[class alloc] init_state:self];
-}
-
-- (SnapWriter *)
-snap_writer
-{
-	if (snap_writer)
-		return snap_writer;
-	[self set_snap_writer:Nil];
-	return snap_writer;
-}
 
 - (int)
 write_initial_state
 {
-	initial_snap = true;;
+	initial_snap = true;
 	scn = 1;
-	return [[self snap_writer] snapshot_write];
+	return [snap_writer snapshot_write];
+}
+
+- (int)
+fork_and_snapshot:(bool)wait
+{
+	pid_t p;
+
+	switch ((p = tnt_fork())) {
+	case -1:
+		say_syserror("fork");
+		return -1;
+
+	case 0: /* child, the dumper */
+		current_module = NULL;
+		fiber->name = "dumper";
+		title("(%" PRIu32 ")", getppid());
+		fiber_destroy_all();
+		palloc_unmap_unused();
+		close_all_xcpt(2, stderrfd, sayfd);
+
+		int fd = open("/proc/self/oom_score_adj", O_WRONLY);
+		if (fd) {
+			write(fd, "900\n", 4);
+			close(fd);
+		}
+		int r = [snap_writer snapshot_write];
+
+#ifdef COVERAGE
+		__gcov_flush();
+#endif
+		_exit(r != 0 ? errno : 0);
+
+	default: /* parent, may wait for child */
+		return wait ? wait_for_child(p) : 0;
+	}
 }
 
 @end

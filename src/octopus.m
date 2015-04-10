@@ -324,7 +324,7 @@ tnt_uptime(void)
 static void
 save_snapshot(void *ev __attribute__((unused)), int events __attribute__((unused)))
 {
-	[[recovery snap_writer] snapshot:false];
+	[recovery fork_and_snapshot:false];
 }
 #endif
 

@@ -531,21 +531,8 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *row)
 }
 
 
-- (u32)
-snapshot_estimate
-{
-	return 0;
-}
-
 - (int)
 snapshot_write_header_rows:(XLog *)snap
-{
-	(void)snap;
-	return 0;
-}
-
-- (int)
-snapshot_write_rows:(XLog *)snap
 {
 	(void)snap;
 	return 0;
@@ -578,7 +565,7 @@ snapshot_write
 	say_info("saving snapshot `%s'", filename);
 
 	struct tbuf *snap_ini = tbuf_alloc(fiber->pool);
-	u32 rows = [self snapshot_estimate];
+	u32 rows = [[state client] snapshot_estimate];
 	tbuf_append(snap_ini, &rows, sizeof(rows));
 	u32 run_crc_log = [state run_crc_log];
 	tbuf_append(snap_ini, &run_crc_log, sizeof(run_crc_log));
@@ -593,7 +580,7 @@ snapshot_write
 	if ([self snapshot_write_header_rows:snap] < 0) /* FIXME: this is ugly */
 		return -1;
 
-	if ([self snapshot_write_rows:snap] < 0)
+	if ([[state client] snapshot_write_rows:snap] < 0)
 		return -1;
 
 	const char end[] = "END";
@@ -622,41 +609,6 @@ snapshot_write
 
 	say_info("done");
 	return 0;
-}
-
-- (int)
-snapshot:(bool)sync
-{
-	pid_t p;
-
-	switch ((p = tnt_fork())) {
-	case -1:
-		say_syserror("fork");
-		return -1;
-
-	case 0: /* child, the dumper */
-		current_module = NULL;
-		fiber->name = "dumper";
-		title("(%" PRIu32 ")", getppid());
-		fiber_destroy_all();
-		palloc_unmap_unused();
-		close_all_xcpt(2, stderrfd, sayfd);
-
-		int fd = open("/proc/self/oom_score_adj", O_WRONLY);
-		if (fd) {
-			write(fd, "900\n", 4);
-			close(fd);
-		}
-		int r = [self snapshot_write];
-
-#ifdef COVERAGE
-		__gcov_flush();
-#endif
-		_exit(r != 0 ? errno : 0);
-
-	default: /* parent, may wait for child */
-		return sync ? wait_for_child(p) : 0;
-	}
 }
 
 
