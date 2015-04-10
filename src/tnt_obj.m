@@ -93,28 +93,19 @@ static int ows, ows_used;
 void
 object_yield(struct tnt_object *obj)
 {
-	for (int i = 0; i < ows; i++) {
-		if (ow[i].obj != NULL)
-			continue;
-		ow[i].obj = obj;
-		ow[i].waiter = fiber;
-		obj->flags |= YIELD;
-		if (ows_used <= i) {
-			ows_used = i + 1;
-		}
-		yield();
-		return;
+	if (ows_used == ows) {
+		int ows2 = ows ? ows * 2 : 128;
+		ow = xrealloc(ow, ows2 * sizeof(*ow));
+		memset(ow + ows, 0, sizeof(*ow) * (ows2 - ows));
+		ows = ows2;
 	}
-
-	int ows2 = ows ? ows * 2 : 128;
-	ow = xrealloc(ow, ows2 * sizeof(*ow));
-	memset(ow + ows, 0, sizeof(*ow) * (ows2 - ows));
-	ows = ows2;
 
 	ow[ows_used].obj = obj;
 	ow[ows_used].waiter = fiber;
 	obj->flags |= YIELD;
 	ows_used++;
+	yield();
+	return;
 }
 
 
@@ -137,16 +128,19 @@ object_unlock(struct tnt_object *obj)
 	obj->flags &= ~WAL_WAIT;
 
 	if (obj->flags & YIELD) {
-		for (int i = 0; i < ows_used; i++) {
-			if (ow[i].obj != obj)
+		int i, j = 0;
+		for (i = 0; i < ows_used; i++) {
+			if (ow[i].obj != obj) {
+				if (j < i) ow[j] = ow[i];
+				j++;
 				continue;
-			ow[i].obj = NULL;
+			}
 			obj->flags &= ~YIELD;
 			fiber_wake(ow[i].waiter, NULL);
-			ow[i].waiter = NULL;
-			if (i == ows_used - 1) {
-				ows_used = i;
-			}
+		}
+		if (j < ows_used) {
+			memset(ow+j, 0, sizeof(*ow) * (ows_used - j));
+			ows_used = j;
 		}
 	}
 }
