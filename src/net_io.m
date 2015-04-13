@@ -47,7 +47,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-struct slab_cache conn_cache, netmsg_cache;
+static struct slab_cache conn_cache, netmsg_cache;
 
 static struct netmsg *
 netmsg_alloc(struct netmsg_head *h)
