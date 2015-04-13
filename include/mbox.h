@@ -90,15 +90,16 @@ struct name {								\
 
 #define mbox_timedwait(mbox, count, delay) ({				\
 	struct mbox_consumer consumer = { .fiber = fiber }; 		\
-	ev_timer w = { .coro = 1 };					\
+	ev_timer w;							\
 	if (delay) {							\
+		w = (ev_timer){ .coro = 1 };				\
 		ev_timer_init(&w, (void *)fiber, delay, 0);		\
 		ev_timer_start(&w);					\
 	}								\
 	mbox_msgtype(mbox) msg = STAILQ_FIRST(&(mbox)->msg_list);	\
 	LIST_INSERT_HEAD(&(mbox)->consumer_list, &consumer, conslink);	\
 	while ((mbox)->msg_count < count) {				\
-		msg = yield();					\
+		msg = yield();						\
 		if (msg == (void *)&w) { /* timeout */			\
 			msg = NULL;					\
 			break;						\
