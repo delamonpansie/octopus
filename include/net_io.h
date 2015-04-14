@@ -129,27 +129,12 @@ struct service {
 	SLIST_HEAD(, fiber) workers; /* <- handlers */
 	int batch;
 	ev_prepare wakeup;
+
+	/* iproto stuff */
 	struct iproto_handler default_handler;
 	int ih_size, ih_mask;
 	struct iproto_handler *ih;
 };
-#define SERVICE_DEFAULT_CAPA 0x100
-
-void service_set_handler(struct service *s, struct iproto_handler h);
-
-static inline struct iproto_handler*
-service_find_code(struct service *s, int code)
-{
-	int pos = code & s->ih_mask;
-	if (s->ih[pos].code == -1) return &s->default_handler;
-	if (s->ih[pos].code == code) return &s->ih[pos];
-	int dlt = (code % s->ih_mask) | 1;
-	do {
-		pos = (pos + dlt) & s->ih_mask;
-		if (s->ih[pos].code == code) return &s->ih[pos];
-	} while(s->ih[pos].code != -1);
-	return &s->default_handler;
-}
 
 
 void netmsg_head_init(struct netmsg_head *h, struct palloc_pool *pool) LUA_DEF;

@@ -86,6 +86,21 @@ void iproto_ping(struct netmsg_head *h, struct iproto *r, struct conn *c);
 
 void tcp_iproto_service(struct service *service, const char *addr, void (*on_bind)(int fd), void (*wakeup_workers)(ev_prepare *));
 void iproto_wakeup_workers(ev_prepare *ev);
+#define SERVICE_DEFAULT_CAPA 0x100
+void service_set_handler(struct service *s, struct iproto_handler h);
+static inline struct iproto_handler*
+service_find_code(struct service *s, int code)
+{
+	int pos = code & s->ih_mask;
+	if (s->ih[pos].code == -1) return &s->default_handler;
+	if (s->ih[pos].code == code) return &s->ih[pos];
+	int dlt = (code % s->ih_mask) | 1;
+	do {
+		pos = (pos + dlt) & s->ih_mask;
+		if (s->ih[pos].code == code) return &s->ih[pos];
+	} while(s->ih[pos].code != -1);
+	return &s->default_handler;
+}
 
 void
 service_register_iproto_stream(struct service *s, u32 cmd,
