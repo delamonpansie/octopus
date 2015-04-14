@@ -666,7 +666,7 @@ snapshot:(bool)sync
 
 		int fd = open("/proc/self/oom_score_adj", O_WRONLY);
 		if (fd) {
-			write(fd, "900\n", 4);
+			int res _unused_ = write(fd, "900\n", 4);
 			close(fd);
 		}
 		int r = [self snapshot_write];
