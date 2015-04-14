@@ -216,4 +216,11 @@ void assert_fail(const char *assertion, const char *file,
 })
 
 void title(const char *fmt, ...);
+
+#ifdef THREADS
+const char* strerror_o(int eno);
+#else
+#define strerror_o(eno) strerror(eno)
+#endif
+
 #endif

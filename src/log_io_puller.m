@@ -160,7 +160,7 @@ establish_connection
 
 	say_debug2("%s: connect", __func__);
 	if ((fd = tcp_connect(&feeder->addr, NULL, 5)) < 0) {
-		snprintf(errbuf, sizeof(errbuf), "can't connect, %s", strerror(errno));
+		snprintf(errbuf, sizeof(errbuf), "can't connect, %s", strerror_o(errno));
 		return -1;
 	}
 
@@ -192,13 +192,13 @@ replication_compat:(i64)scn
 {
 	say_debug("%s: compat send scn", __func__);
 	if (conn_write(&c, &scn, sizeof(scn)) != sizeof(scn)) {
-		snprintf(errbuf, sizeof(errbuf), "can't write initial lsn, %s", strerror(errno));
+		snprintf(errbuf, sizeof(errbuf), "can't write initial lsn, %s", strerror_o(errno));
 		return -1;
 	}
 
 	say_debug("%s: compat recv scn", __func__);
 	if (conn_read(&c, &version, sizeof(version)) != sizeof(version)) {
-		snprintf(errbuf, sizeof(errbuf), "can't read initial lsn, %s", strerror(errno));
+		snprintf(errbuf, sizeof(errbuf), "can't read initial lsn, %s", strerror_o(errno));
 		return -1;
 	}
 	return 0;
@@ -214,7 +214,7 @@ replication_handshake:(void*)hshake len:(size_t)hsize
 
 	say_debug("%s: send handshake, %u bytes", __func__, tbuf_len(req));
 	if (conn_write(&c, req->ptr, tbuf_len(req)) != tbuf_len(req)) {
-		snprintf(errbuf, sizeof(errbuf), "can't write initial handshake, %s", strerror(errno));
+		snprintf(errbuf, sizeof(errbuf), "can't write initial handshake, %s", strerror_o(errno));
 		return -1;
 	}
 
@@ -237,7 +237,7 @@ replication_handshake:(void*)hshake len:(size_t)hsize
 				break;
 			default:
 				snprintf(errbuf, sizeof(errbuf), "can't read initial handshake, %s",
-					 strerror(errno));
+					 strerror_o(errno));
 			}
 			return -1;
 		} else if (r == 0) {
@@ -381,7 +381,7 @@ recv
 		case 0: raise_fmt("unexpected EOF");
 		case -2: raise_fmt("timeout");
 		case -3: raise_fmt("recv aborted");
-		default: raise_fmt("unknown error: %s", strerror(errno));
+		default: raise_fmt("unknown error: %s", strerror_o(errno));
 		}
 	}
 

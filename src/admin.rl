@@ -257,7 +257,7 @@ admin_dispatch(struct conn *c)
 				ok(out);
 			else {
 				tbuf_printf(err, " can't save snapshot, errno %d (%s)",
-					    ret, strerror(ret));
+					    ret, strerror_o(ret));
 
 				fail(out, err);
 			}
@@ -267,7 +267,7 @@ admin_dispatch(struct conn *c)
 			if (coredump(60) >= 0) {
 				ok(out);
 			} else {
-				tbuf_printf(err, "%s", strerror(errno));
+				tbuf_printf(err, "%s", strerror_o(errno));
 				fail(out,err);
 			}
 		}
