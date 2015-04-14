@@ -708,6 +708,7 @@ learn(PaxosRecovery *r, struct proposal *p)
 		@catch (Error *e) {
 			say_warn("aborting txn, [%s reason:\"%s\"] at %s:%d",
 				 [[e class] name], e->reason, e->file, e->line);
+			[e release];
 			break;
 		}
 	}
@@ -1099,6 +1100,7 @@ again:
 	@catch (Error *e) {
 		say_warn("puller failed, [%s reason:\"%s\"] at %s:%d",
 			 [[e class] name], e->reason, e->file, e->line);
+		[e release];
 	}
 	@finally {
 		[puller close];
@@ -1346,6 +1348,7 @@ submit:(const void *)data len:(u32)len tag:(u16)tag
 			  [[e class] name], e->reason, e->file, e->line);
 		if (e->backtrace)
 			say_debug("backtrace:\n%s", e->backtrace);
+		[e release];
 		return 0;
 	}
 	return 0; /* make apple's gcc happy */

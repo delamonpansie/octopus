@@ -87,32 +87,42 @@ void scoped_release(id *obj);
 
 @interface Error : Object {
 @public
-	const char *reason;
-	char buf[1024];
+	u32  rc;
+	char *reason;
+	char *backtrace;
 	unsigned line;
 	const char *file;
-	char *backtrace;
 }
-- (id)init:(const char *)reason;
++ (id)with_reason: (const char *)reason;
++ (id)with_format: (const char *)format, ...;
++ (id)with_backtrace: (const char *)backtrace
+		  reason: (const char*)reason;
++ (id)with_backtrace: (const char *)backtrace
+		  format: (const char*)format, ...;
 - (id)init_line:(unsigned)line_
-           file:(const char *)file_
-      backtrace:(const char *)backtrace_
-         reason:(const char *)reason_;
-- (id)init_line:(unsigned)line
-           file:(const char *)file
-      backtrace:(const char *)backtrace
-         format:(const char *)format, ...;
+               file:(const char *)file_;
+- (const char*) reason;
+- (const char*) backtrace;
+- (const char*) file;
+- (unsigned)    line;
 @end
 
-
 #define raise_fmt(fmt, ...)						\
-	({								\
+	do {								\
 		say_debug("raise at %s:%i " fmt,			\
 			  __FILE__, __LINE__, ##__VA_ARGS__);		\
-		@throw [[Error palloc] init_line: __LINE__		\
-					    file: __FILE__		\
-				       backtrace: tnt_backtrace()	\
-					  format:(fmt), ##__VA_ARGS__]; \
-	})
+		@throw [[Error with_backtrace: tnt_backtrace()          \
+			      format: (fmt), ##__VA_ARGS__]		\
+			   init_line: __LINE__				\
+			        file: __FILE__];			\
+	} while(0)
+
+#define ERROR_NEW(cls, fmt, ...) \
+		[[cls with_format: (fmt), ##__VA_ARGS__]     \
+				    init_line: __LINE__	       \
+					 file: __FILE__]
+
+#define raise_fast(fmt, ...)						\
+		@throw ERROR_NEW(Error, fmt, ##__VA_ARGS__)
 
 #endif

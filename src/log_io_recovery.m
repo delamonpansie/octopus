@@ -784,6 +784,7 @@ again:
 		@catch (Error *e) {
 			[r->remote_puller close];
 			hot_standby_status(r, "fail", e->reason);
+			[e release];
 		}
 	sleep:
 		fiber_gc();
@@ -946,6 +947,7 @@ run_crc_writer(va_list ap)
 		@catch (Error *e) {
 			say_warn("run_crc submit failed, [%s reason:\"%s\"] at %s:%d",
 				 [[e class] name], e->reason, e->file, e->line);
+			[e release];
 		}
 
 		submit_tstamp = ev_now();

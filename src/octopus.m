@@ -434,7 +434,7 @@ luaT_error(struct lua_State *L)
 		err = lua_tostring(L, -1);
 
 	/* FIXME: use native exceptions ? */
-	@throw [[Error palloc] init:err];
+	@throw [Error with_reason:err];
 }
 
 
@@ -951,7 +951,7 @@ octopus(int argc, char **argv)
 			say_error("Can't allocate memory. Is slab_arena too small?");
 			exit(EX_OSFILE);
 		}
-		@throw e;
+		@throw;
 	}
 
 	/* run Lua init _after_ module init */

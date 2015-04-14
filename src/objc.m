@@ -177,44 +177,148 @@ scoped_release(id *obj)
 + (Error *)
 alloc
 {
-	abort(); /* + palloc should be used */
+	abort(); /* + alloc should be called directly */
 }
 
--
-init:(const char *)reason_
++ (Error *)
+palloc
 {
-	reason = reason_;
+	abort(); /* + palloc should be not be called directly */
+}
+
+- (id)
+retain
+{
+	rc++;
 	return self;
 }
 
--
+- (void)
+release
+{
+	if (--rc==0) {
+		free(self);
+	}
+}
+
+- (id)
+autorelease
+{
+	autorelease(self);
+	return self;
+}
+
++ (id)
+alloc: (size_t)add
+{
+	Class class = (Class)self;
+	Error* obj = calloc(1, class_getInstanceSize(class) + add);
+	object_setClass(obj, class);
+	obj->rc = 1;
+	return obj;
+}
+
++ (id)
+with_reason: (const char*) reason
+{
+	Class class = (Class)self;
+	size_t len = strlen(reason);
+	Error *err = [class alloc: len+1];
+	err->reason = (char*)err + class_getInstanceSize(class);
+	memcpy(err->reason, reason, len);
+	err->reason[len] = 0;
+	return err;
+}
+
++ (id)
+with_format: (const char*) format, ...
+{
+	Class class = (Class)self;
+	int len;
+	va_list ap;
+	va_start(ap, format);
+	len = vsnprintf(NULL, 0, format, ap);
+	assert(len >= 0);
+	va_end(ap);
+
+	Error *err = [class alloc: len+1];
+	err->reason = (char*)err + class_getInstanceSize(class);
+
+	va_start(ap, format);
+	vsnprintf(err->reason, len+1, format, ap);
+	va_end(ap);
+	return err;
+}
+
++ (id)
+with_backtrace: (const char *)backtrace
+	format: (const char*) format, ...
+{
+	Class class = (Class)self;
+	size_t blen = strlen(backtrace);
+	int rlen;
+	va_list ap;
+	va_start(ap, format);
+	rlen = vsnprintf(NULL, 0, format, ap);
+	assert(rlen >= 0);
+	va_end(ap);
+
+	Error *err = [class alloc: blen+rlen+2];
+	err->reason = (char*)err + class_getInstanceSize(class);
+	err->backtrace = err->reason + rlen + 1;
+
+	va_start(ap, format);
+	vsnprintf(err->reason, rlen+1, format, ap);
+	va_end(ap);
+	memcpy(err->backtrace, backtrace, blen);
+	err->backtrace[blen] = 0;
+	return err;
+}
+
++ (id)
+with_backtrace: (const char *)backtrace
+	reason: (const char*)reason;
+{
+	Class class = (Class)self;
+	size_t blen = strlen(backtrace);
+	size_t rlen = strlen(reason);
+	Error *err = [class alloc: blen+rlen+2];
+	err->reason = (char*)err + class_getInstanceSize(class);
+	err->backtrace = err->reason + rlen + 1;
+	memcpy(err->reason, reason, rlen);
+	err->reason[rlen] = 0;
+	memcpy(err->backtrace, backtrace, blen);
+	err->backtrace[blen] = 0;
+	return err;
+}
+
+- (id)
 init_line:(unsigned)line_
      file:(const char *)file_
-backtrace:(const char *)backtrace_
-   reason:(const char *)reason_
 {
 	line = line_;
 	file = file_;
-	reason = (char *)reason_;
-	if (backtrace_) {
-		backtrace = palloc(fiber->pool, strlen(backtrace_) + 1);
-		strcpy(backtrace, backtrace_);
-	}
 	return self;
 }
 
--
-init_line:(unsigned)line_
-     file:(const char *)file_
-backtrace:(const char *)backtrace_
-   format:(const char *)format, ...
+- (const char*) reason
 {
-	va_list ap;
-	va_start(ap, format);
-	vsnprintf(buf, sizeof(buf), format, ap);
-	va_end(ap);
+	return reason;
+}
 
-	return [self init_line:line_ file:file_ backtrace:backtrace_ reason:buf];
+- (const char*) backtrace
+{
+	return backtrace;
+}
+
+- (const char*) file
+{
+	return file;
+}
+
+- (unsigned) line
+{
+	return line;
 }
 @end
 

@@ -38,7 +38,7 @@
 void __attribute__((noreturn))
 tbuf_too_short()
 {
-	@throw [[Error palloc] init:"tbuf too short"];
+	@throw [Error with_reason:"tbuf too short"];
 }
 
 static __attribute__((always_inline)) inline void
@@ -59,7 +59,7 @@ void
 read_must_end(struct tbuf *b, const char *err)
 {
 	if (unlikely(tbuf_len(b) != 0)) {
-		@throw [[Error palloc] init:(err ?: "tbuf not empty")];
+		@throw [Error with_reason:(err ?: "tbuf not empty")];
 	}
 }
 

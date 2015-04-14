@@ -472,6 +472,7 @@ title(const char *fmt, ...)
 		}
 		@catch (id e) {
 			/* oops, bad object */
+			[e release];
 		}
 	}
 

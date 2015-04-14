@@ -372,6 +372,7 @@ thread_loop
 		}
 		@catch (id e) {
 			say_error("thread loop catched an error");
+			[e release];
 		}
 	}
 }

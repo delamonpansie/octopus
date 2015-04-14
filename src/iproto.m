@@ -84,6 +84,7 @@ iproto_worker(va_list ap)
 				rc = ERR_CODE_ILLEGAL_PARAMS;
 
 			iproto_error(&a.c->out_messages, a.r, rc, e->reason);
+			[e release];
 		}
 
 		if (a.c->out_messages.bytes > 0 && a.c->state != CLOSED)
@@ -172,6 +173,7 @@ process_requests(struct conn *c)
 
 				netmsg_rewind(&c->out_messages, &header_mark);
 				iproto_error(&c->out_messages, request, rc, e->reason);
+				[e release];
 			}
 		} else {
 			struct fiber *w = SLIST_FIRST(&service->workers);
@@ -313,28 +315,10 @@ iproto_error(struct netmsg_head *h, const struct iproto *request, u32 ret_code, 
 init_code:(u32)code_
      line:(unsigned)line_
      file:(const char *)file_
-backtrace:(const char *)backtrace_
-   reason:(const char *)reason_
 {
-	[self init_line:line_ file:file_ backtrace:backtrace_ reason:reason_];
+	[self init_line:line_ file:file_];
 	code = code_;
 	return self;
-}
-
-- (IProtoError *)
-init_code:(u32)code_
-     line:(unsigned)line_
-     file:(const char *)file_
-backtrace:(const char *)backtrace_
-   format:(const char *)format, ...
-{
-	va_list ap;
-	va_start(ap, format);
-	vsnprintf(buf, sizeof(buf), format, ap);
-	va_end(ap);
-
-	return [self init_code:code_ line:line_ file:file_
-		     backtrace:backtrace_ reason:buf];
 }
 
 - (u32)

@@ -140,29 +140,16 @@ void iproto_wait_all(struct iproto_mbox *mbox);
 }
 - (IProtoError *)init_code:(u32)code_
 		      line:(unsigned)line_
-		      file:(const char *)file_
-		 backtrace:(const char *)backtrace_
-		    reason:(const char *)reason_;
-- (IProtoError *)init_code:(u32)code_
-		      line:(unsigned)line_
-		      file:(const char *)file_
-		 backtrace:(const char *)backtrace_
-		    format:(const char *)fmt, ...;
+		      file:(const char *)file_;
 - (u32)code;
 @end
 
 #define iproto_exc(err, msg)						\
-	[[IProtoError palloc] init_code:(err)				\
-				   line:__LINE__			\
-				   file:__FILE__			\
-			      backtrace:NULL				\
-				 reason:(msg)]
+	[[IProtoError with_reason: (msg)]				\
+		init_code:(err) line:__LINE__ file:__FILE__]
 #define iproto_fexc(err, fmt, ...)					\
-	[[IProtoError palloc] init_code:(err)				\
-				   line:__LINE__			\
-				   file:__FILE__			\
-			      backtrace:NULL				\
-				 format:(fmt), __VA_ARGS__]
+	[[IProtoError with_format: (fmt), ##__VA_ARGS__]		\
+		init_code:(err) line:__LINE__ file:__FILE__]
 
 #define iproto_raise(...) @throw iproto_exc(__VA_ARGS__)
 #define iproto_raise_fmt(...) @throw iproto_fexc(__VA_ARGS__)
