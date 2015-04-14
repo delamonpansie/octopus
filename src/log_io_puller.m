@@ -128,7 +128,7 @@ feeder_param_fill_from_cfg(struct feeder_param *param, struct octopus_cfg *_cfg)
 - (bool) eof { return false; }
 - (struct palloc_pool *) pool { return NULL; }
 
-- (XLogPuller *)
+- (id)
 init
 {
 	[super init];
@@ -136,7 +136,7 @@ init
 	return self;
 }
 
-- (XLogPuller *)
+- (id)
 init:(struct feeder_param*)_feeder
 {
 	[self init];

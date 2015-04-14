@@ -396,8 +396,8 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 - (ssize_t) recv;
 - (void) abort_recv;
 
-- (XLogPuller *) init;
-- (XLogPuller *) init:(struct feeder_param*)_feeder;
+- (id) init;
+- (id) init:(struct feeder_param*)_feeder;
 - (void) feeder_param:(struct feeder_param*)_feeder;
 /* returns -1 in case of handshake failure. puller is closed.  */
 - (int) handshake:(i64)scn;
