@@ -76,6 +76,22 @@ palloc_from:(struct palloc_pool *)pool
 	return obj;
 }
 
+- (id)
+retain
+{
+	return self;
+}
+
+- (void)
+release
+{
+}
+
+- (id) autorelease
+{
+	return self;
+}
+
 #if !HAVE_OBJC_OBJC_API_H
 + (id)
 alloc
@@ -151,6 +167,11 @@ perform:(SEL)selector
 #endif
 @end
 
+void
+scoped_release(id *obj)
+{
+	[*obj release];
+}
 
 @implementation Error
 + (Error *)

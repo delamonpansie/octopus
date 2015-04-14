@@ -30,6 +30,7 @@
 #include <util.h>
 #include <octopus_ev.h>
 #include <coro.h>
+#include <objc.h>
 
 #include <third_party/luajit/src/lua.h>
 #include <third_party/luajit/src/lauxlib.h>
@@ -53,6 +54,10 @@ struct fiber {
 	void *wake;
 
 	struct lua_State *L;
+	struct {
+		struct autorelease_chain *current;
+		struct autorelease_chain top;
+	} autorelease;
 
 	const char *name;
 	void (*f)(va_list ap);

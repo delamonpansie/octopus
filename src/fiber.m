@@ -194,6 +194,10 @@ fiber_alloc(struct fiber *fiber)
 {
 	if (fiber->pool == NULL)
 		fiber->pool = palloc_create_pool((struct palloc_config){.name = fiber->name});
+	if (fiber->autorelease.current == NULL) {
+		fiber->autorelease.current = &fiber->autorelease.top;
+		fiber->autorelease.top.prev = &fiber->autorelease.top;
+	}
 
 	prelease(fiber->pool);
 }
@@ -201,6 +205,8 @@ fiber_alloc(struct fiber *fiber)
 void
 fiber_gc()
 {
+	autorelease_top();
+
 	if (palloc_allocated(fiber->pool) < 128 * 1024)
 		return;
 
@@ -210,6 +216,8 @@ fiber_gc()
 static void
 fiber_zombificate(struct fiber *f)
 {
+	autorelease_top();
+	palloc_name(f->pool, "zombi_fiber");
 	f->name = NULL;
 	f->f = NULL;
 	unregister_fid(f);
@@ -427,4 +435,67 @@ luaT_openfiber(struct lua_State *L)
 	return 0;
 }
 
+/* ObjectiveC autorelease functions */
+id
+autorelease(id obj)
+{
+	struct autorelease_chain *chain = fiber->autorelease.current;
+	chain->objs[chain->cnt++] = obj;
+	if (chain->cnt == AUTORELEASE_CHAIN_CAPA) {
+		chain = xcalloc(1, sizeof(*chain));
+		chain->prev = fiber->autorelease.current;
+		fiber->autorelease.current = chain;
+	}
+	return obj;
+}
+
+void
+autorelease_pop(struct autorelease_pool *pool)
+{
+	struct autorelease_chain *prev, *current = fiber->autorelease.current;
+	u32 i;
+	while (current != pool->chain) {
+		i = current->cnt;
+		while(i) {
+			i--;
+			@try {
+				[current->objs[i] release];
+			} @catch(Error* e) {
+				panic_exc(e);
+			} @catch(id e) {
+				panic("exception during autorelease");
+			}
+		}
+		fiber->autorelease.current = prev = current->prev;
+		assert(current != &fiber->autorelease.top);
+		free(current);
+		current = prev;
+	}
+	i = current->cnt;
+	while(i > pool->pos) {
+		i--;
+		@try {
+			[current->objs[i] release];
+		} @catch(Error* e) {
+			panic_exc(e);
+		} @catch(id e) {
+			panic("exception during autorelease");
+		}
+	}
+	current->cnt = i;
+}
+
+void
+autorelease_pop_and_cut(struct autorelease_pool *pool)
+{
+	autorelease_pop(pool);
+	palloc_cutoff(fiber->pool);
+}
+
+void
+autorelease_top()
+{
+	struct autorelease_pool top = {.chain = &fiber->autorelease.top, .pos = 0};
+	autorelease_pop(&top);
+}
 register_source();

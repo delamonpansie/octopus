@@ -37,6 +37,9 @@ size_t class_getInstanceSize(Class class);
 @interface Object (Octopus)
 + (id)palloc;
 + (id)palloc_from:(struct palloc_pool *)pool;
+- (id)retain;
+- (void)release;
+- (id)autorelease;
 #if !HAVE_OBJC_OBJC_API_H
 + (id)alloc;
 - (id)free;
@@ -49,6 +52,38 @@ size_t class_getInstanceSize(Class class);
 - (id)perform:(SEL)aSel;
 #endif
 @end
+
+#define AUTORELEASE_CHAIN_CAPA 30
+struct autorelease_chain {
+	u32 cnt;
+	struct autorelease_chain *prev;
+	id objs[AUTORELEASE_CHAIN_CAPA];
+};
+
+/* autorelease_pool - just a pointer into autorelease chain stack */
+struct autorelease_pool {
+	struct autorelease_chain *chain;
+	u32 pos;
+};
+/* this functions are defined in a fiber.m */
+/* pop all pools including `pool` */
+void autorelease_pop(struct autorelease_pool *pool);
+void autorelease_top();
+/* pops autorelease pool and calls palloc_cutoff */
+void autorelease_pop_and_cut(struct autorelease_pool *pool);
+#define WITH_AUTORELEASE \
+	struct autorelease_pool __attribute__((cleanup(autorelease_pop))) AutoPooL = {\
+		.chain = fiber->autorelease.current, .pos = fiber->autorelease.current->cnt};
+#define WITH_AUTORELEASE_AND_CUTPOINT \
+        palloc_register_cut_point(fiber->pool); \
+	struct autorelease_pool __attribute__((cleanup(autorelease_pop_and_cut))) AutoPooL = {\
+		.chain = fiber->autorelease.current, .pos = fiber->autorelease.current->cnt};
+/* calls [obj release] on every object in a pool */
+void autorelease_drain(struct autorelease_pool *pool);
+id autorelease(id obj);
+
+void scoped_release(id *obj);
+#define SCOPE_RELEASED __attribute__((cleanup(scoped_release)))
 
 @interface Error : Object {
 @public
