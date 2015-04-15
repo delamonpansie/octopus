@@ -104,7 +104,7 @@ netmsg_unref(struct netmsg *m, int from)
 	memset(m->iov + from, 0, (m->count - from) * sizeof(m->iov[0]));
 }
 
-void
+static void
 netmsg_release(struct netmsg_head *h, struct netmsg *m)
 {
 	netmsg_unref(m, 0);
