@@ -288,7 +288,7 @@ netmsg2iovec(struct iovec *buf, struct netmsg *m)
 }
 
 ssize_t
-conn_write_netmsg(struct conn *c)
+conn_flush(struct conn *c)
 {
 	struct netmsg_head *head = &c->out_messages;
 	struct iovec *iov = c->iov, *end;
@@ -355,21 +355,21 @@ conn_write_netmsg(struct conn *c)
 }
 
 ssize_t
-conn_flush(struct conn *c)
+conn_flush_all(struct conn *c)
 {
 	ev_io io = { .coro = 1 };
 	ev_io_init(&io, (void *)fiber, c->fd, EV_WRITE);
 	ev_io_start(&io);
 	do {
 		yield();
-	} while (conn_write_netmsg(c) > 0);
+	} while (conn_flush(c) > 0);
 	ev_io_stop(&io);
 
 	return c->out_messages.bytes == 0 ? 0 : -1;
 }
 
 void
-conn_set(struct conn *c, int fd)
+conn_setfd(struct conn *c, int fd)
 {
 	assert(c->out.cb != NULL && c->in.cb != NULL);
 	assert(fd >= 0);
@@ -422,7 +422,7 @@ conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, st
 	c->rbuf = tbuf_alloc(c->pool);
 
 	if (fd >= 0)
-		conn_set(c, fd);
+		conn_setfd(c, fd);
 	return c;
 }
 
@@ -645,7 +645,7 @@ conn_flusher(va_list ap __attribute__((unused)))
 {
 	for (;;) {
 		struct conn *c = ((struct ev_watcher *)yield())->data;
-		ssize_t r = conn_write_netmsg(c);
+		ssize_t r = conn_flush(c);
 
 		if (r < 0) {
 			say_syswarn("%s%swritev() failed, closing connection",
