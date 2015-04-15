@@ -58,12 +58,16 @@
 #include <unistd.h>
 #include <sysexits.h>
 
+struct fiber foofib;
 struct fiber sched;
-struct fiber *fiber = &sched;
 coro_context *sched_ctx = &sched.coro.ctx;
+#ifdef THREADS
+__thread struct fiber *fiber = &foofib;
+__thread int coro_switch_cnt;
+#else
+struct fiber *fiber = &foofib;
 int coro_switch_cnt;
-void *watcher;
-int events;
+#endif
 static uint32_t last_used_fid;
 
 static ev_prepare wake_prep;
@@ -293,6 +297,31 @@ fiber_create(const char *name, void (*f)(va_list va), ...)
 	return new;
 }
 
+#ifdef THREADS
+/* create fake fiber structure for use in worker threads */
+void
+fiber_create_fake(const char *name)
+{
+	assert(fiber == &foofib);
+	fiber = xcalloc(1, sizeof(*fiber));
+	fiber->name = name;
+	fiber_alloc(fiber);
+	fiber->fid = ~0;
+	fiber->f = NULL;
+}
+
+void
+fiber_destroy_fake()
+{
+	assert(fiber->fid == ~0 && fiber->f == NULL);
+	autorelease_top();
+	prelease(fiber->pool);
+	palloc_destroy_pool(fiber->pool);
+	free(fiber);
+	fiber = NULL;
+}
+#endif
+
 void
 fiber_destroy_all()
 {
@@ -367,6 +396,18 @@ fiber_init(void)
 	ev_async_init(&wake_async, (void *)unzero_io_collect_interval);
 	ev_async_start(&wake_async);
 	say_debug("fibers initialized");
+}
+
+struct fiber*
+current_fiber()
+{
+	return fiber;
+}
+
+int
+fiber_switch_cnt()
+{
+	return coro_switch_cnt;
 }
 
 static void

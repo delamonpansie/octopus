@@ -138,14 +138,14 @@ local pack_meths = {
         self.ptr = nil
         self.stop = nil
         self.free = 0
-        self.pool = pool or C.fiber.pool
+        self.pool = pool or C.current_fiber().pool
     end,
 }
 pack_meths._varint32 = pack_meths._ber
 local tbuf_t = ffi.typeof('struct tbuf')
 ffi.metatype(tbuf_t, {__index=pack_meths})
 function packer ()
-    return ffi.new(tbuf_t, nil, nil, 0, C.fiber.pool)
+    return ffi.new(tbuf_t, nil, nil, 0, C.current_fiber().pool)
 end
 
 local tp_meths = {

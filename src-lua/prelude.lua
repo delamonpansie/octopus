@@ -154,7 +154,7 @@ for _, levelstr in ipairs({"ERROR", "WARN", "INFO", "DEBUG", "DEBUG2", "DEBUG3"}
 end
 
 function palloc(size)
-    return ffi.C.palloc(ffi.C.fiber.pool, size)
+    return ffi.C.palloc(ffi.C.current_fiber().pool, size)
 end
 
 function cut_traceback(deep)

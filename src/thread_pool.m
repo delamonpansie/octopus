@@ -9,6 +9,11 @@
 #include <stdint.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
+#ifdef HAVE_SYS_SYSCALL_H
+#include <sys/syscall.h>
+#elif defined(HAVE_SYSCALL_H)
+#include <sys/syscall.h>
+#endif
 #include <unistd.h>
 #include <netinet/in.h>
 #include <fcntl.h>
@@ -26,7 +31,6 @@
 #import <objc.h>
 #import <iproto.h>
 #import "thread_pool.h"
-#import "third_party/ecb.h"
 
 #define pdo(m, ...) do { \
 	int err = m(__VA_ARGS__); \
@@ -103,7 +107,7 @@ thread_requests_send(thread_requests* queue, thread_request req)
 	last = queue->last;
 	last->req = req;
 	last->next = thumb;
-	ECB_MEMORY_FENCE;
+	__sync_synchronize();
 	pdo(pthread_cond_signal, &queue->cnd);
 	queue->last = thumb;
 }
@@ -286,7 +290,20 @@ thread_responses_callbacks_fiber_loop(va_list va)
 static void *
 thread_loop(void *arg)
 {
-	[(ThreadWorker*)arg thread_loop];
+	char buf[24];
+#ifdef SYS_gettid
+	snprintf(buf, sizeof(buf)-1, "__thread:%d", (int)syscall(SYS_gettid));
+#else
+	static int thrd_cnt = 1;
+	int thno = __sync_add_and_get(&thrd_cnt, 1);
+	snprintf(buf, sizeof(buf)-1, "__thread:%d", thno);
+#endif
+	fiber_create_fake(buf);
+	@try {
+		[(ThreadWorker*)arg thread_loop];
+	} @finally {
+		fiber_destroy_fake();
+	}
 	return NULL;
 }
 
@@ -374,6 +391,7 @@ thread_loop
 			say_error("thread loop catched an error");
 			[e release];
 		}
+		fiber_gc();
 	}
 }
 
@@ -451,6 +469,7 @@ call: (request_arg)arg
 - (void)
 respond: (thread_pool_request*)req res: (i64)res
 {
+	fiber_gc();
 	thread_response_internal response = {.result = res, .error = nil, .eno = errno};
 	thread_responses_push(&responses, req, response);
 }
@@ -458,6 +477,7 @@ respond: (thread_pool_request*)req res: (i64)res
 - (void)
 respond: (thread_pool_request*)req error: (id)e
 {
+	fiber_gc();
 	thread_response_internal response = {.result = 0, .error = e, .eno = errno};
 	thread_responses_push(&responses, req, response);
 }
@@ -482,6 +502,7 @@ thread_loop
 			say_error("thread loop catched an error");
 			[self respond: request error: e];
 		}
+		fiber_gc();
 	}
 }
 

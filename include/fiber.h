@@ -87,6 +87,14 @@ void fiber_sleep(ev_tstamp s);
 void fiber_info(struct tbuf *out);
 struct fiber *fid2fiber(int fid);
 
+struct fiber* current_fiber();
+int fiber_switch_cnt();
+#ifdef THREADS
+/* create and destroy fake fiber for working threads */
+void fiber_create_fake(const char* name);
+void fiber_destroy_fake();
+#endif
+
 int luaT_openfiber(struct lua_State *L);
 
 #endif

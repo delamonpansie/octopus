@@ -35,7 +35,11 @@
 
 #include <coro.h>
 extern coro_context *sched_ctx;
+#ifdef THREADS
+extern __thread struct fiber *fiber;
+#else
 extern struct fiber *fiber;
+#endif
 
 #define EV_STRINGIFY2(x) #x
 #define EV_STRINGIFY(x) EV_STRINGIFY2(x)

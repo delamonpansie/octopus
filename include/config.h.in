@@ -193,6 +193,12 @@
 /* Define to 1 if you have the <linux/falloc.h> header file. */
 #undef HAVE_LINUX_FALLOC_H
 
+/* Define to 1 if you have the <sys/syscall.h> header file. */
+#undef HAVE_SYS_SYSCALL_H
+
+/* Define to 1 if you have the <syscall.h> header file. */
+#undef HAVE_SYSCALL_H
+
 /* Define to 1 if the C compiler supports __attribute__((cold)) */
 #undef HAVE__ATTRIBUTE_COLD
 
