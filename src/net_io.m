@@ -117,6 +117,16 @@ netmsg_release(struct netmsg_head *h, struct netmsg *m)
 	slab_cache_free(&netmsg_cache, m);
 }
 
+void
+netmsg_head_release(struct netmsg_head *h)
+{
+	struct netmsg *m, *tmp;
+	TAILQ_FOREACH_SAFE(m, &h->q, link, tmp) {
+		netmsg_unref(m, 0);
+		slab_cache_free(&netmsg_cache, m);
+	}
+}
+
 static void
 netmsg_gc(struct palloc_pool *pool, struct netmsg *m)
 {
@@ -466,15 +476,6 @@ conn_recv(struct conn *c)
 	return tbuf_recv(c->rbuf, c->fd);
 }
 
-void
-netmsg_head_release(struct netmsg_head *h)
-{
-	struct netmsg *m, *tmp;
-	TAILQ_FOREACH_SAFE(m, &h->q, link, tmp) {
-		netmsg_unref(m, 0);
-		slab_cache_free(&netmsg_cache, m);
-	}
-}
 
 static void
 conn_free(struct conn *c)
