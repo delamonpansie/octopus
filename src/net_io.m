@@ -108,13 +108,13 @@ void
 netmsg_release(struct netmsg_head *h, struct netmsg *m)
 {
 	netmsg_unref(m, 0);
-	m->count = 0;
-	m->barrier = 0;
-	if (TAILQ_FIRST(&h->q) == m)
-		return;
-
-	TAILQ_REMOVE(&h->q, m, link);
-	slab_cache_free(&netmsg_cache, m);
+	if (TAILQ_FIRST(&h->q) == m) {
+		m->count = 0;
+		m->barrier = 0;
+	} else {
+		TAILQ_REMOVE(&h->q, m, link);
+		slab_cache_free(&netmsg_cache, m);
+	}
 }
 
 void
