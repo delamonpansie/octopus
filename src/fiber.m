@@ -263,7 +263,8 @@ fiber_create(const char *name, void (*f)(va_list va), ...)
 		new = SLIST_FIRST(&zombie_fibers);
 		SLIST_REMOVE_HEAD(&zombie_fibers, zombie_link);
 	} else {
-		new = xcalloc(1, sizeof(*fiber));
+		Fiber* fib = [Fiber alloc];
+		new = &fib->fib;
 		if (octopus_coro_create(&new->coro, fiber_loop, NULL) == NULL)
 			panic_syserror("fiber_create");
 
@@ -334,7 +335,7 @@ fiber_destroy_all()
 
 		palloc_destroy_pool(f->pool);
 		octopus_coro_destroy(&f->coro);
-		free(f);
+		[fiber_obj(f) free];
 	}
 }
 
@@ -539,4 +540,65 @@ autorelease_top()
 	struct autorelease_pool top = {.chain = &fiber->autorelease.top, .pos = 0};
 	autorelease_pop(&top);
 }
+
+@implementation Fiber
++(id)
+current
+{
+	return fiber_obj(fiber);
+}
+
++(id)
+yield
+{
+	return [fiber_obj(fiber) yield];
+}
+
+-(void)
+setValue: (id)val
+{
+	fib.wake_flag = WAKE_VALUE;
+	fiber_wake(&fib, [val retain]);
+}
+
+-(void)
+setError: (id)err
+{
+	fib.wake_flag = WAKE_ERROR;
+	fiber_wake(&fib, [err retain]);
+}
+
+-(id)
+yield
+{
+	id res = nil;
+	if (fib.wake_flag != 0) {
+		fiber_cancel_wake(&fib);
+		res = fib.wake;
+	} else {
+		res = yield();
+	}
+	if (fib.wake_flag == WAKE_VALUE) {
+		fib.wake_flag = 0;
+		return [res autorelease];
+	}
+	if (fib.wake_flag == WAKE_ERROR) {
+		fib.wake_flag = 0;
+		@throw res;
+	}
+	panic("unknown fiber wake flag %d", fib.wake_flag);
+}
+@end
+
+Fiber*
+fiber_obj(struct fiber* fib)
+{
+	if (fib == NULL)
+		return nil;
+	assert(fib != &sched); /* sched could not be a Fiber */
+	static size_t offset = 0;
+	if (offset == 0) offset = [Fiber offsetOf: "fib"];
+	return (Fiber*)((u8*)fib - offset);
+}
+
 register_source();

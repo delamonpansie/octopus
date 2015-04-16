@@ -85,6 +85,16 @@ id autorelease(id obj);
 void scoped_release(id *obj);
 #define SCOPE_RELEASED __attribute__((cleanup(scoped_release)))
 
+@protocol Waiter
+- (void) setValue: (id)value;
+- (void) setError: (id)error;
+@end
+
+@protocol AsyncResult
+- (id) value;
+- (void) then: (id<Waiter>)waiter;
+@end
+
 @interface Error : Object {
 @public
 	u32  rc;

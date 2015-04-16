@@ -92,6 +92,11 @@ release
 	return self;
 }
 
++ (size_t) offsetOf: (const char*)ivar
+{
+	return ivar_getOffset(class_getInstanceVariable(self, ivar));
+}
+
 #if !HAVE_OBJC_OBJC_API_H
 + (id)
 alloc

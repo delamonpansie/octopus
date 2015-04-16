@@ -52,6 +52,7 @@ struct fiber {
 	SLIST_ENTRY(fiber) link, zombie_link, worker_link;
 	TAILQ_ENTRY(fiber) wake_link;
 	void *wake;
+	enum {WAKE_VALUE=1, WAKE_ERROR} wake_flag;
 
 	struct lua_State *L;
 	struct {
@@ -97,4 +98,15 @@ void fiber_destroy_fake();
 
 int luaT_openfiber(struct lua_State *L);
 
+@interface Fiber : Object <Waiter> {
+@public
+	struct fiber fib;
+}
++ (id) current;
++ (id) yield;
+- (void) setValue: (id)val;
+- (void) setError: (id)err;
+- (id) yield;
+@end
+Fiber* fiber_obj(struct fiber* fib);
 #endif
