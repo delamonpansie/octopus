@@ -184,12 +184,11 @@ service_set_handler(struct service *s, struct iproto_handler h)
 	s->ih[pos] = h;
 }
 
-static int
+static void
 process_requests(struct conn *c)
 {
 	struct service *service = c->service;
 	int batch = service->batch;
-	int r = 0;
 
 	c->ref++;
 	while (tbuf_len(c->rbuf) >= sizeof(struct iproto) &&
@@ -226,7 +225,6 @@ process_requests(struct conn *c)
 				tbuf_ltrim(c->rbuf, req_size);
 				SLIST_REMOVE_HEAD(&service->workers, worker_link);
 				resume(w, &(struct worker_arg){ih->cb.block, request_copy, c});
-				r++;
 			} else {
 				stat_collect(stat_base, IPROTO_WORKER_STARVATION, 1);
 				break; // FIXME: need state for this
@@ -276,8 +274,6 @@ process_requests(struct conn *c)
 	}
 out:
 	conn_unref(c);
-
-	return r;
 }
 
 
