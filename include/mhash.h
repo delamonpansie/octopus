@@ -94,7 +94,7 @@ struct intmap2_slot {
 	int key;
 };
 #define mh_slot_t intmap2_slot
-#define mh_slot_key(slot) (slot)->key
+#define mh_slot_key(h, slot) (slot)->key
 #define mh_slot_val(slot) (slot)->val
 #include "mhash.h"
 
@@ -125,7 +125,7 @@ struct cstr_slot {
 # define mh_dirty(h, i)		(h->slots[i].bits & 2)
 # define mh_setdirty(h, i)	h->slots[i].bits |= 2
 
-#define mh_slot_key(slot) ((const char *)((slot)->bits >> 2))
+#define mh_slot_key(h, slot) ((const char *)((slot)->bits >> 2))
 #define mh_slot_set_key(slot, key) (slot)->bits = ((slot)->bits & 3UL) | ((uintptr_t)key << 2)
 #define mh_slot_copy(h, new, old) (new)->bits = (((old)->bits & ~3UL) | 1UL)
 #include "m2hash.h"
@@ -1033,3 +1033,4 @@ _mh(dump)(struct mhash_t *h)
 
 #undef mh_name
 #undef mhash_t
+#undef MH_DECL
