@@ -961,7 +961,7 @@ decide:
 }
 
 
-struct wal_msg { STAILQ_ENTRY(wal_msg) link; };
+struct wal_msg { TAILQ_ENTRY(wal_msg) link; };
 static MBOX(, wal_msg) wal_dumper_mbox = MBOX_INITIALIZER(wal_dumper_mbox);
 
 static void

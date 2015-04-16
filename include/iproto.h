@@ -112,7 +112,7 @@ service_register_iproto_block(struct service *s, u32 cmd,
 			      int flags);
 
 struct iproto_reply {
-	STAILQ_ENTRY(iproto_reply) link;
+	TAILQ_ENTRY(iproto_reply) link;
 	struct iproto header;
 };
 

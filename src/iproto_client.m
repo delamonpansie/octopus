@@ -150,7 +150,7 @@ iproto_wait_sync(struct iproto_mbox *mbox, u32 sync)
 		if (!reply)
 			return NULL;
 		if (reply->header.sync == sync) {
-			STAILQ_REMOVE(&mbox->msg_list, reply, iproto_reply, link); /* switch to TAILQ ? */
+			mbox_remove(mbox, reply);
 			return &reply->header;
 		}
 	}

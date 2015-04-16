@@ -37,50 +37,55 @@
 struct mbox_consumer {
 	struct	fiber			*fiber;
 	LIST_ENTRY(mbox_consumer)	conslink;
+	int msg_count;
 };
 
 #define MBOX(name, type)						\
 struct name {								\
 	LIST_HEAD(, mbox_consumer) consumer_list;			\
-	STAILQ_HEAD(, type) msg_list;					\
+	TAILQ_HEAD(, type) msg_list;					\
 	int msg_count;							\
 }
 
 #define MBOX_INITIALIZER(name)						\
 	{ LIST_HEAD_INITIALIZER(name.consumer_list),			\
-	  STAILQ_HEAD_INITIALIZER(name.msg_list),			\
+	  TAILQ_HEAD_INITIALIZER(name.msg_list),			\
 	  0 }
 
 #define mbox_init(mbox) ({						\
 	LIST_INIT(&(mbox)->consumer_list);				\
-	STAILQ_INIT(&(mbox)->msg_list);					\
+	TAILQ_INIT(&(mbox)->msg_list);					\
 	(mbox)->msg_count = 0;						\
 })
 
 #define mbox_put(mbox, msg, link) ({					\
-	STAILQ_INSERT_TAIL(&(mbox)->msg_list, msg, link); 		\
+	TAILQ_INSERT_TAIL(&(mbox)->msg_list, msg, link); 		\
 	(mbox)->msg_count++;						\
 	struct mbox_consumer *consumer;					\
 	LIST_FOREACH(consumer, &(mbox)->consumer_list, conslink)	\
-		fiber_wake(consumer->fiber, msg);			\
+		if ((mbox)->msg_count >= consumer->msg_count)		\
+			fiber_wake(consumer->fiber, msg);		\
 })
 
-#define mbox_msgtype(mbox) typeof((mbox)->msg_list.stqh_first)
+#define mbox_msgtype(mbox) typeof((mbox)->msg_list.tqh_first)
 
-#define mbox_peek(mbox) STAILQ_FIRST(&(mbox)->msg_list);
+#define mbox_peek(mbox) TAILQ_FIRST(&(mbox)->msg_list);
 
 #define mbox_get(mbox, link) ({						\
-	mbox_msgtype(mbox) msg = STAILQ_FIRST(&(mbox)->msg_list);	\
+	mbox_msgtype(mbox) msg = TAILQ_FIRST(&(mbox)->msg_list);	\
 	if (msg) {							\
-		STAILQ_REMOVE_HEAD(&(mbox)->msg_list, link);		\
+		TAILQ_REMOVE(&(mbox)->msg_list, msg, link);		\
 		(mbox)->msg_count--;					\
 	}								\
 	msg;								\
 })
 
+#define mbox_remove(mbox, msg)						\
+	TAILQ_REMOVE(&(mbox)->msg_list, msg, link);
+
 #define mbox_wait(mbox) ({						\
 	struct mbox_consumer consumer = { .fiber = fiber }; 		\
-	mbox_msgtype(mbox) msg = STAILQ_FIRST(&(mbox)->msg_list);	\
+	mbox_msgtype(mbox) msg = TAILQ_FIRST(&(mbox)->msg_list);	\
 	LIST_INSERT_HEAD(&(mbox)->consumer_list, &consumer, conslink);	\
 	while ((mbox)->msg_count == 0)					\
 		msg = yield();						\
@@ -89,14 +94,15 @@ struct name {								\
 })
 
 #define mbox_timedwait(mbox, count, delay) ({				\
-	struct mbox_consumer consumer = { .fiber = fiber }; 		\
+	struct mbox_consumer consumer = { .fiber = fiber,		\
+					  .msg_count = count };		\
 	ev_timer w;							\
 	if (delay) {							\
 		w = (ev_timer){ .coro = 1 };				\
 		ev_timer_init(&w, (void *)fiber, delay, 0);		\
 		ev_timer_start(&w);					\
 	}								\
-	mbox_msgtype(mbox) msg = STAILQ_FIRST(&(mbox)->msg_list);	\
+	mbox_msgtype(mbox) msg = TAILQ_FIRST(&(mbox)->msg_list);	\
 	LIST_INSERT_HEAD(&(mbox)->consumer_list, &consumer, conslink);	\
 	while ((mbox)->msg_count < count) {				\
 		msg = yield();						\
