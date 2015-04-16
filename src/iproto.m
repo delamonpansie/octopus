@@ -184,6 +184,13 @@ service_set_handler(struct service *s, struct iproto_handler h)
 	s->ih[pos] = h;
 }
 
+static int
+has_full_req(const struct tbuf *buf)
+{
+	return tbuf_len(buf) >= sizeof(struct iproto) &&
+	       tbuf_len(buf) >= sizeof(struct iproto) + iproto(buf)->data_len;
+}
+
 static void
 process_requests(struct conn *c)
 {
@@ -191,8 +198,7 @@ process_requests(struct conn *c)
 	int batch = service->batch;
 
 	c->ref++;
-	while (tbuf_len(c->rbuf) >= sizeof(struct iproto) &&
-	       tbuf_len(c->rbuf) >= sizeof(struct iproto) + iproto(c->rbuf)->data_len)
+	while (has_full_req(c->rbuf))
 	{
 		struct iproto *request = iproto(c->rbuf);
 		struct iproto_handler *ih = service_find_code(service, request->msg_code);
@@ -238,8 +244,7 @@ process_requests(struct conn *c)
 	if (unlikely(c->state == CLOSED)) /* handler may close connection */
 		goto out;
 
-	if (tbuf_len(c->rbuf) < sizeof(struct iproto) ||
-	    tbuf_len(c->rbuf) < sizeof(struct iproto) + iproto(c->rbuf)->data_len)
+	if (!has_full_req(c->rbuf))
 	{
 		TAILQ_REMOVE(&service->processing, c, processing_link);
 		c->processing_link.tqe_prev = NULL;
