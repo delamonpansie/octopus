@@ -164,7 +164,7 @@ log_level(struct tbuf *out, const char *strstart, const char *strend, int diff)
 }
 
 static int
-admin_dispatch(struct conn *c)
+admin_dispatch(int fd, struct tbuf *rbuf)
 {
 	struct tbuf *out = tbuf_alloc(fiber->pool);
 	struct tbuf *err = tbuf_alloc(fiber->pool);
@@ -173,10 +173,10 @@ admin_dispatch(struct conn *c)
 	char *strstart, *strend;
 	int info_net = 0;
 
-	while ((pe = memchr(c->rbuf->ptr, '\n', tbuf_len(c->rbuf))) == NULL) {
-		if (tbuf_len(c->rbuf) > 0 && *(char*)(c->rbuf->ptr) == 0x04 /* Ctrl-D */)
+	while ((pe = memchr(rbuf->ptr, '\n', tbuf_len(rbuf))) == NULL) {
+		if (tbuf_len(rbuf) > 0 && *(char*)(rbuf->ptr) == 0x04 /* Ctrl-D */)
 			return 0;
-		ssize_t r = conn_recv(c);
+		ssize_t r = fiber_recv(fd, rbuf);
 		if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK ||
 			      errno == EINTR))
 			continue;
@@ -185,7 +185,7 @@ admin_dispatch(struct conn *c)
 	}
 
 	pe++;
-	p = c->rbuf->ptr;
+	p = rbuf->ptr;
 
 	%%{
 		action show_configuration {
@@ -322,8 +322,8 @@ admin_dispatch(struct conn *c)
 		write exec;
 	}%%
 
-	size_t parsed = (void *)pe - (void *)c->rbuf->ptr;
-	tbuf_ltrim(c->rbuf, parsed);
+	size_t parsed = (void *)pe - (void *)rbuf->ptr;
+	tbuf_ltrim(rbuf, parsed);
 
 	if (p != pe) {
 		start(out);
@@ -331,7 +331,7 @@ admin_dispatch(struct conn *c)
 		end(out);
 	}
 
-	return conn_write(c, out->ptr, tbuf_len(out));
+	return fiber_write(fd, out->ptr, tbuf_len(out));
 }
 
 
@@ -339,20 +339,19 @@ static void
 admin_handler(va_list ap)
 {
 	int fd = va_arg(ap, int);
-	struct conn *c = NULL;
+	struct tbuf rbuf = TBUF(NULL, 0, fiber->pool);
 
-	c = conn_init(NULL, fiber->pool, fd, fiber, fiber, MO_SLAB);
-	palloc_register_gc_root(fiber->pool, c, conn_gc);
+	palloc_register_gc_root(fiber->pool, &rbuf, tbuf_gc);
 	@try {
 		for (;;) {
-			if (admin_dispatch(c) <= 0)
+			if (admin_dispatch(fd, &rbuf) <= 0)
 				break;
 			fiber_gc();
 		}
 	}
 	@finally {
-		palloc_unregister_gc_root(fiber->pool, c);
-		conn_close(c);
+		palloc_unregister_gc_root(fiber->pool, &rbuf);
+		close(fd);
 	}
 }
 

@@ -464,18 +464,6 @@ conn_gc(struct palloc_pool *pool, void *ptr)
 	c->pool = c->out_messages.pool = pool;
 }
 
-ssize_t
-conn_recv(struct conn *c)
-{
-	ev_io io = { .coro = 1 };
-	ev_io_init(&io, (void *)fiber, c->fd, EV_READ);
-	ev_io_start(&io);
-	yield();
-	ev_io_stop(&io);
-	tbuf_ensure(c->rbuf, 16 * 1024);
-	return tbuf_recv(c->rbuf, c->fd);
-}
-
 
 static void
 conn_free(struct conn *c)
@@ -559,60 +547,6 @@ conn_close(struct conn *c)
 	return r;
 }
 
-ssize_t
-conn_read(struct conn *c, void *buf, size_t count)
-{
-	ssize_t r, done = 0;
-	ev_io io = { .coro = 1 };
-	ev_io_init(&io, (void *)fiber, c->fd, EV_READ);
-	ev_io_start(&io);
-
-	while (count > done) {
-		yield();
-		r = read(c->fd, buf + done, count - done);
-
-		if (unlikely(r <= 0)) {
-			if (r < 0) {
-				if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
-					continue;
-				say_syserror("%s: read", __func__);
-				break;
-			}
-			if (r == 0) {
-				say_debug("%s: c:%p fd:%i eof", __func__, c, c->fd);
-				break;
-			}
-		}
-		done += r;
-	}
-	ev_io_stop(&io);
-
-	return done;
-}
-
-ssize_t
-conn_write(struct conn *c, const void *buf, size_t count)
-{
-	int r;
-	unsigned int done = 0;
-	ev_io io = { .coro = 1 };
-	ev_io_init(&io, (void *)fiber, c->fd, EV_WRITE);
-	ev_io_start(&io);
-
-	do {
-		yield();
-		if ((r = write(c->fd, buf + done, count - done)) < 0) {
-			if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
-				continue;
-			say_syserror("%s: write", __func__);
-			break;
-		}
-		done += r;
-	} while (count != done);
-	ev_io_stop(&io);
-
-	return done;
-}
 
 char *
 conn_peer_name(struct conn *c)

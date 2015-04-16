@@ -154,7 +154,9 @@ feeder_param_fill_from_cfg(struct feeder_param *param, struct octopus_cfg *_cfg)
 init
 {
 	[super init];
-	c.fd = -1;
+	fd = -1;
+	rbuf = TBUF(NULL, 0, fiber->pool);
+	palloc_register_gc_root(fiber->pool, &rbuf, tbuf_gc);
 	return self;
 }
 
@@ -175,8 +177,6 @@ feeder_param:(struct feeder_param*)_feeder
 - (int)
 establish_connection
 {
-	int fd;
-
 	abort = 0; /* must be set before connect */
 	assert(feeder != NULL);
 
@@ -203,9 +203,6 @@ establish_connection
 		say_syserror("setsockopt");
 #endif
 
-	assert(c.fd < 0);
-	conn_init(&c, fiber->pool, fd, fiber, fiber, MO_STATIC);
-	palloc_register_gc_root(fiber->pool, &c, conn_gc);
 	return 0;
 }
 
@@ -213,13 +210,13 @@ establish_connection
 replication_compat:(i64)scn
 {
 	say_debug("%s: compat send scn", __func__);
-	if (conn_write(&c, &scn, sizeof(scn)) != sizeof(scn)) {
+	if (fiber_write(fd, &scn, sizeof(scn)) != sizeof(scn)) {
 		snprintf(errbuf, sizeof(errbuf), "can't write initial lsn, %s", strerror(errno));
 		return -1;
 	}
 
 	say_debug("%s: compat recv scn", __func__);
-	if (conn_read(&c, &version, sizeof(version)) != sizeof(version)) {
+	if (fiber_read(fd, &version, sizeof(version)) != sizeof(version)) {
 		snprintf(errbuf, sizeof(errbuf), "can't read initial lsn, %s", strerror(errno));
 		return -1;
 	}
@@ -235,13 +232,13 @@ replication_handshake:(void*)hshake len:(size_t)hsize
 	tbuf_append(req, hshake, hsize);
 
 	say_debug("%s: send handshake, %u bytes", __func__, tbuf_len(req));
-	if (conn_write(&c, req->ptr, tbuf_len(req)) != tbuf_len(req)) {
+	if (fiber_write(fd, req->ptr, tbuf_len(req)) != tbuf_len(req)) {
 		snprintf(errbuf, sizeof(errbuf), "can't write initial handshake, %s", strerror(errno));
 		return -1;
 	}
 
 	do {
-		tbuf_ensure(c.rbuf, 16 * 1024);
+		tbuf_ensure(&rbuf, 16 * 1024);
 		ssize_t r = [self recv_with_timeout: 5];
 
 		if (r < 0) {
@@ -267,10 +264,10 @@ replication_handshake:(void*)hshake len:(size_t)hsize
 			return -1;
 		}
 
-		say_debug("%s: recv handshake part, %u bytes", __func__, tbuf_len(c.rbuf));
-	} while (tbuf_len(c.rbuf) < sizeof(struct iproto_retcode) + sizeof(version));
+		say_debug("%s: recv handshake part, %u bytes", __func__, tbuf_len(&rbuf));
+	} while (tbuf_len(&rbuf) < sizeof(struct iproto_retcode) + sizeof(version));
 
-	struct iproto_retcode *reply = (void *)iproto_parse(c.rbuf);
+	struct iproto_retcode *reply = (void *)iproto_parse(&rbuf);
 	if (reply == NULL ||
 	    reply->ret_code != 0 ||
 	    reply->sync != iproto(req)->sync ||
@@ -282,7 +279,7 @@ replication_handshake:(void*)hshake len:(size_t)hsize
 	}
 
 	say_debug("%s: iproto_reply data_len:%i, rbuf len:%i", __func__,
-		  reply->data_len, tbuf_len(c.rbuf));
+		  reply->data_len, tbuf_len(&rbuf));
 
 	memcpy(&version, reply->data, sizeof(version));
 	return 0;
@@ -331,8 +328,11 @@ handshake:(i64)scn
 	say_info("starting remote recovery from scn:%" PRIi64, scn);
 	return 1;
 err:
-	if (c.fd >= 0)
-		conn_close(&c);
+	tbuf_reset(&rbuf);
+	if (fd >= 0) {
+		close(fd);
+		fd = -1;
+	}
 	return -1;
 }
 
@@ -353,12 +353,12 @@ contains_full_row_v11(const struct tbuf *b)
 - (ssize_t)
 recv_with_timeout: (ev_tstamp)timeout
 {
-	ssize_t r = tbuf_recv(c.rbuf, c.fd);
+	ssize_t r = tbuf_recv(&rbuf, fd);
 	if (r >= 0)
 		return r;
 
 	ev_io io = { .coro = 1 };
-	ev_io_init(&io, (void *)fiber, c.fd, EV_READ);
+	ev_io_init(&io, (void *)fiber, fd, EV_READ);
 	ev_io_start(&io);
 
 	ev_timer timer = { .coro = 1 };
@@ -384,7 +384,7 @@ recv_with_timeout: (ev_tstamp)timeout
 		return -2;
 
 	if (w == &io)
-		return tbuf_recv(c.rbuf, c.fd);
+		return tbuf_recv(&rbuf, fd);
 
 	assert(false);
 }
@@ -395,7 +395,7 @@ recv
 	if (abort)
 		raise_fmt("recv aborted");
 
-	tbuf_ensure(c.rbuf, 256 * 1024);
+	tbuf_ensure(&rbuf, 256 * 1024);
 	ssize_t r = [self recv_with_timeout: cfg.wal_feeder_keepalive_timeout];
 
 	if (r <= 0) {
@@ -428,11 +428,10 @@ fetch_row
 
 	switch (version) {
 	case 12:
-		if (!contains_full_row_v12(c.rbuf))
+		if (!contains_full_row_v12(&rbuf))
 			return NULL;
 
-		buf = tbuf_split(c.rbuf, sizeof(struct row_v12) + row_v12(c.rbuf)->len);
-		buf->pool = c.rbuf->pool; /* FIXME: this is cludge */
+		buf = tbuf_split(&rbuf, sizeof(struct row_v12) + row_v12(&rbuf)->len);
 
 		data_crc = crc32c(0, row_v12(buf)->data, row_v12(buf)->len);
 		if (row_v12(buf)->data_crc32c != data_crc)
@@ -441,11 +440,10 @@ fetch_row
 		fixup_row_v12(row_v12(buf));
 		break;
 	case 11:
-		if (!contains_full_row_v11(c.rbuf))
+		if (!contains_full_row_v11(&rbuf))
 				return NULL;
 
-		buf = tbuf_split(c.rbuf, sizeof(struct _row_v11) + _row_v11(c.rbuf)->len);
-		buf->pool = c.rbuf->pool;
+		buf = tbuf_split(&rbuf, sizeof(struct _row_v11) + _row_v11(&rbuf)->len);
 
 		data_crc = crc32c(0, _row_v11(buf)->data, _row_v11(buf)->len);
 		if (_row_v11(buf)->data_crc32c != data_crc)
@@ -474,32 +472,30 @@ recv_row
 {
 	switch (version) {
 	case 12:
-		while (!contains_full_row_v12(c.rbuf))
+		while (!contains_full_row_v12(&rbuf))
 			[self recv];
 		break;
 	case 11:
-		while (!contains_full_row_v11(c.rbuf))
+		while (!contains_full_row_v11(&rbuf))
 			[self recv];
 		break;
 	default:
 		assert(false);
 	}
-	return tbuf_len(c.rbuf);
+	return tbuf_len(&rbuf);
 }
 
 - (int)
 close
 {
-	if (c.fd < 0)
-		return 0;
-	palloc_unregister_gc_root(fiber->pool, &c);
-	return conn_close(&c);
+	return fd < 0 ? 0 : close(fd);
 }
 
 - (id)
 free
 {
 	[self close];
+	palloc_unregister_gc_root(fiber->pool, &rbuf);
 	return [super free];
 }
 

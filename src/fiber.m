@@ -337,6 +337,74 @@ fiber_wakeup_pending(void)
 	}
 }
 
+ssize_t
+fiber_recv(int fd, struct tbuf *rbuf)
+{
+	ev_io io = { .coro = 1 };
+	ev_io_init(&io, (void *)fiber, fd, EV_READ);
+	ev_io_start(&io);
+	yield();
+	ev_io_stop(&io);
+	tbuf_ensure(rbuf, 16 * 1024);
+	return tbuf_recv(rbuf, fd);
+}
+
+ssize_t
+fiber_read(int fd, void *buf, size_t count)
+{
+	ssize_t r, done = 0;
+	ev_io io = { .coro = 1 };
+	ev_io_init(&io, (void *)fiber, fd, EV_READ);
+	ev_io_start(&io);
+
+	while (count > done) {
+		yield();
+		r = read(fd, buf + done, count - done);
+
+		if (unlikely(r <= 0)) {
+			if (r < 0) {
+				if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+					continue;
+				say_syserror("%s: read", __func__);
+				break;
+			}
+			if (r == 0) {
+				say_debug("%s: fd:%i eof", __func__, fd);
+				break;
+			}
+		}
+		done += r;
+	}
+	ev_io_stop(&io);
+
+	return done;
+}
+
+ssize_t
+fiber_write(int fd, const void *buf, size_t count)
+{
+	int r;
+	unsigned int done = 0;
+	ev_io io = { .coro = 1 };
+	ev_io_init(&io, (void *)fiber, fd, EV_WRITE);
+	ev_io_start(&io);
+
+	do {
+		yield();
+		if ((r = write(fd, buf + done, count - done)) < 0) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+				continue;
+			say_syserror("%s: write", __func__);
+			break;
+		}
+		done += r;
+	} while (count != done);
+	ev_io_stop(&io);
+
+	return done;
+}
+
+
 void
 fiber_init(void)
 {

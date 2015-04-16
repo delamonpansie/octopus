@@ -340,7 +340,9 @@ extern i64 snap_lsn; /* may be used for overriding initial snapshot,
 @end
 
 @interface XLogPuller: Object <XLogPuller, XLogPullerAsync> {
-	struct conn c;
+	int fd;
+	struct tbuf rbuf;
+
 	u32 version;
 	bool abort;
 	struct fiber *in_recv;

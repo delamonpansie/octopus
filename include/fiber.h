@@ -82,6 +82,11 @@ void fiber_sleep(ev_tstamp s);
 void fiber_info(struct tbuf *out);
 struct fiber *fid2fiber(int fid);
 
+/* "blocking" calls */
+ssize_t fiber_recv(int fd, struct tbuf *rbuf);
+ssize_t fiber_read(int fd, void *buf, size_t count);
+ssize_t fiber_write(int fd, const void *buf, size_t count);
+
 int luaT_openfiber(struct lua_State *L);
 
 #endif
