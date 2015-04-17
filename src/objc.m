@@ -34,8 +34,10 @@
 
 #if HAVE_OBJC_RUNTIME_H
 #include <objc/runtime.h>
+#include <objc/message.h>
 #elif HAVE_OBJC_OBJC_API_H
 #include <objc/objc-api.h>
+#include <objc/objc.h>
 size_t
 class_getInstanceSize(Class class)
 {
@@ -51,6 +53,36 @@ object_setClass(id obj, Class class)
 	Class old = obj->class_pointer;
 	obj->class_pointer = class;
 	return old;
+}
+
+void *
+object_getIndexedIvars(id obj)
+{
+	return (u8*)obj + class_get_instance_size(obj->class_pointer);
+}
+
+const char*
+sel_getName(SEL sel)
+{
+	return sel_get_name(sel);
+}
+
+Ivar_t
+class_getInstanceVariable(void *s, const char *ivar)
+{
+	struct objc_class *cl = s;
+	int i;
+	for (i = 0; i < cl->ivars.ivar_count; i++) {
+		if (strcmp(ivar, cl->ivars.ivar_list[i].ivar_name) == 0)
+			return &cl->ivars.ivar_list[i];
+	}
+	return NULL;
+}
+
+ptrdiff_t
+ivar_getOffset(Ivar_t ivar)
+{
+	return ivar->ivar_offset;
 }
 #else
 # error Unknown runtime
@@ -146,6 +178,12 @@ respondsTo:(SEL)selector
 	return class_respondsToSelector(class, selector);
 }
 
+- (IMP)
+methodFor:(SEL)aSel
+{
+	return objc_msg_lookup(self, aSel);
+}
+
 + (Class)
 class
 {
@@ -169,7 +207,32 @@ perform:(SEL)selector
 # error Unknown runtime
 #endif
 }
+
+- (id)
+perform:(SEL)selector with:(id)o
+{
+#if OBJC_GNU_RUNTIME
+	return objc_msg_lookup(self, selector)(self, selector, o);
+#elif OBJC_APPLE_RUNTIME
+	return objc_msgSend(self, selector, o);
 #endif
+}
+- (id)
+perform:(SEL)selector with:(id)o1 with:(id)o2
+{
+#if OBJC_GNU_RUNTIME
+	return objc_msg_lookup(self, selector)(self, selector, o1, o2);
+#elif OBJC_APPLE_RUNTIME
+	return objc_msgSend(self, selector, o1, o2);
+#endif
+}
+#endif
+
+-(void)
+subclassResponsibility:(SEL)cmd
+{
+	raise_fmt("[%s %s] should be overriden", [[self class] name], sel_getName(cmd));
+}
 @end
 
 void

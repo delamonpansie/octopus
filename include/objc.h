@@ -31,8 +31,17 @@
 #include <palloc.h>
 #include <util.h>
 
+#if HAVE_OBJC_RUNTIME_H
+#include <objc/runtime.h>
+#elif HAVE_OBJC_OBJC_API_H
+static inline Class object_getClass(id o) {
+	return o->class_pointer;
+}
+#endif
 Class object_setClass(id, Class);
 size_t class_getInstanceSize(Class class);
+void *object_getIndexedIvars(id);
+const char* sel_getName(SEL);
 
 @interface Object (Octopus)
 + (id)palloc;
@@ -40,6 +49,8 @@ size_t class_getInstanceSize(Class class);
 - (id)retain;
 - (void)release;
 - (id)autorelease;
+- (void)subclassResponsibility:(SEL)cmd;
++ (size_t)offsetOf: (const char*)ivar;
 #if !HAVE_OBJC_OBJC_API_H
 + (id)alloc;
 - (id)free;
@@ -50,6 +61,9 @@ size_t class_getInstanceSize(Class class);
 + (Class)class;
 + (const char *)name; /* class name */
 - (id)perform:(SEL)aSel;
+- (id)perform:(SEL)aSel with:(id)o;
+- (id)perform:(SEL)aSel with:(id)o1 with:(id)o2;
+- (IMP)methodFor:(SEL)aSel;
 #endif
 @end
 
