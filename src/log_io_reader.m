@@ -202,7 +202,7 @@ load_from_local:(i64)initial_lsn
 	if ([(id)recovery respondsTo:@selector(status_update:fmt:)])
 		[(id)recovery status_update:LOADING fmt:"loading/local"];
 
-	i64 snap_lsn;
+	i64 snap_lsn = -1;
 	if (initial_lsn == 0) {
 		snap_lsn = [self recover_snap];
 		assert(lsn > 0);
