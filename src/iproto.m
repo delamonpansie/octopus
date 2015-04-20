@@ -257,7 +257,7 @@ process_requests(struct conn *c)
 
 #ifndef IPROTO_PESSIMISTIC_WRITES
 	if (c->out_messages.bytes > 0) {
-		ssize_t r = conn_flush(c);
+		ssize_t r = netmsg_writev(c->fd, &c->out_messages);
 		if (r < 0) {
 			say_syswarn("%s writev() failed, closing connection",
 				    c->service->name);

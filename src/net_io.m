@@ -54,12 +54,6 @@ netmsg_alloc(struct netmsg_head *h)
 {
 	struct netmsg *n = slab_cache_alloc(&netmsg_cache);
 
-	/* FIXME: use slab ctor & dtor */
-	memset(n->ref, 0, NETMSG_IOV_SIZE * sizeof(n->ref[0]));
-	memset(n->iov, 0, NETMSG_IOV_SIZE * sizeof(n->iov[0]));
-	n->count = 0;
-	n->barrier = 0;
-
 	TAILQ_INSERT_HEAD(&h->q, n, link);
 	h->last_used_iov = n->iov;
 	return n;
@@ -74,11 +68,24 @@ netmsg_head_init(struct netmsg_head *h, struct palloc_pool *pool)
 	netmsg_alloc(h);
 }
 
-static void
-netmsg_unref(struct netmsg *m, int from)
+static void netmsg_unrefr(struct netmsg *, int);
+void
+netmsg_head_release(struct netmsg_head *h)
 {
+	struct netmsg *m, *tmp;
+	TAILQ_FOREACH_SAFE(m, &h->q, link, tmp) {
+		netmsg_unrefr(m, 0);
+		slab_cache_free(&netmsg_cache, m);
+	}
+}
+
+
+static void
+netmsg_unref(struct netmsg *m, int from, int count)
+{
+	return;
 	bool have_lua_refs = 0;
-	for (int i = from; i < m->count; i++) {
+	for (int i = from; i < count; i++) {
 		if (m->ref[i] == 0)
 			continue;
 
@@ -100,30 +107,46 @@ netmsg_unref(struct netmsg *m, int from)
 		lua_pushinteger(L, from);
 		lua_call(L, 2, 0);
 	}
-	memset(m->ref + from, 0, (m->count - from) * sizeof(m->ref[0]));
-	memset(m->iov + from, 0, (m->count - from) * sizeof(m->iov[0]));
 }
 
 static void
-netmsg_release(struct netmsg_head *h, struct netmsg *m)
+netmsg_unrefr(struct netmsg *m, int from)
 {
-	netmsg_unref(m, 0);
-	if (TAILQ_FIRST(&h->q) == m) {
-		m->count = 0;
-		m->barrier = 0;
-	} else {
-		TAILQ_REMOVE(&h->q, m, link);
-		slab_cache_free(&netmsg_cache, m);
-	}
+	netmsg_unref(m, from, m->count);
+	memset(m->ref + from, 0, (m->count - from) * sizeof(m->ref[0]));
+	memset(m->iov + from, 0, (m->count - from) * sizeof(m->iov[0]));
+	m->count = from;
+}
+
+static void
+netmsg_unrefl(struct netmsg *m, int count)
+{
+	netmsg_unref(m, 0, count);
+	memmove(m->ref, m->ref + count, (m->count - count) * sizeof(m->ref[0]));
+	memmove(m->iov, m->iov + count, (m->count - count) * sizeof(m->iov[0]));
+	memset(m->ref + count, 0, count * sizeof(m->ref[0]));
+	memset(m->iov + count, 0, count * sizeof(m->iov[0]));
+	m->count -= count;
+}
+
+/* WARNING: call only if tailq length > 2  */
+static void
+netmsg_free(struct netmsg_tailq *q, struct netmsg *m)
+{
+	netmsg_unrefr(m, 0);
+	TAILQ_REMOVE(q, m, link);
+	slab_cache_free(&netmsg_cache, m);
 }
 
 void
-netmsg_head_release(struct netmsg_head *h)
+netmsg_reset(struct netmsg_head *h)
 {
 	struct netmsg *m, *tmp;
-	TAILQ_FOREACH_SAFE(m, &h->q, link, tmp) {
-		netmsg_unref(m, 0);
-		slab_cache_free(&netmsg_cache, m);
+	m = TAILQ_FIRST(&h->q);
+	netmsg_unrefr(m, 0);
+	for (m = TAILQ_NEXT(m, link); m; m = tmp) {
+		tmp = TAILQ_NEXT(m, link);
+		netmsg_free(&h->q, m);
 	}
 }
 
@@ -179,15 +202,14 @@ netmsg_rewind(struct netmsg_head *h, const struct netmsg_mark *mark)
 
 		for (int i = 0; i < m->count; i++)
 			h->bytes -= m->iov[i].iov_len;
-		netmsg_release(h, m);
+
+		netmsg_free(&h->q, m);
 	}
 	assert(m == mark->m);
 
 	for (int i = mark->offset; i < mark->m->count; i++)
 		h->bytes -= mark->m->iov[i].iov_len;
-	netmsg_unref(mark->m, mark->offset);
-
-	m->count = mark->offset;
+	netmsg_unrefr(mark->m, mark->offset);
 	*(m->iov + m->count) = mark->iov;
 }
 
@@ -281,32 +303,26 @@ netmsg2iovec(struct iovec *buf, struct netmsg *m)
 		buf += m->count;
 		free -= m->count;
 
-		m->barrier = buf;
 		m = TAILQ_PREV(m, netmsg_tailq, link);
 	} while (m != NULL && free >= m->count);
 	return buf;
 }
 
+static struct iovec iovcache[IOV_MAX];
 ssize_t
-conn_flush(struct conn *c)
+netmsg_writev(int fd, struct netmsg_head *head)
 {
-	struct netmsg_head *head = &c->out_messages;
-	struct iovec *iov = c->iov, *end;
+	struct iovec *iov = iovcache, *end;
 	ssize_t result = 0;
 
-	if (unlikely(c->iov_offset & 1)) {
-		iov = c->iov + (c->iov_offset >> 1);
-		end = c->iov_end;
-	} else {
-		if (unlikely(head->bytes == 0))
-			return result;
+	if (unlikely(head->bytes == 0))
+		return result;
 
-		iov = c->iov;
-		end = netmsg2iovec(iov, TAILQ_LAST(&head->q, netmsg_tailq));
-	}
+	end = netmsg2iovec(iov, TAILQ_LAST(&head->q, netmsg_tailq));
 
-	while (end > iov) {
-		ssize_t r = writev(c->fd, iov, end - iov);
+	int iov_count = end - iov;
+	do {
+		ssize_t r = writev(fd, iov, end - iov);
 		if (unlikely(r < 0)) {
 			if (errno == EINTR)
 				continue;
@@ -330,25 +346,21 @@ conn_flush(struct conn *c)
 				iov++;
 			}
 		} while (r > 0);
-	};
+	} while (end > iov);
 
-
-	if (end != iov) {
-		/* lower bit is used as flag */
-		c->iov_offset = (iov - c->iov) << 1 | 1;
-		c->iov_end = end;
-		if (TAILQ_FIRST(&head->q)->barrier != NULL)
-			netmsg_alloc(head);
+	int iov_unsent = end - iov;
+	if (iov_unsent == 0) {
+		netmsg_reset(head);
 	} else {
-		c->iov_offset = 0;
-	}
-
-
-	struct netmsg *m, *tmp;
-	TAILQ_FOREACH_REVERSE_SAFE(m, &head->q, netmsg_tailq, link, tmp) {
-		if (m->barrier == NULL || m->barrier > iov)
-			break;
-		netmsg_release(head, m);
+		iov_count -= iov_unsent;
+		struct netmsg *m = TAILQ_LAST(&head->q, netmsg_tailq), *tmp;
+		while (iov_count > m->count) {
+			iov_count -= m->count;
+			tmp = TAILQ_PREV(m, netmsg_tailq, link);
+			netmsg_free(&head->q, m);
+			m = tmp;
+		}
+		netmsg_unrefl(m, iov_count);
 	}
 
 	return result;
@@ -362,7 +374,7 @@ conn_flush_all(struct conn *c)
 	ev_io_start(&io);
 	do {
 		yield();
-	} while (conn_flush(c) > 0);
+	} while (netmsg_writev(c->fd, &c->out_messages) > 0);
 	ev_io_stop(&io);
 
 	return c->out_messages.bytes == 0 ? 0 : -1;
@@ -411,7 +423,6 @@ conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, st
 	c->peer_name[0] = 0;
 	c->service = NULL;
 	c->processing_link.tqe_prev = NULL;
-	c->iov_offset = 0;
 
 	ev_init(&c->in, (void *)in);
 	ev_init(&c->out, (void *)out);
@@ -443,17 +454,6 @@ conn_gc(struct palloc_pool *pool, void *ptr)
 	}
 
 	c->rbuf = tbuf_clone(pool, c->rbuf);
-
-	if (unlikely(c->iov_offset & 1)) {
-		for (struct iovec *iov = c->iov + (c->iov_offset >> 1);
-		     iov < c->iov_end;
-		     iov++)
-		{
-			void *ptr = palloc(pool, iov->iov_len);
-			memcpy(ptr, iov->iov_base, iov->iov_len);
-			iov->iov_base = ptr;
-		}
-	}
 
 	TAILQ_FOREACH(m, &c->out_messages.q, link)
 		netmsg_gc(pool, m);
@@ -579,7 +579,7 @@ conn_flusher(va_list ap __attribute__((unused)))
 {
 	for (;;) {
 		struct conn *c = ((struct ev_watcher *)yield())->data;
-		ssize_t r = conn_flush(c);
+		ssize_t r = netmsg_writev(c->fd, &c->out_messages);
 
 		if (r < 0) {
 			say_syswarn("%s%swritev() failed, closing connection",
@@ -1164,11 +1164,20 @@ net_fixup_addr(char **addr, int port)
 	return 0;
 }
 
+static void netmsg_ctor(void *ptr)
+{
+	struct netmsg *n = ptr;
+	memset(n->ref, 0, NETMSG_IOV_SIZE * sizeof(n->ref[0]));
+	memset(n->iov, 0, NETMSG_IOV_SIZE * sizeof(n->iov[0]));
+	n->count = 0;
+}
+
 static void __attribute__((constructor))
 init_slab_cache(void)
 {
 	slab_cache_init(&conn_cache, sizeof(struct conn), SLAB_GROW, "net_io/conn");
 	slab_cache_init(&netmsg_cache, sizeof(struct netmsg), SLAB_GROW, "net_io/netmsg");
+	netmsg_cache.ctor = netmsg_ctor;
 }
 
 

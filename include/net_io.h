@@ -65,7 +65,6 @@ struct netmsg_head {
 struct netmsg {
 	TAILQ_ENTRY(netmsg) link; /* first sizeof(void *) bytes are trashed by salloc() */
 	int count;
-	struct iovec *barrier;
 
 	struct iovec iov[NETMSG_IOV_SIZE];
 	uintptr_t ref[NETMSG_IOV_SIZE];
@@ -100,10 +99,6 @@ struct conn {
 	char peer_name[22]; /* aaa.bbb.ccc.ddd:xxxxx */
 
 	ev_timer 	timer;
-
-	int iov_offset;
-	struct iovec *iov_end;
-	struct iovec iov[IOV_MAX];
 };
 
 enum { IPROTO_NONBLOCK = 1 };
@@ -151,12 +146,13 @@ void net_add_ref_iov(struct netmsg_head *o, uintptr_t ref, const void *buf, size
 void net_add_obj_iov(struct netmsg_head *o, struct tnt_object *obj, const void *buf, size_t len) LUA_DEF;
 void netmsg_verify_ownership(struct netmsg_head *h); /* debug method */
 
+ssize_t netmsg_writev(int fd, struct netmsg_head *head);
+
 struct conn *conn_init(struct conn *c, struct palloc_pool *pool, int fd,
 		       struct fiber *in, struct fiber *out, enum conn_memory_ownership memory_ownership);
 void conn_setfd(struct conn *c, int fd);
 int conn_close(struct conn *c);
 void conn_gc(struct palloc_pool *pool, void *ptr);
-ssize_t conn_flush(struct conn *c);
 ssize_t conn_flush_all(struct conn *c);
 char *conn_peer_name(struct conn *c);
 void conn_unref(struct conn *c) LUA_DEF;
