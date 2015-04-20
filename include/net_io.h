@@ -96,7 +96,6 @@ struct conn {
 	TAILQ_ENTRY(conn) processing_link;
 	ev_io in, out;
 	struct service *service;
-	char peer_name[22]; /* aaa.bbb.ccc.ddd:xxxxx */
 
 	ev_timer 	timer;
 };
@@ -154,7 +153,6 @@ void conn_setfd(struct conn *c, int fd);
 int conn_close(struct conn *c);
 void conn_gc(struct palloc_pool *pool, void *ptr);
 ssize_t conn_flush_all(struct conn *c);
-char *conn_peer_name(struct conn *c);
 void conn_unref(struct conn *c) LUA_DEF;
 
 void conn_flusher(va_list ap __attribute__((unused)));
@@ -191,6 +189,7 @@ void wakeup_workers(ev_prepare *ev);
 int atosin(const char *orig, struct sockaddr_in *addr) LUA_DEF;
 const char *sintoa(const struct sockaddr_in *addr);
 int net_fixup_addr(char **addr, int port);
+const char *net_peer_name(int fd);
 
 void service_info(struct tbuf *out, struct service *service);
 

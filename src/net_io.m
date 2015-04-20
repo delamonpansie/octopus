@@ -420,7 +420,6 @@ conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, st
 	c->fd = -1;
 	c->state = CLOSED;
 	c->ref = 0;
-	c->peer_name[0] = 0;
 	c->service = NULL;
 	c->processing_link.tqe_prev = NULL;
 
@@ -529,7 +528,6 @@ conn_close(struct conn *c)
 	r = close(c->fd);
 	c->fd = -1;
 	c->state = CLOSED;
-	c->peer_name[0] = 0;
 
 	if (c->service && c->processing_link.tqe_prev != NULL) {
 		TAILQ_REMOVE(&c->service->processing, c, processing_link);
@@ -548,30 +546,26 @@ conn_close(struct conn *c)
 }
 
 
-char *
-conn_peer_name(struct conn *c)
+const char *
+net_peer_name(int fd)
 {
+	static char buf[22];  /* aaa.bbb.ccc.ddd:xxxxx */
 	struct sockaddr_in peer;
 	socklen_t peer_len = sizeof(peer);
 
-	if (c->fd < 3)
+	if (fd < 3)
 		return NULL;
 
-	if (c->peer_name[0] != 0)
-		return c->peer_name;
-
 	memset(&peer, 0, peer_len);
-	if (getpeername(c->fd, (struct sockaddr *)&peer, &peer_len) < 0)
+	if (getpeername(fd, (struct sockaddr *)&peer, &peer_len) < 0)
 		return NULL;
 
 	uint32_t zero = 0;
 	if (memcmp(&peer.sin_addr, &zero, sizeof(zero)) == 0)
 		return NULL;
 
-	snprintf(c->peer_name, sizeof(c->peer_name),
-		 "%s:%d", inet_ntoa(peer.sin_addr), ntohs(peer.sin_port));
-
-	return c->peer_name;
+	snprintf(buf, sizeof(buf), "%s:%d", inet_ntoa(peer.sin_addr), ntohs(peer.sin_port));
+	return buf;
 }
 
 void
@@ -1044,7 +1038,7 @@ service_info(struct tbuf *out, struct service *service)
 
 	tbuf_printf(out, "%s:" CRLF, service->name);
 	LIST_FOREACH(c, &service->conn, link) {
-		tbuf_printf(out, "    - peer: %s" CRLF, conn_peer_name(c));
+		tbuf_printf(out, "    - peer: %s" CRLF, net_peer_name(c->fd));
 		tbuf_printf(out, "      fd: %i" CRLF, c->fd);
 		tbuf_printf(out, "      state: %i,%s%s" CRLF, c->state,
 			    ev_is_active(&c->in) ? "in" : "",
