@@ -84,7 +84,7 @@ Class version4 = nil;
 const char *
 xlog_tag_to_a(u16 tag)
 {
-	static char buf[16];
+	static char buf[32];
 	char *p = buf;
 	u16 tag_type = tag & ~TAG_MASK;
 	tag &= TAG_MASK;
