@@ -40,6 +40,7 @@ struct {
 	int type;
 	i64 cnt;
 	double sum;
+	double min;
 	double max;
 } *stats = NULL;
 static int stats_size = 0;
@@ -67,7 +68,8 @@ stat_register(char * const * name, size_t count)
 		stats[base].type = 0;
 		stats[base].cnt = 0;
 		stats[base].sum = 0;
-		stats[base].max = 0;
+		stats[base].max = -1e300;
+		stats[base].min = 1e300;
 
 		stats_max = base;
 	}
@@ -90,6 +92,8 @@ stat_collect_double(int base, int name, double value)
 	stats[base + name].sum += value;
 	if ( stats[base + name].max < value )
 		stats[base + name].max = value;
+	if ( stats[base + name].min > value )
+		stats[base + name].min = value;
 }
 
 void
@@ -126,23 +130,19 @@ stat_record(lua_State *L)
 			lua_settable(L, -3);
 			break;
 		case STAT_DOUBLE:
-			lua_pushstring(L, stats[i].name);
-			lua_pushvalue(L, -1);
-			lua_pushstring(L, ".count");
-			lua_concat(L, 2);
-			lua_pushnumber(L, stats[i].cnt);
-			lua_settable(L, -4);
-			lua_pushvalue(L, -1);
-			lua_pushstring(L, ".avg");
-			lua_concat(L, 2);
-			lua_pushnumber(L, stats[i].sum / stats[i].cnt);
-			lua_settable(L, -4);
-			lua_pushvalue(L, -1);
-			lua_pushstring(L, ".max");
-			lua_concat(L, 2);
-			lua_pushnumber(L, stats[i].max);
-			lua_settable(L, -4);
-			lua_pop(L, 1);
+			if (stats[i].cnt > 0) {
+				lua_pushstring(L, stats[i].name);
+				lua_createtable(L, 3, 0);
+				lua_pushnumber(L, stats[i].sum);
+				lua_rawseti(L, -2, 0);
+				lua_pushnumber(L, stats[i].cnt);
+				lua_rawseti(L, -2, 1);
+				lua_pushnumber(L, stats[i].min);
+				lua_rawseti(L, -2, 2);
+				lua_pushnumber(L, stats[i].max);
+				lua_rawseti(L, -2, 3);
+				lua_settable(L, -3);
+			}
 			break;
 		}
 	}
@@ -152,7 +152,8 @@ stat_record(lua_State *L)
 				continue;
 			stats[i].cnt = 0;
 			stats[i].sum = 0;
-			stats[i].max = 0;
+			stats[i].max = -1e300;
+			stats[i].min = 1e300;
 	}
 
 	return 1;
