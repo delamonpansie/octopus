@@ -1033,3 +1033,4 @@ _mh(dump)(struct mhash_t *h)
 
 #undef mh_name
 #undef mhash_t
+#undef MH_DECL
