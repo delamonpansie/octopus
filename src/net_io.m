@@ -366,20 +366,6 @@ netmsg_writev(int fd, struct netmsg_head *head)
 	return result;
 }
 
-ssize_t
-conn_flush_all(struct conn *c)
-{
-	ev_io io = { .coro = 1 };
-	ev_io_init(&io, (void *)fiber, c->fd, EV_WRITE);
-	ev_io_start(&io);
-	do {
-		yield();
-	} while (netmsg_writev(c->fd, &c->out_messages) > 0);
-	ev_io_stop(&io);
-
-	return c->out_messages.bytes == 0 ? 0 : -1;
-}
-
 void
 conn_setfd(struct conn *c, int fd)
 {

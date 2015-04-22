@@ -152,7 +152,6 @@ struct conn *conn_init(struct conn *c, struct palloc_pool *pool, int fd,
 void conn_setfd(struct conn *c, int fd);
 int conn_close(struct conn *c);
 void conn_gc(struct palloc_pool *pool, void *ptr);
-ssize_t conn_flush_all(struct conn *c);
 void conn_unref(struct conn *c) LUA_DEF;
 
 void conn_flusher(va_list ap __attribute__((unused)));
