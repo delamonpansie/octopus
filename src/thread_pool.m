@@ -284,6 +284,7 @@ thread_responses_callbacks_fiber_loop(va_list va)
 			errno = res.eno;
 			res.cb(res.cb_arg, res.result, res.error);
 		}
+		fiber_gc();
 	}
 }
 
