@@ -94,7 +94,7 @@ int thread_responses_get(thread_responses *queue, thread_response *res);
 - (i64) perform: (request_arg)arg;
 - (void) close;
 /* Implementation api */
-- (thread_pool_request*) pop;
+- (thread_pool_request*) pop_request;
 - (thread_pool_request*) pop_timeout: (double)seconds;
 - (thread_pool_request*) pop_till: (struct timespec*)seconds;
 @end

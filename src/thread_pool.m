@@ -338,7 +338,7 @@ send: (request_arg)arg cb: (thread_callback)cb cb_arg: (request_arg)cb_arg
 }
 
 - (thread_pool_request*)
-pop
+pop_request
 {
 	return thread_requests_pop(&requests);
 }
@@ -363,7 +363,7 @@ thread_loop
 	thread_pool_request *request = NULL;
 	for(;;) {
 		errno = 0;
-		request = [self pop];
+		request = [self pop_request];
 		if (request->req.cb == NULL) {
 			return;
 		}
@@ -468,7 +468,7 @@ thread_loop
 	i64 res;
 	for(;;) {
 		errno = 0;
-		request = [self pop];
+		request = [self pop_request];
 		if (request->req.cb == NULL) {
 			[self respond: request res: 0];
 			return;
