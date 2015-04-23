@@ -388,7 +388,7 @@ conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, st
 	if (pool == NULL || memory_ownership & MO_MY_OWN_POOL) {
 		c->memory_ownership |= MO_MY_OWN_POOL;
 
-		c->pool = palloc_create_pool("connection owned pool");
+		c->pool = palloc_create_pool((struct palloc_config){.name = "connection owned pool"});
 	} else {
 		c->pool = pool;
 	}
@@ -429,7 +429,7 @@ conn_gc(struct palloc_pool *pool, void *ptr)
 		if (palloc_allocated(c->pool) < 128 * 1024)
 			return;
 
-		pool = palloc_create_pool("connection owned new pool");
+		pool = palloc_create_pool((struct palloc_config){.name = "connection owned new pool"});
 	}
 
 	c->rbuf = tbuf_clone(pool, c->rbuf);
@@ -1095,7 +1095,7 @@ tcp_service(struct service *service, const char *addr, void (*on_bind)(int fd), 
 	sprintf(name, "tcp:%s", addr);
 
 	TAILQ_INIT(&service->processing);
-	service->pool = palloc_create_pool(name);
+	service->pool = palloc_create_pool((struct palloc_config){.name = name});
 	service->name = name;
 	service->batch = 32;
 

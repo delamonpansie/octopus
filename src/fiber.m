@@ -193,7 +193,7 @@ static void
 fiber_alloc(struct fiber *fiber)
 {
 	if (fiber->pool == NULL)
-		fiber->pool = palloc_create_pool(fiber->name);
+		fiber->pool = palloc_create_pool((struct palloc_config){.name = fiber->name});
 
 	prelease(fiber->pool);
 }

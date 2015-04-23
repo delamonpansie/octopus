@@ -236,7 +236,7 @@ spawn_child(const char *name, struct fiber *in, struct fiber *out,
 
 	assert(fd >= 0);
 	struct child *child = xmalloc(sizeof(*child));
-	struct palloc_pool *p = palloc_create_pool(name);
+	struct palloc_pool *p = palloc_create_pool((struct palloc_config){.name = name});
 
 	child->pid = pid;
 	child->c = conn_init(NULL, p, fd, in, out, MO_MALLOC);
