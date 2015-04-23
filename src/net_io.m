@@ -572,9 +572,7 @@ conn_flusher(va_list ap __attribute__((unused)))
 		if (c->out_messages.bytes == 0)
 			ev_io_stop(&c->out);
 
-		/* c->processing_link.tqe_prev == NULL implies
-		   that we'r reading (possibly) an oversize request */
-		if ((tbuf_len(c->rbuf) < cfg.input_low_watermark || c->processing_link.tqe_prev == NULL) &&
+		if ((tbuf_len(c->rbuf) < cfg.input_low_watermark) &&
 		    c->out_messages.bytes < cfg.output_low_watermark &&
 		    c->state != CLOSED)
 			ev_io_start(&c->in);

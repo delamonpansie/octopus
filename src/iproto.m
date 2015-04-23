@@ -239,10 +239,16 @@ process_requests(struct conn *c)
 	if (unlikely(c->state == CLOSED)) /* handler may close connection */
 		goto out;
 
+	if (tbuf_len(c->rbuf) >= cfg.input_low_watermark && has_full_req(c->rbuf))
+		ev_io_stop(&c->in);
+
 	if (!has_full_req(c->rbuf))
 	{
 		TAILQ_REMOVE(&service->processing, c, processing_link);
 		c->processing_link.tqe_prev = NULL;
+
+		/* input buffer is empty or has partially read oversize request */
+		ev_io_start(&c->in);
 	} else if (batch < service->batch) {
 		/* avoid unfair scheduling in case of absense of stream requests
 		   and all workers being busy */
