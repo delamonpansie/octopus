@@ -56,10 +56,11 @@ static char * const stat_ops[] = ENUM_STR_INITIALIZER(STAT);
 static int stat_base;
 
 struct worker_arg {
-	void (*cb)(struct iproto *, struct conn *c);
+	void (*cb)(struct netmsg_head *wbuf, struct iproto *);
 	struct iproto *r;
 	struct conn *c;
 };
+
 
 void
 iproto_worker(va_list ap)
@@ -71,12 +72,16 @@ iproto_worker(va_list ap)
 		SLIST_INSERT_HEAD(&service->workers, fiber, worker_link);
 		memcpy(&a, yield(), sizeof(a));
 
-		a.c->ref++;
-
 		@try {
-			a.cb(a.r, a.c);
+			a.c->ref++;
+			a.cb(&a.c->out_messages, a.r);
+		}
+		@catch (IProtoClose *e) {
+			conn_close(a.c);
 		}
 		@catch (Error *e) {
+			/* FIXME: where is no way to rollback modifications of wbuf.
+			   cb() must not throw any exceptions after it modified wbuf */
 			u32 rc = ERR_CODE_UNKNOWN_ERROR;
 			if ([e respondsTo:@selector(code)])
 				rc = [(id)e code];
@@ -85,51 +90,38 @@ iproto_worker(va_list ap)
 
 			iproto_error(&a.c->out_messages, a.r, rc, e->reason);
 		}
+		@finally {
+			if (a.c->out_messages.bytes > 0 && a.c->state != CLOSED)
+				ev_io_start(&a.c->out);
+			conn_unref(a.c);
+		}
 
-		if (a.c->out_messages.bytes > 0 && a.c->state != CLOSED)
-			ev_io_start(&a.c->out);
-
-		conn_unref(a.c);
 		fiber_gc();
 	}
 }
 
 
 static void
-err(struct netmsg_head *h __attribute__((unused)),
-    struct iproto *r,
-    struct conn *c __attribute__((unused)))
+err(struct netmsg_head *h __attribute__((unused)), struct iproto *r)
 {
 	iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "unknown iproto command %i", r->msg_code);
 }
 
 void
-iproto_ping(struct netmsg_head *h, struct iproto *r, struct conn *c __attribute__((unused)))
+iproto_ping(struct netmsg_head *h, struct iproto *r)
 {
 	net_add_iov_dup(h, r, sizeof(struct iproto));
 }
 
 void
-service_register_iproto_stream(struct service *s, u32 cmd,
-			       void (*cb)(struct netmsg_head *, struct iproto *, struct conn *),
-			       int flags)
+service_register_iproto(struct service *s, u32 cmd,
+			void (*cb)(struct netmsg_head *, struct iproto *),
+			int flags)
 {
 	service_set_handler(s, (struct iproto_handler){
 			.code = cmd,
-			.cb = {.stream = cb},
-			.flags = flags | IPROTO_NONBLOCK
-		});
-}
-
-void
-service_register_iproto_block(struct service *s, u32 cmd,
-			      void (*cb)(struct iproto *, struct conn *),
-			      int flags)
-{
-	service_set_handler(s, (struct iproto_handler){
-			.code = cmd,
-			.cb = {.block = cb},
-			.flags = flags & ~IPROTO_NONBLOCK
+			.cb = cb,
+			.flags = flags
 		});
 }
 
@@ -151,8 +143,8 @@ tcp_iproto_service(struct service *service, const char *addr, void (*on_bind)(in
 	tcp_service(service, addr, on_bind, wakeup_workers ?: iproto_wakeup_workers);
 	service_alloc_handlers(service, SERVICE_DEFAULT_CAPA);
 
-	service_register_iproto_stream(service, -1, err, 0);
-	service_register_iproto_stream(service, msg_ping, iproto_ping, IPROTO_NONBLOCK);
+	service_register_iproto(service, -1, err, IPROTO_NONBLOCK);
+	service_register_iproto(service, msg_ping, iproto_ping, IPROTO_NONBLOCK);
 }
 
 void
@@ -209,7 +201,10 @@ process_requests(struct conn *c)
 			struct netmsg_mark header_mark;
 			netmsg_getmark(&c->out_messages, &header_mark);
 			@try {
-				ih->cb.stream(&c->out_messages, request, c);
+				ih->cb(&c->out_messages, request);
+			}
+			@catch (IProtoClose *e) {
+				conn_close(c);
 			}
 			@catch (Error *e) {
 				u32 rc = ERR_CODE_UNKNOWN_ERROR;
@@ -230,7 +225,7 @@ process_requests(struct conn *c)
 				memcpy(request_copy, request, req_size);
 				tbuf_ltrim(c->rbuf, req_size);
 				SLIST_REMOVE_HEAD(&service->workers, worker_link);
-				resume(w, &(struct worker_arg){ih->cb.block, request_copy, c});
+				resume(w, &(struct worker_arg){ih->cb, request_copy, c});
 			} else {
 				stat_collect(stat_base, IPROTO_WORKER_STARVATION, 1);
 				break; // FIXME: need state for this
@@ -347,10 +342,12 @@ iproto_error(struct netmsg_head *h, const struct iproto *request, u32 ret_code, 
 	if (err && strlen(err) > 0)
 		net_add_iov_dup(h, err, strlen(err));
 	iproto_reply_fixup(h, header);
-	say_debug("%s: op:%02x data_len:%i sync:%i ret:%i", __func__,
+	say_debug("%s: op:0x%02x data_len:%i sync:%i ret:%i", __func__,
 		  header->msg_code, header->data_len, header->sync, header->ret_code);
 }
 
+@implementation IProtoClose
+@end
 
 @implementation IProtoError
 - (IProtoError *)

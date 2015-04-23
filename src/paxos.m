@@ -144,8 +144,8 @@ struct proposal {
 
 struct paxos_request {
 	struct paxos_peer *peer;
-	struct conn *c; /* incoming connection,
-			   don't confuse with outgoing connection peer->c */
+	struct netmsg_head *wbuf; /* wbuf of incoming connection,
+				     don't confuse with outgoing connection peer->c */
 	const struct msg_paxos *msg;
 	struct proposal *p;
 };
@@ -223,14 +223,9 @@ paxos_reply(struct paxos_request *req, enum paxos_msg_code code, u64 ballot)
 {
 	const struct msg_paxos *req_msg = req->msg;
 	const struct proposal *p = req->p;
-	struct conn *c = req->c;
+	struct netmsg_head *wbuf = req->wbuf;
 
-	if (c->state < CONNECTED) {
-		say_debug("not connected: ignoring fd:%i state:%i", c->fd, c->state);
-		return;
-	}
-
-	struct msg_paxos *msg = p0alloc(c->pool, sizeof(*msg));
+	struct msg_paxos *msg = p0alloc(wbuf->pool, sizeof(*msg));
 	msg->header = (struct iproto){ .msg_code = code,
 				       .data_len = sizeof(*msg) - sizeof(struct iproto) + (p ? p->value_len : 0),
 				       .sync = req_msg->header.sync };
@@ -239,17 +234,15 @@ paxos_reply(struct paxos_request *req, enum paxos_msg_code code, u64 ballot)
 	msg->peer_id = self_id;
 	msg->version = paxos_default_version;
 
-	struct netmsg_head *h = &c->out_messages;
-
 	if (p) {
 		msg->value_len = p->value_len;
 		msg->tag = p->tag;
 
-		net_add_iov(h, msg, sizeof(*msg));
+		net_add_iov(wbuf, msg, sizeof(*msg));
 		if (p->value_len)
-			net_add_iov_dup(h, p->value, p->value_len);
+			net_add_iov_dup(wbuf, p->value, p->value_len);
 	} else {
-		net_add_iov(h, msg, sizeof(*msg));
+		net_add_iov(wbuf, msg, sizeof(*msg));
 	}
 
 	say_debug("%s: > peer:%i/%s %s sync:%i SCN:%"PRIi64" ballot:%"PRIu64,
@@ -258,7 +251,6 @@ paxos_reply(struct paxos_request *req, enum paxos_msg_code code, u64 ballot)
 	if (p)
 		say_debug2("|  tag:%s value_len:%i value:%s", xlog_tag_to_a(p->tag), p->value_len,
 			   tbuf_to_hex(&TBUF(p->value, p->value_len, fiber->pool)));
-	ev_io_start(&c->out);
 }
 
 static void
@@ -391,31 +383,30 @@ propose_leadership(va_list ap)
 #define PAXOS_MSG_DROP(h) (void)h
 #endif
 
-#define PAXOS_MSG_CHECK(msg, c, peer)	({				\
+#define PAXOS_MSG_CHECK(msg, peer)	({				\
 	if ((msg)->version != paxos_default_version) {			\
 		say_warn("%s: bad version %i, closing connect from peer %i", \
 			 __func__, (msg)->version, (msg)->peer_id);	\
-		conn_close(c);						\
-		return;							\
+		@throw [[IProtoClose palloc] init:"bad version"];	\
 	}								\
 	if (!peer) {					\
 		say_warn("%s: closing connect from unknown peer %i", __func__, (msg)->peer_id); \
-		conn_close(c);						\
-		return;							\
+		@throw [[IProtoClose palloc] init:"unknown peer"];					\
 	}								\
 	PAXOS_MSG_DROP(&(msg)->header);					\
 })
 
 static void
-leader(struct iproto *msg, struct conn *c)
+leader(struct netmsg_head *wbuf, struct iproto *msg)
 {
+	struct conn *c = (void *)wbuf - offsetof(struct conn, out_messages);
 	PaxosRecovery *r = (void *)c->service - offsetof(PaxosRecovery, service);
 	struct msg_leader *pmsg = (struct msg_leader *)msg;
 	struct paxos_peer *peer = paxos_peer(r, pmsg->peer_id);
 	const char *ret = "accept";
 	const ev_tstamp to_expire = leadership_expire - ev_now();
 
-	PAXOS_MSG_CHECK(pmsg, c, peer);
+	PAXOS_MSG_CHECK(pmsg, peer);
 
 	say_debug("|   LEADER_PROPOSE to_expire:%.2f leader/propos:%i/%i",
 		  to_expire, leader_id, pmsg->leader_id);
@@ -439,13 +430,10 @@ leader(struct iproto *msg, struct conn *c)
 		pmsg->leader_id = leader_id;
 		pmsg->expire = leadership_expire;
 	}
-	if (c->state < CONNECTED)
-		return;
 
 	say_debug("|   -> reply with %s", ret);
 
-	net_add_iov_dup(&c->out_messages, pmsg, sizeof(*pmsg));
-	ev_io_start(&c->out);
+	net_add_iov_dup(wbuf, pmsg, sizeof(*pmsg));
 }
 
 
@@ -726,13 +714,14 @@ msg_dump(const char *prefix, const struct paxos_peer *peer, const struct iproto 
 }
 
 static void
-learner(struct iproto *msg, struct conn *c)
+learner(struct netmsg_head *wbuf, struct iproto *msg)
 {
+	struct conn *c = (void *)wbuf - offsetof(struct conn, out_messages);
 	PaxosRecovery *r = (void *)c->service - offsetof(PaxosRecovery, service);
 	struct msg_paxos *req = (struct msg_paxos *)msg;
 	struct paxos_peer *peer = paxos_peer(r, req->peer_id);
 
-	PAXOS_MSG_CHECK(req, c, peer);
+	PAXOS_MSG_CHECK(req, peer);
 
 	msg_dump("learner: <", peer, msg);
 
@@ -758,15 +747,16 @@ learner(struct iproto *msg, struct conn *c)
 }
 
 static void
-acceptor(struct iproto *imsg, struct conn *c)
+acceptor(struct netmsg_head *wbuf, struct iproto *imsg)
 {
+	struct conn *c = (void *)wbuf - offsetof(struct conn, out_messages);
 	PaxosRecovery *r = (void *)c->service - offsetof(PaxosRecovery, service);
 	struct msg_paxos *msg = (struct msg_paxos *)imsg;
 	struct paxos_request req = { .msg = msg,
 				     .peer = paxos_peer(r, msg->peer_id),
-				     .c = c };
+				     .wbuf = wbuf };
 
-	PAXOS_MSG_CHECK(req.msg, req.c, req.peer);
+	PAXOS_MSG_CHECK(req.msg, req.peer);
 
 	msg_dump("acceptor: <", req.peer, imsg);
 
@@ -1258,10 +1248,10 @@ exit:
 	const char *addr = sintoa(&paxos_peer(self, self_id)->paxos.addr);
 	tcp_iproto_service(&service, addr, NULL, iproto_wakeup_workers);
 
-	service_register_iproto_block(&service, LEADER_PROPOSE, leader, 0);
-	service_register_iproto_block(&service, PREPARE, acceptor, 0);
-	service_register_iproto_block(&service, ACCEPT, acceptor, 0);
-	service_register_iproto_block(&service, DECIDE, learner, 0);
+	service_register_iproto(&service, LEADER_PROPOSE, leader, 0);
+	service_register_iproto(&service, PREPARE, acceptor, 0);
+	service_register_iproto(&service, ACCEPT, acceptor, 0);
+	service_register_iproto(&service, DECIDE, learner, 0);
 	for (int i = 0; i < 3; i++) {
 		fiber_create("paxos/worker", iproto_worker, &service);
 		fiber_create("paxos/puller", learner_puller, self, i + 1); /* peer id starts from 1 */

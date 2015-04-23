@@ -22,10 +22,11 @@ local iproto_retcode0_t = ffi.typeof('struct iproto_retcode_0')
 local ref -- forward decl
 
 local netmsg_op = {}
+function netmsg_op:add_iov_dup(obj, len) C.net_add_iov_dup(self, obj, len) end
 function netmsg_op:add_iov_ref(obj, len, v) C.net_add_ref_iov(self, v or ref(obj), obj, len) end
 function netmsg_op:add_iov_string(str)
     if #str < 512 then
-        C.net_add_iov_dup(self.out_messages, str, #str)
+        C.net_add_iov_dup(self, str, #str)
     else
         C.net_add_ref_iov(self, ref(str), str, #str)
     end
@@ -40,6 +41,7 @@ end
 
 local netmsg_head_t = ffi.metatype(ffi.typeof('struct netmsg_head'), { __index = netmsg_op,
 								       __gc = C.netmsg_head_release })
+netmsg_ptr = ffi.typeof('struct netmsg_head *')
 function netmsg()
    local h = netmsg_head_t()
    ffi.C.netmsg_head_init(h, nil)

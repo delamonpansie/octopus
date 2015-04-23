@@ -82,7 +82,7 @@ struct iproto_peer {
 };
 SLIST_HEAD(iproto_group, iproto_peer);
 
-void iproto_ping(struct netmsg_head *h, struct iproto *r, struct conn *c);
+void iproto_ping(struct netmsg_head *h, struct iproto *r);
 
 void tcp_iproto_service(struct service *service, const char *addr, void (*on_bind)(int fd), void (*wakeup_workers)(ev_prepare *));
 void iproto_wakeup_workers(ev_prepare *ev);
@@ -103,13 +103,9 @@ service_find_code(struct service *s, int code)
 }
 
 void
-service_register_iproto_stream(struct service *s, u32 cmd,
-			       void (*cb)(struct netmsg_head *, struct iproto *, struct conn *),
-			       int flags);
-void
-service_register_iproto_block(struct service *s, u32 cmd,
-			      void (*cb)(struct iproto *, struct conn *),
-			      int flags);
+service_register_iproto(struct service *s, u32 cmd,
+			void (*cb)(struct netmsg_head *, struct iproto *),
+			int flags);
 
 struct iproto_reply {
 	TAILQ_ENTRY(iproto_reply) link;
@@ -148,6 +144,9 @@ struct iproto *iproto_sync_send(struct iproto_peer *peer,
 				struct iproto *msg, const struct iovec *iov, int iovcnt);
 struct iproto *iproto_wait_sync(struct iproto_mbox *mbox, u32 sync);
 void iproto_wait_all(struct iproto_mbox *mbox);
+
+@interface IProtoClose : Error
+@end
 
 @interface IProtoError : Error {
 @public
