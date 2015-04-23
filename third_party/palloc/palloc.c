@@ -499,6 +499,7 @@ prelease(struct palloc_pool *pool)
 {
 	release_chunks(&pool->chunks);
 	TAILQ_INIT(&pool->chunks);
+	SLIST_INIT(&pool->cut_list);
 	pool->allocated = 0;
 }
 
@@ -518,9 +519,11 @@ palloc_create_pool(struct palloc_config cfg)
 
 	pool = malloc(sizeof(struct palloc_pool));
 	assert(pool != NULL);
-	memset(pool, 0, sizeof(*pool));
 	pool->cfg = cfg;
+	pool->allocated = 0;
 	TAILQ_INIT(&pool->chunks);
+	SLIST_INIT(&pool->gc_list);
+	SLIST_INIT(&pool->cut_list);
 	SLIST_INSERT_HEAD(&pools, pool, link);
 	return pool;
 }
@@ -598,6 +601,7 @@ void
 palloc_register_cut_point(struct palloc_pool *pool)
 {
 	struct chunk *chunk = TAILQ_FIRST(&pool->chunks);
+	size_t allocated = pool->allocated;
 	uint32_t chunk_free;
 	struct cut_root *root;
 
@@ -608,7 +612,7 @@ palloc_register_cut_point(struct palloc_pool *pool)
 	root = palloc(pool, sizeof(*root));
 	root->chunk = chunk;
 	root->chunk_free = chunk_free;
-	root->allocated = pool->allocated;
+	root->allocated = allocated;
 	SLIST_INSERT_HEAD(&pool->cut_list, root, link);
 }
 
