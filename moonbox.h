@@ -29,4 +29,4 @@ struct box_txn;
 struct tbuf;
 
 void luaT_openbox(struct lua_State *L);
-void box_dispach_lua(struct conn *c, struct iproto *request);
+void box_dispach_lua(struct netmsg_head *wbuf, struct iproto *request);

@@ -11,7 +11,7 @@ local printf = printf
 local ffi, bit, debug = require("ffi"), require("bit"), require("debug")
 local index = require('index')
 local fiber = require("fiber")
-local conn_ptr = require("net").conn_ptr
+local netmsg_ptr = require("net").netmsg_ptr
 local object, object_cast, varint32, packer = object, object_cast, varint32, packer
 local safeptr, assertarg = safeptr, assertarg
 local lselect = select
@@ -265,7 +265,7 @@ local function append_value(out, v)
 end
 
 local function append(result, out)
-    out = ffi.cast(conn_ptr, out)
+    out = netmsg_ptr(out)
     p:reset()
 
     if type(result) == "table" then
@@ -316,7 +316,7 @@ local function clear_cache()
 end
 fiber.create(clear_cache)
 
-function entry(name, out, request, ...)
+function entry(name, wbuf, request, ...)
     add_stat_exec_lua(name)
 
     local proc = fn_cache[name]
@@ -327,7 +327,7 @@ function entry(name, out, request, ...)
     end
     add_stat_exec_lua("NotWrapped")
     add_stat_exec_lua(name..":NotWrapped")
-    proc(out, request, ...)
+    proc(netmsg_ptr(wbuf), request, ...)
     add_stat_exec_lua_ok(name)
 end
 

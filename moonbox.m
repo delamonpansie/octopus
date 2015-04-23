@@ -140,7 +140,7 @@ luaT_openbox(struct lua_State *L)
 
 static int box_entry_i = 0;
 void
-box_dispach_lua(struct conn *c, struct iproto *request)
+box_dispach_lua(struct netmsg_head *wbuf, struct iproto *request)
 {
 	lua_State *L = fiber->L;
 	struct tbuf data = TBUF(request->data, request->data_len, fiber->pool);
@@ -162,7 +162,7 @@ box_dispach_lua(struct conn *c, struct iproto *request)
 	lua_rawgeti(L, LUA_REGISTRYINDEX, box_entry_i);
 
 	lua_pushlstring(L, fname, flen);
-	lua_pushlightuserdata(L, c);
+	lua_pushlightuserdata(L, wbuf);
 	lua_pushlightuserdata(L, request);
 
 	if (!lua_checkstack(L, nargs)) {
@@ -205,17 +205,18 @@ box_dispach_lua(struct conn *c, struct iproto *request)
 			@throw err;
 		}
 		struct netmsg_mark mark;
-		netmsg_getmark(&c->out_messages, &mark);
-		struct iproto_retcode *reply = iproto_reply(&c->out_messages, request,
+		netmsg_getmark(wbuf, &mark);
+		struct iproto_retcode *reply = iproto_reply(wbuf, request,
 							    lua_tointeger(L, top + 2));
 		if (newtop == top + 3 && !lua_isnil(L, top + 3)) {
 			lua_remove(L, top + 2);
-			lua_pushlightuserdata(L, c);
+			lua_pushlightuserdata(L, wbuf);
+
 			if (lua_pcall(L, 2, 0, top)) {
 				IProtoError *err = [IProtoError palloc];
 				const char *reason = lua_tostring(L, -1);
 				int code = ERR_CODE_ILLEGAL_PARAMS;
-				netmsg_rewind(&c->out_messages, &mark);
+				netmsg_rewind(wbuf, &mark);
 
 				[err init_code:code line:__LINE__ file:__FILE__
 				     backtrace:NULL format:"%s", reason];
@@ -223,7 +224,7 @@ box_dispach_lua(struct conn *c, struct iproto *request)
 				@throw err;
 			}
 		}
-		iproto_reply_fixup(&c->out_messages, reply);
+		iproto_reply_fixup(wbuf, reply);
 	}
 	lua_settop(L, top-1);
 }

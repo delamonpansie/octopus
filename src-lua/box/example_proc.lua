@@ -44,7 +44,6 @@ end)
 -- raw access to internals
 user_proc.get_all_pkeys =
         function (out, request, n, batch_size)
-		local out = net.conn(out)
                 local object_space = box.space[n]
 
                 if not object_space then
@@ -87,12 +86,12 @@ user_proc.get_all_pkeys =
                 end
 
 		local header = out:add_iov_iproto_header(request)
-                local bytes = out:bytes()
+                local bytes = out.bytes
 		out:add_iov_string(string.tou32(key_count))
 		for _, pack in ipairs(packs) do
 		   out:add_iov_ref(pack, #pack)
 		end
-		bytes = out:bytes() - bytes
+		bytes = out.bytes - bytes
 		header.data_len = header.data_len + bytes
         end
 

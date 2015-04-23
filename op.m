@@ -684,15 +684,14 @@ box_rollback(struct box_txn *txn)
 }
 
 static void
-box_lua_cb(struct iproto *request, struct conn *c)
+box_lua_cb(struct netmsg_head *wbuf, struct iproto *request)
 {
-	say_debug("%s: c:%p op:0x%02x sync:%u", __func__, c,
-		  request->msg_code, request->sync);
+	say_debug("%s: op:0x%02x sync:%u", __func__, request->msg_code, request->sync);
 
 	@try {
 		ev_tstamp start = ev_now(), stop;
 
-		box_dispach_lua(c, request);
+		box_dispach_lua(wbuf, request);
 		stat_collect(stat_base, EXEC_LUA, 1);
 
 		stop = ev_now();
@@ -700,8 +699,8 @@ box_lua_cb(struct iproto *request, struct conn *c)
 			say_warn("too long %s: %.3f sec", box_ops[request->msg_code], stop - start);
 	}
 	@catch (Error *e) {
-		say_warn("aborting lua request, [%s reason:\"%s\"] at %s:%d peer:%s",
-			 [[e class] name], e->reason, e->file, e->line, conn_peer_name(c));
+		say_warn("aborting lua request, [%s reason:\"%s\"] at %s:%d",
+			 [[e class] name], e->reason, e->file, e->line);
 		if (e->backtrace)
 			say_debug("backtrace:\n%s", e->backtrace);
 		@throw;
@@ -710,8 +709,7 @@ box_lua_cb(struct iproto *request, struct conn *c)
 
 static void
 box_paxos_cb(struct netmsg_head *h __attribute__((unused)),
-	     struct iproto *request __attribute__((unused)),
-	     struct conn *c __attribute__((unused)))
+	     struct iproto *request __attribute__((unused)))
 {
 	if ([recovery respondsTo:@selector(leader_redirect_raise)])
 		[recovery perform:@selector(leader_redirect_raise)];
@@ -721,7 +719,7 @@ box_paxos_cb(struct netmsg_head *h __attribute__((unused)),
 }
 
 static void
-box_paxos_proxy_cb(struct iproto *request, struct conn *c)
+box_paxos_proxy_cb(struct netmsg_head *wbuf, struct iproto *request)
 {
 	u32 sync = request->sync;
 	struct iproto_peer *peer = [(PaxosRecovery *)recovery leader_primary];
@@ -729,7 +727,7 @@ box_paxos_proxy_cb(struct iproto *request, struct conn *c)
 	if (!reply)
 		return;
 	reply->sync = sync;
-	net_add_iov_dup(&c->out_messages, reply, sizeof(*reply) + reply->data_len);
+	net_add_iov_dup(wbuf, reply, sizeof(*reply) + reply->data_len);
 }
 
 
@@ -787,9 +785,9 @@ runlock(struct rwlock *lock)
 static struct rwlock lock;
 
 void
-box_meta_cb(struct iproto *request, struct conn *c)
+box_meta_cb(struct netmsg_head *wbuf, struct iproto *request)
 {
-	say_debug2("%s: c:%p op:0x%02x sync:%u", __func__, c, request->msg_code, request->sync);
+	say_debug2("%s: op:0x%02x sync:%u", __func__, request->msg_code, request->sync);
 	if ([recovery is_replica])
 		iproto_raise(ERR_CODE_NONMASTER, "replica is readonly");
 
@@ -809,9 +807,8 @@ box_meta_cb(struct iproto *request, struct conn *c)
 		}
 		@try {
 			box_commit_meta(&txn);
-			struct netmsg_head *h = &c->out_messages;
-			struct iproto_retcode *reply = iproto_reply(h, request, ERR_CODE_OK);
-			iproto_reply_fixup(h, reply);
+			struct iproto_retcode *reply = iproto_reply(wbuf, request, ERR_CODE_OK);
+			iproto_reply_fixup(wbuf, reply);
 		}
 		@catch (Error *e) {
 			panic_exc_fmt(e, "can't handle exception after WAL write: %s", e->reason);
@@ -826,9 +823,9 @@ box_meta_cb(struct iproto *request, struct conn *c)
 }
 
 static void
-box_cb(struct iproto *request, struct conn *c)
+box_cb(struct netmsg_head *wbuf, struct iproto *request)
 {
-	say_debug2("%s: c:%p op:0x%02x sync:%u", __func__, c, request->msg_code, request->sync);
+	say_debug2("%s: c:%p op:0x%02x sync:%u", __func__, NULL, request->msg_code, request->sync);
 
 	if ([recovery is_replica])
 		iproto_raise(ERR_CODE_NONMASTER, "replica is readonly");
@@ -853,7 +850,7 @@ box_cb(struct iproto *request, struct conn *c)
 		@catch (Error *e) {
 			if (e->file && strcmp(e->file, "src/paxos.m") != 0) {
 				say_warn("aborting txn, [%s reason:\"%s\"] at %s:%d peer:%s",
-					 [[e class] name], e->reason, e->file, e->line, conn_peer_name(c));
+					 [[e class] name], e->reason, e->file, e->line, "" /*net_peer_name(c->fd)*/);
 				if (e->backtrace)
 					say_debug("backtrace:\n%s", e->backtrace);
 			}
@@ -862,16 +859,15 @@ box_cb(struct iproto *request, struct conn *c)
 		}
 		@try {
 			box_commit(&txn);
-			struct netmsg_head *h = &c->out_messages;
-			struct iproto_retcode *reply = iproto_reply(h, request, ERR_CODE_OK);
-			net_add_iov_dup(h, &txn.obj_affected, sizeof(u32));
+			struct iproto_retcode *reply = iproto_reply(wbuf, request, ERR_CODE_OK);
+			net_add_iov_dup(wbuf, &txn.obj_affected, sizeof(u32));
 			if (txn.flags & BOX_RETURN_TUPLE) {
 				if (txn.obj)
-					tuple_add(h, txn.obj);
+					tuple_add(wbuf, txn.obj);
 				else if (request->msg_code == DELETE && txn.old_obj)
-					tuple_add(h, txn.old_obj);
+					tuple_add(wbuf, txn.old_obj);
 			}
-			iproto_reply_fixup(h, reply);
+			iproto_reply_fixup(wbuf, reply);
 
 			stop = ev_now();
 			if (stop - start > cfg.too_long_threshold)
@@ -891,10 +887,10 @@ box_cb(struct iproto *request, struct conn *c)
 }
 
 static void
-box_select_cb(struct netmsg_head *h, struct iproto *request, struct conn *c __attribute__((unused)))
+box_select_cb(struct netmsg_head *wbuf, struct iproto *request)
 {
 	struct tbuf data = TBUF(request->data, request->data_len, fiber->pool);
-	struct iproto_retcode *reply = iproto_reply(h, request, ERR_CODE_OK);
+	struct iproto_retcode *reply = iproto_reply(wbuf, request, ERR_CODE_OK);
 	struct object_space *obj_spc;
 
 	i32 n = read_u32(&data);
@@ -910,8 +906,8 @@ box_select_cb(struct netmsg_head *h, struct iproto *request, struct conn *c __at
 	if ((obj_spc->index[i]) == NULL)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index is invalid");
 
-	process_select(h, obj_spc->index[i], limit, offset, &data);
-	iproto_reply_fixup(h, reply);
+	process_select(wbuf, obj_spc->index[i], limit, offset, &data);
+	iproto_reply_fixup(wbuf, reply);
 	stat_collect(stat_base, request->msg_code, 1);
 }
 
@@ -921,19 +917,18 @@ void
 box_service(struct service *s)
 {
 	foreach_op(NOP, SELECT, SELECT_LIMIT)
-		service_register_iproto_stream(s, *op, box_select_cb, 0);
-	service_register_iproto_stream(s, PAXOS_LEADER, box_paxos_cb, 0);
+		service_register_iproto(s, *op, box_select_cb, IPROTO_NONBLOCK);
+	service_register_iproto(s, PAXOS_LEADER, box_paxos_cb, IPROTO_NONBLOCK);
 	foreach_op(INSERT, UPDATE_FIELDS, DELETE, DELETE_1_3)
-		service_register_iproto_block(s, *op, box_cb, 0);
+		service_register_iproto(s, *op, box_cb, 0);
 	foreach_op(CREATE_OBJECT_SPACE, CREATE_INDEX, DROP_OBJECT_SPACE, DROP_INDEX, TRUNCATE)
-		service_register_iproto_block(s, *op, box_meta_cb, 0);
-	service_register_iproto_block(s, EXEC_LUA, box_lua_cb, 0);
+		service_register_iproto(s, *op, box_meta_cb, 0);
+	service_register_iproto(s, EXEC_LUA, box_lua_cb, 0);
 }
 
 static void
 box_roerr(struct netmsg_head *h __attribute__((unused)),
-	  struct iproto *request __attribute__((unused)),
-	  struct conn *c __attribute__((unused)))
+	  struct iproto *request __attribute__((unused)))
 {
 	iproto_raise(ERR_CODE_NONMASTER, "updates are forbidden");
 }
@@ -941,22 +936,22 @@ box_roerr(struct netmsg_head *h __attribute__((unused)),
 void
 box_service_ro(struct service *s)
 {
-	service_register_iproto_stream(s, SELECT, box_select_cb, 0);
-	service_register_iproto_stream(s, SELECT_LIMIT, box_select_cb, 0);
-	service_register_iproto_stream(s, PAXOS_LEADER, box_paxos_cb, 0);
+	service_register_iproto(s, SELECT, box_select_cb, IPROTO_NONBLOCK);
+	service_register_iproto(s, SELECT_LIMIT, box_select_cb, IPROTO_NONBLOCK);
+	service_register_iproto(s, PAXOS_LEADER, box_paxos_cb, IPROTO_NONBLOCK);
 
 	if (cfg.paxos_enabled) {
 		foreach_op(INSERT, UPDATE_FIELDS, DELETE, DELETE_1_3, EXEC_LUA,
 			   CREATE_OBJECT_SPACE, CREATE_INDEX, DROP_OBJECT_SPACE, DROP_INDEX, TRUNCATE)
-			service_register_iproto_block(s, *op, box_paxos_proxy_cb, 0);
+			service_register_iproto(s, *op, box_paxos_proxy_cb, 0);
 	} else {
 		foreach_op(INSERT, UPDATE_FIELDS, DELETE, DELETE_1_3, PAXOS_LEADER,
 			   CREATE_OBJECT_SPACE, CREATE_INDEX, DROP_OBJECT_SPACE, DROP_INDEX, TRUNCATE)
-			service_register_iproto_stream(s, *op, box_roerr, 0);
+			service_register_iproto(s, *op, box_roerr, IPROTO_NONBLOCK);
 
 		/* allow select only lua procedures
 		   updates are blocked by luaT_box_dispatch() */
-		service_register_iproto_block(s, EXEC_LUA, box_lua_cb, 0);
+		service_register_iproto(s, EXEC_LUA, box_lua_cb, 0);
 	}
 }
 
