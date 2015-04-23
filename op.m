@@ -707,6 +707,7 @@ box_rollback(struct box_txn *txn)
 			/* obj with invalid shape will cause exception on txn_prepare.
 			   since index traversing order is same for prepare and rollback
 			   there is no references to obj in following indexes */
+			[e release];
 			break;
 		}
 	}

@@ -183,6 +183,7 @@ build_secondary_indexes()
 		}
 	}
 	@catch (Error *e) {
+		[e autorelease];
 		raise_fmt("unable to built tree indexes: %s", e->reason);
 	}
 
