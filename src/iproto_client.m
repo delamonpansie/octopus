@@ -272,8 +272,8 @@ iproto_rendevouz(va_list ap)
 {
 	struct sockaddr_in 	*self_addr = va_arg(ap, struct sockaddr_in *);
 	struct iproto_group 	*group = va_arg(ap, struct iproto_group *);
-	struct fiber 		*in = va_arg(ap, struct fiber *);
-	struct fiber 		*out = va_arg(ap, struct fiber *);
+	struct Fiber 		*in = va_arg(ap, struct Fiber *);
+	struct Fiber 		*out = va_arg(ap, struct Fiber *);
 	struct iproto_peer 	*p;
 	ev_watcher		*w = NULL;
 	ev_timer		timer = { .coro=1 };

@@ -136,10 +136,10 @@ struct proposal {
 	u32 value_len; /* must be same type with msg_paxos->value_len */
 	u8 *value;
 	u16 tag;
-	struct fiber *waiter;
+	struct Fiber *waiter;
 	ev_tstamp delay, tstamp;
 	RB_ENTRY(proposal) link;
-	struct fiber *locker;
+	struct Fiber *locker;
 };
 
 struct paxos_request {

@@ -480,7 +480,7 @@ static void
 luaT_init()
 {
 	struct lua_State *L;
-	L = sched.L = root_L = luaL_newstate();
+	L = sched->L = root_L = luaL_newstate();
 
 	/* any lua error during initial load is fatal */
 	lua_atpanic(L, luaT_panic);

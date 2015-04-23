@@ -200,7 +200,7 @@ wal_disk_writer(int fd, void *state)
 	ssize_t r;
 	int requests_processed, rows_processed;
 	struct {
-		struct fiber *sender;
+		struct Fiber *sender;
 		u32 fid;
 		u32 row_count;
 	} request[1024];
@@ -389,8 +389,8 @@ rows_per_file:(int)rows_per_file_
 
 	say_info("Configuring WAL writer LSN:%"PRIi64" SCN:%"PRIi64, lsn, scn);
 
-	struct fiber *wal_out = fiber_create("wal_writer/output_flusher", conn_flusher);
-	struct fiber *wal_in = fiber_create("wal_writer/input_dispatcher", wal_disk_writer_input_dispatch);
+	struct Fiber *wal_out = fiber_create("wal_writer/output_flusher", conn_flusher);
+	struct Fiber *wal_in = fiber_create("wal_writer/input_dispatcher", wal_disk_writer_input_dispatch);
 	struct wal_disk_writer_conf conf =  { .lsn = lsn,
 					      .scn = scn,
 					      .run_crc = run_crc_log,

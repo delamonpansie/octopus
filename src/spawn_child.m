@@ -87,7 +87,7 @@ fork_spawner()
 	int fsock;
 	pid_t pid;
 
-	assert(fiber == &sched);
+	assert(fiber == sched);
 
 	pid = fork_pair(SOCK_SEQPACKET, &fsock);
 	if (pid < 0)
@@ -99,7 +99,7 @@ fork_spawner()
 	}
 
 	close_all_xcpt(3, fsock, stderrfd, sayfd);
-	sched.name = "spawner";
+	sched->name = "spawner";
 	title("");
 
 	for (;;) {
@@ -148,7 +148,7 @@ fork_spawner()
 			}
 		} else {
 			close(fsock);
-			sched.name = request.name;
+			sched->name = request.name;
 			title("");
 			say_info("%s spawned", request.name);
 			struct symbol *sym = addr2symbol(request.handler);
@@ -173,7 +173,7 @@ io_ready(int event)
 }
 
 struct child *
-spawn_child(const char *name, struct fiber *in, struct fiber *out,
+spawn_child(const char *name, struct Fiber *in, struct Fiber *out,
 	    int (*handler)(int fd, void *state), void *state, int len)
 {
 	int fd = -1;
@@ -193,7 +193,7 @@ spawn_child(const char *name, struct fiber *in, struct fiber *out,
 	msg = (struct msghdr){ .msg_iov = iov,
 			       .msg_iovlen = 2 };
 
-	if (fiber != &sched)
+	if (fiber != sched)
 		io_ready(EV_WRITE);
 	while (sendmsg(spawner_fd, &msg, 0) !=  sizeof(request) + len) {
 		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
@@ -212,7 +212,7 @@ spawn_child(const char *name, struct fiber *in, struct fiber *out,
 			       .msg_controllen = sizeof(buf) };
 	struct cmsghdr *cmsg;
 
-	if (fiber != &sched)
+	if (fiber != sched)
 		io_ready(EV_READ);
 	while (recvmsg(spawner_fd, &msg, 0) != sizeof(reply)) {
 		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)

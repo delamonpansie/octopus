@@ -102,7 +102,7 @@ int thread_responses_get(thread_responses *queue, thread_response *res);
 @interface ThreadPool : ThreadWorker {
 @public
 	thread_responses responses;
-	struct fiber *resrdr; /* response reader */
+	Fiber *resrdr; /* response reader */
 };
 
 - (i64) call: (request_arg)arg;

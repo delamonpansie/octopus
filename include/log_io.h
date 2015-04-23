@@ -239,14 +239,14 @@ struct wal_pack {
 	struct netmsg_head *netmsg;
 	u32 packet_len;
 	u32 row_count;
-	struct fiber *sender;
+	struct Fiber *sender;
 	u32 fid;
 } __attribute__((packed));
 
 struct wal_reply {
 	u32 packet_len;
 	u32 row_count;
-	struct fiber *sender;
+	struct Fiber *sender;
 	u32 fid;
 	i64 lsn;
 	i64 scn;
@@ -388,7 +388,7 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 	struct conn c;
 	u32 version;
 	bool abort;
-	struct fiber *in_recv;
+	struct Fiber *in_recv;
 	struct feeder_param *feeder;
 	char errbuf[64];
 }

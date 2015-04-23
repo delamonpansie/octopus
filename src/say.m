@@ -27,6 +27,7 @@
 #include <config.h>
 #import <util.h>
 #import <fiber.h>
+#import <octopus_ev.h>
 #import <say.h>
 #import <objc.h>
 
@@ -223,8 +224,11 @@ vsay(int level, const char *filename, unsigned line,
 
 	ev_now_update();
 
-	p += snprintf(buf + p, len - p, "%.3f %i %i/%s",
-		      ev_now(), getpid(), fiber->fid, fiber->name);
+	if (fiber != nil) {
+		p += snprintf(buf + p, len - p, "%.3f %i %i/%s", ev_now(), getpid(), fiber->fid, fiber->name);
+	} else {
+		p += snprintf(buf + p, len - p, "%.3f %i", ev_now(), getpid());
+	}
 
 	if ((level <= ERROR || level >= DEBUG) && filename != NULL) {
 		for (f = filename, cur = __FILE__; *f && *f == *cur; f++, cur++)

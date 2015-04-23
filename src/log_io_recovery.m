@@ -853,7 +853,7 @@ enable_local_writes
 	if (lsn == 0) {
 		assert([self feeder_addr_configured]);
 		say_info("initial loading from WAL feeder %s", sintoa(&feeder.addr));
-		assert(fiber != &sched); /* load_from_remote expects being called from fiber */
+		assert(fiber != sched); /* load_from_remote expects being called from fiber */
 		[self load_from_remote];
 	} else {
 		[self configure_wal_writer];

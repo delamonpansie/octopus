@@ -28,7 +28,6 @@
 #define FIBER_H
 
 #include <util.h>
-#include <octopus_ev.h>
 #include <coro.h>
 #include <objc.h>
 
@@ -43,14 +42,26 @@
 
 struct tbuf; /* forward declaration */
 
-struct fiber {
+extern coro_context *sched_ctx;
+#ifdef THREADS
+extern __thread struct Fiber *fiber;
+#else
+extern struct Fiber* fiber;
+#endif
+extern struct Fiber* sched; /* fiber running ev callbacks */
+static inline bool is_sched(struct Fiber* fib) { return fib == sched; }
+static inline bool not_sched(struct Fiber* fib) { return fib != sched; }
+
+
+@interface Fiber : Object <Waiter> {
+@public
 	struct octopus_coro coro;
-	struct fiber *caller;
+	struct Fiber *caller;
 	struct palloc_pool *pool;
 	uint32_t fid;
 
-	SLIST_ENTRY(fiber) link, zombie_link, worker_link;
-	TAILQ_ENTRY(fiber) wake_link;
+	SLIST_ENTRY(Fiber) link, zombie_link, worker_link;
+	TAILQ_ENTRY(Fiber) wake_link;
 	void *wake;
 	enum {WAKE_VALUE=1, WAKE_ERROR} wake_flag;
 
@@ -63,10 +74,13 @@ struct fiber {
 	const char *name;
 	void (*f)(va_list ap);
 	va_list ap;
-};
-extern struct fiber sched; /* fiber running ev callbacks */
+}
+- (void) setValue: (id)val;
+- (void) setError: (id)err;
+- (id) yield;
+@end
 
-SLIST_HEAD(, fiber) fibers, zombie_fibers;
+SLIST_HEAD(, Fiber) fibers, zombie_fibers;
 
 struct child {
 	pid_t pid;
@@ -74,21 +88,21 @@ struct child {
 };
 
 void fiber_init(void);
-struct fiber *fiber_create(const char *name, void (*f)(va_list va), ...);
+struct Fiber *fiber_create(const char *name, void (*f)(va_list va), ...);
 void fiber_destroy_all();
 int wait_for_child(pid_t pid);
 
-void resume(struct fiber *callee, void *w);
+void resume(struct Fiber *callee, void *w);
 void *yield(void);
-int fiber_wake(struct fiber *f, void *arg);
-int fiber_cancel_wake(struct fiber *f);
+int fiber_wake(struct Fiber *f, void *arg);
+int fiber_cancel_wake(struct Fiber *f);
 
 void fiber_gc(void);
-void fiber_sleep(ev_tstamp s);
+void fiber_sleep(double s);
 void fiber_info(struct tbuf *out);
-struct fiber *fid2fiber(int fid);
+struct Fiber *fid2fiber(int fid);
 
-struct fiber* current_fiber();
+struct Fiber* current_fiber();
 int fiber_switch_cnt();
 #ifdef THREADS
 /* create and destroy fake fiber for working threads */
@@ -97,16 +111,4 @@ void fiber_destroy_fake();
 #endif
 
 int luaT_openfiber(struct lua_State *L);
-
-@interface Fiber : Object <Waiter> {
-@public
-	struct fiber fib;
-}
-+ (id) current;
-+ (id) yield;
-- (void) setValue: (id)val;
-- (void) setError: (id)err;
-- (id) yield;
-@end
-Fiber* fiber_obj(struct fiber* fib);
 #endif

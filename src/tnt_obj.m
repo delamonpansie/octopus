@@ -87,7 +87,7 @@ object_decr_ref(struct tnt_object *obj)
 	}
 }
 
-static struct { struct tnt_object *obj; struct fiber *waiter; } *ow;
+static struct { struct tnt_object *obj; struct Fiber *waiter; } *ow;
 static int ows, ows_used;
 
 void

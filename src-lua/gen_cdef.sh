@@ -22,9 +22,11 @@ echo "typedef void* id;"
 $CPP $srcdir/include/objc.h | $SED -n '/^struct autorelease_[a-z]\+ \+{/,/^}/p'
 $CPP $srcdir/include/objc.h | $SED -n '/^\(struct autorelease.*\|void\|id\) autorelease[_a-z]*(.*);\s*$/p'
 $CPP $srcdir/include/fiber.h | $SED -n '/^typedef struct coro_context/p;'
-$CPP $srcdir/include/fiber.h | $SED -n '/^struct \(fiber\|octopus_coro\|coro_context\) \+{/,/^}/p'
+$CPP $srcdir/include/fiber.h | $SED -n '/^struct \(octopus_coro\|coro_context\) \+{/,/^}/p'
+$CPP $srcdir/include/fiber.h | $SED -n '/^@interface Fiber/,/^}/p' | $SED '{s/@interface Fiber.*/typedef struct Fiber { void *isa;/ ; /^@public/ d}'
+echo " Fiber;"
 $CPP $srcdir/include/fiber.h | $SED -n '/fiber_wake\|fid2fiber/p'
-echo "struct fiber *current_fiber();"
+echo "struct Fiber *current_fiber();"
 echo "int fiber_switch_cnt();"
 $CPP $srcdir/include/octopus_ev.h | $SED -n '/^typedef [a-z]\+ ev_tstamp/p; /typedef struct ev_\(io\|timer\)/,/^}/p;'
 $CPP $srcdir/include/iproto_def.h | $SED -n '/^struct iproto\(_retcode\)\? \+{/,/^}/{s/\[0\?\]/[?]/;p;}'

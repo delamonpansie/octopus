@@ -38,8 +38,8 @@ RB_HEAD(ptree, proposal);
 @public
 	SLIST_HEAD(paxos_group, paxos_peer) group;
 	struct iproto_group paxos_remotes, primary_group;
-	struct fiber *proposer_fiber;
-	struct fiber *output_flusher, *reply_reader, *follower, *wal_dumper;
+	Fiber *proposer_fiber;
+	Fiber *output_flusher, *reply_reader, *follower, *wal_dumper;
 	struct palloc_pool *pool;
 	i64 app_scn, max_scn;
 	bool wal_dumper_busy;

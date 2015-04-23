@@ -176,7 +176,7 @@ process_requests(struct conn *c)
 				[e release];
 			}
 		} else {
-			struct fiber *w = SLIST_FIRST(&service->workers);
+			struct Fiber *w = SLIST_FIRST(&service->workers);
 			if (w) {
 				stat_collect(stat_base, IPROTO_BLOCK_OP, 1);
 				size_t req_size = sizeof(struct iproto) + request->data_len;
@@ -246,7 +246,7 @@ iproto_wakeup_workers(ev_prepare *ev)
 	struct service *service = (void *)ev - offsetof(struct service, wakeup);
 	struct conn *c, *tmp, *last;
 	struct palloc_pool *saved_pool = fiber->pool;
-	assert(saved_pool == sched.pool);
+	assert(saved_pool == sched->pool);
 
 	fiber->pool = service->pool;
 

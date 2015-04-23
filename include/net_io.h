@@ -43,7 +43,7 @@
 # define LUA_DEF
 #endif
 
-struct fiber;
+@class Fiber;
 struct service;
 
 struct netmsg;
@@ -125,8 +125,8 @@ struct service {
 	const char *name;
 	TAILQ_HEAD(conn_tailq, conn) processing;
 	LIST_HEAD(, conn) conn;
-	struct fiber *acceptor, *input_reader, *output_flusher;
-	SLIST_HEAD(, fiber) workers; /* <- handlers */
+	struct Fiber *acceptor, *input_reader, *output_flusher;
+	SLIST_HEAD(, Fiber) workers; /* <- handlers */
 	int batch;
 	ev_prepare wakeup;
 	struct iproto_handler default_handler;
@@ -168,7 +168,7 @@ void net_add_obj_iov(struct netmsg_head *o, struct tnt_object *obj, const void *
 void netmsg_verify_ownership(struct netmsg_head *h); /* debug method */
 
 struct conn *conn_init(struct conn *c, struct palloc_pool *pool, int fd,
-		       struct fiber *in, struct fiber *out, enum conn_memory_ownership memory_ownership);
+		       struct Fiber *in, struct Fiber *out, enum conn_memory_ownership memory_ownership);
 void conn_set(struct conn *c, int fd);
 int conn_close(struct conn *c);
 void conn_gc(struct palloc_pool *pool, void *ptr);

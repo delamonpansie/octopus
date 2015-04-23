@@ -372,7 +372,7 @@ conn_set(struct conn *c, int fd)
 }
 
 struct conn *
-conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, struct fiber *out,
+conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct Fiber *in, struct Fiber *out,
 	  enum conn_memory_ownership memory_ownership)
 {
 	assert(in != NULL && out != NULL);
@@ -1040,7 +1040,7 @@ void
 wakeup_workers(ev_prepare *ev)
 {
 	struct service *service = (void *)ev - offsetof(struct service, wakeup);
-	struct fiber *w;
+	struct Fiber *w;
 
 	while (!TAILQ_EMPTY(&service->processing)) {
 		w = SLIST_FIRST(&service->workers);

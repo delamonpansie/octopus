@@ -35,7 +35,7 @@
 #include <fiber.h>
 
 struct mbox_consumer {
-	struct	fiber			*fiber;
+	struct	Fiber			*fiber;
 	LIST_ENTRY(mbox_consumer)	conslink;
 };
 

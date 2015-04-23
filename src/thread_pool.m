@@ -437,7 +437,7 @@ init_num: (int) n
 }
 
 struct call_request {
-	struct fiber *fib;
+	struct Fiber *fib;
 	i64 res;
 	id error;
 	int eno;
