@@ -158,9 +158,10 @@ wal_disk_writer_input_dispatch(va_list ap __attribute__((unused)))
 {
 	for (;;) {
 		struct conn *c = ((struct ev_watcher *)yield())->data;
-		tbuf_ensure(c->rbuf, 128 * 1024);
+		struct tbuf *rbuf = c->rbuf;
+		tbuf_ensure(rbuf, 128 * 1024);
 
-		ssize_t r = tbuf_recv(c->rbuf, c->fd);
+		ssize_t r = tbuf_recv(rbuf, c->fd);
 		if (unlikely(r <= 0)) {
 			if (r < 0) {
 				if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
@@ -171,10 +172,10 @@ wal_disk_writer_input_dispatch(va_list ap __attribute__((unused)))
 				panic("WAL writer connection EOF");
 		}
 
-		while (tbuf_len(c->rbuf) > sizeof(u32) &&
-		       tbuf_len(c->rbuf) >= *(u32 *)c->rbuf->ptr)
+		while (tbuf_len(rbuf) > sizeof(u32) &&
+		       tbuf_len(rbuf) >= *(u32 *)rbuf->ptr)
 		{
-			struct wal_reply *r = read_bytes(c->rbuf, *(u32 *)c->rbuf->ptr);
+			struct wal_reply *r = read_bytes(rbuf, *(u32 *)rbuf->ptr);
 			if (unlikely(r->sender->fid != r->fid)) {
 				say_warn("orphan WAL reply");
 				continue;
