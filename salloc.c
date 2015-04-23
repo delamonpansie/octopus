@@ -81,6 +81,10 @@ void __asan_unpoison_memory_region(void const volatile *addr, size_t size);
 
 #define CACHEALIGN(LEN)	TYPEALIGN(32, (LEN))
 
+#ifndef MAP_ANONYMOUS
+# define MAP_ANONYMOUS MAP_ANON
+#endif
+
 #if defined(__SANITIZE_ADDRESS__)
 #ifndef SLAB_DEBUG
 # define SLAB_DEBUG
