@@ -212,7 +212,9 @@ static __thread struct chunk_class classes[] = {
 };
 
 const uint32_t chunk_magic = 0xbb84fcf6;
+#if !defined(NDEBUG) && defined(PALLOC_POISON)
 static const char poison_char = 'P';
+#endif
 
 static __thread uint64_t release_count = 0;
 
