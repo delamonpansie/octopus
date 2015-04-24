@@ -33,6 +33,7 @@
 #import <pickle.h>
 #import <tbuf.h>
 #import <say.h>
+#import <spawn_child.h>
 
 #include <third_party/crc32.h>
 
@@ -152,41 +153,6 @@ confirm_write
 }
 
 @end
-
-void
-wal_disk_writer_input_dispatch(va_list ap __attribute__((unused)))
-{
-	for (;;) {
-		struct conn *c = ((struct ev_watcher *)yield())->data;
-		struct tbuf *rbuf = c->rbuf;
-		tbuf_ensure(rbuf, 128 * 1024);
-
-		ssize_t r = tbuf_recv(rbuf, c->fd);
-		if (unlikely(r <= 0)) {
-			if (r < 0) {
-				if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
-					continue;
-				say_syserror("%s: recv", __func__);
-				panic("WAL writer connection read error");
-			} else
-				panic("WAL writer connection EOF");
-		}
-
-		while (tbuf_len(rbuf) > sizeof(u32) &&
-		       tbuf_len(rbuf) >= *(u32 *)rbuf->ptr)
-		{
-			struct wal_reply *r = read_bytes(rbuf, *(u32 *)rbuf->ptr);
-			if (unlikely(r->sender->fid != r->fid)) {
-				say_warn("orphan WAL reply");
-				continue;
-			}
-			resume(r->sender, r);
-		}
-
-		if (palloc_allocated(c->rbuf->pool) > 4 * 1024 * 1024)
-			palloc_gc(c->pool);
-	}
-}
 
 int
 wal_disk_writer(int fd, void *state)
@@ -368,11 +334,44 @@ exit:
 	return result;
 }
 
+static void
+wal_disk_writer_input_dispatch(ev_io *ev, int __attribute__((unused)) events)
+{
+	struct netmsg_io *io = container_of(ev, struct netmsg_io, in);
+	struct tbuf *rbuf = &io->rbuf;
+	tbuf_ensure(rbuf, 128 * 1024);
+
+	ssize_t r = tbuf_recv(rbuf, io->in.fd);
+	if (unlikely(r <= 0)) {
+		if (r < 0) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+				return;
+			say_syserror("%s: recv", __func__);
+			panic("WAL writer connection read error");
+		} else
+			panic("WAL writer connection EOF");
+	}
+
+	while (tbuf_len(rbuf) > sizeof(u32) &&
+	       tbuf_len(rbuf) >= *(u32 *)rbuf->ptr)
+	{
+		struct wal_reply *r = read_bytes(rbuf, *(u32 *)rbuf->ptr);
+		if (unlikely(r->sender->fid != r->fid)) {
+			say_warn("orphan WAL reply");
+			continue;
+		}
+		resume(r->sender, r);
+	}
+
+	if (palloc_allocated(rbuf->pool) > 4 * 1024 * 1024)
+		palloc_gc(io->pool);
+}
+
 
 @implementation XLogWriter
 
 - (i64) lsn { return lsn; }
-- (struct child *) wal_writer { return wal_writer; };
+- (const struct child *) wal_writer { return &wal_writer; };
 
 - (id)
 init_lsn:(i64)init_lsn
@@ -386,17 +385,15 @@ init_lsn:(i64)init_lsn
 
 	say_info("Configuring WAL writer LSN:%"PRIi64" SCN:%"PRIi64, lsn, [state scn]);
 
-	struct fiber *wal_out = fiber_create("wal_writer/output_flusher", conn_flusher);
-	struct fiber *wal_in = fiber_create("wal_writer/input_dispatcher", wal_disk_writer_input_dispatch);
 	struct wal_disk_writer_conf conf = { .lsn = lsn,
 					     .scn = [state scn],
 					     .run_crc = [state run_crc_log]};
-	wal_writer = spawn_child("wal_writer", wal_in, wal_out, wal_disk_writer, &conf, sizeof(conf));
-
-	assert(wal_writer != NULL);
-	ev_set_priority(&wal_writer->c->in, 1);
-	ev_set_priority(&wal_writer->c->out, 1);
-	ev_io_start(&wal_writer->c->in);
+	wal_writer = spawn_child("wal_writer", wal_disk_writer, &conf, sizeof(conf));
+	netmsg_io_init(&io, palloc_create_pool("wal_writer"), NULL, wal_writer.fd);
+	ev_init(&io.in, wal_disk_writer_input_dispatch);
+	ev_set_priority(&io.in, 1);
+	ev_set_priority(&io.out, 1);
+	ev_io_start(&io.in);
 
 	return self;
 }
@@ -433,7 +430,7 @@ wal_pack_prepare(XLogWriter *w, struct wal_pack *pack)
 		return 0;
 	}
 
-	pack->netmsg = &w->wal_writer->c->out_messages;
+	pack->netmsg = &w->io.wbuf;
 	pack->packet_len = sizeof(*pack) - offsetof(struct wal_pack, packet_len);
 	pack->fid = fiber->fid;
 	pack->sender = fiber;
@@ -468,7 +465,7 @@ wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 - (int)
 wal_pack_submit
 {
-	ev_io_start(&wal_writer->c->out);
+	ev_io_start(&io.out);
 	struct wal_reply *reply = yield();
 	if (reply->row_count == 0)
 		say_warn("wal writer returned error status");

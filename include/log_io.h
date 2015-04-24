@@ -30,6 +30,7 @@
 #include <util.h>
 #include <net_io.h>
 #include <objc.h>
+#import <spawn_child.h>
 
 #include <stdio.h>
 #include <limits.h>
@@ -328,13 +329,14 @@ extern i64 snap_lsn; /* may be used for overriding initial snapshot,
 @interface XLogWriter: Object {
 	i64 lsn;
 	id<RecoveryState> state;
-	struct child *wal_writer;
+	struct child wal_writer;
+	struct netmsg_io io;
 }
 - (id) init_lsn:(i64)lsn
 	  state:(id<RecoveryState>)state;
 
 - (i64) lsn;
-- (struct child *) wal_writer;
+- (const struct child *) wal_writer;
 - (int) wal_pack_submit;
 - (int) submit:(const void *)data len:(u32)len tag:(u16)tag;
 @end
@@ -460,7 +462,7 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 - (i64) scn;
 - (u32) run_crc_log;
 
-- (struct child *) wal_writer;
+- (const struct child *) wal_writer;
 - (XLogWriter *)writer;
 - (int) submit:(const void *)data len:(u32)len tag:(u16)tag;
 
@@ -508,7 +510,6 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 extern i64 fold_scn;
 
 int wal_disk_writer(int fd, void *state);
-void wal_disk_writer_input_dispatch(va_list ap __attribute__((unused)));
 int snapshot_write_row(XLog *l, u16 tag, struct tbuf *row);
 
 void remote_hot_standby(va_list ap);

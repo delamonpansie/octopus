@@ -141,7 +141,7 @@ init
 }
 
 - (XLogWriter *) writer { return writer; }
-- (struct child *) wal_writer { return [[self writer] wal_writer]; }
+- (const struct child *) wal_writer { return [[self writer] wal_writer]; }
 
 - (int)submit:(const void *)data len:(u32)len tag:(u16)tag
 {

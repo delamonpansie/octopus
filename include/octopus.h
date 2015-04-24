@@ -125,8 +125,4 @@ int luaT_find_proc(lua_State *L, const char *fname, i32 len);
 int luaT_traceback(lua_State* L);
 void luaT_pushtraceback(lua_State* L);
 
-struct fiber;
-struct child *spawn_child(const char *name, struct fiber *in, struct fiber *out,
-			  int (*handler)(int fd, void *state), void *state, int len);
-
 #endif

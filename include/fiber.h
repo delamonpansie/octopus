@@ -62,11 +62,6 @@ extern struct fiber sched; /* fiber running ev callbacks */
 
 SLIST_HEAD(, fiber) fibers, zombie_fibers;
 
-struct child {
-	pid_t pid;
-	struct conn *c;
-};
-
 void fiber_init(void);
 struct fiber *fiber_create(const char *name, void (*f)(va_list va), ...);
 void fiber_destroy_all();

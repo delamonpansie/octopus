@@ -28,6 +28,8 @@
 #include <sys/ioctl.h>
 #include <sys/types.h>
 
+#import <net_io.h>
+#import <spawn_child.h>
 #import <fiber.h>
 #import <say.h>
 #import <util.h>
@@ -174,10 +176,10 @@ io_ready(int event)
 	ev_io_stop(&io);
 }
 
-struct child *
-spawn_child(const char *name, struct fiber *in, struct fiber *out,
-	    int (*handler)(int fd, void *state), void *state, int len)
+struct child
+spawn_child(const char *name, int (*handler)(int fd, void *state), void *state, int len)
 {
+	struct child err = { .pid = -1, .fd = -1};
 	int fd = -1;
 	pid_t pid;
 
@@ -201,7 +203,7 @@ spawn_child(const char *name, struct fiber *in, struct fiber *out,
 		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
 			continue;
 		say_syserror("sendmsg");
-		return NULL;
+		return err;
 	}
 
 	char buf[CMSG_SPACE(sizeof(int))];
@@ -220,7 +222,7 @@ spawn_child(const char *name, struct fiber *in, struct fiber *out,
 		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
 			continue;
 		say_syserror("recvmsg");
-		return NULL;
+		return err;
 	}
 
 	pid = reply.pid;
@@ -234,14 +236,8 @@ spawn_child(const char *name, struct fiber *in, struct fiber *out,
 	}
 
 	if (pid < 0)
-		return NULL;
-
+		return err;
 	assert(fd >= 0);
-	struct child *child = xmalloc(sizeof(*child));
-	struct palloc_pool *p = palloc_create_pool(name);
 
-	child->pid = pid;
-	child->c = conn_init(NULL, p, fd, in, out, MO_MALLOC);
-	palloc_register_gc_root(p, child->c, conn_gc);
-	return child;
+	return (struct child){ .pid = pid, .fd = fd};
 }
