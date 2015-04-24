@@ -33,6 +33,7 @@
 #include <stdint.h>
 
 struct palloc_pool;
+struct palloc_cut_point;
 typedef void (* palloc_nomem_cb_t)(struct palloc_pool *, void *);
 struct palloc_config {
 	const char *name;
@@ -60,8 +61,11 @@ void palloc_register_gc_root(struct palloc_pool *pool,
 void palloc_unregister_gc_root(struct palloc_pool *pool, void *ptr);
 void palloc_gc(struct palloc_pool *pool);
 
-void palloc_register_cut_point(struct palloc_pool *pool);
+struct palloc_cut_point *palloc_register_cut_point(struct palloc_pool *pool);
+// cut off to the latest cut point
 void palloc_cutoff(struct palloc_pool *pool);
+// palloc_cutoff_to(pool, NULL) == palloc_cutoff
+void palloc_cutoff_to(struct palloc_pool *pool, struct palloc_cut_point *cut_point);
 
 struct tbuf;
 void palloc_stat_info(struct tbuf *buf);

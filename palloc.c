@@ -177,13 +177,13 @@ struct gc_root {
 };
 SLIST_HEAD(gc_list, gc_root);
 
-struct cut_root {
+struct palloc_cut_point {
 	struct chunk *chunk;
 	uint32_t chunk_free;
 	size_t	allocated;
-	SLIST_ENTRY(cut_root) link;
+	SLIST_ENTRY(palloc_cut_point) link;
 };
-SLIST_HEAD(cut_list, cut_root);
+SLIST_HEAD(cut_list, palloc_cut_point);
 
 struct palloc_pool {
 	struct palloc_config cfg;
@@ -597,53 +597,72 @@ palloc_gc(struct palloc_pool *pool)
 	release_chunks(&old_chunks);
 }
 
-void
+struct palloc_cut_point *
 palloc_register_cut_point(struct palloc_pool *pool)
 {
 	struct chunk *chunk = TAILQ_FIRST(&pool->chunks);
 	size_t allocated = pool->allocated;
-	uint32_t chunk_free;
-	struct cut_root *root;
+	uint32_t chunk_free = 0;
+	struct palloc_cut_point *cut_point;
 
-	if (chunk == NULL)
-		return;
+	if (chunk != NULL)
+		chunk_free = chunk->free;
+	cut_point = palloc(pool, sizeof(*cut_point));
+	cut_point->chunk = chunk;
+	cut_point->chunk_free = chunk_free;
+	cut_point->allocated = allocated;
+	SLIST_INSERT_HEAD(&pool->cut_list, cut_point, link);
 
-	chunk_free = chunk->free;
-	root = palloc(pool, sizeof(*root));
-	root->chunk = chunk;
-	root->chunk_free = chunk_free;
-	root->allocated = allocated;
-	SLIST_INSERT_HEAD(&pool->cut_list, root, link);
+	return cut_point;
 }
 
 void
-palloc_cutoff(struct palloc_pool *pool)
+palloc_cutoff_to(struct palloc_pool *pool, struct palloc_cut_point *cut_point)
 {
-	struct cut_root *root = SLIST_FIRST(&pool->cut_list);
 	struct chunk *chunk, *next_chunk;
+	struct palloc_cut_point *cp;
 
-	if (root == NULL) {
-		prelease(pool);
-		return;
+	if (cut_point == NULL)
+		cut_point = SLIST_FIRST(&pool->cut_list);
+	if (cut_point == NULL)
+		return prelease(pool);
+
+	SLIST_FOREACH(cp, &pool->cut_list, link) {
+		if (cp == cut_point)
+			break;
+	}
+	assert(cp != NULL);
+	// remove cut point and all previous ones
+	SLIST_FIRST(&pool->cut_list) = SLIST_NEXT(cut_point, link);
+
+	if (cut_point->chunk == NULL) {
+		assert(SLIST_EMPTY(&pool->cut_list));
+		return prelease(pool);
 	}
 
 	TAILQ_FOREACH_SAFE(chunk, &pool->chunks, link, next_chunk) {
-		if (chunk == root->chunk)
+		if (chunk == cut_point->chunk)
 			break;
 
 		TAILQ_REMOVE(&pool->chunks, chunk, link);
 		release_chunk(chunk);
 	}
+	assert(chunk == cut_point->chunk);
 	assert(chunk == TAILQ_FIRST(&pool->chunks));
 
-	assert(root->chunk_free >= chunk->free);
-	chunk->brk -= root->chunk_free - chunk->free;
-	chunk->free = root->chunk_free;
-	pool->allocated = root->allocated;
+	assert(cut_point->chunk_free >= chunk->free);
+	chunk->brk -= cut_point->chunk_free - chunk->free;
+	chunk->free = cut_point->chunk_free;
+	pool->allocated = cut_point->allocated;
 
-	SLIST_REMOVE_HEAD(&pool->cut_list, link);
 	chunk_poison(chunk);
 	VALGRIND_MEMPOOL_TRIM(chunk, (void *)chunk + sizeof(*chunk), chunk->data_size - chunk->free);
+}
+
+void
+palloc_cutoff(struct palloc_pool *pool)
+{
+	return palloc_cutoff_to(pool, NULL);
 }
 
 #ifdef OCTOPUS
