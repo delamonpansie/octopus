@@ -40,7 +40,7 @@ function netmsg_op:add_iov_iproto_header(request)
 end
 
 local netmsg_head_t = ffi.metatype(ffi.typeof('struct netmsg_head'), { __index = netmsg_op,
-								       __gc = C.netmsg_head_release })
+								       __gc = C.netmsg_head_dealloc })
 netmsg_ptr = ffi.typeof('struct netmsg_head *')
 function netmsg()
    local h = netmsg_head_t()

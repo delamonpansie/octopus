@@ -70,6 +70,15 @@ struct netmsg {
 	uintptr_t ref[NETMSG_IOV_SIZE];
 };
 
+struct netmsg_io {
+	struct palloc_pool *pool;
+	struct tbuf rbuf;
+	struct netmsg_head wbuf;
+	ev_io in, out;
+	int fd, rc;
+	const struct netmsg_io_vop *vop;
+};
+
 struct netmsg_mark {
 	struct netmsg *m;
 	struct iovec iov;
@@ -128,7 +137,7 @@ struct service {
 
 
 void netmsg_head_init(struct netmsg_head *h, struct palloc_pool *pool) LUA_DEF;
-void netmsg_head_release(struct netmsg_head *h) LUA_DEF;
+void netmsg_head_dealloc(struct netmsg_head *h) LUA_DEF;
 
 struct netmsg *netmsg_concat(struct netmsg_head *dst, struct netmsg_head *src) LUA_DEF;
 void netmsg_rewind(struct netmsg_head *h, const struct netmsg_mark *mark) LUA_DEF;
@@ -151,6 +160,34 @@ void conn_gc(struct palloc_pool *pool, void *ptr);
 void conn_unref(struct conn *c) LUA_DEF;
 
 void conn_flusher(va_list ap __attribute__((unused)));
+
+struct netmsg_io_vop {
+	void (*data_ready)(struct netmsg_io *, int);
+	void (*request_ready)(struct netmsg_io *, struct iproto *);
+	void (*close)(struct netmsg_io *);
+	void (*dealloc)(struct netmsg_io *);
+};
+
+void netmsg_io_init(struct netmsg_io *io, struct palloc_pool *pool, const struct netmsg_io_vop *vop, int fd);
+void netmsg_io_dealloc(struct netmsg_io *io);
+int netmsg_io_close(struct netmsg_io *io);
+void netmsg_io_gc(struct palloc_pool *pool, void *ptr);
+
+int netmsg_io_write_cb(ev_io *ev, int __attribute__((unused)) events);
+int netmsg_io_read_cb(ev_io *ev, int __attribute__((unused)) events);
+
+void netmsg_io_setfd(struct netmsg_io *io, int fd);
+
+static inline void netmsg_io_retain(struct netmsg_io *io)
+{
+	io->rc++;
+}
+static inline void netmsg_io_release(struct netmsg_io *io)
+{
+	if (--io->rc == 0)
+		netmsg_io_dealloc(io);
+}
+
 
 enum tac_state {
 	tac_ok = 0,

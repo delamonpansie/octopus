@@ -68,20 +68,20 @@ netmsg_head_init(struct netmsg_head *h, struct palloc_pool *pool)
 	netmsg_alloc(h);
 }
 
-static void netmsg_unrefr(struct netmsg *, int);
+static void netmsg_releaser(struct netmsg *, int);
 void
-netmsg_head_release(struct netmsg_head *h)
+netmsg_head_dealloc(struct netmsg_head *h)
 {
 	struct netmsg *m, *tmp;
 	TAILQ_FOREACH_SAFE(m, &h->q, link, tmp) {
-		netmsg_unrefr(m, 0);
+		netmsg_releaser(m, 0);
 		slab_cache_free(&netmsg_cache, m);
 	}
 }
 
 
 static void
-netmsg_unref(struct netmsg *m, int from, int count)
+netmsg_release(struct netmsg *m, int from, int count)
 {
 	return;
 	bool have_lua_refs = 0;
@@ -110,18 +110,18 @@ netmsg_unref(struct netmsg *m, int from, int count)
 }
 
 static void
-netmsg_unrefr(struct netmsg *m, int from)
+netmsg_releaser(struct netmsg *m, int from)
 {
-	netmsg_unref(m, from, m->count);
+	netmsg_release(m, from, m->count);
 	memset(m->ref + from, 0, (m->count - from) * sizeof(m->ref[0]));
 	memset(m->iov + from, 0, (m->count - from) * sizeof(m->iov[0]));
 	m->count = from;
 }
 
 static void
-netmsg_unrefl(struct netmsg *m, int count)
+netmsg_releasel(struct netmsg *m, int count)
 {
-	netmsg_unref(m, 0, count);
+	netmsg_release(m, 0, count);
 	memmove(m->ref, m->ref + count, (m->count - count) * sizeof(m->ref[0]));
 	memmove(m->iov, m->iov + count, (m->count - count) * sizeof(m->iov[0]));
 	memset(m->ref + count, 0, count * sizeof(m->ref[0]));
@@ -131,9 +131,9 @@ netmsg_unrefl(struct netmsg *m, int count)
 
 /* WARNING: call only if tailq length > 2  */
 static void
-netmsg_free(struct netmsg_tailq *q, struct netmsg *m)
+netmsg_dealloc(struct netmsg_tailq *q, struct netmsg *m)
 {
-	netmsg_unrefr(m, 0);
+	netmsg_releaser(m, 0);
 	TAILQ_REMOVE(q, m, link);
 	slab_cache_free(&netmsg_cache, m);
 }
@@ -143,10 +143,10 @@ netmsg_reset(struct netmsg_head *h)
 {
 	struct netmsg *m, *tmp;
 	m = TAILQ_FIRST(&h->q);
-	netmsg_unrefr(m, 0);
+	netmsg_releaser(m, 0);
 	for (m = TAILQ_NEXT(m, link); m; m = tmp) {
 		tmp = TAILQ_NEXT(m, link);
-		netmsg_free(&h->q, m);
+		netmsg_dealloc(&h->q, m);
 	}
 }
 
@@ -203,13 +203,13 @@ netmsg_rewind(struct netmsg_head *h, const struct netmsg_mark *mark)
 		for (int i = 0; i < m->count; i++)
 			h->bytes -= m->iov[i].iov_len;
 
-		netmsg_free(&h->q, m);
+		netmsg_dealloc(&h->q, m);
 	}
 	assert(m == mark->m);
 
 	for (int i = mark->offset; i < mark->m->count; i++)
 		h->bytes -= mark->m->iov[i].iov_len;
-	netmsg_unrefr(mark->m, mark->offset);
+	netmsg_releaser(mark->m, mark->offset);
 	*(m->iov + m->count) = mark->iov;
 }
 
@@ -357,10 +357,10 @@ netmsg_writev(int fd, struct netmsg_head *head)
 		while (iov_count > m->count) {
 			iov_count -= m->count;
 			tmp = TAILQ_PREV(m, netmsg_tailq, link);
-			netmsg_free(&head->q, m);
+			netmsg_dealloc(&head->q, m);
 			m = tmp;
 		}
-		netmsg_unrefl(m, iov_count);
+		netmsg_releasel(m, iov_count);
 	}
 
 	return result;
@@ -377,6 +377,125 @@ conn_setfd(struct conn *c, int fd)
 	c->state = CONNECTED;
 	ev_io_set(&c->in, c->fd, EV_READ);
 	ev_io_set(&c->out, c->fd, EV_WRITE);
+}
+
+int
+netmsg_io_write_cb(ev_io *ev, int __attribute__((unused)) events)
+{
+	struct netmsg_io *io = (void *)ev - offsetof(struct netmsg_io, out);
+
+	ssize_t r = netmsg_writev(ev->fd, &io->wbuf);
+
+	if (r < 0) {
+		if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+			say_syswarn("writev() to %s failed", net_peer_name(ev->fd));
+			netmsg_io_close(io);
+			return r;
+		} else {
+			return 0;
+		}
+	}
+
+	if (io->wbuf.bytes == 0)
+		ev_io_stop(ev);
+
+	if ((tbuf_len(&io->rbuf) < cfg.input_low_watermark) && io->wbuf.bytes < cfg.output_low_watermark)
+		ev_io_start(&io->in);
+
+	return r;
+}
+
+int
+netmsg_io_read_cb(ev_io *ev, int __attribute__((unused)) events)
+{
+	struct netmsg_io *io = (void *)ev - offsetof(struct netmsg_io, in);
+	struct tbuf *rbuf = &io->rbuf;
+
+	palloc_gc(io->pool);
+	tbuf_ensure(rbuf, 16 * 1024);
+	ssize_t r = tbuf_recv(rbuf, io->fd);
+	if (r == 0) {
+		say_debug("peer %s closed connection", net_peer_name(io->fd));
+		netmsg_io_close(io);
+		return 0;
+	}
+
+	if (r < 0) {
+		if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+			say_syswarn("recv() from %s failed", net_peer_name(io->fd));
+			netmsg_io_close(io);
+		}
+		return r;
+	}
+
+	if (io->vop->data_ready)
+		io->vop->data_ready(io, r);
+	return r;
+}
+
+void
+netmsg_io_gc(struct palloc_pool *pool, void *ptr)
+{
+	struct netmsg_io *io = ptr;
+	struct netmsg *m;
+
+	tbuf_gc(pool, &io->rbuf);
+	TAILQ_FOREACH(m, &io->wbuf.q, link)
+		netmsg_gc(pool, m);
+
+	io->pool = io->wbuf.pool = pool;
+}
+
+static struct netmsg_io_vop def_vop = { NULL };
+
+void
+netmsg_io_init(struct netmsg_io *io, struct palloc_pool *pool, const struct netmsg_io_vop *vop, int fd)
+{
+	netmsg_head_init(&io->wbuf, pool);
+	io->rbuf = TBUF(NULL, 0, pool);
+	io->pool = pool;
+	io->vop = vop ?: &def_vop;
+	ev_init(&io->in, (void (*)(ev_io *, int))netmsg_io_read_cb);
+	ev_init(&io->out, (void (*)(ev_io *, int))netmsg_io_write_cb);
+
+	if (fd >= 0)
+		netmsg_io_setfd(io, fd);
+}
+
+void
+netmsg_io_setfd(struct netmsg_io *io, int fd)
+{
+	io->fd = fd;
+	ev_io_set(&io->in, fd, EV_READ);
+	ev_io_set(&io->out, fd, EV_WRITE);
+}
+
+void
+netmsg_io_dealloc(struct netmsg_io *io)
+{
+	netmsg_head_dealloc(&io->wbuf);
+	io->rbuf = TBUF(NULL, 0, NULL);
+	io->pool = NULL;
+	io->wbuf.pool = NULL;
+	if (io->vop->dealloc)
+		io->vop->dealloc(io);
+}
+
+int
+netmsg_io_close(struct netmsg_io *io)
+{
+	say_debug("closing connection to %s", net_peer_name(io->fd));
+	int r = close(io->fd);
+	if (r < 0)
+		say_syswarn("close");
+	tbuf_reset(&io->rbuf);
+	ev_io_stop(&io->out);
+	ev_io_stop(&io->in);
+	io->fd = io->in.fd = io->out.fd = -1;
+
+	if (io->vop->close)
+		io->vop->close(io);
+	return r;
 }
 
 struct conn *
@@ -456,7 +575,7 @@ conn_free(struct conn *c)
 	/*  as long as struct conn *C is alive, c->out_messages may be populated
 	    by callbacks even if c->fd == -1, so drop all this data */
 
-	netmsg_head_release(&c->out_messages);
+	netmsg_head_dealloc(&c->out_messages);
 
 	if (c->service)
 		LIST_REMOVE(c, link);
