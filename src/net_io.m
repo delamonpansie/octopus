@@ -634,14 +634,6 @@ conn_close(struct conn *c)
 	c->fd = -1;
 	c->state = CLOSED;
 
-	if (c->service && c->processing_link.tqe_prev != NULL) {
-		TAILQ_REMOVE(&c->service->processing, c, processing_link);
-		c->processing_link.tqe_prev = NULL;
-	}
-
-	if (c->service)
-		c->ref--; /* call to conn_unref() will cause recurion */
-
 	/* either no refcounting used or c->service was the last owner.
 	   release memory, since conn_unref() woudn't be called in both cases. */
 	if (c->ref == 0)
@@ -681,9 +673,7 @@ conn_flusher(va_list ap __attribute__((unused)))
 		ssize_t r = netmsg_writev(c->fd, &c->out_messages);
 
 		if (r < 0) {
-			say_syswarn("%s%swritev() failed, closing connection",
-				    c->service ? c->service->name : "",
-				    c->service ? " " : "");
+			say_syswarn("writev() failed, closing connection");
 			conn_close(c);
 			continue;
 		}
@@ -1033,125 +1023,6 @@ udp_server(va_list ap)
 
 		say_syserror("recvfrom");
 		fiber_sleep(1);
-	}
-}
-
-static void
-input_reader(va_list ap __attribute__((unused)))
-{
-	struct conn *c;
-	ev_watcher *w;
-	ssize_t r;
-
-loop:
-	w = yield();
-	c = w->data;
-
-	tbuf_ensure(c->rbuf, cfg.input_buffer_size);
-	r = tbuf_recv(c->rbuf, c->fd);
-
-	if (likely(r > 0)) {
-		/* trigger processing of data.
-		   c->service->processing will be traversed by wakeup_workers() */
-		if (c->processing_link.tqe_prev == NULL)
-			TAILQ_INSERT_TAIL(&c->service->processing, c, processing_link);
-	} else if (r == 0) {
-		say_debug("%s client closed connection", c->service->name);
-		conn_close(c);
-	} else if (r < 0) {
-		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
-			goto loop;
-		say_syswarn("%s recv() failed, closing connection", c->service->name);
-		conn_close(c);
-	}
-
-	goto loop;
-}
-
-void
-wakeup_workers(ev_prepare *ev)
-{
-	struct service *service = (void *)ev - offsetof(struct service, wakeup);
-	struct fiber *w;
-
-	while (!TAILQ_EMPTY(&service->processing)) {
-		w = SLIST_FIRST(&service->workers);
-		if (w == NULL)
-			return;
-		SLIST_REMOVE_HEAD(&service->workers, worker_link);
-		resume(w, NULL);
-	}
-}
-
-static void
-service_gc(struct palloc_pool *pool, void *ptr)
-{
-	struct service *s = ptr;
-	struct conn *c;
-
-	s->pool = pool;
-	LIST_FOREACH(c, &s->conn, link)
-		conn_gc(pool, c);
-}
-
-static void
-accept_client(int fd, void *data)
-{
-	struct service *service = data;
-	struct conn *clnt = conn_init(NULL, service->pool, fd,
-				      service->input_reader, service->output_flusher, MO_SLAB);
-	clnt->ref++; /* there is special handling of this in conn_close() */
-	LIST_INSERT_HEAD(&service->conn, clnt, link);
-	clnt->service = service;
-	ev_io_start(&clnt->in);
-	clnt->state = CONNECTED;
-}
-
-
-void
-tcp_service(struct service *service, const char *addr, void (*on_bind)(int fd), void (*wakeup_workers)(ev_prepare *))
-{
-	memset(service, 0, sizeof(*service));
-	char *name = xmalloc(strlen("iproto:") + strlen(addr) + 1);
-	sprintf(name, "tcp:%s", addr);
-
-	TAILQ_INIT(&service->processing);
-	service->pool = palloc_create_pool(name);
-	service->name = name;
-	service->batch = 32;
-
-	palloc_register_gc_root(service->pool, service, service_gc);
-
-	service->output_flusher = fiber_create("tcp/output_flusher", conn_flusher);
-	service->input_reader = fiber_create("tcp/input_reader", input_reader);
-	service->acceptor = fiber_create("tcp/acceptor", tcp_server, addr, accept_client, on_bind, service);
-	if (service->acceptor == NULL)
-		panic("unable to start tcp_service `%s'", addr);
-
-	ev_prepare_init(&service->wakeup, (void *)wakeup_workers);
-	ev_prepare_start(&service->wakeup);
-}
-
-
-void
-service_info(struct tbuf *out, struct service *service)
-{
-	struct conn *c;
-	struct netmsg *m;
-
-	tbuf_printf(out, "%s:" CRLF, service->name);
-	LIST_FOREACH(c, &service->conn, link) {
-		tbuf_printf(out, "    - peer: %s" CRLF, net_peer_name(c->fd));
-		tbuf_printf(out, "      fd: %i" CRLF, c->fd);
-		tbuf_printf(out, "      state: %i,%s%s" CRLF, c->state,
-			    ev_is_active(&c->in) ? "in" : "",
-			    ev_is_active(&c->out) ? "out" : "");
-		tbuf_printf(out, "      rbuf: %i" CRLF, tbuf_len(c->rbuf));
-		tbuf_printf(out, "      pending_bytes: %zi" CRLF, c->out_messages.bytes);
-		if (!TAILQ_EMPTY(&c->out_messages.q))
-			tbuf_printf(out, "      out_messages:" CRLF);
-		TAILQ_FOREACH(m, &c->out_messages.q, link)
-			tbuf_printf(out, "      - { count: %i }" CRLF, m->count);
 	}
 }
 

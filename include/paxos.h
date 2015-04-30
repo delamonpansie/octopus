@@ -44,7 +44,7 @@ RB_HEAD(ptree, proposal);
 	i64 app_scn, max_scn;
 	bool wal_dumper_busy;
 	struct ptree proposals;
-	struct service service;
+	struct iproto_service service;
 }
 - (i64) next_scn;
 - (struct iproto_peer *)leader_primary;

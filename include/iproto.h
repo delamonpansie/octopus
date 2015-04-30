@@ -68,8 +68,6 @@ void iproto_reply_fixup(struct netmsg_head *h, struct iproto_retcode *reply);
 struct iproto_retcode * iproto_reply_small(struct netmsg_head *h, const struct iproto *request, u32 ret_code);
 void iproto_error(struct netmsg_head *h, const struct iproto *request, u32 ret_code, const char *err);
 
-void iproto_worker(va_list ap);
-
 struct iproto_peer {
 	struct conn c;
 	SLIST_ENTRY(iproto_peer) link;
@@ -82,14 +80,40 @@ struct iproto_peer {
 };
 SLIST_HEAD(iproto_group, iproto_peer);
 
+
+struct iproto_service {
+	struct palloc_pool *pool;
+	size_t pool_allocated; /* used for differential calls to palloc_gc */
+	const char *name;
+	TAILQ_HEAD(ingress_tailq, iproto_ingress) processing;
+	LIST_HEAD(, iproto_ingress) clients;
+	struct fiber *acceptor;
+	SLIST_HEAD(, fiber) workers; /* <- handlers */
+	int batch;
+	ev_prepare wakeup;
+
+	struct iproto_handler default_handler;
+	int ih_size, ih_mask;
+	struct iproto_handler *ih;
+};
+
+struct iproto_ingress {
+	struct netmsg_io io;
+
+	LIST_ENTRY(iproto_ingress) link;
+	TAILQ_ENTRY(iproto_ingress) processing_link;
+
+	struct iproto_service *service;
+};
+
 void iproto_ping(struct netmsg_head *h, struct iproto *r);
 
-void tcp_iproto_service(struct service *service, const char *addr, void (*on_bind)(int fd), void (*wakeup_workers)(ev_prepare *));
-void iproto_wakeup_workers(ev_prepare *ev);
+void iproto_service(struct iproto_service *service, const char *addr, void (*on_bind)(int fd));
+void iproto_service_info(struct tbuf *out, struct iproto_service *service);
+void iproto_worker(va_list ap);
 #define SERVICE_DEFAULT_CAPA 0x100
-void service_set_handler(struct service *s, struct iproto_handler h);
-static inline struct iproto_handler*
-service_find_code(struct service *s, int code)
+void service_set_handler(struct iproto_service *s, struct iproto_handler h);
+static inline struct iproto_handler *service_find_code(struct iproto_service *s, int code)
 {
 	int pos = code & s->ih_mask;
 	if (s->ih[pos].code == -1) return &s->default_handler;
@@ -103,7 +127,7 @@ service_find_code(struct service *s, int code)
 }
 
 void
-service_register_iproto(struct service *s, u32 cmd,
+service_register_iproto(struct iproto_service *s, u32 cmd,
 			void (*cb)(struct netmsg_head *, struct iproto *),
 			int flags);
 

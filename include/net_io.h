@@ -118,24 +118,6 @@ struct iproto_handler {
 	int code;
 };
 
-struct service {
-	struct palloc_pool *pool;
-	size_t pool_allocated; /* used for differential calls to palloc_gc */
-	const char *name;
-	TAILQ_HEAD(conn_tailq, conn) processing;
-	LIST_HEAD(, conn) conn;
-	struct fiber *acceptor, *input_reader, *output_flusher;
-	SLIST_HEAD(, fiber) workers; /* <- handlers */
-	int batch;
-	ev_prepare wakeup;
-
-	/* iproto stuff */
-	struct iproto_handler default_handler;
-	int ih_size, ih_mask;
-	struct iproto_handler *ih;
-};
-
-
 void netmsg_head_init(struct netmsg_head *h, struct palloc_pool *pool) LUA_DEF;
 void netmsg_head_dealloc(struct netmsg_head *h) LUA_DEF;
 
@@ -215,15 +197,10 @@ void udp_server(va_list ap);
 int server_socket(int type, struct sockaddr_in *src, int nonblock,
 		  void (*on_bind)(int fd), void (*sleep)(ev_tstamp tm));
 
-void tcp_service(struct service *s , const char *addr, void (*on_bind)(int fd), void (*wakeup)(ev_prepare *));
-void wakeup_workers(ev_prepare *ev);
-
 int atosin(const char *orig, struct sockaddr_in *addr) LUA_DEF;
 const char *sintoa(const struct sockaddr_in *addr);
 int net_fixup_addr(char **addr, int port);
 const char *net_peer_name(int fd);
-
-void service_info(struct tbuf *out, struct service *service);
 
 
 void luaT_opennet(struct lua_State *L);

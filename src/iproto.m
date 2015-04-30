@@ -58,14 +58,13 @@ static int stat_base;
 struct worker_arg {
 	void (*cb)(struct netmsg_head *wbuf, struct iproto *);
 	struct iproto *r;
-	struct conn *c;
+	struct netmsg_io *io;
 };
-
 
 void
 iproto_worker(va_list ap)
 {
-	struct service *service = va_arg(ap, typeof(service));
+	struct iproto_service *service = va_arg(ap, typeof(service));
 	struct worker_arg a;
 
 	for (;;) {
@@ -73,11 +72,11 @@ iproto_worker(va_list ap)
 		memcpy(&a, yield(), sizeof(a));
 
 		@try {
-			a.c->ref++;
-			a.cb(&a.c->out_messages, a.r);
+			netmsg_io_retain(a.io);
+			a.cb(&a.io->wbuf, a.r);
 		}
 		@catch (IProtoClose *e) {
-			conn_close(a.c);
+			netmsg_io_close(a.io);
 		}
 		@catch (Error *e) {
 			/* FIXME: where is no way to rollback modifications of wbuf.
@@ -88,12 +87,12 @@ iproto_worker(va_list ap)
 			else if ([e isMemberOf:[IndexError class]])
 				rc = ERR_CODE_ILLEGAL_PARAMS;
 
-			iproto_error(&a.c->out_messages, a.r, rc, e->reason);
+			iproto_error(&a.io->wbuf, a.r, rc, e->reason);
 		}
 		@finally {
-			if (a.c->out_messages.bytes > 0 && a.c->state != CLOSED)
-				ev_io_start(&a.c->out);
-			conn_unref(a.c);
+			if (a.io->wbuf.bytes > 0 && a.io->fd > 0)
+				ev_io_start(&a.io->out);
+			netmsg_io_release(a.io);
 		}
 
 		fiber_gc();
@@ -114,7 +113,7 @@ iproto_ping(struct netmsg_head *h, struct iproto *r)
 }
 
 void
-service_register_iproto(struct service *s, u32 cmd,
+service_register_iproto(struct iproto_service *s, u32 cmd,
 			void (*cb)(struct netmsg_head *, struct iproto *),
 			int flags)
 {
@@ -126,7 +125,7 @@ service_register_iproto(struct service *s, u32 cmd,
 }
 
 static inline void
-service_alloc_handlers(struct service *s, int capa)
+service_alloc_handlers(struct iproto_service *s, int capa)
 {
 	int i;
 	s->ih_size = 0;
@@ -137,10 +136,87 @@ service_alloc_handlers(struct service *s, int capa)
 	}
 }
 
-void
-tcp_iproto_service(struct service *service, const char *addr, void (*on_bind)(int fd), void (*wakeup_workers)(ev_prepare *))
+static void
+iproto_data_ready(struct netmsg_io *io, int __attribute__((unused)) r)
 {
-	tcp_service(service, addr, on_bind, wakeup_workers ?: iproto_wakeup_workers);
+	struct iproto_ingress *client = container_of(io, struct iproto_ingress, io);
+	struct iproto_service *service = client->service;
+	/* client->service->processing will be traversed by wakeup_workers() */
+	if (client->processing_link.tqe_prev == NULL)
+		TAILQ_INSERT_TAIL(&service->processing, client, processing_link);
+
+}
+
+static void
+iproto_close(struct netmsg_io *io)
+{
+	struct iproto_ingress *client = container_of(io, struct iproto_ingress, io);
+	if (client->processing_link.tqe_prev != NULL) {
+		TAILQ_REMOVE(&client->service->processing, client, processing_link);
+		client->processing_link.tqe_prev = NULL;
+	}
+	LIST_REMOVE(client, link);
+	netmsg_io_release(io);
+}
+
+static void
+iproto_dealloc(struct netmsg_io *io)
+{
+	struct iproto_ingress *client = container_of(io, struct iproto_ingress, io);
+	free(client);
+}
+
+static struct netmsg_io_vop iproto_vop = { .data_ready = iproto_data_ready,
+					   .close = iproto_close,
+					   .dealloc = iproto_dealloc};
+
+static void
+accept_client(int fd, void *data)
+{
+	struct iproto_service *service = data;
+	struct iproto_ingress *client = xcalloc(sizeof(*client), 1);
+
+	say_debug2("%s: peer %s", __func__, net_peer_name(fd));
+	client->service = service;
+	netmsg_io_init(&client->io, service->pool, &iproto_vop, fd);
+	ev_io_start(&client->io.in);
+	LIST_INSERT_HEAD(&service->clients, client, link);
+	netmsg_io_retain(&client->io);
+}
+
+static void
+service_gc(struct palloc_pool *pool, void *ptr)
+{
+	struct iproto_service *s = ptr;
+	struct iproto_ingress *c;
+
+	s->pool = pool;
+	LIST_FOREACH(c, &s->clients, link)
+		netmsg_io_gc(pool, c);
+}
+
+static void iproto_wakeup_workers(ev_prepare *ev);
+void
+iproto_service(struct iproto_service *service, const char *addr, void (*on_bind)(int fd))
+{
+	memset(service, 0, sizeof(*service));
+	char *name = xmalloc(strlen("iproto:") + strlen(addr) + 1);
+	sprintf(name, "tcp:%s", addr);
+
+	TAILQ_INIT(&service->processing);
+	service->pool = palloc_create_pool(name);
+	service->name = name;
+	service->batch = 32;
+
+	palloc_register_gc_root(service->pool, service, service_gc);
+
+	service->acceptor = fiber_create("tcp/acceptor", tcp_server, addr, accept_client, on_bind, service);
+	if (service->acceptor == NULL)
+		panic("unable to start tcp_service `%s'", addr);
+
+	ev_prepare_init(&service->wakeup, (void *)iproto_wakeup_workers);
+	ev_prepare_start(&service->wakeup);
+
 	service_alloc_handlers(service, SERVICE_DEFAULT_CAPA);
 
 	service_register_iproto(service, -1, err, IPROTO_NONBLOCK);
@@ -148,7 +224,7 @@ tcp_iproto_service(struct service *service, const char *addr, void (*on_bind)(in
 }
 
 void
-service_set_handler(struct service *s, struct iproto_handler h)
+service_set_handler(struct iproto_service *s, struct iproto_handler h)
 {
 	if (h.code == -1) {
 		free(s->ih);
@@ -184,27 +260,29 @@ has_full_req(const struct tbuf *buf)
 }
 
 static void
-process_requests(struct conn *c)
+process_requests(struct iproto_service *service, struct iproto_ingress *c)
 {
-	struct service *service = c->service;
+	struct netmsg_io *io = &c->io;
 	int batch = service->batch;
 
-	c->ref++;
-	while (has_full_req(c->rbuf))
+	netmsg_io_retain(io);
+	while (has_full_req(&io->rbuf))
 	{
-		struct iproto *request = iproto(c->rbuf);
+		struct iproto *request = iproto(&io->rbuf);
 		struct iproto_handler *ih = service_find_code(service, request->msg_code);
+		size_t req_size = sizeof(struct iproto) + request->data_len;
 
 		if (ih->flags & IPROTO_NONBLOCK) {
+			tbuf_ltrim(&io->rbuf, req_size);
 			stat_collect(stat_base, IPROTO_STREAM_OP, 1);
-			tbuf_ltrim(c->rbuf, sizeof(struct iproto) + request->data_len);
 			struct netmsg_mark header_mark;
-			netmsg_getmark(&c->out_messages, &header_mark);
+			netmsg_getmark(&io->wbuf, &header_mark);
 			@try {
-				ih->cb(&c->out_messages, request);
+				ih->cb(&io->wbuf, request);
 			}
 			@catch (IProtoClose *e) {
-				conn_close(c);
+				netmsg_io_close(io);
+				goto out;
 			}
 			@catch (Error *e) {
 				u32 rc = ERR_CODE_UNKNOWN_ERROR;
@@ -213,19 +291,18 @@ process_requests(struct conn *c)
 				else if ([e isMemberOf:[IndexError class]])
 					rc = ERR_CODE_ILLEGAL_PARAMS;
 
-				netmsg_rewind(&c->out_messages, &header_mark);
-				iproto_error(&c->out_messages, request, rc, e->reason);
+				netmsg_rewind(&io->wbuf, &header_mark);
+				iproto_error(&io->wbuf, request, rc, e->reason);
 			}
 		} else {
 			struct fiber *w = SLIST_FIRST(&service->workers);
 			if (w) {
+				tbuf_ltrim(&io->rbuf, req_size);
 				stat_collect(stat_base, IPROTO_BLOCK_OP, 1);
-				size_t req_size = sizeof(struct iproto) + request->data_len;
-				void *request_copy = palloc(w->pool, req_size);
-				memcpy(request_copy, request, req_size);
-				tbuf_ltrim(c->rbuf, req_size);
+				void *request_copy = memcpy(palloc(w->pool, req_size), request, req_size);
+
 				SLIST_REMOVE_HEAD(&service->workers, worker_link);
-				resume(w, &(struct worker_arg){ih->cb, request_copy, c});
+				resume(w, &(struct worker_arg){ih->cb, request_copy, io});
 			} else {
 				stat_collect(stat_base, IPROTO_WORKER_STARVATION, 1);
 				break; // FIXME: need state for this
@@ -236,19 +313,19 @@ process_requests(struct conn *c)
 		}
 	}
 
-	if (unlikely(c->state == CLOSED)) /* handler may close connection */
+	if (unlikely(io->fd == -1)) /* handler may close connection */
 		goto out;
 
-	if (tbuf_len(c->rbuf) >= cfg.input_low_watermark && has_full_req(c->rbuf))
-		ev_io_stop(&c->in);
+	if (tbuf_len(&io->rbuf) >= cfg.input_low_watermark && has_full_req(&io->rbuf))
+		ev_io_stop(&io->in);
 
-	if (!has_full_req(c->rbuf))
+	if (!has_full_req(&io->rbuf))
 	{
 		TAILQ_REMOVE(&service->processing, c, processing_link);
 		c->processing_link.tqe_prev = NULL;
 
 		/* input buffer is empty or has partially read oversize request */
-		ev_io_start(&c->in);
+		ev_io_start(&io->in);
 	} else if (batch < service->batch) {
 		/* avoid unfair scheduling in case of absense of stream requests
 		   and all workers being busy */
@@ -257,45 +334,44 @@ process_requests(struct conn *c)
 	}
 
 #ifndef IPROTO_PESSIMISTIC_WRITES
-	if (c->out_messages.bytes > 0) {
-		ssize_t r = netmsg_writev(c->fd, &c->out_messages);
+	if (io->wbuf.bytes > 0) {
+		ssize_t r = netmsg_writev(io->fd, &io->wbuf);
 		if (r < 0) {
-			say_syswarn("%s writev() failed, closing connection",
-				    c->service->name);
-			conn_close(c);
+			say_syswarn("writev() to %s failed, closing connection",
+				    net_peer_name(io->fd));
+			netmsg_io_close(io);
 			goto out;
 		}
 	}
 #endif
 
-	if (c->out_messages.bytes > 0) {
-		ev_io_start(&c->out);
+	if (io->wbuf.bytes > 0) {
+		ev_io_start(&io->out);
 
 		/* Prevent output owerflow by start reading if
 		   output size is below output_low_watermark.
 		   Otherwise output flusher will start reading,
 		   when size of output is small enought  */
-		if (c->out_messages.bytes >= cfg.output_high_watermark)
-			ev_io_stop(&c->in);
+		if (io->wbuf.bytes >= cfg.output_high_watermark)
+			ev_io_stop(&io->in);
 	}
 out:
-	conn_unref(c);
+	netmsg_io_release(io);
 }
 
-
-void
+static void
 iproto_wakeup_workers(ev_prepare *ev)
 {
-	struct service *service = (void *)ev - offsetof(struct service, wakeup);
-	struct conn *c, *tmp, *last;
+	struct iproto_service *service = (void *)ev - offsetof(struct iproto_service, wakeup);
+	struct iproto_ingress *c, *tmp, *last;
 	struct palloc_pool *saved_pool = fiber->pool;
 	assert(saved_pool == sched.pool);
 
 	fiber->pool = service->pool;
 
-	last = TAILQ_LAST(&service->processing, conn_tailq);
+	last = TAILQ_LAST(&service->processing, ingress_tailq);
 	TAILQ_FOREACH_SAFE(c, &service->processing, processing_link, tmp) {
-		process_requests(c);
+		process_requests(service, c);
 		/* process_requests() may move *c to the end of tailq */
 		if (c == last) break;
 	}
@@ -351,6 +427,31 @@ iproto_error(struct netmsg_head *h, const struct iproto *request, u32 ret_code, 
 	say_debug("%s: op:0x%02x data_len:%i sync:%i ret:%i", __func__,
 		  header->msg_code, header->data_len, header->sync, header->ret_code);
 }
+
+void
+iproto_service_info(struct tbuf *out, struct iproto_service *service)
+{
+	struct iproto_ingress *c;
+	struct netmsg *m;
+
+	tbuf_printf(out, "%s:" CRLF, service->name);
+	LIST_FOREACH(c, &service->clients, link) {
+		struct netmsg_io *io = &c->io;
+		tbuf_printf(out, "    - peer: %s" CRLF, net_peer_name(io->fd));
+		tbuf_printf(out, "      fd: %i" CRLF, io->fd);
+		tbuf_printf(out, "      state: %s%s" CRLF,
+			    ev_is_active(&io->in) ? "in" : "",
+			    ev_is_active(&io->out) ? "out" : "");
+		tbuf_printf(out, "      rbuf: %i" CRLF, tbuf_len(&io->rbuf));
+		tbuf_printf(out, "      pending_bytes: %zi" CRLF, io->wbuf.bytes);
+		if (!TAILQ_EMPTY(&io->wbuf.q))
+			tbuf_printf(out, "      out_messages:" CRLF);
+		TAILQ_FOREACH(m, &io->wbuf.q, link)
+			tbuf_printf(out, "      - { count: %i }" CRLF, m->count);
+	}
+}
+
+
 
 @implementation IProtoClose
 @end

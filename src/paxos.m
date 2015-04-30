@@ -1246,7 +1246,7 @@ exit:
 	say_info("%s", [self scn_info]);
 
 	const char *addr = sintoa(&paxos_peer(self, self_id)->paxos.addr);
-	tcp_iproto_service(&service, addr, NULL, iproto_wakeup_workers);
+	iproto_service(&service, addr, NULL);
 
 	service_register_iproto(&service, LEADER_PROPOSE, leader, 0);
 	service_register_iproto(&service, PREPARE, acceptor, 0);
@@ -1256,8 +1256,9 @@ exit:
 		fiber_create("paxos/worker", iproto_worker, &service);
 		fiber_create("paxos/puller", learner_puller, self, i + 1); /* peer id starts from 1 */
 	}
-	reply_reader = fiber_create("paxos/reply_reader", iproto_reply_reader, iproto_collect_reply);
-	output_flusher = fiber_create("paxos/output_flusher", conn_flusher);
+
+	reply_reader = NULL; // fiber_create("paxos/reply_reader", iproto_reply_reader, iproto_resolve_future);
+	output_flusher = NULL;
 	fiber_create("paxos/rendevouz", iproto_rendevouz, NULL, &paxos_remotes, reply_reader, output_flusher);
 	fiber_create("paxos_p/rendevouz", iproto_rendevouz, NULL, &primary_group, reply_reader, output_flusher);
 	fiber_create("paxos/elect", propose_leadership, self);
