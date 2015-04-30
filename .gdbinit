@@ -146,7 +146,11 @@ end
 def pfibers
   set $fiber = fibers.slh_first
   while $fiber != 0
-    printf "%30s/%i  ", $fiber->name, $fiber->fid
+    if $fiber->name != 0
+      printf "%30s/%i  ", $fiber->name, $fiber->fid
+    else
+      printf "                        (none)/%i  ", $fiber->fid
+    end
     p $fiber
     set $fiber = $fiber.link.sle_next
   end
