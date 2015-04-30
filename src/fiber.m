@@ -221,7 +221,7 @@ fiber_zombificate(struct Fiber *f)
 {
 	autorelease_top();
 	palloc_name(f->pool, "zombi_fiber");
-	f->name = NULL;
+	f->name = "zombi_fiber";
 	f->f = NULL;
 	unregister_fid(f);
 	f->fid = 0;
