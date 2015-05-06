@@ -37,7 +37,7 @@ RB_HEAD(ptree, proposal);
 @interface PaxosRecovery: Recovery {
 @public
 	SLIST_HEAD(paxos_group, paxos_peer) group;
-	struct iproto_group paxos_remotes, primary_group;
+	struct iproto_egress_list paxos_remotes, primary_group;
 	struct fiber *proposer_fiber;
 	struct fiber *output_flusher, *reply_reader, *follower, *wal_dumper;
 	struct palloc_pool *pool;
@@ -47,7 +47,7 @@ RB_HEAD(ptree, proposal);
 	struct iproto_service service;
 }
 - (i64) next_scn;
-- (struct iproto_peer *)leader_primary;
+- (struct iproto_egress *)leader_primary;
 - (const char *)scn_info;
 - (void) learn_wal:(id<XLogPullerAsync>)puller;
 @end

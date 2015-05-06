@@ -58,7 +58,7 @@ const int proposal_history_size = 16 * 1024;
 const int quorum = 2; /* FIXME: hardcoded */
 
 struct paxos_peer {
-	struct iproto_peer paxos, primary;
+	struct iproto_egress *paxos, *primary;
 	int id;
 	const char *name, *primary_addr;
 	struct feeder_param feeder;
@@ -69,22 +69,22 @@ struct paxos_peer *
 make_paxos_peer(int id, const char *name, const char *addr,
 		short primary_port, short feeder_port)
 {
-	struct sockaddr_in sin;
+	struct sockaddr_in sin, primary_sin;
 	struct paxos_peer *p;
 
 	if (atosin(addr, &sin) == -1)
 		return NULL;
 
+	primary_sin = sin;
+	primary_sin.sin_port = htons(primary_port);
+
 	p = xcalloc(1, sizeof(*p));
 	p->id = id;
 	p->name = strdup(name);
-	p->paxos = (struct iproto_peer){ .id = id,
-					 .name = p->name,
-					 .addr = sin,
-					 .c = { .fd = -1 } };
-	p->primary = p->paxos;
-	p->primary.addr.sin_port = htons(primary_port);
-	p->primary_addr = strdup(sintoa(&p->primary.addr));
+
+	p->paxos = iproto_add_remote_peer(&sin, NULL, NULL);
+	p->primary = iproto_add_remote_peer(&primary_sin, NULL, NULL);
+	p->primary_addr = strdup(sintoa(&primary_sin));
 
 	memset(&p->feeder, 0, sizeof(p->feeder));
 	p->feeder.ver = 1;
@@ -207,7 +207,7 @@ paxos_broadcast(PaxosRecovery *r, struct iproto_mbox *mbox,
 
 	struct iovec iov[1] = { { .iov_base = (char *)value,
 				  .iov_len = value_len } };
-	iproto_broadcast(mbox, &r->paxos_remotes, &msg.header, iov, 1);
+	iproto_mbox_broadcast(mbox, &r->paxos_remotes, &msg.header, iov, 1);
 
 	say_debug("%s: > %s sync:%u SCN:%"PRIi64" ballot:%"PRIu64,
 		  __func__, paxos_msg_code[code], msg.header.sync, scn, ballot);
@@ -327,8 +327,8 @@ propose_leadership(va_list ap)
 		leader_propose.expire = ev_now() + leader_lease_interval;
 
 		struct iproto_mbox mbox = IPROTO_MBOX_INITIALIZER(mbox, fiber->pool);
-		iproto_broadcast(&mbox, &r->paxos_remotes,
-				 &leader_propose.header, NULL, 0);
+		iproto_mbox_broadcast(&mbox, &r->paxos_remotes,
+				      &leader_propose.header, NULL, 0);
 		assert(leader_propose.header.data_len == 14);
 		mbox_timedwait(&mbox, quorum, 1);
 		iproto_mbox_release(&mbox);
@@ -399,7 +399,8 @@ propose_leadership(va_list ap)
 static void
 leader(struct netmsg_head *wbuf, struct iproto *msg)
 {
-	struct conn *c = (void *)wbuf - offsetof(struct conn, out_messages);
+	struct netmsg_io *io = container_of(wbuf, struct netmsg_io, wbuf);
+	struct iproto_ingress *c = container_of(io, struct iproto_ingress, io);
 	PaxosRecovery *r = (void *)c->service - offsetof(PaxosRecovery, service);
 	struct msg_leader *pmsg = (struct msg_leader *)msg;
 	struct paxos_peer *peer = paxos_peer(r, pmsg->peer_id);
@@ -716,7 +717,8 @@ msg_dump(const char *prefix, const struct paxos_peer *peer, const struct iproto 
 static void
 learner(struct netmsg_head *wbuf, struct iproto *msg)
 {
-	struct conn *c = (void *)wbuf - offsetof(struct conn, out_messages);
+	struct netmsg_io *io = container_of(wbuf, struct netmsg_io, wbuf);
+	struct iproto_ingress *c = container_of(io, struct iproto_ingress, io);
 	PaxosRecovery *r = (void *)c->service - offsetof(PaxosRecovery, service);
 	struct msg_paxos *req = (struct msg_paxos *)msg;
 	struct paxos_peer *peer = paxos_peer(r, req->peer_id);
@@ -749,7 +751,8 @@ learner(struct netmsg_head *wbuf, struct iproto *msg)
 static void
 acceptor(struct netmsg_head *wbuf, struct iproto *imsg)
 {
-	struct conn *c = (void *)wbuf - offsetof(struct conn, out_messages);
+	struct netmsg_io *io = container_of(wbuf, struct netmsg_io, wbuf);
+	struct iproto_ingress *c = container_of(io, struct iproto_ingress, io);
 	PaxosRecovery *r = (void *)c->service - offsetof(PaxosRecovery, service);
 	struct msg_paxos *msg = (struct msg_paxos *)imsg;
 	struct paxos_request req = { .msg = msg,
@@ -1161,8 +1164,8 @@ init_feeder_param:(struct feeder_param*)param
 			panic("bad addr %s", c->addr);
 
 		SLIST_INSERT_HEAD(&group, p, link);
-		SLIST_INSERT_HEAD(&paxos_remotes, &p->paxos, link);
-		SLIST_INSERT_HEAD(&primary_group, &p->primary, link);
+		SLIST_INSERT_HEAD(&paxos_remotes, p->paxos, link);
+		SLIST_INSERT_HEAD(&primary_group, p->primary, link);
 	}
 
 	if (!paxos_peer(self, self_id))
@@ -1245,8 +1248,7 @@ exit:
 
 	say_info("%s", [self scn_info]);
 
-	const char *addr = sintoa(&paxos_peer(self, self_id)->paxos.addr);
-	iproto_service(&service, addr, NULL);
+	iproto_service(&service, "paxos", NULL);
 
 	service_register_iproto(&service, LEADER_PROPOSE, leader, 0);
 	service_register_iproto(&service, PREPARE, acceptor, 0);
@@ -1257,10 +1259,6 @@ exit:
 		fiber_create("paxos/puller", learner_puller, self, i + 1); /* peer id starts from 1 */
 	}
 
-	reply_reader = NULL; // fiber_create("paxos/reply_reader", iproto_reply_reader, iproto_resolve_future);
-	output_flusher = NULL;
-	fiber_create("paxos/rendevouz", iproto_rendevouz, NULL, &paxos_remotes, reply_reader, output_flusher);
-	fiber_create("paxos_p/rendevouz", iproto_rendevouz, NULL, &primary_group, reply_reader, output_flusher);
 	fiber_create("paxos/elect", propose_leadership, self);
 
 	wal_dumper = fiber_create("paxos/wal_dump", wal_dumper_fib, self);
@@ -1280,11 +1278,11 @@ leader_redirect_raise
 	}
 }
 
-- (struct iproto_peer *)
+- (struct iproto_egress *)
 leader_primary
 {
 	assert(!paxos_leader());
-	return &paxos_peer(self, leader_id)->primary;
+	return paxos_peer(self, leader_id)->primary;
 }
 
 - (bool)

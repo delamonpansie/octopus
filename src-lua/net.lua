@@ -48,49 +48,6 @@ function netmsg()
    return h
 end
 
-
-local conn_op = {}
-function conn_op:bytes() return self.out_messages.bytes end
-function conn_op:add_iov_dup(obj, len) C.net_add_iov_dup(self.out_messages, obj, len) end
-function conn_op:add_iov_ref(obj, len, v) C.net_add_ref_iov(self.out_messages, v or ref(obj), obj, len) end
-function conn_op:add_iov_string(str)
-   if #str < 512 then
-      C.net_add_iov_dup(self.out_messages, str, #str)
-   else
-      C.net_add_ref_iov(self.out_messages, ref(str), str, #str)
-   end
-end
-function conn_op:add_iov_iproto_header(request)
-   assert(request ~= nil)
-   local request = ffi.new(iproto_ptr_t, request)
-   local header = ffi.new(iproto_retcode0_t, request.msg_code, 4, request.sync)
-   self:add_iov_ref(header, ffi.sizeof(iproto_retcode0_t))
-   return header
-end
-
-local mark = ffi.new('struct netmsg_mark')
-function conn_op:mark() ffi.C.netmsg_getmark(self.out_messages, mark) end
-function conn_op:rewind() ffi.C.netmsg_rewind(self.out_messages, mark) end
--- no fiber switching or blocking inside f() or else
-function conn_op:apply(f, ...)
-   ffi.C.netmsg_getmark(self.out_messages, mark)
-   local ok, errmsg = pcall(f, self, ...)
-   if not ok then
-       ffi.C.netmsg_rewind(self.out_messages, mark)
-       error(errmsg, 2)
-   end
-   return ok
-end
-
-ffi.metatype(ffi.typeof('struct conn'), { __index = conn_op })
-conn_ptr = ffi.typeof('struct conn *')
-local conn_ptr = conn_ptr
-function conn(ptr)
-    local c = ffi.gc(ffi.cast(conn_ptr, ptr), C.conn_unref)
-    c.ref = c.ref + 1
-    return c
-end
-
 function iproto_copy(req)
    local c = ffi.new(iproto_t, req.data_len)
    ffi.copy(c, req, ffi.sizeof(c))

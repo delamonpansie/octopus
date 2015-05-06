@@ -47,7 +47,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-static struct slab_cache conn_cache, netmsg_cache;
+static struct slab_cache netmsg_cache;
 
 static struct netmsg *
 netmsg_alloc(struct netmsg_head *h)
@@ -366,19 +366,6 @@ netmsg_writev(int fd, struct netmsg_head *head)
 	return result;
 }
 
-void
-conn_setfd(struct conn *c, int fd)
-{
-	assert(c->out.cb != NULL && c->in.cb != NULL);
-	assert(fd >= 0);
-	assert(c->state == CLOSED || c->state == IN_CONNECT);
-
-	c->fd = fd;
-	c->state = CONNECTED;
-	ev_io_set(&c->in, c->fd, EV_READ);
-	ev_io_set(&c->out, c->fd, EV_WRITE);
-}
-
 int
 netmsg_io_write_cb(ev_io *ev, int __attribute__((unused)) events)
 {
@@ -388,7 +375,7 @@ netmsg_io_write_cb(ev_io *ev, int __attribute__((unused)) events)
 
 	if (r < 0) {
 		if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
-			say_syswarn("writev() to %s failed", net_peer_name(ev->fd));
+			say_syswarn("writev(%i) to %s failed", ev->fd, net_peer_name(ev->fd));
 			netmsg_io_close(io);
 			return r;
 		} else {
@@ -413,16 +400,16 @@ netmsg_io_read_cb(ev_io *ev, int __attribute__((unused)) events)
 
 	palloc_gc(io->pool);
 	tbuf_ensure(rbuf, 16 * 1024);
-	ssize_t r = tbuf_recv(rbuf, io->fd);
+	ssize_t r = tbuf_recv(rbuf, ev->fd);
 	if (r == 0) {
-		say_debug("peer %s closed connection", net_peer_name(io->fd));
+		say_debug("peer %s closed connection", net_peer_name(ev->fd));
 		netmsg_io_close(io);
 		return 0;
 	}
 
 	if (r < 0) {
 		if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
-			say_syswarn("recv() from %s failed", net_peer_name(io->fd));
+			say_syswarn("recv(%i) from %s failed", ev->fd, net_peer_name(ev->fd));
 			netmsg_io_close(io);
 		}
 		return r;
@@ -451,6 +438,7 @@ static struct netmsg_io_vop def_vop = { NULL };
 void
 netmsg_io_init(struct netmsg_io *io, struct palloc_pool *pool, const struct netmsg_io_vop *vop, int fd)
 {
+	assert(pool != NULL);
 	netmsg_head_init(&io->wbuf, pool);
 	io->rbuf = TBUF(NULL, 0, pool);
 	io->pool = pool;
@@ -498,151 +486,6 @@ netmsg_io_close(struct netmsg_io *io)
 	return r;
 }
 
-struct conn *
-conn_init(struct conn *c, struct palloc_pool *pool, int fd, struct fiber *in, struct fiber *out,
-	  enum conn_memory_ownership memory_ownership)
-{
-	assert(in != NULL && out != NULL);
-
-	say_debug("%s: c:%p fd:%i", __func__, c, fd);
-	assert(memory_ownership & MO_CONN_OWNERSHIP_MASK);
-	if (!c) {
-		assert(memory_ownership & MO_SLAB);
-		c = slab_cache_alloc(&conn_cache);
-	}
-
-	c->memory_ownership = memory_ownership;
-	if (pool == NULL || memory_ownership & MO_MY_OWN_POOL) {
-		c->memory_ownership |= MO_MY_OWN_POOL;
-
-		c->pool = palloc_create_pool("connection owned pool");
-	} else {
-		c->pool = pool;
-	}
-
-	netmsg_head_init(&c->out_messages, c->pool);
-
-	c->fd = -1;
-	c->state = CLOSED;
-	c->ref = 0;
-	c->service = NULL;
-	c->processing_link.tqe_prev = NULL;
-
-	ev_init(&c->in, (void *)in);
-	ev_init(&c->out, (void *)out);
-	c->out.coro = c->in.coro = 1;
-	c->out.data = c->in.data = c;
-
-
-	c->rbuf = tbuf_alloc(c->pool);
-
-	if (fd >= 0)
-		conn_setfd(c, fd);
-	return c;
-}
-
-
-void
-conn_gc(struct palloc_pool *pool, void *ptr)
-{
-	struct conn *c = ptr;
-	struct netmsg *m;
-
-	if (c->memory_ownership & MO_MY_OWN_POOL) {
-		assert(pool == NULL);
-
-		if (palloc_allocated(c->pool) < 128 * 1024)
-			return;
-
-		pool = palloc_create_pool("connection owned new pool");
-	}
-
-	c->rbuf = tbuf_clone(pool, c->rbuf);
-
-	TAILQ_FOREACH(m, &c->out_messages.q, link)
-		netmsg_gc(pool, m);
-
-	if (c->memory_ownership & MO_MY_OWN_POOL)
-		palloc_destroy_pool(c->pool);
-
-	c->pool = c->out_messages.pool = pool;
-}
-
-
-static void
-conn_free(struct conn *c)
-{
-	/*  as long as struct conn *C is alive, c->out_messages may be populated
-	    by callbacks even if c->fd == -1, so drop all this data */
-
-	netmsg_head_dealloc(&c->out_messages);
-
-	if (c->service)
-		LIST_REMOVE(c, link);
-	c->service = NULL;
-
-	if (c->memory_ownership & MO_MY_OWN_POOL)
-		palloc_destroy_pool(c->pool);
-
-	c->pool = NULL;
-	c->out_messages.pool = NULL;
-
-	switch (c->memory_ownership & MO_CONN_OWNERSHIP_MASK) {
-		case MO_STATIC:
-			/* restore state for possible later use */
-			netmsg_head_init(&c->out_messages, c->pool);
-			netmsg_alloc(&c->out_messages);
-			break;
-		case MO_MALLOC:
-			free(c);
-			break;
-		case MO_SLAB:
-			slab_cache_free(&conn_cache, c);
-			break;
-		default:
-			abort();
-	}
-}
-
-void
-conn_unref(struct conn *c)
-{
-	assert(c->ref > 0);
-	if (--c->ref == 0) {
-		assert(c->state == CLOSED);
-		conn_free(c);
-	}
-}
-
-int
-conn_close(struct conn *c)
-{
-	int r = 0;
-	assert(c->fd > 0);
-
-	tbuf_reset(c->rbuf);
-	ev_io_stop(&c->out);
-	ev_io_stop(&c->in);
-	c->in.fd = c->out.fd = -1;
-
-	/* the conn will either free'd or put back to pool,
-	   so next time it get used it will be configure by conn_init */
-	if ((c->memory_ownership & MO_CONN_OWNERSHIP_MASK) != MO_STATIC)
-		c->in.cb = c->out.cb = NULL;
-
-	r = close(c->fd);
-	c->fd = -1;
-	c->state = CLOSED;
-
-	/* either no refcounting used or c->service was the last owner.
-	   release memory, since conn_unref() woudn't be called in both cases. */
-	if (c->ref == 0)
-		conn_free(c);
-
-	return r;
-}
-
-
 const char *
 net_peer_name(int fd)
 {
@@ -665,137 +508,155 @@ net_peer_name(int fd)
 	return buf;
 }
 
-void
-conn_flusher(va_list ap __attribute__((unused)))
-{
-	for (;;) {
-		struct conn *c = ((struct ev_watcher *)yield())->data;
-		ssize_t r = netmsg_writev(c->fd, &c->out_messages);
-
-		if (r < 0) {
-			say_syswarn("writev() failed, closing connection");
-			conn_close(c);
-			continue;
-		}
-
-		if (c->out_messages.bytes == 0)
-			ev_io_stop(&c->out);
-
-		if ((tbuf_len(c->rbuf) < cfg.input_low_watermark) &&
-		    c->out_messages.bytes < cfg.output_low_watermark &&
-		    c->state != CLOSED)
-			ev_io_start(&c->in);
-	}
-}
-
-enum tac_state
-tcp_async_connect(struct conn *c, ev_watcher *w /* result of yield() */,
-		  struct sockaddr_in      *dst,
+enum tac_result
+tcp_async_connect(struct tac_state *s, ev_watcher *w /* result of yield() */,
 		  struct sockaddr_in      *src,
 		  ev_tstamp               timeout)
 {
-	if (w == NULL) {
+	int fd = s->ev.fd;
+	if (fd < 0) {
+		if (ev_now() - s->error_tstamp <= 1.0) /* no more then one reconnect in second */
+			goto error;
+
 		/* init */
 		int	optval = 1;
 
-		c->fd = -1;
-		c->out.coro = 1;
-		c->timer.coro = 1;
-
-		c->fd = socket(AF_INET, SOCK_STREAM, 0);
-		if (c->fd < 0) {
+		fd = socket(AF_INET, SOCK_STREAM, 0);
+		if (fd < 0) {
 			say_syserror("socket");
 			goto error;
 		}
+		assert(fd > 0);
 
-		if (ioctl(c->fd, FIONBIO, &optval) < 0) {
+		if (ioctl(fd, FIONBIO, &optval) < 0) {
 			say_syserror("ioctl");
 			goto error;
 		}
 
-		if (setsockopt(c->fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) == -1 ||
-		    setsockopt(c->fd, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval)) == -1) {
+		if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) == -1 ||
+		    setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval)) == -1) {
 			say_syserror("setsockopt");
 			goto error;
 		}
 
 		if (src) {
-			if (bind(c->fd, (struct sockaddr *)src, sizeof(*src)) < 0) {
+			if (bind(fd, (struct sockaddr *)src, sizeof(*src)) < 0) {
 				say_syserror("bind(%s)", sintoa(src));
 				goto error;
 			}
 		}
 
-		if (setsockopt(c->fd, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval)) < 0)
-			say_syserror("setsockopt(SO_KEEPALIVE)");
-
-		if (connect(c->fd, (struct sockaddr *)dst, sizeof(*dst)) < 0) {
-			if (errno != EINPROGRESS)
+		if (connect(fd, (struct sockaddr *)&s->daddr, sizeof(s->daddr)) < 0) {
+			if (errno != EINPROGRESS) {
+				say_syserror("connect");
 				goto error;
+			}
 		}
 
-		ev_io_init(&c->out, (void *)fiber, c->fd, EV_WRITE);
-		ev_timer_init(&c->timer, (void *)fiber, timeout, 0.);
+		ev_io_init(&s->ev, (void *)fiber, fd, EV_WRITE);
+		ev_timer_init(&s->timer, (void *)fiber, timeout, 0.);
+		s->ev.coro = s->timer.coro = 1;
 		if (timeout > 0)
-			ev_timer_start(&c->timer);
-		ev_io_start(&c->out);
+			ev_timer_start(&s->timer);
+		ev_io_start(&s->ev);
 
 		return tac_wait;
 	}
 
-	int		optval = 1;
-	socklen_t 	optlen = sizeof(optval);
+	if (w != (ev_watcher *)&s->ev && w != (ev_watcher *)&s->timer)
+		return tac_alien_event;
 
-	if (w == (ev_watcher *)&c->timer) {
-		ev_timer_stop(&c->timer);
-		ev_io_stop(&c->out);
+	ev_timer_stop(&s->timer);
+	ev_io_stop(&s->ev);
+	s->ev.fd = -1;
+
+	if (w == (ev_watcher *)&s->timer) {
+		errno = ETIMEDOUT;
 		goto error;
 	}
 
-	if (w != (ev_watcher *)&c->out)
-		return tac_alien_event;
-
-	ev_timer_stop(&c->timer);
-	ev_io_stop(&c->out);
-
-	if (getsockopt(c->fd, SOL_SOCKET, SO_ERROR, &optval, &optlen) < 0)
+	int		optval = 1;
+	socklen_t 	optlen = sizeof(optval);
+	if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &optval, &optlen) < 0)
 		goto error;
 
 	if (optval != 0) {
 		errno = optval;
 		goto error;
 	}
-	return tac_ok;
 
+	return fd;
 error:
-	close(c->fd);
-	c->fd = -1;
-
+	s->error_tstamp = ev_now();
+	if (fd > 0)
+		close(fd);
 	return tac_error;
 }
 
-int
-tcp_connect(struct sockaddr_in *dst, struct sockaddr_in *src, ev_tstamp timeout) {
-	struct 		conn			c;
-	ev_watcher 				*w = NULL;
-	int					fd;
+void
+rendevouz(va_list ap)
+{
+	struct sockaddr_in 	*self_addr = va_arg(ap, struct sockaddr_in *);
+	struct tac_list 	*list = va_arg(ap, struct tac_list *);
+	struct tac_state 	*ts;
+	ev_watcher		*w = NULL;
+	ev_timer		timer = { .coro=1 };
 
-	for(;;) {
-		switch(tcp_async_connect(&c, w, dst, src, timeout)) {
-			case tac_ok:
-				return c.fd;
-			case tac_wait:
-				w = yield();
-				break;
-			case tac_error:
-				return -1;
-			case tac_alien_event:
-			default:
-				abort();
+	ev_timer_init(&timer, (void *)fiber, 0, 1.);
+	ev_timer_start(&timer);
+loop:
+	w = yield();
+
+	SLIST_FOREACH(ts, list, link) {
+		if (ts->io->fd >= 0)
+			continue;
+
+		int r = tcp_async_connect(ts, w, self_addr, 5);
+		switch (r) {
+		case tac_wait:
+		case tac_alien_event:
+			continue;
+		case tac_error:
+			if (!ts->error_printed)
+				say_syserror("connect to %s/%s failed", ts->name, sintoa(&ts->daddr));
+			ts->error_printed = true;
+			break;
+		default:
+			assert(ts->io->fd < 0);
+			say_info("connect(%i) to %s/%s", r, ts->name, sintoa(&ts->daddr));
+			netmsg_io_setfd(ts->io, r);
+			ev_io_start(&ts->io->in);
+			if (ts->io->wbuf.bytes > 0)
+				ev_io_start(&ts->io->out);
+			ts->error_printed = false;
+			break;
 		}
 	}
 
-	return fd;
+	goto loop;
+}
+
+
+
+int
+tcp_connect(struct sockaddr_in *daddr, struct sockaddr_in *saddr, ev_tstamp timeout) {
+	struct tac_state s = { .daddr = *daddr, .ev = {.fd = -1} };
+	ev_watcher *w = NULL;
+
+	for(;;) {
+		int r = tcp_async_connect(&s, w, saddr, timeout);
+		switch (r) {
+		case tac_wait:
+			w = yield();
+			break;
+		case tac_error:
+			return -1;
+		case tac_alien_event:
+			abort();
+		default:
+			return r;
+		}
+	}
 }
 
 struct sockaddr_in *
@@ -1143,7 +1004,6 @@ static void netmsg_ctor(void *ptr)
 static void __attribute__((constructor))
 init_slab_cache(void)
 {
-	slab_cache_init(&conn_cache, sizeof(struct conn), SLAB_GROW, "net_io/conn");
 	slab_cache_init(&netmsg_cache, sizeof(struct netmsg), SLAB_GROW, "net_io/netmsg");
 	netmsg_cache.ctor = netmsg_ctor;
 }

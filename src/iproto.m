@@ -163,6 +163,7 @@ static void
 iproto_dealloc(struct netmsg_io *io)
 {
 	struct iproto_ingress *client = container_of(io, struct iproto_ingress, io);
+	iproto_future_collect_orphans(&client->waiting);
 	free(client);
 }
 

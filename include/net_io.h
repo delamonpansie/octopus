@@ -85,39 +85,6 @@ struct netmsg_mark {
 	int offset;
 };
 
-enum conn_memory_ownership {
-	MO_MALLOC	 = 0x01,
-	MO_STATIC	 = 0x02,
-	MO_SLAB		 = 0x03,
-	MO_MY_OWN_POOL   = 0x10
-};
-#define MO_CONN_OWNERSHIP_MASK	(MO_MALLOC | MO_STATIC | MO_SLAB)
-
-struct conn {
-	struct palloc_pool *pool;
-	struct tbuf *rbuf;
-	int fd, ref;
-	struct netmsg_head out_messages;
-
-	enum conn_memory_ownership  memory_ownership;
-	enum { CLOSED, IN_CONNECT, CONNECTED } state;
-	LIST_ENTRY(conn) link;
-	TAILQ_ENTRY(conn) processing_link;
-	ev_io in, out;
-	struct service *service;
-
-	ev_timer 	timer;
-};
-
-enum { IPROTO_NONBLOCK = 1 };
-struct iproto;
-typedef void (*iproto_cb)(struct netmsg_head *, struct iproto *);
-struct iproto_handler {
-	iproto_cb cb;
-	int flags;
-	int code;
-};
-
 void netmsg_head_init(struct netmsg_head *h, struct palloc_pool *pool) LUA_DEF;
 void netmsg_head_dealloc(struct netmsg_head *h) LUA_DEF;
 
@@ -134,15 +101,7 @@ void netmsg_verify_ownership(struct netmsg_head *h); /* debug method */
 
 ssize_t netmsg_writev(int fd, struct netmsg_head *head);
 
-struct conn *conn_init(struct conn *c, struct palloc_pool *pool, int fd,
-		       struct fiber *in, struct fiber *out, enum conn_memory_ownership memory_ownership);
-void conn_setfd(struct conn *c, int fd);
-int conn_close(struct conn *c);
-void conn_gc(struct palloc_pool *pool, void *ptr);
-void conn_unref(struct conn *c) LUA_DEF;
-
-void conn_flusher(va_list ap __attribute__((unused)));
-
+struct iproto;
 struct netmsg_io_vop {
 	void (*data_ready)(struct netmsg_io *, int);
 	void (*request_ready)(struct netmsg_io *, struct iproto *);
@@ -171,18 +130,30 @@ static inline void netmsg_io_release(struct netmsg_io *io)
 }
 
 
-enum tac_state {
-	tac_ok = 0,
-	tac_error,
-	tac_wait,
-	tac_alien_event
+enum tac_result {
+	tac_error = -1,
+	tac_wait = -2,
+	tac_alien_event = -3
 };
-enum tac_state  tcp_async_connect(struct conn *c, ev_watcher *w,
-				struct sockaddr_in 	*dst,
-				struct sockaddr_in 	*src,
-				ev_tstamp		timeout);
 
+struct tac_state {
+	struct netmsg_io *io;
+	struct ev_io ev;
+	struct ev_timer timer;
+	ev_tstamp error_tstamp;
+	bool error_printed;
+	struct sockaddr_in daddr;
+	const char *name;
+	SLIST_ENTRY(tac_state) link;
+};
+SLIST_HEAD(tac_list, tac_state);
+
+enum tac_result tcp_async_connect(struct tac_state *s, ev_watcher *w /* result of yield() */,
+				  struct sockaddr_in      *src,
+				  ev_tstamp               timeout);
 int tcp_connect(struct sockaddr_in *dst, struct sockaddr_in *src, ev_tstamp timeout);
+void rendevouz(va_list ap);
+
 struct tcp_server_state {
 	const char *addr;
 	void (*handler)(int fd, void *data, struct tcp_server_state *state);
