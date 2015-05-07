@@ -272,8 +272,12 @@ process_requests(struct iproto_service *service, struct iproto_ingress *c)
 		struct iproto *request = iproto(&io->rbuf);
 		struct iproto_handler *ih = service_find_code(service, request->msg_code);
 		size_t req_size = sizeof(struct iproto) + request->data_len;
+		struct iproto_egress *proxy;
 
-		if (ih->flags & IPROTO_NONBLOCK) {
+		if (ih->flags & IPROTO_PROXY && (proxy = service->proxy) != NULL) {
+			tbuf_ltrim(&io->rbuf, req_size);
+			iproto_proxy_send(proxy, c, request, NULL, 0);
+		} else if (ih->flags & IPROTO_NONBLOCK) {
 			tbuf_ltrim(&io->rbuf, req_size);
 			stat_collect(stat_base, IPROTO_STREAM_OP, 1);
 			struct netmsg_mark header_mark;

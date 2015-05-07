@@ -386,6 +386,18 @@ enable_local_writes
 		[self status_update:PRIMARY fmt:"primary"];
 }
 
+- (struct sockaddr_in *)
+primary_addr
+{
+	static struct sockaddr_in addr;
+	if (local_writes || ![remote feeder_addr_configured] || !cfg.wal_feeder_primary_port)
+		return NULL;
+
+	addr = [remote feeder_addr];
+	addr.sin_port = htons(cfg.wal_feeder_primary_port);
+	return &addr;
+}
+
 - (bool)
 is_replica
 {

@@ -493,6 +493,8 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 - (void) status_update:(enum recovery_status)s fmt:(const char *)fmt, ...;
 - (void) status_changed;
 
+- (struct sockaddr_in *)primary_addr;
+
 - (void) set_client:(id<RecoveryClient>)obj;
 
 - (int) write_initial_state;

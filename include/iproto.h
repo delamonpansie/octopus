@@ -109,6 +109,7 @@ struct iproto_service {
 	int batch;
 	ev_prepare wakeup;
 
+	struct iproto_egress *proxy;
 	struct iproto_handler default_handler;
 	int ih_size, ih_mask;
 	struct iproto_handler *ih;

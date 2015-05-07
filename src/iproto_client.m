@@ -381,9 +381,6 @@ iproto_add_remote_peer(const struct sockaddr_in *daddr, struct palloc_pool *pool
 }
 
 
-	}
-
-
 static void __attribute__((constructor))
 init_iproto_client(void)
 {
