@@ -56,8 +56,9 @@ void *xmalloc(size_t size);
 void *xrealloc(void *ptr, size_t size);
 
 #ifndef MAX
-# define MAX(a, b) ({ __typeof__(a) a_ = (a), b_ = (b); a_ >= b_ ? a_ : b_; })
-# define MIN(a, b) ({ __typeof__(a) a_ = (a), b_ = (b); a_ <= b_ ? a_ : b_; })
+# define MAX(_a, _b) ({ __typeof__(_a) a_ = (_a), b_ = (_b); a_ >= b_ ? a_ : b_; })
+# define MIN(_a, _b) ({ __typeof__(_a) a_ = (_a), b_ = (_b); a_ <= b_ ? a_ : b_; })
+# define CMP(_a, _b) ({ __typeof__(_a) a_ = (_a), b_ = (_b); a_ < b_ ? -1 : (a_ == b_ ? 0 : 1); })
 #endif
 
 /* Macros to define enum and corresponding strings. */
