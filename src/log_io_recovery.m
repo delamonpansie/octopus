@@ -523,17 +523,19 @@ status_update:(enum recovery_status)new_status fmt:(const char *)fmt, ...
 	vsnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
 
-	if (strcmp(buf, status_buf) != 0 || new_status != status) {
-		say_info("recovery status: %i %s", new_status, buf);
-		strncpy(status_buf, buf, sizeof(status_buf));
-		title(NULL);
+	if (strcmp(buf, status_buf) == 0 && new_status == status)
+		return;
 
-		if (new_status != status) {
-			prev_status = status;
-			status = new_status;
-			[self status_changed];
-		}
-	}
+	say_info("recovery status: %i %s", new_status, buf);
+	strncpy(status_buf, buf, sizeof(status_buf));
+	title(NULL);
+
+	if (new_status == status)
+		return;
+
+	prev_status = status;
+	status = new_status;
+	[self status_changed];
 }
 
 - (void)
