@@ -150,7 +150,7 @@ init
 		return 1;
 	}
 
-	if (!local_writes) {
+	if (!local_writes || status == REMOTE_STANDBY) {
 		say_warn("local writes disabled");
 		return 0;
 	}
