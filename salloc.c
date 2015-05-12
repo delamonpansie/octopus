@@ -608,8 +608,19 @@ slab_stat(struct tbuf *t)
 register_source();
 #endif
 
+void slab_cache_stat(struct slab_cache *cache, uint64_t *bytes_used, uint64_t *items)
+{
+	struct slab *slab;
+
+	*bytes_used = *items = 0;
+	TAILQ_FOREACH(slab, &cache->slabs, cache_link) {
+		*bytes_used += slab->used;
+		*items += slab->items;
+	}
+}
+
 void
-slab_stat2(uint64_t *bytes_used, uint64_t *items)
+slab_total_stat(uint64_t *bytes_used, uint64_t *items)
 {
 	struct slab *slab;
 
