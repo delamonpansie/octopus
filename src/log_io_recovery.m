@@ -604,26 +604,30 @@ hexdump(struct tbuf *out, u16 tag __attribute__((unused)), struct tbuf *row)
 }
 
 void
-print_row_header(struct tbuf *buf, const struct row_v12 *row)
-{
-	tbuf_printf(buf, "lsn:%" PRIi64 " scn:%" PRIi64 " tm:%.3f t:%s %s ",
-		    row->lsn, row->scn, row->tm,
-		    xlog_tag_to_a(row->tag),
-		    sintoa((void *)&row->cookie));
-}
-
-int
-print_sys_row(struct tbuf *buf, const struct row_v12 *row)
+print_row(struct tbuf *buf, const struct row_v12 *row,
+	  void (*handler)(struct tbuf *out, u16 tag, struct tbuf *row))
 {
 	struct tbuf row_data = TBUF(row->data, row->len, fiber->pool);
 
 	int tag = row->tag & TAG_MASK;
 	int tag_type = row->tag & ~TAG_MASK;
+	int inner_tag;
+	u64 ballot;
+	u32 value_len;
 
-	if (tag_type != TAG_SYS)
-		return 0;
+	tbuf_printf(buf, "lsn:%" PRIi64 " scn:%" PRIi64 " tm:%.3f t:%s %s ",
+		    row->lsn, row->scn, row->tm,
+		    xlog_tag_to_a(row->tag),
+		    sintoa((void *)&row->cookie));
 
-	print_row_header(buf, row);
+	if (!handler)
+		handler = hexdump;
+
+	if (tag_type != TAG_SYS) {
+		handler(buf, row->tag, &TBUF(row->data, row->len, fiber->pool));
+		return;
+	}
+
 	switch (tag) {
 	case snap_initial:
 		if (tbuf_len(&row_data) == sizeof(u32) * 3) {
@@ -650,28 +654,41 @@ print_sys_row(struct tbuf *buf, const struct row_v12 *row)
 	case snap_final:
 	case nop:
 		break;
-#ifdef PAXOS
+
 	case paxos_prepare:
 	case paxos_promise:
+	case paxos_nop:
+		ballot = read_u64(&row_data);
+		tbuf_printf(buf, "ballot:%"PRIi64, ballot);
+		break;
 	case paxos_propose:
 	case paxos_accept:
-		paxos_print(buf, hexdump, row);
+		ballot = read_u64(&row_data);
+		inner_tag = read_u16(&row_data);
+		value_len = read_u32(&row_data);
+		(void)value_len;
+		assert(value_len == tbuf_len(&row_data));
+		tbuf_printf(buf, "ballot:%"PRIi64" it:%s ", ballot, xlog_tag_to_a(inner_tag));
+
+		switch(inner_tag & TAG_MASK) {
+		case run_crc: {
+			i64 scn = read_u64(&row_data);
+			u32 log = read_u32(&row_data);
+			(void)read_u32(&row_data); /* ignore run_crc_mod */
+			tbuf_printf(buf, "SCN:%"PRIi64 " log:0x%08x", scn, log);
+			break;
+		}
+		case nop:
+			break;
+		default:
+			handler(buf, inner_tag, &row_data);
+			break;
+		}
 		break;
-#endif
 	default:
 		hexdump(buf, row->tag, &row_data);
 	}
-	return 1;
 }
 
-void
-print_gen_row(struct tbuf *out, const struct row_v12 *row,
-	      void (*handler)(struct tbuf *out, u16 tag, struct tbuf *row))
-{
-	if (print_sys_row(out, row))
-		return;
-	print_row_header(out, row);
-	handler(out, row->tag, &TBUF(row->data, row->len, fiber->pool));
-}
 
 register_source();
