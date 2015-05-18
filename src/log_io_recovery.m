@@ -193,9 +193,6 @@ recover_row:(struct row_v12 *)r
 			}
 		}
 
-		if (tag_type == TAG_WAL)
-			run_crc_log = crc32c(run_crc_log, r->data, r->len);
-
 		if (r->scn == next_skip_scn) {
 			say_info("skip SCN:%"PRIi64 " tag:%s", next_skip_scn, xlog_tag_to_a(r->tag));
 
@@ -216,6 +213,9 @@ recover_row:(struct row_v12 *)r
 
 		if (cfg.sync_scn_with_lsn && r->lsn != r->scn)
 			panic("out of sync SCN:%"PRIi64 " != LSN:%"PRIi64, r->scn, r->lsn);
+
+		if (tag_type == TAG_WAL)
+			run_crc_log = crc32c(run_crc_log, r->data, r->len);
 
 		lsn = r->lsn;
 		last_update_tstamp = ev_now();
