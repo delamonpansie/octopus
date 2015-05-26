@@ -49,7 +49,6 @@ const char* sel_getName(SEL);
 - (id)retain;
 - (void)release;
 - (id)autorelease;
-- (void)subclassResponsibility:(SEL)cmd;
 + (size_t)offsetOf: (const char*)ivar;
 #if !HAVE_OBJC_OBJC_API_H
 + (id)alloc;
@@ -64,6 +63,7 @@ const char* sel_getName(SEL);
 - (id)perform:(SEL)aSel with:(id)o;
 - (id)perform:(SEL)aSel with:(id)o1 with:(id)o2;
 - (IMP)methodFor:(SEL)aSel;
+- (id)subclassResponsibility:(SEL)cmd;
 #endif
 @end
 
