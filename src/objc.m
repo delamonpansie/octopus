@@ -72,9 +72,9 @@ class_getInstanceVariable(void *s, const char *ivar)
 {
 	struct objc_class *cl = s;
 	int i;
-	for (i = 0; i < cl->ivars.ivar_count; i++) {
-		if (strcmp(ivar, cl->ivars.ivar_list[i].ivar_name) == 0)
-			return &cl->ivars.ivar_list[i];
+	for (i = 0; i < cl->ivars->ivar_count; i++) {
+		if (strcmp(ivar, cl->ivars->ivar_list[i].ivar_name) == 0)
+			return &cl->ivars->ivar_list[i];
 	}
 	return NULL;
 }
@@ -226,13 +226,13 @@ perform:(SEL)selector with:(id)o1 with:(id)o2
 	return objc_msgSend(self, selector, o1, o2);
 #endif
 }
-#endif
 
--(void)
+-(id)
 subclassResponsibility:(SEL)cmd
 {
 	raise_fmt("[%s %s] should be overriden", [[self class] name], sel_getName(cmd));
 }
+#endif
 @end
 
 void
