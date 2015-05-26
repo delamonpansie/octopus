@@ -151,10 +151,12 @@ fork_spawner()
 			sched->name = request.name;
 			title("");
 			say_info("%s spawned", request.name);
+#ifdef HAVE_LIBELF
 			struct symbol *sym = addr2symbol(request.handler);
 			say_debug("worker %p:%s(fd:%d)",
 				  request.handler, sym ? sym->name : "(unknown)",
 				  sock);
+#endif
 			_exit(request.handler(sock, buf));
 		}
 	}
