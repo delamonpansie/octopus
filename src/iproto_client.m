@@ -57,9 +57,10 @@ u32
 iproto_next_sync()
 {
 	static u32 iproto_sync;
-	iproto_sync++;
-	if (unlikely(iproto_sync == 0))
-		iproto_sync++;
+
+	do iproto_sync++;
+	while (unlikely(iproto_sync == 0 || mh_i32_exist(sync2future, iproto_sync)));
+
 	return iproto_sync;
 }
 
