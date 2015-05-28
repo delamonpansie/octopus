@@ -35,6 +35,7 @@
 #import <util.h>
 #import <palloc.h>
 #import <net_io.h>
+#import <octopus.h>
 
 struct fork_request {
 	char name[64];
@@ -100,9 +101,11 @@ fork_spawner()
 		return pid;
 	}
 
-	close_all_xcpt(3, fsock, stderrfd, sayfd);
+	extern int keepalive_pipe[2];
+	close_all_xcpt(4, fsock, stderrfd, sayfd, keepalive_pipe[1]);
 	sched.name = "spawner";
 	title("");
+	say_info("spawner started");
 
 	for (;;) {
 		struct fork_request request;
@@ -150,7 +153,9 @@ fork_spawner()
 			}
 		} else {
 			close(fsock);
-			sched.name = request.name;
+			octopus_ev_init();
+			fiber_init(request.name);
+			luaT_init();
 			title("");
 			say_info("%s spawned", request.name);
 #ifdef HAVE_LIBELF

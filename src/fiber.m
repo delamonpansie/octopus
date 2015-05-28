@@ -406,7 +406,7 @@ fiber_write(int fd, const void *buf, size_t count)
 
 
 void
-fiber_init(void)
+fiber_init(const char *sched_name)
 {
 	SLIST_INIT(&fibers);
 	SLIST_INIT(&zombie_fibers);
@@ -416,7 +416,7 @@ fiber_init(void)
 
 	memset(&sched, 0, sizeof(sched));
 	sched.fid = 1;
-	sched.name = "sched";
+	sched.name = sched_name ?: "sched";
 	fiber_alloc(&sched);
 
 	fiber = &sched;

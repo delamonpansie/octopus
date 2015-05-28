@@ -79,7 +79,6 @@ char cfg_err_buf[1024], *cfg_err;
 int cfg_err_len, cfg_err_offt;
 struct octopus_cfg cfg;
 
-ev_io keepalive_ev = { .coro = 0 };
 Recovery *recovery;
 XLogDir *wal_dir = nil, *snap_dir = nil;
 int keepalive_pipe[2];
@@ -477,8 +476,7 @@ luaT_pushtraceback(lua_State *L)
 }
 
 
-
-static void
+void
 luaT_init()
 {
 	struct lua_State *L;
@@ -597,6 +595,48 @@ ev_panic(const char *msg)
 }
 #endif
 
+void
+octopus_ev_init()
+{
+	ev_set_syserr_cb(ev_panic);
+	ev_default_loop(ev_recommended_backends() | EVFLAG_SIGNALFD);
+	char *evb = NULL;
+	switch(ev_backend()) {
+		case    EVBACKEND_SELECT:   evb = "select"; break;
+		case    EVBACKEND_POLL:     evb = "poll"; break;
+		case    EVBACKEND_EPOLL:    evb = "epoll"; break;
+		case    EVBACKEND_KQUEUE:   evb = "kqueue"; break;
+		case    EVBACKEND_DEVPOLL:  evb = "dev/poll"; break;
+		case    EVBACKEND_PORT:     evb = "port"; break;
+		default:                    evb = "unknown";
+	}
+
+	say_info("ev_loop initialized using '%s' backend, libev version is %d.%d",
+		 evb, ev_version_major(), ev_version_minor());
+}
+
+ev_timer coredump_timer = { .coro = 0 };
+ev_io keepalive_ev = { .coro = 0 };
+
+void
+octopus_ev_backgroud_tasks()
+{
+	if (cfg.coredump > 0) {
+		ev_timer_init(&coredump_timer, maximize_core_rlimit,
+			      cfg.coredump * 60, 0);
+		ev_timer_start(&coredump_timer);
+	}
+
+	int one = 1;
+	if (pipe(keepalive_pipe) == -1 || ioctl(keepalive_pipe[0], FIONBIO, &one) == -1) {
+		say_syserror("can't create keepalive pipe");
+		exit(1);
+	}
+
+	ev_io_init(&keepalive_ev, _keepalive_read, keepalive_pipe[0], EV_READ);
+	ev_io_start(&keepalive_ev);
+}
+
 static int
 octopus(int argc, char **argv)
 {
@@ -676,7 +716,7 @@ octopus(int argc, char **argv)
 #if defined(STORAGE) || defined(FEEDER)
 	if (gopt_arg(opt, 'C', &cat_filename)) {
 		salloc_init(0, 0, 0);
-		fiber_init();
+		fiber_init(NULL);
 		set_proc_title("cat %s", cat_filename);
 
 		gopt_arg(opt, 'c', &cfg_filename);
@@ -850,7 +890,7 @@ octopus(int argc, char **argv)
 	if (gopt(opt, 'i')) {
 		init_storage = true;
 		salloc_init(0, 0, 0);
-		fiber_init();
+		fiber_init(NULL);
 		luaT_init();
 #ifdef CFG_wal_feeder_addr
 		if (cfg.wal_feeder_addr) {
@@ -881,44 +921,14 @@ octopus(int argc, char **argv)
 		say_syserror("uname");
 
 	signal_init();
-	ev_set_syserr_cb(ev_panic);
-	ev_default_loop(ev_recommended_backends() | EVFLAG_SIGNALFD);
-	char *evb = NULL;
-	switch(ev_backend()) {
-		case    EVBACKEND_SELECT:   evb = "select"; break;
-		case    EVBACKEND_POLL:     evb = "poll"; break;
-		case    EVBACKEND_EPOLL:    evb = "epoll"; break;
-		case    EVBACKEND_KQUEUE:   evb = "kqueue"; break;
-		case    EVBACKEND_DEVPOLL:  evb = "dev/poll"; break;
-		case    EVBACKEND_PORT:     evb = "port"; break;
-		default:                    evb = "unknown";
-	}
-
-	say_info("ev_loop initialized using '%s' backend, libev version is %d.%d",
-		 evb, ev_version_major(), ev_version_minor());
-
-	ev_timer coredump_timer = { .coro = 0 };
-	if (cfg.coredump > 0) {
-		ev_timer_init(&coredump_timer, maximize_core_rlimit,
-			      cfg.coredump * 60, 0);
-		ev_timer_start(&coredump_timer);
-	}
-
-	int one = 1;
-	if (pipe(keepalive_pipe) == -1 || ioctl(keepalive_pipe[0], FIONBIO, &one) == -1) {
-		say_syserror("can't create keepalive pipe");
-		exit(1);
-	}
-
-	ev_io_init(&keepalive_ev, _keepalive_read, keepalive_pipe[0], EV_READ);
-	ev_io_start(&keepalive_ev);
-
-	fiber_init(); /* must be initialized before Lua */
 
 	extern int fork_spawner();
 	if (fork_spawner() < 0)
 		panic("unable to fork spawner");
 
+	octopus_ev_init();
+	octopus_ev_backgroud_tasks();
+	fiber_init(NULL); /* must be initialized before Lua */
 	luaT_init();
 
 	/* run Lua pre_init before module init */

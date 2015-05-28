@@ -79,6 +79,7 @@ extern char *cfg_err;
 extern int cfg_err_len;
 int reload_cfg(void);
 
+void octopus_ev_init(void);
 const char *octopus_version(void);
 void octopus_info(struct tbuf *out);
 unsigned tnt_uptime(void);
@@ -116,7 +117,7 @@ struct lua_src {
 };
 extern struct lua_src *lua_src;
 
-const char *objectlib_name;
+void luaT_init(void);
 void luaT_pushobject(struct lua_State *L, struct tnt_object *obj);
 int luaT_objinit(struct lua_State *L);
 int luaT_require(const char *filename);
