@@ -1,4 +1,5 @@
 #!/usr/bin/ruby
+# coding: utf-8
 
 $: << File.dirname($0) + '/lib'
 require 'run_env'
@@ -39,13 +40,20 @@ end
 
 master = MasterEnv.new.connect_eval do
   ping
+  # force creation of first xlog
+  # otherwise [reader follow] will be polling wal_dir
+  # for new files once per second
+  self.insert [1,2,3]
   self
 end
 
-SlaveEnv.new.env_eval do start end
+SlaveEnv.new.env_eval do
+  start
+  master.insert [1,2,3]
+  wait_for { open('|./octopus --cat 00000000000000000003.xlog 2>/dev/null').each_line.grep(/scn:3/).length > 0 }
 
-master.insert [1,2,3]
-sleep(0.4)
+end
+
 
 TCPSocket.open(0, 22025) do |s|
   s.puts "sh in"

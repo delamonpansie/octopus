@@ -95,8 +95,8 @@ master.connect_eval do
 end
 
 SlaveEnv.connect_eval do |env|
-  wait_for "readable 00000000000000000154.snap" do
-    FileTest.readable?("00000000000000000154.snap")
+  wait_for "readable 00000000000000000301.snap" do
+    FileTest.readable?("00000000000000000301.snap")
   end
 
   wait_for { select_nolog([99]).length > 0 }

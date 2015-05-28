@@ -4,5 +4,8 @@
 # box.insert([1, 2, 3])
 1
 
+# box.insert([1, 2, 3])
+2
+
 recovery_lag: 0.0
 recovery_run_crc_status: ok
