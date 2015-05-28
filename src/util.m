@@ -455,7 +455,7 @@ title(const char *fmt, ...)
 
 	if (fmt) {
 		va_list ap;
-		char tmp[32];
+		char tmp[64];
 		va_start(ap, fmt);
 		vsnprintf(tmp, sizeof(tmp), fmt, ap);
 		va_end(ap);
