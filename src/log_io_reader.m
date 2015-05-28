@@ -217,9 +217,11 @@ load_from_local:(i64)initial_lsn
 		lsn = initial_lsn - 1; /* since initial_lsn is > 1, lsn is >= 1
 					  valid lsn is vital for [recover_follow]: [open_next_wal] is relies on valid LSN */
 		current_wal = [wal_dir containg_lsn:initial_lsn];
-		say_info("unable to find WAL with LSN:%"PRIi64", greatest_LSN:%"PRIi64, initial_lsn, [wal_dir greatest_lsn]);
-		if (current_wal == nil)
+		if (current_wal == nil) {
+			say_info("unable to find WAL with LSN:%"PRIi64", greatest_LSN:%"PRIi64,
+				 initial_lsn, [wal_dir greatest_lsn]);
 			return 0;
+		}
 	}
 
 	if (current_wal != nil)
