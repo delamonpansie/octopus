@@ -168,3 +168,57 @@ def btfiber
     set $fib_stack_len = $fib_stack_len - sizeof(void *)
   end
 end
+
+def save_ctx
+  set $save_rbp = $rbp
+  set $save_rbx = $rbx
+  set $save_r12 = $r12
+  set $save_r13 = $r13
+  set $save_r14 = $r14
+  set $save_r15 = $r15
+  set $save_rsp = $rsp
+  set $save_rip = $rip
+  set $save_fiber = fiber
+end
+
+def restore_ctx
+  set $rbp = $save_rbp
+  set $rbx = $save_rbx
+  set $r12 = $save_r12
+  set $r13 = $save_r13
+  set $r14 = $save_r14
+  set $r15 = $save_r15
+  set $rsp = $save_rsp
+  set $rip = $save_rip
+  set fiber = $save_fiber
+end
+
+def switch_to_fiber_no
+  frame 0
+  set $fiber = fibers.slh_first
+  while $fiber != 0 && $fiber->fid != $arg0 
+    set $fiber = $fiber.link.sle_next
+  end
+  set fiber = $fiber
+  set $sp = $fiber->coro.ctx.sp
+  set $rbp = ((uintptr_t*)$sp)[5]
+  set $rbx = ((uintptr_t*)$sp)[4]
+  set $r12 = ((uintptr_t*)$sp)[3]
+  set $r13 = ((uintptr_t*)$sp)[2]
+  set $r14 = ((uintptr_t*)$sp)[1]
+  set $r15 = ((uintptr_t*)$sp)[0]
+  set $rip = ((uintptr_t*)$sp)[6]
+end
+
+def switch_to_fiber_ptr
+  frame 0
+  set fiber = $arg0
+  set $sp = fiber->coro.ctx.sp
+  set $rbp = ((uintptr_t*)$sp)[5]
+  set $rbx = ((uintptr_t*)$sp)[4]
+  set $r12 = ((uintptr_t*)$sp)[3]
+  set $r13 = ((uintptr_t*)$sp)[2]
+  set $r14 = ((uintptr_t*)$sp)[1]
+  set $r15 = ((uintptr_t*)$sp)[0]
+  set $rip = ((uintptr_t*)$sp)[6]
+end
