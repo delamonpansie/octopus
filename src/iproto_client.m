@@ -148,7 +148,7 @@ int
 iproto_mbox_broadcast(struct iproto_mbox *mbox, struct iproto_egress_list *list,
 		      struct iproto *msg, const struct iovec *iov, int iovcnt)
 {
-	say_debug2("%s: msg_code:%i", __func__, msg->msg_code);
+	say_debug2("%s: op:0x%x", __func__, msg->msg_code);
 
 	struct iproto_egress *peer;
 	int ret = 0;
@@ -157,7 +157,6 @@ iproto_mbox_broadcast(struct iproto_mbox *mbox, struct iproto_egress_list *list,
 	SLIST_FOREACH(peer, list, link) {
 		u32 sync = msg_send(peer, msg, msglen, iov, iovcnt);
 		if (sync) {
-			say_debug3("    sync:%i", sync);
 			if (mbox)
 				mbox_future(peer, mbox, sync);
 			ret++;
@@ -198,6 +197,14 @@ iproto_mbox_peek(struct iproto_mbox *mbox)
 {
 	struct iproto_future *future = mbox_peek(mbox);
 	return future ? future->msg : NULL;
+}
+
+void
+iproto_mbox_put(struct iproto_mbox *mbox, struct iproto *msg)
+{
+	struct iproto_future *future = slab_cache_alloc(&future_cache);
+	future->msg = msg;
+	mbox_put(mbox, future, link);
 }
 
 struct iproto *
@@ -296,9 +303,11 @@ iproto_future_resolve(struct netmsg_io *io, struct iproto *msg)
 	struct iproto_mbox *mbox;
 	struct iproto_future *future;
 
+	say_debug2("%s: peer:%s op:0x%x sync:%u", __func__, net_peer_name(io->fd), msg->msg_code, msg->sync);
+
 	u32 k = mh_i32_get(sync2future, msg->sync);
 	if (k == mh_end(sync2future)) {
-		say_debug("martian reply sync:%"PRIu32, msg->sync);
+		say_debug("martian reply from peer:%s op:0x%x sync:%u", net_peer_name(io->fd), msg->msg_code, msg->sync);
 		return;
 	}
 
@@ -306,17 +315,17 @@ iproto_future_resolve(struct netmsg_io *io, struct iproto *msg)
 	mh_i32_del(sync2future, k);
 	assert(future->dst == peer);
 	TAILQ_REMOVE(&peer->future, future, link);
-	LIST_REMOVE(future, waiting_link);
 
-	say_debug2("%s: msg_code:%i sync:%i", __func__, msg->msg_code, msg->sync);
 	switch (future->type) {
 	case IPROTO_FUTURE_MBOX:
+		LIST_REMOVE(future, waiting_link);
 		mbox = future->mbox;
 		future->msg = palloc(mbox->pool, sizeof(*msg) + msg->data_len);
 		memcpy(future->msg, msg, sizeof(*msg) + msg->data_len);
 		mbox_put(mbox, future, link);
 		break;
 	case IPROTO_FUTURE_PROXY:
+		LIST_REMOVE(future, waiting_link);
 		io = &future->ingress->io;
 		msg->sync = future->proxy_request.sync;
 		net_add_iov_dup(&io->wbuf, msg, sizeof(*msg) + msg->data_len);
@@ -324,7 +333,7 @@ iproto_future_resolve(struct netmsg_io *io, struct iproto *msg)
 		slab_cache_free(&future_cache, future);
 		break;
 	case IPROTO_FUTURE_ORPHAN:
-		say_debug3("orphan reply sync:%"PRIu32, msg->sync);
+		say_debug3("orphan reply from peer:%s op:0x%x sync:%u", net_peer_name(io->fd), msg->msg_code, msg->sync);
 		break;
 	}
 }
@@ -344,6 +353,7 @@ data_ready(struct netmsg_io *io, int __attribute__((unused)) r)
 
 	while (has_full_req(rbuf)) {
 		struct iproto *req = iproto(rbuf);
+		assert((i32)req->data_len > 0);
 		int req_size = sizeof(struct iproto) + req->data_len;
 		tbuf_ltrim(rbuf, req_size);
 		io->vop->request_ready(io, req);

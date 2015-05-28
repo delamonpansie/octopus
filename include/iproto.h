@@ -164,7 +164,7 @@ struct iproto_mbox {
 	MBOX(, iproto_future);
 	struct iproto_future_list waiting;
 	struct palloc_pool *pool;
-	short sent;
+	int sent;
 };
 
 #define IPROTO_MBOX_INITIALIZER(mbox, pool) \
@@ -175,6 +175,7 @@ struct iproto_mbox {
 void iproto_mbox_release(struct iproto_mbox *mbox);
 struct iproto *iproto_mbox_get(struct iproto_mbox *mbox);
 struct iproto *iproto_mbox_peek(struct iproto_mbox *mbox);
+void iproto_mbox_put(struct iproto_mbox *mbox, struct iproto *msg);
 
 void iproto_pinger(va_list ap);
 

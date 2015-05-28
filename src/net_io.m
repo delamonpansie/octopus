@@ -395,12 +395,12 @@ netmsg_io_write_cb(ev_io *ev, int __attribute__((unused)) events)
 int
 netmsg_io_read_cb(ev_io *ev, int __attribute__((unused)) events)
 {
-	struct netmsg_io *io = (void *)ev - offsetof(struct netmsg_io, in);
-	struct tbuf *rbuf = &io->rbuf;
+	struct netmsg_io *io = container_of(ev, struct netmsg_io, in);
 
-	palloc_gc(io->pool);
-	tbuf_ensure(rbuf, 16 * 1024);
-	ssize_t r = tbuf_recv(rbuf, ev->fd);
+	if (palloc_allocated(io->pool) > 256 * 1024)
+		palloc_gc(io->pool);
+	tbuf_ensure(&io->rbuf, 16 * 1024);
+	ssize_t r = tbuf_recv(&io->rbuf, ev->fd);
 	if (r == 0) {
 		say_debug("peer %s closed connection", net_peer_name(ev->fd));
 		netmsg_io_close(io);
@@ -442,6 +442,7 @@ netmsg_io_init(struct netmsg_io *io, struct palloc_pool *pool, const struct netm
 	netmsg_head_init(&io->wbuf, pool);
 	io->rbuf = TBUF(NULL, 0, pool);
 	io->pool = pool;
+	palloc_register_gc_root(pool, io, netmsg_io_gc);
 	io->vop = vop ?: &def_vop;
 	ev_init(&io->in, (void (*)(ev_io *, int))netmsg_io_read_cb);
 	ev_init(&io->out, (void (*)(ev_io *, int))netmsg_io_write_cb);
@@ -461,6 +462,7 @@ netmsg_io_setfd(struct netmsg_io *io, int fd)
 void
 netmsg_io_dealloc(struct netmsg_io *io)
 {
+	palloc_unregister_gc_root(io->pool, io);
 	netmsg_head_dealloc(&io->wbuf);
 	io->rbuf = TBUF(NULL, 0, NULL);
 	io->pool = NULL;
