@@ -71,17 +71,25 @@ struct name {								\
 
 #define mbox_peek(mbox) TAILQ_FIRST(&(mbox)->msg_list);
 
+#define mbox_remove(mbox, msg) ({					\
+	TAILQ_REMOVE(&(mbox)->msg_list, (msg), link);			\
+	memset(&(msg)->link, 0, sizeof((msg)->link));			\
+	(mbox)->msg_count--;						\
+})
+
+#define mbox_clear(mbox) ({						\
+	struct msg_void_ptr *msg, *tmp;					\
+	TAILQ_FOREACH_SAFE(msg, &(mbox)->msg_list, link, tmp)		\
+		mbox_remove((mbox), msg);				\
+})
+
 #define mbox_get(mbox, link) ({						\
 	mbox_msgtype(mbox) msg = TAILQ_FIRST(&(mbox)->msg_list);	\
-	if (msg) {							\
-		TAILQ_REMOVE(&(mbox)->msg_list, msg, link);		\
-		(mbox)->msg_count--;					\
-	}								\
+	if (msg)							\
+		mbox_remove(mbox, msg);					\
 	msg;								\
 })
 
-#define mbox_remove(mbox, msg)						\
-	TAILQ_REMOVE(&(mbox)->msg_list, msg, link);
 
 #define mbox_wait(mbox) ({						\
 	struct mbox_consumer consumer = { .fiber = fiber }; 		\
@@ -116,5 +124,11 @@ struct name {								\
 		ev_timer_stop(&w);					\
 	msg;								\
 })
+
+struct msg_void_ptr {
+	void *ptr;
+	TAILQ_ENTRY(msg_void_ptr) link;
+};
+MBOX(mbox_void_ptr, msg_void_ptr);
 
 #endif

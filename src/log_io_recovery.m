@@ -87,6 +87,7 @@ ours:
 init
 {
 	[super init];
+	mbox_init(&run_crc_mbox);
 	reader = [[XLogReader alloc] init_recovery:self];
 	return self;
 }
@@ -143,8 +144,14 @@ init
 - (XLogWriter *) writer { return writer; }
 - (const struct child *) wal_writer { return [[self writer] wal_writer]; }
 
-- (int)submit:(const void *)data len:(u32)len tag:(u16)tag
+- (int)
+submit:(const void *)data len:(u32)len tag:(u16)tag
 {
+	static unsigned count;
+	static struct msg_void_ptr msg;
+	if (++count % 32 == 0 && msg.link.tqe_prev == NULL)
+		mbox_put(&run_crc_mbox, &msg, link);
+
 	if (cfg.wal_writer_inbox_size == 0) {
 		scn++;
 		return 1;
@@ -439,17 +446,18 @@ run_crc_status
 	return run_crc_status(&run_crc_state);
 }
 
+
 static void
 run_crc_writer(va_list ap)
 {
 	Recovery *recovery = va_arg(ap, Recovery *);
-	ev_tstamp submit_tstamp = ev_now(), delay = va_arg(ap, ev_tstamp);
-	i64 lsn = [recovery lsn];
+	ev_tstamp submit_tstamp = ev_now(),
+			  delay = va_arg(ap, ev_tstamp);
 	for (;;) {
-		fiber_sleep(1.);
+		mbox_wait(&recovery->run_crc_mbox);
+		mbox_clear(&recovery->run_crc_mbox);
+
 		if ([recovery is_replica])
-			continue;
-		if ([recovery lsn] - lsn < 32)
 			continue;
 		if (ev_now() - submit_tstamp < delay)
 			continue;
@@ -464,7 +472,6 @@ run_crc_writer(va_list ap)
 		}
 
 		submit_tstamp = ev_now();
-		lsn = [recovery lsn];
 		fiber_gc();
 	}
 }

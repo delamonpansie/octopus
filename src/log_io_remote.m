@@ -50,6 +50,7 @@
 	      feeder:(struct feeder_param *)feeder_;
 {
 	[super init];
+	mbox_init(&mbox);
 	recovery = recovery_;
 	if (feeder_)
 		[self feeder_changed:feeder_];
@@ -63,10 +64,10 @@ connect_loop
 	ev_tstamp reconnect_delay = 0.1;
 	bool warning_said = false;
 
-	remote_puller = [[objc_lookUpClass("XLogPuller") alloc] init];
+	remote_puller = [[XLogPuller alloc] init];
 again:
-	while (![self feeder_addr_configured])
-		fiber_sleep(reconnect_delay);
+	mbox_wait(&mbox);
+	mbox_clear(&mbox);
 
 	[self status:"connect" reason:NULL];
 	do {
@@ -120,6 +121,7 @@ hot_standby
 - (bool)
 feeder_changed:(struct feeder_param*)new
 {
+	static struct msg_void_ptr msg;
 	if (feeder_param_eq(&feeder, new) != true) {
 		free(feeder.filter.name);
 		free(feeder.filter.arg);
@@ -133,8 +135,11 @@ feeder_changed:(struct feeder_param*)new
 		}
 
 		[remote_puller abort_recv];
-		if ([self feeder_addr_configured])
+		if ([self feeder_addr_configured]) {
 			[self status:"configured" reason:sintoa(&feeder.addr)];
+			if (msg.link.tqe_prev == NULL)
+				mbox_put(&mbox, &msg, link);
+		}
 		return true;
 	}
 	return false;

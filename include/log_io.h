@@ -414,6 +414,7 @@ enum {
 
 @interface XLogRemoteReader : Object {
 	XLogPuller *remote_puller;
+	struct mbox_void_ptr mbox;
 	struct feeder_param feeder;
 	Recovery *recovery;
 }
@@ -449,6 +450,7 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 	char status_buf[64];
 	SnapWriter *snap_writer;
 
+	struct mbox_void_ptr run_crc_mbox;
 	u32 run_crc_log;
 	struct run_crc run_crc_state;
 
