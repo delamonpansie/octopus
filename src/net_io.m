@@ -53,7 +53,6 @@ static struct netmsg *
 netmsg_alloc(struct netmsg_head *h)
 {
 	struct netmsg *n = slab_cache_alloc(&netmsg_cache);
-
 	TAILQ_INSERT_HEAD(&h->q, n, link);
 	h->last_used_iov = n->iov;
 	return n;
@@ -133,8 +132,8 @@ netmsg_releasel(struct netmsg *m, int count)
 static void
 netmsg_dealloc(struct netmsg_tailq *q, struct netmsg *m)
 {
-	netmsg_releaser(m, 0);
 	TAILQ_REMOVE(q, m, link);
+	netmsg_releaser(m, 0);
 	slab_cache_free(&netmsg_cache, m);
 }
 
