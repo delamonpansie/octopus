@@ -42,7 +42,7 @@
 
 @implementation XLogRemoteReader
 
-- (void) pull_from_remote:(id<XLogPullerAsync>)puller { (void)puller; }
+- (void) replicate_from_remote:(id<XLogPullerAsync>)puller { (void)puller; abort(); }
 - (void) status:(const char *)status reason:(const char *)reason { (void)status; (void)reason; }
 - (i64) handshake_scn { return [recovery scn]; }
 
@@ -89,7 +89,7 @@ again:
 
 		@try {
 			[self status:"ok" reason:NULL];
-			[self pull_from_remote:remote_puller];
+			[self replicate_from_remote:remote_puller];
 		}
 		@catch (Error *e) {
 			[remote_puller close];
@@ -183,33 +183,8 @@ reason:(const char *)reason
 		say_error("replication failure: %s", reason);
 }
 
-- (i64)
-pull_snapshot:(id<XLogPullerAsync>)puller
-{
-	for (;;) {
-		struct row_v12 *row;
-		[puller recv_row];
-
-		while ((row = [puller fetch_row])) {
-			int tag = row->tag & TAG_MASK;
-			int tag_type = row->tag & ~TAG_MASK;
-
-			if (tag_type == TAG_SNAP || tag == snap_initial || tag == snap_final) {
-				[recovery recover_row:row];
-				if (tag == snap_final) {
-					[recovery remote_snap_final_row:row];
-					return row->lsn;
-				}
-			} else {
-				raise_fmt("unexpected tag %s", xlog_tag_to_a(row->tag));
-			}
-		}
-		fiber_gc();
-	}
-}
-
 - (int)
-pull_wal:(id<XLogPullerAsync>)puller
+replicate_wal:(id<XLogPullerAsync>)puller
 {
 	struct row_v12 *row, *final_row = NULL, *rows[WAL_PACK_MAX];
 	/* TODO: use designated palloc_pool */
@@ -329,14 +304,35 @@ pull_wal:(id<XLogPullerAsync>)puller
 	return 0;
 }
 
-- (int)
+- (i64)
+recover_row_stream:(id<XLogPullerAsync>)puller
+{
+	struct row_v12 *row;
+	i64 scn = 0;
+
+	for (;;) {
+		[puller recv_row];
+		while ((row = [puller fetch_row])) {
+			int tag = row->tag & TAG_MASK;
+			[recovery recover_row:row];
+			/*  wal_final is a dummy_row with scn == 0,
+			    return scn from last real row */
+			if (tag == wal_final)
+				return scn;
+			scn = row->scn;
+		}
+		fiber_gc();
+	}
+}
+
+- (i64)
 load_from_remote:(struct feeder_param *)param
 {
 	XLogPuller *puller = nil;
 	say_info("initial loading from WAL feeder %s", sintoa(&param->addr));
-
+	assert(fiber != &sched); /* load_from_remote expects being called from fiber */
 	@try {
-		puller = [[objc_lookUpClass("XLogPuller") alloc] init];
+		puller = [[XLogPuller alloc] init];
 		[puller feeder_param:param];
 
 		int i = 5;
@@ -351,30 +347,26 @@ load_from_remote:(struct feeder_param *)param
 		}
 
 		zero_io_collect_interval();
-
-		[self pull_snapshot:puller];
-		while ([self pull_wal:puller] != 1);
+		return [self recover_row_stream:puller];
 	}
 	@finally {
 		[puller free]; //FIXME: do not drop connection after initial loading
 		unzero_io_collect_interval();
 	}
-	return 0;
 }
 
-- (int)
+- (i64)
 load_from_remote
 {
 	return [self load_from_remote:&feeder];
 }
 
 - (void)
-pull_from_remote:(id<XLogPullerAsync>)puller
+replicate_from_remote:(id<XLogPullerAsync>)puller
 {
-	[super pull_from_remote:puller];
 	assert([[recovery writer] lsn] > 0);
 	for (;;)
-		[self pull_wal:puller];
+		[self replicate_wal:puller];
 }
 
 @end

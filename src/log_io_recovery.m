@@ -276,22 +276,6 @@ wal_final_row
 	title(NULL);
 }
 
-- (void)
-remote_snap_final_row:(const struct row_v12 *)row
-{
-	i64 lsn = row->lsn;
-	if (cfg.sync_scn_with_lsn)
-		assert(lsn == scn);
-	else
-		lsn = 1;
-
-	[self configure_wal_writer:lsn];
-
-	say_debug("Saving initial replica snapshot LSN:%"PRIi64, lsn);
-	/* don't wait for snapshot. our goal to be replica as fast as possible */
-	[self fork_and_snapshot:(getenv("SYNC_DUMP") == NULL)];
-}
-
 - (i64)
 load_from_local
 {
@@ -378,15 +362,27 @@ enable_local_writes
 	skip_scn = TBUF(NULL, 0, NULL);
 	local_writes = true;
 
+
+	i64 writer_lsn = reader_lsn;
 	if (reader_lsn == 0) {
 		assert([remote feeder_addr_configured]);
-		assert(fiber != &sched); /* load_from_remote expects being called from fiber */
-		if ([remote load_from_remote] < 0)
+
+		i64 remote_scn = [remote load_from_remote];
+		if (remote_scn <= 0)
 			raise_fmt("unable to pull initial snapshot");
-	} else {
-		[self configure_wal_writer:reader_lsn];
+		if (cfg.sync_scn_with_lsn)
+			writer_lsn = remote_scn;
+		else
+			writer_lsn = 1;
 	}
 
+	[self configure_wal_writer:writer_lsn];
+
+	if (reader_lsn == 0) {
+		say_debug("Saving initial replica snapshot LSN:%"PRIi64, reader_lsn);
+		/* don't wait for snapshot. our goal to be replica as fast as possible */
+		[self fork_and_snapshot:(getenv("SYNC_DUMP") == NULL)];
+	}
 	[remote hot_standby];
 
 	if (![remote feeder_addr_configured])

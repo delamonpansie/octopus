@@ -428,11 +428,11 @@ enum {
 @end
 
 @interface XLogReplica : XLogRemoteReader
-- (int) load_from_remote;
-- (int) load_from_remote:(struct feeder_param *)remote;
-/* pull_wal & load_from_remote throws exceptions on failure */
-- (int) pull_wal:(id<XLogPullerAsync>)puller;
-- (void) pull_from_remote:(id<XLogPullerAsync>)puller;
+- (i64) load_from_remote;
+- (i64) load_from_remote:(struct feeder_param *)remote;
+/* replicate_wal & load_from_remote throws exceptions on failure */
+- (int) replicate_wal:(id<XLogPullerAsync>)puller;
+- (void) replicate_from_remote:(id<XLogPullerAsync>)puller;
 @end
 
 enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
@@ -481,7 +481,6 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 
 - (i64) load_from_local; /* load from local snap+wal */
 - (void) wal_final_row;
-- (void) remote_snap_final_row:(const struct row_v12 *)row;
 - (void) enable_local_writes;
 - (bool) is_replica;
 - (void) check_replica;
@@ -515,8 +514,6 @@ extern i64 fold_scn;
 
 int wal_disk_writer(int fd, void *state);
 int snapshot_write_row(XLog *l, u16 tag, struct tbuf *row);
-
-void remote_hot_standby(va_list ap);
 
 static inline struct _row_v04 *_row_v04(const struct tbuf *t)
 {
