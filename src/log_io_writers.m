@@ -377,6 +377,9 @@ wal_disk_writer_input_dispatch(ev_io *ev, int __attribute__((unused)) events)
 init_lsn:(i64)init_lsn
    state:(id<RecoveryState>)state_
 {
+	assert(init_lsn > 0);
+	assert([state_ scn] > 0);
+
 	lsn = init_lsn;
 	state = state_;
 
