@@ -89,6 +89,9 @@ xlog_tag_to_a(u16 tag)
 	u16 tag_type = tag & ~TAG_MASK;
 	tag &= TAG_MASK;
 
+	if (tag == 0)
+		return "nil";
+
 	switch (tag_type) {
 	case TAG_SNAP: p += sprintf(p, "snap/"); break;
 	case TAG_WAL: p += sprintf(p, "wal/"); break;
