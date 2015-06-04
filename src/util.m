@@ -282,7 +282,7 @@ assert_fail(const char *assertion, const char *file, unsigned line, const char *
 static struct symbol *symbols;
 static size_t symbol_count;
 
-int
+static int
 compare_symbol(const void *_a, const void *_b)
 {
 	const struct symbol *a = _a, *b = _b;
@@ -372,31 +372,22 @@ cleanup:
 	close(fd);
 }
 
+static int
+compare_symbol2(const void *_key, const void *_memb)
+{
+	const struct symbol *key = _key, *memb = _memb;
+	if (key->addr >= memb->end) /* [addr, end) */
+		return 1;
+	else if (key->addr < memb->addr)
+		return -1;
+	else return 0;
+}
+
 struct symbol *
 addr2symbol(void *addr)
 {
-	int low = 0, high = symbol_count, middle = -1;
-	struct symbol *ret, key = {.addr = addr};
-
-	while(low < high) {
-		middle = low + (high - low) / 2;
-		int diff = compare_symbol(symbols + middle, &key);
-
-		if (diff < 0) {
-			low = middle + 1;
-		} else if (diff > 0) {
-			high = middle;
-		} else {
-			ret = symbols + middle;
-			goto out;
-		}
-	}
-	ret = symbols + high - 1;
-
-out:
-	if (middle != -1 && ret->addr <= addr && addr <= ret->end)
-		return ret;
-	return NULL;
+	struct symbol key = {.addr = addr};
+	return bsearch(&key, symbols, symbol_count, sizeof(key), compare_symbol2);
 }
 
 #endif
