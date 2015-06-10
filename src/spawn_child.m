@@ -196,7 +196,7 @@ fork_spawner()
 			struct fork_reply reply = { .pid = pid };
 			if (sendfd(fsock, sock, &reply, sizeof(reply)) < 0)
 				_exit(0);
-
+			close(sock);
 		} else {
 			close(fsock);
 			octopus_ev_init();
