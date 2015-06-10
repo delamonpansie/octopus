@@ -434,12 +434,15 @@ enum {
 - (bool) feeder_addr_configured;
 - (bool) feeder_changed:(struct feeder_param*)new;
 - (void) hot_standby;
+
+/* load_from_remote throws exceptions on failure */
+- (void) load_from_remote;
+- (void) load_from_remote:(struct feeder_param *)remote;
+
 @end
 
 @interface XLogReplica : XLogRemoteReader
-- (i64) load_from_remote;
-- (i64) load_from_remote:(struct feeder_param *)remote;
-/* replicate_wal & load_from_remote throws exceptions on failure */
+/* replicate_wal throws exceptions on failure */
 - (int) replicate_wal:(id<XLogPullerAsync>)puller;
 - (void) replicate_from_remote:(id<XLogPullerAsync>)puller;
 @end
