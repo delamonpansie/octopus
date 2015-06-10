@@ -74,14 +74,16 @@ class IProto
   attr_reader :sock
 
   def debug
+    str = "#{@end_point} => " + yield.to_s
     if @logger == :stderr then
-      STDERR.puts yield
+      STDERR.puts str
     elsif @logger then
-      @logger.debug yield
+      @logger.debug str
     end
   end
 
   def hexdump(string)
+    return "nil" if string == nil
     string.unpack('C*').map{ |c| "%02x" % c }.join(' ')
   end
 
@@ -110,23 +112,24 @@ class IProto
       payload = message[:raw] || message[:data].pack(message[:pack] || 'L*')
 
       buf = [message[:code], payload.bytesize, sync].pack('L3')
-      debug { "#{@end_point} => send hdr #{buf.unpack('L*').map{ |c| "%010i" % c }.join(' ')}" }
+      debug { "send hdr #{buf.unpack('L*').map{ |c| "%010i" % c }.join(' ')}" }
 
       buf << payload
-      debug { "#{@end_point} => send bdy #{hexdump(payload)}" }
+      debug { "send bdy #{hexdump(payload)}" }
 
       @sock.write(buf)
 
       header = @sock.read(12)
-      raise IProtoError, "can't read header" unless header
+      raise IProtoError, "can't read header" unless header && header.length == 12
       header = header.unpack('L3')
-      debug { "#{@end_point} => recv hdr #{header.map{ |c| "%010i" % c }.join(' ')}" }
+      debug { "recv hdr #{header.map{ |c| "%010i" % c }.join(' ')}" }
 
       raise IProtoError, "response.sync:#{header[2]} != message.sync:#{sync}" if header[2] != sync
       raise IProtoError, "response.code:#{header[0]} != message.code:#{message[:code]}" if header[0] != message[:code]
 
       data = @sock.read(header[1])
-      debug { "#{@end_point} => recv bdy #{hexdump(data)}" }
+      debug { "recv bdy #{hexdump(data)}" }
+      raise IProtoError, "can't read body" unless data && data.length == header[1]
       data
     rescue Exception => exc
       @sock.close
