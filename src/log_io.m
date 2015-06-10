@@ -236,6 +236,8 @@ register_version4: (Class)xlog
 - (id)
 free
 {
+	ev_stat_stop(&stat);
+
 	if (fclose(fd) < 0)
 		say_syserror("can't close");
 	fd = NULL;
@@ -307,8 +309,6 @@ close
 			say_syserror("sync_file_range");
 #endif
 	}
-
-	ev_stat_stop(&stat);
 
 	[self free];
 	return result;
