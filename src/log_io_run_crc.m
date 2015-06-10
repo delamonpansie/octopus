@@ -98,3 +98,4 @@ run_crc_status(struct run_crc *run_crc)
 	return "ok";
 }
 
+register_source();
