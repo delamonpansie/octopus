@@ -47,15 +47,37 @@
 #include <unistd.h>
 #include <fcntl.h>
 
+#if HAVE_VALGRIND_VALGRIND_H && !defined(NVALGRIND)
+# include <valgrind/valgrind.h>
+# include <valgrind/memcheck.h>
+#else
+# define VALGRIND_MAKE_MEM_DEFINED(_qzz_addr, _qzz_len) (void)0
+# define VALGRIND_MAKE_MEM_UNDEFINED(_qzz_addr, _qzz_len) (void)0
+# define VALGRIND_MALLOCLIKE_BLOCK(addr, sizeB, rzB, is_zeroed) (void)0
+# define VALGRIND_FREELIKE_BLOCK(addr, rzB) (void)0
+#endif
+
 static struct slab_cache netmsg_cache;
 
 static struct netmsg *
 netmsg_alloc(struct netmsg_head *h)
 {
-	struct netmsg *n = slab_cache_alloc(&netmsg_cache);
-	TAILQ_INSERT_HEAD(&h->q, n, link);
-	h->last_used_iov = n->iov;
-	return n;
+	struct netmsg *m = slab_cache_alloc(&netmsg_cache);
+	TAILQ_INSERT_HEAD(&h->q, m, link);
+	h->last_used_iov = m->iov;
+
+	VALGRIND_MAKE_MEM_DEFINED(&m->count, sizeof(m->count));
+	VALGRIND_MAKE_MEM_DEFINED(m->iov, sizeof(m->iov));
+	VALGRIND_MAKE_MEM_DEFINED(m->ref, sizeof(m->ref));
+	return m;
+}
+
+static void netmsg_releaser(struct netmsg *, int);
+void
+netmsg_free(struct netmsg *m)
+{
+	netmsg_releaser(m, 0);
+	slab_cache_free(&netmsg_cache, m);
 }
 
 void
@@ -67,22 +89,18 @@ netmsg_head_init(struct netmsg_head *h, struct palloc_pool *pool)
 	netmsg_alloc(h);
 }
 
-static void netmsg_releaser(struct netmsg *, int);
 void
 netmsg_head_dealloc(struct netmsg_head *h)
 {
 	struct netmsg *m, *tmp;
-	TAILQ_FOREACH_SAFE(m, &h->q, link, tmp) {
-		netmsg_releaser(m, 0);
-		slab_cache_free(&netmsg_cache, m);
-	}
+	TAILQ_FOREACH_SAFE(m, &h->q, link, tmp)
+		netmsg_free(m);
 }
 
 
 static void
 netmsg_release(struct netmsg *m, int from, int count)
 {
-	return;
 	bool have_lua_refs = 0;
 	for (int i = from; i < count; i++) {
 		if (m->ref[i] == 0)
@@ -133,8 +151,7 @@ static void
 netmsg_dealloc(struct netmsg_tailq *q, struct netmsg *m)
 {
 	TAILQ_REMOVE(q, m, link);
-	netmsg_releaser(m, 0);
-	slab_cache_free(&netmsg_cache, m);
+	netmsg_free(m);
 }
 
 void
@@ -174,7 +191,7 @@ netmsg_concat(struct netmsg_head *dst, struct netmsg_head *src)
 		m = TAILQ_FIRST(&dst->q);
 		assert(m->count == 0);
 		TAILQ_REMOVE(&dst->q, m, link);
-		slab_cache_free(&netmsg_cache, m);
+		netmsg_free(m);
 	}
 
 	dst->bytes += src->bytes;
