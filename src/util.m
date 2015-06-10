@@ -146,7 +146,6 @@ tnt_fork()
 		   our parent will send SIGTERM to us when he catches SIGINT */
 		signal(SIGINT, SIG_IGN);
 		ev_loop_fork();
-		ev_io_stop(&keepalive_ev);
 		if (keepalive_pipe[0] > 0) {
 			close(keepalive_pipe[0]);
 			keepalive_pipe[0] = -1;
@@ -158,7 +157,8 @@ tnt_fork()
 void
 keepalive(void)
 {
-	char c = 0;
+	char c = '!';
+	assert(keepalive_pipe[0] == -1);
 	if (write(keepalive_pipe[1], &c, 1) != 1)
 		panic("parent is dead");
 }
@@ -171,6 +171,8 @@ keepalive_read()
 next:
 	r = read(keepalive_pipe[0], buf, sizeof(buf));
 	if (r > 0) {
+		for (int i = 0; i < r; i++)
+			assert(buf[i] == '!');
 		if (r == sizeof(buf))
 			goto next;
 		return;

@@ -81,7 +81,9 @@ struct octopus_cfg cfg;
 
 Recovery *recovery;
 XLogDir *wal_dir = nil, *snap_dir = nil;
-int keepalive_pipe[2];
+int keepalive_pipe[2] = {-1, -1};
+static ev_timer coredump_timer = { .coro = 0 };
+static ev_io keepalive_ev = { .coro = 0 };
 
 extern int daemonize(int nochdir, int noclose);
 void out_warning(int v, char *format, ...);
@@ -588,6 +590,16 @@ _keepalive_read(ev_io *e, int events __attribute__((unused)))
 }
 
 static void
+keepalive_pipe_init()
+{
+	int one = 1;
+	if (pipe(keepalive_pipe) == -1 || ioctl(keepalive_pipe[0], FIONBIO, &one) == -1) {
+		say_syserror("can't create keepalive pipe");
+		exit(1);
+	}
+}
+
+static void
 ev_panic(const char *msg)
 {
 	/* panic is a macro */
@@ -615,9 +627,6 @@ octopus_ev_init()
 		 evb, ev_version_major(), ev_version_minor());
 }
 
-ev_timer coredump_timer = { .coro = 0 };
-ev_io keepalive_ev = { .coro = 0 };
-
 void
 octopus_ev_backgroud_tasks()
 {
@@ -625,12 +634,6 @@ octopus_ev_backgroud_tasks()
 		ev_timer_init(&coredump_timer, maximize_core_rlimit,
 			      cfg.coredump * 60, 0);
 		ev_timer_start(&coredump_timer);
-	}
-
-	int one = 1;
-	if (pipe(keepalive_pipe) == -1 || ioctl(keepalive_pipe[0], FIONBIO, &one) == -1) {
-		say_syserror("can't create keepalive pipe");
-		exit(1);
 	}
 
 	ev_io_init(&keepalive_ev, _keepalive_read, keepalive_pipe[0], EV_READ);
@@ -921,6 +924,7 @@ octopus(int argc, char **argv)
 		say_syserror("uname");
 
 	signal_init();
+	keepalive_pipe_init();
 
 	extern int fork_spawner();
 	if (fork_spawner() < 0)
