@@ -25,21 +25,35 @@
  * SUCH DAMAGE.
  */
 
+#ifndef _PALLOC_H_
+#define _PALLOC_H_
+
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
 
 struct palloc_pool;
+struct palloc_cut_point;
+typedef void (* palloc_nomem_cb_t)(struct palloc_pool *, void *);
+struct palloc_config {
+	const char *name;
+	const void *ctx;
+
+	palloc_nomem_cb_t nomem_cb;
+};
+
 void *palloc(struct palloc_pool *pool, size_t size);
 void *prealloc(struct palloc_pool *pool, void *oldptr, size_t oldsize, size_t size);
 void *p0alloc(struct palloc_pool *pool, size_t size);
 void *palloca(struct palloc_pool *pool, size_t size, size_t align);
 void prelease(struct palloc_pool *pool);
 void prelease_after(struct palloc_pool *pool, size_t after);
-struct palloc_pool *palloc_create_pool(const char *name);
+struct palloc_pool *palloc_create_pool(struct palloc_config);
 void palloc_destroy_pool(struct palloc_pool *);
 void palloc_unmap_unused(void);
 const char *palloc_name(struct palloc_pool *, const char *);
+void *palloc_ctx(struct palloc_pool *, const void *);
+palloc_nomem_cb_t palloc_nomem_cb(struct palloc_pool *, palloc_nomem_cb_t);
 size_t palloc_allocated(struct palloc_pool *);
 
 void palloc_register_gc_root(struct palloc_pool *pool,
@@ -47,9 +61,14 @@ void palloc_register_gc_root(struct palloc_pool *pool,
 void palloc_unregister_gc_root(struct palloc_pool *pool, void *ptr);
 void palloc_gc(struct palloc_pool *pool);
 
-void palloc_register_cut_point(struct palloc_pool *pool);
+struct palloc_cut_point *palloc_register_cut_point(struct palloc_pool *pool);
+// cut off to the latest cut point
 void palloc_cutoff(struct palloc_pool *pool);
+// palloc_cutoff_to(pool, NULL) == palloc_cutoff
+void palloc_cutoff_to(struct palloc_pool *pool, struct palloc_cut_point *cut_point);
 
 struct tbuf;
 void palloc_stat_info(struct tbuf *buf);
 bool palloc_owner(struct palloc_pool *pool, void *ptr);
+
+#endif // _PALLOC_H_

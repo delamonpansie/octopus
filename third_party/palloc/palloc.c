@@ -31,10 +31,14 @@
 # import <say.h>
 # import <tbuf.h>
 # import <stat.h>
+#else
+# include "palloc.h"
 #endif
 
 #if HAVE_THIRD_PARTY_QUEUE_H
 # include <third_party/queue.h>
+#elif HAVE_UTIL
+# include "../include/queue.h"
 #else
 # include "queue.h"
 #endif
@@ -82,6 +86,10 @@ void __asan_unpoison_memory_region(void const volatile *addr, size_t size);
 
 #ifndef MMAP_HINT_ADDR
 # define MMAP_HINT_ADDR NULL
+#endif
+
+#ifndef MAP_ANONYMOUS
+# define MAP_ANONYMOUS MAP_ANON
 #endif
 
 #ifndef likely
@@ -169,19 +177,19 @@ struct gc_root {
 };
 SLIST_HEAD(gc_list, gc_root);
 
-struct cut_root {
+struct palloc_cut_point {
 	struct chunk *chunk;
 	uint32_t chunk_free;
 	size_t	allocated;
-	SLIST_ENTRY(cut_root) link;
+	SLIST_ENTRY(palloc_cut_point) link;
 };
-SLIST_HEAD(cut_list, cut_root);
+SLIST_HEAD(cut_list, palloc_cut_point);
 
 struct palloc_pool {
+	struct palloc_config cfg;
 	struct chunk_list_head chunks;
 	SLIST_ENTRY(palloc_pool) link;
 	size_t allocated;
-	const char *name;
 	struct gc_list gc_list;
 	struct cut_list cut_list;
 };
@@ -204,7 +212,9 @@ static __thread struct chunk_class classes[] = {
 };
 
 const uint32_t chunk_magic = 0xbb84fcf6;
+#if !defined(NDEBUG) && defined(PALLOC_POISON)
 static const char poison_char = 'P';
+#endif
 
 static __thread uint64_t release_count = 0;
 
@@ -263,6 +273,9 @@ chunk_alloc(struct chunk *chunk, size_t size)
 {
 	void *brk = chunk->brk,
 	     *ptr = brk;
+
+	if (unlikely(size == 0))
+		return NULL;
 
 	brk = PALLOC_ALIGN(brk + size + PALLOC_REDZONE);
 	chunk->free -= brk - ptr;
@@ -346,8 +359,11 @@ palloc_slow_path(struct palloc_pool *pool, size_t size)
 	struct chunk *chunk;
 
 	chunk = next_chunk_for(pool, size + RZMAX);
-	if (chunk == NULL)
+	if (chunk == NULL) {
+		if (pool->cfg.nomem_cb != NULL)
+			pool->cfg.nomem_cb(pool, (void *)pool->cfg.ctx);
 		abort();
+	}
 
 	return chunk_alloc(chunk, size);
 }
@@ -486,6 +502,7 @@ prelease(struct palloc_pool *pool)
 {
 	release_chunks(&pool->chunks);
 	TAILQ_INIT(&pool->chunks);
+	SLIST_INIT(&pool->cut_list);
 	pool->allocated = 0;
 }
 
@@ -497,7 +514,7 @@ prelease_after(struct palloc_pool *pool, size_t after)
 }
 
 struct palloc_pool *
-palloc_create_pool(const char *name)
+palloc_create_pool(struct palloc_config cfg)
 {
 	struct palloc_pool *pool;
 
@@ -505,9 +522,11 @@ palloc_create_pool(const char *name)
 
 	pool = malloc(sizeof(struct palloc_pool));
 	assert(pool != NULL);
-	memset(pool, 0, sizeof(*pool));
-	pool->name = name;
+	pool->cfg = cfg;
+	pool->allocated = 0;
 	TAILQ_INIT(&pool->chunks);
+	SLIST_INIT(&pool->gc_list);
+	SLIST_INIT(&pool->cut_list);
 	SLIST_INSERT_HEAD(&pools, pool, link);
 	return pool;
 }
@@ -581,52 +600,72 @@ palloc_gc(struct palloc_pool *pool)
 	release_chunks(&old_chunks);
 }
 
-void
+struct palloc_cut_point *
 palloc_register_cut_point(struct palloc_pool *pool)
 {
 	struct chunk *chunk = TAILQ_FIRST(&pool->chunks);
-	uint32_t chunk_free;
-	struct cut_root *root;
+	size_t allocated = pool->allocated;
+	uint32_t chunk_free = 0;
+	struct palloc_cut_point *cut_point;
 
-	if (chunk == NULL)
-		return;
+	if (chunk != NULL)
+		chunk_free = chunk->free;
+	cut_point = palloc(pool, sizeof(*cut_point));
+	cut_point->chunk = chunk;
+	cut_point->chunk_free = chunk_free;
+	cut_point->allocated = allocated;
+	SLIST_INSERT_HEAD(&pool->cut_list, cut_point, link);
 
-	chunk_free = chunk->free;
-	root = palloc(pool, sizeof(*root));
-	root->chunk = chunk;
-	root->chunk_free = chunk_free;
-	root->allocated = pool->allocated;
-	SLIST_INSERT_HEAD(&pool->cut_list, root, link);
+	return cut_point;
 }
 
 void
-palloc_cutoff(struct palloc_pool *pool)
+palloc_cutoff_to(struct palloc_pool *pool, struct palloc_cut_point *cut_point)
 {
-	struct cut_root *root = SLIST_FIRST(&pool->cut_list);
 	struct chunk *chunk, *next_chunk;
+	struct palloc_cut_point *cp;
 
-	if (root == NULL) {
-		prelease(pool);
-		return;
+	if (cut_point == NULL)
+		cut_point = SLIST_FIRST(&pool->cut_list);
+	if (cut_point == NULL)
+		return prelease(pool);
+
+	SLIST_FOREACH(cp, &pool->cut_list, link) {
+		if (cp == cut_point)
+			break;
+	}
+	assert(cp != NULL);
+	// remove cut point and all previous ones
+	SLIST_FIRST(&pool->cut_list) = SLIST_NEXT(cut_point, link);
+
+	if (cut_point->chunk == NULL) {
+		assert(SLIST_EMPTY(&pool->cut_list));
+		return prelease(pool);
 	}
 
 	TAILQ_FOREACH_SAFE(chunk, &pool->chunks, link, next_chunk) {
-		if (chunk == root->chunk)
+		if (chunk == cut_point->chunk)
 			break;
 
 		TAILQ_REMOVE(&pool->chunks, chunk, link);
 		release_chunk(chunk);
 	}
+	assert(chunk == cut_point->chunk);
 	assert(chunk == TAILQ_FIRST(&pool->chunks));
 
-	assert(root->chunk_free >= chunk->free);
-	chunk->brk -= root->chunk_free - chunk->free;
-	chunk->free = root->chunk_free;
-	pool->allocated = root->allocated;
+	assert(cut_point->chunk_free >= chunk->free);
+	chunk->brk -= cut_point->chunk_free - chunk->free;
+	chunk->free = cut_point->chunk_free;
+	pool->allocated = cut_point->allocated;
 
-	SLIST_REMOVE_HEAD(&pool->cut_list, link);
 	chunk_poison(chunk);
 	VALGRIND_MEMPOOL_TRIM(chunk, (void *)chunk + sizeof(*chunk), chunk->data_size - chunk->free);
+}
+
+void
+palloc_cutoff(struct palloc_pool *pool)
+{
+	return palloc_cutoff_to(pool, NULL);
 }
 
 #ifdef OCTOPUS
@@ -659,7 +698,7 @@ palloc_stat_info(struct tbuf *buf)
 			chunks[i] = 0;
 
 		tbuf_printf(buf, "    - name:  %s\n      alloc: %zu" CRLF,
-			    pool->name, pool->allocated);
+			    pool->cfg.name, pool->allocated);
 
 		if (pool->allocated > 0) {
 			tbuf_printf(buf, "      busy chunks:" CRLF);
@@ -685,10 +724,28 @@ palloc_stat_info(struct tbuf *buf)
 const char *
 palloc_name(struct palloc_pool *pool, const char *new_name)
 {
-	const char *old_name = pool->name;
+	const char *old_name = pool->cfg.name;
 	if (new_name != NULL)
-		pool->name = new_name;
+		pool->cfg.name = new_name;
 	return old_name;
+}
+
+void *
+palloc_ctx(struct palloc_pool *pool, const void *new_ctx)
+{
+	void *old_ctx = (void *)pool->cfg.ctx;
+	if (new_ctx != NULL)
+		pool->cfg.ctx = new_ctx;
+	return old_ctx;
+}
+
+palloc_nomem_cb_t
+palloc_nomem_cb(struct palloc_pool *pool, palloc_nomem_cb_t new_cb)
+{
+	void *old_cb = pool->cfg.nomem_cb;
+	if (new_cb != NULL)
+		pool->cfg.nomem_cb = new_cb;
+	return old_cb;
 }
 
 size_t
