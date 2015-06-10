@@ -114,11 +114,11 @@ tbuf_gc(struct palloc_pool *pool, void *ptr)
 	struct tbuf *b = ptr;
 	tbuf_assert(b);
 	if (unlikely(tbuf_size(b) == 0)) {
-		b->free = 128;
-		b->ptr = b->end = palloc(pool, b->free);
+		b->ptr = b->end = NULL;
 	} else {
 		void *data = palloc(pool, tbuf_size(b));
 		int len = tbuf_len(b);
+
 		memcpy(data, b->ptr, len);
 		b->ptr = data;
 		b->end = data + len;
