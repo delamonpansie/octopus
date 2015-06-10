@@ -51,16 +51,6 @@ struct wal_disk_writer_conf {
 	u32 run_crc;
 };
 
-struct wal_reply {
-	u32 packet_len;
-	u32 row_count;
-	struct fiber *sender;
-	u32 fid;
-
-	struct row_commit_info row_info[];
-} __attribute__((packed));
-
-
 @interface WALDiskWriter: Object {
 @public
 	i64 lsn;
@@ -402,7 +392,7 @@ init_lsn:(i64)init_lsn
 }
 
 
-- (int)
+- (struct wal_reply *)
 submit:(const void *)data len:(u32)data_len tag:(u16)tag
 {
 	struct row_v12 row = { .scn = 0,
@@ -428,11 +418,6 @@ submit:(const void *)data len:(u32)data_len tag:(u16)tag
 int
 wal_pack_prepare(XLogWriter *w, struct wal_pack *pack)
 {
-	if (![w->state local_writes]) {
-		say_warn("local writes disabled");
-		return 0;
-	}
-
 	pack->netmsg = &w->io.wbuf;
 	pack->packet_len = sizeof(*pack) - offsetof(struct wal_pack, packet_len);
 	pack->fid = fiber->fid;
@@ -465,7 +450,7 @@ wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 	net_add_iov(pack->netmsg, data, len);
 }
 
-- (int)
+- (struct wal_reply *)
 wal_pack_submit
 {
 	ev_io_start(&io.out);
@@ -475,9 +460,8 @@ wal_pack_submit
 	else
 		lsn = reply->row_info[reply->row_count - 1].lsn;
 
-	[state update_state_rci:reply->row_info count:reply->row_count];
 	say_debug("%s: => rows:%i LSN:%"PRIi64, __func__, reply->row_count, lsn);
-	return reply->row_count;
+	return reply;
 }
 @end
 

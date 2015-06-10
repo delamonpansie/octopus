@@ -254,6 +254,15 @@ struct wal_pack {
 	u32 fid;
 } __attribute__((packed));
 
+struct wal_reply {
+	u32 packet_len;
+	u32 row_count;
+	struct fiber *sender;
+	u32 fid;
+
+	struct row_commit_info row_info[];
+} __attribute__((packed));
+
 
 int wal_pack_prepare(XLogWriter *r, struct wal_pack *);
 u32 wal_pack_append_row(struct wal_pack *pack, struct row_v12 *row);
@@ -337,8 +346,8 @@ extern i64 snap_lsn; /* may be used for overriding initial snapshot,
 
 - (i64) lsn;
 - (const struct child *) wal_writer;
-- (int) wal_pack_submit;
-- (int) submit:(const void *)data len:(u32)len tag:(u16)tag;
+- (struct wal_reply *) wal_pack_submit;
+- (struct wal_reply *) submit:(const void *)data len:(u32)len tag:(u16)tag;
 @end
 
 @interface XLogPuller: Object <XLogPuller, XLogPullerAsync> {

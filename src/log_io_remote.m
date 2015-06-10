@@ -282,7 +282,8 @@ replicate_wal:(id<XLogPullerAsync>)puller
 			for (int i = confirmed; i < pack_rows; i++)
 				wal_pack_append_row(&pack, rows[i]);
 
-			confirmed += [writer wal_pack_submit];
+			struct wal_reply *reply = [writer wal_pack_submit];
+			confirmed += reply->row_count;
 			if (confirmed != pack_rows) {
 				say_warn("WAL write failed confirmed:%i != sent:%i",
 					 confirmed, pack_rows);
