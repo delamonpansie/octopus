@@ -266,8 +266,7 @@ follow_file(ev_stat *w, int events __attribute__((unused)))
 		say_info("done `%s' LSN:%"PRIi64,
 			 reader->current_wal->filename, [reader lsn]);
 		[reader close_current_wal];
-		follow_dir((ev_timer *)w, 0);
-		return;
+		follow_dir(&(struct ev_timer){.data = reader}, 0);
 	}
 }
 
