@@ -14,7 +14,8 @@ end
 
 Env.connect_eval do |env|
   ping
-  129.times do |i|
+  sleep 0.5 # run_crc_delay + 0.1 tolerance
+  33.times do |i|
     insert [i, i + 1, i + 2]
   end
 

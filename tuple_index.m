@@ -30,7 +30,7 @@
 #import <fiber.h>
 #import <pickle.h>
 #import <index.h>
-#import <cfg/cfg_octopus.h>
+#import <cfg/octopus.h>
 
 #include <stdbool.h>
 

@@ -35,7 +35,7 @@
 #import <util.h>
 #import <objc.h>
 #import <index.h>
-#import <paxos.h>
+#import <spawn_child.h>
 
 #import <mod/box/box.h>
 #import <mod/box/moonbox.h>
@@ -51,7 +51,7 @@
 #include <arpa/inet.h>
 #include <sysexits.h>
 
-static struct service box_primary, box_secondary;
+static struct iproto_service box_primary, box_secondary;
 struct object_space *object_space_registry[256];
 struct object_space *
 object_space(int n)
@@ -207,14 +207,14 @@ build_secondary_indexes()
 static void
 initialize_service()
 {
-	tcp_iproto_service(&box_primary, cfg.primary_addr, NULL, NULL);
-	box_service_ro(&box_primary);
+	iproto_service(&box_primary, cfg.primary_addr, NULL);
+	box_service(&box_primary);
 
 	for (int i = 0; i < MAX(1, cfg.wal_writer_inbox_size); i++)
 		fiber_create("box_worker", iproto_worker, &box_primary);
 
 	if (cfg.secondary_addr != NULL && strcmp(cfg.secondary_addr, cfg.primary_addr) != 0) {
-		tcp_iproto_service(&box_secondary, cfg.secondary_addr, NULL, NULL);
+		iproto_service(&box_secondary, cfg.secondary_addr, NULL);
 		box_service_ro(&box_secondary);
 		fiber_create("box_secondary_worker", iproto_worker, &box_secondary);
 	}
@@ -222,6 +222,14 @@ initialize_service()
 }
 
 @implementation Box
+
+- (id)
+init_shard:(Shard<Shard> *)shard_
+{
+	[super init];
+	shard = shard_;
+	return self;
+}
 
 - (void)
 apply:(struct tbuf *)data tag:(u16)tag
@@ -298,28 +306,30 @@ wal_final_row
 	if (box_primary.name == NULL) {
 		build_secondary_indexes();
 		initialize_service();
+		[self status_changed];
 	}
 }
 
 - (void)
 status_changed
 {
-	if (recovery->status == PRIMARY) {
-		box_service(&box_primary);
+	if (box_primary.name == NULL)
+		return;
+	if (shard->status == PRIMARY) {
+		box_primary.proxy = NULL;
 		return;
 	}
-	if (recovery->prev_status == PRIMARY)
-		box_service_ro(&box_primary);
+	if (shard->status == REMOTE_STANDBY && [shard proxy_addr]) {
+		box_primary.proxy = iproto_add_remote_peer([ shard proxy_addr], box_primary.pool, NULL);
+		box_primary.proxy->ts.name = "proxy_to_primary";
+		return;
+	}
 }
 
 - (void)
 print:(const struct row_v12 *)row into:(struct tbuf *)buf
 {
-	if (print_sys_row(buf, row))
-		return;
-
-	print_row_header(buf, row);
-	box_print_row(buf, row->tag, &TBUF(row->data, row->len, fiber->pool));
+	print_row(buf, row, box_print_row);
 }
 
 - (int)
@@ -501,21 +511,16 @@ out:
 
 static void init_second_stage(va_list ap __attribute__((unused)));
 
+Box *box;
 static void
 init(void)
 {
 	title("loading");
-	if (cfg.paxos_enabled) {
-		if (cfg.local_hot_standby)
-			panic("wal_hot_standby is incompatible with paxos");
-	}
 
-	struct feeder_param feeder;
-	enum feeder_cfg_e fid_err = feeder_param_fill_from_cfg(&feeder, NULL);
-	if (fid_err) panic("wrong feeder conf");
-
-	recovery = [[Recovery alloc] init_feeder_param:&feeder];
-	[recovery set_client:[[Box alloc] init]];
+	extern Recovery *recovery;
+	recovery = [[Recovery alloc] init];
+	box = [[Box alloc] init_shard:[recovery shard]];
+	[[recovery shard] set_executor:box];
 
 	if (init_storage)
 		return;
@@ -532,12 +537,8 @@ init_second_stage(va_list ap __attribute__((unused)))
 
 	configure();
 
-	if (cfg.paxos_enabled) {
-		[recovery load_from_local];
-		[recovery enable_local_writes];
-	} else {
-		[recovery simple];
-	}
+	extern Recovery *recovery;
+	[recovery simple];
 }
 
 static void
@@ -548,21 +549,21 @@ info(struct tbuf *out, const char *what)
 		tbuf_printf(out, "  version: \"%s\"" CRLF, octopus_version());
 		tbuf_printf(out, "  uptime: %i" CRLF, tnt_uptime());
 		tbuf_printf(out, "  pid: %i" CRLF, getpid());
-		struct child *wal_writer = [recovery wal_writer];
-		if (wal_writer)
-			tbuf_printf(out, "  wal_writer_pid: %" PRIi64 CRLF,
-				    (i64)wal_writer->pid);
+		extern Recovery *recovery;
+		const struct child *wal_writer = [recovery wal_writer];
+		tbuf_printf(out, "  wal_writer_pid: %" PRIi64 CRLF,
+			    (i64)wal_writer->pid);
 		tbuf_printf(out, "  lsn: %" PRIi64 CRLF, [recovery lsn]);
-		tbuf_printf(out, "  scn: %" PRIi64 CRLF, [recovery scn]);
-		if ([recovery is_replica]) {
-			tbuf_printf(out, "  recovery_lag: %.3f" CRLF, [recovery lag]);
-			tbuf_printf(out, "  recovery_last_update: %.3f" CRLF, [recovery last_update_tstamp]);
+		tbuf_printf(out, "  scn: %" PRIi64 CRLF, [[recovery shard] scn]);
+		if ([box->shard is_replica]) {
+			tbuf_printf(out, "  recovery_lag: %.3f" CRLF, [[recovery shard] lag]);
+			tbuf_printf(out, "  recovery_last_update: %.3f" CRLF, [[recovery shard] last_update_tstamp]);
 			if (!cfg.ignore_run_crc) {
-				tbuf_printf(out, "  recovery_run_crc_lag: %.3f" CRLF, [recovery run_crc_lag]);
-				tbuf_printf(out, "  recovery_run_crc_status: %s" CRLF, [recovery run_crc_status]);
+				tbuf_printf(out, "  recovery_run_crc_lag: %.3f" CRLF, [[recovery shard] run_crc_lag]);
+				tbuf_printf(out, "  recovery_run_crc_status: %s" CRLF, [[recovery shard] run_crc_status]);
 			}
 		}
-		tbuf_printf(out, "  status: %s%s%s" CRLF, [recovery status],
+		tbuf_printf(out, "  status: %s%s%s" CRLF, [[recovery shard] status],
 			    cfg.custom_proc_title ? "@" : "",
 			    cfg.custom_proc_title ?: "");
 		tbuf_printf(out, "  config: \"%s\""CRLF, cfg_filename);
@@ -583,9 +584,9 @@ info(struct tbuf *out, const char *what)
 
 	if (strcmp(what, "net") == 0) {
 		if (box_primary.name != NULL)
-			service_info(out, &box_primary);
+			iproto_service_info(out, &box_primary);
 		if (box_secondary.name != NULL)
-			service_info(out, &box_secondary);
+			iproto_service_info(out, &box_secondary);
 		return;
 	}
 }
@@ -610,10 +611,11 @@ reload_config(struct octopus_cfg *old _unused_,
 {
 	struct feeder_param feeder;
 	feeder_param_fill_from_cfg(&feeder, new);
+	extern Recovery *recovery;
 	[recovery feeder_changed:&feeder];
 }
 
-static struct tnt_module box = {
+static struct tnt_module box_mod = {
 	.name = "box",
 	.version = box_version_string,
 	.init = init,
@@ -624,5 +626,5 @@ static struct tnt_module box = {
 	.info = info
 };
 
-register_module(box);
+register_module(box_mod);
 register_source();

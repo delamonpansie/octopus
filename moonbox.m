@@ -73,12 +73,12 @@ luaT_box_dispatch(struct lua_State *L)
 		req = luaL_checklstring(L, 2, &len);
 	}
 	@try {
-		if ([recovery is_replica])
+		if ([box->shard is_replica])
 			iproto_raise(ERR_CODE_NONMASTER, "replica is readonly");
 
 		box_prepare(&txn, &TBUF(req, len, NULL));
 		if (txn.obj_affected > 0 && txn.object_space->wal) {
-			if ([recovery submit:req len:len tag:txn.op<<5|TAG_WAL] != 1)
+			if ([box->shard submit:req len:len tag:txn.op<<5|TAG_WAL] != 1)
 				iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write row");
 		}
 		box_commit(&txn);

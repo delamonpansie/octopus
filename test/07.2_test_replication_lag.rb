@@ -50,18 +50,16 @@ end
 SlaveEnv.new.env_eval do
   start
   master.insert [1,2,3]
-  wait_for { open('|./octopus --cat 00000000000000000003.xlog 2>/dev/null').each_line.grep(/scn:3/).length > 0 }
+  wait_for { open('|./octopus --cat 000000000000000000*.xlog 2>/dev/null').each_line.grep(/scn:16/).length > 0 }
 
-end
+  TCPSocket.open(0, 22025) do |s|
+    s.puts "sh in"
+    s.puts "quit"
+    r = YAML.load(s.read)
+    info = r["info"]
 
-
-TCPSocket.open(0, 22025) do |s|
-  s.puts "sh in"
-  s.puts "quit"
-  r = YAML.load(s.read)
-  info = r["info"]
-
-  %w/recovery_lag recovery_run_crc_status/.each do |p|
-    puts "#{p}: #{info[p]}"
+    %w/recovery_lag recovery_run_crc_status/.each do |p|
+      puts "#{p}: #{info[p]}"
+    end
   end
 end

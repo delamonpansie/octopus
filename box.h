@@ -117,8 +117,8 @@ void box_prepare_meta(struct box_meta_txn *txn, struct tbuf *data);
 void box_commit_meta(struct box_meta_txn *txn);
 void box_rollback_meta(struct box_meta_txn *txn);
 
-void box_service(struct service *s);
-void box_service_ro(struct service *s);
+void box_service(struct iproto_service *s);
+void box_service_ro(struct iproto_service *s);
 
 #define BOX_RETURN_TUPLE 1
 #define BOX_ADD 2
@@ -163,11 +163,13 @@ void box_service_ro(struct service *s);
 enum messages ENUM_INITIALIZER(MESSAGES);
 extern char * const box_ops[];
 
-extern Recovery *recovery;
-
-@interface Box : Object <RecoveryClient>
+@interface Box : Object <Executor> {
+@public
+	Shard<Shard> *shard;
+}
 @end
 
+extern Box *box;
 
 void *next_field(void *f);
 void append_field(struct tbuf *b, void *f);

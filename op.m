@@ -707,30 +707,6 @@ box_lua_cb(struct netmsg_head *wbuf, struct iproto *request)
 	}
 }
 
-static void
-box_paxos_cb(struct netmsg_head *h __attribute__((unused)),
-	     struct iproto *request __attribute__((unused)))
-{
-	if ([recovery respondsTo:@selector(leader_redirect_raise)])
-		[recovery perform:@selector(leader_redirect_raise)];
-	else
-		iproto_raise(ERR_CODE_UNSUPPORTED_COMMAND,
-			     "PAXOS_LEADER unsupported in non cluster configuration");
-}
-
-static void
-box_paxos_proxy_cb(struct netmsg_head *wbuf, struct iproto *request)
-{
-	u32 sync = request->sync;
-	struct iproto_peer *peer = [(PaxosRecovery *)recovery leader_primary];
-	struct iproto *reply = iproto_sync_send(peer, request, NULL, 0);
-	if (!reply)
-		return;
-	reply->sync = sync;
-	net_add_iov_dup(wbuf, reply, sizeof(*reply) + reply->data_len);
-}
-
-
 struct rwlock {
 	bool locked;
 	SLIST_HEAD(, fiber) wait;
@@ -788,7 +764,7 @@ void
 box_meta_cb(struct netmsg_head *wbuf, struct iproto *request)
 {
 	say_debug2("%s: op:0x%02x sync:%u", __func__, request->msg_code, request->sync);
-	if ([recovery is_replica])
+	if ([box->shard is_replica])
 		iproto_raise(ERR_CODE_NONMASTER, "replica is readonly");
 
 	wlock(&lock);
@@ -796,9 +772,9 @@ box_meta_cb(struct netmsg_head *wbuf, struct iproto *request)
 	@try {
 		@try {
 			box_prepare_meta(&txn, &TBUF(request->data, request->data_len, NULL));
-			if ([recovery submit:request->data
-					 len:request->data_len
-					 tag:request->msg_code<<5|TAG_WAL] != 1)
+			if ([box->shard submit:request->data
+					   len:request->data_len
+					   tag:request->msg_code<<5|TAG_WAL] != 1)
 				iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
 		}
 		@catch (id e) {
@@ -827,7 +803,7 @@ box_cb(struct netmsg_head *wbuf, struct iproto *request)
 {
 	say_debug2("%s: c:%p op:0x%02x sync:%u", __func__, NULL, request->msg_code, request->sync);
 
-	if ([recovery is_replica])
+	if ([box->shard is_replica])
 		iproto_raise(ERR_CODE_NONMASTER, "replica is readonly");
 
 	struct box_txn txn = { .op = request->msg_code };
@@ -841,9 +817,9 @@ box_cb(struct netmsg_head *wbuf, struct iproto *request)
 				iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "ignored object space");
 
 			if (txn.obj_affected > 0 && txn.object_space->wal) {
-				if ([recovery submit:request->data
-						 len:request->data_len
-						 tag:request->msg_code<<5|TAG_WAL] != 1)
+				if ([box->shard submit:request->data
+						   len:request->data_len
+						   tag:request->msg_code<<5|TAG_WAL] != 1)
 					iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
 			}
 		}
@@ -913,16 +889,16 @@ box_select_cb(struct netmsg_head *wbuf, struct iproto *request)
 
 #define foreach_op(...) for(int *op = (int[]){__VA_ARGS__, 0}; *op; op++)
 
+
 void
-box_service(struct service *s)
+box_service(struct iproto_service *s)
 {
 	foreach_op(NOP, SELECT, SELECT_LIMIT)
 		service_register_iproto(s, *op, box_select_cb, IPROTO_NONBLOCK);
-	service_register_iproto(s, PAXOS_LEADER, box_paxos_cb, IPROTO_NONBLOCK);
 	foreach_op(INSERT, UPDATE_FIELDS, DELETE, DELETE_1_3)
-		service_register_iproto(s, *op, box_cb, 0);
+		service_register_iproto(s, *op, box_cb, IPROTO_PROXY);
 	foreach_op(CREATE_OBJECT_SPACE, CREATE_INDEX, DROP_OBJECT_SPACE, DROP_INDEX, TRUNCATE)
-		service_register_iproto(s, *op, box_meta_cb, 0);
+		service_register_iproto(s, *op, box_meta_cb, IPROTO_PROXY);
 	service_register_iproto(s, EXEC_LUA, box_lua_cb, 0);
 }
 
@@ -934,25 +910,18 @@ box_roerr(struct netmsg_head *h __attribute__((unused)),
 }
 
 void
-box_service_ro(struct service *s)
+box_service_ro(struct iproto_service *s)
 {
 	service_register_iproto(s, SELECT, box_select_cb, IPROTO_NONBLOCK);
 	service_register_iproto(s, SELECT_LIMIT, box_select_cb, IPROTO_NONBLOCK);
-	service_register_iproto(s, PAXOS_LEADER, box_paxos_cb, IPROTO_NONBLOCK);
 
-	if (cfg.paxos_enabled) {
-		foreach_op(INSERT, UPDATE_FIELDS, DELETE, DELETE_1_3, EXEC_LUA,
-			   CREATE_OBJECT_SPACE, CREATE_INDEX, DROP_OBJECT_SPACE, DROP_INDEX, TRUNCATE)
-			service_register_iproto(s, *op, box_paxos_proxy_cb, 0);
-	} else {
-		foreach_op(INSERT, UPDATE_FIELDS, DELETE, DELETE_1_3, PAXOS_LEADER,
-			   CREATE_OBJECT_SPACE, CREATE_INDEX, DROP_OBJECT_SPACE, DROP_INDEX, TRUNCATE)
-			service_register_iproto(s, *op, box_roerr, IPROTO_NONBLOCK);
+	foreach_op(INSERT, UPDATE_FIELDS, DELETE, DELETE_1_3, PAXOS_LEADER,
+		   CREATE_OBJECT_SPACE, CREATE_INDEX, DROP_OBJECT_SPACE, DROP_INDEX, TRUNCATE)
+		service_register_iproto(s, *op, box_roerr, IPROTO_NONBLOCK);
 
-		/* allow select only lua procedures
-		   updates are blocked by luaT_box_dispatch() */
-		service_register_iproto(s, EXEC_LUA, box_lua_cb, 0);
-	}
+	/* allow select only lua procedures
+	   updates are blocked by luaT_box_dispatch() */
+	service_register_iproto(s, EXEC_LUA, box_lua_cb, 0);
 }
 
 void __attribute__((constructor))
