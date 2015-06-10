@@ -544,7 +544,7 @@ int
 luaT_require(const char *modname)
 {
 	struct lua_State *L = fiber->L;
-	lua_pushcfunction(L, luaT_traceback);
+	luaT_pushtraceback(L);
 	lua_getglobal(L, "require");
 	lua_pushstring(L, modname);
 	if (!lua_pcall(L, 1, 0, -3)) {
