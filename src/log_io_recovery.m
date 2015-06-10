@@ -67,35 +67,98 @@ dummy_row(i64 lsn, i64 scn, u16 tag)
 	return r;
 }
 
-@implementation Recovery
-+ (id)
-alloc
+@implementation Shard
+- (i64) scn { return scn; }
+- (ev_tstamp) lag { return lag; }
+- (ev_tstamp) last_update_tstamp { return last_update_tstamp; }
+
+- (const char *)status { return status_buf; }
+- (ev_tstamp) run_crc_lag { return run_crc_lag(&run_crc_state); }
+- (const char *) run_crc_status { return run_crc_status(&run_crc_state); }
+- (u32) run_crc_log { return run_crc_log; }
+
+
+- (int)
+submit:(const void *)data len:(u32)len tag:(u16)tag
 {
-	if (strcmp([[self class] name], "Recovery") != 0) /* break recursion */
-	    goto ours;
-
-#ifdef PAXOS
-	if (cfg.paxos_enabled)
-		return [PaxosRecovery alloc];
-#endif
-
-ours:
-	return [super alloc];
+	(void)data; (void)len; (void)tag;
+	abort();
 }
 
+
+- (int)
+submit_run_crc
+{
+	struct tbuf *b = tbuf_alloc(fiber->pool);
+	tbuf_append(b, &scn, sizeof(scn));
+	tbuf_append(b, &run_crc_log, sizeof(run_crc_log));
+	typeof(run_crc_log) run_crc_mod = 0;
+	tbuf_append(b, &run_crc_mod, sizeof(run_crc_mod));
+
+	return [self submit:b->ptr len:tbuf_len(b) tag:run_crc|TAG_SYS];
+}
+
+- (void)
+status_update:(enum recovery_status)new_status fmt:(const char *)fmt, ...
+{
+	char buf[sizeof(status_buf)];
+	va_list ap;
+	va_start(ap, fmt);
+	vsnprintf(buf, sizeof(buf), fmt, ap);
+	va_end(ap);
+
+	if (strcmp(buf, status_buf) == 0 && new_status == status)
+		return;
+
+	say_info("recovery status: %i %s", new_status, buf);
+	strncpy(status_buf, buf, sizeof(status_buf));
+	title(NULL);
+
+	if (new_status == status)
+		return;
+
+	prev_status = status;
+	status = new_status;
+	[executor status_changed];
+}
+
+- (id<Executor>) executor { return executor; }
+
+- (void)
+set_executor:(id<Executor>)obj
+{
+	executor = obj;
+}
+
+- (void)
+wal_final_row
+{
+	[executor wal_final_row];
+}
+
+@end
+
+@implementation Recovery
 - (id)
 init
 {
 	[super init];
 	mbox_init(&run_crc_mbox);
 	reader = [[XLogReader alloc] init_recovery:self];
+	snap_writer = [[SnapWriter alloc] init_state:self];
+
+	if (cfg.paxos_enabled && cfg.wal_writer_inbox_size == 0)
+		panic("paxos enabled but wal_writer_inbox_size == 0");
+
+	if (cfg.paxos_enabled)
+		shard = [[Paxos alloc] init_recovery:self];
+	else
+		shard = [[POR alloc] init_recovery:self];
+
 	return self;
 }
 
-- (id<RecoveryClient>) client { return client; }
-- (const char *) status { return status_buf; }
-- (ev_tstamp) lag { return lag; }
-- (ev_tstamp) last_update_tstamp { return last_update_tstamp; }
+- (id<Shard>) shard { return shard; }
 
 - (i64) lsn {
 	if (unlikely(initial_snap)) return 1;
@@ -103,111 +166,14 @@ init
 	if (reader) return [reader lsn];
 	return -1;
 }
-- (i64) scn { return scn; }
-- (u32) run_crc_log { return run_crc_log; }
-- (bool) local_writes { return local_writes; }
-- (void) update_state_rci:(const struct row_commit_info *)rci count:(int)count
-{
-	for (int i = 0; i < count; i++, rci++) {
-		if (cfg.sync_scn_with_lsn && rci->lsn != rci->scn)
-			panic("out ouf sync SCN:%"PRIi64 " != LSN:%"PRIi64,
-			      rci->scn, rci->lsn);
-
-		/* only TAG_WAL rows affect scn & run_crc */
-		if (scn_changer(rci->tag)) {
-			scn = rci->scn;
-			run_crc_log = rci->run_crc;
-			run_crc_record(&run_crc_state, rci->tag, rci->scn, rci->run_crc);
-		}
-	}
-}
-- (void) update_state_r:(const struct row_v12 *)r
-{
-	if (cfg.sync_scn_with_lsn && r->lsn != r->scn)
-		panic("out of sync SCN:%"PRIi64 " != LSN:%"PRIi64, r->scn, r->lsn);
-
-	last_update_tstamp = ev_now();
-	lag = last_update_tstamp - r->tm;
-
-	int tag = r->tag & TAG_MASK;
-
-	if (scn_changer(r->tag) || tag == snap_final) {
-		if (unlikely(tag != snap_final && r->scn - scn != 1 &&
-			     cfg.panic_on_scn_gap && [[self class] name] == [Recovery name]))
-			panic("non consecutive SCN %"PRIi64 " -> %"PRIi64, scn, r->scn);
-
-		scn = r->scn;
-		run_crc_record(&run_crc_state, r->tag, scn, run_crc_log);
-	}
-}
 
 - (XLogWriter *) writer { return writer; }
 - (const struct child *) wal_writer { return [[self writer] wal_writer]; }
 
-- (int)
-submit:(const void *)data len:(u32)len tag:(u16)tag
-{
-	static unsigned count;
-	static struct msg_void_ptr msg;
-	if (++count % 32 == 0 && msg.link.tqe_prev == NULL)
-		mbox_put(&run_crc_mbox, &msg, link);
-
-	if (cfg.wal_writer_inbox_size == 0) {
-		scn++;
-		return 1;
-	}
-
-	if (!local_writes || status == REMOTE_STANDBY) {
-		say_warn("local writes disabled");
-		return 0;
-	}
-
-	return [writer submit:data len:len tag:tag];
-}
-
-
-- (void)
-apply_sys:(const struct row_v12 *)r
-{
-	int tag = r->tag & TAG_MASK;
-
-	switch (tag) {
-	case snap_initial:
-		assert(snap_lsn == 0 || r->lsn == snap_lsn);
-		if (r->len == sizeof(u32) * 3) { /* not a dummy row */
-			struct tbuf buf = TBUF(r->data, r->len, NULL);
-			estimated_snap_rows = read_u32(&buf);
-			run_crc_log = read_u32(&buf);
-			(void)read_u32(&buf); /* ignore run_crc_mod */
-		}
-			/* set initial lsn & scn, otherwise gap check below will fail */
-		scn = r->scn;
-		say_debug("%s: run_crc_log: 0x%x", __func__, run_crc_log);
-		break;
-	case snap_skip_scn:
-		assert(r->len > 0 && r->len % sizeof(u64) == 0);
-		char *ptr = malloc(r->len);
-		memcpy(ptr, r->data, r->len);
-		skip_scn = TBUF(ptr, r->len, (void *)ptr); /* NB: backing storage is malloc! */
-		next_skip_scn = read_u64(&skip_scn);
-		break;
-	case run_crc:
-		if (cfg.ignore_run_crc)
-			break;
-
-		if (r->len != sizeof(i64) + sizeof(u32) * 2)
-			break;
-
-		run_crc_verify(&run_crc_state, &TBUF(r->data, r->len, NULL));
-		break;
-	}
-}
 
 - (void)
 recover_row:(struct row_v12 *)r
 {
-	int tag_type = r->tag & ~TAG_MASK;
-
 	@try {
 		say_debug("%s: LSN:%"PRIi64" SCN:%"PRIi64" tag:%s",
 			  __func__, r->lsn, r->scn, xlog_tag_to_a(r->tag));
@@ -224,28 +190,24 @@ recover_row:(struct row_v12 *)r
 			}
 		}
 
-		run_crc_calc(&run_crc_log, r->tag, r->data, r->len);
-
-		if (r->scn == next_skip_scn) {
-			say_info("skip SCN:%"PRIi64 " tag:%s", next_skip_scn, xlog_tag_to_a(r->tag));
-
-			/* there are multiply rows with same SCN in paxos mode.
-			   the last one is WAL row */
-			if (tag_type == TAG_WAL)
-				next_skip_scn = tbuf_len(&skip_scn) > 0 ?
-						read_u64(&skip_scn) : 0;
-		} else {
-			[client apply:&TBUF(r->data, r->len, fiber->pool) tag:r->tag];
-			if (tag_type == TAG_SYS)
-				[self apply_sys:r];
+		int tag = r->tag & TAG_MASK;
+		switch (tag) {
+		case snap_initial:
+			assert(snap_lsn == 0 || r->lsn == snap_lsn);
+			if (r->len == sizeof(u32) * 3) { /* not a dummy row */
+				struct tbuf row_data = TBUF(r->data, r->len, NULL);
+				estimated_snap_rows = read_u32(&row_data);
+				(void)read_u32(&row_data);
+				(void)read_u32(&row_data); /* ignore run_crc_mod */
+			}
 		}
 
-		[self update_state_r:r];
+		[shard apply:r];
 
 		if (unlikely(fold_scn)) {
 			if (r->scn == fold_scn && (r->tag & ~TAG_MASK) == TAG_WAL) {
-				if ([(id)client respondsTo:@selector(snapshot_fold)])
-					exit([(id)client snapshot_fold]);
+				if ([(id)[shard executor] respondsTo:@selector(snapshot_fold)])
+					exit([(id)[shard executor] snapshot_fold]);
 				exit([snap_writer snapshot_write]);
 			}
 		}
@@ -254,39 +216,37 @@ recover_row:(struct row_v12 *)r
 		say_error("Recovery: %s at %s:%i\n%s", e->reason, e->file, e->line,
 				e->backtrace);
 		struct tbuf *out = tbuf_alloc(fiber->pool);
-		[client print:r into:out];
+		[[shard executor] print:r into:out];
 		printf("Failed row: %.*s\n", tbuf_len(out), (char *)out->ptr);
 
 		@throw;
 	}
 	@finally {
-		say_debug("%s: => LSN:%"PRIi64" SCN:%"PRIi64, __func__, [self lsn], scn);
+		say_debug("%s: => LSN:%"PRIi64" SCN:%"PRIi64, __func__, [self lsn], [shard scn]);
 	}
 }
 
-
-- (void)
-wal_final_row
-{
-	if (unlikely(fold_scn)) {
-		say_error("unable to find record with SCN:%"PRIi64, fold_scn);
-		exit(EX_OSFILE);
-	}
-	[client wal_final_row];
-	title(NULL);
-}
 
 - (i64)
 load_from_local
 {
 	if (fold_scn)
 		snap_lsn = [snap_dir containg_scn:fold_scn]; /* select snapshot before desired scn */
+
 	i64 local_lsn = [reader load_from_local:0];
+
+	if (fold_scn) {
+		say_error("unable to find record with SCN:%"PRIi64, fold_scn);
+		exit(EX_OSFILE);
+	}
+
 	/* loading is faster until wal_final_row called because service is not yet initialized and
 	   only pk indexes must be updated. remote feeder will send wal_final_row then all remote
 	   rows are read */
-	if (![remote feeder_addr_configured])
-		[self wal_final_row];
+	if ([shard standalone]) {
+		[shard wal_final_row];
+		title(NULL);
+	}
 	return local_lsn;
 }
 
@@ -306,12 +266,11 @@ simple
 {
 	i64 local_lsn = [self load_from_local];
 	if (local_lsn == 0) {
-		if (![remote feeder_addr_configured]) {
+		if ([shard standalone]) {
 			say_error("unable to find initial snapshot");
 			say_info("don't you forget to initialize "
 				 "storage with --init-storage switch?");
 			exit(EX_USAGE);
-
 		}
 	}
 	if (cfg.local_hot_standby) {
@@ -325,7 +284,8 @@ simple
 - (bool)
 feeder_changed:(struct feeder_param*)new
 {
-	return [remote feeder_changed:new];
+	say_warn("legacy method");
+	return [shard feeder_changed:new];
 }
 
 static int
@@ -358,22 +318,14 @@ enable_local_writes
 	[reader free];
 	reader = nil;
 
-	free(skip_scn.pool);
-	skip_scn = TBUF(NULL, 0, NULL);
-	local_writes = true;
-
-
 	i64 writer_lsn = reader_lsn;
 	if (reader_lsn == 0) {
-		assert([remote feeder_addr_configured]);
+		assert(![shard standalone]);
 
-		i64 remote_scn = [remote load_from_remote];
-		if (remote_scn <= 0)
+		[shard load_from_remote];
+		if ([shard scn] <= 0)
 			raise_fmt("unable to pull initial snapshot");
-		if (cfg.sync_scn_with_lsn)
-			writer_lsn = remote_scn;
-		else
-			writer_lsn = 1;
+		writer_lsn = cfg.sync_scn_with_lsn ? [shard scn] : 1;
 	}
 
 	[self configure_wal_writer:writer_lsn];
@@ -383,65 +335,11 @@ enable_local_writes
 		/* don't wait for snapshot. our goal to be replica as fast as possible */
 		[self fork_and_snapshot:(getenv("SYNC_DUMP") == NULL)];
 	}
-	[remote hot_standby];
 
-	if (![remote feeder_addr_configured])
-		[self status_update:PRIMARY fmt:"primary"];
+	[shard remote_hot_standby];
+	if ([shard standalone])
+		[shard status_update:PRIMARY fmt:"primary"];
 }
-
-- (struct sockaddr_in *)
-primary_addr
-{
-	static struct sockaddr_in addr;
-	if (local_writes || ![remote feeder_addr_configured] || !cfg.wal_feeder_primary_port)
-		return NULL;
-
-	addr = [remote feeder_addr];
-	addr.sin_port = htons(cfg.wal_feeder_primary_port);
-	return &addr;
-}
-
-- (bool)
-is_replica
-{
-	if (!local_writes)
-		return true;
-	if ([remote feeder_addr_configured])
-		return true;
-	return false;
-}
-
-- (void)
-check_replica
-{
-	if ([self is_replica])
-		raise_fmt("replica is readonly");
-}
-
-- (int)
-submit_run_crc
-{
-	struct tbuf *b = tbuf_alloc(fiber->pool);
-	tbuf_append(b, &scn, sizeof(scn));
-	tbuf_append(b, &run_crc_log, sizeof(run_crc_log));
-	typeof(run_crc_log) run_crc_mod = 0;
-	tbuf_append(b, &run_crc_mod, sizeof(run_crc_mod));
-
-	return [self submit:b->ptr len:tbuf_len(b) tag:run_crc|TAG_SYS];
-}
-
-- (ev_tstamp)
-run_crc_lag
-{
-	return run_crc_lag(&run_crc_state);
-}
-
-- (const char *)
-run_crc_status
-{
-	return run_crc_status(&run_crc_state);
-}
-
 
 static void
 run_crc_writer(va_list ap)
@@ -453,13 +351,14 @@ run_crc_writer(va_list ap)
 		mbox_wait(&recovery->run_crc_mbox);
 		mbox_clear(&recovery->run_crc_mbox);
 
-		if ([recovery is_replica])
-			continue;
 		if (ev_now() - submit_tstamp < delay)
 			continue;
 
 		@try {
-			while ([recovery submit_run_crc] < 0)
+			if ([[recovery shard] is_replica])
+				continue;
+
+			while ([[recovery shard] submit_run_crc] < 0)
 				fiber_sleep(0.1);
 		}
 		@catch (Error *e) {
@@ -481,23 +380,13 @@ nop_hb_writer(va_list ap)
 
 	for (;;) {
 		fiber_sleep(delay);
-		if ([recovery is_replica])
+		if ([[recovery shard] is_replica])
 			continue;
 
-		[recovery submit:body len:nelem(body) tag:nop|TAG_SYS];
+		[[recovery shard] submit:body len:nelem(body) tag:nop|TAG_SYS];
 	}
 }
 
-- (id) init_feeder_param:(struct feeder_param*)feeder_
-{
-	/* Recovery object is never released */
-	[self init];
-	snap_writer = [[SnapWriter alloc] init_state:self];
-	remote = [[XLogReplica alloc] init_recovery:self
-					     feeder:feeder_];
-
-	return self;
-}
 
 - (void)
 configure_wal_writer:(i64)lsn
@@ -516,49 +405,10 @@ configure_wal_writer:(i64)lsn
 		fiber_create("nop_hb", nop_hb_writer, self, cfg.nop_hb_delay);
 }
 
-
-- (void)
-status_update:(enum recovery_status)new_status fmt:(const char *)fmt, ...
-{
-	char buf[sizeof(status_buf)];
-	va_list ap;
-	va_start(ap, fmt);
-	vsnprintf(buf, sizeof(buf), fmt, ap);
-	va_end(ap);
-
-	if (strcmp(buf, status_buf) == 0 && new_status == status)
-		return;
-
-	say_info("recovery status: %i %s", new_status, buf);
-	strncpy(status_buf, buf, sizeof(status_buf));
-	title(NULL);
-
-	if (new_status == status)
-		return;
-
-	prev_status = status;
-	status = new_status;
-	[self status_changed];
-}
-
-- (void)
-status_changed
-{
-	[client status_changed];
-}
-
-- (void)
-set_client:(id<RecoveryClient>)obj
-{
-	client = obj;
-}
-
-
 - (int)
 write_initial_state
 {
 	initial_snap = true;
-	scn = 1;
 	return [snap_writer snapshot_write];
 }
 
@@ -641,10 +491,6 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 				    count, log, mod);
 		}
 		break;
-	case snap_skip_scn:
-		while (tbuf_len(&row_data) > 0)
-			tbuf_printf(buf, "%"PRIi64" ", read_u64(&row_data));
-		break;
 	case run_crc: {
 		i64 scn = -1;
 		if (tbuf_len(&row_data) == sizeof(i64) + 2 * sizeof(u32))
@@ -658,13 +504,11 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 	case nop:
 		break;
 
-	case paxos_prepare:
 	case paxos_promise:
 	case paxos_nop:
 		ballot = read_u64(&row_data);
 		tbuf_printf(buf, "ballot:%"PRIi64, ballot);
 		break;
-	case paxos_propose:
 	case paxos_accept:
 		ballot = read_u64(&row_data);
 		inner_tag = read_u16(&row_data);

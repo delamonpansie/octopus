@@ -29,31 +29,57 @@
 
 #include <iproto.h>
 #include <third_party/tree.h>
+#import <log_io.h>
 
 struct paxos_peer;
 struct proposal;
 RB_HEAD(ptree, proposal);
 
-@interface PaxosRecovery: Recovery {
+@class Recovery;
+@class XLogWriter;
+@class XLog;
+@protocol RecoveryClient;
+
+@interface Paxos: Shard <Shard> {
 @public
 	SLIST_HEAD(paxos_group, paxos_peer) group;
-	struct iproto_egress_list paxos_remotes, primary_group;
+	struct iproto_egress_list paxos_remotes;
 	struct fiber *proposer_fiber;
 	struct fiber *output_flusher, *reply_reader, *follower, *wal_dumper;
 	struct palloc_pool *pool;
-	i64 app_scn, max_scn;
+	i64 app_scn, max_scn, run_crc_scn;
 	bool wal_dumper_busy;
+	int leader_id, self_id;
+
 	struct ptree proposals;
-	struct iproto_service service;
+	struct iproto_service paxos_service;
 }
-- (i64) next_scn;
-- (struct iproto_egress *)leader_primary;
-- (const char *)scn_info;
-- (void) learn_wal:(id<XLogPullerAsync>)puller;
 @end
 
-void paxos_print(struct tbuf *out,
-		 void (*handler)(struct tbuf *out, u16 tag, struct tbuf *row),
-		 const struct row_v12 *row);
+struct sockaddr_in *paxos_leader_primary_addr(Paxos *paxos);
+struct feeder_param *paxos_peer_feeder(Paxos *paxos, int id);
+
+enum proposal_flags { P_APPLIED	= 0x01,
+		      P_WALED = 0x02 };
+
+struct proposal {
+	const i64 scn;
+	u64 ballot;
+	u32 flags;
+	u32 value_len; /* must be same type with msg_paxos->value_len */
+	u8 *value;
+	u16 tag;
+	ev_tstamp delay, tstamp;
+	struct fiber *waiter;
+	RB_ENTRY(proposal) link;
+};
+
+struct proposal *proposal(Paxos *r, i64 scn);
+void proposal_update_ballot(struct proposal *p, u64 ballot);
+void proposal_update_value(struct proposal *p, u32 value_len, const char *value, u16 tag);
+void proposal_mark_applied(Paxos *r, struct proposal *p);
+
+int paxos_submit(Paxos *paxos, const void *data, u32 len, u16 tag);
+
 
 #endif

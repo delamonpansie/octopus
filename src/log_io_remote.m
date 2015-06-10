@@ -44,7 +44,7 @@
 
 - (void) replicate_from_remote:(id<XLogPullerAsync>)puller { (void)puller; abort(); }
 - (void) status:(const char *)status reason:(const char *)reason { (void)status; (void)reason; }
-- (i64) handshake_scn { return [recovery scn]; }
+- (i64) handshake_scn { return [[recovery shard] scn]; }
 
 - (id) init_recovery:(Recovery *)recovery_
 	      feeder:(struct feeder_param *)feeder_;
@@ -75,7 +75,7 @@ again:
 
 		if ([remote_puller handshake:[self handshake_scn]] <= 0) {
 			/* no more WAL rows in near future, notify module about that */
-			[recovery wal_final_row];
+			[[recovery shard] wal_final_row];
 
 			if (!warning_said) {
 				[self status:"fail" reason:[remote_puller error]];
@@ -213,15 +213,14 @@ feeder_addr_configured
 @implementation XLogReplica
 
 - (void)
-status:(const char *)status
-reason:(const char *)reason
+status:(const char *)status reason:(const char *)reason
 {
 	[super status:status reason:reason];
 	say_warn("%s: status:%s recovery:%p", __func__, status, recovery);
 
 	if (strcmp(status, "unconfigured") == 0) {
 		// assert(local_writes);
-		[recovery status_update:PRIMARY fmt:"primary"];
+		[[recovery shard] status_update:PRIMARY fmt:"primary"];
 		return;
 	}
 	if (strcmp(status, "configured") == 0) {
@@ -229,9 +228,9 @@ reason:(const char *)reason
 		return;
 	}
 
-	[recovery status_update:REMOTE_STANDBY fmt:"hot_standby/%s/%s%s%s",
-		  sintoa(&feeder.addr), status, reason ? ":" : "", reason ?: ""];
-	if (strcmp([recovery status], "fail") == 0)
+	[[recovery shard] status_update:REMOTE_STANDBY fmt:"hot_standby/%s/%s%s%s",
+			  sintoa(&feeder.addr), status, reason ? ":" : "", reason ?: ""];
+	if (strcmp([[recovery shard] status], "fail") == 0)
 		say_error("replication failure: %s", reason);
 }
 
@@ -240,16 +239,16 @@ replicate_wal:(id<XLogPullerAsync>)puller
 {
 	struct row_v12 *row, *final_row = NULL, *rows[WAL_PACK_MAX];
 	/* TODO: use designated palloc_pool */
-	say_debug("%s: scn:%"PRIi64, __func__, [recovery scn]);
+	say_debug("%s: scn:%"PRIi64, __func__, [[recovery shard] scn]);
 	XLogWriter *writer = [recovery writer];
 	assert(writer != nil);
 
-	i64 min_scn = [recovery scn];
+	i64 min_scn = [[recovery shard] scn];
 	int pack_rows = 0;
 
 	/* old version doesn's send wal_final_tag for us. */
 	if ([puller version] == 11)
-		[recovery wal_final_row];
+		[[recovery shard] wal_final_row];
 
 	[puller recv_row];
 
@@ -259,9 +258,7 @@ replicate_wal:(id<XLogPullerAsync>)puller
 		/* TODO: apply filter on feeder side */
 		/* filter out all paxos rows
 		   these rows define non shared/non replicated state */
-		if (tag == paxos_prepare ||
-		    tag == paxos_promise ||
-		    tag == paxos_propose ||
+		if (tag == paxos_promise ||
 		    tag == paxos_accept ||
 		    tag == paxos_nop)
 			continue;
@@ -309,7 +306,7 @@ replicate_wal:(id<XLogPullerAsync>)puller
 		    pack_max_scn = rows[pack_rows - 1]->scn,
 		    pack_max_lsn = rows[pack_rows - 1]->lsn;
 #endif
-		assert(!cfg.sync_scn_with_lsn || [recovery scn] == pack_min_scn - 1);
+		assert(!cfg.sync_scn_with_lsn || [[recovery shard] scn] == pack_min_scn - 1);
 		@try {
 			for (int j = 0; j < pack_rows; j++) {
 				row = rows[j]; /* this pointer required for catch below */

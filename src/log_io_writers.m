@@ -368,7 +368,7 @@ init_lsn:(i64)init_lsn
    state:(id<RecoveryState>)state_
 {
 	assert(init_lsn > 0);
-	assert([state_ scn] > 0);
+	assert([[state_ shard] scn] > 0);
 
 	lsn = init_lsn;
 	state = state_;
@@ -376,11 +376,11 @@ init_lsn:(i64)init_lsn
 	if (cfg.rows_per_wal <= 4)
 		panic("inacceptable value of 'rows_per_wal'");
 
-	say_info("Configuring WAL writer LSN:%"PRIi64" SCN:%"PRIi64, lsn, [state scn]);
+	say_info("Configuring WAL writer LSN:%"PRIi64" SCN:%"PRIi64, lsn, [[state shard] scn]);
 
 	struct wal_disk_writer_conf conf = { .lsn = lsn,
-					     .scn = [state scn],
-					     .run_crc = [state run_crc_log]};
+					     .scn = [[state shard] scn],
+					     .run_crc = [[state shard] run_crc_log]};
 	wal_writer = spawn_child("wal_writer", wal_disk_writer, &conf, sizeof(conf));
 	netmsg_io_init(&io, palloc_create_pool("wal_writer"), NULL, wal_writer.fd);
 	ev_init(&io.in, wal_disk_writer_input_dispatch);
@@ -517,19 +517,12 @@ snapshot_write_row(XLog *l, u16 tag, struct tbuf *row)
 
 
 - (int)
-snapshot_write_header_rows:(XLog *)snap
-{
-	(void)snap;
-	return 0;
-}
-
-- (int)
 snapshot_write
 {
         XLog *snap;
 
-	say_debug("%s: lsn:%"PRIi64" scn:%"PRIi64, __func__, [state lsn], [state scn]);
-	snap = [snap_dir open_for_write:[state lsn] scn:[state scn]];
+	say_debug("%s: lsn:%"PRIi64" scn:%"PRIi64, __func__, [state lsn], [[state shard] scn]);
+	snap = [snap_dir open_for_write:[state lsn] scn:[[state shard] scn]];
 	if (snap == nil) {
 		say_syserror("can't open snap for writing");
 		return -1;
@@ -550,26 +543,23 @@ snapshot_write
 	say_info("saving snapshot `%s'", filename);
 
 	struct tbuf *snap_ini = tbuf_alloc(fiber->pool);
-	u32 rows = [[state client] snapshot_estimate];
+	u32 rows = [[[state shard] executor] snapshot_estimate];
 	tbuf_append(snap_ini, &rows, sizeof(rows));
-	u32 run_crc_log = [state run_crc_log];
+	u32 run_crc_log = [[state shard] run_crc_log];
 	tbuf_append(snap_ini, &run_crc_log, sizeof(run_crc_log));
 	u32 run_crc_mod = 0;
 	tbuf_append(snap_ini, &run_crc_mod, sizeof(run_crc_mod));
 
-	if ([snap append_row:snap_ini->ptr len:tbuf_len(snap_ini) scn:[state scn] tag:snap_initial|TAG_SYS] == NULL) {
+	if ([snap append_row:snap_ini->ptr len:tbuf_len(snap_ini) scn:[[state shard]scn] tag:snap_initial|TAG_SYS] == NULL) {
 		say_error("unable write initial row");
 		return -1;
 	}
 
-	if ([self snapshot_write_header_rows:snap] < 0) /* FIXME: this is ugly */
-		return -1;
-
-	if ([[state client] snapshot_write_rows:snap] < 0)
+	if ([[[state shard] executor] snapshot_write_rows:snap] < 0)
 		return -1;
 
 	const char end[] = "END";
-	if ([snap append_row:end len:strlen(end) scn:[state scn] tag:snap_final|TAG_SYS] == NULL) {
+	if ([snap append_row:end len:strlen(end) scn:[[state shard] scn] tag:snap_final|TAG_SYS] == NULL) {
 		say_error("unable write final row");
 		return -1;
 	}

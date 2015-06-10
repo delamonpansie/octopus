@@ -107,11 +107,8 @@ xlog_tag_to_a(u16 tag)
 	case wal_final:		strcat(p, "wal_final"); break;
 	case run_crc:		strcat(p, "run_crc"); break;
 	case nop:		strcat(p, "nop"); break;
-	case paxos_prepare:	strcat(p, "paxos_prepare"); break;
 	case paxos_promise:	strcat(p, "paxos_promise"); break;
-	case paxos_propose:	strcat(p, "paxos_propose"); break;
 	case paxos_accept:	strcat(p, "paxos_accept"); break;
-	case snap_skip_scn:	strcat(p, "snap_skip_scn"); break;
 	default:
 		if (tag < user_tag)
 			sprintf(p, "sys%i", tag);
@@ -969,10 +966,7 @@ fix_tag_v2(u16 tag)
 	case wal_final:		return tag|TAG_WAL;
 	case run_crc:		return tag|TAG_WAL;
 	case nop:		return tag|TAG_WAL;
-	case snap_skip_scn:	return tag|TAG_SNAP;
-	case paxos_prepare:	return tag|TAG_SYS;
 	case paxos_promise:	return tag|TAG_SYS;
-	case paxos_propose:	return tag|TAG_SYS;
 	case paxos_accept:	return tag|TAG_SYS;
 	case paxos_nop:		return tag|TAG_SYS;
 	default:		abort();
@@ -990,10 +984,7 @@ fix_tag_v3(u16 tag)
 	case wal_final:
 	case run_crc:
 	case nop:
-	case snap_skip_scn:
-	case paxos_prepare:
 	case paxos_promise:
-	case paxos_propose:
 	case paxos_accept:
 	case paxos_nop:		return tag|TAG_SYS;
 	default:		abort();

@@ -23,8 +23,10 @@ obj-log-io += src/log_io_reader.o
 obj-log-io += src/log_io_remote.o
 obj-log-io += src/log_io_writers.o
 obj-log-io += src/log_io_recovery.o
+obj-log-io += src/log_io_por.o
 obj-log-io += src/log_io_puller.o
 obj-log-io += src/log_io_run_crc.o
+obj-log-io += src/paxos.o
 
 ifeq (1,$(HAVE_RAGEL))
 	dist-clean += src/admin.m
@@ -37,11 +39,6 @@ src/octopus.o: octopus_version.h
 src/octopus.o: XCFLAGS += -DPRIMARY_MOD='"$(primary_module)"' -D$(binary_type)
 ifeq ($(binary_type),)
   $(error binary_type must be defined)
-endif
-
-# some modules might be built without paxos
-ifneq ($(findstring src/paxos.o,$(obj)),)
-  src/log_io_recovery.o: XCFLAGS += -DPAXOS
 endif
 
 # no warns at all: it complains even with -Wall

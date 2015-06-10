@@ -31,6 +31,7 @@
 #include <net_io.h>
 #include <objc.h>
 #import <spawn_child.h>
+#import <mbox.h>
 
 #include <stdio.h>
 #include <limits.h>
@@ -48,10 +49,7 @@ enum { snap_initial = 1,
        wal_final,
        run_crc,
        nop,
-       snap_skip_scn,
-       paxos_prepare,
        paxos_promise,
-       paxos_propose,
        paxos_accept,
        paxos_nop,
 
@@ -286,7 +284,10 @@ ev_tstamp run_crc_lag(struct run_crc *run_crc);
 const char *run_crc_status(struct run_crc *run_crc);
 
 
-@protocol RecoveryClient
+@protocol Shard;
+@class Shard;
+@protocol Executor
+- (id) init_shard:(Shard<Shard> *)obj;
 - (void) apply:(struct tbuf *)data tag:(u16)tag;
 - (void) wal_final_row;
 - (void) status_changed;
@@ -295,15 +296,10 @@ const char *run_crc_status(struct run_crc *run_crc);
 - (int) snapshot_write_rows:(XLog *)snap;
 @end
 
+@class Paxos;
 @protocol RecoveryState
 - (i64) lsn;
-- (i64) scn;
-- (u32) run_crc_log;
-- (bool) local_writes;
-- (void) update_state_rci:(const struct row_commit_info *)rci
-		    count:(int)count;
-- (void) update_state_r:(const struct row_v12 *)r;
-- (id<RecoveryClient>)client;
+- (id<Shard>) shard;
 @end
 
 @protocol RecoverRow
@@ -447,44 +443,90 @@ enum {
 - (void) replicate_from_remote:(id<XLogPullerAsync>)puller;
 @end
 
+
 enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
-@interface Recovery: Object <RecoveryState, RecoverRow> {
-	XLogReader *reader;
-	XLogWriter *writer;
-	XLogReplica *remote;
-	id<RecoveryClient> client;
 
-	i64 scn;
-	bool initial_snap, local_writes;
-@public
-	ev_tstamp lag, last_update_tstamp;
-	enum recovery_status status, prev_status;
-	char status_buf[64];
-	SnapWriter *snap_writer;
+@protocol Shard
+- (i64) scn;
+- (bool) feeder_changed:(struct feeder_param*)new;
 
-	struct mbox_void_ptr run_crc_mbox;
+- (bool) standalone; // either master or no replication at all
+- (void) load_from_remote;
+- (void) remote_hot_standby;
+- (struct sockaddr_in *) proxy_addr;
+
+- (int) submit:(const void *)data len:(u32)len tag:(u16)tag;
+- (void) apply:(struct row_v12 *)r;
+- (void) wal_final_row;
+
+- (ev_tstamp) last_update_tstamp;
+- (ev_tstamp) lag;
+
+- (const char *) run_crc_status;
+- (int) submit_run_crc;
+- (ev_tstamp) run_crc_lag;
+- (u32) run_crc_log;
+
+- (const char *) status;
+- (void) status_update:(enum recovery_status)s fmt:(const char *)fmt, ...;
+- (bool) is_replica;
+
+- (void) set_executor:(id<Executor>)obj;
+- (id<Executor>)executor;
+@end
+
+@interface Shard: Object {
+	ev_tstamp last_update_tstamp, lag;
 	u32 run_crc_log;
 	struct run_crc run_crc_state;
+	char status_buf[64];
+	id<Executor> executor;
+
+@public
+	i64 scn;
+	enum recovery_status status, prev_status;
+	Recovery *recovery;
+}
+- (i64) scn;
+- (ev_tstamp) run_crc_lag;
+- (const char *) run_crc_status;
+- (u32) run_crc_log;
+- (int) submit_run_crc;
+- (void) status_update:(enum recovery_status)new_status fmt:(const char *)fmt, ...;
+- (const char *)status;
+
+- (void) wal_final_row;
+- (ev_tstamp) lag;
+- (ev_tstamp) last_update_tstamp;
+
+- (void) set_executor:(id<Executor>)obj;
+- (id<Executor>)executor;
+@end
+
+@interface POR: Shard <Shard> {
+	XLogReplica *remote;
+}
+@end
+
+@interface Recovery: Object <RecoveryState, RecoverRow> {
+	XLogReader *reader;
+	bool initial_snap;
 
 	i64 recovered_rows;
 	u32 estimated_snap_rows;
+	SnapWriter *snap_writer;
+@public
+	XLogWriter *writer;
+	id<Shard> shard;
 
-	i64 next_skip_scn;
-	struct tbuf skip_scn;
+	struct mbox_void_ptr run_crc_mbox;
 }
 - (i64) lsn;
-- (i64) scn;
-- (u32) run_crc_log;
 
 - (const struct child *) wal_writer;
 - (XLogWriter *)writer;
-- (int) submit:(const void *)data len:(u32)len tag:(u16)tag;
 
-- (const char *) status;
-- (ev_tstamp) lag;
-- (ev_tstamp) last_update_tstamp;
-- (ev_tstamp) run_crc_lag;
-- (const char *) run_crc_status;
+- (id<Shard>) shard;
 
 - (void) simple;
 - (void) lock; /* lock wal_dir & snap_dir */
@@ -492,23 +534,8 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 - (void) configure_wal_writer:(i64)lsn;
 
 - (i64) load_from_local; /* load from local snap+wal */
-- (void) wal_final_row;
 - (void) enable_local_writes;
-- (bool) is_replica;
-- (void) check_replica;
 - (bool) feeder_changed:(struct feeder_param*)new;
-
-- (int) submit_run_crc;
-
-- (id) init_feeder_param:(struct feeder_param*)feeder_;
-
-
-- (void) status_update:(enum recovery_status)s fmt:(const char *)fmt, ...;
-- (void) status_changed;
-
-- (struct sockaddr_in *)primary_addr;
-
-- (void) set_client:(id<RecoveryClient>)obj;
 
 - (int) write_initial_state;
 - (int) fork_and_snapshot:(bool)wait_for_child;
