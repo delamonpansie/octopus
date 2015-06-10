@@ -451,6 +451,9 @@ slab_cache_alloc(struct slab_cache *cache)
 		/* we can leave slab here in case of last item has been allocated
 		    and align has been occured */
 		slab->brk = SALLOC_ALIGN(slab->brk + cache->item_size + sizeof(red_zone));
+		ASAN_UNPOISON_MEMORY_REGION(item, cache->item_size);
+		VALGRIND_MALLOCLIKE_BLOCK(item, cache->item_size, sizeof(red_zone), 0);
+		/* call ctor _after_ VALGRIND_MALLOCLIKE_BLOCK */
 		if (cache->ctor)
 			cache->ctor(item);
 	} else {
@@ -461,6 +464,8 @@ slab_cache_alloc(struct slab_cache *cache)
 		ASAN_UNPOISON_MEMORY_REGION(item, sizeof(void *));
 		slab->free = item->next;
 		(void)VALGRIND_MAKE_MEM_UNDEFINED(item, sizeof(void *));
+		ASAN_UNPOISON_MEMORY_REGION(item, cache->item_size);
+		VALGRIND_MALLOCLIKE_BLOCK(item, cache->item_size, sizeof(red_zone), 0);
 	}
 
 	if (fully_populated(slab)) {
@@ -473,8 +478,6 @@ slab_cache_alloc(struct slab_cache *cache)
 	slab->used += cache->item_size + sizeof(red_zone);
 	slab->items += 1;
 
-	ASAN_UNPOISON_MEMORY_REGION(item, cache->item_size);
-	VALGRIND_MALLOCLIKE_BLOCK(item, cache->item_size, sizeof(red_zone), 0);
 	return (void *)item;
 }
 
