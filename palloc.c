@@ -274,6 +274,9 @@ chunk_alloc(struct chunk *chunk, size_t size)
 	void *brk = chunk->brk,
 	     *ptr = brk;
 
+	if (unlikely(size == 0))
+		return NULL;
+
 	brk = PALLOC_ALIGN(brk + size + PALLOC_REDZONE);
 	chunk->free -= brk - ptr;
 	chunk->brk = brk;
