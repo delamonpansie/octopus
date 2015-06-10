@@ -205,7 +205,7 @@ iproto_service(struct iproto_service *service, const char *addr, void (*on_bind)
 	sprintf(name, "tcp:%s", addr);
 
 	TAILQ_INIT(&service->processing);
-	service->pool = palloc_create_pool(name);
+	service->pool = palloc_create_pool((struct palloc_config){.name = name});
 	service->name = name;
 	service->batch = 32;
 

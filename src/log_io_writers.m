@@ -382,7 +382,7 @@ init_lsn:(i64)init_lsn
 					     .scn = [[state shard] scn],
 					     .run_crc = [[state shard] run_crc_log]};
 	wal_writer = spawn_child("wal_writer", wal_disk_writer, &conf, sizeof(conf));
-	netmsg_io_init(&io, palloc_create_pool("wal_writer"), NULL, wal_writer.fd);
+	netmsg_io_init(&io, palloc_create_pool((struct palloc_config){.name = "wal_writer"}), NULL, wal_writer.fd);
 	ev_init(&io.in, wal_disk_writer_input_dispatch);
 	ev_set_priority(&io.in, 1);
 	ev_set_priority(&io.out, 1);
