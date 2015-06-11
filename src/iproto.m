@@ -56,7 +56,7 @@ static char * const stat_ops[] = ENUM_STR_INITIALIZER(STAT);
 static int stat_base;
 
 struct worker_arg {
-	void (*cb)(struct netmsg_head *wbuf, struct iproto *);
+	iproto_cb cb;
 	struct iproto *r;
 	struct netmsg_io *io;
 };
@@ -73,7 +73,7 @@ iproto_worker(va_list ap)
 
 		@try {
 			netmsg_io_retain(a.io);
-			a.cb(&a.io->wbuf, a.r);
+			a.cb(&a.io->wbuf, a.r, NULL);
 		}
 		@catch (IProtoClose *e) {
 			netmsg_io_close(a.io);
@@ -101,21 +101,19 @@ iproto_worker(va_list ap)
 
 
 static void
-err(struct netmsg_head *h __attribute__((unused)), struct iproto *r)
+err(struct netmsg_head *h __attribute__((unused)), struct iproto *r, void *arg __attribute__((unused)))
 {
 	iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "unknown iproto command %i", r->msg_code);
 }
 
 void
-iproto_ping(struct netmsg_head *h, struct iproto *r)
+iproto_ping(struct netmsg_head *h, struct iproto *r, void *arg __attribute__((unused)))
 {
 	net_add_iov_dup(h, r, sizeof(struct iproto));
 }
 
 void
-service_register_iproto(struct iproto_service *s, u32 cmd,
-			void (*cb)(struct netmsg_head *, struct iproto *),
-			int flags)
+service_register_iproto(struct iproto_service *s, u32 cmd, iproto_cb cb, int flags)
 {
 	service_set_handler(s, (struct iproto_handler){
 			.code = cmd,
@@ -283,7 +281,7 @@ process_requests(struct iproto_service *service, struct iproto_ingress *c)
 			struct netmsg_mark header_mark;
 			netmsg_getmark(&io->wbuf, &header_mark);
 			@try {
-				ih->cb(&io->wbuf, request);
+				ih->cb(&io->wbuf, request, NULL);
 			}
 			@catch (IProtoClose *e) {
 				netmsg_io_close(io);

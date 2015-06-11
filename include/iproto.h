@@ -89,10 +89,10 @@ struct iproto_egress {
 SLIST_HEAD(iproto_egress_list, iproto_egress);
 
 
-void iproto_ping(struct netmsg_head *h, struct iproto *r);
+void iproto_ping(struct netmsg_head *h, struct iproto *r, void *arg __attribute__((unused)));
 
 enum { IPROTO_NONBLOCK = 1, IPROTO_PROXY = 2 };
-typedef void (*iproto_cb)(struct netmsg_head *, struct iproto *);
+typedef void (*iproto_cb)(struct netmsg_head *, struct iproto *, void *);
 struct iproto_handler {
 	iproto_cb cb;
 	int flags;
@@ -133,9 +133,7 @@ static inline struct iproto_handler *service_find_code(struct iproto_service *s,
 }
 
 void
-service_register_iproto(struct iproto_service *s, u32 cmd,
-			void (*cb)(struct netmsg_head *, struct iproto *),
-			int flags);
+service_register_iproto(struct iproto_service *s, u32 cmd, iproto_cb cb, int flags);
 
 struct iproto_future {
 	TAILQ_ENTRY(iproto_future) link; /* shared by connection->future and mbox */

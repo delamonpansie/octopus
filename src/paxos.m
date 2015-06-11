@@ -424,7 +424,7 @@ paxos_elect(va_list ap)
 })
 
 static void
-leader(struct netmsg_head *wbuf, struct iproto *msg)
+leader(struct netmsg_head *wbuf, struct iproto *msg, void *arg __attribute__((unused)))
 {
 	struct netmsg_io *io = container_of(wbuf, struct netmsg_io, wbuf);
 	struct iproto_ingress *c = container_of(io, struct iproto_ingress, io);
@@ -753,7 +753,7 @@ msg_dump(const char *prefix, const struct paxos_peer *peer, const struct msg_pax
 }
 
 static void
-learner(struct netmsg_head *wbuf, struct iproto *imsg)
+learner(struct netmsg_head *wbuf, struct iproto *imsg, void *arg __attribute__((unused)))
 {
 	struct netmsg_io *io = container_of(wbuf, struct netmsg_io, wbuf);
 	struct iproto_ingress *c = container_of(io, struct iproto_ingress, io);
@@ -835,7 +835,7 @@ acceptor(Paxos *paxos, struct paxos_request *req)
 }
 
 static void
-iproto_acceptor(struct netmsg_head *wbuf, struct iproto *imsg)
+iproto_acceptor(struct netmsg_head *wbuf, struct iproto *imsg, void *arg __attribute__((unused)))
 {
 	struct netmsg_io *io = container_of(wbuf, struct netmsg_io, wbuf);
 	struct iproto_ingress *c = container_of(io, struct iproto_ingress, io);
