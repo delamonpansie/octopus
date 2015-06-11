@@ -251,7 +251,6 @@ struct _mh(slot) {
 # define mh_dirty(h, i)		(h->map[(i) >> 4] & (1 << (((i) & 0xf) + 0x10)))
 # define mh_setdirty(h, i)	h->map[(i) >> 4] |= (0x10000UL << ((i) & 0xf))
 #endif
-# define mh_dirty2(h, i)	(mh_dirty(h, (i)) || mh_dirty(h, ((i)+1) & h->n_mask))
 
 #define mhash_t _mh(t)
 struct _mh(t) {
@@ -446,7 +445,20 @@ static inline unsigned mh_str_hash(const char *kk) { return  mh_MurmurHash2(kk, 
 #define mh_neighbors 4
 #endif
 #ifndef mh_may_skip
-#define mh_may_skip (mh_byte_map && mh_neighbors > 1)
+#if mh_byte_map > 0 && mh_neighbors > 1
+#  define mh_may_skip 1
+#else
+#  define mh_may_skip 0
+#endif
+#endif
+#if mh_may_skip
+#  define mh_need_dirty(loop)    ((loop).step & 1)
+#  define mh_occupied_as_dirty(h, i)     (mh_dirty(h, (i)) || mh_dirty(h, ((i)+1) & h->n_mask))
+#  define mh_occupied_as_dirty_opt(h, i) (mh_dirty(h, ((i)+1) & h->n_mask))
+#else
+#  define mh_need_dirty(loop)    1
+#  define mh_occupied_as_dirty(h, i)     mh_dirty(h, (i))
+#  define mh_occupied_as_dirty_opt(h, i) 0
 #endif
 
 struct _mh(find_loop) {
@@ -491,7 +503,7 @@ _mh(get)(const struct mhash_t *h, mh_key_t key)
 		if (mh_mayequal(h, l.i, hk) && mh_slot_key_eq(h, l.i, key))
 			return l.i;
 
-		if ((!mh_may_skip || (l.step & 1)) && !mh_dirty(h, l.i))
+		if (mh_need_dirty(l) && !mh_dirty(h, l.i))
 			return mh_end(h);
 
 		_mh(find_loop_step)(&l, h->n_mask);
@@ -506,10 +518,10 @@ _mh(short_mark)(struct mhash_t *h, mh_key_t key)
 	_mh(find_loop_init)(&l, k, h->n_mask);
 	for(;;) {
 		if (mh_exist(h, l.i)) {
-			if (!mh_may_skip || (l.step & 1)) mh_setdirty(h, l.i);
+			if (mh_need_dirty(l)) mh_setdirty(h, l.i);
 		} else {
 			mh_map_t hk = mh_get_hashik(k);
-			if (!mh_may_skip || !mh_dirty2(h, l.i))
+			if (!mh_occupied_as_dirty(h, l.i))
 				h->n_occupied++;
 			mh_setexist(h, l.i, hk);
 			h->size++;
@@ -534,9 +546,9 @@ _mh(mark)(struct mhash_t *h, mh_key_t key, int *exist)
 			return l.i;
 		}
 		if (mh_exist(h, l.i)) {
-			if (!mh_may_skip || (l.step & 1)) mh_setdirty(h, l.i);
-		} else if ((!mh_may_skip || (l.step & 1)) && !mh_dirty(h, l.i)) {
-			if (!mh_may_skip || !mh_dirty(h, (l.i+1) & h->n_mask))
+			if (mh_need_dirty(l)) mh_setdirty(h, l.i);
+		} else if (mh_need_dirty(l) && !mh_dirty(h, l.i)) {
+			if (!mh_occupied_as_dirty_opt(h, l.i))
 				h->n_occupied++;
 			h->size++;
 			mh_setexist(h, l.i, hk);
@@ -560,9 +572,9 @@ _mh(mark)(struct mhash_t *h, mh_key_t key, int *exist)
 			mh_setexist(h, p-1, hk);
 			return p-1;
 		}
-		if ((!mh_may_skip || (l.step & 1)) && !mh_dirty(h, l.i)) {
+		if (mh_need_dirty(l) && !mh_dirty(h, l.i)) {
 			h->size++;
-			if (!mh_may_skip || !mh_dirty(h, ((p-1)+1) & h->n_mask))
+			if (!mh_occupied_as_dirty_opt(h, p-1))
 				h->n_occupied++;
 			mh_setexist(h, p-1, hk);
 			*exist = 0;
@@ -610,7 +622,7 @@ _mh(del)(struct mhash_t *h, uint32_t x)
 {
 	mh_setfree(h, x);
 	h->size--;
-	if (mh_may_skip ? !mh_dirty2(h, x) : !mh_dirty(h, x))
+	if (!mh_occupied_as_dirty(h, x))
 		h->n_occupied--;
 
 #if MH_INCREMENTAL_RESIZE
@@ -1015,6 +1027,9 @@ _mh(dump)(struct mhash_t *h)
 
 #undef mh_byte_map
 #undef mh_may_skip
+#undef mh_need_dirty
+#undef mh_occupied_as_dirty
+#undef mh_occupied_as_dirty_opt
 #undef mh_neighbors
 #undef mh_exist
 #undef mh_map_t
@@ -1024,7 +1039,6 @@ _mh(dump)(struct mhash_t *h)
 #undef mh_setfree
 #undef mh_setexist
 #undef mh_dirty
-#undef mh_dirty2
 #undef mh_setdirty
 
 #undef mh_malloc
