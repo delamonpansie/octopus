@@ -1263,7 +1263,7 @@ init_recovery:(Recovery *)recovery_
 		if (!p)
 			panic("bad addr %s", c->addr);
 
-		struct iproto_egress *peer = iproto_add_remote_peer(&p->paxos_addr, paxos_service.pool, NULL);
+		struct iproto_egress *peer = iproto_add_remote_peer(&p->paxos_addr, paxos_service.pool);
 		peer->ts.name = name;
 
 		SLIST_INSERT_HEAD(&group, p, link);

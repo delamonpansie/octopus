@@ -167,9 +167,9 @@ iproto_dealloc(struct netmsg_io *io)
 	free(client);
 }
 
-static struct netmsg_io_vop iproto_vop = { .data_ready = iproto_data_ready,
-					   .close = iproto_close,
-					   .dealloc = iproto_dealloc};
+static struct netmsg_io_vop ingress_vop = { .data_ready = iproto_data_ready,
+					    .close = iproto_close,
+					    .dealloc = iproto_dealloc};
 
 static void
 accept_client(int fd, void *data)
@@ -179,7 +179,7 @@ accept_client(int fd, void *data)
 
 	say_debug2("%s: peer %s", __func__, net_peer_name(fd));
 	client->service = service;
-	netmsg_io_init(&client->io, service->pool, &iproto_vop, fd);
+	netmsg_io_init(&client->io, service->pool, &ingress_vop, fd);
 	ev_io_start(&client->io.in);
 	LIST_INSERT_HEAD(&service->clients, client, link);
 	netmsg_io_retain(&client->io);

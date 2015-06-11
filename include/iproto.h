@@ -192,7 +192,7 @@ struct iproto *iproto_sync_send(struct iproto_egress *peer,
 void iproto_proxy_send(struct iproto_egress *to, struct iproto_ingress *from,
 		       struct iproto *msg, const struct iovec *iov, int iovcnt);
 
-struct iproto_egress *iproto_add_remote_peer(const struct sockaddr_in *daddr, struct palloc_pool *pool, struct netmsg_io_vop *vop);
+struct iproto_egress *iproto_add_remote_peer(const struct sockaddr_in *daddr, struct palloc_pool *pool);
 
 @interface IProtoClose : Error
 @end

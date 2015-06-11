@@ -356,7 +356,7 @@ data_ready(struct netmsg_io *io, int __attribute__((unused)) r)
 		assert((i32)req->data_len > 0);
 		int req_size = sizeof(struct iproto) + req->data_len;
 		tbuf_ltrim(rbuf, req_size);
-		io->vop->request_ready(io, req);
+		iproto_future_resolve(io, req);
 	}
 }
 
@@ -367,21 +367,20 @@ egress_close(struct netmsg_io *io)
 	iproto_future_resolve_err(c);
 }
 
-struct netmsg_io_vop def_vop = { .data_ready = data_ready,
-				 .request_ready = iproto_future_resolve,
-				 .close = egress_close };
+struct netmsg_io_vop egress_vop = { .data_ready = data_ready,
+				    .close = egress_close };
 
 static struct tac_list iproto_tac_list;
 static struct fiber *iproto_remote_rendevouz;
 struct iproto_egress *
-iproto_add_remote_peer(const struct sockaddr_in *daddr, struct palloc_pool *pool, struct netmsg_io_vop *vop)
+iproto_add_remote_peer(const struct sockaddr_in *daddr, struct palloc_pool *pool)
 {
 	struct iproto_egress *peer = xcalloc(1, sizeof(*peer));
 	struct tac_state *ts = &peer->ts;
 	memcpy(&ts->daddr, daddr, sizeof(*daddr));
 	ts->io = &peer->io;
 	ts->io->fd = ts->ev.fd = -1;
-	netmsg_io_init(&peer->io, pool, vop ?: &def_vop, -1);
+	netmsg_io_init(&peer->io, pool, &egress_vop, -1);
 	SLIST_INSERT_HEAD(&iproto_tac_list, ts, link);
 	if (iproto_remote_rendevouz == NULL)
 		iproto_remote_rendevouz = fiber_create("iproto_rendevouz", rendevouz, NULL, &iproto_tac_list);
