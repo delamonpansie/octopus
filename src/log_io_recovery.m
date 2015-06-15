@@ -281,13 +281,6 @@ simple
 	}
 }
 
-- (bool)
-feeder_changed:(struct feeder_param*)new
-{
-	say_warn("legacy method");
-	return [shard feeder_changed:new];
-}
-
 static int
 same_dir(XLogDir *a, XLogDir *b)
 {

@@ -448,7 +448,6 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 
 @protocol Shard
 - (i64) scn;
-- (bool) feeder_changed:(struct feeder_param*)new;
 
 - (bool) standalone; // either master or no replication at all
 - (void) load_from_remote;
@@ -506,6 +505,7 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 @interface POR: Shard <Shard> {
 	XLogReplica *remote;
 }
+- (bool) feeder_changed:(struct feeder_param*)new;
 @end
 
 @interface Recovery: Object <RecoveryState, RecoverRow> {
@@ -535,7 +535,6 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 
 - (i64) load_from_local; /* load from local snap+wal */
 - (void) enable_local_writes;
-- (bool) feeder_changed:(struct feeder_param*)new;
 
 - (int) write_initial_state;
 - (int) fork_and_snapshot:(bool)wait_for_child;

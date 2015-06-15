@@ -1294,13 +1294,6 @@ standalone
 	return false;
 }
 
-- (bool)
-feeder_changed:(struct feeder_param*)new
-{
-	(void) new;
-	panic("paxos не поддерживает установку фидера");
-}
-
 - (struct sockaddr_in *)
 proxy_addr
 {
