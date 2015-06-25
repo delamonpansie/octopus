@@ -116,12 +116,34 @@ tbuf_reader(lua_State *L __attribute__((unused)), void *data, size_t *size)
 	return read_bytes(code, tbuf_len(code));
 }
 
+static lua_State *
+luaT_make_repl_env(int fd)
+{
+	lua_State *L = lua_newthread(fiber->L);
+	lua_getglobal(L, "make_repl_env");
+	lua_pushinteger(L, fd);
+	lua_call(L, 1, 0);
+	return L;
+}
+
 static void
-exec_lua(lua_State *L, struct tbuf *code, struct tbuf *out)
+exec_lua(lua_State *L, const char *str, size_t len, struct tbuf *out)
 {
 	if (!cfg.admin_exec_lua) {
 		tbuf_printf(out, "error: command is disabled" CRLF);
 		return;
+	}
+
+	struct tbuf *code = tbuf_alloc(fiber->pool);
+	if (*str == '=' || *str == '!') {
+		if (*str == '=')
+			tbuf_append_lit(code, "print(");
+		else
+			tbuf_append_lit(code, "ddump(");
+		tbuf_append(code, str + 1, len - 1);
+		tbuf_append_lit(code, ")");
+	} else {
+		tbuf_append(code, str, len);
 	}
 
 	int r = lua_load(L, tbuf_reader, code, "network_input");
@@ -138,9 +160,11 @@ exec_lua(lua_State *L, struct tbuf *code, struct tbuf *out)
 		return;
 	}
 
-	size_t len;
-	const char *str = lua_tolstring(L, -1, &len);
+	str = lua_tolstring(L, -1, &len);
 	tbuf_append(out, str, len);
+	if (len)
+		tbuf_append(out, CRLF, 2);
+	lua_pop(L, 1);
 }
 
 
@@ -163,6 +187,24 @@ log_level(struct tbuf *out, const char *strstart, const char *strend, int diff)
 	}
 }
 
+
+static char *
+rbuf_getline(int fd, struct tbuf *rbuf)
+{
+	char *endline;
+	while ((endline = memchr(rbuf->ptr, '\n', tbuf_len(rbuf))) == NULL) {
+		if (tbuf_len(rbuf) > 0 && *(char*)(rbuf->ptr) == 0x04 /* Ctrl-D */)
+			return NULL;
+		ssize_t r = fiber_recv(fd, rbuf);
+		if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK ||
+			      errno == EINTR))
+			continue;
+		if (r <= 0)
+			return NULL;
+	}
+	return endline;
+}
+
 static int
 admin_dispatch(int fd, struct tbuf *rbuf)
 {
@@ -173,16 +215,9 @@ admin_dispatch(int fd, struct tbuf *rbuf)
 	char *strstart, *strend;
 	int info_net = 0;
 
-	while ((pe = memchr(rbuf->ptr, '\n', tbuf_len(rbuf))) == NULL) {
-		if (tbuf_len(rbuf) > 0 && *(char*)(rbuf->ptr) == 0x04 /* Ctrl-D */)
-			return 0;
-		ssize_t r = fiber_recv(fd, rbuf);
-		if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK ||
-			      errno == EINTR))
-			continue;
-		if (r <= 0)
-			return 0;
-	}
+	pe = rbuf_getline(fd, rbuf);
+	if (pe == NULL)
+		return 0;
 
 	pe++;
 	p = rbuf->ptr;
@@ -226,12 +261,44 @@ admin_dispatch(int fd, struct tbuf *rbuf)
 		}
 
 		action lua_exec {
-			struct tbuf *code = tbuf_alloc(fiber->pool);
-			tbuf_append(code, strstart, strend - strstart);
-
 			start(out);
-			exec_lua(fiber->L, code, out);
+			exec_lua(fiber->L, strstart, strend - strstart, out);
 			end(out);
+		}
+
+		action lua_repl {
+			tbuf_ltrim(rbuf, pe - (char *)rbuf->ptr); // trim "exec lua"
+			start(out);
+			tbuf_append_lit(out, "-- lua repl, type ### to exit" CRLF "> ");
+			fiber_write(fd, out->ptr, tbuf_len(out));
+			tbuf_reset(out);
+
+			struct tbuf *code = tbuf_alloc(fiber->pool);
+
+			lua_State *L = luaT_make_repl_env(fd);
+
+			while ((pe = rbuf_getline(fd, rbuf)) != NULL) {
+				*pe++ = 0;
+				char *line = rbuf->ptr;
+				int strlen = pe - line;
+				tbuf_ltrim(rbuf, strlen);
+
+				if (strcmp(line, "###") == 0) {
+					end(out);
+					break;
+				}
+
+				exec_lua(L, line, strlen - 1, out); /* without trailing \0 */
+				fiber_write(fd, out->ptr, tbuf_len(out));
+				fiber_write(fd, "> ", 2);
+				tbuf_reset(out);
+				tbuf_reset(code);
+			}
+
+			lua_pop(fiber->L, 1);
+			if (pe == NULL)
+				return 0;
+			p = pe - 1;
 		}
 
 		action mod_exec {
@@ -314,6 +381,7 @@ admin_dispatch(int fd, struct tbuf *rbuf)
 			    decr " "+ log " "+ string	%{log_level(out, strstart, strend, -1); }	|
 			    exec " "+ mod " "+ string	%mod_exec					|
 			    exec " "+ lua " "+ string	%lua_exec					|
+			    exec " " + lua		%lua_repl					|
 			    check " "+ slab		%{slab_validate(); ok(out);}			|
 			    reload " "+ configuration	%reload_configuration);
 

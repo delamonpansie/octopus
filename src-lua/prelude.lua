@@ -5,6 +5,7 @@ require('cdef_base')
 require('cdef')
 require('packer')
 ddump = require('ddump')
+make_repl_env = require 'repl'
 
 function os.ev_time()
     return C.ev_time()

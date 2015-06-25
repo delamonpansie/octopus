@@ -11,6 +11,7 @@ obj += src-lua/cdef_base.o
 obj += src-lua/wal.o
 obj += src-lua/fiber_lock.o
 obj += src-lua/reloadfile.o
+obj += src-lua/repl.o
 obj += src-lua/jit/v.o
 obj += src-lua/jit/dump.o
 obj += src-lua/jit/bc.o

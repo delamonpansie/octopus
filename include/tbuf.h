@@ -90,6 +90,8 @@ void tbuf_ltrim(struct tbuf *b, size_t diff);
 void tbuf_rtrim(struct tbuf *b, size_t diff);
 
 void tbuf_append(struct tbuf *b, const void *data, size_t len);
+static inline void tbuf_append_lit(struct tbuf *b, const char *s) { tbuf_append(b, s, strlen(s)); }
+
 void* tbuf_expand(struct tbuf *b, size_t len);
 #define tbuf_add_dup(b, data) do { \
 	memcpy(tbuf_expand((b), sizeof(*(data))), (data), sizeof(*(data))); \

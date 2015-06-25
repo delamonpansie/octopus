@@ -20,7 +20,7 @@ $CPP $srcdir/include/index.h | $SED -n '/^enum iterator_direction\+ \+{/,/^}/p'
 $CPP $srcdir/include/index.h | $SED -n '/set_lstr_field_noninline/p'
 $CPP $srcdir/include/fiber.h | $SED -n '/^typedef struct coro_context/p;'
 $CPP $srcdir/include/fiber.h | $SED -n '/^struct \(fiber\|octopus_coro\|coro_context\) \+{/,/^}/p'
-$CPP $srcdir/include/fiber.h | $SED -n '/fiber_wake\|fid2fiber/p'
+$CPP $srcdir/include/fiber.h | $SED -n '/fiber_wake\|fid2fiber\|fiber_write/p'
 echo "extern struct fiber *fiber;"
 echo "extern int coro_switch_cnt;"
 $CPP $srcdir/include/tbuf.h | $SED -n '/^struct tbuf \+{/,/^}/{s/end/stop/;s/void/u8/;p}'
