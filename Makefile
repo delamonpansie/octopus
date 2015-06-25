@@ -26,6 +26,7 @@ obj += mod/box/src-lua/box/example_proc.o
 obj += mod/box/src-lua/box/expire.o
 obj += mod/box/src-lua/box/dyn_tuple.o
 obj += mod/box/src-lua/box/op.o
+obj += mod/box/src-lua/box/string_ext.o
 
 cfg_tmpl += cfg/admin.cfg_tmpl
 cfg_tmpl += cfg/iproto.cfg_tmpl
