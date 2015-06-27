@@ -106,7 +106,7 @@ thread_requests_send(thread_requests* queue, thread_request req)
 		queue->waiter = waiter->next;
 		first = queue->first;
 		assert(first->next != NULL);
-		queue->first = first->next;
+		queue->first = (__typeof__(queue->first))first->next;
 		pdo(pthread_mutex_lock, &waiter->mtx);
 		waiter->next = NULL;
 		waiter->req = first;
@@ -123,7 +123,7 @@ thread_requests_pop(thread_requests* queue, thread_pool_waiter* waiter)
 	pdo(pthread_mutex_lock, &queue->mtx);
 	if (queue->first->next != NULL) {
 		request = (thread_pool_request*)queue->first;
-		queue->first = request->next;
+		queue->first = (__typeof__(queue->first))request->next;
 		pdo(pthread_mutex_unlock, &queue->mtx);
 	} else {
 		assert(waiter->next == NULL);
@@ -149,7 +149,7 @@ thread_requests_pop_waittill(thread_requests* queue, struct timespec *timeout, t
 	pdo(pthread_mutex_lock, &queue->mtx);
 	if (queue->first->next != NULL) {
 		request = (thread_pool_request*)queue->first;
-		queue->first = request->next;
+		queue->first = (__typeof__(queue->first))request->next;
 		pdo(pthread_mutex_unlock, &queue->mtx);
 	} else {
 		assert(waiter->next == NULL);

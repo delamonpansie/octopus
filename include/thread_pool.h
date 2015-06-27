@@ -38,7 +38,7 @@ typedef struct _thread_response_internal {
 } thread_response_internal;
 
 typedef struct _thread_pool_request {
-	struct _thread_pool_request *next;
+	volatile struct _thread_pool_request *next;
 	thread_request req;
 	thread_response_internal res;
 } thread_pool_request;
