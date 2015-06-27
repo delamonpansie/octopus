@@ -328,8 +328,13 @@ thread_responses_callbacks_fiber_loop(va_list va)
 	for(;;) {
 		int n = thread_responses_fiber_wait(queue);
 		for(; n>0; --n) {
-			bool were_get = thread_responses_get(queue, &res);
-			assert(were_get);
+			/* spin lock to wait till ->next is set */
+			for (;;) {
+				bool were_get = thread_responses_get(queue, &res);
+				if (were_get) break;
+				fiber_wake(fiber, NULL);
+				yield();
+			}
 			errno = res.eno;
 			res.cb(res.cb_arg, res.result, res.error);
 		}
