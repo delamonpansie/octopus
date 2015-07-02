@@ -227,6 +227,7 @@ xlog_print(struct tbuf *out, u16 op, struct tbuf *b)
 	case TRUNCATE:
 		tbuf_printf(out, "%s n:%i ", box_ops[op], n);
 		flags = read_u32(b);
+		break;
 	default:
 		tbuf_printf(out, "unknown wal op %" PRIi32, op);
 	}
