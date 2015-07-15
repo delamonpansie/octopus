@@ -28,7 +28,7 @@ struct child {
 	pid_t pid;
 	int fd;
 };
-struct child spawn_child(const char *name, int (*handler)(int fd, void *state), void *state, int len);
+struct child spawn_child(const char *name, int (*handler)(int fd, void *state, int len), void *state, int len);
 
 ssize_t sendfd(int sock, int fd_to_send, void *buf, size_t buflen);
 int recvfd(int sock, void *buf, size_t buflen);

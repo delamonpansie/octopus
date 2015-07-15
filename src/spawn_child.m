@@ -39,7 +39,7 @@
 
 struct fork_request {
 	char name[64];
-	int (*handler)(int fd, void *state);
+	int (*handler)(int fd, void *state, int len);
 };
 
 struct fork_reply {
@@ -172,15 +172,24 @@ fork_spawner()
 	title("");
 	say_info("spawner started");
 
+	struct sigaction sa;
+	memset(&sa, 0, sizeof(sa));
+	sigemptyset(&sa.sa_mask);
+	sa.sa_handler = SIG_IGN;
+	if (sigaction(SIGCHLD, &sa, 0) == -1)
+		say_syserror("sigaction");
+
 	for (;;) {
 		struct fork_request request;
-		char buf[512];
+		char buf[512 * 1024];
 		struct iovec iov[2] = { { .iov_base = &request,
 					  .iov_len = sizeof(request) },
 					{ .iov_base = buf,
 					  .iov_len = sizeof(buf) } };
 		struct msghdr msg = { .msg_iov = iov,
 				      .msg_iovlen = 2 };
+
+
 		ssize_t len = recvmsg(fsock, &msg, 0);
 		if (len == 0 || len < 0 || len == sizeof(request) + sizeof(buf)) {
 			if (len < 0)
@@ -211,7 +220,7 @@ fork_spawner()
 				  sock);
 #endif
 			atexit(flush_and_exit);
-			int rc = request.handler(sock, buf);
+			int rc = request.handler(sock, buf, len - sizeof(request));
 			fflush(NULL); /* safe, because all inherited fd's were closeed */
 			_exit(rc);
 		}
@@ -231,7 +240,7 @@ io_ready(int event)
 }
 
 struct child
-spawn_child(const char *name, int (*handler)(int fd, void *state), void *state, int len)
+spawn_child(const char *name, int (*handler)(int fd, void *state, int len), void *state, int len)
 {
 	struct child err = { .pid = -1, .fd = -1};
 	int fd = -1;
