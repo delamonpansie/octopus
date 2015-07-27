@@ -172,6 +172,7 @@ admin_dispatch(struct conn *c)
 	char *p, *pe;
 	char *strstart, *strend;
 	int info_net = 0;
+	int info_string = 0;
 
 	while ((pe = memchr(c->rbuf->ptr, '\n', tbuf_len(c->rbuf))) == NULL) {
 		if (tbuf_len(c->rbuf) > 0 && *(char*)(c->rbuf->ptr) == 0x04 /* Ctrl-D */)
@@ -207,9 +208,17 @@ admin_dispatch(struct conn *c)
 		}
 
 		action show_info {
+			struct tbuf *code;
+			const char* opt = NULL;
+			if (info_net) opt = "net";
+			else if (info_string) {
+				code = tbuf_alloc(fiber->pool);
+				tbuf_append(code, strstart, strend - strstart);
+				opt = code->ptr;
+			}
 			start(out);
 			if (module(NULL)->info != NULL)
-				module(NULL)->info(out, info_net ? "net" : NULL);
+				module(NULL)->info(out, opt);
 			end(out);
 		}
 
@@ -296,10 +305,12 @@ admin_dispatch(struct conn *c)
 		decr = "dec"("r")?;
 		log = "log"("_"("l"("e"("v"("e"("l")?)?)?)?)?)?;
                 net = "n"("e"("t")?)? %{ info_net = 1;};
+		info_string = string %{ info_string = 1;};
+		info_option = (" "+ (net | info_string))?;
 
 		commands = (help			%help						|
 			    exit			%{return 0;}					|
-			    show " "+ info (" "+ net)?	%show_info					|
+			    show " "+ info info_option 	%show_info					|
 			    show " "+ fiber		%{start(out); fiber_info(out); end(out);}	|
 			    show " "+ configuration 	%show_configuration				|
 			    show " "+ slab		%{start(out); slab_stat(out); end(out);}	|
