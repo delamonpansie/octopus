@@ -934,6 +934,12 @@ octopus(int argc, char **argv)
 	if ((size_t)fixed_arena != fixed_arena)
 		panic("slab_alloc_arena overflow");
 
+	CFG_SLAB_SIZE = 1 << cfg.slab_alloc_slab_power;
+	if (CFG_SLAB_SIZE < 256*1024) {
+		panic("slab_alloc_slab_power too small");
+	} else if (CFG_SLAB_SIZE > 32*1024*1024) {
+		panic("slab_alloc_slab_power too big");
+	}
 	salloc_init(fixed_arena, cfg.slab_alloc_minimal, cfg.slab_alloc_factor);
 
 	/* try autoload bundled graphite module */
