@@ -230,15 +230,14 @@ recover_row:(struct row_v12 *)r
 - (i64)
 load_from_local
 {
-	if (fold_scn)
+	if (fold_scn)  {
 		snap_lsn = [snap_dir containg_scn:fold_scn]; /* select snapshot before desired scn */
-
-	i64 local_lsn = [reader load_from_local:0];
-
-	if (fold_scn) {
+		[reader load_from_local:0];
 		say_error("unable to find record with SCN:%"PRIi64, fold_scn);
 		exit(EX_OSFILE);
 	}
+
+	i64 local_lsn = [reader load_from_local:0];
 
 	/* loading is faster until wal_final_row called because service is not yet initialized and
 	   only pk indexes must be updated. remote feeder will send wal_final_row then all remote
