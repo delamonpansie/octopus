@@ -133,7 +133,7 @@ XCFLAGS=
 # This is the client for the GDB JIT API. GDB 7.0 or higher is required
 # to make use of it. See lj_gdbjit.c for details. Enabling this causes
 # a non-negligible overhead, even when not running under GDB.
-#XCFLAGS+= -DLUAJIT_USE_GDBJIT
+XCFLAGS+= -DLUAJIT_USE_GDBJIT
 #
 # Turn on assertions for the Lua/C API to debug problems with lua_* calls.
 # This is rather slow -- use only while developing C libraries/embeddings.
