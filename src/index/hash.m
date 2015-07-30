@@ -111,7 +111,7 @@ free									\
 - (struct tnt_object *)							\
 get:(u32)i								\
 {									\
-	if (i > mh_end(h) || !mh_##type##_slot_occupied(h, i))		\
+	if (i >= mh_end(h) || !mh_##type##_slot_occupied(h, i))		\
 		return NULL;						\
 	return mh_##type##_value(h, i);					\
 }									\
@@ -417,7 +417,7 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 - (struct tnt_object*)
 get:(u32)i
 {
-	if (i > mh_end(h) || !mh_gen_slot_occupied(h, i)) {
+	if (i >= mh_end(h) || !mh_gen_slot_occupied(h, i)) {
 		return NULL;
 	}
 	return tnt_ptr2obj(*mh_gen_slot(h, i));
