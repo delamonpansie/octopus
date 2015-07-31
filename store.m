@@ -497,6 +497,20 @@ dtor(struct tnt_object *obj, struct index_node *node, void *arg __attribute__((u
 	return node;
 }
 
+static void
+init_second_stage(va_list ap __attribute__((unused)))
+{
+	[recovery simple];
+
+	if (fiber_create("memcached/acceptor", tcp_server, cfg.primary_addr,
+			 memcached_accept, NULL, NULL) == NULL)
+	{
+		say_error("can't start tcp_server on `%s'", cfg.primary_addr);
+		exit(EX_OSERR);
+	}
+
+	say_info("memcached initialized");
+}
 void
 memcached_init()
 {
@@ -517,16 +531,8 @@ memcached_init()
 	if (init_storage)
 		return;
 
-	[recovery simple];
-
-	if (fiber_create("memcached/acceptor", tcp_server, cfg.primary_addr,
-			 memcached_accept, NULL, NULL) == NULL)
-	{
-		say_error("can't start tcp_server on `%s'", cfg.primary_addr);
-		exit(EX_OSERR);
-	}
-
-	say_info("memcached initialized");
+	/* fiber is required to successfully pull from remote */
+	fiber_create("memcached_init", init_second_stage);
 }
 
 static void
