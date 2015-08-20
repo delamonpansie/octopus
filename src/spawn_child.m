@@ -113,8 +113,8 @@ sendfd(int sock, int fd_to_send, void *buf, size_t buflen)
 	return r;
 }
 
-int
-recvfd(int sock, void *buf, size_t buflen)
+ssize_t
+recvfd(int sock, int *fd, void *buf, size_t buflen)
 {
 	struct iovec iov = { .iov_base = buf,
 			     .iov_len = buflen };
@@ -127,7 +127,6 @@ recvfd(int sock, void *buf, size_t buflen)
 	while ((r = recvmsg(sock, &msg, 0)) < 0) {
 		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
 			continue;
-		assert(r == sizeof(buflen));
 		say_syserror("recvmsg");
 		return -1;
 	}
@@ -137,9 +136,8 @@ recvfd(int sock, void *buf, size_t buflen)
 	}
 
 	struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
-	int fd;
-	memcpy(&fd, CMSG_DATA(cmsg), sizeof(int));
-	return fd;
+	memcpy(fd, CMSG_DATA(cmsg), sizeof(int));
+	return r;
 }
 
 static void
@@ -272,7 +270,7 @@ spawn_child(const char *name, int (*handler)(int fd, void *state, int len), void
 	if (fiber != &sched)
 		io_ready(EV_READ);
 
-	if ((fd = recvfd(spawner_fd, &reply, sizeof(reply))) < 0)
+	if (recvfd(spawner_fd, &fd, &reply, sizeof(reply)) < 0)
 		return err;
 
 	/* fd is in non blocking mode, fork_pair() already did ioctl() */

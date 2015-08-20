@@ -31,4 +31,4 @@ struct child {
 struct child spawn_child(const char *name, int (*handler)(int fd, void *state, int len), void *state, int len);
 
 ssize_t sendfd(int sock, int fd_to_send, void *buf, size_t buflen);
-int recvfd(int sock, void *buf, size_t buflen);
+ssize_t recvfd(int sock, int *fd, void *buf, size_t buflen);
