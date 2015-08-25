@@ -1,6 +1,8 @@
 #######################################################################
 # MEMCACHED
 #
+# disable expiration
+memcached_no_expire = 0, ro
 # maximum rows to consider per expire loop iteration
 memcached_expire_per_loop=1024
 # octopus will try iterate all rows within this time

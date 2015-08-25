@@ -63,13 +63,10 @@ mc_value(const struct mc_obj *m) { return m->data + m->key_len + m->suffix_len; 
 static inline bool
 expired(struct tnt_object *obj)
 {
-#ifdef MEMCACHE_NO_EXPIRE
-	(void)obj;
-	return 0;
-#else
+	if (cfg.memcached_no_expire)
+		return 0;
 	struct mc_obj *m = mc_obj(obj);
  	return m->exptime == 0 ? 0 : m->exptime < ev_now();
-#endif
 }
 
 int store(const char *key, u32 exptime, u32 flags, u32 value_len, char *value);

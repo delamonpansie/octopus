@@ -181,11 +181,12 @@ apply:(struct tbuf *)op tag:(u16)tag
 	}
 }
 
-#ifndef MEMCACHE_NO_EXPIRE
 static void memcached_expire(va_list va __attribute__((unused)));
 - (void)
 status_changed
 {
+	if (cfg.memcached_no_expire)
+		return;
 	/* ugly hack: since it's a category it also breaks feeders title() */
 	if (self == recovery) {
 		if (status == PRIMARY) {
@@ -196,7 +197,6 @@ status_changed
 			panic("can't downgrade from primary");
 	}
 }
-#endif
 @end
 
 @implementation SnapWriter (Memcached)
@@ -326,7 +326,6 @@ delete(char **keys, int n)
 	return ret;
 }
 
-#ifndef MEMCACHE_NO_EXPIRE
 static void
 memcached_expire(va_list va __attribute__((unused)))
 {
@@ -371,8 +370,6 @@ memcached_expire(va_list va __attribute__((unused)))
 		fiber_gc();
 	}
 }
-#endif
-
 
 void
 print_stats(struct conn *c)
