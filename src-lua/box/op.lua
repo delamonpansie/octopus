@@ -18,8 +18,14 @@ _M.op = op
 
 pack = {}
 
+local req_packer = packer()
+local function cached_packer()
+    req_packer:reset()
+    return req_packer
+end
+
 local function insert(n, flags, ...)
-        local req = packer()
+        local req = cached_packer()
 
         req:u32(n)
         req:u32(flags)
@@ -29,7 +35,7 @@ local function insert(n, flags, ...)
         then
             local t = select(1, ...)
             req:u32(#t)
-            for _, v in ipairs(t)do
+            for _, v in ipairs(t) do
                 req:field(v)
             end
         else
@@ -51,7 +57,7 @@ function pack.add(n, ...)
 end
 
 function pack.delete(n, key)
-        local req = packer()
+        local req = cached_packer()
 
         req:u32(n)
         req:u32(1)
@@ -168,7 +174,7 @@ function pack.update(n, key, ...)
         end
 
         local flags = 1
-        local req = packer()
+        local req = cached_packer()
 
         req:u32(tonumber(n))
         req:u32(flags)
