@@ -271,6 +271,7 @@ store(const char *key, u32 exptime, u32 flags, u32 value_len, char *value)
 	}
 	@catch (Error *e) {
 		say_warn("got exception: %s", e->reason);
+		[e release];
 		return 0;
 	}
 	@finally {
@@ -295,6 +296,9 @@ delete(char **keys, int n)
 			continue;
 		@try {
 			object_lock(obj[k]);
+		}
+		@catch (Error* e) {
+			[e release];
 		}
 		@catch (id e) {
 			continue;
@@ -470,6 +474,7 @@ memcached_handler(va_list ap)
 	}
 	@catch (Error *e) {
 		say_debug("got error %s", e->reason);
+		[e release];
 	}
 	@finally {
 		palloc_unregister_gc_root(fiber->pool, c);
