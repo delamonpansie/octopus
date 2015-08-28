@@ -46,7 +46,8 @@ function replication_filter.test_filter(row)
           end
       end
 
-      local _, data, len = box.pack.update(cmd.n, cmd.key:strfield(0), cmd.update_mops)
+      local flags = 0
+      local _, data, len = box.pack.update(flags, cmd.n, cmd.key:strfield(0), cmd.update_mops)
       return row:update_data(data, len)
   end
   return true
