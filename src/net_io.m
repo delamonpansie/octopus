@@ -738,7 +738,7 @@ retry_bind:
 
 			/* it is possible to main process die while we looping here
 			   so, ping it at least one time a second and die with him*/
-			if (keepalive_count++ > 10) {
+			if (master_pid != getpid() && keepalive_count++ > 10) {
 				keepalive_count = 0;
 				keepalive();
 			}
