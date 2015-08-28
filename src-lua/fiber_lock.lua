@@ -9,9 +9,9 @@ local _yield = fiber.yield
 setmetatable(fiber, {
     __index = function(f, k)
         if k == 'current' then
-            return C.fiber.fid
+            return C.current_fiber().fid
         elseif k == 'switch_cnt' then
-            return C.coro_switch_cnt
+            return C.fiber_switch_cnt()
         end
     end
 })
@@ -28,7 +28,7 @@ local function lock(key)
     if locks[key] == nil then
         locks[key] = {}
     else
-        table_insert(locks[key], C.fiber.fid)
+        table_insert(locks[key], C.current_fiber().fid)
         _yield()
     end
 end

@@ -77,6 +77,7 @@ iproto_worker(va_list ap)
 		}
 		@catch (IProtoClose *e) {
 			netmsg_io_close(a.io);
+			[e release];
 		}
 		@catch (Error *e) {
 			/* FIXME: where is no way to rollback modifications of wbuf.
@@ -88,6 +89,7 @@ iproto_worker(va_list ap)
 				rc = ERR_CODE_ILLEGAL_PARAMS;
 
 			iproto_error(&a.io->wbuf, a.r, rc, e->reason);
+			[e release];
 		}
 		@finally {
 			if (a.io->wbuf.bytes > 0 && a.io->fd > 0)
@@ -285,6 +287,7 @@ process_requests(struct iproto_service *service, struct iproto_ingress *c)
 			}
 			@catch (IProtoClose *e) {
 				netmsg_io_close(io);
+				[e release];
 				goto out;
 			}
 			@catch (Error *e) {
@@ -296,9 +299,10 @@ process_requests(struct iproto_service *service, struct iproto_ingress *c)
 
 				netmsg_rewind(&io->wbuf, &header_mark);
 				iproto_error(&io->wbuf, request, rc, e->reason);
+				[e release];
 			}
 		} else {
-			struct fiber *w = SLIST_FIRST(&service->workers);
+			struct Fiber *w = SLIST_FIRST(&service->workers);
 			if (w) {
 				tbuf_ltrim(&io->rbuf, req_size);
 				stat_collect(stat_base, IPROTO_BLOCK_OP, 1);
@@ -368,7 +372,7 @@ iproto_wakeup_workers(ev_prepare *ev)
 	struct iproto_service *service = (void *)ev - offsetof(struct iproto_service, wakeup);
 	struct iproto_ingress *c, *tmp, *last;
 	struct palloc_pool *saved_pool = fiber->pool;
-	assert(saved_pool == sched.pool);
+	assert(saved_pool == sched->pool);
 
 	fiber->pool = service->pool;
 
@@ -464,28 +468,10 @@ iproto_service_info(struct tbuf *out, struct iproto_service *service)
 init_code:(u32)code_
      line:(unsigned)line_
      file:(const char *)file_
-backtrace:(const char *)backtrace_
-   reason:(const char *)reason_
 {
-	[self init_line:line_ file:file_ backtrace:backtrace_ reason:reason_];
+	[self init_line:line_ file:file_];
 	code = code_;
 	return self;
-}
-
-- (IProtoError *)
-init_code:(u32)code_
-     line:(unsigned)line_
-     file:(const char *)file_
-backtrace:(const char *)backtrace_
-   format:(const char *)format, ...
-{
-	va_list ap;
-	va_start(ap, format);
-	vsnprintf(buf, sizeof(buf), format, ap);
-	va_end(ap);
-
-	return [self init_code:code_ line:line_ file:file_
-		     backtrace:backtrace_ reason:buf];
 }
 
 - (u32)

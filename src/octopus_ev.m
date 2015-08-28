@@ -24,5 +24,6 @@
  * SUCH DAMAGE.
  */
 
+#include <fiber.h>
 #include <octopus_ev.h>
 #include <third_party/libev/ev.c>

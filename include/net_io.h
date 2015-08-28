@@ -42,8 +42,7 @@
 #ifndef LUA_DEF
 # define LUA_DEF
 #endif
-
-struct fiber;
+@class Fiber;
 struct service;
 
 struct netmsg;

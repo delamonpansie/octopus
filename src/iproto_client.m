@@ -371,7 +371,7 @@ struct netmsg_io_vop egress_vop = { .data_ready = data_ready,
 				    .close = egress_close };
 
 static struct tac_list iproto_tac_list;
-static struct fiber *iproto_remote_rendevouz;
+static struct Fiber *iproto_remote_rendevouz;
 struct iproto_egress *
 iproto_add_remote_peer(const struct sockaddr_in *daddr, struct palloc_pool *pool)
 {

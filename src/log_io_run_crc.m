@@ -37,7 +37,7 @@ run_crc_calc(u32 *crc, u16 row_tag, const void *data, int len)
 	int tag_type = row_tag & ~TAG_MASK;
 	int tag = row_tag & TAG_MASK;
 
-	if (tag_type == TAG_WAL && (tag == wal_data || tag > user_tag))
+	if (tag_type == TAG_WAL && (tag == wal_data || tag >= user_tag))
 		*crc = crc32c(*crc, data, len);
 }
 

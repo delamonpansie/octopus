@@ -436,7 +436,7 @@ luaT_error(struct lua_State *L)
 		err = lua_tostring(L, -1);
 
 	/* FIXME: use native exceptions ? */
-	@throw [[Error palloc] init:err];
+	@throw [Error with_reason:err];
 }
 
 
@@ -447,7 +447,7 @@ luaT_os_ctime(lua_State *L)
 	struct stat buf;
 
 	if (stat(filename, &buf) < 0)
-		luaL_error(L, "stat(`%s'): %s", filename, strerror(errno));
+		luaL_error(L, "stat(`%s'): %s", filename, strerror_o(errno));
 	lua_pushnumber(L, buf.st_ctime + (lua_Number)buf.st_ctim.tv_nsec / 1.0e9);
 	return 1;
 }
@@ -482,7 +482,7 @@ void
 luaT_init()
 {
 	struct lua_State *L;
-	L = sched.L = root_L = luaL_newstate();
+	L = sched->L = root_L = luaL_newstate();
 	assert(L != NULL);
 
 	/* any lua error during initial load is fatal */
@@ -958,6 +958,12 @@ octopus(int argc, char **argv)
 	if ((size_t)fixed_arena != fixed_arena)
 		panic("slab_alloc_arena overflow");
 
+	CFG_SLAB_SIZE = 1 << cfg.slab_alloc_slab_power;
+	if (CFG_SLAB_SIZE < 256*1024) {
+		panic("slab_alloc_slab_power too small");
+	} else if (CFG_SLAB_SIZE > 32*1024*1024) {
+		panic("slab_alloc_slab_power too big");
+	}
 	salloc_init(fixed_arena, cfg.slab_alloc_minimal, cfg.slab_alloc_factor);
 
 	/* try autoload bundled graphite module */
@@ -975,7 +981,7 @@ octopus(int argc, char **argv)
 			say_error("Can't allocate memory. Is slab_arena too small?");
 			exit(EX_OSFILE);
 		}
-		@throw e;
+		@throw;
 	}
 
 	/* run Lua init _after_ module init */

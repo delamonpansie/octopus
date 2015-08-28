@@ -201,7 +201,7 @@ typedef struct marker_desc {
 	bool no_wet, inprogress;
 
 	size_t bytes_written;
-	off_t offset, wet_rows_offset[WAL_PACK_MAX * 8];
+	off_t offset, alloced, wet_rows_offset[WAL_PACK_MAX * 8];
 }
 + (XLog *) open_for_read_filename:(const char *)filename
 			      dir:(XLogDir *)dir;
@@ -223,6 +223,7 @@ typedef struct marker_desc {
 - (const struct row_v12 *) append_row:(struct row_v12 *)row data:(const void *)data;
 - (i64) confirm_write;
 - (void) append_successful:(size_t)bytes;
+- (int) fileno;
 @end
 
 struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
@@ -248,14 +249,14 @@ struct wal_pack {
 	struct netmsg_head *netmsg;
 	u32 packet_len;
 	u32 row_count;
-	struct fiber *sender;
+	struct Fiber *sender;
 	u32 fid;
 } __attribute__((packed));
 
 struct wal_reply {
 	u32 packet_len;
 	u32 row_count;
-	struct fiber *sender;
+	struct Fiber *sender;
 	u32 fid;
 
 	struct row_commit_info row_info[];
@@ -352,7 +353,7 @@ extern i64 snap_lsn; /* may be used for overriding initial snapshot,
 
 	u32 version;
 	bool abort;
-	struct fiber *in_recv;
+	struct Fiber *in_recv;
 	struct feeder_param *feeder;
 	char errbuf[64];
 }

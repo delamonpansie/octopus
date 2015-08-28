@@ -448,7 +448,7 @@ title(const char *fmt, ...)
 
 	if (fmt) {
 		va_list ap;
-		char tmp[32];
+		char tmp[64];
 		va_start(ap, fmt);
 		vsnprintf(tmp, sizeof(tmp), fmt, ap);
 		va_end(ap);
@@ -465,6 +465,7 @@ title(const char *fmt, ...)
 		}
 		@catch (id e) {
 			/* oops, bad object */
+			[e release];
 		}
 	}
 
@@ -483,5 +484,32 @@ title(const char *fmt, ...)
 	}
 	set_proc_title("%s", buf);
 }
+
+#ifdef THREADS
+#if !_GNU_SOURCE && (_POSIX_C_SOURCE >= 200112L || _XOPEN_SOURCE >= 600)
+const char* strerror_o(int eno)
+{
+	static __thread char buf[256];
+	int e = strerror_r(eno, buf, sizeof(buf)-1);
+	if (e != 0) {
+		if (e == -1) {/* giveup on thread safety */
+			e = errno;
+		}
+		if (e == EINVAL) {
+			snprintf(buf, sizeof(buf)-1, "Wrong errno %d", eno);
+		} else if (e == ERANGE) {
+			snprintf(buf, sizeof(buf)-1, "errno = %d has huge message", eno);
+		}
+	}
+	return buf;
+}
+#else
+const char* strerror_o(int eno)
+{
+	static __thread char buf[256];
+	return strerror_r(eno, buf, sizeof(buf)-1);
+}
+#endif
+#endif
 
 register_source();

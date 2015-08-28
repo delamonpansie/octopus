@@ -44,8 +44,8 @@ RB_HEAD(ptree, proposal);
 @public
 	SLIST_HEAD(paxos_group, paxos_peer) group;
 	struct iproto_egress_list paxos_remotes;
-	struct fiber *proposer_fiber;
-	struct fiber *output_flusher, *reply_reader, *follower, *wal_dumper;
+	struct Fiber *proposer_fiber;
+	struct Fiber *output_flusher, *reply_reader, *follower, *wal_dumper;
 	struct palloc_pool *pool;
 	i64 app_scn, max_scn, run_crc_scn;
 	bool wal_dumper_busy;
@@ -70,7 +70,7 @@ struct proposal {
 	u8 *value;
 	u16 tag;
 	ev_tstamp delay, tstamp;
-	struct fiber *waiter;
+	struct Fiber *waiter;
 	RB_ENTRY(proposal) link;
 };
 

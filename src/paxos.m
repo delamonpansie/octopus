@@ -729,8 +729,10 @@ learn(Paxos *paxos, struct proposal *p)
 			proposal_mark_applied(paxos, p);
 		}
 		@catch (Error *e) {
-			panic("aborting txn, [%s reason:\"%s\"] at %s:%d",
-			      [[e class] name], e->reason, e->file, e->line);
+			say_warn("aborting txn, [%s reason:\"%s\"] at %s:%d",
+				 [[e class] name], e->reason, e->file, e->line);
+			[e release];
+			break;
 		}
 	}
 }
@@ -1185,6 +1187,7 @@ again:
 	@catch (Error *e) {
 		say_warn("puller failed, [%s reason:\"%s\"] at %s:%d",
 			 [[e class] name], e->reason, e->file, e->line);
+		[e release];
 	}
 	@finally {
 		[puller close];

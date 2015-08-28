@@ -9,6 +9,11 @@
 #include <stdint.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
+#ifdef HAVE_SYS_SYSCALL_H
+#include <sys/syscall.h>
+#elif defined(HAVE_SYSCALL_H)
+#include <sys/syscall.h>
+#endif
 #include <unistd.h>
 #include <netinet/in.h>
 #include <fcntl.h>
@@ -26,7 +31,6 @@
 #import <objc.h>
 #import <iproto.h>
 #import "thread_pool.h"
-#import "third_party/ecb.h"
 
 #define pdo(m, ...) do { \
 	int err = m(__VA_ARGS__); \
@@ -72,21 +76,13 @@ thread_requests_init(thread_requests *queue)
 	thread_pool_request *thumb;
 	thumb = xcalloc(1, sizeof(*thumb));
 	queue->first = queue->last = thumb;
-
 	pdo(pthread_mutex_init, &queue->mtx, NULL);
-
-	pthread_condattr_t cond_attr;
-	pthread_condattr_init(&cond_attr);
-	pthread_condattr_setclock(&cond_attr, cond_clock);
-
-	pdo(pthread_cond_init, &queue->cnd, &cond_attr);
 }
 
 void
 thread_requests_finalize(thread_requests *queue)
 {
 	pdo(pthread_mutex_destroy, &queue->mtx);
-	pdo(pthread_cond_destroy, &queue->cnd);
 	thread_pool_request *p, *r = (typeof(r))queue->first;
 	while(r) {
 		p = (typeof(p))r->next;
@@ -98,48 +94,97 @@ thread_requests_finalize(thread_requests *queue)
 void
 thread_requests_send(thread_requests* queue, thread_request req)
 {
-	thread_pool_request *thumb, *last;
+	thread_pool_request *thumb, *last, *first;
 	thumb = xcalloc(1, sizeof(*thumb));
 	last = queue->last;
 	last->req = req;
+	pdo(pthread_mutex_lock, &queue->mtx);
 	last->next = thumb;
-	ECB_MEMORY_FENCE;
-	pdo(pthread_cond_signal, &queue->cnd);
 	queue->last = thumb;
+	while (queue->waiter != NULL && queue->first != queue->last) {
+		thread_pool_waiter* waiter = queue->waiter;
+		queue->waiter = waiter->next;
+		first = queue->first;
+		assert(first->next != NULL);
+		queue->first = (__typeof__(queue->first))first->next;
+		pdo(pthread_mutex_lock, &waiter->mtx);
+		waiter->next = NULL;
+		waiter->req = first;
+		pdo(pthread_mutex_unlock, &waiter->mtx);
+		pdo(pthread_cond_signal, &waiter->cnd);
+	}
+	pdo(pthread_mutex_unlock, &queue->mtx);
 }
 
 thread_pool_request*
-thread_requests_pop(thread_requests* queue)
+thread_requests_pop(thread_requests* queue, thread_pool_waiter* waiter)
 {
 	thread_pool_request *request = NULL;
 	pdo(pthread_mutex_lock, &queue->mtx);
-	while (queue->first->next == NULL)
-		pdo(pthread_cond_wait, &queue->cnd, &queue->mtx);
-	request = (thread_pool_request*)queue->first;
-	queue->first = request->next;
-	pdo(pthread_mutex_unlock, &queue->mtx);
+	if (queue->first->next != NULL) {
+		request = (thread_pool_request*)queue->first;
+		queue->first = (__typeof__(queue->first))request->next;
+		pdo(pthread_mutex_unlock, &queue->mtx);
+	} else {
+		assert(waiter->next == NULL);
+		waiter->next = queue->waiter;
+		queue->waiter = waiter;
+		assert(waiter->req == NULL);
+		pdo(pthread_mutex_unlock, &queue->mtx);
+		pdo(pthread_mutex_lock, &waiter->mtx);
+		while (waiter->req == NULL)
+			pdo(pthread_cond_wait, &waiter->cnd, &waiter->mtx);
+		pdo(pthread_mutex_unlock, &waiter->mtx);
+		assert(waiter->next == NULL);
+		request = waiter->req;
+		waiter->req = NULL;
+	}
 	return request;
 }
 
 thread_pool_request*
-thread_requests_pop_waittill(thread_requests* queue, struct timespec *timeout)
+thread_requests_pop_waittill(thread_requests* queue, struct timespec *timeout, thread_pool_waiter* waiter)
 {
 	thread_pool_request *request = NULL;
 	pdo(pthread_mutex_lock, &queue->mtx);
-	while (queue->first->next == NULL) {
-		int err = pthread_cond_timedwait(&queue->cnd, &queue->mtx, timeout);
-		if (err != 0) {
-			if (err == ETIMEDOUT) {
-				pdo(pthread_mutex_unlock, &queue->mtx);
-				return NULL;
+	if (queue->first->next != NULL) {
+		request = (thread_pool_request*)queue->first;
+		queue->first = (__typeof__(queue->first))request->next;
+		pdo(pthread_mutex_unlock, &queue->mtx);
+	} else {
+		assert(waiter->next == NULL);
+		waiter->next = queue->waiter;
+		queue->waiter = waiter;
+		assert(waiter->req == NULL);
+		pdo(pthread_mutex_unlock, &queue->mtx);
+		pdo(pthread_mutex_lock, &waiter->mtx);
+		while (waiter->req == NULL) {
+			int err = pthread_cond_timedwait(&waiter->cnd, &waiter->mtx, timeout);
+			if (err != 0) {
+				if (err == ETIMEDOUT) {
+					pdo(pthread_mutex_unlock, &waiter->mtx);
+					pdo(pthread_mutex_lock, &queue->mtx);
+					request = waiter->req;
+					if (request == NULL) {
+						thread_pool_waiter **w = &queue->waiter;
+						while (*w != waiter) {
+							w = &(*w)->next;
+						}
+						*w = waiter->next;
+						waiter->next = NULL;
+					}
+					pdo(pthread_mutex_unlock, &queue->mtx);
+					assert(waiter->next == NULL);
+					return request;
+				}
+				errno = err;
+				panic_syserror("pthread_cond_timedwait");
 			}
-			errno = err;
-			panic_syserror("pthread_cond_timedwait");
 		}
+		pdo(pthread_mutex_unlock, &waiter->mtx);
+		request = waiter->req;
+		waiter->req = NULL;
 	}
-	request = (thread_pool_request*)queue->first;
-	queue->first = request->next;
-	pdo(pthread_mutex_unlock, &queue->mtx);
 	return request;
 }
 
@@ -184,8 +229,9 @@ thread_responses_push(thread_responses *queue, thread_pool_request *request, thr
 	thread_pool_request *prev;
 	request->res = res;
 	request->next = NULL;
-	prev = (typeof(prev))__sync_lock_test_and_set(&queue->last, request);
-	prev->next = request;
+	//prev = (typeof(prev))__sync_lock_test_and_set(&queue->last, request);
+	prev = (typeof(prev))__atomic_exchange_n(&queue->last, request, __ATOMIC_ACQ_REL);
+	__atomic_store_n(&prev->next, request, __ATOMIC_RELEASE);
 #ifdef HAVE_EVENTFD
 	u64 v = 1;
 #else
@@ -207,15 +253,20 @@ thread_responses_possibly_have(thread_responses *queue)
 #else
 	char buf[2048];
 #endif
-	if (read(queue->ifd, buf, sizeof(buf)) == -1) {
+	ssize_t n = read(queue->ifd, buf, sizeof(buf));
+	if (n == -1) {
 		if (errno == EAGAIN || errno == EWOULDBLOCK)
 			return 0;
 		panic_syserror("read(queue->ifd)");
 	}
-	return 1;
+#ifdef HAVE_EVENTFD
+	return (int)(*(u64*)buf);
+#else
+	return (int)n;
+#endif
 }
 
-void
+int
 thread_responses_fiber_wait(thread_responses *queue)
 {
 	if (!queue->ev_started) {
@@ -226,7 +277,7 @@ thread_responses_fiber_wait(thread_responses *queue)
 		ev_io_start(&queue->ev);
 	}
 	yield();
-	thread_responses_possibly_have(queue);
+	return thread_responses_possibly_have(queue);
 }
 
 int
@@ -255,7 +306,7 @@ thread_responses_get(thread_responses *queue, thread_response *res)
 {
 	thread_pool_request *req, *next;
 	req = (typeof(req))queue->first;
-	next = (typeof(req))req->next;
+	next = (typeof(req))__atomic_load_n(&req->next, __ATOMIC_ACQUIRE);
 	if (!next) {
 		return 0;
 	}
@@ -275,18 +326,50 @@ thread_responses_callbacks_fiber_loop(va_list va)
 	thread_responses *queue = va_arg(va, thread_responses*);
 	thread_response res;
 	for(;;) {
-		thread_responses_fiber_wait(queue);
-		while(thread_responses_get(queue, &res)) {
+		int n = thread_responses_fiber_wait(queue);
+		for(; n>0; --n) {
+			/* spin lock to wait till ->next is set */
+			for (;;) {
+				bool were_get = thread_responses_get(queue, &res);
+				if (were_get) break;
+				fiber_wake(fiber, NULL);
+				yield();
+			}
 			errno = res.eno;
 			res.cb(res.cb_arg, res.result, res.error);
 		}
+		fiber_gc();
 	}
 }
 
 static void *
 thread_loop(void *arg)
 {
-	[(ThreadWorker*)arg thread_loop];
+	char buf[24];
+#ifdef SYS_gettid
+	snprintf(buf, sizeof(buf)-1, "__thread:%d", (int)syscall(SYS_gettid));
+#else
+	static int thrd_cnt = 1;
+	int thno = __sync_add_and_get(&thrd_cnt, 1);
+	snprintf(buf, sizeof(buf)-1, "__thread:%d", thno);
+#endif
+	fiber_create_fake(buf);
+
+	thread_pool_waiter waiter;
+	memset(&waiter, 0, sizeof(waiter));
+	pdo(pthread_mutex_init, &waiter.mtx, NULL);
+	pthread_condattr_t cond_attr;
+	pthread_condattr_init(&cond_attr);
+	pthread_condattr_setclock(&cond_attr, cond_clock);
+	pdo(pthread_cond_init, &waiter.cnd, &cond_attr);
+
+	@try {
+		[(ThreadWorker*)arg thread_loop: &waiter];
+	} @finally {
+		fiber_destroy_fake();
+		pdo(pthread_mutex_destroy, &waiter.mtx);
+		pdo(pthread_cond_destroy, &waiter.cnd);
+	}
 	return NULL;
 }
 
@@ -338,32 +421,33 @@ send: (request_arg)arg cb: (thread_callback)cb cb_arg: (request_arg)cb_arg
 }
 
 - (thread_pool_request*)
-pop
+pop_request: (thread_pool_waiter*) waiter
 {
-	return thread_requests_pop(&requests);
+	return thread_requests_pop(&requests, waiter);
 }
 
 - (thread_pool_request*)
-pop_till: (struct timespec*)till
+pop_till: (struct timespec*)till waiter: (thread_pool_waiter*) waiter
 {
-	return thread_requests_pop_waittill(&requests, till);
+	return thread_requests_pop_waittill(&requests, till, waiter);
 }
 
 - (thread_pool_request*)
-pop_timeout: (double)seconds
+pop_timeout: (double)seconds waiter: (thread_pool_waiter*) waiter
 {
 	struct timespec ts;
 	thread_fill_waittill(&ts, seconds);
-	return thread_requests_pop_waittill(&requests, &ts);
+	return thread_requests_pop_waittill(&requests, &ts, waiter);
 }
 
 - (void)
-thread_loop
+thread_loop: (thread_pool_waiter*) waiter
 {
 	thread_pool_request *request = NULL;
+
 	for(;;) {
 		errno = 0;
-		request = [self pop];
+		request = [self pop_request: waiter];
 		if (request->req.cb == NULL) {
 			return;
 		}
@@ -372,7 +456,9 @@ thread_loop
 		}
 		@catch (id e) {
 			say_error("thread loop catched an error");
+			[e release];
 		}
+		fiber_gc();
 	}
 }
 
@@ -417,7 +503,7 @@ init_num: (int) n
 }
 
 struct call_request {
-	struct fiber *fib;
+	struct Fiber *fib;
 	i64 res;
 	id error;
 	int eno;
@@ -450,6 +536,7 @@ call: (request_arg)arg
 - (void)
 respond: (thread_pool_request*)req res: (i64)res
 {
+	fiber_gc();
 	thread_response_internal response = {.result = res, .error = nil, .eno = errno};
 	thread_responses_push(&responses, req, response);
 }
@@ -457,18 +544,19 @@ respond: (thread_pool_request*)req res: (i64)res
 - (void)
 respond: (thread_pool_request*)req error: (id)e
 {
+	fiber_gc();
 	thread_response_internal response = {.result = 0, .error = e, .eno = errno};
 	thread_responses_push(&responses, req, response);
 }
 
 - (void)
-thread_loop
+thread_loop: (thread_pool_waiter*)waiter
 {
 	thread_pool_request *request = NULL;
 	i64 res;
 	for(;;) {
 		errno = 0;
-		request = [self pop];
+		request = [self pop_request: waiter];
 		if (request->req.cb == NULL) {
 			[self respond: request res: 0];
 			return;
@@ -481,6 +569,7 @@ thread_loop
 			say_error("thread loop catched an error");
 			[self respond: request error: e];
 		}
+		fiber_gc();
 	}
 }
 

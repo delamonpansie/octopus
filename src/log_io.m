@@ -606,6 +606,11 @@ confirm_write
 	return next_lsn - 1;
 }
 
+- (int)
+fileno
+{
+	return fileno(fd);
+}
 @end
 
 @implementation XLog04

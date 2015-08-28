@@ -46,6 +46,10 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#if HAVE_LINUX_FALLOC_H
+#include <linux/falloc.h>
+#endif
+
 struct wal_disk_writer_conf {
 	i64 lsn, scn;
 	u32 run_crc;
@@ -88,6 +92,18 @@ prepare_write:(i64)scn_
                 say_syserror("can't open wal");
                 return -1;
         }
+
+#if HAVE_FALLOCATE && defined(FALLOC_FL_KEEP_SIZE)
+	if (current_wal->alloced < current_wal->offset + 512*1024) {
+		off_t old_alloced = current_wal->alloced;
+		while (current_wal->alloced < current_wal->offset + 512*1024) {
+			current_wal->alloced += 1024*1024;
+		}
+		int r = fallocate([current_wal fileno], FALLOC_FL_KEEP_SIZE, old_alloced, current_wal->alloced - old_alloced);
+		if (r == -1)
+			say_syserror("fallocate");
+	}
+#endif
 
 	return 0;
 }

@@ -49,7 +49,7 @@ src/octopus_ev.o: XCFLAGS := -U_FORTIFY_SOURCE $(filter-out -W%,$(CFLAGS_EXTRA))
 ifneq ($(findstring src/thread_pool.o,$(obj)),)
   XCFLAGS += -DTHREADS
   src/octopus_ev.o: XCFLAGS += -DTHREADS
-  LIBS += -lpthread -lrt
+  LIBS += -pthread -lrt
 endif
 
 ifneq (,$(TRACE))

@@ -43,19 +43,26 @@ typedef struct _thread_pool_request {
 	thread_response_internal res;
 } thread_pool_request;
 
-typedef struct _thread_requests {
+typedef struct _thread_pool_waiter {
 	pthread_mutex_t mtx;
 	pthread_cond_t  cnd;
-	volatile thread_pool_request *first;
+	thread_pool_request *req;
+	struct _thread_pool_waiter* next;
+} thread_pool_waiter;
+
+typedef struct _thread_requests {
+	pthread_mutex_t mtx;
+	thread_pool_request *first;
 	thread_pool_request *last;
+	thread_pool_waiter *waiter;
 } thread_requests;
 
 void thread_requests_init(thread_requests *queue);
 void thread_requests_finalize(thread_requests *queue);
 void thread_requests_send(thread_requests* queue, thread_request req);
-thread_pool_request* thread_requests_pop(thread_requests* queue);
+thread_pool_request* thread_requests_pop(thread_requests* queue, thread_pool_waiter* waiter);
 void thread_fill_waittill(struct timespec *ts, double seconds);
-thread_pool_request* thread_requests_pop_waittill(thread_requests* queue, struct timespec *timeout);
+thread_pool_request* thread_requests_pop_waittill(thread_requests* queue, struct timespec *timeout, thread_pool_waiter* waiter);
 
 typedef struct _thread_responses {
 	int ifd, ofd;
@@ -70,7 +77,7 @@ void thread_responses_finalize(thread_responses *queue);
 void thread_responses_push(thread_responses *queue, thread_pool_request *request, thread_response_internal res);
 void thread_responses_callbacks_fiber_loop(va_list va);
 /* should be called always from a same fiber */
-void thread_responses_fiber_wait(thread_responses *queue);
+int thread_responses_fiber_wait(thread_responses *queue);
 int thread_responses_wait(thread_responses *queue, double seconds);
 int thread_responses_possibly_have(thread_responses *queue);
 int thread_responses_get(thread_responses *queue, thread_response *res);
@@ -89,20 +96,20 @@ int thread_responses_get(thread_responses *queue, thread_response *res);
 - (void) send: (request_arg)arg;
 - (void) send: (request_arg)arg cb: (thread_callback)cb cb_arg: (request_arg)cb_arg;
 /* Specialization api */
-- (void) thread_loop;
+- (void) thread_loop: (thread_pool_waiter*) waiter;
 /* called by default thread_loop */
 - (i64) perform: (request_arg)arg;
 - (void) close;
 /* Implementation api */
-- (thread_pool_request*) pop;
-- (thread_pool_request*) pop_timeout: (double)seconds;
-- (thread_pool_request*) pop_till: (struct timespec*)seconds;
+- (thread_pool_request*) pop_request: (thread_pool_waiter*) w;
+- (thread_pool_request*) pop_timeout: (double)seconds waiter: (thread_pool_waiter*) w;
+- (thread_pool_request*) pop_till: (struct timespec*)seconds waiter: (thread_pool_waiter*) w;
 @end
 
 @interface ThreadPool : ThreadWorker {
 @public
 	thread_responses responses;
-	struct fiber *resrdr; /* response reader */
+	Fiber *resrdr; /* response reader */
 };
 
 - (i64) call: (request_arg)arg;

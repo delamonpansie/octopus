@@ -45,7 +45,11 @@ void octopus_coro_destroy(struct octopus_coro *ctx);
 /* counter for context switches.
  * it has type `int` for fast retreiving from luajit.
  * located in fiber.m for performance issue. */
+#ifdef THREADS
+extern __thread int coro_switch_cnt;
+#else
 extern int coro_switch_cnt;
+#endif
 static inline void
 oc_coro_transfer(coro_context *from, coro_context *to)
 {

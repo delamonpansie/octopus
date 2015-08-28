@@ -38,15 +38,7 @@
 void __attribute__((noreturn))
 tbuf_too_short()
 {
-	@throw [[Error palloc] init:"tbuf too short"];
-}
-
-static __attribute__((always_inline)) inline void
-_read_must_have(struct tbuf *b, i32 n)
-{
-	if (unlikely(tbuf_len(b) < n)) {
-		tbuf_too_short();
-	}
+	@throw [Error with_reason:"tbuf too short"];
 }
 
 void
@@ -59,7 +51,7 @@ void
 read_must_end(struct tbuf *b, const char *err)
 {
 	if (unlikely(tbuf_len(b) != 0)) {
-		@throw [[Error palloc] init:(err ?: "tbuf not empty")];
+		@throw [Error with_reason:(err ?: "tbuf not empty")];
 	}
 }
 
@@ -108,33 +100,6 @@ write_varint32(struct tbuf *b, u32 value)
 	}
 	append_byte(b, (u8)((value) & 0x7F));
 }
-
-#define read_u(bits)							\
-	u##bits read_u##bits(struct tbuf *b)				\
-	{								\
-		_read_must_have(b, bits/8);				\
-		u##bits r = *(u##bits *)b->ptr;				\
-		b->ptr += bits/8;					\
-		return r;						\
-	}
-
-#define read_i(bits)							\
-	i##bits read_i##bits(struct tbuf *b)				\
-	{								\
-		_read_must_have(b, bits/8);				\
-		i##bits r = *(i##bits *)b->ptr;				\
-		b->ptr += bits/8;					\
-		return r;						\
-	}
-
-read_u(8)
-read_u(16)
-read_u(32)
-read_u(64)
-read_i(8)
-read_i(16)
-read_i(32)
-read_i(64)
 
 static u32
 _safe_load_varint32(struct tbuf *buf)

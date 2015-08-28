@@ -153,7 +153,7 @@ fork_spawner()
 	int fsock;
 	pid_t pid;
 
-	assert(fiber == &sched);
+	assert(fiber == sched);
 
 	pid = fork_pair(SOCK_SEQPACKET, &fsock);
 	if (pid < 0)
@@ -166,7 +166,7 @@ fork_spawner()
 
 	extern int keepalive_pipe[2];
 	close_all_xcpt(4, fsock, stderrfd, sayfd, keepalive_pipe[1]);
-	sched.name = "spawner";
+	sched->name = "spawner";
 	title("");
 	say_info("spawner started");
 
@@ -209,6 +209,7 @@ fork_spawner()
 			octopus_ev_init();
 			fiber_init(request.name);
 			luaT_init();
+			sched->name = request.name;
 			title("");
 			say_info("%s spawned", request.name);
 #ifdef HAVE_LIBELF
@@ -256,7 +257,7 @@ spawn_child(const char *name, int (*handler)(int fd, void *state, int len), void
 	struct msghdr msg = { .msg_iov = iov,
 			      .msg_iovlen = 2 };
 
-	if (fiber != &sched)
+	if (fiber != sched)
 		io_ready(EV_WRITE);
 	while (sendmsg(spawner_fd, &msg, 0) !=  sizeof(request) + len) {
 		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
@@ -267,7 +268,7 @@ spawn_child(const char *name, int (*handler)(int fd, void *state, int len), void
 
 	struct fork_reply reply;
 
-	if (fiber != &sched)
+	if (fiber != sched)
 		io_ready(EV_READ);
 
 	if (recvfd(spawner_fd, &fd, &reply, sizeof(reply)) < 0)

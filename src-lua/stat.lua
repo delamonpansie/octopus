@@ -116,7 +116,7 @@ function meths:admin_out(out)
             table.insert(out, line)
         elseif type(val) == 'table' then
             local aval = val[0] / val[1]
-            local line = string.format("  %-25s { avg: %-08.3f, min: %-5i, max %-8i }\r\n", key .. ':', aval, val[2], val[3])
+            local line = string.format("  %-25s { avg: %-08.3f, min: %-8.3f, max: %-8.3f, cnt: %-8.3f }\r\n", key .. ':', aval, val[2], val[3], val[1])
             table.insert(out, line)
         end
     end

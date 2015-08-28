@@ -356,6 +356,7 @@ run_crc_writer(va_list ap)
 		@catch (Error *e) {
 			say_warn("run_crc submit failed, [%s reason:\"%s\"] at %s:%d",
 				 [[e class] name], e->reason, e->file, e->line);
+			[e release];
 		}
 
 		submit_tstamp = ev_now();
@@ -424,7 +425,7 @@ fork_and_snapshot:(bool)wait
 
 		int fd = open("/proc/self/oom_score_adj", O_WRONLY);
 		if (fd) {
-			write(fd, "900\n", 4);
+			int res _unused_ = write(fd, "900\n", 4);
 			close(fd);
 		}
 		int r = [snap_writer snapshot_write];

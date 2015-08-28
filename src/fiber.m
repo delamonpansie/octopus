@@ -58,12 +58,15 @@
 #include <unistd.h>
 #include <sysexits.h>
 
-struct fiber sched;
-struct fiber *fiber = &sched;
-coro_context *sched_ctx = &sched.coro.ctx;
+struct Fiber* sched;
+coro_context *sched_ctx = NULL;
+#ifdef THREADS
+__thread struct Fiber *fiber = nil;
+__thread int coro_switch_cnt;
+#else
+struct Fiber *fiber = nil;
 int coro_switch_cnt;
-void *watcher;
-int events;
+#endif
 static uint32_t last_used_fid;
 
 static ev_prepare wake_prep;
@@ -71,7 +74,7 @@ static ev_async wake_async;
 
 static struct mh_i32_t *fibers_registry;
 
-TAILQ_HEAD(, fiber) wake_list;
+TAILQ_HEAD(, Fiber) wake_list;
 
 #if defined(FIBER_DEBUG) || defined(FIBER_EV_DEBUG)
 void
@@ -82,10 +85,10 @@ fiber_ev_cb(void *arg)
 #endif
 
 void
-resume(struct fiber *callee, void *w)
+resume(struct Fiber *callee, void *w)
 {
-	assert(callee != &sched);
-	struct fiber *caller = fiber;
+	assert(callee != sched);
+	Fiber *caller = fiber;
 #ifdef FIBER_DEBUG
 	say_debug("%s: %i/%s -> %i/%s arg:%p", __func__,
 		  caller->fid, caller->name, callee->fid, callee->name, w);
@@ -94,13 +97,13 @@ resume(struct fiber *callee, void *w)
 	fiber = callee;
 	callee->coro.w = w;
 	oc_coro_transfer(&caller->coro.ctx, &callee->coro.ctx);
-	callee->caller = &sched;
+	callee->caller = sched;
 }
 
 void *
 yield(void)
 {
-	struct fiber *callee = fiber;
+	Fiber *callee = fiber;
 #ifdef FIBER_DEBUG
 	say_debug("%s: %i/%s -> %i/%s", __func__,
 		  callee->fid, callee->name,
@@ -116,7 +119,7 @@ yield(void)
 }
 
 int
-fiber_wake(struct fiber *f, void *arg)
+fiber_wake(struct Fiber *f, void *arg)
 {
 	/* tqe_prev points to prev elem or tailq head => not null if member */
 	if (f->wake_link.tqe_prev)
@@ -130,7 +133,7 @@ fiber_wake(struct fiber *f, void *arg)
 }
 
 int
-fiber_cancel_wake(struct fiber *f)
+fiber_cancel_wake(struct Fiber *f)
 {
 	/* see fiber_wake() comment */
 	if (f->wake_link.tqe_prev == NULL)
@@ -143,7 +146,7 @@ fiber_cancel_wake(struct fiber *f)
 void
 fiber_sleep(ev_tstamp delay)
 {
-	assert(fiber != &sched);
+	assert(fiber != sched);
 	ev_timer *s, w = { .coro = 1 };
 	ev_timer_init(&w, (void *)fiber, delay, 0.);
 	ev_timer_start(&w);
@@ -167,7 +170,7 @@ wait_for_child(pid_t pid)
 	return WEXITSTATUS(w.rstatus);
 }
 
-struct fiber *
+struct Fiber *
 fid2fiber(int fid)
 {
 	u32 k = mh_i32_get(fibers_registry, fid);
@@ -177,23 +180,27 @@ fid2fiber(int fid)
 }
 
 static void
-register_fid(struct fiber *fiber)
+register_fid(struct Fiber *fiber)
 {
 	mh_i32_put(fibers_registry, fiber->fid, fiber, NULL);
 }
 
 static void
-unregister_fid(struct fiber *fiber)
+unregister_fid(struct Fiber *fiber)
 {
 	mh_i32_remove(fibers_registry, fiber->fid, NULL);
 }
 
 
 static void
-fiber_alloc(struct fiber *fiber)
+fiber_alloc(struct Fiber *fiber)
 {
 	if (fiber->pool == NULL)
 		fiber->pool = palloc_create_pool((struct palloc_config){.name = fiber->name});
+	if (fiber->autorelease.current == NULL) {
+		fiber->autorelease.current = &fiber->autorelease.top;
+		fiber->autorelease.top.prev = &fiber->autorelease.top;
+	}
 
 	prelease(fiber->pool);
 }
@@ -201,6 +208,8 @@ fiber_alloc(struct fiber *fiber)
 void
 fiber_gc()
 {
+	autorelease_top();
+
 	if (palloc_allocated(fiber->pool) < 128 * 1024)
 		return;
 
@@ -208,9 +217,11 @@ fiber_gc()
 }
 
 static void
-fiber_zombificate(struct fiber *f)
+fiber_zombificate(struct Fiber *f)
 {
-	f->name = NULL;
+	autorelease_top();
+	palloc_name(f->pool, "zombi_fiber");
+	f->name = "zombi_fiber";
 	f->f = NULL;
 	unregister_fid(f);
 	f->fid = 0;
@@ -241,17 +252,17 @@ fiber_loop(void *data __attribute__((unused)))
 
 
 /* fiber never dies, just become zombie */
-struct fiber *
+struct Fiber *
 fiber_create(const char *name, void (*f)(va_list va), ...)
 {
-	struct fiber *new = NULL;
+	Fiber *new = NULL;
 	static int reg_cnt = 0;
 
 	if (!SLIST_EMPTY(&zombie_fibers)) {
 		new = SLIST_FIRST(&zombie_fibers);
 		SLIST_REMOVE_HEAD(&zombie_fibers, zombie_link);
 	} else {
-		new = xcalloc(1, sizeof(*fiber));
+		new = [Fiber alloc];
 		if (octopus_coro_create(&new->coro, fiber_loop, NULL) == NULL)
 			panic_syserror("fiber_create");
 
@@ -285,10 +296,35 @@ fiber_create(const char *name, void (*f)(va_list va), ...)
 	return new;
 }
 
+#ifdef THREADS
+/* create fake fiber structure for use in worker threads */
+void
+fiber_create_fake(const char *name)
+{
+	assert(fiber == nil);
+	fiber = [Fiber alloc];
+	fiber->name = name;
+	fiber_alloc(fiber);
+	fiber->fid = ~0;
+	fiber->f = NULL;
+}
+
+void
+fiber_destroy_fake()
+{
+	assert(fiber->fid == ~0 && fiber->f == NULL);
+	autorelease_top();
+	prelease(fiber->pool);
+	palloc_destroy_pool(fiber->pool);
+	[fiber free];
+	fiber = NULL;
+}
+#endif
+
 void
 fiber_destroy_all()
 {
-	struct fiber *f, *tmp;
+	Fiber *f, *tmp;
 	SLIST_FOREACH_SAFE(f, &fibers, link, tmp) {
 		if (f == fiber) /* do not destroy running fiber */
 			continue;
@@ -297,14 +333,14 @@ fiber_destroy_all()
 
 		palloc_destroy_pool(f->pool);
 		octopus_coro_destroy(&f->coro);
-		free(f);
+		[f free];
 	}
 }
 
 void
 fiber_info(struct tbuf *out)
 {
-	struct fiber *fiber;
+	Fiber *fiber;
 
 	tbuf_printf(out, "fibers:" CRLF);
 	SLIST_FOREACH(fiber, &fibers, link) {
@@ -319,8 +355,8 @@ fiber_info(struct tbuf *out)
 void
 fiber_wakeup_pending(void)
 {
-	assert(fiber == &sched);
-	struct fiber *f, *tvar;
+	assert(fiber == sched);
+	Fiber *f, *tvar;
 
 	for(int i=10; i && !TAILQ_EMPTY(&wake_list); i--) {
 		TAILQ_FOREACH_SAFE(f, &wake_list, wake_link, tvar) {
@@ -414,12 +450,13 @@ fiber_init(const char *sched_name)
 
 	fibers_registry = mh_i32_init(xrealloc);
 
-	memset(&sched, 0, sizeof(sched));
-	sched.fid = 1;
-	sched.name = sched_name ?: "sched";
-	fiber_alloc(&sched);
+	sched = [Fiber alloc];
+	sched->fid = 1;
+	sched->name = sched_name ?: "sched";
+	fiber_alloc(sched);
+	sched_ctx = &sched->coro.ctx;
 
-	fiber = &sched;
+	fiber = sched;
 	last_used_fid = 100;
 
 	ev_prepare_init(&wake_prep, (void *)fiber_wakeup_pending);
@@ -427,6 +464,18 @@ fiber_init(const char *sched_name)
 	ev_async_init(&wake_async, (void *)unzero_io_collect_interval);
 	ev_async_start(&wake_async);
 	say_debug("fibers initialized");
+}
+
+struct Fiber*
+current_fiber()
+{
+	return fiber;
+}
+
+int
+fiber_switch_cnt()
+{
+	return coro_switch_cnt;
 }
 
 static void
@@ -494,5 +543,106 @@ luaT_openfiber(struct lua_State *L)
 	lua_pop(L, 1);
 	return 0;
 }
+
+/* ObjectiveC autorelease functions */
+id
+autorelease(id obj)
+{
+	struct autorelease_chain *chain = fiber->autorelease.current;
+	chain->objs[chain->cnt++] = obj;
+	if (chain->cnt == AUTORELEASE_CHAIN_CAPA) {
+		chain = xcalloc(1, sizeof(*chain));
+		chain->prev = fiber->autorelease.current;
+		fiber->autorelease.current = chain;
+	}
+	return obj;
+}
+
+void
+autorelease_pop(struct autorelease_pool *pool)
+{
+	struct autorelease_chain *prev, *current = fiber->autorelease.current;
+	u32 i;
+	while (current != pool->chain) {
+		i = current->cnt;
+		while(i) {
+			i--;
+			@try {
+				[current->objs[i] release];
+			} @catch(Error* e) {
+				panic_exc(e);
+			} @catch(id e) {
+				panic("exception during autorelease");
+			}
+		}
+		fiber->autorelease.current = prev = current->prev;
+		assert(current != &fiber->autorelease.top);
+		free(current);
+		current = prev;
+	}
+	i = current->cnt;
+	while(i > pool->pos) {
+		i--;
+		@try {
+			[current->objs[i] release];
+		} @catch(Error* e) {
+			panic_exc(e);
+		} @catch(id e) {
+			panic("exception during autorelease");
+		}
+	}
+	current->cnt = i;
+}
+
+void
+autorelease_pop_and_cut(struct autorelease_pool *pool)
+{
+	autorelease_pop(pool);
+	palloc_cutoff(fiber->pool);
+}
+
+void
+autorelease_top()
+{
+	struct autorelease_pool top = {.chain = &fiber->autorelease.top, .pos = 0};
+	autorelease_pop(&top);
+}
+
+@implementation Fiber
+-(void)
+setValue: (id)val
+{
+	wake_flag = WAKE_VALUE;
+	fiber_wake(self, [val retain]);
+}
+
+-(void)
+setError: (id)err
+{
+	wake_flag = WAKE_ERROR;
+	fiber_wake(self, [err retain]);
+}
+
+-(id)
+yield
+{
+	id res = nil;
+	if (wake_flag != 0) {
+		fiber_cancel_wake(self);
+		res = wake;
+	} else {
+		res = yield();
+	}
+	if (wake_flag == WAKE_VALUE) {
+		wake_flag = 0;
+		return [res autorelease];
+	}
+	if (wake_flag == WAKE_ERROR) {
+		wake_flag = 0;
+		@throw res;
+	}
+	panic("unknown fiber wake flag %d", wake_flag);
+}
+@end
 
 register_source();

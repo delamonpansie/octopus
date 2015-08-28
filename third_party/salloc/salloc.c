@@ -117,7 +117,7 @@ uint8_t red_zone[0] = { };
 int salloc_error;
 
 static const uint32_t SLAB_MAGIC = 0x51abface;
-static const size_t MAX_SLAB_ITEM = SLAB_SIZE / 4;
+#define MAX_SLAB_ITEM (SLAB_SIZE / 4)
 static size_t page_size;
 
 struct slab_item {
@@ -604,8 +604,13 @@ slab_stat(struct tbuf *t)
 			fixed_free_slabs++;
 
 	int64_t fixed_used_adj = fixed_arena->used - fixed_free_slabs * SLAB_SIZE;
-	tbuf_printf(t, "  items_used: %.2f" CRLF, (double)total_used / fixed_arena->size * 100);
-	tbuf_printf(t, "  arena_used: %.2f" CRLF, (double)fixed_used_adj / fixed_arena->size * 100);
+	if (fixed_arena->size != 0) {
+		tbuf_printf(t, "  items_used: %.2f" CRLF, (double)total_used / fixed_arena->size * 100);
+		tbuf_printf(t, "  arena_used: %.2f" CRLF, (double)fixed_used_adj / fixed_arena->size * 100);
+	} else {
+		tbuf_printf(t, "  items_used: 0" CRLF);
+		tbuf_printf(t, "  arena_used: 0" CRLF);
+	}
 }
 
 register_source();

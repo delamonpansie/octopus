@@ -34,8 +34,6 @@
 #define EV_CONFIG_H "include/config.h"
 
 #include <coro.h>
-extern coro_context *sched_ctx;
-extern struct fiber *fiber;
 
 #define EV_STRINGIFY2(x) #x
 #define EV_STRINGIFY(x) EV_STRINGIFY2(x)
@@ -52,10 +50,10 @@ extern void fiber_ev_cb(void *);
 
 #define EV_CB_INVOKE(watcher, revents) ({			\
 if ((watcher)->coro) {						\
-	fiber = (struct fiber *)(watcher)->cb;			\
-	((struct octopus_coro *)fiber)->w = (watcher);		\
+	fiber = (Fiber *)(watcher)->cb;			\
+	fiber->coro.w = (watcher);		\
 	EV_CB_LOG((watcher));					\
-	oc_coro_transfer(sched_ctx, (coro_context *)fiber);	\
+	oc_coro_transfer(sched_ctx, &fiber->coro.ctx);	\
 } else								\
 	(watcher)->cb((watcher), (revents));			\
 })

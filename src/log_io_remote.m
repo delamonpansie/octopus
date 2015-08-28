@@ -94,6 +94,7 @@ again:
 		@catch (Error *e) {
 			[remote_puller close];
 			[self status:"fail" reason:e->reason];
+			[e release];
 		}
 	sleep:
 		fiber_gc();
@@ -126,7 +127,7 @@ load_from_remote:(struct feeder_param *)param
 {
 	XLogPuller *puller = nil;
 	say_info("initial loading from WAL feeder %s", sintoa(&param->addr));
-	assert(fiber != &sched); /* load_from_remote expects being called from fiber */
+	assert(fiber != sched); /* load_from_remote expects being called from fiber */
 	@try {
 		puller = [[XLogPuller alloc] init];
 		[puller feeder_param:param];
@@ -318,6 +319,7 @@ replicate_wal:(id<XLogPullerAsync>)puller
 			      " remote row LSN:%"PRIi64 " SCN:%"PRIi64, /* FIXME: here we primting "fixed" LSN */
 			      e->reason, e->file, e->line,
 			      row->lsn, row->scn);
+			[e release];
 		}
 
 		int confirmed = 0;

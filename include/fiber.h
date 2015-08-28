@@ -28,8 +28,8 @@
 #define FIBER_H
 
 #include <util.h>
-#include <octopus_ev.h>
 #include <coro.h>
+#include <objc.h>
 
 #include <third_party/luajit/src/lua.h>
 #include <third_party/luajit/src/lauxlib.h>
@@ -42,40 +42,68 @@
 
 struct tbuf; /* forward declaration */
 
-struct fiber {
+extern coro_context *sched_ctx;
+#ifdef THREADS
+extern __thread struct Fiber *fiber;
+#else
+extern struct Fiber* fiber;
+#endif
+extern struct Fiber* sched; /* fiber running ev callbacks */
+static inline bool is_sched(struct Fiber* fib) { return fib == sched; }
+static inline bool not_sched(struct Fiber* fib) { return fib != sched; }
+
+
+@interface Fiber : Object <Waiter> {
+@public
 	struct octopus_coro coro;
-	struct fiber *caller;
+	struct Fiber *caller;
 	struct palloc_pool *pool;
 	uint32_t fid;
 
-	SLIST_ENTRY(fiber) link, zombie_link, worker_link;
-	TAILQ_ENTRY(fiber) wake_link;
+	SLIST_ENTRY(Fiber) link, zombie_link, worker_link;
+	TAILQ_ENTRY(Fiber) wake_link;
 	void *wake;
+	enum {WAKE_VALUE=1, WAKE_ERROR} wake_flag;
 
 	struct lua_State *L;
+	struct {
+		struct autorelease_chain *current;
+		struct autorelease_chain top;
+	} autorelease;
 
 	const char *name;
 	void (*f)(va_list ap);
 	va_list ap;
-};
-extern struct fiber sched; /* fiber running ev callbacks */
+}
+- (void) setValue: (id)val;
+- (void) setError: (id)err;
+- (id) yield;
+@end
 
-SLIST_HEAD(, fiber) fibers, zombie_fibers;
+SLIST_HEAD(, Fiber) fibers, zombie_fibers;
 
 void fiber_init(const char *sched_name);
-struct fiber *fiber_create(const char *name, void (*f)(va_list va), ...);
+struct Fiber *fiber_create(const char *name, void (*f)(va_list va), ...);
 void fiber_destroy_all();
 int wait_for_child(pid_t pid);
 
-void resume(struct fiber *callee, void *w);
+void resume(struct Fiber *callee, void *w);
 void *yield(void);
-int fiber_wake(struct fiber *f, void *arg);
-int fiber_cancel_wake(struct fiber *f);
+int fiber_wake(struct Fiber *f, void *arg);
+int fiber_cancel_wake(struct Fiber *f);
 
 void fiber_gc(void);
-void fiber_sleep(ev_tstamp s);
+void fiber_sleep(double s);
 void fiber_info(struct tbuf *out);
-struct fiber *fid2fiber(int fid);
+struct Fiber *fid2fiber(int fid);
+
+struct Fiber* current_fiber();
+int fiber_switch_cnt();
+#ifdef THREADS
+/* create and destroy fake fiber for working threads */
+void fiber_create_fake(const char* name);
+void fiber_destroy_fake();
+#endif
 
 /* "blocking" calls */
 ssize_t fiber_recv(int fd, struct tbuf *rbuf);
@@ -83,5 +111,4 @@ ssize_t fiber_read(int fd, void *buf, size_t count);
 ssize_t fiber_write(int fd, const void *buf, size_t count);
 
 int luaT_openfiber(struct lua_State *L);
-
 #endif

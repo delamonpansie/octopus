@@ -56,8 +56,9 @@ void *xmalloc(size_t size);
 void *xrealloc(void *ptr, size_t size);
 
 #ifndef MAX
-# define MAX(a, b) ({ __typeof__(a) a_ = (a), b_ = (b); a_ >= b_ ? a_ : b_; })
-# define MIN(a, b) ({ __typeof__(a) a_ = (a), b_ = (b); a_ <= b_ ? a_ : b_; })
+# define MAX(_a, _b) ({ __typeof__(_a) a_ = (_a), b_ = (_b); a_ >= b_ ? a_ : b_; })
+# define MIN(_a, _b) ({ __typeof__(_a) a_ = (_a), b_ = (_b); a_ <= b_ ? a_ : b_; })
+# define CMP(_a, _b) ({ __typeof__(_a) a_ = (_a), b_ = (_b); a_ < b_ ? -1 : (a_ == b_ ? 0 : 1); })
 #endif
 
 /* Macros to define enum and corresponding strings. */
@@ -118,7 +119,7 @@ void *xrealloc(void *ptr, size_t size);
 
 #define nelem(x)     (sizeof((x))/sizeof((x)[0]))
 
-#ifndef containter_of
+#ifndef container_of
 #define container_of(ptr, type, member) ({			\
 	const typeof( ((type *)0)->member ) *__mptr = (ptr);	\
 	(type *)( (char *)__mptr - offsetof(type, member) );	\
@@ -216,4 +217,11 @@ void assert_fail(const char *assertion, const char *file,
 })
 
 void title(const char *fmt, ...);
+
+#ifdef THREADS
+const char* strerror_o(int eno);
+#else
+#define strerror_o(eno) strerror(eno)
+#endif
+
 #endif

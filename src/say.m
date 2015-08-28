@@ -27,6 +27,7 @@
 #include <config.h>
 #import <util.h>
 #import <fiber.h>
+#import <octopus_ev.h>
 #import <say.h>
 #import <objc.h>
 
@@ -223,8 +224,11 @@ vsay(int level, const char *filename, unsigned line,
 
 	ev_now_update();
 
-	p += snprintf(buf + p, len - p, "%.3f %i %i/%s",
-		      ev_now(), getpid(), fiber->fid, fiber->name);
+	if (fiber != nil) {
+		p += snprintf(buf + p, len - p, "%.3f %i %i/%s", ev_now(), getpid(), fiber->fid, fiber->name);
+	} else {
+		p += snprintf(buf + p, len - p, "%.3f %i", ev_now(), getpid());
+	}
 
 	if ((level <= ERROR || level >= DEBUG) && filename != NULL) {
 		for (f = filename, cur = __FILE__; *f && *f == *cur; f++, cur++)
@@ -285,10 +289,10 @@ say_f(DEBUG, , NULL)
 say_f(DEBUG2, , NULL)
 say_f(DEBUG3, , NULL)
 say_f(WARN, , NULL)
-say_f(WARN, no, strerror(errno))
+say_f(WARN, no, strerror_o(errno))
 say_f(INFO, , NULL)
 say_f(ERROR, , NULL)
-say_f(ERROR, no, strerror(errno))
+say_f(ERROR, no, strerror_o(errno))
 say_f(TRACE, , NULL)
 
 void __attribute__((format(FORMAT_PRINTF, 6, 0), noreturn))
@@ -316,7 +320,7 @@ void __attribute__((format(FORMAT_PRINTF, 3, 4), noreturn))
 _panic_syserror(const char *file, unsigned line, const char *format, ...)
 {
 	va_list ap;
-	const char *err = strerror(errno);
+	const char *err = strerror_o(errno);
 	va_start(ap, format);
 	vpanic(EXIT_FAILURE, file, line, err, tnt_backtrace(), format, ap);
 }

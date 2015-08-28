@@ -202,9 +202,6 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 void __attribute__((noreturn)) oct_cold
 index_raise_(const char *file, int line, const char *msg)
 {
-	@throw [[IndexError palloc] init_line:line
-					 file:file
-				    backtrace:NULL
-				       reason:msg];
+	@throw [[IndexError with_reason: msg] init_line:line file:file];
 }
 

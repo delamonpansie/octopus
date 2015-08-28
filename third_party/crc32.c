@@ -740,10 +740,17 @@ multitable_crc32c(uint32_t crc32c,
 #  define SSE42_CRC_FEATURE_BIT (1 << 20)
 #  define CPUID_FEATURES 1
 static uint32_t cached_cpu_supports_crc32;
+#if GCC_VERSION > 406
+#  define PCLMUL_FEATURE_BIT (1 << 1)
+static uint32_t cached_cpu_supports_pclmul;
+#endif
 static void __attribute__ ((constructor)) test_crc32_support_flag(void) {
 	uint32_t eax, ebx, ecx, edx;
 	asm("cpuid" : "=a" (eax), "=b"(ebx), "=c"(ecx), "=d"(edx) : "a"(CPUID_FEATURES) : "cc");
 	cached_cpu_supports_crc32 = !!(ecx & SSE42_CRC_FEATURE_BIT);
+#ifdef PCLMUL_FEATURE_BIT
+	cached_cpu_supports_pclmul = !!(ecx & PCLMUL_FEATURE_BIT);
+#endif
 }
 
 #define mm_crc32_u64(crc, value) \
@@ -756,7 +763,65 @@ static void __attribute__ ((constructor)) test_crc32_support_flag(void) {
 	asm("crc32w %1, %0\n" :  "+r" (crc) :  "rm" (value))
 
 #define mm_crc32_u8(crc, value) \
-	asm("crc32b %1, %0\n" :  "+r" (crc) :  "rm" (value));
+	asm("crc32b %1, %0\n" :  "+r" (crc) :  "rm" (value))
+
+#ifdef PCLMUL_FEATURE_BIT
+typedef long long __m128i __attribute__((__vector_size__(16), __may_alias__));
+static inline uint64_t hardware_crc32c_pcl_1024(uint64_t crc, const uint64_t *buf) {
+	uint64_t crc0 = crc, crc1 = 0, crc2 = 0;
+	int i;
+	mm_crc32_u64(crc0, buf[0]);
+	for(i = 1; i < 43; i++) {
+		mm_crc32_u64(crc1, buf[1*42 + i]);
+		mm_crc32_u64(crc2, buf[2*42 + i]);
+		mm_crc32_u64(crc0, buf[0*42 + i]);
+	}
+	__m128i mult = {0xe417f38a, 0x08f158014};
+	__m128i m1 = {crc1, 0};
+	asm("pclmulqdq %2, %1, %0": "+x" (m1) : "x" (mult), "i"(0x10));
+	__m128i m2 = {crc0, 0};
+	asm("pclmulqdq %2, %1, %0": "+x" (m2) : "x" (mult), "i"(0x00));
+	mm_crc32_u64(crc2, buf[127]);
+
+	crc = 0;
+	crc1 = m1[0];
+	mm_crc32_u64(crc, crc1);
+	crc2 ^= crc;
+
+	crc = 0;
+	crc0 = m2[0];
+	mm_crc32_u64(crc, crc0);
+	crc2 ^= crc;
+	return crc2;
+}
+static inline uint64_t hardware_crc32c_pcl_256(uint64_t crc, const uint64_t *buf) {
+	uint64_t crc0 = crc, crc1 = 0, crc2 = 0;
+	int i;
+	mm_crc32_u64(crc0, buf[0]);
+	for(i = 1; i < 11; i++) {
+		mm_crc32_u64(crc1, buf[1*10 + i]);
+		mm_crc32_u64(crc2, buf[2*10 + i]);
+		mm_crc32_u64(crc0, buf[0*10 + i]);
+	}
+	__m128i mult = {0x11ed1f9d8, 0x0083a6eec};
+	__m128i m1 = {crc1, 0};
+	asm("pclmulqdq %2, %1, %0": "+x" (m1) : "x" (mult), "i"(0x10));
+	__m128i m2 = {crc0, 0};
+	asm("pclmulqdq %2, %1, %0": "+x" (m2) : "x" (mult), "i"(0x00));
+	mm_crc32_u64(crc2, buf[31]);
+
+	crc = 0;
+	crc1 = m1[0];
+	mm_crc32_u64(crc, crc1);
+	crc2 ^= crc;
+
+	crc = 0;
+	crc0 = m2[0];
+	mm_crc32_u64(crc, crc0);
+	crc2 ^= crc;
+	return crc2;
+}
+#endif
 
 static inline uint32_t hardware_crc32c(uint32_t crc, const unsigned char *buf, unsigned int len) {
 	if (len == 0) {
@@ -775,6 +840,18 @@ static inline uint32_t hardware_crc32c(uint32_t crc, const unsigned char *buf, u
 	CALC_CRC_HEAD(mm_crc32_u32, uint32_t);
 
 	uint64_t _crc = crc;
+#ifdef PCLMUL_FEATURE_BIT
+	if (cached_cpu_supports_pclmul && len >= 256) {
+		while(len >= 1024) {
+			_crc = hardware_crc32c_pcl_1024(_crc, (uint64_t*)buf);
+			buf += 1024; len -= 1024;
+		}
+		while(len >= 256) {
+			_crc = hardware_crc32c_pcl_256(_crc, (uint64_t*)buf);
+			buf += 256; len -= 256;
+		}
+	}
+#endif
 	while(len >= sizeof(uint64_t)) {
 		mm_crc32_u64(_crc, *(uint64_t*)(buf));
 		len -= sizeof(uint64_t); buf += sizeof(uint64_t);

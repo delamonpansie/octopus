@@ -214,6 +214,7 @@ admin_dispatch(int fd, struct tbuf *rbuf)
 	char *p, *pe;
 	char *strstart, *strend;
 	int info_net = 0;
+	int info_string = 0;
 
 	pe = rbuf_getline(fd, rbuf);
 	if (pe == NULL)
@@ -242,9 +243,17 @@ admin_dispatch(int fd, struct tbuf *rbuf)
 		}
 
 		action show_info {
+			struct tbuf *code;
+			const char* opt = NULL;
+			if (info_net) opt = "net";
+			else if (info_string) {
+				code = tbuf_alloc(fiber->pool);
+				tbuf_append(code, strstart, strend - strstart);
+				opt = code->ptr;
+			}
 			start(out);
 			if (module(NULL)->info != NULL)
-				module(NULL)->info(out, info_net ? "net" : NULL);
+				module(NULL)->info(out, opt);
 			end(out);
 		}
 
@@ -324,7 +333,7 @@ admin_dispatch(int fd, struct tbuf *rbuf)
 				ok(out);
 			else {
 				tbuf_printf(err, " can't save snapshot, errno %d (%s)",
-					    ret, strerror(ret));
+					    ret, strerror_o(ret));
 
 				fail(out, err);
 			}
@@ -334,7 +343,7 @@ admin_dispatch(int fd, struct tbuf *rbuf)
 			if (coredump(60) >= 0) {
 				ok(out);
 			} else {
-				tbuf_printf(err, "%s", strerror(errno));
+				tbuf_printf(err, "%s", strerror_o(errno));
 				fail(out,err);
 			}
 		}
@@ -363,10 +372,12 @@ admin_dispatch(int fd, struct tbuf *rbuf)
 		decr = "dec"("r")?;
 		log = "log"("_"("l"("e"("v"("e"("l")?)?)?)?)?)?;
                 net = "n"("e"("t")?)? %{ info_net = 1;};
+		info_string = string %{ info_string = 1;};
+		info_option = (" "+ (net | info_string))?;
 
 		commands = (help			%help						|
 			    exit			%{return 0;}					|
-			    show " "+ info (" "+ net)?	%show_info					|
+			    show " "+ info info_option 	%show_info					|
 			    show " "+ fiber		%{start(out); fiber_info(out); end(out);}	|
 			    show " "+ configuration 	%show_configuration				|
 			    show " "+ slab		%{start(out); slab_stat(out); end(out);}	|

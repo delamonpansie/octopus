@@ -29,19 +29,48 @@
 
 #include <util.h>
 #include <string.h>
+#include <tbuf.h>
 
 struct tbuf;
 
+__attribute__((noreturn)) void tbuf_too_short();
+static __attribute__((always_inline)) inline void
+_read_must_have(struct tbuf *b, i32 n)
+{
+	if (unlikely(tbuf_len(b) < n)) {
+		tbuf_too_short();
+	}
+}
+
 void read_must_have(struct tbuf *b, i32 len);
 void read_must_end(struct tbuf *b, const char *err);
-u8 read_u8(struct tbuf *b);
-u16 read_u16(struct tbuf *b);
-u32 read_u32(struct tbuf *b);
-u64 read_u64(struct tbuf *b);
-i8 read_i8(struct tbuf *b);
-i16 read_i16(struct tbuf *b);
-i32 read_i32(struct tbuf *b);
-i64 read_i64(struct tbuf *b);
+
+#define read_u(bits)							\
+	static inline u##bits read_u##bits(struct tbuf *b)		\
+	{								\
+		_read_must_have(b, bits/8);				\
+		u##bits r = *(u##bits *)b->ptr;				\
+		b->ptr += bits/8;					\
+		return r;						\
+	}
+
+#define read_i(bits)							\
+	static inline i##bits read_i##bits(struct tbuf *b)		\
+	{								\
+		_read_must_have(b, bits/8);				\
+		i##bits r = *(i##bits *)b->ptr;				\
+		b->ptr += bits/8;					\
+		return r;						\
+	}
+
+read_u(8)
+read_u(16)
+read_u(32)
+read_u(64)
+read_i(8)
+read_i(16)
+read_i(32)
+read_i(64)
 
 u32 read_varint32(struct tbuf *buf);
 void *read_field(struct tbuf *buf);
