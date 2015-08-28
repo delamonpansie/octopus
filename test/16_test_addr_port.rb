@@ -5,7 +5,7 @@ require 'run_env'
 
 class Env < RunEnv
   def config
-    super.gsub(/.*_port.*/, '') + "\n" + $x
+    super.gsub(/.*_port.*/, '') + "\n" + $x + "\n"
   end
 end
 
