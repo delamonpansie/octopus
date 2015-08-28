@@ -131,13 +131,21 @@ local _dispatch = _dispatch
 --- jit.off(_dispatch) not needed, because C API calls are NYI
 for _, v in pairs{'add', 'replace', 'delete', 'update'} do
     local pack = box_op.pack[v]
-    _M[v] = function (...)
-        local ptr = _dispatch(pack(...))
+    _M[v..'_ret'] = function (...)
+        local ptr = _dispatch(pack(1, ...))
         local tuple = object(ptr)
         if ptr then ffi.C.object_decr_ref(ptr) end
         return tuple
     end
+    _M[v..'_noret'] = function (...)
+        _dispatch(pack(0, ...))
+    end
 end
+
+_M.add     = _M.add_ret
+_M.replace = _M.replace_ret
+_M.update  = _M.update_ret
+_M.delete  = _M.delete_ret
 
 function ctuple(obj)
    assert(obj ~= nil and obj.__tuple ~= nil)

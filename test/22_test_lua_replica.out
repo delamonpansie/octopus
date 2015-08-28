@@ -25,10 +25,10 @@ stack traceback:
 	[C]: in function '_dispatch'
 	mod/box/src-lua/box.lua:210: in function 'update'
 	box_init.lua:11: in function 'proc'
-	mod/box/src-lua/box.lua:324: in function <mod/box/src-lua/box.lua:319>'}
+	mod/box/src-lua/box.lua:333: in function <mod/box/src-lua/box.lua:328>'}
 # box.lua("user_proc.error", "0")
 Failed with: {code: 0x202, message: 'box_init.lua:16: fooo
 stack traceback:
 	[C]: in function 'error'
 	box_init.lua:16: in function 'proc'
-	mod/box/src-lua/box.lua:324: in function <mod/box/src-lua/box.lua:319>'}
+	mod/box/src-lua/box.lua:333: in function <mod/box/src-lua/box.lua:328>'}

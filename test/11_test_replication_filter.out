@@ -33,8 +33,8 @@ lsn:2 scn:3 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00
 lsn:3 scn:5 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <3:"\x03\x00\x00\x00", 3:"\x03\x00\x00\x00">
 lsn:4 scn:6 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <4:"\x04\x00\x00\x00", 4:"\x04\x00\x00\x00">
 lsn:5 scn:7 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <5:"\x05\x00\x00\x00", 5:"\x05\x00\x00\x00">
-lsn:6 scn:8 t:wal/usr19 0.0.0.0:0 UPDATE_FIELDS n:0 flags:00000001 <4:"\x04\x00\x00\x00"> [field_no:1 op:add <2:"\x02\x00\x00\x00">] 
-lsn:7 scn:9 t:wal/usr19 0.0.0.0:0 UPDATE_FIELDS n:0 flags:00000001 <5:"\x05\x00\x00\x00"> [field_no:1 op:add <2:"\x02\x00\x00\x00">] 
+lsn:6 scn:8 t:wal/usr19 0.0.0.0:0 UPDATE_FIELDS n:0 flags:00000000 <4:"\x04\x00\x00\x00"> [field_no:1 op:add <2:"\x02\x00\x00\x00">] 
+lsn:7 scn:9 t:wal/usr19 0.0.0.0:0 UPDATE_FIELDS n:0 flags:00000000 <5:"\x05\x00\x00\x00"> [field_no:1 op:add <2:"\x02\x00\x00\x00">] 
 
 Master
 lsn:2 scn:2 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <0:"\x00\x00\x00\x00", 0:"\x00\x00\x00\x00">

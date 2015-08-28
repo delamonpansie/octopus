@@ -190,6 +190,7 @@ build_secondary_indexes()
 		}
 	}
 	@catch (Error *e) {
+		[e autorelease];
 		raise_fmt("unable to built tree indexes: %s", e->reason);
 	}
 
@@ -386,7 +387,7 @@ snapshot_write_rows:(XLog *)l
 	struct box_snap_row header;
 	struct tnt_object *obj;
 	struct box_tuple *tuple;
-	struct palloc_pool *pool = palloc_create_pool(__func__);
+	struct palloc_pool *pool = palloc_create_pool((struct palloc_config){.name = __func__});
 	struct tbuf *row = tbuf_alloc(pool);
 	int ret = 0;
 	size_t rows = 0, pk_rows, total_rows = [self snapshot_estimate];

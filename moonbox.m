@@ -83,6 +83,9 @@ luaT_box_dispatch(struct lua_State *L)
 		}
 		box_commit(&txn);
 
+		if ((txn.flags & BOX_RETURN_TUPLE) == 0)
+			return 0;
+
 		if (txn.obj != NULL) {
 			object_incr_ref(txn.obj);
 			lua_pushlightuserdata(L, txn.obj);
@@ -101,6 +104,7 @@ luaT_box_dispatch(struct lua_State *L)
 			lua_pushfstring(L, "code:%d reason:%s", [(id)e code], e->reason);
 		else
 			lua_pushstring(L, e->reason);
+		[e release];
 		lua_error(L);
 	}
 	@finally {
@@ -137,6 +141,9 @@ luaT_openbox(struct lua_State *L)
 	lua_pop(L, 1);
 }
 
+static void restore_top(int *top) {
+	lua_settop(fiber->L, *top-1);
+}
 
 static int box_entry_i = 0;
 void
@@ -151,7 +158,7 @@ box_dispach_lua(struct netmsg_head *wbuf, struct iproto *request)
 	u32 nargs = read_u32(&data);
 
 	luaT_pushtraceback(L);
-	int top = lua_gettop(L);
+	int __attribute__((cleanup(restore_top))) top = lua_gettop(L);
 
 	if (box_entry_i == 0) {
 		lua_getglobal(L, "box");
@@ -166,7 +173,6 @@ box_dispach_lua(struct netmsg_head *wbuf, struct iproto *request)
 	lua_pushlightuserdata(L, request);
 
 	if (!lua_checkstack(L, nargs)) {
-		lua_settop(L, top-1);
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "too many args to exec_lua");
 	}
 
@@ -175,7 +181,6 @@ box_dispach_lua(struct netmsg_head *wbuf, struct iproto *request)
 
 	/* FIXME: switch to native exceptions ? */
 	if (lua_pcall(L, 3 + nargs, LUA_MULTRET, top)) {
-		IProtoError *err = [IProtoError palloc];
 		const char *reason = lua_tostring(L, -1);
 		int code = ERR_CODE_ILLEGAL_PARAMS;
 
@@ -187,22 +192,14 @@ box_dispach_lua(struct netmsg_head *wbuf, struct iproto *request)
 			}
 		}
 
-		[err init_code:code line:__LINE__ file:__FILE__
-		     backtrace:NULL format:"%s", reason];
-		lua_settop(L, top-1);
-		@throw err;
+		iproto_raise(code, reason);
 	}
 
 	int newtop = lua_gettop(L);
 	if (newtop != top) {
 		if (newtop != top + 3 && newtop != top + 2) {
-			IProtoError *err = [IProtoError palloc];
-			int code = ERR_CODE_ILLEGAL_PARAMS;
-			[err init_code:code line:__LINE__ file:__FILE__
-			     backtrace:NULL
-			     format:"illegal return from wrapped function %s", fname];
-			lua_settop(L, top-1);
-			@throw err;
+			iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS,
+				"illegal return from wrapped function %s", fname);
 		}
 		struct netmsg_mark mark;
 		netmsg_getmark(wbuf, &mark);
@@ -213,20 +210,12 @@ box_dispach_lua(struct netmsg_head *wbuf, struct iproto *request)
 			lua_pushlightuserdata(L, wbuf);
 
 			if (lua_pcall(L, 2, 0, top)) {
-				IProtoError *err = [IProtoError palloc];
-				const char *reason = lua_tostring(L, -1);
-				int code = ERR_CODE_ILLEGAL_PARAMS;
 				netmsg_rewind(wbuf, &mark);
-
-				[err init_code:code line:__LINE__ file:__FILE__
-				     backtrace:NULL format:"%s", reason];
-				lua_settop(L, top-1);
-				@throw err;
+				iproto_raise(ERR_CODE_ILLEGAL_PARAMS, lua_tostring(L, -1));
 			}
 		}
 		iproto_reply_fixup(wbuf, reply);
 	}
-	lua_settop(L, top-1);
 }
 
 register_source();

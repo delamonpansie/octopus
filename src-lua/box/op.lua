@@ -18,8 +18,14 @@ _M.op = op
 
 pack = {}
 
-local function insert(n, flags, ...)
-        local req = packer()
+local req_packer = packer()
+local function cached_packer()
+    req_packer:reset()
+    return req_packer
+end
+
+local function insert(flags, n, ...)
+        local req = cached_packer()
 
         req:u32(n)
         req:u32(flags)
@@ -29,7 +35,7 @@ local function insert(n, flags, ...)
         then
             local t = select(1, ...)
             req:u32(#t)
-            for _, v in ipairs(t)do
+            for _, v in ipairs(t) do
                 req:field(v)
             end
         else
@@ -41,20 +47,20 @@ local function insert(n, flags, ...)
         return op.INSERT, req:pack()
 end
 
-function pack.replace(n, ...)
+function pack.replace(flags, n, ...)
         -- flags == 1 => return tuple
-        return insert(n, 1, ...)
+        return insert(flags, n, ...)
 end
-function pack.add(n, ...)
+function pack.add(flags, n, ...)
     -- flags == 3 => return tuple + add tuple flags
-    return insert(n, 3, ...)
+    return insert(bit.bor(flags, 2), n, ...)
 end
 
-function pack.delete(n, key)
-        local req = packer()
+function pack.delete(flags, n, key)
+        local req = cached_packer()
 
         req:u32(n)
-        req:u32(1)
+        req:u32(flags)
         if type(key) == 'table' then
             local key_cardinality = #key
             req:u32(key_cardinality)
@@ -156,7 +162,7 @@ local function pack_mop(req, op)
         end
 end
 
-function pack.update(n, key, ...)
+function pack.update(flags, n, key, ...)
         local tabarg = nil
         local nmops = select('#', ...)
         if nmops == 1 then
@@ -167,8 +173,7 @@ function pack.update(n, key, ...)
             end
         end
 
-        local flags = 1
-        local req = packer()
+        local req = cached_packer()
 
         req:u32(tonumber(n))
         req:u32(flags)

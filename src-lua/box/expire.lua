@@ -38,7 +38,7 @@ local function loop(n)
    -- every object_space modification must be done _outside_ of iterator running
    local function delete_batch(batch)
        for _, tuple in ipairs(batch) do
-           local r, err = xpcall(box.delete, traceback, n, tuple[0])
+           local r, err = xpcall(box.delete_noret, traceback, n, tuple[0])
            if not r then
                print("delete failed: " .. err)
            end
