@@ -208,19 +208,18 @@ local _dispatch = _dispatch
 for _, v in pairs{'add', 'replace', 'delete', 'update'} do
     local pack = box_op.pack[v]
     _M[v..'_ret'] = function (...)
-        local ptr = _dispatch(pack(...))
+        local ptr = _dispatch(pack(1, ...))
         local tuple = object(ptr)
         if ptr then ffi.C.object_decr_ref(ptr) end
         return tuple
     end
     _M[v..'_noret'] = function (...)
-        local ptr = _dispatch(pack(...))
-        if ptr then ffi.C.object_decr_ref(ptr) end
+        _dispatch(pack(0, ...))
     end
 end
 
-_M.add     = _M.add_noret
-_M.replace = _M.replace_noret
+_M.add     = _M.add_ret
+_M.replace = _M.replace_ret
 _M.update  = _M.update_ret
 _M.delete  = _M.delete_ret
 
