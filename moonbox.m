@@ -82,6 +82,9 @@ luaT_box_dispatch(struct lua_State *L)
 		}
 		box_commit(&txn);
 
+		if ((txn.flags & BOX_RETURN_TUPLE) == 0)
+			return 0;
+
 		if (txn.obj != NULL) {
 			object_incr_ref(txn.obj);
 			lua_pushlightuserdata(L, txn.obj);
