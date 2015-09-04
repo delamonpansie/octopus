@@ -166,6 +166,7 @@ fork_spawner()
 
 	extern int keepalive_pipe[2];
 	close_all_xcpt(4, fsock, stderrfd, sayfd, keepalive_pipe[1]);
+	fiber = sched = [Fiber alloc];
 	sched->name = "spawner";
 	title("");
 	say_info("spawner started");
