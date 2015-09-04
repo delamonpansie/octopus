@@ -43,6 +43,13 @@ size_t class_getInstanceSize(Class class);
 void *object_getIndexedIvars(id);
 const char* sel_getName(SEL);
 
+#if HAVE_OBJC_RUNTIME_H
+#include <objc/runtime.h>
+#elif HAVE_OBJC_OBJC_API_H
+#include <objc/objc-api.h>
+#define	objc_lookUpClass objc_lookup_class
+#endif
+
 @interface Object (Octopus)
 + (id)palloc;
 + (id)palloc_from:(struct palloc_pool *)pool;
