@@ -25,7 +25,7 @@ local function make_env(fd)
     local function writen(...)
         local n = select('#', ...)
         for i = 1, n do
-            write(fd, (select(i, ...)))
+            write(fd, tostring(select(i, ...)))
         end
     end
     local function repl_ddump(v)

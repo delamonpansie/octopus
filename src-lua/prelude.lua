@@ -27,6 +27,12 @@ end
 local format = string.format
 function printf(...) print_(format(...)) end
 
+function sddump(x)
+    local buf = {}
+    ddump(x, function (...) for i = 1,select('#',...) do table.insert(buf, (select(i, ...))) end end)
+    print(table.concat(buf))
+end
+
 -- prefer external files over bundled ones
 package.loaders[2], package.loaders[1] = package.loaders[1], package.loaders[2]
 -- .so exensions are currently unused - do not load them.
