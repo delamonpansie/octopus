@@ -42,14 +42,10 @@ run_crc_calc(u32 *crc, u16 row_tag, const void *data, int len)
 }
 
 void
-run_crc_record(struct run_crc *run_crc, u16 tag, i64 scn, u32 crc)
+run_crc_record(struct run_crc *run_crc, struct run_crc_hist entry)
 {
-	if (scn_changer(tag)) {
-		say_debug("save crc_hist SCN:%"PRIi64" CRC:0x%08x", scn, crc);
-
-		struct run_crc_hist entry = { scn, crc };
-		run_crc->hist[++(run_crc->i) % nelem(run_crc->hist)] = entry;
-	}
+	say_debug("save crc_hist SCN:%"PRIi64" CRC:0x%08x", entry.scn, entry.value);
+	run_crc->hist[++(run_crc->i) % nelem(run_crc->hist)] = entry;
 }
 
 void

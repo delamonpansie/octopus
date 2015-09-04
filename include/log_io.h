@@ -253,13 +253,18 @@ struct wal_pack {
 	u32 fid;
 } __attribute__((packed));
 
+struct run_crc_hist {
+	i64 scn;
+	u32 value;
+} __attribute__((packed));
+
 struct wal_reply {
 	u32 packet_len;
 	u32 row_count;
 	struct Fiber *sender;
 	u32 fid;
 
-	struct row_commit_info row_info[];
+	struct run_crc_hist row_crc[];
 } __attribute__((packed));
 
 
@@ -269,17 +274,14 @@ void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 			  const void *data, size_t len);
 
 struct run_crc {
-	struct run_crc_hist {
-		i64 scn;
-		u32 value;
-	} hist[512]; /* should be larger than
-			cfg.wal_writer_inbox_size */
+	struct run_crc_hist hist[512]; /* should be larger than
+					  cfg.wal_writer_inbox_size */
 	int i;
 	bool mismatch;
 	ev_tstamp verify_tstamp;
 };
 void run_crc_calc(u32 *crc, u16 row_tag, const void *data, int len);
-void run_crc_record(struct run_crc* state, u16 row_tag, i64 scn, u32 crc);
+void run_crc_record(struct run_crc* state, struct run_crc_hist entry);
 void run_crc_verify(struct run_crc *run_crc, struct tbuf *buf);
 ev_tstamp run_crc_lag(struct run_crc *run_crc);
 const char *run_crc_status(struct run_crc *run_crc);
