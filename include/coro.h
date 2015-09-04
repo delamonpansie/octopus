@@ -32,7 +32,7 @@
 #include <inttypes.h>
 
 struct octopus_coro {
-	coro_context ctx;
+	struct coro_context ctx;
 	void *stack, *mmap;
 	size_t stack_size, mmap_size;
 	void *w;
