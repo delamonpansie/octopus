@@ -577,12 +577,16 @@ confirm_write
 
 		say_debug("%s offset:%llu tail:%lli", __func__, (long long)offset, (long long)tail);
 
+		off_t confirmed_offset = 0;
 		for (int i = 0; i < wet_rows; i++) {
 			if (wet_rows_offset[i] > tail) {
 				say_error("failed to sync %lli rows", (long long)(wet_rows - i));
+				if (confirmed_offset)
+					fseeko(fd, confirmed_offset, SEEK_SET);
 				break;
 			}
-			say_debug("confirm offset %lli", (long long)wet_rows_offset[i]);
+			confirmed_offset = wet_rows_offset[i];
+			say_debug("confirmed offset %lli", (long long)confirmed_offset);
 			next_lsn++;
 			rows++;
 		}
