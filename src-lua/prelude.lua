@@ -181,4 +181,5 @@ end
 require('stat')
 require('fiber_lock')
 require('reloadfile')
+require('shard')
 print("Lua prelude initialized.")

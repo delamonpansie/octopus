@@ -35,6 +35,7 @@
 #import <paxos.h>
 #import <iproto.h>
 #import <mbox.h>
+#import <shard.h>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -45,53 +46,57 @@
 @end
 
 
-#define PAXOS_CODE(_)				\
-	_(NACK,	0xf0)				\
-	_(LEADER_PROPOSE, 0xf1)			\
-	_(LEADER_ACK, 0xf2)			\
-	_(LEADER_NACK, 0xf3)			\
-	_(PREPARE, 0xf4)			\
-	_(PROMISE, 0xf5)			\
-	_(ACCEPT, 0xf6)				\
-	_(ACCEPTED, 0xf7)			\
-	_(DECIDE, 0xf8)				\
-	_(STALE, 0xfa)
+#define PAXOS_CODE(_)					\
+	_(NACK,	0xfff0)					\
+	_(LEADER_PROPOSE, 0xfff1)			\
+	_(LEADER_ACK, 0xfff2)				\
+	_(LEADER_NACK, 0xfff3)				\
+	_(PREPARE, 0xfff4)				\
+	_(PROMISE, 0xfff5)				\
+	_(ACCEPT, 0xfff6)				\
+	_(ACCEPTED, 0xfff7)				\
+	_(DECIDE, 0xfff8)				\
+	_(STALE, 0xfffa)
 
 enum paxos_msg_code ENUM_INITIALIZER(PAXOS_CODE);
 const char *paxos_msg_code[] = ENUM_STR_INITIALIZER(PAXOS_CODE);
 const int proposal_history_size = 16 * 1024;
 const int quorum = 2; /* FIXME: hardcoded */
 
+static struct palloc_pool *paxos_pool;
+
 struct paxos_peer {
 	int id;
 	const char *name;
-	struct sockaddr_in paxos_addr, primary_addr;
+	struct sockaddr_in addr;
+	struct iproto_egress *egress;
 	struct feeder_param feeder;
 	SLIST_ENTRY(paxos_peer) link;
 };
 
 struct paxos_peer *
-make_paxos_peer(int id, const char *name, const char *addr,
-		short primary_port, short feeder_port)
+make_paxos_peer(int id, const char *name)
 {
-	struct sockaddr_in sin;
+	const struct sockaddr_in *sin;
 	struct paxos_peer *p;
 
-	if (atosin(addr, &sin) == -1)
+	sin = shard_addr(name, PORT_PRIMARY);
+	if (sin == NULL)
 		return NULL;
 
 	p = xcalloc(1, sizeof(*p));
 	p->id = id;
 	p->name = strdup(name);
 
-	p->paxos_addr = sin;
-	p->primary_addr = sin;
-	p->primary_addr.sin_port = htons(primary_port);
+	p->addr = *sin;
 	p->feeder.ver = 1;
-	p->feeder.addr = sin;
-	p->feeder.addr.sin_port = htons(feeder_port);
+	p->feeder.addr = *shard_addr(name, PORT_REPLICATION);
 	p->feeder.filter = (struct feeder_filter){.type = FILTER_TYPE_LUA,
 						  .name = "tag_wal"};
+
+	p->egress = iproto_remote_add_peer(&p->addr, paxos_pool);
+	p->egress->ts.name = p->name;
+
 	return p;
 }
 
@@ -105,7 +110,7 @@ paxos_peer(Paxos *paxos, int id)
 	return NULL;
 }
 
-const char *
+static const char *
 paxos_peer_name(struct Paxos *paxos, int id)
 {
 	static char buf[32];
@@ -216,7 +221,7 @@ paxos_broadcast(Paxos *paxos, struct iproto_mbox *mbox,
 
 	iproto_mbox_broadcast(mbox, &paxos->paxos_remotes, &msg.header, iov, 1);
 	if (code == PREPARE || code == ACCEPT) {
-		struct paxos_request req = { .msg = &msg, .value = value, .type = PAXOS_REQ_INTERNAL, .mbox = mbox };
+		struct paxos_request req = { .msg = &msg, .value = value, .type = PAXOS_REQ_INTERNAL, {.mbox = mbox} };
 		acceptor(paxos, &req);
 	}
 	return msg.msg_id;
@@ -292,41 +297,6 @@ giveup_leadership(Paxos *paxos)
 	propose_leadership(paxos, NULL, -1);
 }
 
-static void
-notify_leadership_change(Paxos *paxos)
-{
-	static int prev_leader = -1;
-	say_info("%s leader:%i %s",
-		 scn_info(paxos), paxos->leader_id,
-		 paxos_leader(paxos) ? "leader" : "");
-
-	if (paxos->leader_id < 0) {
-		if (prev_leader != paxos->leader_id)
-			say_info("leader unknown, %i -> %i", prev_leader, paxos->leader_id);
-		[paxos status_update:REMOTE_STANDBY fmt:"paxos/slave"];
-	} else if (!paxos_leader(paxos)) {
-		if (prev_leader != paxos->leader_id)
-			say_info("leader is %s, %i -> %i", paxos_peer(paxos, paxos->leader_id)->name,
-				prev_leader, paxos->leader_id);
-		[paxos status_update:REMOTE_STANDBY fmt:"paxos/slave"];
-	} else if (paxos_leader(paxos)) {
-		if (prev_leader != paxos->leader_id) {
-			say_info("I am leader, %i -> %i", prev_leader, paxos->leader_id);
-
-			catchup(paxos, paxos->max_scn);
-			if (paxos->scn < paxos->max_scn) {
-				say_warn("leader catchup FAILED SCN:%"PRIi64" MaxSCN:%"PRIi64,
-					 paxos->scn, paxos->max_scn);
-				giveup_leadership(paxos);
-				title("paxos_catchup_fail");
-				return;
-			}
-		}
-		[paxos status_update:PRIMARY fmt:"paxos/leader"];
-	}
-	prev_leader = paxos->leader_id;
-}
-
 
 static void
 paxos_elect(va_list ap)
@@ -356,6 +326,12 @@ paxos_elect(va_list ap)
 
 		struct iproto_mbox mbox = IPROTO_MBOX_INITIALIZER(mbox, fiber->pool);
 		ev_tstamp proposed_expire = propose_leadership(paxos, &mbox, paxos->self_id);
+
+		if (paxos->leader_id >= 0 && !paxos_leader(paxos)) {
+			/* while we were waiting for quorum, the new leader has been elected */
+			iproto_mbox_release(&mbox);
+			continue;
+		}
 
 		int votes = 0;
 		struct msg_leader *nack_msg = NULL;
@@ -388,7 +364,7 @@ paxos_elect(va_list ap)
 				say_debug("%s: no quorum v/q:%i/%i", __func__, votes, quorum);
 			}
 		}
-		notify_leadership_change(paxos);
+		[paxos adjust_route];
 		iproto_mbox_release(&mbox);
 	}
 }
@@ -414,25 +390,27 @@ paxos_elect(va_list ap)
 	if ((msg)->version != paxos_default_version) {			\
 		say_warn("%s: bad version %i, closing connect from peer %i", \
 			 __func__, (msg)->version, (msg)->peer_id);	\
-		@throw [[IProtoClose palloc] init:"bad version"];	\
+		@throw [IProtoClose with_reason:"bad version"];	\
 	}								\
 	if (!peer) {					\
 		say_warn("%s: closing connect from unknown peer %i", __func__, (msg)->peer_id); \
-		@throw [[IProtoClose palloc] init:"unknown peer"];					\
+		@throw [IProtoClose with_reason:"unknown peer"];	\
 	}								\
 	PAXOS_MSG_DROP(&(msg)->header);					\
 })
 
+#define RT_SHARD(arg) ({ if (!arg) iproto_raise(ERR_CODE_BAD_CONNECTION, "unkown shard"); \
+			 (Paxos *)((struct shard_route *)arg)->shard; })
 static void
-leader(struct netmsg_head *wbuf, struct iproto *msg, void *arg __attribute__((unused)))
+leader(struct netmsg_head *wbuf, struct iproto *msg, void *arg)
 {
-	struct netmsg_io *io = container_of(wbuf, struct netmsg_io, wbuf);
-	struct iproto_ingress *c = container_of(io, struct iproto_ingress, io);
-	struct Paxos *paxos = container_of(c->service, Paxos, paxos_service);
+	Paxos *paxos = RT_SHARD(arg);
 	struct msg_leader *pmsg = (struct msg_leader *)msg;
 	struct paxos_peer *peer = paxos_peer(paxos, pmsg->peer_id);
 	const char *ret = "accept";
 	const ev_tstamp to_expire = leadership_expire - ev_now();
+
+	say_debug("%s: msg:%x", __func__, msg->msg_code);
 
 	PAXOS_MSG_CHECK(pmsg, peer);
 
@@ -452,7 +430,7 @@ leader(struct netmsg_head *wbuf, struct iproto *msg, void *arg __attribute__((un
 		if (pmsg->leader_id != paxos->self_id) {
 			paxos->leader_id = pmsg->leader_id;
 			leadership_expire = pmsg->expire;
-			notify_leadership_change(paxos);
+			[paxos adjust_route];
 		}
 	} else if (paxos->leader_id == pmsg->peer_id && pmsg->leader_id < 0) {
 		ret = "ack giveup";
@@ -755,11 +733,9 @@ msg_dump(const char *prefix, const struct paxos_peer *peer, const struct msg_pax
 }
 
 static void
-learner(struct netmsg_head *wbuf, struct iproto *imsg, void *arg __attribute__((unused)))
+learner(struct netmsg_head *wbuf __attribute__((unused)), struct iproto *imsg, void *arg)
 {
-	struct netmsg_io *io = container_of(wbuf, struct netmsg_io, wbuf);
-	struct iproto_ingress *c = container_of(io, struct iproto_ingress, io);
-	Paxos *paxos = container_of(c->service, Paxos, paxos_service);
+	Paxos *paxos = RT_SHARD(arg);
 	struct msg_paxos *msg = (struct msg_paxos *)imsg;
 	struct paxos_peer *peer = paxos_peer(paxos, msg->peer_id);
 	struct proposal *p;
@@ -839,11 +815,9 @@ acceptor(Paxos *paxos, struct paxos_request *req)
 static void
 iproto_acceptor(struct netmsg_head *wbuf, struct iproto *imsg, void *arg __attribute__((unused)))
 {
-	struct netmsg_io *io = container_of(wbuf, struct netmsg_io, wbuf);
-	struct iproto_ingress *c = container_of(io, struct iproto_ingress, io);
-	struct Paxos *paxos = container_of(c->service, struct Paxos, paxos_service);
+	struct Paxos *paxos = RT_SHARD(arg);
 	struct msg_paxos *msg = (struct msg_paxos *)imsg;
-	struct paxos_request req = { .msg = msg, .value = msg->value, .type = PAXOS_REQ_REMOTE, .wbuf = wbuf };
+	struct paxos_request req = { .msg = msg, .value = msg->value, .type = PAXOS_REQ_REMOTE, {.wbuf = wbuf} };
 	struct paxos_peer *peer = paxos_peer(paxos, msg->peer_id);
 	PAXOS_MSG_CHECK(msg, peer);
 
@@ -1195,116 +1169,80 @@ again:
 	goto again;
 }
 
-struct sockaddr_in *
-paxos_leader_primary_addr(Paxos *paxos)
+void
+paxos_service(struct iproto_service *s)
 {
-	if (paxos->leader_id < 0 || paxos->leader_id == paxos->self_id)
-			return NULL;
-
-
-	return &paxos_peer(paxos, paxos->leader_id)->primary_addr;
+	service_register_iproto(s, LEADER_PROPOSE, leader, 0);
+	service_register_iproto(s, PREPARE, iproto_acceptor, 0);
+	service_register_iproto(s, ACCEPT, iproto_acceptor, 0);
+	service_register_iproto(s, DECIDE, learner, 0);
 }
+
 
 @implementation Paxos
 
 - (id)
-init_recovery:(Recovery *)recovery_
+init_id:(int)shard_id scn:(i64)scn_ recovery:(Recovery *)recovery_ executor:(id<Executor>)executor_ sop:(const struct shard_op *)sop
 {
+	[super init_id:shard_id scn:scn_ recovery:recovery_ executor:executor_ sop:sop];
 	if (cfg.local_hot_standby)
 		panic("wal_hot_standby is incompatible with paxos");
 
 	SLIST_INIT(&group);
 	RB_INIT(&proposals);
 
-	recovery = recovery_;
-	leader_id = -1;
-	self_id = cfg.paxos_self_id;
+	self_id = leader_id = -1;
 	say_info("configuring paxos peers");
 
-	if (cfg.paxos_peer == NULL)
-		panic("no paxos_peer given");
-
-	const char *self_addr = NULL;
-	for (int i = 0; ; i++)
-	{
-		struct octopus_cfg_paxos_peer *c;
-		if ((c = cfg.paxos_peer[i]) == NULL)
-			break;
-
-		if (c->id == self_id) {
-			self_addr = c->addr;
-			break;
-		}
-	}
-	if (!self_id)
-		panic("unable to find myself among paxos peers");
-
-	iproto_service(&paxos_service, self_addr, NULL);
-	service_register_iproto(&paxos_service, LEADER_PROPOSE, leader, 0);
-	service_register_iproto(&paxos_service, PREPARE, iproto_acceptor, 0);
-	service_register_iproto(&paxos_service, ACCEPT, iproto_acceptor, 0);
-	service_register_iproto(&paxos_service, DECIDE, learner, 0);
 
 	for (int i = 0; ; i++)
 	{
-		struct octopus_cfg_paxos_peer *c;
-		if ((c = cfg.paxos_peer[i]) == NULL)
+		if (peer[i] == NULL)
 			break;
 
-		if (paxos_peer(self, c->id) != NULL)
-			panic("paxos peer %s already exists", c->name);
+		for (int j = 0; ; j++) {
+			struct octopus_cfg_peer *c;
+			if ((c = cfg.peer[j]) == NULL)
+				break;
 
-		say_info("  %s -> %s", c->name, c->addr);
+			if (strcmp(peer[i], c->name) != 0)
+				continue;
 
-		const char *name = c->name;
-		if (c->id == self_id) {
-			continue;
-			name = "self";
+			if (paxos_peer(self, c->id) != NULL)
+				panic("paxos peer %s already exists", c->name);
+
+			say_info("  %s -> %s", c->name, c->addr);
+
+			if (strcmp(cfg.hostname, c->name) == 0) {
+				self_id = c->id;
+				continue;
+			}
+
+			struct paxos_peer *p = make_paxos_peer(c->id, c->name);
+			if (!p)
+				panic("bad addr %s", c->addr);
+
+			SLIST_INSERT_HEAD(&group, p, link);
+			SLIST_INSERT_HEAD(&paxos_remotes, p->egress, link);
 		}
-		struct paxos_peer *p = make_paxos_peer(c->id, name, c->addr, c->primary_port, c->feeder_port);
-
-		if (!p)
-			panic("bad addr %s", c->addr);
-
-		struct iproto_egress *peer = iproto_add_remote_peer(&p->paxos_addr, paxos_service.pool);
-		peer->ts.name = name;
-
-		SLIST_INSERT_HEAD(&group, p, link);
-		SLIST_INSERT_HEAD(&paxos_remotes, peer, link);
 	}
-
+	assert(self_id >= 0);
 	fiber_create("paxos/stat", paxos_stat, self);
-
-	for (int i = 0; i < 3; i++)
-		fiber_create("paxos/worker", iproto_worker, &paxos_service);
-
 	return self;
 }
 
 - (void)
 load_from_remote
 {
-	XLogReplica *replica = [[XLogReplica alloc] init_recovery:recovery feeder:NULL];
+	XLogRemoteReader *remote_reader = [[XLogRemoteReader alloc] init_shard:self];
 	struct paxos_peer *p;
 	SLIST_FOREACH(p, &group, link)
-		[replica load_from_remote:&p->feeder];
-	[replica free];
-}
-
-- (bool)
-standalone
-{
-	return false;
-}
-
-- (struct sockaddr_in *)
-proxy_addr
-{
-	return paxos_leader_primary_addr(self);
+		[remote_reader load_from_remote:&p->feeder];
+	[remote_reader free];
 }
 
 - (void)
-remote_hot_standby
+start
 {
 	/* peer id starts from 1 */
 	for (int i = 1; i <= 3; i++)
@@ -1312,7 +1250,7 @@ remote_hot_standby
 
 	fiber_create("paxos/elect", paxos_elect, self);
 	wal_dumper = fiber_create("paxos/wal_dump", wal_dumper_fib, self);
-	[self wal_final_row]; // FIXME: может быть надо как нибудь по другому сигнализировать executor-у что пора начинать?
+	[executor wal_final_row]; // FIXME: может быть надо как нибудь по другому сигнализировать executor-у что пора начинать?
 }
 
 - (int)
@@ -1346,18 +1284,17 @@ write_scn:(i64)scn_ data:(const void *)data len:(u32)len tag:(u16)tag
 	struct wal_reply *reply = [recovery->writer wal_pack_submit];
 
 	if (reply->row_count) {
-		struct row_commit_info *rci = reply->row_info;
-		if (scn_changer(rci->tag)) {
-			run_crc_scn = rci->scn;
-			run_crc_log = rci->run_crc;
-			run_crc_record(&run_crc_state, rci->tag, rci->scn, rci->run_crc);
+		run_crc_scn = reply->scn;
+		for (int i = 0; i < reply->crc_count; i++) {
+			run_crc_log = reply->row_crc[i].value;
+			run_crc_record(&run_crc_state, reply->row_crc[i]);
 		}
 	}
 	return reply->row_count;
 }
 
 - (void)
-apply_sys:(const struct row_v12 *)r
+recover_row_sys:(const struct row_v12 *)r
 {
 	say_debug2("%s: lsn:%"PRIi64" SCN:%"PRIi64" tag:%s", __func__,
 		   r->lsn, r->scn, xlog_tag_to_a(r->tag));
@@ -1436,16 +1373,19 @@ apply_sys:(const struct row_v12 *)r
 }
 
 - (void)
-apply:(struct row_v12 *)r
+recover_row:(struct row_v12 *)r
 {
 	// calculate run_crc _before_ calling executor: executor may change row
 	if (scn_changer(r->tag))
 		run_crc_calc(&run_crc_log, r->tag, r->data, r->len);
-	[executor apply:&TBUF(r->data, r->len, fiber->pool) tag:r->tag];
-	[self apply_sys:r];
+
+	if ((r->tag & ~TAG_MASK) != TAG_SYS)
+		[executor apply:&TBUF(r->data, r->len, fiber->pool) tag:r->tag];
+	else
+		[self recover_row_sys:r];
 
 	if (scn_changer(r->tag)) {
-		run_crc_record(&run_crc_state, r->tag, r->scn, run_crc_log);
+		run_crc_record(&run_crc_state, (struct run_crc_hist){ .scn = r->scn, .value = run_crc_log });
 		scn = r->scn;
 	}
 }
@@ -1475,12 +1415,50 @@ is_replica
 {
 	return recovery->writer == nil || leader_id != self_id;
 }
+
+- (void)
+adjust_route
+{
+	static int prev_leader = -255;
+	say_info("%s leader:%i %s",
+		 scn_info(self), leader_id,
+		 paxos_leader(self) ? "leader" : "");
+
+	if (prev_leader == leader_id)
+		return;
+
+	if (leader_id < 0) {
+		say_info("leader unknown, %i -> %i", prev_leader, leader_id);
+		update_rt(self->id, SHARD_MODE_LOADING, self, NULL);
+		[self status_update:REMOTE_STANDBY fmt:"paxos/slave"];
+	} else if (!paxos_leader(self)) {
+		struct paxos_peer *leader = paxos_peer(self, leader_id);
+		update_rt(self->id, SHARD_MODE_PARTIAL_PROXY, self, &leader->addr);
+		[self status_update:REMOTE_STANDBY fmt:"paxos/slave"];
+		say_info("leader is %s, %i -> %i", leader->name, prev_leader, leader->id);
+	} else if (paxos_leader(self)) {
+		say_info("I am leader, %i -> %i", prev_leader, leader_id);
+		catchup(self, max_scn);
+		if (scn < max_scn) {
+			say_warn("leader catchup FAILED SCN:%"PRIi64" MaxSCN:%"PRIi64,
+				 scn, max_scn);
+			giveup_leadership(self);
+			title("paxos_catchup_fail");
+			return;
+		}
+		update_rt(self->id, SHARD_MODE_LOCAL, self, NULL);
+		[self status_update:PRIMARY fmt:"paxos/leader"];
+	}
+	prev_leader = leader_id;
+}
+
 @end
 
 register_source();
 
 void __attribute__((constructor))
-paxos_cons()
+paxos_ctor()
 {
+	paxos_pool = palloc_create_pool((struct palloc_config){.name = "paxos"});
 	slab_cache_init(&proposal_cache, sizeof(struct proposal), SLAB_GROW, "paxos/proposal");
 }

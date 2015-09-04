@@ -46,13 +46,11 @@ RB_HEAD(ptree, proposal);
 	struct iproto_egress_list paxos_remotes;
 	struct Fiber *proposer_fiber;
 	struct Fiber *output_flusher, *reply_reader, *follower, *wal_dumper;
-	struct palloc_pool *pool;
 	i64 app_scn, max_scn, run_crc_scn;
 	bool wal_dumper_busy;
 	int leader_id, self_id;
 
 	struct ptree proposals;
-	struct iproto_service paxos_service;
 }
 @end
 

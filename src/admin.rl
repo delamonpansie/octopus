@@ -212,7 +212,7 @@ admin_dispatch(int fd, struct tbuf *rbuf)
 	struct tbuf *err = tbuf_alloc(fiber->pool);
 	int cs;
 	char *p, *pe;
-	char *strstart, *strend;
+	char *strstart = NULL, *strend = NULL;
 	int info_net = 0;
 	int info_string = 0;
 
@@ -289,15 +289,15 @@ admin_dispatch(int fd, struct tbuf *rbuf)
 			while ((pe = rbuf_getline(fd, rbuf)) != NULL) {
 				*pe++ = 0;
 				char *line = rbuf->ptr;
-				int strlen = pe - line;
-				tbuf_ltrim(rbuf, strlen);
+				int len = pe - line;
+				tbuf_ltrim(rbuf, len);
 
 				if (strcmp(line, "###") == 0) {
 					end(out);
 					break;
 				}
 
-				exec_lua(L, line, strlen - 1, out); /* without trailing \0 */
+				exec_lua(L, line, len - 1, out); /* without trailing \0 */
 				fiber_write(fd, out->ptr, tbuf_len(out));
 				fiber_write(fd, "> ", 2);
 				tbuf_reset(out);

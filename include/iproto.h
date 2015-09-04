@@ -40,6 +40,7 @@
 
 extern const uint32_t msg_ping;
 extern const uint32_t msg_replica;
+extern const uint32_t msg_shard;
 
 static inline struct iproto *iproto(const struct tbuf *t)
 {
@@ -96,7 +97,10 @@ SLIST_HEAD(iproto_egress_list, iproto_egress);
 
 void iproto_ping(struct netmsg_head *h, struct iproto *r, void *arg __attribute__((unused)));
 
-enum { IPROTO_NONBLOCK = 1, IPROTO_PROXY = 2 };
+@class Shard;
+@protocol Shard;
+
+enum { IPROTO_NONBLOCK = 1, IPROTO_PROXY = 2, IPROTO_FORCE_LOCAL = 4 };
 typedef void (*iproto_cb)(struct netmsg_head *, struct iproto *, void *);
 struct iproto_handler {
 	iproto_cb cb;
@@ -115,7 +119,7 @@ struct iproto_service {
 	int batch;
 	ev_prepare wakeup;
 
-	struct iproto_egress *proxy;
+	enum { SERVICE_SHARDED = 1 } options;
 	struct iproto_handler default_handler;
 	int ih_size, ih_mask;
 	struct iproto_handler *ih;

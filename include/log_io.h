@@ -52,6 +52,7 @@ enum { snap_initial = 1,
        paxos_promise,
        paxos_accept,
        paxos_nop,
+       shard_tag,
 
        user_tag = 32
 };
@@ -73,7 +74,7 @@ static inline bool scn_changer(int tag)
 {
 	int tag_type = tag & ~TAG_MASK;
 	tag &= TAG_MASK;
-	return tag_type == TAG_WAL || tag == nop || tag == run_crc;
+	return tag_type == TAG_WAL || tag == nop || tag == run_crc || tag == shard_tag;
 }
 
 static inline bool dummy_tag(int tag) /* dummy row tag */
@@ -89,7 +90,11 @@ extern const char *inprogress_suffix;
 
 const char *xlog_tag_to_a(u16 tag);
 
-struct tbuf;
+@class XLog;
+@class XLogWriter;
+@class Recovery;
+@protocol Shard;
+@class Shard;
 
 @protocol XLogPuller
 - (struct row_v12 *) fetch_row;
@@ -104,9 +109,6 @@ struct tbuf;
 - (ssize_t)recv_row;
 @end
 
-@class XLog;
-@class XLogWriter;
-@class Recovery;
 typedef void (follow_cb)(ev_stat *w, int events);
 
 @interface XLogDir: Object {
@@ -119,7 +121,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 };
 - (id) init_dirname:(const char *)dirname_;
 - (XLog *) open_for_read:(i64)lsn;
-- (XLog *) open_for_write:(i64)lsn scn:(i64)scn;
+- (XLog *) open_for_write:(i64)lsn scn:(const i64 *)shard_scn_map;
 - (i64) greatest_lsn;
 - (XLog *) containg_lsn:(i64)target_lsn;
 - (i64) containg_scn:(i64)target_scn;
@@ -155,20 +157,16 @@ struct row_v12 {
 	i64 lsn;
 	i64 scn;
 	u16 tag;
-	u64 cookie;
+	union {
+		u64 cookie;
+		u16 shard_id;
+	};
 	double tm;
 	u32 len;
 	u32 data_crc32c;
 	u8 data[0];
 } __attribute__((packed));
 struct row_v12 *dummy_row(i64 lsn, i64 scn, u16 tag);
-
-struct row_commit_info {
-	u16 tag;
-	i64 lsn;
-	i64 scn;
-	u32 run_crc;
-} __attribute__((packed));
 
 typedef struct marker_desc {
 	u64 marker, eof;
@@ -212,18 +210,17 @@ typedef struct marker_desc {
 - (void) follow:(follow_cb *)cb data:(void *)data;
 - (int) inprogress_rename;
 - (int) read_header;
-- (int) write_header;
+- (int) write_header:(i64 *)shard_scn_map;
 - (int) flush;
 - (void) fadvise_dont_need;
 - (size_t) rows;
 - (size_t) wet_rows_offset_available;
 - (i64) last_read_lsn;
-- (const struct row_v12 *) append_row:(const void *)data len:(u32)data_len scn:(i64)scn
-				  tag:(u16)tag cookie:(u64)cookie;
+- (const struct row_v12 *) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie;
 - (const struct row_v12 *) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag;
-- (const struct row_v12 *) append_row:(const struct tbuf *)data scn:(i64)scn tag:(u16)tag;
-
+- (const struct row_v12 *) append_row:(const struct tbuf *)data scn:(i64)scn shard_id:(int)shard_id tag:(u16)tag;
 - (const struct row_v12 *) append_row:(struct row_v12 *)row data:(const void *)data;
+
 - (i64) confirm_write;
 - (void) append_successful:(size_t)bytes;
 - (int) fileno;
@@ -242,10 +239,7 @@ u16 fix_tag_v2(u16 tag);
 @interface XLog11: XLog
 @end
 
-@interface XLog12: XLog {
-@public
-	i64 next_scn;
-}
+@interface XLog12: XLog
 @end
 
 struct wal_pack {
@@ -263,9 +257,10 @@ struct run_crc_hist {
 
 struct wal_reply {
 	u32 packet_len;
-	u32 row_count;
+	u32 row_count, crc_count;
 	struct Fiber *sender;
 	u32 fid;
+	i64 lsn, scn;
 
 	struct run_crc_hist row_crc[];
 } __attribute__((packed));
@@ -290,10 +285,9 @@ ev_tstamp run_crc_lag(struct run_crc *run_crc);
 const char *run_crc_status(struct run_crc *run_crc);
 
 
-@protocol Shard;
-@class Shard;
 @protocol Executor
 - (id) init_shard:(Shard<Shard> *)obj;
+- (void) set_shard:(Shard<Shard> *)obj;
 - (void) apply:(struct tbuf *)data tag:(u16)tag;
 - (void) wal_final_row;
 - (void) status_changed;
@@ -302,10 +296,9 @@ const char *run_crc_status(struct run_crc *run_crc);
 - (int) snapshot_write_rows:(XLog *)snap;
 @end
 
-@class Paxos;
 @protocol RecoveryState
 - (i64) lsn;
-- (id<Shard>) shard;
+- (Shard<Shard> *) shard:(unsigned)shard_id;
 @end
 
 @protocol RecoverRow
@@ -324,6 +317,7 @@ extern i64 snap_lsn; /* may be used for overriding initial snapshot,
 - (i64) lsn;
 - (i64) load_from_local:(i64)initial_lsn;
 - (void) local_hot_standby;
+
 - (void) recover_follow:(ev_tstamp)wal_dir_rescan_delay;
 - (i64) recover_snap;
 - (void) recover_remaining_wals;
@@ -337,7 +331,13 @@ extern i64 snap_lsn; /* may be used for overriding initial snapshot,
 - (int) snapshot_write;
 @end
 
-@interface XLogWriter: Object {
+@protocol XLogWriter
+- (i64) lsn;
+- (struct wal_reply *) submit:(const void *)data len:(u32)len tag:(u16)tag shard_id:(u16)shard_id;
+- (struct wal_reply *) wal_pack_submit;
+@end
+
+@interface XLogWriter: Object <XLogWriter> {
 	i64 lsn;
 	id<RecoveryState> state;
 	struct child wal_writer;
@@ -346,10 +346,14 @@ extern i64 snap_lsn; /* may be used for overriding initial snapshot,
 - (id) init_lsn:(i64)lsn
 	  state:(id<RecoveryState>)state;
 
-- (i64) lsn;
 - (const struct child *) wal_writer;
-- (struct wal_reply *) wal_pack_submit;
-- (struct wal_reply *) submit:(const void *)data len:(u32)len tag:(u16)tag;
+@end
+
+@interface DummyXLogWriter: Object {
+	i64 lsn;
+}
+- (id) init_lsn:(i64)init_lsn;
+- (void) incr_lsn:(int)diff;
 @end
 
 @interface XLogPuller: Object <XLogPuller, XLogPullerAsync> {
@@ -366,8 +370,9 @@ extern i64 snap_lsn; /* may be used for overriding initial snapshot,
 - (ssize_t) recv;
 - (void) abort_recv;
 
-- (XLogPuller *) init;
-- (XLogPuller *) init:(struct feeder_param*)_feeder;
+- (id) init;
+- (id) init:(struct feeder_param*)_feeder;
+
 - (void) feeder_param:(struct feeder_param*)_feeder;
 /* returns -1 in case of handshake failure. puller is closed.  */
 - (int) handshake:(i64)scn;
@@ -428,8 +433,8 @@ enum {
 	id<RecoverRow> recovery;
 }
 - (id) init_recovery:(id<RecoverRow>)recovery_;
-/* load_from_remote throws exceptions on failure */
-- (void) load_from_remote:(struct feeder_param *)remote;
+- (int) load_from_remote:(struct feeder_param *)remote; /* throws exceptions on failure */
+
 @end
 
 @interface XLogReplica : Object {
@@ -447,19 +452,10 @@ enum {
 
 
 enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
-
-@protocol Shard
+@protocol Shard <RecoverRow>
+- (int) id;
 - (i64) scn;
-
-- (bool) standalone; // either master or no replication at all
-- (void) load_from_remote;
-- (void) remote_hot_standby;
-- (struct sockaddr_in *) proxy_addr;
-
-- (int) submit:(const void *)data len:(u32)len tag:(u16)tag;
-- (void) apply:(struct row_v12 *)r;
-- (void) wal_final_row;
-
+- (id<Executor>)executor;
 - (ev_tstamp) last_update_tstamp;
 - (ev_tstamp) lag;
 
@@ -468,12 +464,18 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 - (ev_tstamp) run_crc_lag;
 - (u32) run_crc_log;
 
+- (void) start;
+- (void) load_from_remote;
+
+- (int) submit:(const void *)data len:(u32)len tag:(u16)tag;
+
 - (const char *) status;
 - (void) status_update:(enum recovery_status)s fmt:(const char *)fmt, ...;
 - (bool) is_replica;
 
-- (void) set_executor:(id<Executor>)obj;
-- (id<Executor>)executor;
+- (void) adjust_route;
+- (struct shard_op *)snapshot_header;
+- (struct row_v12 *)snapshot_write_header:(XLog *)snap;
 @end
 
 @interface Shard: Object {
@@ -481,14 +483,21 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 	u32 run_crc_log;
 	struct run_crc run_crc_state;
 	char status_buf[64];
-	id<Executor> executor;
-
 @public
+	int id;
+	id<Executor> executor;
 	i64 scn;
 	enum recovery_status status, prev_status;
 	Recovery *recovery;
+	char *peer[5];
+	bool dummy;
 }
+- (id) init_id:(int)shard_id scn:(i64)scn_
+      recovery:(Recovery *)recovery_ executor:(id<Executor>)executor_ sop:(const struct shard_op *)sop;
+
+- (int) id;
 - (i64) scn;
+- (id<Executor>)executor;
 - (ev_tstamp) run_crc_lag;
 - (const char *) run_crc_status;
 - (u32) run_crc_log;
@@ -496,39 +505,33 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 - (void) status_update:(enum recovery_status)new_status fmt:(const char *)fmt, ...;
 - (const char *)status;
 
-- (void) wal_final_row;
 - (ev_tstamp) lag;
 - (ev_tstamp) last_update_tstamp;
 
-- (void) set_executor:(id<Executor>)obj;
-- (id<Executor>)executor;
+- (struct shard_op *)snapshot_header;
+- (const struct row_v12 *)snapshot_write_header:(XLog *)snap;
+
+- (void) alter_peers:(struct row_v12 *)r;
 @end
 
-@interface POR: Shard <Shard> {
+@interface POR: Shard <Shard,RecoverRow> {
 	XLogReplica *remote;
 }
-- (bool) feeder_changed:(struct feeder_param*)new;
 @end
 
 @interface Recovery: Object <RecoveryState, RecoverRow> {
 	XLogReader *reader;
 	bool initial_snap;
 
-	i64 recovered_rows;
-	u32 estimated_snap_rows;
 	SnapWriter *snap_writer;
 @public
-	XLogWriter *writer;
-	id<Shard> shard;
+	id<XLogWriter> writer;
 
 	struct mbox_void_ptr run_crc_mbox;
+	Class default_exec_class;
 }
 - (i64) lsn;
-
-- (const struct child *) wal_writer;
-- (XLogWriter *)writer;
-
-- (id<Shard>) shard;
+- (id<XLogWriter>)writer;
 
 - (void) simple;
 - (void) lock; /* lock wal_dir & snap_dir */
@@ -540,6 +543,9 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 
 - (int) write_initial_state;
 - (int) fork_and_snapshot:(bool)wait_for_child;
+
+struct iproto_service;
+- (void) shard_service:(struct iproto_service *)s;
 @end
 
 @interface Recovery (Deprecated)
@@ -549,10 +555,7 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 @interface Recovery (Fold)
 - (int) snapshot_fold;
 @end
-
 extern i64 fold_scn;
-
-int wal_disk_writer(int fd, void *state);
 
 static inline struct _row_v04 *_row_v04(const struct tbuf *t)
 {

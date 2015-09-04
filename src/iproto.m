@@ -35,6 +35,7 @@
 #import <index.h>
 #import <objc.h>
 #import <stat.h>
+#import <shard.h>
 
 #import <cfg/defs.h>
 #include <stdio.h>
@@ -46,6 +47,8 @@
 #include <netinet/tcp.h>
 
 const uint32_t msg_ping = 0xff00;
+const uint32_t msg_replica = 0xff01;
+const uint32_t msg_shard = 0xff02;
 
 #define STAT(_) \
         _(IPROTO_WORKER_STARVATION, 1)			\
@@ -60,6 +63,7 @@ struct worker_arg {
 	iproto_cb cb;
 	struct iproto *r;
 	struct netmsg_io *io;
+	void *arg;
 };
 
 void
@@ -74,7 +78,7 @@ iproto_worker(va_list ap)
 
 		@try {
 			netmsg_io_retain(a.io);
-			a.cb(&a.io->wbuf, a.r, NULL);
+			a.cb(&a.io->wbuf, a.r, a.arg);
 		}
 		@catch (IProtoClose *e) {
 			[a.io close];
@@ -218,7 +222,7 @@ iproto_service(struct iproto_service *service, const char *addr)
 	service_alloc_handlers(service, SERVICE_DEFAULT_CAPA);
 
 	service_register_iproto(service, -1, err, IPROTO_NONBLOCK);
-	service_register_iproto(service, msg_ping, iproto_ping, IPROTO_NONBLOCK);
+	service_register_iproto(service, msg_ping, iproto_ping, IPROTO_NONBLOCK|IPROTO_FORCE_LOCAL);
 }
 
 void
@@ -267,20 +271,46 @@ process_requests(struct iproto_service *service, struct iproto_ingress *c)
 	while (has_full_req(&io->rbuf))
 	{
 		struct iproto *request = iproto(&io->rbuf);
-		struct iproto_handler *ih = service_find_code(service, request->msg_code);
+		struct iproto_handler *ih = service_find_code(service, request->msg_code & 0xffff);
 		size_t req_size = sizeof(struct iproto) + request->data_len;
-		struct iproto_egress *proxy;
+		void *arg = NULL;
+		int route_id = service->options == SERVICE_SHARDED ?
+			       request->msg_code >> 16 :
+			       0;
+		struct shard_route *route = &shard_rt[route_id];
+		int route_mode = route->mode;
 
-		if (ih->flags & IPROTO_PROXY && (proxy = service->proxy) != NULL) {
+		if (unlikely(ih->flags & IPROTO_FORCE_LOCAL))
+			route_mode = SHARD_MODE_LOCAL;
+
+		switch (route_mode) {
+		case SHARD_MODE_PROXY:
 			tbuf_ltrim(&io->rbuf, req_size);
-			iproto_proxy_send(proxy, c, request, NULL, 0);
-		} else if (ih->flags & IPROTO_NONBLOCK) {
+			iproto_proxy_send(route->proxy, c, request, NULL, 0);
+			continue;
+		case SHARD_MODE_PARTIAL_PROXY:
+			if (ih->flags & IPROTO_PROXY) {
+				tbuf_ltrim(&io->rbuf, req_size);
+				iproto_proxy_send(route->proxy, c, request, NULL, 0);
+				continue;
+			}
+			arg = route;
+		case SHARD_MODE_LOCAL:
+			arg = route;
+			break;
+		case SHARD_MODE_NONE:
+		case SHARD_MODE_LOADING:
+			arg = NULL;
+			break;
+		}
+
+		if (ih->flags & IPROTO_NONBLOCK) {
 			tbuf_ltrim(&io->rbuf, req_size);
 			stat_collect(stat_base, IPROTO_STREAM_OP, 1);
 			struct netmsg_mark header_mark;
 			netmsg_getmark(&io->wbuf, &header_mark);
 			@try {
-				ih->cb(&io->wbuf, request, NULL);
+				ih->cb(&io->wbuf, request, arg);
 			}
 			@catch (IProtoClose *e) {
 				[e release];
@@ -306,7 +336,7 @@ process_requests(struct iproto_service *service, struct iproto_ingress *c)
 				void *request_copy = memcpy(palloc(w->pool, req_size), request, req_size);
 
 				SLIST_REMOVE_HEAD(&service->workers, worker_link);
-				resume(w, &(struct worker_arg){ih->cb, request_copy, io});
+				resume(w, &(struct worker_arg){ih->cb, request_copy, io, arg});
 			} else {
 				stat_collect(stat_base, IPROTO_WORKER_STARVATION, 1);
 				break; // FIXME: need state for this
@@ -430,6 +460,7 @@ iproto_error(struct netmsg_head *h, const struct iproto *request, u32 ret_code, 
 	iproto_reply_fixup(h, header);
 	say_debug("%s: op:0x%02x data_len:%i sync:%i ret:%i", __func__,
 		  header->msg_code, header->data_len, header->sync, header->ret_code);
+	say_debug2("	%s", err);
 }
 
 void

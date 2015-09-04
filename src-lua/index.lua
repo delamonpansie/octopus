@@ -179,33 +179,6 @@ local function packerr(err, fname, index, ...)
     error(msg, 3)
 end
 
-local magic_key = {}
-local legacy_mt
--- legacy iter interface interface
-function iter(index, key)
-    assertarg(index, legacy_mt, 1, 2)
-    index = index[magic_key]
-
-    if index.__ptr.conf.field[0].type ~= ffi.C.STRING and type(key) == 'string' then
-        key = tonumber(key)
-    end
-    return index:iter(key)
-end
-
-legacy_mt = {
-    __index = function(index, key)
-        assertarg(index, legacy_mt, 1, 2)
-        index = index[magic_key]
-        if index.__ptr.conf.field[0].type ~= ffi.C.STRING and type(key) == 'string' then
-            key = tonumber(key)
-        end
-        return index:find(key)
-    end,
-}
-local function legacy_proxy(index)
-    return setmetatable({[magic_key] = index}, legacy_mt)
-end
-
 local int32_t = ffi.typeof('int32_t')
 local uint32_t = ffi.typeof('uint32_t')
 local int = ffi.typeof('int')
@@ -267,7 +240,10 @@ local basic_mt = {
             end
             return iter_next, self
         end
-    }
+    },
+    __tostring = function(self)
+        return tostring(self.__ptr)
+    end
 }
 
 local tree_mt = {
@@ -311,7 +287,7 @@ local function proxy(index)
               }
     return setmetatable(p, index_mt[tonumber(index.conf.type)])
 end
+
 function cast(cdata)
-    local index = proxy(cdata)
-    return legacy_proxy(index), index
+    return proxy(cdata)
 end

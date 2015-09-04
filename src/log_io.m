@@ -31,6 +31,7 @@
 #import <say.h>
 #import <pickle.h>
 #import <tbuf.h>
+#import <shard.h>
 
 #include <third_party/crc32.h>
 
@@ -105,6 +106,7 @@ xlog_tag_to_a(u16 tag)
 	case snap_final:	strcat(p, "snap_final"); break;
 	case wal_data:		strcat(p, "wal_data"); break;
 	case wal_final:		strcat(p, "wal_final"); break;
+	case shard_tag:		strcat(p, "shard_tag"); break;
 	case run_crc:		strcat(p, "run_crc"); break;
 	case nop:		strcat(p, "nop"); break;
 	case paxos_promise:	strcat(p, "paxos_promise"); break;
@@ -346,8 +348,9 @@ fadvise_dont_need
 }
 
 - (int)
-write_header
+write_header:(const i64 *)shard_scn_map
 {
+	(void)shard_scn_map;
 	assert(false);
 	return 0;
 }
@@ -359,8 +362,10 @@ read_header
         char *r;
         for (;;) {
                 r = fgets(buf, sizeof(buf), fd);
-                if (r == NULL)
-                        return -1;
+                if (r == NULL) {
+			say_syserror("fgets");
+			return -1;
+		}
 
                 if (strcmp(r, "\n") == 0 || strcmp(r, "\r\n") == 0)
                         break;
@@ -538,21 +543,21 @@ append_row:(const void *)data len:(u32)len scn:(i64)scn tag:(u16)tag
 	row = (struct row_v12){ .scn = scn,
 				.tm = ev_now(),
 				.tag = tag,
-				.cookie = default_cookie,
+				{.cookie = default_cookie},
 				.len = len };
 
 	return [self append_row:&row data:data];
 }
 
 - (const struct row_v12 *)
-append_row:(const struct tbuf *)data scn:(i64)scn tag:(u16)tag
+append_row:(const struct tbuf *)data scn:(i64)scn shard_id:(int)shard_id tag:(u16)tag
 {
 	assert(wet_rows < nelem(wet_rows_offset));
 	static struct row_v12 row;
 	row = (struct row_v12){ .scn = scn,
 				.tm = ev_now(),
 				.tag = tag,
-				{.cookie = default_cookie},
+				{.shard_id = shard_id},
 				.len = tbuf_len(data) };
 
 	return [self append_row:&row data:data->ptr];
@@ -566,7 +571,7 @@ append_row:(const void *)data len:(u32)len scn:(i64)scn tag:(u16)tag cookie:(u64
 	row = (struct row_v12){ .scn = scn,
 				.tm = ev_now(),
 				.tag = tag,
-				.cookie = cookie,
+				{.cookie = cookie},
 				.len = len };
 
 	return [self append_row:&row data:data];
@@ -787,8 +792,9 @@ convert_row_v11_to_v12(struct tbuf *m)
 }
 
 - (int)
-write_header
+write_header:(const i64 *)shard_scn_map
 {
+	assert(shard_scn_map == NULL);
 	if (fwrite(dir->filetype, strlen(dir->filetype), 1, fd) != 1)
 		return -1;
 	if (fwrite(v11, strlen(v11), 1, fd) != 1)
@@ -935,12 +941,6 @@ append_row:(struct row_v12 *)row12 data:(const void *)data
 @implementation XLog12
 - (u32) version { return 12; }
 
-- (i64)
-scn
-{
-	return next_scn;
-}
-
 - (int)
 read_header
 {
@@ -950,7 +950,6 @@ read_header
                 r = fgets(buf, sizeof(buf), fd);
                 if (r == NULL)
                         return -1;
-		sscanf(r, "SCN: %"PRIi64"\n", &next_scn);
 		if (strcmp(r, "\n") == 0 || strcmp(r, "\r\n") == 0)
                         break;
         }
@@ -958,7 +957,7 @@ read_header
 }
 
 - (int)
-write_header
+write_header:(const i64 *)shard_scn_map
 {
 	const char *comment = "Created-by: octopus\n";
 	char buf[64];
@@ -968,9 +967,18 @@ write_header
 		return -1;
 	if (fwrite(comment, strlen(comment), 1, fd) != 1)
                 return -1;
-	snprintf(buf, sizeof(buf), "SCN: %"PRIi64"\n", next_scn);
-	if (fwrite(buf, strlen(buf), 1, fd) != 1)
-                return -1;
+	if (shard_scn_map) {
+		for (int i = 0; i < MAX_SHARD; i++) {
+			if (shard_scn_map[i] == 0)
+				continue;
+			if (i == 0)
+				snprintf(buf, sizeof(buf), "SCN: %"PRIi64"\n", shard_scn_map[i]);
+			else
+				snprintf(buf, sizeof(buf), "SCN-%i: %"PRIi64"\n", i, shard_scn_map[i]);
+			if (fwrite(buf, strlen(buf), 1, fd) != 1)
+				return -1;
+		}
+	}
 	if (fwrite("\n", 1, 1, fd) != 1)
                 return -1;
 	if ((offset = ftello(fd)) < 0)
@@ -1254,43 +1262,6 @@ out:
 	return [self open_for_read:*lsn];
 }
 
-- (i64)
-containg_scn:(i64)target_scn
-{
-	i64 *lsn;
-	ssize_t count = [self scan_dir:&lsn];
-	XLog *l = nil;
-	const i64 initial_lsn = 2;
-
-	/* new born master without a single commit */
-	if (count == 0 && target_scn <= 2)
-		return initial_lsn;
-
-	if (count <= 0) {
-		say_error("%s: WAL dir is either empty or unreadable", __func__);
-		return -1;
-	}
-
-	for (int i = 0; i < count; i++) {
-		l = [self open_for_read:lsn[i]];
-		i64 scn = [l respondsTo:@selector(scn)] ? [(id)l scn] : lsn[i];
-		[l fetch_row];
-		[l close];
-
-		/* handly buggy headers where "SCN: 0" :
-		   assume they were written with cfg.sync_scn_with_lsn=1 */
-		if (scn == 0)
-			scn = lsn[i];
-
-		if (scn == target_scn)
-			return lsn[i];
-		if (scn > target_scn)
-			return i > 0 ? lsn[i - 1] : initial_lsn;
-	}
-
-	return lsn[count - 1];
-}
-
 
 - (const char *)
 format_filename:(i64)lsn prefix:(const char *)prefix suffix:(const char *)extra_suffix
@@ -1323,7 +1294,7 @@ open_for_read:(i64)lsn
 }
 
 - (XLog *)
-open_for_write:(i64)lsn scn:(i64)scn
+open_for_write:(i64)lsn scn:(i64 *)shard_scn_map
 {
         XLog *l = nil;
         FILE *file = NULL;
@@ -1342,29 +1313,28 @@ open_for_write:(i64)lsn scn:(i64)scn
 	/* .inprogress file can't contain confirmed records, overwrite it silently */
 	file = fopen(filename, "w");
 	if (file == NULL) {
-		say_syserror("fopen failed");
+		say_syserror("fopen of %s for writing failed", filename);
 		goto error;
 	}
 	fbuf = set_file_buf(file, 1024 * 1024);
 
-	if (cfg.io_compat) {
-		l = [[xlog_class alloc] init_filename:filename fd:file dir:self vbuf:fbuf];
-		l->next_lsn = lsn;
-
-	} else {
-		l = [[xlog_class alloc] init_filename:filename fd:file dir:self vbuf:fbuf];
-		l->next_lsn = lsn;
-		((XLog12 *)l)->next_scn = scn;
-	}
+	l = [[xlog_class alloc] init_filename:filename fd:file dir:self vbuf:fbuf];
 
 	/* reset local variables: they are included in l */
 	fbuf = NULL;
 	file = NULL;
 
+	l->next_lsn = lsn;
 	l->mode = LOG_WRITE;
 	l->inprogress = 1;
 
-	if ([l write_header] < 0) {
+	if (cfg.io_compat) {
+		for (int i = 1; i < MAX_SHARD; i++)
+			assert(shard_scn_map[i] == 0);
+		shard_scn_map = NULL;
+	}
+
+	if ([l write_header:shard_scn_map] < 0) {
 		say_syserror("failed to write header");
 		goto error;
 	}
@@ -1376,6 +1346,76 @@ open_for_write:(i64)lsn scn:(i64)scn
 	free(fbuf);
         [l free];
 	return NULL;
+}
+
+- (i64)
+containg_scn:(i64)target_scn shard_id:(int)target_shard_id
+{
+	i64 *lsn;
+	ssize_t count = [self scan_dir:&lsn];
+	const i64 initial_lsn = 2;
+
+	/* new born master without a single commit */
+	if (count == 0 && target_scn <= 2)
+		return initial_lsn;
+
+	if (count <= 0) {
+		say_error("%s: WAL dir is either empty or unreadable", __func__);
+		return -1;
+	}
+
+	for (int i = 0; i < count; i++) {
+		const char *filename = [self format_filename:lsn[i]];
+		FILE *file = fopen(filename, "r");
+		if (file == NULL) {
+			say_syserror("fopen of %s for reading failed", filename);
+			continue;
+		}
+
+		i64 scn = -1;
+		for (;;) {
+			i64 tmp;
+			int shard_id;
+			char buf[256];
+
+			scn = -1;
+			if (fgets(buf, sizeof(buf), file) == NULL) {
+				say_syserror("fgets");
+				break;
+			}
+
+			if (strcmp(buf, "\n") == 0 || strcmp(buf, "\r\n") == 0)
+				break;
+
+			if (target_shard_id == 0) {
+				if (sscanf(buf, "SCN: %"PRIi64, &scn) == 1) {
+					/* handly buggy headers where "SCN: 0" :
+					   assume they were written with cfg.sync_scn_with_lsn=1 */
+					if (scn == 0)
+						scn = lsn[i];
+					break;
+				}
+			} else if (sscanf(buf, "SCN-%i: %"PRIi64, &shard_id, &tmp) == 2) {
+				if (target_shard_id == shard_id) {
+					scn = tmp;
+					break;
+				}
+			}
+		}
+
+		if (scn == target_scn)
+			return lsn[i];
+		if (scn > target_scn)
+			return i > 0 ? lsn[i - 1] : initial_lsn;
+	}
+
+	return lsn[count - 1];
+}
+
+- (i64)
+containg_scn:(i64)target_scn
+{
+	return [self containg_scn:target_scn shard_id:0];
 }
 @end
 

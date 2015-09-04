@@ -49,23 +49,25 @@
 	return self;
 }
 
-- (void)
+- (int)
 recover_row_stream:(id<XLogPullerAsync>)puller
 {
+	int count = 0;
 	for (;;) {
 		struct row_v12 *row;
 		[puller recv_row];
 		while ((row = [puller fetch_row])) {
 			int tag = row->tag & TAG_MASK;
 			[recovery recover_row:row];
+			count++;
 			if (tag == wal_final)
-				return;
+				return count;
 		}
 		fiber_gc();
 	}
 }
 
-- (void)
+- (int)
 load_from_remote:(struct feeder_param *)param
 {
 	XLogPuller *puller = nil;
@@ -83,11 +85,11 @@ load_from_remote:(struct feeder_param *)param
 		}
 		if (i <= 0) {
 			say_error("feeder handshake failed: %s", [puller error]);
-			return;
+			return -1;
 		}
 
 		zero_io_collect_interval();
-		[self recover_row_stream:puller];
+		return [self recover_row_stream:puller];
 	}
 	@finally {
 		[puller free]; //FIXME: do not drop connection after initial loading
@@ -170,26 +172,34 @@ feeder_addr_configured
 	return feeder.addr.sin_family != AF_UNSPEC;
 }
 
+/* replicate remote rows: apply and save to local WAL
+   throws exceptions on failure */
+
 - (int)
 replicate_row_stream:(id<XLogPullerAsync>)puller
 {
 	struct row_v12 *row, *final_row = NULL, *rows[WAL_PACK_MAX];
 	/* TODO: use designated palloc_pool */
-	say_debug("%s: scn:%"PRIi64, __func__, [[recovery shard] scn]);
-	XLogWriter *writer = [recovery writer];
+	say_debug("%s: scn:%"PRIi64, __func__, [shard scn]);
 	assert(writer != nil);
+	assert([writer lsn] > 0);
 
-	i64 min_scn = [[recovery shard] scn];
+	const i64 shard_id = [shard id];
+	bool dummy_writer = [DummyXLogWriter class] == [(id)writer class];
+	i64 min_scn = [shard scn];
 	int pack_rows = 0;
 
 	/* old version doesn's send wal_final_tag for us. */
 	if ([puller version] == 11)
-		[[recovery shard] wal_final_row];
+		[[shard executor] wal_final_row];
 
 	[puller recv_row];
 
 	while ((row = [puller fetch_row])) {
 		int tag = row->tag & TAG_MASK;
+
+		if (row->shard_id != shard_id)
+			continue;
 
 		/* TODO: apply filter on feeder side */
 		/* filter out all paxos rows
@@ -242,11 +252,11 @@ replicate_row_stream:(id<XLogPullerAsync>)puller
 		    pack_max_scn = rows[pack_rows - 1]->scn,
 		    pack_max_lsn = rows[pack_rows - 1]->lsn;
 #endif
-		assert(!cfg.sync_scn_with_lsn || [[recovery shard] scn] == pack_min_scn - 1);
+		assert(!cfg.sync_scn_with_lsn || [shard scn] == pack_min_scn - 1);
 		@try {
 			for (int j = 0; j < pack_rows; j++) {
 				row = rows[j]; /* this pointer required for catch below */
-				[recovery recover_row:row];
+				[shard recover_row:row];
 			}
 		}
 		@catch (Error *e) {
@@ -257,34 +267,38 @@ replicate_row_stream:(id<XLogPullerAsync>)puller
 			[e release];
 		}
 
-		int confirmed = 0;
-		while (confirmed != pack_rows) {
-			struct wal_pack pack;
+		if (dummy_writer) {
+			[(id)writer incr_lsn:pack_rows];
+		} else {
+			int confirmed = 0;
+			while (confirmed != pack_rows) {
+				struct wal_pack pack;
 
-			if (!wal_pack_prepare(writer, &pack)) {
-				fiber_sleep(0.1);
-				continue;
-			}
-			for (int i = confirmed; i < pack_rows; i++)
-				wal_pack_append_row(&pack, rows[i]);
+				if (!wal_pack_prepare(writer, &pack)) {
+					fiber_sleep(0.1);
+					continue;
+				}
+				for (int i = confirmed; i < pack_rows; i++)
+					wal_pack_append_row(&pack, rows[i]);
 
-			struct wal_reply *reply = [writer wal_pack_submit];
-			confirmed += reply->row_count;
-			if (confirmed != pack_rows) {
-				say_warn("WAL write failed confirmed:%i != sent:%i",
-					 confirmed, pack_rows);
-				fiber_sleep(0.05);
+				struct wal_reply *reply = [writer wal_pack_submit];
+				confirmed += reply->row_count;
+				if (confirmed != pack_rows) {
+					say_warn("WAL write failed confirmed:%i != sent:%i",
+						 confirmed, pack_rows);
+					fiber_sleep(0.05);
+				}
 			}
 		}
 
-		assert([[recovery shard] scn] == pack_max_scn);
+		assert([shard scn] == pack_max_scn);
 		assert([writer lsn] == pack_max_lsn);
 	}
 
 	fiber_gc();
 
 	if (final_row) {
-		[[recovery shard] wal_final_row];
+		[[shard executor] wal_final_row];
 		return 1;
 	}
 
@@ -308,7 +322,7 @@ again:
 
 		if ([remote_puller handshake:[self handshake_scn]] <= 0) {
 			/* no more WAL rows in near future, notify module about that */
-			[shard wal_final_row];
+			[[shard executor] wal_final_row];
 
 			if (!warning_said) {
 				[self status:"fail" reason:[remote_puller error]];
@@ -355,7 +369,6 @@ hot_standby:(struct feeder_param*)feeder_ writer:(id<XLogWriter>)writer_
 	[self feeder_changed:feeder_];
 	fiber_create("remote_hot_standby", hot_standby, self);
 }
-
 
 @end
 

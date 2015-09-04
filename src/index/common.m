@@ -733,8 +733,8 @@ index_conf_read(struct tbuf *data, struct index_conf *c)
 void
 index_conf_print(struct tbuf *out, const struct index_conf *c)
 {
-	tbuf_printf(out, "min_tuple_cardinality:%i cardinality:%i type:%i unique:%i",
-		    c->min_tuple_cardinality, c->cardinality, c->type, c->unique);
+	tbuf_printf(out, "i:%i min_tuple_cardinality:%i cardinality:%i type:%i unique:%i",
+		    c->n, c->min_tuple_cardinality, c->cardinality, c->type, c->unique);
 	for (int i = 0; i < c->cardinality; i++)
 		tbuf_printf(out, " field%i:{index:%i type:%i sort:%i}", i,
 			    c->field[i].index, c->field[i].type, c->field[i].sort_order);

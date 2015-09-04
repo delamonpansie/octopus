@@ -29,6 +29,7 @@
 #import <say.h>
 #import <fiber.h>
 #import <log_io.h>
+#import <pickle.h>
 
 @implementation XLogReader
 - (i64) lsn { return lsn; }
@@ -45,7 +46,8 @@ init_recovery:(id<RecoverRow>)recovery_
 recover_row_stream:(id<XLogPuller>)stream
 {
 	@try {
-		int row_count = 0;
+		unsigned row_count = 0;
+		unsigned estimated_snap_rows = 0;
 		struct row_v12 *row;
 		palloc_register_cut_point(fiber->pool);
 
@@ -57,6 +59,22 @@ recover_row_stream:(id<XLogPuller>)stream
 				break;
 		}
 
+		if (row && row->tag == (snap_initial|TAG_SYS)) {
+			struct tbuf row_data = TBUF(row->data, row->len, NULL);
+			if (row->len == sizeof(u32) * 3) { /* not a dummy row */
+				estimated_snap_rows = read_u32(&row_data);
+				(void)read_u32(&row_data);
+				(void)read_u32(&row_data); /* ignore run_crc_mod */
+			}
+			if (row->len > sizeof(u32) * 3) {
+				int ver = read_u8(&row_data);
+				if (ver == 0)
+					estimated_snap_rows = read_u32(&row_data);
+				else
+					say_warn("unknown snap_initial format");
+			}
+		}
+
 		for (; row; row = [stream fetch_row]) {
 			[recovery recover_row:row];
 
@@ -64,10 +82,22 @@ recover_row_stream:(id<XLogPuller>)stream
 				panic("LSN sequence has gap after %"PRIi64 " -> %"PRIi64, lsn, row->lsn);
 			lsn = row->lsn;
 
-			if (row_count++ > 1024) {
+			row_count++;
+
+			if ((row_count & 0x1ff) == 0x1ff) {
 				palloc_cutoff(fiber->pool);
 				palloc_register_cut_point(fiber->pool);
-				row_count = 0;
+			}
+
+			if ((row_count & 0x1ffff) == 0x1ffff) {
+				if (estimated_snap_rows && row_count <= estimated_snap_rows) {
+					float pct = 100. * row_count / estimated_snap_rows;
+					say_info("%.1fM/%.2f%% rows recovered",
+						 row_count / 1000000., pct);
+					title("loading %.2f%%", pct);
+				} else {
+					say_info("%.1fM rows recovered", row_count / 1000000.);
+				}
 			}
 		}
 	}
