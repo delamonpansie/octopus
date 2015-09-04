@@ -436,6 +436,19 @@ iproto_error(struct netmsg_head *h, const struct iproto *request, u32 ret_code, 
 }
 
 void
+iproto_error_fmt(struct netmsg_head *h, const struct iproto *request, u32 ret_code, const char *fmt, ...)
+{
+	static char buf[512];
+	va_list ap;
+
+	va_start(ap, fmt);
+	vsnprintf(buf, sizeof(buf), fmt, ap);
+	va_end(ap);
+
+	iproto_error(h, request, ret_code, buf);
+}
+
+void
 iproto_service_info(struct tbuf *out, struct iproto_service *service)
 {
 	struct iproto_ingress *c;

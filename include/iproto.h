@@ -67,6 +67,7 @@ struct iproto_retcode * iproto_reply(struct netmsg_head *h, const struct iproto 
 void iproto_reply_fixup(struct netmsg_head *h, struct iproto_retcode *reply);
 struct iproto_retcode * iproto_reply_small(struct netmsg_head *h, const struct iproto *request, u32 ret_code);
 void iproto_error(struct netmsg_head *h, const struct iproto *request, u32 ret_code, const char *err);
+void iproto_error_fmt(struct netmsg_head *h, const struct iproto *request, u32 ret_code, const char *fmt, ...);
 
 
 LIST_HEAD(iproto_future_list, iproto_future);
