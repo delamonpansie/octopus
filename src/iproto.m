@@ -504,6 +504,7 @@ iproto_fixup_addr(struct octopus_cfg *cfg)
 		return -1;
 	}
 
+#if CFG_primary_addr && CFG_primary_port && CFG_secondary_port
 	if (strchr(cfg->primary_addr, ':') == NULL && !cfg->primary_port) {
 		out_warning(0, "Option 'primary_port' is not set");
 		return -1;
@@ -514,7 +515,7 @@ iproto_fixup_addr(struct octopus_cfg *cfg)
 
 	if (net_fixup_addr(&cfg->secondary_addr, cfg->secondary_port) < 0)
 		out_warning(0, "Option 'secondary_addr' is overridden by 'secondary_port'");
-
+#endif
 	return 0;
 }
 
