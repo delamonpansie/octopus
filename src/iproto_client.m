@@ -381,6 +381,14 @@ iproto_add_remote_peer(const struct sockaddr_in *daddr, struct palloc_pool *pool
 	return peer;
 }
 
+void
+iproto_close_remote_peer(struct iproto_egress *peer)
+{
+	SLIST_REMOVE(&iproto_tac_list, &peer->ts, tac_state, link);
+	iproto_future_resolve_err(peer);
+	netmsg_io_close(&peer->io);
+	free(peer);
+}
 
 static void __attribute__((constructor))
 init_iproto_client(void)
