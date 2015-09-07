@@ -100,6 +100,7 @@ iproto_mbox_release(struct iproto_mbox *mbox)
 	TAILQ_FOREACH_SAFE(future, &mbox->msg_list, link, tmp)
 		slab_cache_free(&future_cache, future);
 
+	mbox->sent = 0;
 	mbox_init(mbox);
 }
 
@@ -167,10 +168,10 @@ iproto_mbox_wait(struct iproto_mbox *mbox)
 }
 
 void
-iproto_wait_all(struct iproto_mbox *mbox)
+iproto_mbox_wait_all(struct iproto_mbox *mbox, ev_tstamp timeout)
 {
 	while (mbox->msg_count < mbox->sent)
-		mbox_timedwait(mbox, mbox->sent, 0);
+		mbox_timedwait(mbox, mbox->sent, timeout);
 }
 
 
@@ -206,7 +207,7 @@ iproto_sync_send(struct iproto_egress *peer,
 		 const struct iproto *msg, const struct iovec *iov, int iovcnt)
 {
 	struct iproto_mbox mbox = IPROTO_MBOX_INITIALIZER(mbox, fiber->pool);
-	if (iproto_mbox_send(&mbox, peer, msg, iov, iovcnt) != 1)
+	if (iproto_mbox_send(&mbox, peer, msg, iov, iovcnt) == 0)
 		return NULL;
 	struct iproto *future =  iproto_mbox_wait(&mbox);
 	iproto_mbox_release(&mbox);
@@ -344,7 +345,7 @@ data_ready(struct netmsg_io *io, int __attribute__((unused)) r)
 
 	while (has_full_req(rbuf)) {
 		struct iproto *req = iproto(rbuf);
-		assert((i32)req->data_len > 0);
+		assert((i32)req->data_len > 0 || req->msg_code == msg_ping);
 		int req_size = sizeof(struct iproto) + req->data_len;
 		tbuf_ltrim(rbuf, req_size);
 		iproto_future_resolve(io, req);
