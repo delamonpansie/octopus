@@ -173,5 +173,6 @@ end
 
 require('stat')
 require('fiber_lock')
+require('fiber_loop')
 require('reloadfile')
 print("Lua prelude initialized.")
