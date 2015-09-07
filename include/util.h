@@ -176,9 +176,11 @@ void __gcov_flush();
 
 
 extern pid_t master_pid;
+#ifdef OCT_CHILDREN
 pid_t tnt_fork();
 void keepalive(void);
 void keepalive_read(void);
+#endif
 
 extern volatile int gdb_wait_lock;
 void wait_gdb(void);

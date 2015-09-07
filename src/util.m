@@ -131,7 +131,7 @@ coredump(int dump_interval)
 }
 
 pid_t master_pid;
-
+#ifdef OCT_CHILDREN
 pid_t
 tnt_fork()
 {
@@ -182,6 +182,7 @@ next:
 
 	panic("read from keepalive_pipe failed");
 }
+#endif
 
 volatile int gdb_wait_lock = 1;
 void

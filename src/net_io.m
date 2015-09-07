@@ -718,8 +718,9 @@ server_socket(int type, struct sockaddr_in *sin, int nonblock,
 		return -1;
 	}
 
-
+#if OCT_CHILDREN
 	int keepalive_count = 0;
+#endif
 retry_bind:
 	if (bind(fd, (struct sockaddr *)sin, sizeof(*sin)) == -1) {
 		if (on_bind != NULL)
@@ -733,12 +734,14 @@ retry_bind:
 			}
 			sleep(0.1);
 
+#if OCT_CHILDREN
 			/* it is possible to main process die while we looping here
 			   so, ping it at least one time a second and die with him*/
 			if (master_pid != getpid() && keepalive_count++ > 10) {
 				keepalive_count = 0;
 				keepalive();
 			}
+#endif
 			goto retry_bind;
 		}
 		say_syserror("bind(%s)", sintoa(sin));

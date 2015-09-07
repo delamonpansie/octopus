@@ -36,10 +36,7 @@ endif
 $(obj): XCFLAGS += -DOCTOPUS
 
 src/octopus.o: octopus_version.h
-src/octopus.o: XCFLAGS += -DPRIMARY_MOD='"$(primary_module)"' -D$(binary_type)
-ifeq ($(binary_type),)
-  $(error binary_type must be defined)
-endif
+src/octopus.o: XCFLAGS += -DPRIMARY_MOD='"$(primary_module)"'
 
 # no warns at all: it complains even with -Wall
 no-extra-warns += src/octopus_ev.o

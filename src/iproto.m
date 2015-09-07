@@ -36,6 +36,7 @@
 #import <objc.h>
 #import <stat.h>
 
+#import <cfg/defs.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>

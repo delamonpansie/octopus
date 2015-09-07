@@ -81,10 +81,11 @@ struct octopus_cfg cfg;
 
 Recovery *recovery;
 XLogDir *wal_dir = nil, *snap_dir = nil;
-int keepalive_pipe[2] = {-1, -1};
 static ev_timer coredump_timer = { .coro = 0 };
+#if OCT_CHILDREN
+int keepalive_pipe[2] = {-1, -1};
 static ev_io keepalive_ev = { .coro = 0 };
-
+#endif
 extern int daemonize(int nochdir, int noclose);
 void out_warning(int v, char *format, ...);
 
@@ -321,7 +322,7 @@ tnt_uptime(void)
 	return (unsigned)(ev_now() - boot);
 }
 
-#ifdef STORAGE
+#if CFG_snap_dir
 static void
 save_snapshot(void *ev __attribute__((unused)), int events __attribute__((unused)))
 {
@@ -342,7 +343,6 @@ sig_int(int sig __attribute__((unused)))
 	} else
 		_exit(EXIT_SUCCESS);
 }
-
 
 static void
 signal_init(void)
@@ -581,7 +581,7 @@ luaT_require_or_panic(const char *modname, bool panic_on_missing, const char *er
 	panic(error_format, modname, lua_tostring(fiber->L, -1));
 }
 
-#if defined(STORAGE) || defined(FEEDER)
+#if OCT_CHILDREN
 void
 _keepalive_read(ev_io *e, int events __attribute__((unused)))
 {
@@ -598,6 +598,7 @@ keepalive_pipe_init()
 		exit(1);
 	}
 }
+#endif
 
 static void
 ev_panic(const char *msg)
@@ -605,7 +606,6 @@ ev_panic(const char *msg)
 	/* panic is a macro */
 	panic("%s", msg);
 }
-#endif
 
 void
 octopus_ev_init()
@@ -635,15 +635,16 @@ octopus_ev_backgroud_tasks()
 			      cfg.coredump * 60, 0);
 		ev_timer_start(&coredump_timer);
 	}
-
+#if OCT_CHILDREN
 	ev_io_init(&keepalive_ev, _keepalive_read, keepalive_pipe[0], EV_READ);
 	ev_io_start(&keepalive_ev);
+#endif
 }
 
 static int
 octopus(int argc, char **argv)
 {
-#if defined(STORAGE) || defined(FEEDER)
+#if CFG_snap_dir
 	const char *cat_filename = NULL;
 #endif
 	const char *cfg_paramname = NULL;
@@ -670,11 +671,9 @@ octopus(int argc, char **argv)
 			   gopt_option('c', GOPT_ARG, gopt_shorts('c'),
 				       gopt_longs("config"),
 				       "=FILE", "path to configuration file (default: " DEFAULT_CFG_FILENAME ")"),
-#if defined(STORAGE) || defined(FEEDER)
+#if CFG_snap_dir
 			   gopt_option('C', GOPT_ARG, gopt_shorts(0), gopt_longs("cat"),
 				       "=FILE|SCN", "cat xlog to stdout in readable format and exit"),
-#endif
-#ifdef STORAGE
 			   gopt_option('F', GOPT_ARG, gopt_shorts(0), gopt_longs("fold"),
 				       "=SCN", "calculate CRC32C of storage at given SCN and exit"),
 			   gopt_option('i', 0, gopt_shorts('i'),
@@ -716,7 +715,7 @@ octopus(int argc, char **argv)
 		return 0;
 	}
 
-#if defined(STORAGE) || defined(FEEDER)
+#if CFG_snap_dir
 	if (gopt_arg(opt, 'C', &cat_filename)) {
 		salloc_init(0, 0, 0);
 		fiber_init(NULL);
@@ -756,7 +755,7 @@ octopus(int argc, char **argv)
 	}
 #endif
 
-#ifdef STORAGE
+#if CFG_snap_dir
 	const char *opt_text;
 	if (gopt_arg(opt, 'F', &opt_text))
 		fold_scn = atol(opt_text);
@@ -860,33 +859,37 @@ octopus(int argc, char **argv)
 #endif
 	}
 
+#if CFG_snap_dir
 	if (fold_scn) {
 		cfg.custom_proc_title = "fold";
-	} else {
-		if (gopt(opt, 'D')) {
-			if (daemonize(1, 0) < 0)
-				panic("unable to daemonize");
-			master_pid = getpid();
-		}
-
-		if (getenv("OCTOPUS_NO_PID")) {
-			say_warn("WARNING: PID file disabled by OCTOPUS_NO_PID var");
-			cfg.pid_file = NULL;
-		}
-
-		if (cfg.pid_file != NULL) {
-			create_pid();
-			atexit(remove_pid);
-		}
-
-		say_logger_init(cfg.logger_nonblock);
-		booting = false;
+		goto init_storage;
 	}
+#endif
+
+	if (gopt(opt, 'D')) {
+		if (daemonize(1, 0) < 0)
+			panic("unable to daemonize");
+		master_pid = getpid();
+	}
+
+	if (getenv("OCTOPUS_NO_PID")) {
+		say_warn("WARNING: PID file disabled by OCTOPUS_NO_PID var");
+		cfg.pid_file = NULL;
+	}
+
+	if (cfg.pid_file != NULL) {
+		create_pid();
+		atexit(remove_pid);
+	}
+
+	say_logger_init(cfg.logger_nonblock);
+	booting = false;
 
 	if (cfg_err_offt)
 		say_warn("config warnings: %s", cfg_err);
 
-#ifdef STORAGE
+#if CFG_snap_dir
+init_storage:
 	snap_dir = [[SnapDir alloc] init_dirname:strdup(cfg.snap_dir)];
 	wal_dir = [[WALDir alloc] init_dirname:strdup(cfg.wal_dir)];
 
@@ -906,13 +909,6 @@ octopus(int argc, char **argv)
 	}
 #endif
 
-#if defined(UTILITY)
-	salloc_init(0, 0, 0);
-	fiber_init();
-	luaT_init();
-	signal_init();
-	module_init(module(NULL));
-#elif defined(STORAGE) || defined(FEEDER)
 	say_info("octopus version: %s", octopus_version());
 	say_info("%s", OCT_BUILD_INFO);
 	struct utsname utsn;
@@ -924,7 +920,9 @@ octopus(int argc, char **argv)
 		say_syserror("uname");
 
 	signal_init();
+#if OCT_CHILDREN
 	keepalive_pipe_init();
+#endif
 
 	extern int fork_spawner();
 	if (fork_spawner() < 0)
@@ -942,17 +940,17 @@ octopus(int argc, char **argv)
 	cfg.wal_feeder_fork_before_init = 0;
 	assert(module("feeder"));
 #endif
+#if CFG_snap_dir
 	if (module("feeder") && fold_scn == 0) {
 		/* this either gets overriden it feeder don't fork
 		   or stays forever in the child */
 		current_module = module("feeder");
 		module_init(current_module);
 	}
-
-#ifdef STORAGE
 	ev_signal ev_sig = { .coro = 0 };
 	ev_signal_init(&ev_sig, (void *)save_snapshot, SIGUSR1);
 	ev_signal_start(&ev_sig);
+#endif
 
 	u64 fixed_arena = cfg.slab_alloc_arena * (1 << 30);
 	if ((size_t)fixed_arena != fixed_arena)
@@ -995,10 +993,7 @@ octopus(int argc, char **argv)
 	ev_run(0);
 	ev_loop_destroy();
 	say_debug("exiting loop");
-#endif
-#else
-#error UTILITY or STORAGE or FEEDER must be defined
-#endif
+
 	return 0;
 }
 

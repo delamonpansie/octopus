@@ -140,12 +140,13 @@ say_list_sources(void)
 void
 say_logger_init(int nonblock)
 {
-	int pipefd[2];
-	pid_t pid;
-	char *argv[] = { "/bin/sh", "-c", cfg.logger, NULL };
-	char *envp[] = { NULL };
+	if (cfg.logger) {
+#if OCT_CHILDREN
+		int pipefd[2];
+		pid_t pid;
+		char *argv[] = { "/bin/sh", "-c", cfg.logger, NULL };
+		char *envp[] = { NULL };
 
-	if (cfg.logger != NULL) {
 		if (pipe(pipefd) == -1) {
 			say_syserror("pipe");
 			goto out;
@@ -169,10 +170,16 @@ say_logger_init(int nonblock)
 			dup2(pipefd[1], STDOUT_FILENO);
 			sayfd = pipefd[1];
 		}
+#else
+		say_warn("logger disabled: no forking support");
+		sayfd = STDERR_FILENO;
+#endif
 	} else {
 		sayfd = STDERR_FILENO;
 	}
-out:
+#if OCT_CHILDREN
+        out:
+#endif
 	if (nonblock) {
 		say_info("setting nonblocking log output");
 		int one = 1;
