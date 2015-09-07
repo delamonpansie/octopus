@@ -2,6 +2,7 @@ local xpcall, type, setmetatable = xpcall, type, setmetatable
 local traceback, cut_traceback = debug.traceback, cut_traceback
 
 fiber.loops = {}
+local loops_stat = stat.new_with_graphite('loops')
 
 local Loop = {}
 local loop_mt = { __index = Loop }
@@ -24,12 +25,14 @@ local function loop_sleep(self, sleep, _while)
 end
 
 local function loop_say_error(self, prefix)
+    loops_stat:add1(self.name.."_error")
     say_error("%s in loop '%s' : %s", prefix, self.name, self.error)
     loop_sleep(self, 60, function () return self.error end)
 end
 
 local function loop_run(self)
     self.fiber_id = fiber.current
+    local name_cnt = self.name .. "_cnt"
     while self.running do
         if self.paused then
             say_warn("Loop '%s' paused", self.name)
@@ -37,6 +40,7 @@ local function loop_run(self)
         elseif self.error then
             loop_say_error(self, "Not resolved error")
         else
+            loops_stat:add1(name_cnt)
             local ok, state_or_err, sleep = xpcall(self.func, traceback, self.state)
             if not ok then
                 self.error = cut_traceback(state_or_err)

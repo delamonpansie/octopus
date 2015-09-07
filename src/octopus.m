@@ -942,8 +942,6 @@ octopus(int argc, char **argv)
 	}
 	salloc_init(fixed_arena, cfg.slab_alloc_minimal, cfg.slab_alloc_factor);
 
-	/* try autoload bundled graphite module */
-	luaT_require_or_panic("graphite", false, NULL);
 	stat_init();
 
 	@try {
