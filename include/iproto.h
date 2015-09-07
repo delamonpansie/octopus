@@ -179,17 +179,17 @@ void iproto_mbox_put(struct iproto_mbox *mbox, struct iproto *msg);
 void iproto_pinger(va_list ap);
 
 
-int iproto_mbox_send(struct iproto_mbox *mbox, struct iproto_egress *peer,
-		     struct iproto *msg, const struct iovec *iov, int iovcnt);
+u32 iproto_mbox_send(struct iproto_mbox *mbox, struct iproto_egress *peer,
+		     const struct iproto *msg, const struct iovec *iov, int iovcnt);
 int iproto_mbox_broadcast(struct iproto_mbox *mbox, struct iproto_egress_list *group,
-			  struct iproto *msg, const struct iovec *iov, int iovcnt);
-void iproto_mbox_wait_all(struct iproto_mbox *mbox);
+			  const struct iproto *msg, const struct iovec *iov, int iovcnt);
+void iproto_mbox_wait_all(struct iproto_mbox *mbox, ev_tstamp timeout);
 
 struct iproto *iproto_sync_send(struct iproto_egress *peer,
-				struct iproto *msg, const struct iovec *iov, int iovcnt);
+				const struct iproto *msg, const struct iovec *iov, int iovcnt);
 
 void iproto_proxy_send(struct iproto_egress *to, struct iproto_ingress *from,
-		       struct iproto *msg, const struct iovec *iov, int iovcnt);
+		       const struct iproto *msg, const struct iovec *iov, int iovcnt);
 
 struct iproto_egress *iproto_add_remote_peer(const struct sockaddr_in *daddr, struct palloc_pool *pool);
 

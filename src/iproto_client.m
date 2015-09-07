@@ -103,25 +103,23 @@ iproto_mbox_release(struct iproto_mbox *mbox)
 	mbox_init(mbox);
 }
 
-static void
-msg_prepare(struct iproto *msg, const struct iovec *iov, int iovcnt)
-{
-	for (int i = 0; i < iovcnt; i++)
-		msg->data_len += iov[i].iov_len;
-}
-
 static int
 msg_send(struct iproto_egress *peer,
-	 struct iproto *msg, int msglen,
+	 const struct iproto *orig_msg,
 	 const struct iovec *iov, int iovcnt)
 {
-	msg->sync = iproto_next_sync(); // one sync per peer
-
 	if (peer->io.fd < 0)
 		return 0;
 
 	struct netmsg_head *h = &peer->io.wbuf;
-	net_add_iov_dup(h, msg, msglen);
+	int msglen = sizeof(*orig_msg) + orig_msg->data_len;
+	struct iproto *msg = palloc(h->pool, msglen);
+	memcpy(msg, orig_msg, msglen);
+	msg->sync = iproto_next_sync();
+	for (int i = 0; i < iovcnt; i++)
+		msg->data_len += iov[i].iov_len;
+	net_add_iov(h, msg, msglen);
+
 	for (int i = 0; i < iovcnt; i++)
 		net_add_iov_dup(h, iov[i].iov_base, iov[i].iov_len);
 	ev_io_start(&peer->io.out);
@@ -132,30 +130,26 @@ msg_send(struct iproto_egress *peer,
 	return msg->sync;
 }
 
-int
+u32
 iproto_mbox_send(struct iproto_mbox *mbox, struct iproto_egress *peer,
-		 struct iproto *msg, const struct iovec *iov, int iovcnt)
+		 const struct iproto *msg, const struct iovec *iov, int iovcnt)
 {
-	int msglen = sizeof(*msg) + msg->data_len;
-	msg_prepare(msg, iov, iovcnt);
-	u32 sync = msg_send(peer, msg, msglen, iov, iovcnt);
+	u32 sync = msg_send(peer, msg, iov, iovcnt);
 	if (sync)
 		mbox_future(peer, mbox, sync);
-	return !!sync;
+	return sync;
 }
 
 int
 iproto_mbox_broadcast(struct iproto_mbox *mbox, struct iproto_egress_list *list,
-		      struct iproto *msg, const struct iovec *iov, int iovcnt)
+		      const struct iproto *msg, const struct iovec *iov, int iovcnt)
 {
 	say_debug2("%s: op:0x%x", __func__, msg->msg_code);
 
 	struct iproto_egress *peer;
 	int ret = 0;
-	int msglen = sizeof(*msg) + msg->data_len;
-	msg_prepare(msg, iov, iovcnt);
 	SLIST_FOREACH(peer, list, link) {
-		u32 sync = msg_send(peer, msg, msglen, iov, iovcnt);
+		u32 sync = msg_send(peer, msg, iov, iovcnt);
 		if (sync) {
 			if (mbox)
 				mbox_future(peer, mbox, sync);
@@ -209,7 +203,7 @@ iproto_mbox_put(struct iproto_mbox *mbox, struct iproto *msg)
 
 struct iproto *
 iproto_sync_send(struct iproto_egress *peer,
-		 struct iproto *msg, const struct iovec *iov, int iovcnt)
+		 const struct iproto *msg, const struct iovec *iov, int iovcnt)
 {
 	struct iproto_mbox mbox = IPROTO_MBOX_INITIALIZER(mbox, fiber->pool);
 	if (iproto_mbox_send(&mbox, peer, msg, iov, iovcnt) != 1)
@@ -221,14 +215,11 @@ iproto_sync_send(struct iproto_egress *peer,
 
 void
 iproto_proxy_send(struct iproto_egress *to, struct iproto_ingress *from,
-		  struct iproto *msg, const struct iovec *iov, int iovcnt)
+		  const struct iproto *msg, const struct iovec *iov, int iovcnt)
 {
-	u32 orig_sync = msg->sync;
-	int msglen = sizeof(*msg) + msg->data_len;
-	msg_prepare(msg, iov, iovcnt);
-	u32 sync = msg_send(to, msg, msglen, iov, iovcnt);
+	u32 sync = msg_send(to, msg, iov, iovcnt);
 	if (sync)
-		proxy_future(to, from, msg, orig_sync);
+		proxy_future(to, from, msg, msg->sync);
 }
 
 void
