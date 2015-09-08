@@ -172,6 +172,8 @@ function cut_traceback(deep)
 end
 
 require('stat')
+pcall(require, 'graphite')
 require('fiber_lock')
+require('fiber_loop')
 require('reloadfile')
 print("Lua prelude initialized.")
