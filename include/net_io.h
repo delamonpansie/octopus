@@ -106,6 +106,8 @@ struct netmsg_io_vop {
 	void (*request_ready)(struct netmsg_io *, struct iproto *);
 	void (*close)(struct netmsg_io *);
 	void (*dealloc)(struct netmsg_io *);
+	void *(*alloc)(void);
+	void (*accept_client)(struct netmsg_io *, int fd, void *data);
 };
 
 void netmsg_io_init(struct netmsg_io *io, struct palloc_pool *pool, const struct netmsg_io_vop *vop, int fd);

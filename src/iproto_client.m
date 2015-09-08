@@ -318,10 +318,12 @@ iproto_future_resolve(struct netmsg_io *io, struct iproto *msg)
 		break;
 	case IPROTO_FUTURE_PROXY:
 		LIST_REMOVE(future, waiting_link);
-		io = &future->ingress->io;
-		msg->sync = future->proxy_request.sync;
-		net_add_iov_dup(&io->wbuf, msg, sizeof(*msg) + msg->data_len);
-		ev_io_start(&io->out);
+		if (future->ingress) {
+			io = &future->ingress->io;
+			msg->sync = future->proxy_request.sync;
+			net_add_iov_dup(&io->wbuf, msg, sizeof(*msg) + msg->data_len);
+			ev_io_start(&io->out);
+		}
 		slab_cache_free(&future_cache, future);
 		break;
 	case IPROTO_FUTURE_ORPHAN:

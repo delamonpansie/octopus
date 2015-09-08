@@ -167,23 +167,34 @@ iproto_dealloc(struct netmsg_io *io)
 	free(client);
 }
 
-static struct netmsg_io_vop ingress_vop = { .data_ready = iproto_data_ready,
-					    .close = iproto_close,
-					    .dealloc = iproto_dealloc};
-
 static void
-accept_client(int fd, void *data)
+accept_client(struct netmsg_io *io, int fd, void *data)
 {
+	struct iproto_ingress *client = container_of(io, struct iproto_ingress, io);
 	struct iproto_service *service = data;
-	struct iproto_ingress *client = xcalloc(sizeof(*client), 1);
-
 	say_debug2("%s: peer %s", __func__, net_peer_name(fd));
+
+	netmsg_io_init(io, service->pool, service->ingress_vop, fd);
+	ev_io_start(&io->in);
+	netmsg_io_retain(io);
+
 	client->service = service;
-	netmsg_io_init(&client->io, service->pool, &ingress_vop, fd);
-	ev_io_start(&client->io.in);
 	LIST_INSERT_HEAD(&service->clients, client, link);
-	netmsg_io_retain(&client->io);
 }
+
+static void *
+ingress_alloc()
+{
+	return xcalloc(sizeof(struct iproto_ingress), 1);
+}
+
+struct netmsg_io_vop ingress_default_vop = {
+	.alloc = ingress_alloc,
+	.accept_client = accept_client,
+	.data_ready = iproto_data_ready,
+	.close = iproto_close,
+	.dealloc = iproto_dealloc
+};
 
 static void
 service_gc(struct palloc_pool *pool, void *ptr)
@@ -196,11 +207,18 @@ service_gc(struct palloc_pool *pool, void *ptr)
 		netmsg_io_gc(pool, c);
 }
 
+static void
+iproto_accept_client(int fd, void *data)
+{
+	struct iproto_service *service = data;
+	struct netmsg_io *io = service->ingress_vop->alloc();
+	service->ingress_vop->accept_client(io, fd, data);
+}
+
 static void iproto_wakeup_workers(ev_prepare *ev);
 void
-iproto_service(struct iproto_service *service, const char *addr, void (*on_bind)(int fd))
+iproto_service(struct iproto_service *service, const char *addr)
 {
-	memset(service, 0, sizeof(*service));
 	char *name = xmalloc(strlen("iproto:") + strlen(addr) + 1);
 	sprintf(name, "tcp:%s", addr);
 
@@ -211,7 +229,10 @@ iproto_service(struct iproto_service *service, const char *addr, void (*on_bind)
 
 	palloc_register_gc_root(service->pool, service, service_gc);
 
-	service->acceptor = fiber_create("tcp/acceptor", tcp_server, addr, accept_client, on_bind, service);
+	if (service->ingress_vop == NULL)
+		service->ingress_vop = &ingress_default_vop;
+	service->acceptor = fiber_create("tcp/acceptor", tcp_server, addr,
+					 iproto_accept_client, service->on_bind, service);
 	if (service->acceptor == NULL)
 		panic("unable to start tcp_service `%s'", addr);
 

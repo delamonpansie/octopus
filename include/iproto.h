@@ -99,6 +99,9 @@ struct iproto_handler {
 	int flags;
 	int code;
 };
+
+extern struct netmsg_io_vop ingress_default_vop;
+
 struct iproto_service {
 	struct palloc_pool *pool;
 	size_t pool_allocated; /* used for differential calls to palloc_gc */
@@ -114,8 +117,10 @@ struct iproto_service {
 	struct iproto_handler default_handler;
 	int ih_size, ih_mask;
 	struct iproto_handler *ih;
+	const struct netmsg_io_vop *ingress_vop;
+	void (*on_bind)(int fd);
 };
-void iproto_service(struct iproto_service *service, const char *addr, void (*on_bind)(int fd));
+void iproto_service(struct iproto_service *service, const char *addr);
 void iproto_service_info(struct tbuf *out, struct iproto_service *service);
 void iproto_worker(va_list ap);
 #define SERVICE_DEFAULT_CAPA 0x100
