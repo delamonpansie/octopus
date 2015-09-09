@@ -155,7 +155,7 @@ struct iproto_future {
 			struct iproto *msg; // FTF
 		};
 	};
-	enum iproto_future_type { IPROTO_FUTURE_MBOX, IPROTO_FUTURE_PROXY, IPROTO_FUTURE_ORPHAN } type;
+	enum iproto_future_type { IPROTO_FUTURE_MBOX, IPROTO_FUTURE_PROXY, IPROTO_FUTURE_ORPHAN, IPROTO_FUTURE_BLACKHOLE } type;
 	u32 sync;
 };
 

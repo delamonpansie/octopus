@@ -79,17 +79,22 @@ mbox_future(struct iproto_egress *dst, struct iproto_mbox *mbox, u32 sync)
 }
 
 static void
-proxy_future(struct iproto_egress *dst, struct iproto_ingress *src, const struct iproto *msg, u32 orig_sync)
+proxy_future(struct iproto_egress *dst, struct iproto_ingress *src, const struct iproto *msg, u32 proxy_sync)
 {
 	struct iproto_future *future = slab_cache_alloc(&future_cache);
-	mh_i32_put(sync2future, msg->sync, future, NULL);
+	mh_i32_put(sync2future, proxy_sync, future, NULL);
 	TAILQ_INSERT_HEAD(&dst->future, future, link);
 	future->dst = dst;
-	future->sync = msg->sync;
-	future->type = IPROTO_FUTURE_PROXY;
-	future->ingress = src;
-	future->proxy_request = (struct iproto){ .msg_code = msg->msg_code, .sync = orig_sync };
-	LIST_INSERT_HEAD(&src->waiting, future, waiting_link);
+	future->sync = proxy_sync;
+	future->proxy_request = (struct iproto){ .msg_code = msg->msg_code, .sync = msg->sync };
+	if (src) {
+		future->type = IPROTO_FUTURE_PROXY;
+		future->ingress = src;
+		LIST_INSERT_HEAD(&src->waiting, future, waiting_link);
+	} else {
+		future->type = IPROTO_FUTURE_BLACKHOLE;
+		future->ingress = NULL;
+	}
 }
 
 void
@@ -220,7 +225,7 @@ iproto_proxy_send(struct iproto_egress *to, struct iproto_ingress *from,
 {
 	u32 sync = msg_send(to, msg, iov, iovcnt);
 	if (sync)
-		proxy_future(to, from, msg, msg->sync);
+		proxy_future(to, from, msg, sync);
 }
 
 void
@@ -281,7 +286,9 @@ iproto_future_resolve_err(struct iproto_egress *c)
 			LIST_REMOVE(future, waiting_link);
 			slab_cache_free(&future_cache, future);
 			break;
+		case IPROTO_FUTURE_BLACKHOLE:
 		case IPROTO_FUTURE_ORPHAN:
+			slab_cache_free(&future_cache, future);
 			break;
 		}
 	}
@@ -328,6 +335,8 @@ iproto_future_resolve(struct netmsg_io *io, struct iproto *msg)
 		break;
 	case IPROTO_FUTURE_ORPHAN:
 		say_debug3("orphan reply from peer:%s op:0x%x sync:%u", net_peer_name(io->fd), msg->msg_code, msg->sync);
+	case IPROTO_FUTURE_BLACKHOLE:
+		slab_cache_free(&future_cache, future);
 		break;
 	}
 }
