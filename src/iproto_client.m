@@ -126,8 +126,8 @@ msg_send(struct iproto_egress *peer,
 	ev_io_start(&peer->io.out);
 
 	say_debug3("|    peer:%s:\top:0x%x sync:%u len:%zu data_len:%i", net_peer_name(peer->io.fd),
-		  msg->msg_code, msg->sync, sizeof(*msg) + msg->data_len,
-		  msg->data_len);
+		   msg->msg_code, msg->sync, sizeof(*msg) + msg->data_len,
+		   msg->data_len);
 	return msg->sync;
 }
 
