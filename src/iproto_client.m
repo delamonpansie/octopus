@@ -397,7 +397,6 @@ void
 iproto_close_remote_peer(struct iproto_egress *peer)
 {
 	SLIST_REMOVE(&iproto_tac_list, &peer->ts, tac_state, link);
-	iproto_future_resolve_err(peer);
 	netmsg_io_close(&peer->io);
 	free(peer);
 }

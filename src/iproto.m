@@ -156,6 +156,7 @@ iproto_close(struct netmsg_io *io)
 		client->processing_link.tqe_prev = NULL;
 	}
 	LIST_REMOVE(client, link);
+	iproto_future_collect_orphans(&client->waiting);
 	netmsg_io_release(io);
 }
 
@@ -163,7 +164,6 @@ static void
 iproto_dealloc(struct netmsg_io *io)
 {
 	struct iproto_ingress *client = container_of(io, struct iproto_ingress, io);
-	iproto_future_collect_orphans(&client->waiting);
 	free(client);
 }
 
