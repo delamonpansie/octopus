@@ -369,31 +369,39 @@ close
 @end
 
 static struct tac_list iproto_tac_list;
-static struct Fiber *iproto_remote_rendevouz;
 struct iproto_egress *
-iproto_add_remote_peer(const struct sockaddr_in *daddr, struct palloc_pool *pool)
+iproto_remote_add_peer(const struct sockaddr_in *daddr, struct palloc_pool *pool)
 {
+	static struct Fiber *rendevouz_fiber;
+	if (rendevouz_fiber == NULL)
+		rendevouz_fiber = fiber_create("iproto_rendevouz", rendevouz, NULL, &iproto_tac_list);
 	struct iproto_egress *peer = [iproto_egress alloc];
-	struct tac_state *ts = &peer->ts;
-	memcpy(&ts->daddr, daddr, sizeof(*daddr));
-
-	ts->io = peer;
-	ts->io->fd = ts->ev.fd = -1;
 	netmsg_io_init(peer, pool, -1);
 
-	SLIST_INSERT_HEAD(&iproto_tac_list, ts, link);
-	if (iproto_remote_rendevouz == NULL)
-		iproto_remote_rendevouz = fiber_create("iproto_rendevouz", rendevouz, NULL, &iproto_tac_list);
-	else
-		fiber_wake(iproto_remote_rendevouz, NULL);
+	struct tac_state *ts = &peer->ts;
+	ts->io = peer;
+	ts->io->fd = ts->ev.fd = -1;
+	memcpy(&ts->daddr, daddr, sizeof(*daddr));
 
+	ts->flags |= TAC_RECONNECT;
+	SLIST_INSERT_HEAD(&iproto_tac_list, ts, link);
+	fiber_wake(rendevouz_fiber, NULL);
 	return peer;
 }
 
 void
-iproto_close_remote_peer(struct iproto_egress *peer)
+iproto_remote_stop_reconnect(struct iproto_egress *peer)
 {
-	SLIST_REMOVE(&iproto_tac_list, &peer->ts, tac_state, link);
+	if (peer->ts.flags & TAC_RECONNECT) {
+		peer->ts.flags &= ~TAC_RECONNECT;
+		SLIST_REMOVE(&iproto_tac_list, &peer->ts, tac_state, link);
+	}
+}
+
+void
+iproto_remote_close_peer(struct iproto_egress *peer)
+{
+	iproto_remote_stop_reconnect(peer);
 	[peer free];
 }
 

@@ -95,6 +95,7 @@ void netmsg_head_dealloc(struct netmsg_head *h) LUA_DEF;
 struct netmsg *netmsg_concat(struct netmsg_head *dst, struct netmsg_head *src) LUA_DEF;
 void netmsg_rewind(struct netmsg_head *h, const struct netmsg_mark *mark) LUA_DEF;
 void netmsg_getmark(struct netmsg_head *h, struct netmsg_mark *mark) LUA_DEF;
+void netmsg_reset(struct netmsg_head *h);
 
 void net_add_iov(struct netmsg_head *o, const void *buf, size_t len) LUA_DEF;
 void net_add_iov_dup(struct netmsg_head *o, const void *buf, size_t len) LUA_DEF;
@@ -131,7 +132,7 @@ enum tac_result {
 	tac_wait = -2,
 	tac_alien_event = -3
 };
-
+enum tac_flag { TAC_RECONNECT = 1 };
 struct tac_state {
 	struct netmsg_io *io;
 	struct ev_io ev;
@@ -140,6 +141,7 @@ struct tac_state {
 	bool error_printed;
 	struct sockaddr_in daddr;
 	const char *name;
+	unsigned flags;
 	SLIST_ENTRY(tac_state) link;
 };
 SLIST_HEAD(tac_list, tac_state);
