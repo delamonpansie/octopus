@@ -31,6 +31,7 @@
 #include <octopus.h>
 #include <octopus_ev.h>
 #include <palloc.h>
+#include <objc.h>
 
 #include <third_party/queue.h>
 
@@ -69,14 +70,18 @@ struct netmsg {
 	uintptr_t ref[NETMSG_IOV_SIZE];
 };
 
-struct netmsg_io {
+@interface netmsg_io : Object {
+@public
 	struct palloc_pool *pool;
 	struct tbuf rbuf;
 	struct netmsg_head wbuf;
 	ev_io in, out;
 	int fd, rc;
 	const struct netmsg_io_vop *vop;
-};
+}
+- (void)close;
+- (void)data_ready:(int)r;
+@end
 
 struct netmsg_mark {
 	struct netmsg *m;
@@ -101,18 +106,8 @@ void netmsg_verify_ownership(struct netmsg_head *h); /* debug method */
 ssize_t netmsg_writev(int fd, struct netmsg_head *head);
 
 struct iproto;
-struct netmsg_io_vop {
-	void (*data_ready)(struct netmsg_io *, int);
-	void (*request_ready)(struct netmsg_io *, struct iproto *);
-	void (*close)(struct netmsg_io *);
-	void (*dealloc)(struct netmsg_io *);
-	void *(*alloc)(void);
-	void (*accept_client)(struct netmsg_io *, int fd, void *data);
-};
 
-void netmsg_io_init(struct netmsg_io *io, struct palloc_pool *pool, const struct netmsg_io_vop *vop, int fd);
-void netmsg_io_dealloc(struct netmsg_io *io);
-int netmsg_io_close(struct netmsg_io *io);
+void netmsg_io_init(struct netmsg_io *io, struct palloc_pool *pool, int fd);
 void netmsg_io_gc(struct palloc_pool *pool, void *ptr);
 
 int netmsg_io_write_cb(ev_io *ev, int __attribute__((unused)) events);
@@ -127,7 +122,7 @@ static inline void netmsg_io_retain(struct netmsg_io *io)
 static inline void netmsg_io_release(struct netmsg_io *io)
 {
 	if (--io->rc == 0)
-		netmsg_io_dealloc(io);
+		[io free];
 }
 
 

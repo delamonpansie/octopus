@@ -338,7 +338,7 @@ extern i64 snap_lsn; /* may be used for overriding initial snapshot,
 	i64 lsn;
 	id<RecoveryState> state;
 	struct child wal_writer;
-	struct netmsg_io io;
+	struct netmsg_io *io;
 }
 - (id) init_lsn:(i64)lsn
 	  state:(id<RecoveryState>)state;

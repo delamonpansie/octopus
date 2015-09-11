@@ -114,10 +114,7 @@ msg_send(struct iproto_egress *peer,
 	 const struct iproto *orig_msg,
 	 const struct iovec *iov, int iovcnt)
 {
-	if (peer->io.fd < 0)
-		return 0;
-
-	struct netmsg_head *h = &peer->io.wbuf;
+	struct netmsg_head *h = &peer->wbuf;
 	int msglen = sizeof(*orig_msg) + orig_msg->data_len;
 	struct iproto *msg = palloc(h->pool, msglen);
 	memcpy(msg, orig_msg, msglen);
@@ -128,9 +125,10 @@ msg_send(struct iproto_egress *peer,
 
 	for (int i = 0; i < iovcnt; i++)
 		net_add_iov_dup(h, iov[i].iov_base, iov[i].iov_len);
-	ev_io_start(&peer->io.out);
+	if (peer->fd >= 0)
+		ev_io_start(&peer->out);
 
-	say_debug3("|    peer:%s:\top:0x%x sync:%u len:%zu data_len:%i", net_peer_name(peer->io.fd),
+	say_debug3("|    peer:%s:\top:0x%x sync:%u len:%zu data_len:%i", net_peer_name(peer->fd),
 		   msg->msg_code, msg->sync, sizeof(*msg) + msg->data_len,
 		   msg->data_len);
 	return msg->sync;
@@ -279,7 +277,7 @@ iproto_future_resolve_err(struct iproto_egress *c)
 			mbox_put(mbox, future, link);
 			break;
 		case IPROTO_FUTURE_PROXY:
-			io = &future->ingress->io;
+			io = future->ingress;
 			iproto_error(&io->wbuf, &future->proxy_request,
 				     ERR_CODE_BAD_CONNECTION, "proxy connection failed");
 			ev_io_start(&io->out);
@@ -296,17 +294,16 @@ iproto_future_resolve_err(struct iproto_egress *c)
 
 
 void
-iproto_future_resolve(struct netmsg_io *io, struct iproto *msg)
+iproto_future_resolve(struct iproto_egress *peer, struct iproto *msg)
 {
-	struct iproto_egress *peer = container_of(io, struct iproto_egress, io);
 	struct iproto_mbox *mbox;
 	struct iproto_future *future;
 
-	say_debug2("%s: peer:%s op:0x%x sync:%u", __func__, net_peer_name(io->fd), msg->msg_code, msg->sync);
+	say_debug2("%s: peer:%s op:0x%x sync:%u", __func__, net_peer_name(peer->fd), msg->msg_code, msg->sync);
 
 	u32 k = mh_i32_get(sync2future, msg->sync);
 	if (k == mh_end(sync2future)) {
-		say_debug("martian reply from peer:%s op:0x%x sync:%u", net_peer_name(io->fd), msg->msg_code, msg->sync);
+		say_debug("martian reply from peer:%s op:0x%x sync:%u", net_peer_name(peer->fd), msg->msg_code, msg->sync);
 		return;
 	}
 
@@ -326,7 +323,7 @@ iproto_future_resolve(struct netmsg_io *io, struct iproto *msg)
 	case IPROTO_FUTURE_PROXY:
 		LIST_REMOVE(future, waiting_link);
 		if (future->ingress) {
-			io = &future->ingress->io;
+			struct netmsg_io *io = future->ingress;
 			msg->sync = future->proxy_request.sync;
 			net_add_iov_dup(&io->wbuf, msg, sizeof(*msg) + msg->data_len);
 			ev_io_start(&io->out);
@@ -334,7 +331,7 @@ iproto_future_resolve(struct netmsg_io *io, struct iproto *msg)
 		slab_cache_free(&future_cache, future);
 		break;
 	case IPROTO_FUTURE_ORPHAN:
-		say_debug3("orphan reply from peer:%s op:0x%x sync:%u", net_peer_name(io->fd), msg->msg_code, msg->sync);
+		say_debug3("orphan reply from peer:%s op:0x%x sync:%u", net_peer_name(peer->fd), msg->msg_code, msg->sync);
 	case IPROTO_FUTURE_BLACKHOLE:
 		slab_cache_free(&future_cache, future);
 		break;
@@ -349,41 +346,41 @@ has_full_req(const struct tbuf *buf)
 }
 
 
-void
-data_ready(struct netmsg_io *io, int __attribute__((unused)) r)
+@implementation iproto_egress
+- (void)
+data_ready:(int)r
 {
-	struct tbuf *rbuf = &io->rbuf;
+	(void)r;
 
-	while (has_full_req(rbuf)) {
-		struct iproto *req = iproto(rbuf);
+	while (has_full_req(&rbuf)) {
+		struct iproto *req = iproto(&rbuf);
 		assert((i32)req->data_len > 0 || req->msg_code == msg_ping);
 		int req_size = sizeof(struct iproto) + req->data_len;
-		tbuf_ltrim(rbuf, req_size);
-		iproto_future_resolve(io, req);
+		tbuf_ltrim(&rbuf, req_size);
+		iproto_future_resolve(self, req);
 	}
 }
-
-static void
-egress_close(struct netmsg_io *io)
+- (void)
+close
 {
-	struct iproto_egress *c = container_of(io, struct iproto_egress, io);
-	iproto_future_resolve_err(c);
+	[super close];
+	iproto_future_resolve_err(self);
 }
-
-struct netmsg_io_vop egress_vop = { .data_ready = data_ready,
-				    .close = egress_close };
+@end
 
 static struct tac_list iproto_tac_list;
 static struct Fiber *iproto_remote_rendevouz;
 struct iproto_egress *
 iproto_add_remote_peer(const struct sockaddr_in *daddr, struct palloc_pool *pool)
 {
-	struct iproto_egress *peer = xcalloc(1, sizeof(*peer));
+	struct iproto_egress *peer = [iproto_egress alloc];
 	struct tac_state *ts = &peer->ts;
 	memcpy(&ts->daddr, daddr, sizeof(*daddr));
-	ts->io = &peer->io;
+
+	ts->io = peer;
 	ts->io->fd = ts->ev.fd = -1;
-	netmsg_io_init(&peer->io, pool, &egress_vop, -1);
+	netmsg_io_init(peer, pool, -1);
+
 	SLIST_INSERT_HEAD(&iproto_tac_list, ts, link);
 	if (iproto_remote_rendevouz == NULL)
 		iproto_remote_rendevouz = fiber_create("iproto_rendevouz", rendevouz, NULL, &iproto_tac_list);
@@ -397,8 +394,7 @@ void
 iproto_close_remote_peer(struct iproto_egress *peer)
 {
 	SLIST_REMOVE(&iproto_tac_list, &peer->ts, tac_state, link);
-	netmsg_io_close(&peer->io);
-	free(peer);
+	[peer free];
 }
 
 static void __attribute__((constructor))

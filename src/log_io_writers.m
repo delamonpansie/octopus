@@ -398,11 +398,12 @@ init_lsn:(i64)init_lsn
 					     .scn = [[state shard] scn],
 					     .run_crc = [[state shard] run_crc_log]};
 	wal_writer = spawn_child("wal_writer", wal_disk_writer, &conf, sizeof(conf));
-	netmsg_io_init(&io, palloc_create_pool((struct palloc_config){.name = "wal_writer"}), NULL, wal_writer.fd);
-	ev_init(&io.in, wal_disk_writer_input_dispatch);
-	ev_set_priority(&io.in, 1);
-	ev_set_priority(&io.out, 1);
-	ev_io_start(&io.in);
+	io = [netmsg_io alloc];
+	netmsg_io_init(io, palloc_create_pool((struct palloc_config){.name = "wal_writer"}), wal_writer.fd);
+	ev_init(&io->in, wal_disk_writer_input_dispatch);
+	ev_set_priority(&io->in, 1);
+	ev_set_priority(&io->out, 1);
+	ev_io_start(&io->in);
 
 	return self;
 }
@@ -434,7 +435,7 @@ submit:(const void *)data len:(u32)data_len tag:(u16)tag
 int
 wal_pack_prepare(XLogWriter *w, struct wal_pack *pack)
 {
-	pack->netmsg = &w->io.wbuf;
+	pack->netmsg = &w->io->wbuf;
 	pack->packet_len = sizeof(*pack) - offsetof(struct wal_pack, packet_len);
 	pack->fid = fiber->fid;
 	pack->sender = fiber;
@@ -469,7 +470,7 @@ wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 - (struct wal_reply *)
 wal_pack_submit
 {
-	ev_io_start(&io.out);
+	ev_io_start(&io->out);
 	struct wal_reply *reply = yield();
 	if (reply->row_count == 0)
 		say_warn("wal writer returned error status");

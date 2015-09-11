@@ -392,7 +392,7 @@ netmsg_io_write_cb(ev_io *ev, int __attribute__((unused)) events)
 	if (r < 0) {
 		if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
 			say_syswarn("writev(%i) to %s failed", ev->fd, net_peer_name(ev->fd));
-			netmsg_io_close(io);
+			[io close];
 			return r;
 		} else {
 			return 0;
@@ -419,20 +419,19 @@ netmsg_io_read_cb(ev_io *ev, int __attribute__((unused)) events)
 	ssize_t r = tbuf_recv(&io->rbuf, ev->fd);
 	if (r == 0) {
 		say_debug("peer %s closed connection", net_peer_name(ev->fd));
-		netmsg_io_close(io);
+		[io close];
 		return 0;
 	}
 
 	if (r < 0) {
 		if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
 			say_syswarn("recv(%i) from %s failed", ev->fd, net_peer_name(ev->fd));
-			netmsg_io_close(io);
+			[io close];
 		}
 		return r;
 	}
 
-	if (io->vop->data_ready)
-		io->vop->data_ready(io, r);
+	[io data_ready:r];
 	return r;
 }
 
@@ -449,17 +448,14 @@ netmsg_io_gc(struct palloc_pool *pool, void *ptr)
 	io->pool = io->wbuf.pool = pool;
 }
 
-static struct netmsg_io_vop def_vop = { NULL };
-
 void
-netmsg_io_init(struct netmsg_io *io, struct palloc_pool *pool, const struct netmsg_io_vop *vop, int fd)
+netmsg_io_init(struct netmsg_io *io, struct palloc_pool *pool, int fd)
 {
 	assert(pool != NULL);
 	netmsg_head_init(&io->wbuf, pool);
 	io->rbuf = TBUF(NULL, 0, pool);
 	io->pool = pool;
 	palloc_register_gc_root(pool, io, netmsg_io_gc);
-	io->vop = vop ?: &def_vop;
 	ev_init(&io->in, (void (*)(ev_io *, int))netmsg_io_read_cb);
 	ev_init(&io->out, (void (*)(ev_io *, int))netmsg_io_write_cb);
 
@@ -475,35 +471,36 @@ netmsg_io_setfd(struct netmsg_io *io, int fd)
 	ev_io_set(&io->out, fd, EV_WRITE);
 }
 
-void
-netmsg_io_dealloc(struct netmsg_io *io)
+@implementation netmsg_io
+- (void)
+free
 {
-	palloc_unregister_gc_root(io->pool, io);
-	netmsg_head_dealloc(&io->wbuf);
-	io->rbuf = TBUF(NULL, 0, NULL);
-	io->pool = NULL;
-	io->wbuf.pool = NULL;
-	if (io->vop->dealloc)
-		io->vop->dealloc(io);
+	if (fd >= 0)
+		[self close];
+	palloc_unregister_gc_root(pool, self);
+	netmsg_head_dealloc(&wbuf);
+	[super free];
 }
 
-int
-netmsg_io_close(struct netmsg_io *io)
+- (void)
+data_ready:(int)r
 {
-	say_debug("closing connection to %s", net_peer_name(io->fd));
-	int r = close(io->fd);
+	(void)r;
+}
+
+- (void)
+close
+{
+	say_debug("closing connection to %s", net_peer_name(fd));
+	int r = close(fd);
 	if (r < 0)
 		say_syswarn("close");
-	tbuf_reset(&io->rbuf);
-	ev_io_stop(&io->out);
-	ev_io_stop(&io->in);
-	io->fd = io->in.fd = io->out.fd = -1;
-
-	if (io->vop->close)
-		io->vop->close(io);
-	return r;
+	tbuf_reset(&rbuf);
+	ev_io_stop(&out);
+	ev_io_stop(&in);
+	fd = in.fd = out.fd = -1;
 }
-
+@end
 const char *
 net_peer_name(int fd)
 {

@@ -76,7 +76,7 @@ iproto_worker(va_list ap)
 			a.cb(&a.io->wbuf, a.r, NULL);
 		}
 		@catch (IProtoClose *e) {
-			netmsg_io_close(a.io);
+			[a.io close];
 			[e release];
 		}
 		@catch (Error *e) {
@@ -136,65 +136,41 @@ service_alloc_handlers(struct iproto_service *s, int capa)
 	}
 }
 
-static void
-iproto_data_ready(struct netmsg_io *io, int __attribute__((unused)) r)
+@implementation iproto_ingress
+- (void)
+data_ready:(int)r
 {
-	struct iproto_ingress *client = container_of(io, struct iproto_ingress, io);
-	struct iproto_service *service = client->service;
+	(void)r;
 	/* client->service->processing will be traversed by wakeup_workers() */
-	if (client->processing_link.tqe_prev == NULL)
-		TAILQ_INSERT_TAIL(&service->processing, client, processing_link);
-
+	if (processing_link.tqe_prev == NULL)
+		TAILQ_INSERT_TAIL(&service->processing, self, processing_link);
 }
 
-static void
-iproto_close(struct netmsg_io *io)
+- (void)
+close
 {
-	struct iproto_ingress *client = container_of(io, struct iproto_ingress, io);
-	if (client->processing_link.tqe_prev != NULL) {
-		TAILQ_REMOVE(&client->service->processing, client, processing_link);
-		client->processing_link.tqe_prev = NULL;
+	[super close];
+	if (processing_link.tqe_prev != NULL) {
+		TAILQ_REMOVE(&service->processing, self, processing_link);
+		processing_link.tqe_prev = NULL;
 	}
-	LIST_REMOVE(client, link);
-	iproto_future_collect_orphans(&client->waiting);
-	netmsg_io_release(io);
+	iproto_future_collect_orphans(&waiting);
+	LIST_REMOVE(self, link);
+	netmsg_io_release(self);
 }
 
-static void
-iproto_dealloc(struct netmsg_io *io)
+- (void)
+init:(int)fd_ service:(struct iproto_service *)service_
 {
-	struct iproto_ingress *client = container_of(io, struct iproto_ingress, io);
-	free(client);
+	say_debug2("%s: peer %s", __func__, net_peer_name(fd_));
+	service = service_;
+	netmsg_io_init(self, service->pool, fd_);
+	ev_io_start(&in);
+
+	netmsg_io_retain(self);
+	LIST_INSERT_HEAD(&service->clients, self, link);
 }
-
-static void
-accept_client(struct netmsg_io *io, int fd, void *data)
-{
-	struct iproto_ingress *client = container_of(io, struct iproto_ingress, io);
-	struct iproto_service *service = data;
-	say_debug2("%s: peer %s", __func__, net_peer_name(fd));
-
-	netmsg_io_init(io, service->pool, service->ingress_vop, fd);
-	ev_io_start(&io->in);
-	netmsg_io_retain(io);
-
-	client->service = service;
-	LIST_INSERT_HEAD(&service->clients, client, link);
-}
-
-static void *
-ingress_alloc()
-{
-	return xcalloc(sizeof(struct iproto_ingress), 1);
-}
-
-struct netmsg_io_vop ingress_default_vop = {
-	.alloc = ingress_alloc,
-	.accept_client = accept_client,
-	.data_ready = iproto_data_ready,
-	.close = iproto_close,
-	.dealloc = iproto_dealloc
-};
+@end
 
 static void
 service_gc(struct palloc_pool *pool, void *ptr)
@@ -211,8 +187,7 @@ static void
 iproto_accept_client(int fd, void *data)
 {
 	struct iproto_service *service = data;
-	struct netmsg_io *io = service->ingress_vop->alloc();
-	service->ingress_vop->accept_client(io, fd, data);
+	[[service->ingress_class alloc] init:fd service:service];
 }
 
 static void iproto_wakeup_workers(ev_prepare *ev);
@@ -229,8 +204,8 @@ iproto_service(struct iproto_service *service, const char *addr)
 
 	palloc_register_gc_root(service->pool, service, service_gc);
 
-	if (service->ingress_vop == NULL)
-		service->ingress_vop = &ingress_default_vop;
+	if (service->ingress_class == Nil)
+		service->ingress_class = [iproto_ingress class];
 	service->acceptor = fiber_create("tcp/acceptor", tcp_server, addr,
 					 iproto_accept_client, service->on_bind, service);
 	if (service->acceptor == NULL)
@@ -284,7 +259,7 @@ has_full_req(const struct tbuf *buf)
 static void
 process_requests(struct iproto_service *service, struct iproto_ingress *c)
 {
-	struct netmsg_io *io = &c->io;
+	struct netmsg_io *io = c;
 	int batch = service->batch;
 
 	netmsg_io_retain(io);
@@ -307,8 +282,7 @@ process_requests(struct iproto_service *service, struct iproto_ingress *c)
 				ih->cb(&io->wbuf, request, NULL);
 			}
 			@catch (IProtoClose *e) {
-				netmsg_io_close(io);
-				[e release];
+				[io close];
 				goto out;
 			}
 			@catch (Error *e) {
@@ -367,7 +341,7 @@ process_requests(struct iproto_service *service, struct iproto_ingress *c)
 		if (r < 0) {
 			say_syswarn("writev() to %s failed, closing connection",
 				    net_peer_name(io->fd));
-			netmsg_io_close(io);
+			[io close];
 			goto out;
 		}
 	}
@@ -477,7 +451,7 @@ iproto_service_info(struct tbuf *out, struct iproto_service *service)
 
 	tbuf_printf(out, "%s:" CRLF, service->name);
 	LIST_FOREACH(c, &service->clients, link) {
-		struct netmsg_io *io = &c->io;
+		struct netmsg_io *io = c;
 		tbuf_printf(out, "    - peer: %s" CRLF, net_peer_name(io->fd));
 		tbuf_printf(out, "      fd: %i" CRLF, io->fd);
 		tbuf_printf(out, "      state: %s%s" CRLF,

@@ -32,6 +32,7 @@
 #include <tbuf.h>
 #include <net_io.h>
 #include <mbox.h>
+#include <objc.h>
 
 #include <stdint.h>
 
@@ -71,22 +72,25 @@ void iproto_error_fmt(struct netmsg_head *h, const struct iproto *request, u32 r
 
 
 LIST_HEAD(iproto_future_list, iproto_future);
-struct iproto_ingress {
-	struct netmsg_io io;
+@interface iproto_ingress: netmsg_io {
+@public
 	LIST_ENTRY(iproto_ingress) link;
 	TAILQ_ENTRY(iproto_ingress) processing_link;
 
 	struct iproto_future_list waiting;
 	struct iproto_service *service;
-};
+}
+- (void)init:(int)fd_ service:(struct iproto_service *)service_;
+@end
 
-struct iproto_egress {
-	struct netmsg_io io;
+@interface iproto_egress: netmsg_io {
+@public
 	struct tac_state ts;
 
 	SLIST_ENTRY(iproto_egress) link;
 	TAILQ_HEAD(,iproto_future) future;
-};
+}
+@end
 SLIST_HEAD(iproto_egress_list, iproto_egress);
 
 
@@ -99,8 +103,6 @@ struct iproto_handler {
 	int flags;
 	int code;
 };
-
-extern struct netmsg_io_vop ingress_default_vop;
 
 struct iproto_service {
 	struct palloc_pool *pool;
@@ -117,7 +119,7 @@ struct iproto_service {
 	struct iproto_handler default_handler;
 	int ih_size, ih_mask;
 	struct iproto_handler *ih;
-	const struct netmsg_io_vop *ingress_vop;
+	Class ingress_class;
 	void (*on_bind)(int fd);
 };
 void iproto_service(struct iproto_service *service, const char *addr);
@@ -161,8 +163,8 @@ struct iproto_future {
 
 
 void iproto_future_collect_orphans(struct iproto_future_list *waiting);
-void iproto_future_resolve_err(struct iproto_egress *c);
-void iproto_future_resolve(struct netmsg_io *io, struct iproto *msg);
+void iproto_future_resolve_err(struct iproto_egress *peer);
+void iproto_future_resolve(struct iproto_egress *peer, struct iproto *msg);
 
 struct iproto_mbox {
 	MBOX(, iproto_future);
