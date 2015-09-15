@@ -68,6 +68,9 @@ local function loop(n)
            local count = 0
            local batch = {}
 
+           if i then
+               i:make_short_living()
+           end
            -- must restart iterator after fiber.sleep
            for tuple in pk:iter(i) do
                if count == batch_size then
@@ -81,6 +84,10 @@ local function loop(n)
                    insert(batch, tuple)
                end
                count = count + 1
+           end
+
+           if i then
+               i:make_long_living()
            end
 
            delete_batch(batch)

@@ -148,6 +148,8 @@ static int box_entry_i = 0;
 void
 box_dispach_lua(struct conn *c, struct iproto *request)
 {
+	WITH_AUTORELEASE;
+
 	lua_State *L = fiber->L;
 	struct tbuf data = TBUF(request->data, request->data_len, fiber->pool);
 
