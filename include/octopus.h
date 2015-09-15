@@ -89,6 +89,7 @@ void set_proc_title(const char *format, ...);
 struct tnt_object *object_alloc(u8 type, size_t size);
 void object_ref(struct tnt_object *obj, int count);
 void object_incr_ref(struct tnt_object *obj);
+void object_incr_ref_autorelease(struct tnt_object *obj);
 void object_decr_ref(struct tnt_object *obj);
 void object_lock(struct tnt_object *obj);
 void object_yield(struct tnt_object *obj);
