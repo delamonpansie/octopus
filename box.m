@@ -436,7 +436,7 @@ snapshot_write_rows:(XLog *)l
 			write_i8(row, o->wal);
 			index_conf_write(row, &pk->conf);
 
-			if (snapshot_write_row(l, CREATE_OBJECT_SPACE << 5, row) < 0) {
+			if ([l append_row:row scn:shard_scn tag:(CREATE_OBJECT_SPACE << 5)|TAG_SNAP] == NULL) {
 				ret = -1;
 				goto out;
 			}
@@ -471,7 +471,7 @@ snapshot_write_rows:(XLog *)l
 			tbuf_append(row, &header, sizeof(header));
 			tbuf_append(row, tuple->data, tuple->bsize);
 
-			if (snapshot_write_row(l, snap_data, row) < 0) {
+			if ([l append_row:row scn:shard_scn tag:snap_data|TAG_SNAP] == NULL) {
 				ret = -1;
 				goto out;
 			}
@@ -496,7 +496,7 @@ snapshot_write_rows:(XLog *)l
 				write_i8(row, index->conf.n);
 				index_conf_write(row, &index->conf);
 
-				if (snapshot_write_row(l, CREATE_INDEX << 5, row) < 0) {
+				if ([l append_row:row scn:shard_scn tag:(CREATE_INDEX << 5)|TAG_SNAP] == NULL) {
 					ret = -1;
 					goto out;
 				}
