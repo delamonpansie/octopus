@@ -282,6 +282,7 @@ process_requests(struct iproto_service *service, struct iproto_ingress *c)
 				ih->cb(&io->wbuf, request, NULL);
 			}
 			@catch (IProtoClose *e) {
+				[e release];
 				[io close];
 				goto out;
 			}
