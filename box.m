@@ -381,6 +381,34 @@ snapshot_estimate
 	return total_rows;
 }
 
+static int verify_indexes(struct object_space *o, size_t pk_rows)
+{
+	struct tnt_object *obj;
+	foreach_index(index, o) {
+		if (index->conf.n == 0)
+			continue;
+
+		/* during initial load of replica secondary indexes isn't configured yet */
+		if ([index isKindOf:[DummyIndex class]])
+			continue;
+
+		title("snap_dump/check index:%i", index->conf.n);
+
+		size_t index_rows = 0;
+		[index iterator_init];
+		while ((obj = [index iterator_next])) {
+			if (unlikely(ghost(obj)))
+				continue;
+			index_rows++;
+		}
+		if (pk_rows != index_rows) {
+			say_error("heap invariant violation: n:%i index:%i rows:%zi != pk_rows:%zi",
+				  o->n, index->conf.n, index_rows, pk_rows);
+			return -1;
+		}
+	}
+	return 0;
+}
 - (int)
 snapshot_write_rows:(XLog *)l
 {
@@ -475,30 +503,10 @@ snapshot_write_rows:(XLog *)l
 			}
 		}
 
-		foreach_index(index, o) {
-			if (index->conf.n == 0)
-				continue;
-
-			/* during initial load of replica secondary indexes isn't configured yet */
-			if ([index isKindOf:[DummyIndex class]])
-				continue;
-
-			title("snap_dump/check index:%i", index->conf.n);
-
-			size_t index_rows = 0;
-			[index iterator_init];
-			while ((obj = [index iterator_next])) {
-				if (unlikely(ghost(obj)))
-					continue;
-				index_rows++;
-			}
-			if (pk_rows != index_rows) {
-				say_error("heap invariant violation: n:%i index:%i rows:%zi != pk_rows:%zi",
-					  n, index->conf.n, index_rows, pk_rows);
-				errno = EINVAL;
-				ret = -1;
-				goto out;
-			}
+		if (verify_indexes(o, pk_rows) < 0) {
+			errno = EINVAL;
+			ret = -1;
+			goto out;
 		}
 	}
 
