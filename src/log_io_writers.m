@@ -492,46 +492,6 @@ init_state:(id<RecoveryState>)state_
 	return self;
 }
 
-int
-snapshot_write_row(XLog *l, u16 tag, struct tbuf *row)
-{
-	static int bytes;
-	ev_tstamp elapsed;
-	static ev_tstamp last = 0;
-	const int io_rate_limit = cfg.snap_io_rate_limit * 1024 * 1024;
-
-	if ([l append_row:row->ptr len:tbuf_len(row) scn:0 tag:tag|TAG_SNAP] == NULL) {
-		say_syserror("unable write row");
-		return -1;
-	}
-
-	if (io_rate_limit > 0) {
-		if (last == 0) {
-			ev_now_update();
-			last = ev_now();
-		}
-
-		bytes += tbuf_len(row) + sizeof(struct row_v12);
-
-		while (bytes >= io_rate_limit) {
-			if ([l flush] < 0) {
-				say_syserror("unable to flush");
-				return -1;
-			}
-
-			ev_now_update();
-			elapsed = ev_now() - last;
-			if (elapsed < 1)
-				usleep(((1 - elapsed) * 1000000));
-
-			ev_now_update();
-			last = ev_now();
-			bytes -= io_rate_limit;
-		}
-	}
-	return 0;
-}
-
 
 - (int)
 snapshot_write

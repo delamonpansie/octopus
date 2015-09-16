@@ -111,6 +111,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 
 @interface XLogDir: Object {
 	int fd;
+	Class xlog_class;
 @public
 	const char *filetype;
 	const char *suffix;
@@ -556,7 +557,6 @@ enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
 extern i64 fold_scn;
 
 int wal_disk_writer(int fd, void *state);
-int snapshot_write_row(XLog *l, u16 tag, struct tbuf *row);
 
 static inline struct _row_v04 *_row_v04(const struct tbuf *t)
 {

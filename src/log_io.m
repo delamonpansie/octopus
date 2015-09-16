@@ -1114,6 +1114,7 @@ init_dirname:(const char *)dirname_
 	fd = open(dirname, O_RDONLY);
 	if (fd < 0)
 		say_syserror("can't open wal_dir");
+	xlog_class = cfg.io_compat ? [XLog11 class] : [XLog12 class];
         return self;
 }
 
@@ -1347,11 +1348,11 @@ open_for_write:(i64)lsn scn:(i64)scn
 	fbuf = set_file_buf(file, 1024 * 1024);
 
 	if (cfg.io_compat) {
-		l = [[XLog11 alloc] init_filename:filename fd:file dir:self vbuf:fbuf];
+		l = [[xlog_class alloc] init_filename:filename fd:file dir:self vbuf:fbuf];
 		l->next_lsn = lsn;
 
 	} else {
-		l = [[XLog12 alloc] init_filename:filename fd:file dir:self vbuf:fbuf];
+		l = [[xlog_class alloc] init_filename:filename fd:file dir:self vbuf:fbuf];
 		l->next_lsn = lsn;
 		((XLog12 *)l)->next_scn = scn;
 	}
@@ -1390,6 +1391,51 @@ init_dirname:(const char *)dirname_
 }
 @end
 
+@interface Snap12 : XLog12 {
+	int bytes;
+	ev_tstamp elapsed;
+	ev_tstamp last;
+}@end
+
+@implementation Snap12
+- (const struct row_v12 *)
+append_row:(struct row_v12 *)row12 data:(const void *)data
+{
+	const struct row_v12 *ret = [super append_row:row12 data:data];
+	if (ret == NULL)
+		return NULL;
+
+	const int io_rate_limit = cfg.snap_io_rate_limit * 1024 * 1024;
+	if (io_rate_limit <= 0)
+		return ret;
+
+	if (last == 0) {
+		ev_now_update();
+		last = ev_now();
+	}
+
+	bytes += tbuf_len(data) + sizeof(struct row_v12);
+
+	while (bytes >= io_rate_limit) {
+		if ([self flush] < 0) {
+			say_syserror("unable to flush");
+			return NULL;
+		}
+
+		ev_now_update();
+		elapsed = ev_now() - last;
+		if (elapsed < 1)
+			usleep(((1 - elapsed) * 1000000));
+
+		ev_now_update();
+		last = ev_now();
+		bytes -= io_rate_limit;
+	}
+
+	return ret;
+}
+@end
+
 
 @implementation SnapDir
 - (id)
@@ -1399,6 +1445,9 @@ init_dirname:(const char *)dirname_
 		filetype = snap_mark;
 		suffix = ".snap";
 	}
+	// rate limiting only v12 snapshots
+	if (xlog_class == [XLog12 class])
+		xlog_class = [Snap12 class];
         return self;
 }
 @end
