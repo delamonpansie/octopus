@@ -220,6 +220,8 @@ typedef struct marker_desc {
 - (const struct row_v12 *) append_row:(const void *)data len:(u32)data_len scn:(i64)scn
 				  tag:(u16)tag cookie:(u64)cookie;
 - (const struct row_v12 *) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag;
+- (const struct row_v12 *) append_row:(const struct tbuf *)data scn:(i64)scn tag:(u16)tag;
+
 - (const struct row_v12 *) append_row:(struct row_v12 *)row data:(const void *)data;
 - (i64) confirm_write;
 - (void) append_successful:(size_t)bytes;

@@ -545,6 +545,20 @@ append_row:(const void *)data len:(u32)len scn:(i64)scn tag:(u16)tag
 }
 
 - (const struct row_v12 *)
+append_row:(const struct tbuf *)data scn:(i64)scn tag:(u16)tag
+{
+	assert(wet_rows < nelem(wet_rows_offset));
+	static struct row_v12 row;
+	row = (struct row_v12){ .scn = scn,
+				.tm = ev_now(),
+				.tag = tag,
+				{.cookie = default_cookie},
+				.len = tbuf_len(data) };
+
+	return [self append_row:&row data:data->ptr];
+}
+
+- (const struct row_v12 *)
 append_row:(const void *)data len:(u32)len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie
 {
 	assert(wet_rows < nelem(wet_rows_offset));
