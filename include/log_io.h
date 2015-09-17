@@ -425,28 +425,24 @@ enum {
 
 @interface XLogRemoteReader : Object {
 	XLogPuller *remote_puller;
-	struct mbox_void_ptr mbox;
-	struct feeder_param feeder;
-	Recovery *recovery;
+	id<RecoverRow> recovery;
 }
-- (id) init_recovery:(Recovery *)recovery_
-	      feeder:(struct feeder_param *)feeder_;
+- (id) init_recovery:(id<RecoverRow>)recovery_;
+/* load_from_remote throws exceptions on failure */
+- (void) load_from_remote:(struct feeder_param *)remote;
+@end
 
+@interface XLogReplica : Object {
+	id<Shard> shard;
+	id<XLogWriter> writer;
+	struct feeder_param feeder;
+	XLogPuller *remote_puller;
+	struct mbox_void_ptr mbox;
+}
 - (struct sockaddr_in) feeder_addr;
 - (bool) feeder_addr_configured;
 - (bool) feeder_changed:(struct feeder_param*)new;
-- (void) hot_standby;
-
-/* load_from_remote throws exceptions on failure */
-- (void) load_from_remote;
-- (void) load_from_remote:(struct feeder_param *)remote;
-
-@end
-
-@interface XLogReplica : XLogRemoteReader
-/* replicate_wal throws exceptions on failure */
-- (int) replicate_wal:(id<XLogPullerAsync>)puller;
-- (void) replicate_from_remote:(id<XLogPullerAsync>)puller;
+- (void) hot_standby:(struct feeder_param*)feeder_ writer:(id<XLogWriter>)writer_;
 @end
 
 

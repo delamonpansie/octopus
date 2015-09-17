@@ -42,68 +42,11 @@
 
 @implementation XLogRemoteReader
 
-- (void) replicate_from_remote:(id<XLogPullerAsync>)puller { (void)puller; abort(); }
-- (void) status:(const char *)status reason:(const char *)reason { (void)status; (void)reason; }
-- (i64) handshake_scn { return [[recovery shard] scn]; }
-
-- (id) init_recovery:(Recovery *)recovery_
-	      feeder:(struct feeder_param *)feeder_;
+- (id) init_recovery:(id<RecoverRow>)recovery_
 {
 	[super init];
-	mbox_init(&mbox);
 	recovery = recovery_;
-	if (feeder_)
-		[self feeder_changed:feeder_];
-
 	return self;
-}
-
-- (void)
-connect_loop
-{
-	ev_tstamp reconnect_delay = 0.1;
-	bool warning_said = false;
-
-	remote_puller = [[XLogPuller alloc] init];
-again:
-	mbox_wait(&mbox);
-	mbox_clear(&mbox);
-
-	[self status:"connect" reason:NULL];
-	do {
-		[remote_puller feeder_param:&feeder];
-
-		if ([remote_puller handshake:[self handshake_scn]] <= 0) {
-			/* no more WAL rows in near future, notify module about that */
-			[[recovery shard] wal_final_row];
-
-			if (!warning_said) {
-				[self status:"fail" reason:[remote_puller error]];
-				say_warn("feeder handshake failed: %s", [remote_puller error]);
-				say_info("will retry every %.2f second", reconnect_delay);
-				warning_said = true;
-			}
-			goto sleep;
-		}
-		warning_said = false;
-
-		@try {
-			[self status:"ok" reason:NULL];
-			[self replicate_from_remote:remote_puller];
-		}
-		@catch (Error *e) {
-			[remote_puller close];
-			[self status:"fail" reason:e->reason];
-			[e release];
-		}
-	sleep:
-		fiber_gc();
-		fiber_sleep(reconnect_delay);
-	} while ([self feeder_addr_configured]);
-
-	[self status:"unconfigured" reason:NULL];
-
-	goto again;
 }
 
 - (void)
@@ -134,7 +77,7 @@ load_from_remote:(struct feeder_param *)param
 
 		int i = 5;
 		while (i-- > 0) {
-			if ([puller handshake:[self handshake_scn]] > 0)
+			if ([puller handshake:0] > 0)
 				break;
 			fiber_sleep(1);
 		}
@@ -152,24 +95,41 @@ load_from_remote:(struct feeder_param *)param
 	}
 }
 
-- (void)
-load_from_remote
+@end
+
+@implementation XLogReplica
+
+- (id) init_shard:(id<Shard>)shard_
 {
-	[self load_from_remote:&feeder];
+	[super init];
+	mbox_init(&mbox);
+	shard = shard_;
+	return self;
 }
 
-static void
-hot_standby(va_list ap)
-{
-	XLogRemoteReader *r = va_arg(ap, XLogRemoteReader *);
-	[r connect_loop];
-}
+- (i64) handshake_scn { return [shard scn]; }
 
 - (void)
-hot_standby
+status:(const char *)status reason:(const char *)reason
 {
-	fiber_create("remote_hot_standby", hot_standby, self);
+	say_warn("%s: status:%s shard:%p", __func__, status, shard);
+
+	if (strcmp(status, "unconfigured") == 0) {
+		// assert(local_writes);
+		[shard status_update:PRIMARY fmt:"primary"];
+		return;
+	}
+	if (strcmp(status, "configured") == 0) {
+		say_info("configured remote hot standby, WAL feeder %s", reason);
+		return;
+	}
+
+	[shard status_update:REMOTE_STANDBY fmt:"hot_standby/%s/%s%s%s",
+	       sintoa(&feeder.addr), status, reason ? ":" : "", reason ?: ""];
+	if (strcmp([shard status], "fail") == 0)
+		say_error("replication failure: %s", reason);
 }
+
 
 - (bool)
 feeder_changed:(struct feeder_param*)new
@@ -209,34 +169,9 @@ feeder_addr_configured
 {
 	return feeder.addr.sin_family != AF_UNSPEC;
 }
-@end
-
-@implementation XLogReplica
-
-- (void)
-status:(const char *)status reason:(const char *)reason
-{
-	[super status:status reason:reason];
-	say_warn("%s: status:%s recovery:%p", __func__, status, recovery);
-
-	if (strcmp(status, "unconfigured") == 0) {
-		// assert(local_writes);
-		[[recovery shard] status_update:PRIMARY fmt:"primary"];
-		return;
-	}
-	if (strcmp(status, "configured") == 0) {
-		say_info("configured remote hot standby, WAL feeder %s", reason);
-		return;
-	}
-
-	[[recovery shard] status_update:REMOTE_STANDBY fmt:"hot_standby/%s/%s%s%s",
-			  sintoa(&feeder.addr), status, reason ? ":" : "", reason ?: ""];
-	if (strcmp([[recovery shard] status], "fail") == 0)
-		say_error("replication failure: %s", reason);
-}
 
 - (int)
-replicate_wal:(id<XLogPullerAsync>)puller
+replicate_row_stream:(id<XLogPullerAsync>)puller
 {
 	struct row_v12 *row, *final_row = NULL, *rows[WAL_PACK_MAX];
 	/* TODO: use designated palloc_pool */
@@ -356,14 +291,71 @@ replicate_wal:(id<XLogPullerAsync>)puller
 	return 0;
 }
 
+- (void)
+connect_loop
+{
+	ev_tstamp reconnect_delay = 0.1;
+	bool warning_said = false;
+
+	remote_puller = [[XLogPuller alloc] init];
+again:
+	mbox_wait(&mbox);
+	mbox_clear(&mbox);
+
+	[self status:"connect" reason:NULL];
+	do {
+		[remote_puller feeder_param:&feeder];
+
+		if ([remote_puller handshake:[self handshake_scn]] <= 0) {
+			/* no more WAL rows in near future, notify module about that */
+			[shard wal_final_row];
+
+			if (!warning_said) {
+				[self status:"fail" reason:[remote_puller error]];
+				say_warn("feeder handshake failed: %s", [remote_puller error]);
+				say_info("will retry every %.2f second", reconnect_delay);
+				warning_said = true;
+			}
+			goto sleep;
+		}
+		warning_said = false;
+
+		@try {
+			[self status:"ok" reason:NULL];
+			for (;;)
+				[self replicate_row_stream:remote_puller];
+		}
+		@catch (Error *e) {
+			[remote_puller close];
+			[self status:"fail" reason:e->reason];
+			[e release];
+		}
+	sleep:
+		fiber_gc();
+		fiber_sleep(reconnect_delay);
+	} while ([self feeder_addr_configured]);
+
+	[self status:"unconfigured" reason:NULL];
+
+	goto again;
+}
+
+static void
+hot_standby(va_list ap)
+{
+	XLogReplica *r = va_arg(ap, XLogReplica *);
+	[r connect_loop];
+}
 
 - (void)
-replicate_from_remote:(id<XLogPullerAsync>)puller
+hot_standby:(struct feeder_param*)feeder_ writer:(id<XLogWriter>)writer_
 {
-	assert([[recovery writer] lsn] > 0);
-	for (;;)
-		[self replicate_wal:puller];
+	assert(writer_ != nil);
+	writer = writer_;
+	[self feeder_changed:feeder_];
+	fiber_create("remote_hot_standby", hot_standby, self);
 }
+
 
 @end
 
