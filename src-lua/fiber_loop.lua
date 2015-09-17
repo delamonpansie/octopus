@@ -1,11 +1,13 @@
 local xpcall, type, setmetatable = xpcall, type, setmetatable
 local traceback, cut_traceback = debug.traceback, cut_traceback
+local ffi = require 'ffi'
 
 fiber.loops = {}
 local loops_stat = stat.new_with_graphite('loops')
 
 local Loop = {}
 local loop_mt = { __index = Loop }
+
 
 local function loop_sleep(self, sleep, _while)
     fiber.gc()
@@ -34,9 +36,9 @@ local function loop_run(self)
     self.fiber_id = fiber.current
     local name_cnt = self.name .. "_cnt"
     while self.running do
-        if self.paused then
+        if self:paused() then
             say_warn("Loop '%s' paused", self.name)
-            loop_sleep(self, 5, function() return self.paused end)
+            loop_sleep(self, 5, function() return self:paused() end)
         elseif self.error then
             loop_say_error(self, "Not resolved error")
         else
@@ -78,25 +80,40 @@ end
 
 function Loop:pause(pause)
     if pause == nil then
-        self.paused = true
+        self._paused = true
     else
-        self.paused = pause or nil
+        self._paused = pause or nil
     end
 end
 
-function fiber.loop(name, func)
+local PRIMARY = tonumber(ffi.C.PRIMARY)
+function Loop:paused()
+    return self._paused or
+        (self.mutable and tonumber(ffi.C.current_recovery_status_code()) ~= PRIMARY)
+end
+
+function fiber.loop(name, func, ops)
+    if ops == nil then ops = {} end
+    local mutable = ops.mutable == nil and true or ops.mutable
     local loop = fiber.loops[name]
     if loop == nil then
         if func == nil then
             return nil
         end
-        loop = setmetatable({name=name, func=func}, loop_mt)
+        loop = setmetatable({name=name, func=func, mutable=mutable}, loop_mt)
         fiber.loops[name] = loop
         loop:run()
-    elseif func ~= nil then
-        loop.func = func
-        if loop.error then
-            loop.error = nil
+    else
+        if loop.mutable ~= mutable then
+            say_error("cannot change mutability of fiber.loop[\"%s\"] from %s to %s",
+                name, loop.mutable, mutable)
+            return
+        end
+        if func ~= nil then
+            loop.func = func
+            if loop.error then
+                loop.error = nil
+            end
         end
     end
     return loop
