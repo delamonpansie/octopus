@@ -3,7 +3,7 @@ local reload_modules = {}
 local reload_lock = {"it is reload loop lock"}
 
 local function print_warn(name, msg)
-    print(string.format("reloadfile(\"%s\"): %s", name, msg))
+    say_warn("reloadfile(\"%s\"): %s", name, msg)
 end
 
 local fix_reload_filename
@@ -37,9 +37,6 @@ end
 function fix_reload_filename(name)
     local stat = reload_files[name]
     local filename = stat.name:gsub('%.lua$',''):gsub('([%w_-])%.([%w_-])', '%1/%2') .. '.lua'
-    if not filename:match('%.lua$') then
-        filename = filename..'.lua'
-    end
     local r, v = pcall(os.ctime, filename)
     if r then
         stat.filename = filename
@@ -58,8 +55,28 @@ end
 
 local function do_reload(name)
     local stat = reload_modules[name]
-    local module = assert(loadfile(stat.filename))
-    return module(name)
+    local file = assert(io.open(stat.filename))
+    local version
+    local function loader()
+        local chunk = file:read(version == nil and 256 or 4096)
+        if version == nil and chunk then
+            local v = chunk:match("VERSION%s*=%s*(%S*)")
+            version = v or false
+        end
+        return chunk
+    end
+    local mod, err = load(loader, stat.filename)
+    file:close()
+    assert(mod, err)
+    local res = { mod(name) }
+    if version then
+        say_info("reloadfile '%s': {ver=%s, file='%s', require='%s'}",
+            stat.name, version, stat.filename, name)
+    else
+        say_info("reloadfile '%s': {file='%s', require='%s'}",
+            stat.name, stat.filename, name)
+    end
+    return unpack(res)
 end
 
 local function reload_fullpath_loader(name)
@@ -82,6 +99,7 @@ local function first_load(stat)
         local r, err = xpcall(require, debug.traceback, stat.modulename)
         if r then
             stat.ctm = v
+            say_info("reloadfile(\"%s\") succeed", stat.name)
         else
             stat.err_ctm = v
             stat.err_tm = os.time()
@@ -108,6 +126,7 @@ local function check_reload(name)
             package.loaded[stat.modulename] = nil
             local r, err = xpcall(require, debug.traceback, stat.modulename)
             if r then
+                say_info("reloadfile(\"%s\") succeed", name)
                 stat.ctm = v
             else
                 stat.err_ctm = v
@@ -150,8 +169,8 @@ local function reload_queue_pusher()
 end
 
 fiber._lock(reload_lock)
-fiber.create(reload_loop)
-fiber.create(reload_queue_pusher)
+fiber.loop("core:reload_loop", reload_loop, {mutable=false})
+fiber.loop("core:reload_loop_pusher", reload_queue_pusher, {mutable=false})
 
 function reloadfile(name)
     assertarg(name, 'string', 1)
