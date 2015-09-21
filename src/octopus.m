@@ -101,6 +101,12 @@ unzero_io_collect_interval()
 		ev_set_io_collect_interval(cfg.io_collect_interval);
 }
 
+enum recovery_status
+current_recovery_status_code()
+{
+	return recovery ? recovery->status : LOADING;
+}
+
 static void
 reset_cfg_err()
 {
