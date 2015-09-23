@@ -104,6 +104,16 @@ unzero_io_collect_interval()
 		ev_set_io_collect_interval(cfg.io_collect_interval);
 }
 
+enum recovery_status
+current_recovery_status_code()
+{
+	if (!recovery)
+		return LOADING;
+	if ([recovery shard:0] == nil)
+		return LOADING;
+	return [recovery shard:0]->status;
+}
+
 static void
 reset_cfg_err()
 {
@@ -964,8 +974,6 @@ init_storage:
 	}
 	salloc_init(fixed_arena, cfg.slab_alloc_minimal, cfg.slab_alloc_factor);
 
-	/* try autoload bundled graphite module */
-	luaT_require_or_panic("graphite", false, NULL);
 	stat_init();
 
 	@try {

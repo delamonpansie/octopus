@@ -76,6 +76,14 @@ object_incr_ref(struct tnt_object *obj)
 }
 
 void
+object_incr_ref_autorelease(struct tnt_object *obj)
+{
+	assert(obj->refs + 1 > 0);
+	obj->refs++;
+	autorelease((id)((uintptr_t)obj | 1));
+}
+
+void
 object_decr_ref(struct tnt_object *obj)
 {
 	assert(obj->refs - 1 >= 0);

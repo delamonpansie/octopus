@@ -558,6 +558,22 @@ autorelease(id obj)
 	return obj;
 }
 
+static inline void
+object_release(id obj) {
+	uintptr_t ptr = (uintptr_t)obj;
+	if ((ptr & 1) != 0) {
+#if OCT_OBJECT
+		ptr &= ~(uintptr_t)1;
+		struct tnt_object *tnt = (void*)ptr;
+		object_decr_ref(tnt);
+#else
+		abort();
+#endif
+	} else {
+		[obj release];
+	}
+}
+
 void
 autorelease_pop(struct autorelease_pool *pool)
 {
@@ -568,7 +584,7 @@ autorelease_pop(struct autorelease_pool *pool)
 		while(i) {
 			i--;
 			@try {
-				[current->objs[i] release];
+				object_release(current->objs[i]);
 			} @catch(Error* e) {
 				panic_exc(e);
 			} @catch(id e) {
@@ -584,7 +600,7 @@ autorelease_pop(struct autorelease_pool *pool)
 	while(i > pool->pos) {
 		i--;
 		@try {
-			[current->objs[i] release];
+			object_release(current->objs[i]);
 		} @catch(Error* e) {
 			panic_exc(e);
 		} @catch(id e) {

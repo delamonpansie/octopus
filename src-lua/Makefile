@@ -10,6 +10,7 @@ obj += src-lua/cdef.o
 obj += src-lua/cdef_base.o
 obj += src-lua/wal.o
 obj += src-lua/fiber_lock.o
+obj += src-lua/fiber_loop.o
 obj += src-lua/reloadfile.o
 obj += src-lua/shard.o
 obj += src-lua/repl.o
@@ -31,7 +32,7 @@ include/net_io.h: cfg/octopus.h
 
 dist-clean += src-lua/cdef.lua
 
-src-lua/cdef.lua: cfg/octopus.h include/config.h include/fiber.h include/index.h include/iproto_def.h include/net_io.h include/octopus.h include/octopus_ev.h include/palloc.h include/pickle.h include/say.h include/tbuf.h src-lua/gen_cdef.sh
+src-lua/cdef.lua: cfg/octopus.h include/config.h include/fiber.h include/index.h include/iproto_def.h include/log_io.h include/net_io.h include/octopus.h include/octopus_ev.h include/palloc.h include/pickle.h include/say.h include/tbuf.h src-lua/gen_cdef.sh
 	@mkdir -p $(dir $@)
 	$(E) "GEN	$@"
 	$(Q)CPP="$(CPP) -P $(XCPPFLAGS) $(CPPFLAGS)" SED="$(SED)" srcdir="$(srcdir)" sh $(srcdir)/src-lua/gen_cdef.sh > $@

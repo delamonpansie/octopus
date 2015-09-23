@@ -452,6 +452,7 @@ enum {
 
 
 enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
+enum recovery_status current_recovery_status_code();
 @protocol Shard <RecoverRow>
 - (int) id;
 - (i64) scn;

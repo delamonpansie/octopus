@@ -115,8 +115,7 @@ function object(ptr)
       return nil
    end
 
-   ffi.gc(obj, ffi.C.object_decr_ref)
-   ffi.C.object_incr_ref(obj)
+   ffi.C.object_incr_ref_autorelease(obj)
 
    local ct = object_cast[obj.type]
    if ct then
@@ -179,7 +178,9 @@ function cut_traceback(deep)
 end
 
 require('stat')
+pcall(require, 'graphite')
 require('fiber_lock')
+require('fiber_loop')
 require('reloadfile')
 require('shard')
 print("Lua prelude initialized.")
