@@ -489,6 +489,12 @@ data_ready:(int)r
 }
 
 - (void)
+tac_event:(int)event
+{
+	(void)event;
+}
+
+- (void)
 close
 {
 	say_debug("closing connection to %s", net_peer_name(fd));
@@ -575,6 +581,7 @@ tcp_async_connect(struct tac_state *s, ev_watcher *w /* result of yield() */,
 			ev_timer_start(&s->timer);
 		ev_io_start(&s->ev);
 
+		[s->io tac_event:tac_wait];
 		return tac_wait;
 	}
 
@@ -600,11 +607,13 @@ tcp_async_connect(struct tac_state *s, ev_watcher *w /* result of yield() */,
 		goto error;
 	}
 
+	[s->io tac_event:fd];
 	return fd;
 error:
 	s->error_tstamp = ev_now();
 	if (fd > 0)
 		close(fd);
+	[s->io tac_event:tac_error];
 	return tac_error;
 }
 
@@ -613,7 +622,7 @@ rendevouz(va_list ap)
 {
 	struct sockaddr_in 	*self_addr = va_arg(ap, struct sockaddr_in *);
 	struct tac_list 	*list = va_arg(ap, struct tac_list *);
-	struct tac_state 	*ts;
+	struct tac_state 	*ts, *tmp;
 	ev_watcher		*w = NULL;
 	ev_timer		timer = { .coro=1 };
 
@@ -622,7 +631,7 @@ rendevouz(va_list ap)
 loop:
 	w = yield();
 
-	SLIST_FOREACH(ts, list, link) {
+	SLIST_FOREACH_SAFE(ts, list, link, tmp) {
 		if (ts->io->fd >= 0)
 			continue;
 

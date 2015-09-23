@@ -81,6 +81,7 @@ struct netmsg {
 }
 - (void)close;
 - (void)data_ready:(int)r;
+- (void)tac_event:(int)fd; /* called on tcp_async_connect() result */
 @end
 
 struct netmsg_mark {
