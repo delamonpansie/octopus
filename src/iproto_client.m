@@ -363,9 +363,10 @@ data_ready:(int)r
 - (void)
 close
 {
-	[super close];
 	iproto_remote_stop_reconnect(self);
 	iproto_future_resolve_err(self);
+	[super close];
+	[self free];
 }
 @end
 
@@ -402,13 +403,6 @@ iproto_remote_stop_reconnect(struct iproto_egress *peer)
 		ts->flags &= ~TAC_RECONNECT;
 		SLIST_REMOVE(&iproto_tac_list, ts, tac_state, link);
 	}
-}
-
-void
-iproto_remote_close_peer(struct iproto_egress *peer)
-{
-	iproto_remote_stop_reconnect(peer);
-	[peer free];
 }
 
 static void __attribute__((constructor))

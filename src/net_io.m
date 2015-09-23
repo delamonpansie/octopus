@@ -461,6 +461,8 @@ netmsg_io_init(struct netmsg_io *io, struct palloc_pool *pool, int fd)
 
 	if (fd >= 0)
 		netmsg_io_setfd(io, fd);
+	else
+		io->fd = -1;
 }
 
 void
@@ -472,11 +474,12 @@ netmsg_io_setfd(struct netmsg_io *io, int fd)
 }
 
 @implementation netmsg_io
+
+/* never call [free] directly, use [close] instead */
 - (void)
 free
 {
-	if (fd >= 0)
-		[self close];
+	assert(fd < 0);
 	palloc_unregister_gc_root(pool, self);
 	netmsg_head_dealloc(&wbuf);
 	[super free];
@@ -498,9 +501,11 @@ tac_event:(int)event
 close
 {
 	say_debug("closing connection to %s", net_peer_name(fd));
-	int r = close(fd);
-	if (r < 0)
-		say_syswarn("close");
+	if (fd >= 0) {
+		int r = close(fd);
+		if (r < 0)
+			say_syswarn("close");
+	}
 	tbuf_reset(&rbuf);
 	ev_io_stop(&out);
 	ev_io_stop(&in);

@@ -203,9 +203,7 @@ void iproto_proxy_send(struct iproto_egress *to, struct iproto_ingress *from,
 		       const struct iproto *msg, const struct iovec *iov, int iovcnt);
 
 struct iproto_egress *iproto_remote_add_peer(struct iproto_egress *peer, const struct sockaddr_in *daddr, struct palloc_pool *pool);
-void iproto_remote_close_peer(struct iproto_egress *peer);
 void iproto_remote_stop_reconnect(struct iproto_egress *peer);
-
 
 
 @interface IProtoClose : Error
