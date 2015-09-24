@@ -136,7 +136,7 @@ update_rt(int shard_id, enum shard_mode mode, Shard<Shard> *shard, const struct 
 			route->executor = nil;
 			return;
 		}
-		route->proxy = iproto_remote_add_peer(addr, proxy_pool);
+		route->proxy = iproto_remote_add_peer(NULL, addr, proxy_pool);
 		route->proxy->ts.name = "proxy_to_primary";
 	}
 }
@@ -150,7 +150,7 @@ update_rt_notify(va_list ap __attribute__((unused)))
 		if (strcmp((*p)->name, cfg.hostname) == 0)
 			continue;
 		const struct sockaddr_in *addr = shard_addr((*p)->name, PORT_PRIMARY);
-		struct iproto_egress *egress = iproto_remote_add_peer(addr, fiber->pool);
+		struct iproto_egress *egress = iproto_remote_add_peer(NULL, addr, fiber->pool);
 		SLIST_INSERT_HEAD(&peers, egress, link);
 	}
 
@@ -608,7 +608,7 @@ load_from_local
 - (int)
 load_from_remote
 {
-	int count;
+	int count = 0;
 	struct feeder_param feeder;
 	XLogRemoteReader *remote_reader = [[XLogRemoteReader alloc] init_recovery:self];
 	if (cfg.object_space) {

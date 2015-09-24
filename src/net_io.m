@@ -586,7 +586,6 @@ tcp_async_connect(struct tac_state *s, ev_watcher *w /* result of yield() */,
 			ev_timer_start(&s->timer);
 		ev_io_start(&s->ev);
 
-		[s->io tac_event:tac_wait];
 		return tac_wait;
 	}
 
@@ -612,13 +611,11 @@ tcp_async_connect(struct tac_state *s, ev_watcher *w /* result of yield() */,
 		goto error;
 	}
 
-	[s->io tac_event:fd];
 	return fd;
 error:
 	s->error_tstamp = ev_now();
 	if (fd > 0)
 		close(fd);
-	[s->io tac_event:tac_error];
 	return tac_error;
 }
 
@@ -660,6 +657,7 @@ loop:
 			ts->error_printed = false;
 			break;
 		}
+		[ts->io tac_event:r];
 	}
 
 	goto loop;

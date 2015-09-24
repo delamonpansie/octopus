@@ -366,7 +366,6 @@ close
 	iproto_remote_stop_reconnect(self);
 	iproto_future_resolve_err(self);
 	[super close];
-	[self free];
 }
 @end
 
