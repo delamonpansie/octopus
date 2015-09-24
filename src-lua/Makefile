@@ -30,6 +30,7 @@ src-lua/jit/vmdef.lua: third_party/luajit/src/jit/vmdef.lua
 # this dependency is required for $(CPP) calls below
 include/net_io.h: cfg/octopus.h
 
+src-lua/cdef.lua: CPPFLAGS += -Wno-deprecated
 dist-clean += src-lua/cdef.lua
 
 src-lua/cdef.lua: cfg/octopus.h include/config.h include/fiber.h include/index.h include/iproto_def.h include/log_io.h include/net_io.h include/octopus.h include/octopus_ev.h include/palloc.h include/pickle.h include/say.h include/tbuf.h src-lua/gen_cdef.sh
