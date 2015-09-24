@@ -77,7 +77,6 @@ struct netmsg {
 	struct netmsg_head wbuf;
 	ev_io in, out;
 	int fd, rc;
-	const struct netmsg_io_vop *vop;
 }
 - (void)close;
 - (void)data_ready:(int)r;
