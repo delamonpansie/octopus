@@ -266,7 +266,7 @@ struct wal_reply {
 } __attribute__((packed));
 
 
-int wal_pack_prepare(XLogWriter *r, struct wal_pack *);
+void wal_pack_prepare(XLogWriter *r, struct wal_pack *);
 u32 wal_pack_append_row(struct wal_pack *pack, struct row_v12 *row);
 void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 			  const void *data, size_t len);

@@ -572,7 +572,7 @@ submit:(const void *)data len:(u32)data_len tag:(u16)tag shard_id:(u16)shard_id
 	return [self wal_pack_submit];
 }
 
-int
+void
 wal_pack_prepare(XLogWriter *w, struct wal_pack *pack)
 {
 	pack->netmsg = &w->io->wbuf;
@@ -581,7 +581,6 @@ wal_pack_prepare(XLogWriter *w, struct wal_pack *pack)
 	pack->sender = fiber;
 	pack->row_count = 0;
 	net_add_iov(pack->netmsg, &pack->packet_len, pack->packet_len);
-	return 1;
 }
 
 u32

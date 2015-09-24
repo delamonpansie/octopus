@@ -274,10 +274,7 @@ replicate_row_stream:(id<XLogPullerAsync>)puller
 			while (confirmed != pack_rows) {
 				struct wal_pack pack;
 
-				if (!wal_pack_prepare(writer, &pack)) {
-					fiber_sleep(0.1);
-					continue;
-				}
+				wal_pack_prepare(writer, &pack);
 				for (int i = confirmed; i < pack_rows; i++)
 					wal_pack_append_row(&pack, rows[i]);
 
