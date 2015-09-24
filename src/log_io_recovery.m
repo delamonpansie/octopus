@@ -841,7 +841,7 @@ fork_and_snapshot:(bool)wait
 		return -1;
 	}
 
-	switch ((p = tnt_fork())) {
+	switch ((p = oct_fork())) {
 	case -1:
 		say_syserror("fork");
 		return -1;

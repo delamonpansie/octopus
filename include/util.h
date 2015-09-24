@@ -176,8 +176,8 @@ void __gcov_flush();
 
 
 extern pid_t master_pid;
+pid_t oct_fork();
 #ifdef OCT_CHILDREN
-pid_t tnt_fork();
 void keepalive(void);
 void keepalive_read(void);
 #endif

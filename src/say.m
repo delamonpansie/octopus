@@ -152,7 +152,7 @@ say_logger_init(int nonblock)
 			goto out;
 		}
 
-		pid = tnt_fork();
+		pid = oct_fork();
 		if (pid == -1) {
 			say_syserror("pipe");
 			goto out;

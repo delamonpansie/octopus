@@ -111,7 +111,7 @@ coredump(int dump_interval)
 
 	last_coredump = now;
 
-	pid_t pid = tnt_fork();
+	pid_t pid = oct_fork();
 	if (pid < 0) {
 		say_syserror("can't create coredump child");
 		return -1;
@@ -131,9 +131,8 @@ coredump(int dump_interval)
 }
 
 pid_t master_pid;
-#ifdef OCT_CHILDREN
 pid_t
-tnt_fork()
+oct_fork()
 {
 	pid_t pid = fork();
 	if (pid == 0) {
@@ -146,14 +145,17 @@ tnt_fork()
 		   our parent will send SIGTERM to us when he catches SIGINT */
 		signal(SIGINT, SIG_IGN);
 		ev_loop_fork();
+#ifdef OCT_CHILDREN
 		if (keepalive_pipe[0] > 0) {
 			close(keepalive_pipe[0]);
 			keepalive_pipe[0] = -1;
 		}
+#endif
 	}
 	return pid;
 }
 
+#ifdef OCT_CHILDREN
 void
 keepalive(void)
 {

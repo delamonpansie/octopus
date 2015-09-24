@@ -64,7 +64,7 @@ fork_pair(int type, int *sock)
 		return -1;
 	}
 
-	if ((pid = tnt_fork()) == -1) {
+	if ((pid = oct_fork()) == -1) {
 		say_syserror("fork");
 		close(socks[0]);
 		close(socks[1]);
