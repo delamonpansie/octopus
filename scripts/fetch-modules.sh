@@ -6,13 +6,15 @@ test -f include/config.h.in
 
 mkdir -p mod client
 
-while getopts ":r" opt; do
+usage () {
+    echo $0 [-r] '[ALL|mod_name1 mod_name2 ...]'
+    exit 1
+}
+while getopts ":rh" opt; do
     case $opt in
-      "r")
-	    REF="--reference ."
-	    ;;
-      *) echo Unknown option: $opt; exit 1
-	 ;;
+      "r") REF="--reference ." ;;
+      "h") usage ;;
+      *) echo Unknown option: $opt; usage;;
     esac
 done
 shift $(($OPTIND - 1))
