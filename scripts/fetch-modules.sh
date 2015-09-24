@@ -67,7 +67,7 @@ done
 
 for repo in mod/* client/*; do
     branch=$(echo $repo | tr / _)
-    if test -d "$repo/.git" && ( need_fetch "$repo" || local_repo "$repo" ) ; then
+    if test -d "$repo/.git" && ( need_fetch "$branch" || local_repo "$repo" ) ; then
 	(set -e;
 	 echo -n "$repo ... "
 	 cd "$repo"
