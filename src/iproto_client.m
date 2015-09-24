@@ -241,7 +241,7 @@ iproto_pinger(va_list ap)
 			quorum++;
 
 		struct iproto_mbox mbox = IPROTO_MBOX_INITIALIZER(mbox, fiber->pool);
-		struct iproto ping = { .msg_code = msg_ping };
+		struct iproto ping = { .msg_code = MSG_PING };
 		iproto_mbox_broadcast(&mbox, list, &ping, NULL, 0);
 		mbox_timedwait(&mbox, quorum, 2.0);
 		iproto_mbox_release(&mbox);
@@ -354,7 +354,7 @@ data_ready:(int)r
 
 	while (has_full_req(&rbuf)) {
 		struct iproto *req = iproto(&rbuf);
-		assert((i32)req->data_len > 0 || req->msg_code == msg_ping);
+		assert((i32)req->data_len > 0 || req->msg_code == MSG_PING);
 		int req_size = sizeof(struct iproto) + req->data_len;
 		tbuf_ltrim(&rbuf, req_size);
 		iproto_future_resolve(self, req);

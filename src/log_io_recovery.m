@@ -162,7 +162,7 @@ update_rt_notify(va_list ap __attribute__((unused)))
 			id<Shard> shard = shard_rt[i].shard;
 			if (shard_rt[i].mode != SHARD_MODE_LOCAL)
 				continue;
-			struct iproto msg = { .msg_code = [shard id] << 16 | msg_shard };
+			struct iproto msg = { .msg_code = [shard id] << 16 | MSG_SHARD };
 			struct shard_op *sop = [shard snapshot_header];
 			sop->op |= 0x80; /* mark as rt update */
 			struct iovec iov = { .iov_base = sop,
@@ -985,7 +985,7 @@ shard_service:(struct iproto_service *)s
 	if (cfg.wal_writer_inbox_size == 0)
 		return;
 
-	service_register_iproto(s, msg_shard, iproto_shard_cb, IPROTO_FORCE_LOCAL);
+	service_register_iproto(s, MSG_SHARD, iproto_shard_cb, IPROTO_FORCE_LOCAL);
 }
 
 @end

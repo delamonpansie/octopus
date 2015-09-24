@@ -46,10 +46,6 @@
 #include <sys/socket.h>
 #include <netinet/tcp.h>
 
-const uint32_t msg_ping = 0xff00;
-const uint32_t msg_replica = 0xff01;
-const uint32_t msg_shard = 0xff02;
-
 #define STAT(_) \
         _(IPROTO_WORKER_STARVATION, 1)			\
 	_(IPROTO_STREAM_OP, 2)				\
@@ -222,7 +218,7 @@ iproto_service(struct iproto_service *service, const char *addr)
 	service_alloc_handlers(service, SERVICE_DEFAULT_CAPA);
 
 	service_register_iproto(service, -1, err, IPROTO_NONBLOCK);
-	service_register_iproto(service, msg_ping, iproto_ping, IPROTO_NONBLOCK|IPROTO_FORCE_LOCAL);
+	service_register_iproto(service, MSG_PING, iproto_ping, IPROTO_NONBLOCK|IPROTO_FORCE_LOCAL);
 }
 
 void

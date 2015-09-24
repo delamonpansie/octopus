@@ -228,7 +228,7 @@ replication_compat:(i64)scn
 replication_handshake:(void*)hshake len:(size_t)hsize
 {
 	struct tbuf *req = tbuf_alloc(fiber->pool);
-	struct iproto ireq = { .msg_code = msg_replica, .sync = 0, .data_len = hsize };
+	struct iproto ireq = { .msg_code = MSG_REPLICA, .sync = 0, .data_len = hsize };
 	tbuf_add_dup(req, &ireq);
 	tbuf_append(req, hshake, hsize);
 

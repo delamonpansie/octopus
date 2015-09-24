@@ -38,9 +38,10 @@
 
 #include <iproto_def.h>
 
-extern const uint32_t msg_ping;
-extern const uint32_t msg_replica;
-extern const uint32_t msg_shard;
+#define MSG_PING  0xff00
+#define MSG_REPLICA  0xff01
+#define MSG_SHARD  0xff02
+
 
 static inline struct iproto *iproto(const struct tbuf *t)
 {
