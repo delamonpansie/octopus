@@ -314,25 +314,27 @@ next_chunk_for(struct palloc_pool *pool, size_t size)
 		class++;
 
 	chunk = TAILQ_FIRST(&class->chunks);
+	if (chunk != NULL)
+		chunk_size = chunk->data_size;
+	else if (class->size == almost_unlimited) {
+		size_t mmap_size = (size + sizeof(struct chunk) + 4095) & ~4095;
+		chunk_size = mmap_size - sizeof(struct chunk);
+	} else
+		chunk_size = class->size;
+
+	if (pool->cfg.size != 0 &&
+	    pool->allocated + chunk_size > pool->cfg.size)
+		return NULL;
+
 	if (chunk != NULL) {
 		TAILQ_REMOVE(&class->chunks, chunk, link);
 		goto found;
 	}
 
-	if (class->size == almost_unlimited) {
-		size_t mmap_size = (size + sizeof(struct chunk) + 4095) & ~4095;
-		chunk_size = mmap_size - sizeof(struct chunk);
-		chunk = mmap(MMAP_HINT_ADDR, sizeof(struct chunk) + chunk_size,
-			     PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-		if (chunk == MAP_FAILED)
-			return NULL;
-	} else {
-		chunk_size = class->size;
-		chunk = mmap(MMAP_HINT_ADDR, sizeof(struct chunk) + chunk_size,
-			     PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-		if (chunk == MAP_FAILED)
-			return NULL;
-	}
+	chunk = mmap(MMAP_HINT_ADDR, sizeof(struct chunk) + chunk_size,
+		     PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	if (chunk == MAP_FAILED)
+		return NULL;
 
 	class->chunks_count++;
 	chunk->magic = chunk_magic;
@@ -746,6 +748,15 @@ palloc_nomem_cb(struct palloc_pool *pool, palloc_nomem_cb_t new_cb)
 	if (new_cb != NULL)
 		pool->cfg.nomem_cb = new_cb;
 	return old_cb;
+}
+
+size_t
+palloc_size(struct palloc_pool *pool, size_t *size)
+{
+	size_t old_size = pool->cfg.size;
+	if (size != NULL)
+		pool->cfg.size = *size;
+	return old_size;
 }
 
 size_t
