@@ -202,6 +202,7 @@ iproto_service(struct iproto_service *service, const char *addr)
 	service->pool = palloc_create_pool((struct palloc_config){.name = name});
 	service->name = name;
 	service->batch = 32;
+	service->addr = strdup(addr);
 
 	palloc_register_gc_root(service->pool, service, service_gc);
 

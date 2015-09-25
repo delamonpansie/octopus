@@ -126,6 +126,7 @@ struct iproto_service {
 	struct iproto_handler *ih;
 	Class ingress_class;
 	void (*on_bind)(int fd);
+	const char *addr;
 };
 void iproto_service(struct iproto_service *service, const char *addr);
 void iproto_service_info(struct tbuf *out, struct iproto_service *service);
