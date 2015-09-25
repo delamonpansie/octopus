@@ -65,6 +65,8 @@ struct shard_op {
 	struct shard_op_aux aux[0];
 } __attribute__((packed));
 
+Class paxos = Nil;
+
 i64 fold_scn = 0;
 
 struct row_v12 *
@@ -394,7 +396,7 @@ add_shard:(int)shard_id scn:(i64)scn executor:(id<Executor>)executor sop:(const 
 	Shard<Shard> *shard;
 	switch (sop->type) {
 	case SHARD_TYPE_PAXOS:
-		shard = [[Paxos alloc] init_id:shard_id scn:scn
+		shard = [[paxos alloc] init_id:shard_id scn:scn
 				      recovery:self executor:executor sop:sop];
 		break;
 	case SHARD_TYPE_POR:
@@ -979,13 +981,15 @@ iproto_shard_luacb(struct iproto *req)
 	return "ok";
 }
 
-- (void)
-shard_service:(struct iproto_service *)s
++ (void)
+service:(struct iproto_service *)s
 {
 	if (cfg.wal_writer_inbox_size == 0)
 		return;
 
 	service_register_iproto(s, MSG_SHARD, iproto_shard_cb, IPROTO_FORCE_LOCAL);
+	paxos = objc_lookUpClass("Paxos");
+	[paxos service:s];
 }
 
 @end

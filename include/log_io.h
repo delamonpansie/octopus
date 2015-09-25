@@ -546,7 +546,7 @@ enum recovery_status current_recovery_status_code();
 - (int) fork_and_snapshot:(bool)wait_for_child;
 
 struct iproto_service;
-- (void) shard_service:(struct iproto_service *)s;
++ (void) service:(struct iproto_service *)s;
 @end
 
 @interface Recovery (Deprecated)

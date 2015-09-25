@@ -1169,15 +1169,6 @@ again:
 	goto again;
 }
 
-void
-paxos_service(struct iproto_service *s)
-{
-	service_register_iproto(s, LEADER_PROPOSE, leader, 0);
-	service_register_iproto(s, PREPARE, iproto_acceptor, 0);
-	service_register_iproto(s, ACCEPT, iproto_acceptor, 0);
-	service_register_iproto(s, DECIDE, learner, 0);
-}
-
 
 @implementation Paxos
 
@@ -1450,6 +1441,16 @@ adjust_route
 	}
 	prev_leader = leader_id;
 }
+
++ (void)
+service:(struct iproto_service *)s
+{
+	service_register_iproto(s, LEADER_PROPOSE, leader, 0);
+	service_register_iproto(s, PREPARE, iproto_acceptor, 0);
+	service_register_iproto(s, ACCEPT, iproto_acceptor, 0);
+	service_register_iproto(s, DECIDE, learner, 0);
+}
+
 
 @end
 

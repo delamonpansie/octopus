@@ -52,6 +52,10 @@ RB_HEAD(ptree, proposal);
 
 	struct ptree proposals;
 }
+
+struct iproto_service;
++ (void) service:(struct iproto_service *)s;
+
 @end
 
 struct sockaddr_in *paxos_leader_primary_addr(Paxos *paxos);
