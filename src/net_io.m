@@ -436,6 +436,17 @@ netmsg_io_read_cb(ev_io *ev, int __attribute__((unused)) events)
 }
 
 void
+netmsg_head_gc(struct palloc_pool *pool, void *ptr)
+{
+	struct netmsg_head *head = ptr;
+	struct netmsg *m;
+	TAILQ_FOREACH(m, &head->q, link)
+		netmsg_gc(pool, m);
+
+	head->pool = pool;
+}
+
+void
 netmsg_io_gc(struct palloc_pool *pool, void *ptr)
 {
 	struct netmsg_io *io = ptr;

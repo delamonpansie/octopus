@@ -440,6 +440,31 @@ fiber_write(int fd, const void *buf, size_t count)
 	return done;
 }
 
+ssize_t
+fiber_writev(int fd, struct netmsg_head *head)
+{
+	int r;
+	unsigned int done = 0;
+	ev_io io = { .coro = 1 };
+	ev_io_init(&io, (void *)fiber, fd, EV_WRITE);
+	ev_io_start(&io);
+
+	do {
+		yield();
+		if ((r = netmsg_writev(fd, head)) < 0) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+				continue;
+			say_syserror("%s: write", __func__);
+			break;
+		}
+		done += r;
+	} while (head->bytes > 0);
+	ev_io_stop(&io);
+
+	return done;
+}
+
+
 
 void
 fiber_init(const char *sched_name)

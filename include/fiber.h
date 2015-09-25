@@ -109,6 +109,8 @@ void fiber_destroy_fake();
 ssize_t fiber_recv(int fd, struct tbuf *rbuf);
 ssize_t fiber_read(int fd, void *buf, size_t count);
 ssize_t fiber_write(int fd, const void *buf, size_t count);
+struct netmsg_head;
+ssize_t fiber_writev(int fd, struct netmsg_head *head);
 
 int luaT_openfiber(struct lua_State *L);
 #endif
