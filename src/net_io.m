@@ -463,6 +463,7 @@ void
 netmsg_io_init(struct netmsg_io *io, struct palloc_pool *pool, int fd)
 {
 	assert(pool != NULL);
+	netmsg_io_retain(io);
 	netmsg_head_init(&io->wbuf, pool);
 	io->rbuf = TBUF(NULL, 0, pool);
 	io->pool = pool;

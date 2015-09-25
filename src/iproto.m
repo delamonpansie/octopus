@@ -168,7 +168,6 @@ init:(int)fd_ service:(struct iproto_service *)service_
 	netmsg_io_init(self, service->pool, fd_);
 	ev_io_start(&in);
 
-	netmsg_io_retain(self);
 	LIST_INSERT_HEAD(&service->clients, self, link);
 }
 @end
