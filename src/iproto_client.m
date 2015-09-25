@@ -363,7 +363,6 @@ data_ready:(int)r
 - (void)
 close
 {
-	iproto_remote_stop_reconnect(self);
 	iproto_future_resolve_err(self);
 	[super close];
 }
@@ -385,6 +384,7 @@ iproto_remote_add_peer(struct iproto_egress *peer, const struct sockaddr_in *dad
 	ts->io->fd = ts->ev.fd = -1;
 	memcpy(&ts->daddr, daddr, sizeof(*daddr));
 
+	netmsg_io_retain(peer);
 	ts->flags |= TAC_RECONNECT;
 	SLIST_INSERT_HEAD(&iproto_tac_list, ts, link);
 	fiber_wake(rendevouz_fiber, NULL);
@@ -401,6 +401,7 @@ iproto_remote_stop_reconnect(struct iproto_egress *peer)
 		ts->ev.fd = -1;
 		ts->flags &= ~TAC_RECONNECT;
 		SLIST_REMOVE(&iproto_tac_list, ts, tac_state, link);
+		netmsg_io_release(peer);
 	}
 }
 
