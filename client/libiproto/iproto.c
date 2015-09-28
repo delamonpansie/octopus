@@ -371,6 +371,24 @@ li_connect_phase2(struct iproto_connection_t *c, u_int32_t opt) {
 		abort();
 	}
 
+
+	if (opt & LIBIPROTO_OPT_HELLO) {
+		c->iovSendLengthMax = 2;
+		c->iovSend = c->iovptr = c->sp_alloc(c->iovSend, c->iovSendLengthMax * sizeof(struct iovec));
+		c->iovSendLength = 0;
+		static char hello_body[] = {0x20,0x00,0x00,0x00,0x05,0x00,0x00,0x00,0x74,0x65,0x73,0x74,0x73,
+					    0x09,0x00,0x00,0x00,0x6c,0x6f,0x63,0x61,0x6c,0x68,0x6f,0x73,0x74,
+					    0x06,0x00,0x00,0x00,0x6e,0x6f,0x63,0x6f,0x6e,0x66};
+		static struct iproto msg = { .msg_code = 0xff06,
+					     .data_len = sizeof(hello_body) };
+		c->iovSend[c->iovSendLength].iov_base = &msg;
+		c->iovSend[c->iovSendLength].iov_len = sizeof(msg);
+		c->iovSendLength++;
+		c->iovSend[c->iovSendLength].iov_base = hello_body;
+		c->iovSend[c->iovSendLength].iov_len = sizeof(hello_body);
+		c->iovSendLength++;
+	}
+
 	if ( connect(c->fd, addr, addr_len) < 0 ) {
 		if ( errno == EINPROGRESS || errno == EALREADY )
 			return ERR_CODE_CONNECT_IN_PROGRESS;
@@ -949,6 +967,12 @@ begin:
 								(c->readArena->arenaEnd - c->readArena->arenaBegin));
 
 				goto begin;
+			}
+
+			if (header->msg_code == 0xff06) {
+				c->readArena->arenaBegin += sizeof(*header);
+				c->readArena->arenaBegin += header->data_len;
+				continue;
 			}
 
 			k = mh_sp_request_get(c->requestHash, header->sync);

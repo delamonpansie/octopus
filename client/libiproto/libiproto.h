@@ -154,6 +154,7 @@ extern const char* errcode_desc(u_int32_t errcode);
 #define LIBIPROTO_OPT_NONBLOCK		0x01
 #define LIBIPROTO_OPT_HAS_4BYTE_ERRCODE	0x02
 #define LIBIPROTO_OPT_TCP_NODELAY	0x04
+#define LIBIPROTO_OPT_HELLO		0x08
 
 struct iproto_connection_t;
 struct iproto_request_t;
