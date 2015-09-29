@@ -486,8 +486,21 @@ netmsg_io_setfd(struct netmsg_io *io, int fd)
 }
 
 @implementation netmsg_io
+- (id)
+retain
+{
+	netmsg_io_retain(self);
+	return self;
+}
 
-/* never call [free] directly, use [close] instead */
+- (void)
+release
+{
+	netmsg_io_release(self);
+}
+
+
+/* never call [free] directly, use [close] + [release] instead */
 - (void)
 free
 {
