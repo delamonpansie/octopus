@@ -87,7 +87,7 @@ proxy_future(struct iproto_egress *dst, struct iproto_ingress *src, const struct
 	future->dst = dst;
 	future->sync = proxy_sync;
 	future->proxy_request = (struct iproto){ .msg_code = msg->msg_code, .sync = msg->sync };
-	if (src) {
+	if (src && src->fd != -1) {
 		future->type = IPROTO_FUTURE_PROXY;
 		future->ingress = src;
 		LIST_INSERT_HEAD(&src->waiting, future, waiting_link);
@@ -290,6 +290,7 @@ iproto_future_resolve_err(struct iproto_egress *c)
 			break;
 		}
 	}
+	TAILQ_INIT(&c->future);
 }
 
 
