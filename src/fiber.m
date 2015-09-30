@@ -492,14 +492,15 @@ autorelease(id obj)
 
 static inline void
 object_release(id obj) {
+#ifdef OCT_OBJECT
 	uintptr_t ptr = (uintptr_t)obj;
 	if ((ptr & 1) != 0) {
 		ptr &= ~(uintptr_t)1;
 		struct tnt_object *tnt = (void*)ptr;
 		object_decr_ref(tnt);
-	} else {
+	} else
+#endif
 		[obj release];
-	}
 }
 
 void
