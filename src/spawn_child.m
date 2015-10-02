@@ -164,8 +164,12 @@ fork_spawner()
 		return pid;
 	}
 
+#if OCT_CHILDREN
 	extern int keepalive_pipe[2];
 	close_all_xcpt(4, fsock, stderrfd, sayfd, keepalive_pipe[1]);
+#else
+	close_all_xcpt(3, fsock, stderrfd, sayfd);
+#endif
 	fiber = sched = [Fiber alloc];
 	sched->name = "spawner";
 	title("");
