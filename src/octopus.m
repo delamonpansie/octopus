@@ -934,10 +934,11 @@ init_storage:
 	keepalive_pipe_init();
 #endif
 
+#if OCT_SPAWNER
 	extern int fork_spawner();
 	if (fork_spawner() < 0)
 		panic("unable to fork spawner");
-
+#endif
 	octopus_ev_init();
 	octopus_ev_backgroud_tasks();
 	fiber_init(NULL); /* must be initialized before Lua */

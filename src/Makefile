@@ -16,7 +16,6 @@ obj += src/util.o
 obj += src/assoc.o
 obj += src/octopus.o
 obj += src/errcode.o
-obj += src/spawn_child.o
 
 obj-log-io += src/log_io.o
 obj-log-io += src/log_io_reader.o
@@ -47,6 +46,14 @@ ifneq ($(findstring src/thread_pool.o,$(obj)),)
   XCFLAGS += -DTHREADS
   src/octopus_ev.o: XCFLAGS += -DTHREADS
   LIBS += -pthread -lrt
+endif
+
+ifneq ($(findstring src/log_io_recovery.o,$(obj)),)
+  obj += src/spawn_child.o
+endif
+
+ifneq ($(findstring src/spawn_child.o,$(obj)),)
+  src/octopus.o: XCFLAGS += -DOCT_SPAWNER=1
 endif
 
 ifneq (,$(TRACE))
