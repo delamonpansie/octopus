@@ -1014,13 +1014,15 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 	u32 value_len;
 	bool print_shard_id = getenv("PRINT_SHARD_ID") != NULL;
 
-	tbuf_printf(buf, "lsn:%" PRIi64 " scn:%" PRIi64 " tm:%.3f t:%s ",
-		    row->lsn, row->scn, row->tm,
+	tbuf_printf(buf, "lsn:%" PRIi64, row->lsn);
+	if (print_shard_id && row->scn != -1)
+		tbuf_printf(buf, " shard:%i", row->shard_id);
+
+	tbuf_printf(buf, " scn:%" PRIi64 " tm:%.3f t:%s ",
+		    row->scn, row->tm,
 		    xlog_tag_to_a(row->tag));
 
-	if (print_shard_id)
-		tbuf_printf(buf, "shard:%i ", row->shard_id);
-	else
+	if (!print_shard_id)
 		tbuf_printf(buf, "%s ", sintoa((void *)&row->cookie));
 
 	if (!handler)
