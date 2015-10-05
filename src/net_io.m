@@ -535,7 +535,9 @@ close
 	ev_io_stop(&out);
 	ev_io_stop(&in);
 	fd = in.fd = out.fd = -1;
+	netmsg_io_release(self);
 }
+
 @end
 const char *
 net_peer_name(int fd)

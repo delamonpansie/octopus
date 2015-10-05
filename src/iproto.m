@@ -150,14 +150,13 @@ data_ready:(int)r
 - (void)
 close
 {
-	[super close];
 	if (processing_link.tqe_prev != NULL) {
 		TAILQ_REMOVE(&service->processing, self, processing_link);
 		processing_link.tqe_prev = NULL;
 	}
 	iproto_future_collect_orphans(&waiting);
 	LIST_REMOVE(self, link);
-	netmsg_io_release(self);
+	[super close];
 }
 
 - (void)
@@ -166,9 +165,8 @@ init:(int)fd_ service:(struct iproto_service *)service_
 	say_debug2("%s: peer %s", __func__, net_peer_name(fd_));
 	service = service_;
 	netmsg_io_init(self, service->pool, fd_);
-	ev_io_start(&in);
-
 	LIST_INSERT_HEAD(&service->clients, self, link);
+	ev_io_start(&in);
 }
 @end
 
