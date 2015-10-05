@@ -183,7 +183,6 @@ establish_connection
 	say_debug2("%s: connect", __func__);
 	if ((fd = tcp_connect(&feeder->addr, NULL, 5)) < 0) {
 		snprintf(errbuf, sizeof(errbuf), "can't connect, %s", strerror_o(errno));
-		say_debug(errbuf);
 		return -1;
 	}
 
@@ -321,7 +320,7 @@ handshake:(i64)scn
 	}
 
 	if (version != default_version && version != version_11) {
-		snprintf(errbuf, sizeof(errbuf), "unknown remote version (%i)", version);
+		snprintf(errbuf, sizeof(errbuf), "unknown remote version");
 		goto err;
 	}
 
@@ -329,7 +328,6 @@ handshake:(i64)scn
 	say_info("starting remote recovery from scn:%" PRIi64, scn);
 	return 1;
 err:
-	say_error(errbuf);
 	tbuf_reset(&rbuf);
 	if (fd >= 0) {
 		close(fd);
