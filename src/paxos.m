@@ -386,15 +386,18 @@ paxos_elect(va_list ap)
 #define PAXOS_MSG_DROP(h) (void)h
 #endif
 
-#define PAXOS_MSG_CHECK(msg, peer)	({				\
+#define PAXOS_MSG_CHECK(wbuf, msg, peer)	({			\
+	struct netmsg_io *io = container_of(wbuf, struct netmsg_io, wbuf); \
 	if ((msg)->version != paxos_default_version) {			\
 		say_warn("%s: bad version %i, closing connect from peer %i", \
 			 __func__, (msg)->version, (msg)->peer_id);	\
-		@throw [IProtoClose with_reason:"bad version"];	\
+		[io close]; \
+		return;							\
 	}								\
 	if (!peer) {					\
 		say_warn("%s: closing connect from unknown peer %i", __func__, (msg)->peer_id); \
-		@throw [IProtoClose with_reason:"unknown peer"];	\
+		[io close];						\
+		return;							\
 	}								\
 	PAXOS_MSG_DROP(&(msg)->header);					\
 })
@@ -412,7 +415,7 @@ leader(struct netmsg_head *wbuf, struct iproto *msg, void *arg)
 
 	say_debug("%s: msg:%x", __func__, msg->msg_code);
 
-	PAXOS_MSG_CHECK(pmsg, peer);
+	PAXOS_MSG_CHECK(wbuf, pmsg, peer);
 
 	say_debug("<LEADER_PROPOSE from %i/%s to_expire:%.2f leader:%i/propos:%i",
 		  peer->id, peer->name, to_expire, paxos->leader_id, pmsg->leader_id);
@@ -733,14 +736,14 @@ msg_dump(const char *prefix, const struct paxos_peer *peer, const struct msg_pax
 }
 
 static void
-learner(struct netmsg_head *wbuf __attribute__((unused)), struct iproto *imsg, void *arg)
+learner(struct netmsg_head *wbuf, struct iproto *imsg, void *arg)
 {
 	Paxos *paxos = RT_SHARD(arg);
 	struct msg_paxos *msg = (struct msg_paxos *)imsg;
 	struct paxos_peer *peer = paxos_peer(paxos, msg->peer_id);
 	struct proposal *p;
 
-	PAXOS_MSG_CHECK(msg, peer);
+	PAXOS_MSG_CHECK(wbuf, msg, peer);
 
 	msg_dump("learner: <", peer, msg);
 
@@ -819,7 +822,7 @@ iproto_acceptor(struct netmsg_head *wbuf, struct iproto *imsg, void *arg __attri
 	struct msg_paxos *msg = (struct msg_paxos *)imsg;
 	struct paxos_request req = { .msg = msg, .value = msg->value, .type = PAXOS_REQ_REMOTE, {.wbuf = wbuf} };
 	struct paxos_peer *peer = paxos_peer(paxos, msg->peer_id);
-	PAXOS_MSG_CHECK(msg, peer);
+	PAXOS_MSG_CHECK(wbuf, msg, peer);
 
 	msg_dump("acceptor: <", peer, msg);
 	acceptor(paxos, &req);

@@ -76,10 +76,6 @@ iproto_worker(va_list ap)
 			netmsg_io_retain(a.io);
 			a.cb(&a.io->wbuf, a.r, a.arg);
 		}
-		@catch (IProtoClose *e) {
-			[a.io close];
-			[e release];
-		}
 		@catch (Error *e) {
 			/* FIXME: where is no way to rollback modifications of wbuf.
 			   cb() must not throw any exceptions after it modified wbuf */
@@ -306,11 +302,6 @@ process_requests(struct iproto_service *service, struct iproto_ingress *c)
 			@try {
 				ih->cb(&io->wbuf, request, arg);
 			}
-			@catch (IProtoClose *e) {
-				[e release];
-				[io close];
-				goto out;
-			}
 			@catch (Error *e) {
 				u32 rc = ERR_CODE_UNKNOWN_ERROR;
 				if ([e respondsTo:@selector(code)])
@@ -492,11 +483,6 @@ iproto_service_info(struct tbuf *out, struct iproto_service *service)
 			tbuf_printf(out, "      - { count: %i }" CRLF, m->count);
 	}
 }
-
-
-
-@implementation IProtoClose
-@end
 
 @implementation IProtoError
 - (IProtoError *)
