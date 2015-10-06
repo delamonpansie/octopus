@@ -146,34 +146,54 @@ update_rt(int shard_id, enum shard_mode mode, Shard<Shard> *shard, const struct 
 void
 update_rt_notify(va_list ap __attribute__((unused)))
 {
-	struct iproto_egress_list peers = SLIST_HEAD_INITIALIZER(&peers);
+	int sock = socket(AF_INET, SOCK_DGRAM, 0);
+	if (sock == -1) {
+		say_syserror("socket");
+		return;
+	}
 
+	int cnt = 0;
+	static struct sockaddr_in peer_addr[16];
 	for (struct octopus_cfg_peer **p = cfg.peer; *p; p++) {
 		if (strcmp((*p)->name, cfg.hostname) == 0)
 			continue;
+		if (cnt == nelem(peer_addr)) {
+			say_error("to many peers");
+			break;
+		}
 		const struct sockaddr_in *addr = shard_addr((*p)->name, PORT_PRIMARY);
-		struct iproto_egress *egress = iproto_remote_add_peer(NULL, addr, fiber->pool);
-		SLIST_INSERT_HEAD(&peers, egress, link);
+		if (!addr || addr->sin_family == AF_UNSPEC) {
+			say_error("bad peer addr %s", (*p)->name);
+			continue;
+		}
+		peer_addr[cnt++] = *addr;
 	}
 
 	for (;;) {
-		fiber_gc();
 		fiber_sleep(1);
 
 		for (int i = 0; i < nelem(shard_rt); i++) {
-			id<Shard> shard = shard_rt[i].shard;
 			if (shard_rt[i].mode != SHARD_MODE_LOCAL)
 				continue;
-			struct iproto msg = { .msg_code = [shard id] << 16 | MSG_SHARD };
+			id<Shard> shard = shard_rt[i].shard;
 			struct shard_op *sop = [shard snapshot_header];
 			sop->op |= 0x80; /* mark as rt update */
-			struct iovec iov = { .iov_base = sop,
-					     .iov_len = sizeof(*sop) };
-
-			struct iproto_egress *e;
-			SLIST_FOREACH(e, &peers, link)
-				iproto_proxy_send(e, NULL, &msg, &iov, 1);
-			say_info("route notify shard %i", [shard id]);
+			struct iproto header = { .msg_code = [shard id] << 16 | MSG_SHARD,
+						 .data_len = sizeof(*sop)};
+			struct iovec iov[2] = { { .iov_base = &header,
+						  .iov_len = sizeof(header) },
+						{ .iov_base = sop,
+						  .iov_len = sizeof(*sop) } };
+			struct msghdr msg = (struct msghdr){
+				.msg_namelen = sizeof(peer_addr[0]),
+				.msg_iov = iov,
+				.msg_iovlen = nelem(iov)
+			};
+			for (int j = 0; j < cnt; j++) {
+				msg.msg_name = &peer_addr[j];
+				if (sendmsg(sock, &msg, 0) < 0)
+					say_syserror("sendmsg");
+			}
 		}
 	}
 }
@@ -185,7 +205,7 @@ parse_sop(void *data, int len)
 	if (sop->ver != 0)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "bad version");
 
-	if (len < (sizeof(struct shard_op)))
+	if (len < sizeof(struct shard_op))
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "bad request");
 	if (!cfg.hostname || !cfg.peer || !cfg.peer[0])
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "hostname or peer unconfigured");
@@ -392,7 +412,7 @@ init
 - (Shard<Shard> *)
 add_shard:(int)shard_id scn:(i64)scn executor:(id<Executor>)executor sop:(const struct shard_op *)sop
 {
-	assert(sop->ver == 0 && sop->op == 0);
+	assert(sop->ver == 0 && (sop->op == 0 || sop->op == 0x80));
 	Shard<Shard> *shard;
 	switch (sop->type) {
 	case SHARD_TYPE_PAXOS:
@@ -883,40 +903,18 @@ status
 }
 
 static void
-iproto_shard_cb_aux(struct iproto *req, void *arg)
+iproto_shard_cb_aux2(va_list ap)
 {
-	int shard_id = req->msg_code >> 16;
-	struct shard_route *route = arg;
+	bool is_master = va_arg(ap, int);
+	bool rt_update = va_arg(ap, int);
+	int shard_id = va_arg(ap, int);
+	struct shard_route *route = va_arg(ap, struct shard_route *);
+	struct shard_op *sop = va_arg(ap, struct shard_op *);
 	Shard<Shard> *shard = route->shard;
-	struct shard_op *sop = parse_sop(req->data, req->data_len);
 
-	bool is_master = strncmp(sop->peer[0], cfg.hostname, 16) == 0,
-	     our_shard = false,
-	     rt_update = sop->op & 0x80;
-	for (int i = 0; i < nelem(sop->peer); i++) {
-		if (strncmp(sop->peer[i], cfg.hostname, 16) == 0) {
-			our_shard = true;
-			break;
-		}
-	}
-	sop->op &= 0x7f;
-
-	if (!our_shard) {
-		if (!rt_update)
-			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't create non local shard");
-		assert (shard == nil || !shard->dummy);
-
-		[shard free];
-		const struct sockaddr_in *master_addr = shard_addr(sop->peer[0], PORT_PRIMARY);
-		update_rt(shard_id, SHARD_MODE_PROXY, nil, master_addr);
-		return;
-	}
-
-	if (route->mode == SHARD_MODE_LOADING)
-		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "shard is currently loading");
-
-	if (route->mode == SHARD_MODE_PARTIAL_PROXY)
-		return; // will handle this command via replication
+	void *tmp = palloc(fiber->pool, sizeof(*sop));
+	memcpy(tmp, sop, sizeof(*sop));
+	sop = tmp;
 
 	extern Recovery *recovery;
 	if (is_master) {
@@ -955,23 +953,68 @@ iproto_shard_cb_aux(struct iproto *req, void *arg)
 			abort();
 		}
 	}
+
+
+}
+static void
+iproto_shard_cb_aux(struct iproto *req)
+{
+	int shard_id = req->msg_code >> 16;
+	struct shard_route *route = &shard_rt[shard_id];
+	Shard<Shard> *shard = route->shard;
+	struct shard_op *sop = parse_sop(req->data, req->data_len);
+
+	bool is_master = strncmp(sop->peer[0], cfg.hostname, 16) == 0,
+	     our_shard = false,
+	     rt_update = sop->op & 0x80;
+	for (int i = 0; i < nelem(sop->peer); i++) {
+		if (strncmp(sop->peer[i], cfg.hostname, 16) == 0) {
+			our_shard = true;
+			break;
+		}
+	}
+	// sop->op &= 0x7f;
+
+	if (!our_shard) {
+		if (!rt_update)
+			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't create non local shard");
+		assert (shard == nil || !shard->dummy);
+
+		[shard free];
+		const struct sockaddr_in *master_addr = shard_addr(sop->peer[0], PORT_PRIMARY);
+		update_rt(shard_id, SHARD_MODE_PROXY, nil, master_addr);
+		return;
+	}
+
+	if (route->mode == SHARD_MODE_LOADING)
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "shard is currently loading");
+
+	if (route->mode == SHARD_MODE_PARTIAL_PROXY)
+		return; // will handle this command via replication
+
+	fiber_create("load/alter shard", iproto_shard_cb_aux2, is_master, rt_update, shard_id, route, sop);
 }
 
 static void
-iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req, void *arg)
+iproto_shard_udpcb(const char *buf, ssize_t len, void *data __attribute__((unused)))
 {
-	iproto_shard_cb_aux(req, arg);
+	struct iproto *req = (void *)buf;
+	if (len < sizeof(struct iproto) || sizeof(*req) + req->data_len != len)
+		return;
+	iproto_shard_cb_aux(req);
+}
+static void
+iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req, void *arg __attribute__((unused)))
+{
+	iproto_shard_cb_aux(req);
 	iproto_reply_small(wbuf, req, ERR_CODE_OK);
 }
-
 const char *
 iproto_shard_luacb(struct iproto *req)
 {
 	static char buf[80];
-	int shard_id = req->msg_code >> 16;
-	struct shard_route *route = &shard_rt[shard_id]; // lua call can't supply rotue via arg
 	@try {
-		iproto_shard_cb_aux(req, (void *)route);
+		iproto_shard_cb_aux(req);
 	}
 	@catch (Error *err) {
 		snprintf(buf, sizeof(buf), "error: %s", err->reason);
@@ -986,7 +1029,7 @@ service:(struct iproto_service *)s
 {
 	if (cfg.wal_writer_inbox_size == 0)
 		return;
-
+	fiber_create("route_recv", udp_server, s->addr, iproto_shard_udpcb, NULL, NULL);
 	service_register_iproto(s, MSG_SHARD, iproto_shard_cb, IPROTO_FORCE_LOCAL);
 	paxos = objc_lookUpClass("Paxos");
 	[paxos service:s];
@@ -1074,8 +1117,9 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 		const char *mod_name = read_bytes(&row_data, 16);
 
 		switch (op) {
-		case 0: tbuf_printf(buf, "CREATE_SHARD"); break;
-		case 1: tbuf_printf(buf, "ALTER_SHARD"); break;
+		case 0: tbuf_printf(buf, "SHARD_CREATE"); break;
+		case 1: tbuf_printf(buf, "SHARD_ALTER"); break;
+		case 0x80 :tbuf_printf(buf, "SHARD_LOAD"); break;
 		default: tbuf_printf(buf, "UNKNOWN"); break;
 		}
 		tbuf_printf(buf, " shard_id:%i %s %s", row->shard_id, type == 0 ? "POR" : "PAXOS", mod_name);
