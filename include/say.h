@@ -125,4 +125,12 @@ void panic_exc_fmt(Error *exc, const char *format, ...) __attribute__((noreturn)
 #define panic(...) _panic(__FILE__, __LINE__, __VA_ARGS__)
 #define panic_syserror(...) _panic_syserror(__FILE__, __LINE__, __VA_ARGS__)
 
+
+/* fg: 30 + color, bg: 40 + color */
+#define RED(string) "\e[31m" string "\e[39m"
+#define GREEN(string) "\e[32m" string "\e[39m"
+#define YELLOW(string) "\e[33m" string "\e[39m"
+#define BLUE(string) "\e[34m" string "\e[39m"
+#define PINK(string) "\e[35m" string "\e[39m"
+#define LIGHTBLUE(string) "\e[36m" string "\e[39m"
 #endif
