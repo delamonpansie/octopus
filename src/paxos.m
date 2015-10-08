@@ -391,12 +391,13 @@ paxos_elect(va_list ap)
 	if ((msg)->version != paxos_default_version) {			\
 		say_warn("%s: bad version %i, closing connect from peer %i", \
 			 __func__, (msg)->version, (msg)->peer_id);	\
-		[io close]; \
+		if (io->fd != -1) [io close];				\
 		return;							\
 	}								\
 	if (!peer) {					\
-		say_warn("%s: closing connect from unknown peer %i", __func__, (msg)->peer_id); \
-		[io close];						\
+		say_warn("%s: closing connect from unknown peer %i",	\
+			 __func__, (msg)->peer_id);			\
+		if (io->fd != -1) [io close];				\
 		return;							\
 	}								\
 	PAXOS_MSG_DROP(&(msg)->header);					\

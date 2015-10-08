@@ -135,9 +135,45 @@ service_alloc_handlers(struct iproto_service *s, int capa)
 
 @implementation iproto_ingress
 - (void)
-data_ready:(int)r
+init:(int)fd_ pool:(struct palloc_pool *)pool_
 {
-	(void)r;
+	say_debug2("%s: peer %s", __func__, net_peer_name(fd_));
+	netmsg_io_init(self, pool_, fd_);
+	ev_io_start(&in);
+}
+
+- (void)
+packet_ready:(struct iproto *)msg
+{
+	(void)msg;
+}
+
+- (void)
+data_ready
+{
+	while (1) {
+		struct iproto *msg = rbuf.ptr;
+		int len = tbuf_len(&rbuf);
+		if (len < sizeof(struct iproto) || len < sizeof(struct iproto) + msg->data_len)
+			return;
+
+		tbuf_ltrim(&rbuf, sizeof(struct iproto) + msg->data_len);
+		[self packet_ready:msg];
+	}
+}
+
+- (void)
+close
+{
+	iproto_future_collect_orphans(&waiting);
+	[super close];
+}
+@end
+
+@implementation iproto_ingress_svc
+- (void)
+data_ready
+{
 	/* client->service->processing will be traversed by wakeup_workers() */
 	if (processing_link.tqe_prev == NULL)
 		TAILQ_INSERT_TAIL(&service->processing, self, processing_link);
@@ -150,9 +186,9 @@ close
 		TAILQ_REMOVE(&service->processing, self, processing_link);
 		processing_link.tqe_prev = NULL;
 	}
-	iproto_future_collect_orphans(&waiting);
 	LIST_REMOVE(self, link);
 	[super close];
+	netmsg_io_release(self);
 }
 
 - (void)
@@ -170,7 +206,7 @@ static void
 service_gc(struct palloc_pool *pool, void *ptr)
 {
 	struct iproto_service *s = ptr;
-	struct iproto_ingress *c;
+	struct iproto_ingress_svc *c;
 
 	s->pool = pool;
 	LIST_FOREACH(c, &s->clients, link)
@@ -200,7 +236,7 @@ iproto_service(struct iproto_service *service, const char *addr)
 	palloc_register_gc_root(service->pool, service, service_gc);
 
 	if (service->ingress_class == Nil)
-		service->ingress_class = [iproto_ingress class];
+		service->ingress_class = [iproto_ingress_svc class];
 	service->acceptor = fiber_create("tcp/acceptor", tcp_server, addr,
 					 iproto_accept_client, service->on_bind, service);
 	if (service->acceptor == NULL)
@@ -252,7 +288,7 @@ has_full_req(const struct tbuf *buf)
 }
 
 static void
-process_requests(struct iproto_service *service, struct iproto_ingress *c)
+process_requests(struct iproto_service *service, struct iproto_ingress_svc *c)
 {
 	struct netmsg_io *io = c;
 	int batch = service->batch;
@@ -382,7 +418,7 @@ static void
 iproto_wakeup_workers(ev_prepare *ev)
 {
 	struct iproto_service *service = (void *)ev - offsetof(struct iproto_service, wakeup);
-	struct iproto_ingress *c, *tmp, *last;
+	struct iproto_ingress_svc *c, *tmp, *last;
 	struct palloc_pool *saved_pool = fiber->pool;
 	assert(saved_pool == sched->pool);
 
@@ -464,7 +500,7 @@ iproto_error_fmt(struct netmsg_head *h, const struct iproto *request, u32 ret_co
 void
 iproto_service_info(struct tbuf *out, struct iproto_service *service)
 {
-	struct iproto_ingress *c;
+	struct iproto_ingress_svc *c;
 	struct netmsg *m;
 
 	tbuf_printf(out, "%s:" CRLF, service->name);

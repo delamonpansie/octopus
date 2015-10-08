@@ -81,7 +81,7 @@ struct netmsg {
 - (void)release; /* do not override : IMP caching in process_requests()  */
 - (id)retain; /* do not override : IMP caching in process_requests()  */
 - (void)close;
-- (void)data_ready:(int)r;
+- (void)data_ready;
 - (void)tac_event:(int)fd; /* called on tcp_async_connect() result */
 @end
 

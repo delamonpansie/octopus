@@ -349,10 +349,8 @@ has_full_req(const struct tbuf *buf)
 
 @implementation iproto_egress
 - (void)
-data_ready:(int)r
+data_ready
 {
-	(void)r;
-
 	while (has_full_req(&rbuf)) {
 		struct iproto *req = iproto(&rbuf);
 		assert((i32)req->data_len > 0 || req->msg_code == MSG_PING);

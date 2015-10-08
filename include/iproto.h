@@ -76,10 +76,16 @@ void iproto_error_fmt(struct netmsg_head *h, const struct iproto *request, u32 r
 LIST_HEAD(iproto_future_list, iproto_future);
 @interface iproto_ingress: netmsg_io {
 @public
-	LIST_ENTRY(iproto_ingress) link;
-	TAILQ_ENTRY(iproto_ingress) processing_link;
-
 	struct iproto_future_list waiting;
+}
+- (void)init:(int)fd_ pool:(struct palloc_pool *)pool;
+- (void)packet_ready:(struct iproto *)msg;
+@end
+
+@interface iproto_ingress_svc: iproto_ingress {
+@public
+	LIST_ENTRY(iproto_ingress_svc) link;
+	TAILQ_ENTRY(iproto_ingress_svc) processing_link;
 	struct iproto_service *service;
 }
 - (void)init:(int)fd_ service:(struct iproto_service *)service_;
@@ -113,8 +119,8 @@ struct iproto_service {
 	struct palloc_pool *pool;
 	size_t pool_allocated; /* used for differential calls to palloc_gc */
 	const char *name;
-	TAILQ_HEAD(ingress_tailq, iproto_ingress) processing;
-	LIST_HEAD(, iproto_ingress) clients;
+	TAILQ_HEAD(ingress_tailq, iproto_ingress_svc) processing;
+	LIST_HEAD(, iproto_ingress_svc) clients;
 	struct Fiber *acceptor;
 	SLIST_HEAD(, Fiber) workers; /* <- handlers */
 	int batch;

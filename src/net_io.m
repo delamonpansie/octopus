@@ -431,7 +431,7 @@ netmsg_io_read_cb(ev_io *ev, int __attribute__((unused)) events)
 		return r;
 	}
 
-	[io data_ready:r];
+	[io data_ready];
 	return r;
 }
 
@@ -475,6 +475,7 @@ netmsg_io_init(struct netmsg_io *io, struct palloc_pool *pool, int fd)
 		netmsg_io_setfd(io, fd);
 	else
 		io->fd = -1;
+	say_debug2("%s: %p fd:%i", __func__, io, io->fd);
 }
 
 void
@@ -500,20 +501,22 @@ release
 }
 
 
-/* never call [free] directly, use [close] + [release] instead */
+/* never call [free] directly, use [release] */
 - (void)
 free
 {
-	assert(fd < 0);
+	if (fd != -1)
+		[self close];
+	tbuf_reset(&rbuf);
 	palloc_unregister_gc_root(pool, self);
 	netmsg_head_dealloc(&wbuf);
 	[super free];
+	say_debug2("%s: %p", __func__, self);
 }
 
 - (void)
-data_ready:(int)r
+data_ready
 {
-	(void)r;
 }
 
 - (void)
@@ -525,17 +528,14 @@ tac_event:(int)event
 - (void)
 close
 {
+	if (fd < 0)
+		return;
 	say_debug("closing connection to %s", net_peer_name(fd));
-	if (fd >= 0) {
-		int r = close(fd);
-		if (r < 0)
-			say_syswarn("close");
-	}
-	tbuf_reset(&rbuf);
+	if (close(fd) < 0)
+		say_syswarn("close");
 	ev_io_stop(&out);
 	ev_io_stop(&in);
 	fd = in.fd = out.fd = -1;
-	netmsg_io_release(self);
 }
 
 @end
