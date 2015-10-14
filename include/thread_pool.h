@@ -98,7 +98,7 @@ int thread_responses_get(thread_responses *queue, thread_response *res);
 /* Specialization api */
 - (void) thread_loop: (thread_pool_waiter*) waiter;
 /* called by default thread_loop */
-- (i64) perform: (request_arg)arg;
+- (i64) perform_request: (request_arg)arg;
 - (void) close;
 /* Implementation api */
 - (thread_pool_request*) pop_request: (thread_pool_waiter*) w;

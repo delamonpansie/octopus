@@ -395,7 +395,7 @@ init_num: (int) n
 }
 
 - (i64)
-perform: (request_arg)arg
+perform_request: (request_arg)arg
 {
 	return arg.i;
 }
@@ -452,7 +452,7 @@ thread_loop: (thread_pool_waiter*) waiter
 			return;
 		}
 		@try {
-			[self perform: request->req.arg];
+			[self perform_request: request->req.arg];
 		}
 		@catch (id e) {
 			say_error("thread loop catched an error");
@@ -562,7 +562,7 @@ thread_loop: (thread_pool_waiter*)waiter
 			return;
 		}
 		@try {
-			res = [self perform: request->req.arg];
+			res = [self perform_request: request->req.arg];
 			[self respond: request res: res];
 		}
 		@catch (id e) {
