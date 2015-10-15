@@ -245,6 +245,7 @@ chunk_poison(const struct chunk *chunk)
 	assert(chunk->magic == chunk_magic);
 #if !defined(NDEBUG) && defined(PALLOC_POISON)
 	(void)VALGRIND_MAKE_MEM_DEFINED(chunk->brk, chunk->free);
+	ASAN_UNPOISON_MEMORY_REGION(chunk->brk, chunk->free);
 	memset(chunk->brk, poison_char, chunk->free);
 	(void)VALGRIND_MAKE_MEM_NOACCESS(chunk->brk, chunk->free);
 #endif
