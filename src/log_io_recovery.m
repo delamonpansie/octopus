@@ -286,7 +286,8 @@ parse_sop(void *data, int len)
 	}
 
 	assert(our_shard);
-	say_info("init shard %i SCN:%"PRIi64" %s", shard_id, scn, [[self class] name]);
+	say_info("init shard %p %i SCN:%"PRIi64" %s %s", self, shard_id, scn,
+		 [[self class] name], [[(id)executor class] name]);
 	return self;
 }
 
