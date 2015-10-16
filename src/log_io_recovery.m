@@ -633,11 +633,14 @@ load_from_remote
 	int count = 0;
 	struct feeder_param feeder;
 	XLogRemoteReader *remote_reader = [[XLogRemoteReader alloc] init_recovery:self];
+#if CFG_object_space
 	if (cfg.object_space) {
  		enum feeder_cfg_e fid_err = feeder_param_fill_from_cfg(&feeder, NULL);
 		assert (!fid_err && feeder.addr.sin_family != AF_UNSPEC);
 		count = [remote_reader load_from_remote:&feeder];
-	} else {
+	} else
+#endif
+	{
 		for (struct octopus_cfg_peer **p = cfg.peer; *p; p++) {
 			if (strcmp((*p)->name, cfg.hostname) == 0)
 				continue;
@@ -690,6 +693,8 @@ simple
 			exit(EX_USAGE);
 		}
 	}
+#else
+	(void)local_lsn;
 #endif
 
 	if (cfg.local_hot_standby) {
