@@ -1335,7 +1335,7 @@ recover_row_sys:(const struct row_v12 *)r
 		p->flags |= P_WALED;
 		proposal_mark_applied(self, p);
 
-		run_crc_verify(&run_crc_state, &row_data);
+		run_crc_verify(r, &run_crc_state, &row_data);
 		break;
 
 	case paxos_promise:

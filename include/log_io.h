@@ -280,7 +280,8 @@ struct run_crc {
 };
 void run_crc_calc(u32 *crc, u16 row_tag, const void *data, int len);
 void run_crc_record(struct run_crc* state, struct run_crc_hist entry);
-void run_crc_verify(struct run_crc *run_crc, struct tbuf *buf);
+void run_crc_verify(const struct row_v12 *r, struct run_crc *run_crc, struct tbuf *buf);
+
 ev_tstamp run_crc_lag(struct run_crc *run_crc);
 const char *run_crc_status(struct run_crc *run_crc);
 
