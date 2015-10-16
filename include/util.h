@@ -70,9 +70,9 @@ void *xrealloc(void *ptr, size_t size);
 #  define ENUM_STR_DEF(s, v, d...) [s] = #s,
 #  define ENUM_STR_INITIALIZER(define) { define(ENUM_STR_DEF) }
 #endif
-#ifndef ENUM_STR_INITIALIZER
+#ifndef ENUM_DESCR_INITIALIZER
 #  define ENUM_DESCR_DEF(s, v, d...) [s] = d,
-#  define ENUM_STR_INITIALIZER(define) { define(ENUM_DESCR_DEF) }
+#  define ENUM_DESCR_INITIALIZER(define) { define(ENUM_DESCR_DEF) }
 #endif
 
 /* Macros for printf functions */
