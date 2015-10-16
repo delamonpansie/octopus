@@ -2,6 +2,7 @@
 
 set -e
 test -d .git
+test ! -f .nofetch
 test -f include/config.h.in
 
 mkdir -p mod client
