@@ -285,6 +285,23 @@ void run_crc_verify(const struct row_v12 *r, struct run_crc *run_crc, struct tbu
 ev_tstamp run_crc_lag(struct run_crc *run_crc);
 const char *run_crc_status(struct run_crc *run_crc);
 
+struct shard_op_aux {
+	i64 current_scn;
+};
+
+struct shard_op {
+	u8 ver;
+	u8 op;
+	u8 type;
+	u32 row_count;
+	u32 run_crc_log;
+	char mod_name[16];
+	char peer[5][16];
+	struct shard_op_aux aux[0];
+} __attribute__((packed));
+
+bool our_shard(const struct shard_op *sop);
+
 
 @protocol Executor
 - (id) init_shard:(Shard<Shard> *)obj;

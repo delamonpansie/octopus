@@ -49,22 +49,6 @@
 #include <unistd.h>
 #include <sysexits.h>
 
-
-struct shard_op_aux {
-	i64 current_scn;
-};
-
-struct shard_op {
-	u8 ver;
-	u8 op;
-	u8 type;
-	u32 row_count;
-	u32 run_crc_log;
-	char mod_name[16];
-	char peer[5][16];
-	struct shard_op_aux aux[0];
-} __attribute__((packed));
-
 Class paxos = Nil;
 
 i64 fold_scn = 0;
@@ -86,6 +70,14 @@ dummy_row(i64 lsn, i64 scn, u16 tag)
 	return r;
 }
 
+bool
+our_shard(const struct shard_op *sop)
+{
+	for (int i = 0; i < nelem(sop->peer); i++)
+		if (strcmp(sop->peer[i], cfg.hostname) == 0)
+			return true;
+	return false;
+}
 
 static struct octopus_cfg_peer *
 cfg_peer_by_name(const char *name)
@@ -262,18 +254,20 @@ parse_sop(void *data, int len)
 	scn = scn_;
 	run_crc_log = sop->run_crc_log;
 
-	bool our_shard = false;
 	for (int i = 0; i < nelem(sop->peer); i++) {
 		if (strlen(sop->peer[i]) == 0)
-			continue;
+			break;
+
 		peer[i] = strdup(sop->peer[i]); // FIXME: это данные из сети
 
 		assert(cfg.hostname); // cfg.hostname может быть пустым только при создании dummy шарда.
-		if (strcmp(peer[i], cfg.hostname) == 0)
-			our_shard = true;
 	}
-	if (!cfg.hostname)
-		our_shard = true;
+
+	bool our;
+	if (!cfg.hostname) // legacy mode
+		our = true;
+	else
+		our = our_shard(sop);
 
 	if (objc_lookUpClass(sop->mod_name) == Nil)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "bad mod name");
@@ -285,7 +279,7 @@ parse_sop(void *data, int len)
 		executor = [[objc_lookUpClass(sop->mod_name) alloc] init_shard:self];
 	}
 
-	assert(our_shard);
+	assert(our);
 	say_info("init shard %p %i SCN:%"PRIi64" %s %s", self, shard_id, scn,
 		 [[self class] name], [[(id)executor class] name]);
 	return self;
@@ -970,18 +964,11 @@ iproto_shard_cb_aux(struct iproto *req)
 	Shard<Shard> *shard = route->shard;
 	struct shard_op *sop = parse_sop(req->data, req->data_len);
 
-	bool is_master = strncmp(sop->peer[0], cfg.hostname, 16) == 0,
-	     our_shard = false,
-	     rt_update = sop->op & 0x80;
-	for (int i = 0; i < nelem(sop->peer); i++) {
-		if (strncmp(sop->peer[i], cfg.hostname, 16) == 0) {
-			our_shard = true;
-			break;
-		}
-	}
-	// sop->op &= 0x7f;
+	bool master = strncmp(sop->peer[0], cfg.hostname, 16) == 0,
+		our = our_shard(sop),
+	  rt_update = sop->op & 0x80;
 
-	if (!our_shard) {
+	if (!our) {
 		if (!rt_update)
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't create non local shard");
 		assert (shard == nil || !shard->dummy);
