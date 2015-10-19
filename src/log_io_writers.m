@@ -97,16 +97,12 @@ append_row:(struct row_v12 *)row data:(const void *)data
 - (int)
 prepare_write:(const struct shard_state *)st
 {
-	static i64 *tmp;
-	if (tmp == NULL)
-		tmp = xcalloc(MAX_SHARD, sizeof(*tmp));
-
 	if (current_wal == nil) {
-		for (int i = 0; i < MAX_SHARD; i++) {
-			tmp[i] = st[i].scn ? st[i].scn + 1 : 0;
-		}
+		static i64 scn[MAX_SHARD];
+		for (int i = 0; i < MAX_SHARD; i++)
+			scn[i] = st[i].scn ? st[i].scn + 1 : 0;
 
-		current_wal = [wal_dir open_for_write:lsn + 1 scn:tmp];
+		current_wal = [wal_dir open_for_write:lsn + 1 scn:scn];
 	}
 
         if (current_wal == nil) {
@@ -183,8 +179,9 @@ confirm_write
 
 struct request {
 	u32 row_count;
+	int shard_id;
 	struct wal_reply *reply;
-	const struct row_v12 **written_rows;
+	struct row_v12 **rows;
 	bool clear_shard_state;
 };
 
@@ -227,6 +224,69 @@ mode2str(int mode)
 	case SCN_PASS: return "PASS";
 	case SCN_ASSIGN : return "ASSIGN";
 	default: assert(false);
+	}
+}
+
+static int
+request_row_count(const struct tbuf *rbuf)
+{
+	const u32 *ptr = (const u32 *)rbuf->ptr;
+	int len = tbuf_len(rbuf);
+	if (len > sizeof(u32) && len >= ptr[0])
+		return ptr[1];
+	return -1;
+}
+
+static void
+request_parse(struct request *request, int row_count, struct tbuf *rbuf)
+{
+	tbuf_ltrim(rbuf, sizeof(u32) * 2); /* drop packet_len & row_count */
+
+	request->row_count = row_count;
+	request->rows = p0alloc(fiber->pool, sizeof(void *) * row_count);
+	request->reply = p0alloc(fiber->pool,
+				 sizeof(struct wal_reply) +
+				 row_count * sizeof(request->reply->row_crc[0]));
+	request->reply->sender = read_ptr(rbuf);
+	request->reply->fid = read_u32(rbuf);
+	request->reply->scn = -1;
+	request->reply->lsn = -1;
+	request->shard_id = -1;
+	request->clear_shard_state = false;
+
+	for (int i = 0; i < row_count; i++) {
+		struct row_v12 *h = read_bytes(rbuf, sizeof(*h));
+		tbuf_ltrim(rbuf, h->len); /* row data */
+		request->rows[i] = h;
+		assert(request->shard_id == -1 || request->shard_id == h->shard_id);
+		request->shard_id = h->shard_id;
+	}
+}
+
+static void
+update_scn_state(struct shard_state *st, struct request *request, struct row_v12 *h)
+{
+	struct shard_state *cst = &st[h->shard_id];
+	if (unlikely(h->tag == (shard_tag|TAG_SYS))) {
+		const struct shard_op *sop = (void *)h->data;
+		assert(sop->ver == 0);
+		assert((sop->op & 0x7f) == 0);
+		if (our_shard(sop))
+			cst->scn = h->scn;
+		else
+			request->clear_shard_state = true;
+		cst->scn_mode = sop->type == 0 ? SCN_ASSIGN : SCN_PASS;
+	}
+
+	switch (cst->scn_mode) {
+	case SCN_PASS:
+		break;
+	case SCN_ASSIGN:
+		if (h->scn == 0)
+			h->scn = cst->scn + ++cst->wet_rows;
+		else
+			say_warn("ASSIGN override SCN:%"PRIi64, h->scn);
+		break;
 	}
 }
 
@@ -299,92 +359,40 @@ wal_disk_writer(int fd, void *state, int len)
 
 		for (int i = 0; i < nelem(requests); i++) {
 			struct request *request = &requests[i];
-			if (tbuf_len(&rbuf) < sizeof(u32) ||
-			    tbuf_len(&rbuf) < *(u32 *)rbuf.ptr)
+			int row_count = request_row_count(&rbuf);
+
+			if (row_count < 0) // buffer too short
 				break;
 
-			u32 row_count = ((u32 *)rbuf.ptr)[1];
 			if (!io_failure && row_count > [writer->current_wal wet_rows_offset_available]) {
 				assert(request_count != 0);
 				delay_read = true;
 				break;
 			}
-			tbuf_ltrim(&rbuf, sizeof(u32) * 2); /* drop packet_len & row_count */
 
-			say_debug("request[%i] rows:%i", i, row_count);
+			request_parse(request, row_count, &rbuf);
+			say_debug("request[%i] shard:%i %s rows:%i",
+				  i, request->shard_id,
+				  mode2str(st[request->shard_id].scn_mode), row_count);
 
-			request->row_count = row_count;
-			request->written_rows = p0alloc(fiber->pool, sizeof(void *) * row_count);
-			request->reply = p0alloc(fiber->pool,
-						 sizeof(struct wal_reply) +
-						 row_count * sizeof(request->reply->row_crc[0]));
-			request->reply->sender = read_ptr(&rbuf);
-			request->reply->fid = read_u32(&rbuf);
-			request->reply->scn = -1;
-			request->reply->lsn = -1;
-			request->clear_shard_state = false;
+			int j = 0;
+			for (; j < row_count && !io_failure; j++) {
+				struct row_v12 *row = request->rows[j];
+				update_scn_state(st, request, row);
 
-			for (int j = 0; j < row_count; j++) {
-				struct row_v12 *h = read_bytes(&rbuf, sizeof(*h));
-				tbuf_ltrim(&rbuf, h->len); /* row data */
-
-				if (io_failure)
-					continue;
-
-				struct shard_state *cst = &st[h->shard_id];
-				if (unlikely(h->tag == (shard_tag|TAG_SYS))) {
-					struct tbuf buf = TBUF(h->data, h->len, NULL);
-					int ver = read_u8(&buf);
-					int op = read_u8(&buf);
-					int type = read_u8(&buf);
-					tbuf_ltrim(&buf, 8); // row_count & run_crc_log
-					tbuf_ltrim(&buf, 16); // mod_name
-					bool our_shard = false;
-					while (tbuf_len(&buf) > 0) {
-						assert(tbuf_len(&buf) >= 16);
-						char *str = read_bytes(&buf, 16);
-						if (strcmp(str, cfg.hostname) == 0)
-							our_shard = true;
-					}
-
-					assert(ver == 0);
-					switch (op) {
-					case 0:
-						assert(h->shard_id == 0 || cst->scn == 0);
-						assert(our_shard);
-						cst->scn = h->scn;
-						break;
-					case 1:
-						if (!our_shard)
-							request->clear_shard_state = true;
-						break;
-					default:
-						assert(false);
-					}
-					cst->scn_mode = type == 0 ? SCN_ASSIGN : SCN_PASS;
-				}
-
-				switch (cst->scn_mode) {
-				case SCN_PASS:
-					break;
-				case SCN_ASSIGN:
-					if (h->scn == 0)
-						h->scn = cst->scn + ++cst->wet_rows;
-					break;
-				}
-
-				request->written_rows[j] = [writer append_row:h data:h->data];
-				if (request->written_rows[j] == NULL) {
+				if ([writer append_row:row data:row->data] == NULL) {
 					say_error("append_row failed");
 					io_failure = true;
 					request->clear_shard_state = false;
-					continue;
+					break;
 				}
 
-				say_debug("|	SCN:%"PRIi64" tag:%s data_len:%u",
-					  request->written_rows[j]->scn,
-					  xlog_tag_to_a(h->tag), h->len);
+				say_debug("|	shard:%i SCN:%"PRIi64" tag:%s data_len:%u",
+					  row->shard_id, row->scn, xlog_tag_to_a(row->tag), row->len);
 			}
+			for (; j < row_count && io_failure; j++)
+				request->rows[j] = NULL;
+
 			request_count++;
 		}
 		if (request_count == 0)
@@ -402,10 +410,10 @@ wal_disk_writer(int fd, void *state, int len)
 					    reply->row_count * sizeof(reply->row_crc[0]);
 
 			if (reply->row_count > 0)
-				reply->lsn = request->written_rows[reply->row_count - 1]->lsn;
+				reply->lsn = request->rows[reply->row_count - 1]->lsn;
 
 			for (int k = 0; k < reply->row_count; k++) {
-				const struct row_v12 *row = request->written_rows[k];
+				const struct row_v12 *row = request->rows[k];
 				if (!scn_changer(row->tag))
 					continue;
 				reply->scn = row->scn;
