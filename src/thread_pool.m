@@ -98,6 +98,7 @@ thread_requests_send(thread_requests* queue, thread_request req)
 	thumb = xcalloc(1, sizeof(*thumb));
 	last = queue->last;
 	last->req = req;
+	zero_io_collect_interval();
 	pdo(pthread_mutex_lock, &queue->mtx);
 	last->next = thumb;
 	queue->last = thumb;
@@ -320,6 +321,7 @@ thread_responses_get(thread_responses *queue, thread_response *res)
 	return 1;
 }
 
+extern ev_async wake_async;
 void
 thread_responses_callbacks_fiber_loop(va_list va)
 {
@@ -332,11 +334,13 @@ thread_responses_callbacks_fiber_loop(va_list va)
 			for (;;) {
 				bool were_get = thread_responses_get(queue, &res);
 				if (were_get) break;
+				ev_async_send(&wake_async);
 				fiber_wake(fiber, NULL);
 				yield();
 			}
 			errno = res.eno;
 			res.cb(res.cb_arg, res.result, res.error);
+			unzero_io_collect_interval();
 		}
 		fiber_gc();
 	}

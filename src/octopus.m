@@ -86,7 +86,7 @@ int keepalive_pipe[2];
 extern int daemonize(int nochdir, int noclose);
 void out_warning(int v, char *format, ...);
 
-static int io_collect_zeroers = 0;
+static __thread int io_collect_zeroers = 1;
 void
 zero_io_collect_interval()
 {
@@ -859,6 +859,7 @@ octopus(int argc, char **argv)
 	}
 #endif
 
+	io_collect_zeroers = 0;
 #if defined(UTILITY)
 	salloc_init(0, 0, 0);
 	fiber_init();

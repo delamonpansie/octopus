@@ -70,7 +70,7 @@ int coro_switch_cnt;
 static uint32_t last_used_fid;
 
 static ev_prepare wake_prep;
-static ev_async wake_async;
+ev_async wake_async;
 
 static struct mh_i32_t *fibers_registry;
 
