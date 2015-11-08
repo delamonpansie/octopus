@@ -170,7 +170,7 @@ admin_dispatch(struct conn *c)
 	struct tbuf *err = tbuf_alloc(fiber->pool);
 	int cs;
 	char *p, *pe;
-	char *strstart, *strend;
+	char *strstart = NULL, *strend = NULL;
 	int info_net = 0;
 	int info_string = 0;
 
