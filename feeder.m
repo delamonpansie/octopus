@@ -39,6 +39,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <sys/ioctl.h>
+#include <sys/types.h>
 
 #import <mod/feeder/feeder.h>
 #import <mod/feeder/feeder_version.h>
@@ -158,18 +160,17 @@ lua_filter(struct row_v12 *r, __attribute((unused)) const char *arg, __attribute
 }
 
 - (void)
-send_row: (struct row_v12*) row
+send_row:(struct row_v12 *)row
 {
 	/* FIXME: we should buffer writes */
-	if (row)
-		writef(fd, (const char *)row, sizeof(*row) + row->len);
+	writef(fd, (const char *)row, sizeof(*row) + row->len);
 }
 
 - (void)
-recover_row:(struct row_v12 *)r
+recover_row:(struct row_v12 *)row
 {
-	struct row_v12 *n = filter(r, NULL, 0);
-	[self send_row:n];
+	if ((row = filter(row, NULL, 0)))
+		[self send_row:row];
 }
 
 - (void)
@@ -179,14 +180,14 @@ wal_final_row
 }
 
 
-- (void)
-recover_start_from_scn:(i64)initial_scn filter:(struct feeder_filter*)_filter
+- (i64)
+prepare_from_scn:(i64)initial_scn filter:(struct feeder_filter*)_filter
 {
 	int i;
 	if (_filter->type == FILTER_TYPE_ID)
-		say_debug("%s initial_scn:%"PRIi64" filter: type=ID", __func__, initial_scn);
+		say_info("%s initial_scn:%"PRIi64" filter: type=ID", __func__, initial_scn);
 	else
-		say_debug("%s initial_scn:%"PRIi64" filter: type=%s name='%s'", __func__, initial_scn, filter_type_names[_filter->type], _filter->name);
+		say_info("%s initial_scn:%"PRIi64" filter: type=%s name='%s'", __func__, initial_scn, filter_type_names[_filter->type], _filter->name);
 	switch (_filter->type) {
 	case FILTER_TYPE_ID:
 		filter = id_filter;
@@ -226,19 +227,23 @@ recover_start_from_scn:(i64)initial_scn filter:(struct feeder_filter*)_filter
 		filter(NULL, _filter->arg, _filter->arglen);
 	}
 
-	i64 lsn;
 	if (initial_scn != 0) {
 		i64 initial_lsn = [wal_dir containg_scn:initial_scn];
 		if (initial_lsn <= 0)
 			raise_fmt("unable to find WAL containing SCN:%"PRIi64, initial_scn);
 		say_debug("%s: SCN:%"PRIi64" => LSN:%"PRIi64, __func__, initial_scn, initial_lsn);
-		lsn =  initial_lsn;
+		return initial_lsn;
 	} else {
 		/* load from last valid snapshot */
-		lsn = 0;
+		return 0;
 	}
+}
 
-	XLogReader *reader = [[XLogReader alloc] init_recovery:self];
+- (void)
+start_reader:(i64)lsn
+{
+	XLogReader *reader = [[XLogReader alloc] init_recovery:(id)self];
+
 	[reader load_from_local:lsn];
 	[self wal_final_row];
 	[reader recover_follow:cfg.wal_dir_rescan_delay];
@@ -246,31 +251,15 @@ recover_start_from_scn:(i64)initial_scn filter:(struct feeder_filter*)_filter
 
 @end
 
+static struct iproto * recv_req(int fd);
+
 static i64
-handshake(int sock, struct feeder_filter *filter)
+handshake(int sock, struct iproto *req, Feeder *feeder, struct feeder_filter *filter)
 {
-	struct tbuf *rep, *input;
-	struct iproto *req;
-	i64 scn;
+	struct tbuf *rep;
+	i64 scn, lsn;
 
-	input = tbuf_alloc(fiber->pool);
 	rep = tbuf_alloc(fiber->pool);
-
-	for (;;) {
-		tbuf_ensure(input, 4096);
-		ssize_t r = tbuf_recv(input, sock);
-		if (r < 0 && errno == EINTR)
-			continue;
-		if (r <= 0) {
-			say_syserror("closing connection, recv");
-			_exit(EXIT_SUCCESS);
-		}
-		if (tbuf_len(input) < sizeof(scn))
-			continue;
-
-		if ((req = iproto_parse(input)) != NULL)
-			break;
-	}
 
 	if (req->data_len < sizeof(struct replication_handshake_base)) {
 		say_error("bad handshake len");
@@ -318,6 +307,7 @@ handshake(int sock, struct feeder_filter *filter)
 		_exit(EXIT_FAILURE);
 	}
 	scn = hshake->scn;
+	lsn = [feeder prepare_from_scn:scn filter:filter];
 
 	tbuf_append(rep, &(struct iproto_retcode)
 			 { .msg_code = req->msg_code,
@@ -330,8 +320,9 @@ handshake(int sock, struct feeder_filter *filter)
 	tbuf_append(rep, &default_version, sizeof(default_version));
 	writef(sock, rep->ptr, tbuf_len(rep));
 
-	say_debug("remote requested scn:%"PRIi64, scn);
-	return scn;
+	[feeder start_reader:lsn];
+
+	return lsn;
 }
 
 static void
@@ -349,7 +340,9 @@ keepalive_send(va_list ap)
 
 	for (;;) {
 		if (cfg.wal_feeder_keepalive_timeout > 0.0) {
-			[feeder send_row: sysnop];
+			[feeder send_row: sysnop]; /* this call skip filters: lua filter expect that
+						      lua stack is non empty (it's filled in prepare_from_scn)
+						      calling lua_filter from this fiber will result in crash */
 			fiber_sleep(cfg.wal_feeder_keepalive_timeout / 3.0);
 		} else {
 			fiber_sleep(5.0);
@@ -358,7 +351,7 @@ keepalive_send(va_list ap)
 }
 
 static void
-recover_feed_slave(int sock)
+recover_feed_slave(int sock, struct iproto *req)
 {
 	Feeder *feeder;
 	struct sockaddr_in addr;
@@ -370,63 +363,125 @@ recover_feed_slave(int sock)
 
 	if (getpeername(sock, (struct sockaddr *)&addr, &addrlen) != -1)
 		peer_name = sintoa(&addr);
+	say_info("connect peer:%s", peer_name);
+	title("feeder_handler/%s", peer_name);
 
-	title("client_handler/%s", peer_name);
-
+	luaT_require_or_panic("feeder", false, NULL);
 	luaT_require_or_panic("feeder_init", false, NULL);
 	luaT_require_or_panic("init", false, NULL);
 
 	feeder = [[Feeder alloc] init_fd:sock];
-	i64 initial_scn = handshake(sock, &filter);
-	if (filter.type == FILTER_TYPE_ID)
-		say_info("connect peer:%s initial SCN:%"PRIi64" filter: type=ID", peer_name, initial_scn);
-	else
-		say_info("connect peer:%s initial SCN:%"PRIi64" filter: type=%s name='%s'", peer_name, initial_scn, filter_type_names[filter.type], filter.name);
-	[feeder recover_start_from_scn:initial_scn filter:&filter];
 
+	handshake(sock, req, feeder, &filter);
 	ev_io_init(&io, (void *)eof_monitor, sock, EV_READ);
 	ev_io_start(&io);
 
 	fiber_create("feeder/keepalive_send", keepalive_send, feeder);
 
+	ev_timer tm = { .coro = 0 };
+	ev_timer_init(&tm, (void*)keepalive, 1, 1);
+	if (!cfg.wal_feeder_debug_no_fork)
+		ev_timer_start(&tm);
+
 	ev_run(0);
 }
 
-
-void fsleep(ev_tstamp t)
+static struct iproto *
+recv_req(int fd)
 {
-	struct timeval tv;
-	tv.tv_sec = (long)t;
-	tv.tv_usec = (long)((t - tv.tv_sec) * 1e6);
-	select(0, NULL, NULL, NULL, &tv);
+	struct iproto *req;
+	struct tbuf *input = tbuf_alloc(fiber->pool);
+
+	for (;;) {
+		tbuf_ensure(input, 4096);
+		ssize_t r = tbuf_recv(input, fd);
+		if (r < 0 && errno == EINTR)
+			continue;
+		if (r <= 0) {
+			say_syserror("closing connection, recv");
+			_exit(EXIT_SUCCESS);
+		}
+		if (tbuf_len(input) < sizeof(i64))
+			continue;
+
+		if ((req = iproto_parse(input)) != NULL)
+			return req;
+	}
 }
 
-ev_timer tm = { .coro = 0 };
-
 static int
-feeder_fork()
+feeder_child_trampoline(int fd, void *state __attribute__((unused)), int state_len __attribute__((unused)))
 {
-	int n = tnt_fork();
-	if (n == 0 && !ev_is_active(&tm) && !cfg.wal_feeder_debug_no_fork) {
-		ev_timer_init(&tm, (void*)keepalive, 1, 1);
-		ev_timer_start(&tm);
-	}
-	return n;
+	int client, len;
+	const int bufsize = 512;
+	void *buf = palloc(fiber->pool, bufsize);
+	if ((len = recvfd(fd, &client, buf, bufsize)) < 0)
+		return -1;
+	close(fd);
+	recover_feed_slave(client, len > 1 ? buf : recv_req(client));
+	return 0;
 }
 
 static void
-feeder_keepalive()
+feeder_accept(int fd, void *data __attribute__((unused)))
 {
-	if (cfg.wal_feeder_fork_before_init && !cfg.wal_feeder_debug_no_fork)
-		keepalive();
-	else
-		keepalive_read();
+	if (cfg.wal_feeder_debug_no_fork) {
+		recover_feed_slave(fd, recv_req(fd));
+		close(fd);
+		return;
+	}
+
+	struct timeval tm = { .tv_sec = 120, .tv_usec = 0};
+	setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tm,sizeof(tm));
+	setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tm,sizeof(tm));
+
+	struct child child = spawn_child("feeder/worker", feeder_child_trampoline, NULL, 0);
+	if (child.pid > 0) {
+		say_info("WAL feeder client");
+		sendfd(child.fd, fd, "\0", 1);
+	}
+	close(fd);
+}
+
+static void
+iproto_feeder_cb(struct netmsg_head *wbuf, struct iproto *req, void *arg __attribute__((unused)))
+{
+	struct netmsg_io *io = container_of(wbuf, struct netmsg_io, wbuf);
+	int fd = io->fd, zero;
+
+	if (ioctl(fd, FIONBIO, &zero) < 0)
+		say_syserror("ioctl");
+
+	struct timeval tm = { .tv_sec = 120, .tv_usec = 0};
+	setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tm,sizeof(tm));
+	setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tm,sizeof(tm));
+
+	struct child child = spawn_child("feeder/worker", feeder_child_trampoline, NULL ,0);
+	if (child.pid > 0) {
+		say_info("WAL feeder client");
+		ev_io io = { .coro = 1 };
+		ev_io_init(&io, (void *)fiber, child.fd, EV_WRITE);
+		ev_io_start(&io);
+		yield();
+		ev_io_stop(&io);
+
+		sendfd(child.fd, fd, req, sizeof(*req) + req->data_len);
+	}
+	[io close];
+}
+
+void
+feeder_service(struct iproto_service *s)
+{
+	if (cfg.wal_writer_inbox_size == 0)
+		return;
+
+	service_register_iproto(s, MSG_REPLICA, iproto_feeder_cb, 0);
 }
 
 static void
 init(void)
 {
-	int server, client;
 	struct sockaddr_in server_addr;
 
 	if (cfg.wal_feeder_bind_addr == NULL || cfg.wal_writer_inbox_size == 0) {
@@ -434,78 +489,13 @@ init(void)
 		return;
 	}
 
-	if (cfg.wal_feeder_fork_before_init && !cfg.wal_feeder_debug_no_fork) {
-		if (feeder_fork() != 0)
-			return;
-	}
-
-	signal(SIGCHLD, SIG_IGN);
-
-	/* ignore SIGUSR1, so accidental miss in 'kill -USR1' won't cause crash */
-	signal(SIGUSR1, SIG_IGN);
-
-	fiber->name = "feeder";
-	fiber->pool = palloc_create_pool("feeder");
-	fiber->L = root_L;
-
-	lua_getglobal(fiber->L, "require");
-        lua_pushliteral(fiber->L, "feeder");
-	if (lua_pcall(fiber->L, 1, 0, 0) != 0)
-		panic("feeder: %s", lua_tostring(fiber->L, -1));
-
 	if (cfg.wal_dir == NULL || cfg.snap_dir == NULL)
 		panic("can't start feeder without snap_dir or wal_dir");
-
-	title("acceptor/%s", cfg.wal_feeder_bind_addr);
 
 	if (atosin(cfg.wal_feeder_bind_addr, &server_addr) == -1)
 		panic("bad wal_feeder_bind_addr: '%s'", cfg.wal_feeder_bind_addr);
 
-	server = server_socket(SOCK_STREAM, &server_addr, 0, NULL, fsleep);
-	if (server == -1) {
-		say_error("unable to create server socket");
-		goto exit;
-	}
-
-	struct timeval tm = { .tv_sec = 0, .tv_usec = 100000};
-	setsockopt(server, SOL_SOCKET, SO_RCVTIMEO, &tm,sizeof(tm));
-	say_info("WAL feeder initilized");
-
-	for (;;) {
-		pid_t child;
-		feeder_keepalive();
-
-		client = accept(server, NULL, NULL);
-		if (client < 0) {
-			if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
-				continue;
-			say_syserror("accept");
-			continue;
-		}
-
-		if (cfg.wal_feeder_debug_no_fork) {
-			recover_feed_slave(client);
-			continue;
-		}
-
-		child = feeder_fork();
-		if (child < 0) {
-			say_syserror("fork");
-			close(client);
-			continue;
-		}
-		if (child == 0) {
-			close(server);
-			struct timeval tm = { .tv_sec = 120, .tv_usec = 0};
-			setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &tm,sizeof(tm));
-			setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &tm,sizeof(tm));
-			recover_feed_slave(client);
-		} else {
-			close(client);
-		}
-	}
-      exit:
-	_exit(EXIT_FAILURE);
+	fiber_create("feeder/acceptor", tcp_server, cfg.wal_feeder_bind_addr, feeder_accept, NULL, NULL);
 }
 
 static int

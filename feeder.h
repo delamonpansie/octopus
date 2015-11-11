@@ -36,5 +36,7 @@ typedef struct row_v12 *(*filter_callback)(struct row_v12 *r, const char *arg, i
 + (void) register_filter: (const char*)name call: (filter_callback)filter;
 @end
 
+void feeder_service(struct iproto_service *s);
+
 #endif /*OCTOPUS_FEEDER_H*/
 

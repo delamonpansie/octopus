@@ -1,4 +1,11 @@
 local ffi = require("ffi")
+local bit = require('bit')
+local TAG_MASK = 0x3fff
+local TAG_SIZE = 14
+local TAG_SNAP = 0x4000
+local TAG_WAL = 0x8000
+local TAG_SYS = 0xc000
+
 require("wal") -- struct row_v12 cdef
 
 local print = print
@@ -23,4 +30,8 @@ module(...)
 function replication_filter.id_log(obj)
         print(obj)
         return true
+end
+
+function replication_filter.tag_wal(row)
+    return bit.band(row.tag, bit.bnot(TAG_MASK)) == TAG_WAL
 end
