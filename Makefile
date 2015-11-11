@@ -1,9 +1,10 @@
-binary_type = STORAGE
+XCFLAGS += -DOCT_CHILDREN
 
 obj += src/admin.o
 obj += $(obj-log-io)
 obj += src/tnt_obj.o
 obj += src/iproto.o
+obj += src/iproto_client.o
 
 src/octopus.o src/net_io.o: XCFLAGS += -DOCT_OBJECT
 
@@ -18,6 +19,7 @@ dist += mod/memcached/proto.m
 endif
 
 cfg_tmpl += cfg/log_io.cfg_tmpl
+cfg_tmpl += cfg/replication.cfg_tmpl
 cfg_tmpl += cfg/admin.cfg_tmpl
 cfg_tmpl += mod/memcached/memcached.cfg_tmpl
 

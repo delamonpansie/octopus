@@ -29,8 +29,15 @@
 
 #include <util.h>
 #include <index.h>
+#import <log_io.h>
 
-extern CStringHash *mc_index;
+@interface Memcached : Object <Executor> {
+@public
+	Shard<Shard> *shard;
+	CStringHash *mc_index;
+}
+@end
+
 
 enum object_type {
 	MC_OBJ = 1
@@ -69,8 +76,8 @@ expired(struct tnt_object *obj)
  	return m->exptime == 0 ? 0 : m->exptime < ev_now();
 }
 
-int store(const char *key, u32 exptime, u32 flags, u32 value_len, char *value);
-int delete(char **keys, int n);
+int store(Memcached *memc, const char *key, u32 exptime, u32 flags, u32 value_len, char *value);
+int delete(Memcached *memc, char **keys, int n);
 void flush_all(va_list ap);
 
 extern struct mc_stats {
@@ -85,7 +92,8 @@ extern struct mc_stats {
 	u64 bytes_read;
 	u64 bytes_written;
 } mc_stats;
-void print_stats(struct conn *c);
+void print_stats(struct netmsg_head *wbuf);
 
-int __attribute__((noinline)) memcached_dispatch(struct conn *c);
+int __attribute__((noinline))
+memcached_dispatch(Memcached *memc, int fd, struct tbuf *rbuf, struct netmsg_head *wbuf);
 #endif

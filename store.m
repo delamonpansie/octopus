@@ -38,7 +38,6 @@
 #import <mod/memcached/memcached_version.h>
 #import <mod/memcached/store.h>
 
-CStringHash *mc_index;
 static u64 cas;
 
 struct mc_stats mc_stats;
@@ -71,11 +70,36 @@ mc_alloc(const char *key, u32 exptime, u32 flags, u32 value_len, const char *val
 
 
 enum tag { STORE = user_tag, DELETE };
-Recovery *recovery;
-@implementation Recovery (Memcached)
+
+static struct index_node *
+dtor(struct tnt_object *obj, struct index_node *node, void *arg __attribute__((unused)))
+{
+	struct mc_obj *m = mc_obj(obj);
+	node->obj = obj;
+	node->key.ptr = m->data;
+	return node;
+}
+
+@implementation Memcached
+- (id)
+init_shard:(Shard<Shard> *)shard_
+{
+	[super init];
+	shard = shard_;
+	mc_index = [[CStringHash alloc] init:NULL];
+	mc_index->dtor = dtor;
+
+	return self;
+}
+
+- (void)
+set_shard:(Shard<Shard> *)shard_
+{
+	shard = shard_;
+}
 
 static void
-store_compat(struct tbuf *op)
+store_compat(CStringHash *mc_index, struct tbuf *op)
 {
 	int key_len = read_varint32(op);
 	char *key = read_bytes(op, key_len);
@@ -146,7 +170,7 @@ apply:(struct tbuf *)op tag:(u16)tag
 		case 13: {
 			read_u32(op); /* flags */
 			read_u32(op); /* cardinality */
-			store_compat(op);
+			store_compat(mc_index, op);
 			break;
 		}
 		case 20: {
@@ -173,7 +197,7 @@ apply:(struct tbuf *)op tag:(u16)tag
 		read_u32(op); /* obj_space */
 		read_u32(op); /* cardinality */
 		read_u32(op);  /* data_size */
-		store_compat(op);
+		store_compat(mc_index, op);
 		break;
 
 	default:
@@ -182,24 +206,26 @@ apply:(struct tbuf *)op tag:(u16)tag
 }
 
 static void memcached_expire(va_list va __attribute__((unused)));
+
+- (void)
+wal_final_row
+{
+}
+
 - (void)
 status_changed
 {
 	if (cfg.memcached_no_expire)
 		return;
-	/* ugly hack: since it's a category it also breaks feeders title() */
-	if (self == recovery) {
-		if (status == PRIMARY) {
-			fiber_create("memecached_expire", memcached_expire);
-			return;
-		}
-		if (prev_status ==  PRIMARY)
-			panic("can't downgrade from primary");
-	}
-}
-@end
 
-@implementation SnapWriter (Memcached)
+	if (shard->status == PRIMARY) {
+		fiber_create("memecached_expire", memcached_expire);
+		return;
+	}
+	if (shard->prev_status ==  PRIMARY)
+		panic("can't downgrade from primary");
+}
+
 - (int)
 snapshot_write_rows: (XLog *)l
 {
@@ -212,7 +238,8 @@ snapshot_write_rows: (XLog *)l
 
 	while((obj = [mc_index iterator_next]) != NULL) {
 		struct mc_obj *m = mc_obj(obj);
-		if (snapshot_write_row(l, STORE, &TBUF(m, mc_len(m), NULL)) < 0)
+		if ([l append_row:m len:mc_len(m)
+			    shard:nil tag:STORE|TAG_SNAP] == NULL)
 			return -1;
 
 		if ((++i)% 100000 == 0) {
@@ -226,17 +253,30 @@ snapshot_write_rows: (XLog *)l
 	}
 
 	say_info("Snapshot finished");
-
 	return 0;
 }
+
+- (u32)
+snapshot_estimate
+{
+	return [mc_index size];
+}
+
+static void mc_print_row(struct tbuf *out, u16 tag, struct tbuf *op);
+- (void)
+print:(const struct row_v12 *)row into:(struct tbuf *)buf
+{
+	print_row(buf, row, mc_print_row);
+}
+
 @end
 
 int
-store(const char *key, u32 exptime, u32 flags, u32 value_len, char *value)
+store(Memcached *memc, const char *key, u32 exptime, u32 flags, u32 value_len, char *value)
 {
 	struct tnt_object *old_obj = NULL, *obj = NULL;
-
-	if ([recovery is_replica])
+	CStringHash *mc_index = memc->mc_index;
+	if ([memc->shard is_replica])
 		return 0;
 
 	@try {
@@ -252,7 +292,7 @@ store(const char *key, u32 exptime, u32 flags, u32 value_len, char *value)
 			[mc_index replace:obj];
 		}
 
-		if ([recovery submit:m len:mc_len(m) tag:STORE|TAG_WAL] == 1) {
+		if ([memc->shard submit:m len:mc_len(m) tag:STORE|TAG_WAL] == 1) {
 			if ((obj->flags & GHOST) == 0) {
 				[mc_index replace:obj];
 				object_unlock(old_obj);
@@ -281,13 +321,14 @@ store(const char *key, u32 exptime, u32 flags, u32 value_len, char *value)
 }
 
 int
-delete(char **keys, int n)
+delete(Memcached *memc, char **keys, int n)
 {
+	CStringHash *mc_index = memc->mc_index;
 	struct tnt_object **obj = palloc(fiber->pool, sizeof(*obj) * n);
 	int k = 0;
 	int ret = 0;
 
-	if ([recovery is_replica])
+	if ([memc->shard is_replica])
 		return 0;
 
 	for (int i = 0; i < n; i++) {
@@ -315,7 +356,7 @@ delete(char **keys, int n)
 		tbuf_append(b, m->data, m->key_len);
 	}
 
-	if ([recovery submit:b->ptr len:tbuf_len(b) tag:DELETE|TAG_WAL] == 1) {
+	if ([memc->shard submit:b->ptr len:tbuf_len(b) tag:DELETE|TAG_WAL] == 1) {
 		for (int i = 0; i < k; i++) {
 			[mc_index remove:obj[i]];
 			object_unlock(obj[i]);
@@ -327,13 +368,25 @@ delete(char **keys, int n)
 }
 
 static void
-memcached_expire(va_list va __attribute__((unused)))
+memcached_expire(va_list ap)
 {
+	Recovery *recovery = va_arg(ap, Recovery *);
+	Shard<Shard> *shard;
+	Memcached *memc;
+	CStringHash *mc_index;
 	u32 i = 0;
+
+	if (cfg.memcached_no_expire)
+		return;
+
 	say_info("memcached expire fiber started");
 	char **keys = malloc(cfg.memcached_expire_per_loop * sizeof(void *));
 
 	for (;;) {
+		shard = [recovery shard:0];
+		memc = [shard executor];
+		mc_index = memc->mc_index;
+
 		double delay = (double)cfg.memcached_expire_per_loop *
 				       cfg.memcached_expire_full_sweep /
 			       ([mc_index slots] + 1);
@@ -342,7 +395,7 @@ memcached_expire(va_list va __attribute__((unused)))
 		fiber_sleep(delay);
 
 		say_debug("expire loop");
-		if ([recovery is_replica])
+		if ([shard is_replica])
 			continue;
 
 		if (i >= [mc_index slots])
@@ -364,7 +417,7 @@ memcached_expire(va_list va __attribute__((unused)))
 			k++;
 		}
 
-		delete(keys, k);
+		delete(memc, keys, k);
 		say_debug("expired %i keys", k);
 
 		fiber_gc();
@@ -372,11 +425,11 @@ memcached_expire(va_list va __attribute__((unused)))
 }
 
 void
-print_stats(struct conn *c)
+print_stats(struct netmsg_head *wbuf)
 {
 	u64 bytes_used, items;
-	struct tbuf *out = tbuf_alloc(fiber->pool);
-	slab_stat2(&bytes_used, &items);
+	struct tbuf *out = tbuf_alloc(wbuf->pool);
+	slab_total_stat(&bytes_used, &items);
 
 	tbuf_printf(out, "STAT pid %"PRIu32"\r\n", (u32)getpid());
 	tbuf_printf(out, "STAT uptime %"PRIu32"\r\n", (u32)tnt_uptime());
@@ -400,13 +453,15 @@ print_stats(struct conn *c)
 	tbuf_printf(out, "STAT threads 1\r\n");
 	tbuf_printf(out, "END\r\n");
 
-	net_add_iov_dup(&c->out_messages, out->ptr, tbuf_len(out));
+	net_add_iov(wbuf, out->ptr, tbuf_len(out));
 }
 
 void
 flush_all(va_list ap)
 {
-	i32 delay = va_arg(ap, u32);;
+	Memcached *memc = va_arg(ap, Memcached *);
+	CStringHash *mc_index = memc->mc_index;
+	i32 delay = va_arg(ap, u32);
 	if (delay > ev_now())
 		fiber_sleep(delay - ev_now());
 	u32 slots = [mc_index slots];
@@ -421,24 +476,27 @@ static void
 memcached_handler(va_list ap)
 {
 	int fd = va_arg(ap, int);
-	struct conn *c;
+	Memcached *memc = va_arg(ap, Memcached *);
 	int r, p;
 	int batch_count;
 
 	mc_stats.total_connections++;
 	mc_stats.curr_connections++;
 
-	c = conn_init(NULL, fiber->pool, fd, fiber, fiber, MO_SLAB);
-	palloc_register_gc_root(fiber->pool, c, conn_gc);
+	struct tbuf rbuf = TBUF(NULL, 0, fiber->pool);
+	struct netmsg_head wbuf;
+	netmsg_head_init(&wbuf, fiber->pool);
+	palloc_register_gc_root(fiber->pool, &rbuf, tbuf_gc);
+	palloc_register_gc_root(fiber->pool, &wbuf, netmsg_head_gc);
 
 	@try {
 		for (;;) {
 			batch_count = 0;
-			if (conn_recv(c) <= 0)
+			if (fiber_recv(fd, &rbuf) <= 0)
 				return;
 
 		dispatch:
-			p = memcached_dispatch(c);
+			p = memcached_dispatch(memc, fd, &rbuf, &wbuf);
 			if (p < 0) {
 				say_debug("negative dispatch, closing connection");
 				return;
@@ -450,12 +508,12 @@ memcached_handler(va_list ap)
 			if (p == 1) {
 				batch_count++;
 				/* some unparsed commands remain and batch count less than 20 */
-				if (tbuf_len(c->rbuf) > 0 && batch_count < 20)
+				if (tbuf_len(&rbuf) > 0 && batch_count < 20)
 					goto dispatch;
 			}
 
-			mc_stats.bytes_written += c->out_messages.bytes;
-			r = conn_flush(c);
+			mc_stats.bytes_written += wbuf.bytes;
+			r = fiber_writev(fd, &wbuf);
 			if (r < 0) {
 				say_debug("flush_output failed, closing connection");
 				return;
@@ -463,7 +521,7 @@ memcached_handler(va_list ap)
 
 			fiber_gc();
 
-			if (p == 1 && tbuf_len(c->rbuf) > 0) {
+			if (p == 1 && tbuf_len(&rbuf) > 0) {
 				batch_count = 0;
 				goto dispatch;
 			}
@@ -474,38 +532,28 @@ memcached_handler(va_list ap)
 		[e release];
 	}
 	@finally {
-		palloc_unregister_gc_root(fiber->pool, c);
-		conn_close(c);
+		palloc_unregister_gc_root(fiber->pool, &rbuf);
+		palloc_unregister_gc_root(fiber->pool, &wbuf);
+		close(fd);
 		mc_stats.curr_connections--;
 	}
 }
 
 static void
-memcached_accept(int fd, void *data __attribute__((unused)))
+memcached_accept(int fd, void *data)
 {
-	if (fiber_create("memcached/handler", memcached_handler, fd) == NULL) {
-		/* FIXME: fiber creation never fails */
-		say_error("unable create fiber");
-		close(fd);
-	}
-}
-
-static struct index_node *
-dtor(struct tnt_object *obj, struct index_node *node, void *arg __attribute__((unused)))
-{
-	struct mc_obj *m = mc_obj(obj);
-	node->obj = obj;
-	node->key.ptr = m->data;
-	return node;
+	fiber_create("memcached/handler", memcached_handler, fd, data);
 }
 
 static void
-init_second_stage(va_list ap __attribute__((unused)))
+init_second_stage(va_list ap)
 {
+	Recovery *recovery = va_arg(ap, Recovery *);
 	[recovery simple];
+	Memcached *memc = [[recovery shard:0] executor];
 
 	if (fiber_create("memcached/acceptor", tcp_server, cfg.primary_addr,
-			 memcached_accept, NULL, NULL) == NULL)
+			 memcached_accept, NULL, memc) == NULL)
 	{
 		say_error("can't start tcp_server on `%s'", cfg.primary_addr);
 		exit(EX_OSERR);
@@ -516,29 +564,24 @@ init_second_stage(va_list ap __attribute__((unused)))
 void
 memcached_init()
 {
-	mc_index = [[CStringHash alloc] init:NULL];
-	mc_index->dtor = dtor;
-
 	struct feeder_param feeder;
 	enum feeder_cfg_e fid_err = feeder_param_fill_from_cfg(&feeder, NULL);
 	if (fid_err) panic("wrong feeder conf");
 
-	recovery = [Recovery alloc];
-	recovery = [recovery init_snap_dir:cfg.snap_dir
-				   wal_dir:cfg.wal_dir
-			      rows_per_wal:cfg.rows_per_wal
-			      feeder_param:&feeder
-				     flags:init_storage ? RECOVER_READONLY : 0];
+	extern Recovery *recovery;
+	recovery = [[Recovery alloc] init];
+	recovery->default_exec_class = [Memcached class];
 
 	if (init_storage)
 		return;
 
+	fiber_create("memecached_expire", memcached_expire, recovery);
 	/* fiber is required to successfully pull from remote */
-	fiber_create("memcached_init", init_second_stage);
+	fiber_create("memcached_init", init_second_stage, recovery);
 }
 
 static void
-print_row(struct tbuf *out, u16 tag, struct tbuf *op)
+mc_print_row(struct tbuf *out, u16 tag, struct tbuf *op)
 {
 	switch(tag & TAG_MASK) {
 	case STORE: {
@@ -568,7 +611,7 @@ print_row(struct tbuf *out, u16 tag, struct tbuf *op)
 static int
 memcached_cat(const char *filename)
 {
-	read_log(filename, print_row);
+	read_log(filename, mc_print_row);
 	return 0; /* ignore return status of read_log */
 }
 
