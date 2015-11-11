@@ -1,0 +1,15 @@
+#######################################################################
+# LogIO Replication, µSharding, PAXOS
+
+#
+
+# never ever change hostname
+hostname = NULL, ro
+peer = [
+  {
+     id = -1, required
+     name = NULL, required
+     addr = NULL, required
+     replication_port = -1
+  }
+], ro
