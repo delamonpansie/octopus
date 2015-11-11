@@ -89,7 +89,7 @@ static ev_io keepalive_ev = { .coro = 0 };
 extern int daemonize(int nochdir, int noclose);
 void out_warning(int v, char *format, ...);
 
-static int io_collect_zeroers = 0;
+static __thread int io_collect_zeroers = 1;
 void
 zero_io_collect_interval()
 {
@@ -918,6 +918,8 @@ init_storage:
 		exit([recovery write_initial_state]);
 	}
 #endif
+
+	io_collect_zeroers = 0;
 
 	say_info("octopus version: %s", octopus_version());
 	say_info("%s", OCT_BUILD_INFO);

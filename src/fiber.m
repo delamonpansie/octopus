@@ -70,7 +70,7 @@ int coro_switch_cnt;
 static uint32_t last_used_fid;
 
 static ev_prepare wake_prep;
-static ev_async wake_async;
+ev_async wake_async;
 
 static struct mh_i32_t *fibers_registry;
 
@@ -585,18 +585,15 @@ autorelease(id obj)
 
 static inline void
 object_release(id obj) {
+#ifdef OCT_OBJECT
 	uintptr_t ptr = (uintptr_t)obj;
 	if ((ptr & 1) != 0) {
-#if OCT_OBJECT
 		ptr &= ~(uintptr_t)1;
 		struct tnt_object *tnt = (void*)ptr;
 		object_decr_ref(tnt);
-#else
-		abort();
+	} else
 #endif
-	} else {
 		[obj release];
-	}
 }
 
 void

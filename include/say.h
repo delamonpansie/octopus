@@ -88,7 +88,8 @@ void say_register_source(const char *file, int *level);
 	}
 
 
-#define say(suffix, level, ...) ({ if(unlikely(local_level >= level || level <= FATAL))	\
+#define will_say(level)         (local_level >= level || level <= FATAL)
+#define say(suffix, level, ...) ({ if(unlikely(will_say(level)))	\
 				say_##level##suffix(__FILE__, __LINE__, __VA_ARGS__); })
 #define say_syserror(...)	say(no, ERROR, __VA_ARGS__)
 #define say_syswarn(...)	say(no, WARN, __VA_ARGS__)
