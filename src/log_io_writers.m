@@ -55,9 +55,8 @@
 enum scn_mode { SCN_PASS, SCN_ASSIGN };
 
 struct shard_state {
-	i64 scn;
+	i64 scn, wet_scn;
 	u32 run_crc;
-	u32 wet_rows;
 	enum scn_mode scn_mode;
 };
 
@@ -182,7 +181,6 @@ struct request {
 	int shard_id;
 	struct wal_reply *reply;
 	struct row_v12 **rows;
-	bool clear_shard_state;
 };
 
 #define BATCH_SIZE 1024
@@ -252,7 +250,6 @@ request_parse(struct request *request, int row_count, struct tbuf *rbuf)
 	request->reply->scn = -1;
 	request->reply->lsn = -1;
 	request->shard_id = -1;
-	request->clear_shard_state = false;
 
 	for (int i = 0; i < row_count; i++) {
 		struct row_v12 *h = read_bytes(rbuf, sizeof(*h));
@@ -264,28 +261,35 @@ request_parse(struct request *request, int row_count, struct tbuf *rbuf)
 }
 
 static void
-update_scn_state(struct shard_state *st, struct request *request, struct row_v12 *h)
+update_scn_state(struct shard_state *st, struct row_v12 *h)
 {
 	struct shard_state *cst = &st[h->shard_id];
+	const struct shard_op *sop = NULL;
+
 	if (unlikely(h->tag == (shard_tag|TAG_SYS))) {
-		const struct shard_op *sop = (void *)h->data;
+		sop = (void *)h->data;
 		assert(sop->ver == 0);
 		assert((sop->op & 0x7f) == 0);
-		if (our_shard(sop))
+
+		/* shard first seen first time */
+		if (cst->scn == 0 && our_shard(sop)) {
 			cst->scn = h->scn;
-		else
-			request->clear_shard_state = true;
-		cst->scn_mode = sop->type == 0 ? SCN_ASSIGN : SCN_PASS;
+			cst->scn_mode = sop->type == 0 ? SCN_ASSIGN : SCN_PASS;
+		}
 	}
 
 	switch (cst->scn_mode) {
 	case SCN_PASS:
 		break;
 	case SCN_ASSIGN:
-		if (h->scn == 0)
-			h->scn = cst->scn + ++cst->wet_rows;
-		else
+		cst->wet_scn++;
+		// either: a new row or replicated row with predefined scn
+		if (h->scn == 0 || h->scn == cst->wet_scn) {
+			h->scn = cst->wet_scn;
+			break;
+		} else {
 			say_warn("ASSIGN override SCN:%"PRIi64, h->scn);
+		}
 		break;
 	}
 }
@@ -351,7 +355,7 @@ wal_disk_writer(int fd, void *state, int len)
 		delay_read = false;
 		io_failure = [writer prepare_write:st] == -1;
 		for (int i = 0; i < MAX_SHARD; i++)
-			st[i].wet_rows = 0;
+			st[i].wet_scn = st[i].scn;
 
 		/* we're not running inside ev_loop, so update ev_now manually just before write */
 		ev_now_update();
@@ -378,12 +382,11 @@ wal_disk_writer(int fd, void *state, int len)
 			int j = 0;
 			for (; j < row_count && !io_failure; j++) {
 				struct row_v12 *row = request->rows[j];
-				update_scn_state(st, request, row);
+				update_scn_state(st, row);
 
 				if ([writer append_row:row data:row->data] == NULL) {
 					say_error("append_row failed");
 					io_failure = true;
-					request->clear_shard_state = false;
 					break;
 				}
 
@@ -430,8 +433,11 @@ wal_disk_writer(int fd, void *state, int len)
 					panic("SCN GAP:%"PRIi64" rows:%i", row->scn - st[row->shard_id].scn, reply->row_count);
 				st[row->shard_id].scn = row->scn;
 
-				if (request->clear_shard_state)
-					memset(&st[row->shard_id], 0, sizeof(st[row->shard_id]));
+				if (unlikely(row->tag == (shard_tag|TAG_SYS))) {
+					const struct shard_op *sop = (void *)row->data;
+					if (!our_shard(sop))
+						memset(&st[row->shard_id], 0, sizeof(st[row->shard_id]));
+				}
 			}
 
 			rows_confirmed -= reply->row_count;
