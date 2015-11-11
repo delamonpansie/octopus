@@ -218,7 +218,7 @@ typedef struct marker_desc {
 - (i64) last_read_lsn;
 - (const struct row_v12 *) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie;
 - (const struct row_v12 *) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag;
-- (const struct row_v12 *) append_row:(const struct tbuf *)data scn:(i64)scn shard_id:(int)shard_id tag:(u16)tag;
+- (const struct row_v12 *) append_row:(const void *)data len:(u32)data_len shard:(Shard *)shard tag:(u16)tag;
 - (const struct row_v12 *) append_row:(struct row_v12 *)row data:(const void *)data;
 
 - (i64) confirm_write;

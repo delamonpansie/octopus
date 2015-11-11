@@ -550,17 +550,17 @@ append_row:(const void *)data len:(u32)len scn:(i64)scn tag:(u16)tag
 }
 
 - (const struct row_v12 *)
-append_row:(const struct tbuf *)data scn:(i64)scn shard_id:(int)shard_id tag:(u16)tag
+append_row:(const void *)data len:(u32)len shard:(Shard *)shard tag:(u16)tag
 {
 	assert(wet_rows < nelem(wet_rows_offset));
 	static struct row_v12 row;
-	row = (struct row_v12){ .scn = scn,
+	row = (struct row_v12){ .scn = shard->scn,
 				.tm = ev_now(),
 				.tag = tag,
-				{.shard_id = shard_id},
-				.len = tbuf_len(data) };
+				{.shard_id = shard->id},
+				.len = len };
 
-	return [self append_row:&row data:data->ptr];
+	return [self append_row:&row data:data];
 }
 
 - (const struct row_v12 *)
