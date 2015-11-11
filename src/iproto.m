@@ -287,6 +287,40 @@ has_full_req(const struct tbuf *buf)
 	       tbuf_len(buf) >= sizeof(struct iproto) + iproto(buf)->data_len;
 }
 
+static bool
+proxy_requst(struct iproto_handler *ih, struct shard_route *route,
+	     struct iproto_ingress_svc *c, struct iproto *request, void **arg)
+{
+	struct netmsg_io *io = c;
+	int route_mode = route->mode;
+	size_t req_size = sizeof(struct iproto) + request->data_len;
+
+	if (unlikely(ih->flags & IPROTO_FORCE_LOCAL))
+		route_mode = SHARD_MODE_LOCAL;
+
+	switch (route_mode) {
+	case SHARD_MODE_PROXY:
+		tbuf_ltrim(&io->rbuf, req_size);
+		iproto_proxy_send(route->proxy, c, request, NULL, 0);
+		return true;
+	case SHARD_MODE_PARTIAL_PROXY:
+		if (ih->flags & IPROTO_PROXY) {
+			tbuf_ltrim(&io->rbuf, req_size);
+			iproto_proxy_send(route->proxy, c, request, NULL, 0);
+			return true;
+		}
+		*arg = route;
+	case SHARD_MODE_LOCAL:
+		*arg = route;
+		break;
+	case SHARD_MODE_NONE:
+	case SHARD_MODE_LOADING:
+		*arg = NULL;
+		break;
+	}
+	return false;
+}
+
 static void
 process_requests(struct iproto_service *service, struct iproto_ingress_svc *c)
 {
@@ -304,31 +338,9 @@ process_requests(struct iproto_service *service, struct iproto_ingress_svc *c)
 			       request->msg_code >> 16 :
 			       0;
 		struct shard_route *route = &shard_rt[route_id];
-		int route_mode = route->mode;
 
-		if (unlikely(ih->flags & IPROTO_FORCE_LOCAL))
-			route_mode = SHARD_MODE_LOCAL;
-
-		switch (route_mode) {
-		case SHARD_MODE_PROXY:
-			tbuf_ltrim(&io->rbuf, req_size);
-			iproto_proxy_send(route->proxy, c, request, NULL, 0);
+		if (proxy_requst(ih, route, c, request, &arg))
 			continue;
-		case SHARD_MODE_PARTIAL_PROXY:
-			if (ih->flags & IPROTO_PROXY) {
-				tbuf_ltrim(&io->rbuf, req_size);
-				iproto_proxy_send(route->proxy, c, request, NULL, 0);
-				continue;
-			}
-			arg = route;
-		case SHARD_MODE_LOCAL:
-			arg = route;
-			break;
-		case SHARD_MODE_NONE:
-		case SHARD_MODE_LOADING:
-			arg = NULL;
-			break;
-		}
 
 		if (ih->flags & IPROTO_NONBLOCK) {
 			tbuf_ltrim(&io->rbuf, req_size);
