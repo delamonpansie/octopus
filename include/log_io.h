@@ -293,6 +293,8 @@ struct shard_op {
 	u8 ver;
 	u8 op;
 	u8 type;
+	i64 scn;
+	i64 tm;
 	u32 row_count;
 	u32 run_crc_log;
 	char mod_name[16];
@@ -508,7 +510,7 @@ enum recovery_status current_recovery_status_code();
 	i64 scn;
 	enum recovery_status status, prev_status;
 	Recovery *recovery;
-	char *peer[5];
+	char peer[5][16];
 	bool dummy;
 }
 - (id) init_id:(int)shard_id scn:(i64)scn_
@@ -530,7 +532,7 @@ enum recovery_status current_recovery_status_code();
 - (struct shard_op *)snapshot_header;
 - (const struct row_v12 *)snapshot_write_header:(XLog *)snap;
 
-- (void) alter_peers:(struct row_v12 *)r;
+- (void) alter_peers:(struct shard_op *)sop;
 @end
 
 @interface POR: Shard <Shard,RecoverRow> {

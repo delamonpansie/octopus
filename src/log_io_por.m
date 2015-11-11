@@ -171,7 +171,7 @@ recover_row_sys:(struct row_v12 *)r
 	case nop:
 		break;
 	case shard_tag:
-		[self alter_peers:r];
+		[self alter_peers:(struct shard_op *)r->data];
 		break;
 	default:
 		say_warn("%s row ignored", xlog_tag_to_a(r->tag));
