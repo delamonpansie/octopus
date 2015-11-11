@@ -1168,7 +1168,7 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 		case 0x80 :tbuf_printf(buf, "SHARD_LOAD"); break;
 		default: tbuf_printf(buf, "UNKNOWN"); break;
 		}
-		tbuf_printf(buf, " shard_id:%i shard_SCN:%"PRIi64 "tm :%"PRIi64" %s %s",
+		tbuf_printf(buf, " shard_id:%i shard_SCN:%"PRIi64 " tm:%"PRIi64" %s %s",
 			    row->shard_id, shard_scn, tm, type == 0 ? "POR" : "PAXOS", mod_name);
 		tbuf_printf(buf, " count:%i run_crc:0x%08x", estimated_row_count, run_crc);
 		tbuf_printf(buf, " master:%s", (const char *)read_bytes(&row_data, 16));
