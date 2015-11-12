@@ -1,5 +1,6 @@
 #!/bin/sh
 
+LANG=C
 set -e
 test -d .git
 test ! -f .nofetch
