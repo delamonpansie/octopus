@@ -48,10 +48,10 @@ prepare_create_object_space(struct box_meta_txn *txn, char n, struct tbuf *data)
 	if (txn->index == nil)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't create index");
 
-	if (n < 0 || n > nelem(object_space_registry) - 1)
+	if (n < 0 || n > nelem(txn->box->object_space_registry) - 1)
 		iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "bad namespace number %i", n);
 
-	if (object_space_registry[(int)n])
+	if (txn->box->object_space_registry[(int)n])
 		iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "object_space %i is exists", n);
 
 	txn->object_space = xcalloc(1, sizeof(struct object_space));
@@ -125,9 +125,6 @@ prepare_drop_index(struct box_meta_txn *txn, struct tbuf *data)
 void
 box_prepare_meta(struct box_meta_txn *txn, struct tbuf *data)
 {
-	if (cfg.object_space)
-		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "metadata updates are forbidden in legacy configuration mode");
-
 	i32 n = read_u32(data);
 	txn->flags = read_u32(data);
 
@@ -136,15 +133,15 @@ box_prepare_meta(struct box_meta_txn *txn, struct tbuf *data)
 		prepare_create_object_space(txn, n, data);
 		break;
 	case CREATE_INDEX:
-		txn->object_space = object_space(n);
+		txn->object_space = object_space(txn->box, n);
 		prepare_create_index(txn, data);
 		break;
 	case DROP_OBJECT_SPACE:
 	case TRUNCATE:
-		txn->object_space = object_space(n);
+		txn->object_space = object_space(txn->box, n);
 		break;
 	case DROP_INDEX:
-		txn->object_space = object_space(n);
+		txn->object_space = object_space(txn->box, n);
 		prepare_drop_index(txn, data);
 		break;
 	default:
@@ -162,7 +159,7 @@ box_commit_meta(struct box_meta_txn *txn)
 	case CREATE_OBJECT_SPACE:
 		say_info("CREATE object_space n:%i 0:%s",
 			 txn->object_space->n, [[txn->object_space->index[0] class] name]);
-		object_space_registry[txn->object_space->n] = txn->object_space;
+		txn->box->object_space_registry[txn->object_space->n] = txn->object_space;
 		break;
 	case CREATE_INDEX:
 		say_info("CREATE index n:%i %i:%s",
@@ -183,7 +180,7 @@ box_commit_meta(struct box_meta_txn *txn)
 		}
 		foreach_index(index, txn->object_space)
 			[txn->index free];
-		object_space_registry[txn->object_space->n] = NULL;
+		txn->box->object_space_registry[txn->object_space->n] = NULL;
 		free(txn->object_space);
 		return;
 	case TRUNCATE:
@@ -210,5 +207,6 @@ box_rollback_meta(struct box_meta_txn *txn)
 		txn->index = nil;
 	}
 }
+
 
 register_source();

@@ -16,9 +16,9 @@ EOD
   file "box_init.lua" do
     File.create "box_init.lua", <<-EOD
         local box = require'box'
-        user_proc.select = box.wrap(function (n)
-                return 0, {box.object_space[n].index[0][0ULL],
-			   box.object_space[n].index[0][0xffffffffffffffffULL]}
+        user_proc.select = box.wrap(function (shard, n)
+                return 0, {shard:object_space(n):index(0):find(0ULL),
+			   shard:object_space(n):index(0):find(0xffffffffffffffffULL)}
         end)
       EOD
   end

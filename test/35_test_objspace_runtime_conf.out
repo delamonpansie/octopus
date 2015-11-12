@@ -7,7 +7,7 @@
 # box.select("foo", "bar")
 [["foo"], ["bar"]]
 
-F> exception: object_space 0 is not configured
+exception: object_space 0 is not configured
 
 # box.select("foo", "bar")
 [["foo"], ["bar"]]
@@ -16,11 +16,17 @@ F> exception: object_space 0 is not configured
 1
 
 # box.create_index(1, {:type=>:FASTTREE, :unique=>1, :field_0=>{:type=>:STRING, :index=>0, :sort_order=>:DESC}})
-Failed with: {code: 0x202, message: 'metadata updates are forbidden in legacy configuration mode'}
-reloading config
-ok
+Failed with: {code: 0x202, message: 'metadata updates are forbidden because cfg.object_space is configured'}
+# box.create_shard(0, "one")
+:success
 
 # box.create_index(1, {:type=>:FASTTREE, :unique=>1, :field_0=>{:type=>:STRING, :index=>0, :sort_order=>:DESC}})
+:success
+
+# box.create_shard(1, "one")
+:success
+
+# box.create_object_space(0, {:shard=>1, :index=>{:type=>:FASTTREE, :unique=>1, :field_0=>{:type=>:STRING, :index=>0, :sort_order=>:DESC}}})
 ""
 
 # box.insert(["baf"])
@@ -29,10 +35,13 @@ ok
 # box.select("foo", "bar", "baz", "baf")
 [["foo"], ["bar"], ["baz"], ["baf"]]
 
-lsn:5 scn:5 t:sys/snap_initial 0.0.0.0:0 count:3 run_crc_log:0x3e239886 run_crc_mod:0x00000000
-lsn:5 scn:5 t:snap/usr240 0.0.0.0:0 CREATE_OBJECT_SPACE n:0 flags:00000000 cardinalty:-1 snap:1 wal:1 PK: min_tuple_cardinality:1 cardinality:1 type:0 unique:1 field0:{index:0 type:7 sort:1}
-lsn:5 scn:5 t:snap/snap_data 0.0.0.0:0 n:0 <"bar">
-lsn:5 scn:5 t:snap/snap_data 0.0.0.0:0 n:0 <"baz">
-lsn:5 scn:5 t:snap/snap_data 0.0.0.0:0 n:0 <"foo">
-lsn:5 scn:5 t:snap/usr241 0.0.0.0:0 CREATE_INDEX n:0 flags:00000000 min_tuple_cardinality:1 cardinality:1 type:4 unique:1 field0:{index:0 type:7 sort:-1}
-lsn:5 scn:5 t:sys/snap_final 0.0.0.0:0 
+lsn:7 scn:-1 t:sys/snap_initial 0.0.0.0:0 ver:0 count:3 flags:0x00000000
+lsn:7 scn:5 t:sys/shard_tag 0.0.0.0:0 SHARD_CREATE shard_id:0 shard_SCN:5 POR Box count:3 run_crc:0x3e239886 master:one
+lsn:7 scn:5 t:snap/usr240 0.0.0.0:0 CREATE_OBJECT_SPACE n:0 flags:00000000 cardinalty:-1 snap:1 wal:1 PK: i:0 min_tuple_cardinality:1 cardinality:1 type:0 unique:1 field0:{index:0 type:7 sort:1}
+lsn:7 scn:5 t:snap/snap_data 0.0.0.0:0 n:0 <"bar">
+lsn:7 scn:5 t:snap/snap_data 0.0.0.0:0 n:0 <"baz">
+lsn:7 scn:5 t:snap/snap_data 0.0.0.0:0 n:0 <"foo">
+lsn:7 scn:5 t:snap/usr241 0.0.0.0:0 CREATE_INDEX n:0 flags:00000000 i:1 min_tuple_cardinality:1 cardinality:1 type:4 unique:1 field0:{index:0 type:7 sort:-1}
+lsn:7 scn:2 t:sys/shard_tag 0.0.0.0:0 SHARD_CREATE shard_id:1 shard_SCN:2 POR Box count:0 run_crc:0xd34defb3 master:one
+lsn:7 scn:2 t:snap/usr240 0.0.0.0:0 CREATE_OBJECT_SPACE n:0 flags:00000000 cardinalty:0 snap:1 wal:1 PK: i:0 min_tuple_cardinality:1 cardinality:1 type:4 unique:1 field0:{index:0 type:7 sort:-1}
+lsn:7 scn:-1 t:sys/snap_final 0.0.0.0:0 

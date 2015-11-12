@@ -27,10 +27,10 @@ rescue => e
   log err
 end
 
-$timefactor = 1
+$timefactor = 5
 def wait_for(reason = "deadline", deadline=3)
-  deadline = Time.now + deadline * $timefactor
-
+  deadline *= $timefactor
+  deadline = Time.now + deadline
   while deadline > Time.now do
     begin
       result = yield
@@ -69,7 +69,7 @@ class RunEnv < TinyRakeEmbed
     "0:#@primary_port"
   end
 
-  def config(object_space: true)
+  def config(object_space: true, hostname: nil)
     cfg = ""
     cfg << <<EOD
 pid_file = "octopus.pid"
@@ -96,6 +96,19 @@ object_space[0].index[0].key_field[0].type = "STR"
 
 #######
 
+EOD
+    cfg << <<EOD if hostname
+sync_scn_with_lsn = 0
+hostname = "#{hostname}"
+peer = [ { id = 1
+           name = "one"
+           addr = "127.0.0.1:33013" },
+         { id = 2
+           name  = "two"
+           addr = "127.0.0.1:33023" },
+         { id = 3
+           name = "three"
+           addr = "127.0.0.1:33033" } ]
 EOD
     cfg
   end
@@ -152,8 +165,9 @@ EOD
       if $options[:valgrind]
         $timefactor = 40
         argv.unshift('valgrind', '-q',
-                     "--suppressions=#{Root + 'scripts/valgrind.supp'}",
-                     "--suppressions=#{Root + 'third_party/luajit/src/lj.supp'}")
+                     "--trace-children=yes",
+                     "--suppressions=#{Root + '../../scripts/valgrind.supp'}",
+                     "--suppressions=#{Root + '../../third_party/luajit/src/lj.supp'}")
       end
       exec *argv, param
     end
@@ -163,7 +177,7 @@ EOD
     cd do
       invoke :start
 
-      pid = octopus [], :out => "/dev/null"
+      pid = octopus []
 
       begin
         wait_for "server start" do
@@ -190,7 +204,7 @@ EOD
         end
 
         if readable? PidFile
-          STDERR.puts "killing hang server"
+          STDERR.puts "killing hang server pid #@pid"
           kill("KILL", @pid)
         end
       end
@@ -218,6 +232,7 @@ EOD
 
   def snapshot
     raise "no server running" unless @pid
+    sleep 0.1
     Process.kill('USR1', @pid)
   end
 

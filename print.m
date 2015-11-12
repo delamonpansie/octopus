@@ -270,6 +270,20 @@ box_print_row(struct tbuf *out, u16 tag, struct tbuf *r)
 	}
 }
 
+const char *
+box_row_to_a(u16 tag, struct tbuf *data)
+{
+	@try {
+		struct tbuf *buf = tbuf_alloc(fiber->pool);
+		struct tbuf tmp = *data;
+		box_print_row(buf, tag, &tmp);
+		return buf->ptr;
+	}
+	@catch (id e) {
+		return tbuf_to_hex(data);
+	}
+}
+
 
 @interface BoxPrint: Box <RecoverRow> {
 	i64 stop_scn;

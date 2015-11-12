@@ -50,6 +50,11 @@ class SilverBox < IProtoRetCode
 
   attr_accessor :object_space
 
+  def msg(message)
+    message[:code] |= message[:shard] << 16 if message[:shard]
+    super(message)
+  end
+
   def pack_field(value)
     case value
     when Quad
@@ -142,18 +147,19 @@ class SilverBox < IProtoRetCode
 
   def insert(tuple, param = {})
     object_space = param[:object_space] || @object_space
+    shard = param[:shard] || 0
     flags = 0
     flags |= BOX_RETURN_TUPLE if param[:return_tuple]
 
     tuple = [tuple] if tuple.is_a?(Integer)
-    reply = msg :code => 13, :raw => pack([object_space, flags, tuple], 'L L L/ field*')
+    reply = msg :code => 13, :shard => shard, :raw => pack([object_space, flags, tuple], 'L L L/ field*')
     unpack_reply!(reply, param)
   end
 
   def delete(key, param = {})
     object_space = param[:object_space] || @object_space
-
-    tuples_affected, = msg(:code => 20, :raw => pack([object_space, key], 'L key')).unpack('L')
+    shard = param[:shard] || 0
+    tuples_affected, = msg(:code => 20, :shard => shard, :raw => pack([object_space, key], 'L key')).unpack('L')
     tuples_affected
   end
 
@@ -161,11 +167,12 @@ class SilverBox < IProtoRetCode
     param = keys[-1].is_a?(Hash) ? keys.pop : {}
     return [] if keys.length == 0
     object_space = param[:object_space] || @object_space
+    shard = param[:shard] || 0
     offset = param[:offset] || 0
     limit = param[:limit] || 4294967295
     index = param[:index] || 0
 
-    reply = msg :code => 17, :raw => pack([object_space, index, offset, limit, keys], 'L L L L L/ key*')
+    reply = msg :code => 17, :shard => shard, :raw => pack([object_space, index, offset, limit, keys], 'L L L L L/ key*')
     unpack_reply!(reply, :return_tuple => true)
   end
 
@@ -173,6 +180,7 @@ class SilverBox < IProtoRetCode
     return [] if ops.length == 0
     param = ops[-1].is_a?(Hash) ? ops.pop : {}
     object_space = param[:object_space] || @object_space
+    shard = param[:shard] || 0
     flags = 0
     flags |= BOX_RETURN_TUPLE if param[:return_tuple]
     ops.map! do |op|
@@ -192,14 +200,14 @@ class SilverBox < IProtoRetCode
       end
     end
 
-    reply = msg :code => 19, :raw => pack([object_space, flags, key, ops.length, ops.join('')], 'L L key L a*')
+    reply = msg :code => 19, :shard => shard, :raw => pack([object_space, flags, key, ops.length, ops.join('')], 'L L key L a*')
     unpack_reply!(reply, param)
   end
 
   def lua(func_name, *args)
     param = args[-1].is_a?(Hash) ? args.pop : {}
-
-    reply = msg :code => 22, :raw => pack([0, func_name, args], 'L field L/ field*')
+    shard = param[:shard] || 0
+    reply = msg :code => 22, :shard => shard, :raw => pack([0, func_name, args], 'L field L/ field*')
     unpack_reply!(reply, :return_tuple => true)
   end
 
@@ -261,36 +269,64 @@ class SilverBox < IProtoRetCode
     cardinalty = conf[:cardinalty] || 0
     snap = conf[:snap] || 1
     wal = conf[:wal] || 1
+    shard = conf[:shard] || 0
+    fail ":shard missing" unless conf[:shard]
     fail ":index missing" unless conf[:index]
-    msg :code => 240, :raw => [n, flags, cardinalty, snap, wal, *pack_index_conf(conf[:index])].pack("LLC*")
+    msg :code => 240, :shard => shard, :raw => [n, flags, cardinalty, snap, wal, *pack_index_conf(conf[:index])].pack("LLC*")
   end
 
   def create_index(i, index_conf)
     flags = 0
-    msg :code => 241, :raw => [@object_space, flags, i, *pack_index_conf(index_conf)].pack("LLCC*")
+    shard = index_conf[:shard] || 0
+    msg :code => 241, :shard => shard, :raw => [@object_space, flags, i, *pack_index_conf(index_conf)].pack("LLCC*")
+    :success
   end
 
-  def drop_object_space(n)
+  def drop_object_space(n, param = {})
     flags = 0
-    msg :code => 242, :raw => [n, flags].pack("LL")
+    shard = param[:shard] || 0
+    msg :code => 242, :shard => shard, :raw => [n, flags].pack("LL")
+    :success
   end
 
-  def drop_index(i)
+  def drop_index(i, param = {})
     flags = 0
+    shard = param[:shard] || 0
     msg :code => 243, :raw => [@object_space, flags, i].pack("LLC")
+    :success
   end
 
-  def truncate
+  def truncate(param = {})
     flags = 0
-    msg :code => 244, :raw => [@object_space, flags].pack("LL")
+    shard = param[:shard] || 0
+    msg :code => 244, :shard => shard, :raw => [@object_space, flags].pack("LL")
+    :success
+  end
+
+  def create_shard(shard, master, replica1 = "", replica2 = "", type = 0)
+    version = 0
+    op = 0 # create
+    scn = 0
+    tm = 0
+    row_count = 0
+    run_crc = 0
+    mod_name = "Box"
+    replica3 = ""
+    replica4 = ""
+    format = "CCCQQLL" + ("a16" * 6)
+    msg :code => 0xff02, :shard => shard,
+        :raw => [version, op, type, scn, tm, row_count, run_crc,
+                 mod_name, master, replica1, replica2, replica3, replica4].pack(format)
+    :success
   end
 
   def pks(*args)
     param = args[-1].is_a?(Hash) ? args.pop : {}
     object_space = param[:object_space] || @object_space
+    shard = param[:shard] || 0
     func_name = 'user_proc.get_all_pkeys'
     args.unshift object_space.to_s
-    reply = msg :code => 22, :raw => pack([0, func_name, args], 'L field L/ field*')
+    reply = msg :code => 22, :shard => shard, :raw => pack([0, func_name, args], 'L field L/ field*')
 
     pks = []
     count = reply.slice!(0 .. 3).unpack('L')[0]

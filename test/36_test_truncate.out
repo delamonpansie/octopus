@@ -1,4 +1,7 @@
-# box.create_object_space(0, {:index=>{:type=>:FASTTREE, :unique=>1, :field_0=>{:type=>:STRING, :index=>0, :sort_order=>:DESC}}})
+# box.create_shard(0, "one")
+:success
+
+# box.create_object_space(0, {:shard=>0, :index=>{:type=>:FASTTREE, :unique=>1, :field_0=>{:type=>:STRING, :index=>0, :sort_order=>:DESC}}})
 ""
 
 # box.insert(["foo0"])
@@ -20,13 +23,13 @@
 [["foo0"], ["foo1"], ["foo2"], ["foo3"], ["foo4"]]
 
 # box.truncate()
-""
+:success
 
 # box.truncate()
-""
+:success
 
 # box.truncate()
-""
+:success
 
 # box.select("foo0", "foo1", "foo2", "foo3", "foo4")
 []

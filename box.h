@@ -33,6 +33,7 @@
 #import <objc.h>
 #import <log_io.h>
 
+@class Box;
 struct box_tuple;
 struct index;
 
@@ -44,10 +45,6 @@ struct object_space {
 	int cardinality;
 	Index<BasicIndex> *index[MAX_IDX];
 };
-
-extern struct object_space *object_space_registry[256];
-extern const int object_space_max_idx;
-struct object_space *object_space(int n);
 
 enum object_type {
 	BOX_TUPLE = 1
@@ -88,6 +85,7 @@ struct box_txn {
 	u16 op;
 	u32 flags;
 
+	Box *box;
 	struct object_space *object_space;
 	Index<BasicIndex> *index;
 
@@ -103,6 +101,7 @@ struct box_meta_txn {
 	u16 op;
 	u32 flags;
 
+	Box *box;
 	struct object_space *object_space;
 	Index<BasicIndex> *index;
 };
@@ -116,6 +115,8 @@ void prepare_replace(struct box_txn *txn, size_t cardinality, const void *data, 
 void box_prepare_meta(struct box_meta_txn *txn, struct tbuf *data);
 void box_commit_meta(struct box_meta_txn *txn);
 void box_rollback_meta(struct box_meta_txn *txn);
+
+void box_shard_create(int n, int type);
 
 void box_service(struct iproto_service *s);
 void box_service_ro(struct iproto_service *s);
@@ -164,12 +165,14 @@ enum messages ENUM_INITIALIZER(MESSAGES);
 extern char * const box_ops[];
 
 @interface Box : Object <Executor> {
+	bool built_seconday_indexes;
 @public
 	Shard<Shard> *shard;
+	struct object_space *object_space_registry[256];
+	const int object_space_max_idx;
 }
 @end
-
-extern Box *box;
+struct object_space *object_space(Box *box, int n);
 
 void *next_field(void *f);
 void append_field(struct tbuf *b, void *f);
@@ -179,4 +182,6 @@ ssize_t tuple_bsize(u32 cardinality, const void *data, u32 max_len);
 int box_cat_scn(i64 stop_scn);
 int box_cat(const char *filename);
 void box_print_row(struct tbuf *out, u16 tag, struct tbuf *r);
+const char *box_row_to_a(u16 tag, struct tbuf *r);
+
 #endif

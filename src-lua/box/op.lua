@@ -3,6 +3,8 @@ local packer, unpacker = packer, unpacker
 local tonumber, ipairs, select, error = tonumber, ipairs, select, error
 local table, setmetatable, type = table, setmetatable, type
 local assertarg = assertarg
+local assert = assert
+local print = print
 
 local tuple = require('box.dyn_tuple').new
 local wal = require 'wal'
@@ -26,6 +28,10 @@ end
 
 local function insert(flags, n, ...)
         local req = cached_packer()
+
+        assert(n ~= nil)
+        print("flags", flags)
+        print("n", n)
 
         req:u32(n)
         req:u32(flags)

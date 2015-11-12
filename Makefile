@@ -1,13 +1,12 @@
-binary_type = STORAGE
+XCFLAGS += -DOCT_CHILDREN=1
 
 obj += src/admin.o
 obj += $(obj-log-io)
-obj += src/paxos.o
 obj += src/tnt_obj.o
 obj += src/iproto.o
 obj += src/iproto_client.o
 
-src/octopus.o src/net_io.o: XCFLAGS += -DOCT_OBJECT
+src/octopus.o src/net_io.o src/fiber.o: XCFLAGS += -DOCT_OBJECT
 
 obj += mod/box/box.o
 obj += mod/box/op.o
@@ -27,11 +26,12 @@ obj += mod/box/src-lua/box/expire.o
 obj += mod/box/src-lua/box/dyn_tuple.o
 obj += mod/box/src-lua/box/op.o
 obj += mod/box/src-lua/box/string_ext.o
+obj += mod/box/src-lua/box/cast.o
 
 cfg_tmpl += cfg/admin.cfg_tmpl
 cfg_tmpl += cfg/iproto.cfg_tmpl
 cfg_tmpl += cfg/log_io.cfg_tmpl
-cfg_tmpl += cfg/paxos.cfg_tmpl
+cfg_tmpl += cfg/replication.cfg_tmpl
 cfg_tmpl += mod/box/object_space.cfg_tmpl
 
 

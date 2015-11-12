@@ -5,12 +5,13 @@ require 'run_env'
 
 class Env < RunEnv
   def config
-    super :object_space => false
+    super :hostname => "one", :object_space => false
   end
 end
 
 Env.connect_eval do
-  create_object_space 0, :index => {:type => :FASTTREE, :unique => 1, :field_0 => { :type => :STRING, :index => 0 , :sort_order => :DESC }}
+  create_shard(0, "one")
+  create_object_space 0, :shard => 0, :index => {:type => :FASTTREE, :unique => 1, :field_0 => { :type => :STRING, :index => 0 , :sort_order => :DESC }}
   keys = []
   5.times  do |i|
     foo = "foo#{i}"

@@ -6,7 +6,7 @@ local bit = require("bit")
 local net = require("net")
 
 local assert, pcall, error, print, ipairs, pairs, type = assert, pcall, error, print, ipairs, pairs, type
-local string, tonumber, tostring, table, box, fiber, index = string, tonumber, tostring, table, box, fiber, index
+local string, tonumber, tostring, table, box, fiber = string, tonumber, tostring, table, box, fiber
 
 user_proc = user_proc or {}
 local user_proc = user_proc
@@ -14,12 +14,12 @@ local user_proc = user_proc
 module(...)
 
 -- simple definition via  box.defproc
-user_proc.get_all_tuples = box.wrap(function (n, i)
+user_proc.get_all_tuples = box.wrap(function (ushard, n, i)
 	local result = {}
-        local object_space = box.object_space[n]
-        local function next_chunk(idx, start)
+        local object_space = ushard:object_space(n)
+        local function next_chunk(index, start)
                 local count, batch_size = 0, 3000
-                for tuple in index.iter(idx, start) do
+                for tuple in index:iter(start) do
                         if (count == batch_size) then
                                 -- return last tuple not putting it into result
                                 -- outer iteration will use is as a restart point
@@ -33,7 +33,7 @@ user_proc.get_all_tuples = box.wrap(function (n, i)
 
 	if i == nil then i = 0 end
         -- iterate over all chunks
-        for restart in next_chunk, object_space.index[i] do
+        for restart in next_chunk, object_space:index(i) do
                 fiber.sleep(0.001)
         end
 
@@ -43,8 +43,8 @@ end)
 
 -- raw access to internals
 user_proc.get_all_pkeys =
-        function (out, request, n, batch_size)
-                local object_space = box.space[n]
+    function (out, request, n, batch_size)
+        	local object_space = box.ushard(0):object_space(n)
 
                 if not object_space then
                         error(string.format("no such object_space: %s", n))
@@ -55,10 +55,10 @@ user_proc.get_all_pkeys =
                         batch_size = 42
                 end
 
-                local function next_chunk(idx, start)
+                local function next_chunk(index, start)
                         local count, keys = 0, {}
 
-                        for tuple in index.iter(idx, start) do
+                        for tuple in index:iter(start) do
                                 if (count == batch_size) then
                                         return tuple, keys
                                 end
@@ -73,7 +73,7 @@ user_proc.get_all_pkeys =
                 -- this is done because otherwise the residual from last iteration is lost
 
 		local packs = {}
-                for restart, keys in next_chunk, object_space.index[1] do
+                for restart, keys in next_chunk, object_space:index(1) do
                         if #keys > 0 then
                                 key_count = key_count + #keys
                                 local pack = table.concat(keys)
@@ -96,16 +96,16 @@ user_proc.get_all_pkeys =
         end
 
 -- periodic processing
-user_proc.drop_first_tuple = box.wrap(function ()
+user_proc.drop_first_tuple = box.wrap(function (ushard)
 	local function drop_first_tuple()
                 fiber.sleep(1)
-                local object_space = box.object_space[0]
-                local idx = object_space.index[0]
+                local object_space = ushard:object_space(0)
+                local pk = object_space:index(0)
                 while true do
                         print("lookin for a tuple")
-                        for tuple in index.iter(idx) do
+                        for tuple in pk:iter() do
                                 print("found, killin it")
-                                box.delete(0, tuple[0])
+                                ushard:delete(0, tuple[0])
                                 break
                         end
                         print("sleepin")
@@ -122,9 +122,9 @@ local typemap = { [8] = ffi.typeof('uint64_t *'),
                   [4] = ffi.typeof('uint32_t *'),
                   [2] = ffi.typeof('uint16_t *')}
 
-user_proc.sum_u64 = box.wrap(function (n, pk)
-        local object_space = box.object_space[n]
-        local obj = object_space.index[0][pk]
+user_proc.sum_u64 = box.wrap(function (ushard, n, pk)
+        local object_space = ushard:object_space(n)
+        local obj = object_space:index(0):find(pk)
         if not obj then
             return 0x202, {"not found"}
         end
@@ -134,6 +134,7 @@ user_proc.sum_u64 = box.wrap(function (n, pk)
         local f, offt, len = {}, 0
         for i = 0, t.cardinality - 1 do
             len, offt = box.decode_varint32(t.data, offt)
+            local v
             if typemap[len] then
                 v = ffi.cast(typemap[len], t.data + offt)[0]
             else
@@ -154,8 +155,8 @@ user_proc.sum_u64 = box.wrap(function (n, pk)
         return 0, {box.tuple(tostring(sum))}
 end)
 
-user_proc.sum_u64_v2 = box.wrap(function (n, pk)
-    local object_space = box.object_space[n]
+user_proc.sum_u64_v2 = box.wrap(function (ushard, n, pk)
+    local object_space = ushard:object_space(n)
     local tuple = object_space:index(0):find(pk)
     if not tuple then
         return 0x202, {"not found"}
@@ -174,13 +175,13 @@ user_proc.sum_u64_v2 = box.wrap(function (n, pk)
     return 0, {box.tuple(tostring(sum))}
 end)
 
-user_proc.truncate = box.wrap(function (n)
-	local object_space = box.object_space[n]
-	local pk = object_space.index[0]
+user_proc.truncate = box.wrap(function (ushard, n)
+	local object_space = ushard:object_space(n)
+	local pk = object_space:index(0)
 	local c = 0;
 	print("truncating object_space[".. n .. "]")
-	for tuple in index.iter(pk) do
-	   box.delete(n, tuple[0])
+	for tuple in pk:iter() do
+	   object_space:delete(tuple[0])
 	   c = c + 1
 	   if c % 1000000 == 0 then
 	      print(" " .. c / 1000000 .. "M tuples")
@@ -192,8 +193,8 @@ user_proc.truncate = box.wrap(function (n)
 end)
 
 
-user_proc.iterator = box.wrap(function (n, key, limit, dir)
-	local os = box.object_space[n]
+user_proc.iterator = box.wrap(function (ushard, n, key, limit, dir)
+	local os = ushard:object_space(n)
         local pk = os:index(0)
         local result = {}
 
@@ -221,8 +222,8 @@ user_proc.iterator = box.wrap(function (n, key, limit, dir)
         return 0, result
 end)
 
-user_proc.iterator2 = box.wrap(function (n, key)
-	local os = box.object_space[0]
+user_proc.iterator2 = box.wrap(function (ushard, n, key)
+	local os = ushard:object_space(0)
         local pk = os:index(n)
         local result = {}
 
@@ -233,8 +234,8 @@ user_proc.iterator2 = box.wrap(function (n, key)
         return 0, result
 end)
 
-user_proc.iterator2r = box.wrap(function (n, key)
-	local os = box.object_space[0]
+user_proc.iterator2r = box.wrap(function (ushard, n, key)
+	local os = ushard:object_space(0)
         local pk = os:index(n)
         local result = {}
 
@@ -245,8 +246,8 @@ user_proc.iterator2r = box.wrap(function (n, key)
         return 0, result
 end)
 
-user_proc.iterator3 = box.wrap(function ()
-	local os = box.object_space[0]
+user_proc.iterator3 = box.wrap(function (ushard)
+	local os = ushard:object_space(0)
         local pk = os:index(0)
         for tuple in pk:iter() do
             fiber.sleep(0.000001)
@@ -271,9 +272,9 @@ local function tos(s)
    return tostring(s):gsub("0x%w+", "0xPTR")
 end
 
-local function test2()
-   local os = box.object_space[0]
-   local legacy_pk = os.index[0]
+local function test2(ushard)
+   local os = ushard:object_space(0)
+   local legacy_pk = os:index(0)
    local new_pk = os:index(0)
 
    local a = tos(legacy_pk)
@@ -281,16 +282,16 @@ local function test2()
    return 0, {box.tuple(a, b)}
 end
 
-local function test3()
-   local os = box.object_space[0]
+local function test3(ushard)
+   local os = ushard:object_space(0)
    local pk = os:index(0)
 
    local t = pk:find("11")
    return 0, {box.tuple(tos(t), t:strfield(0), t[0])}
 end
 
-local function test4()
-    local os = box.object_space[0]
+local function test4(ushard)
+    local os = ushard:object_space(0)
     local pk = os:index(0)
 
     local k = {}
@@ -324,8 +325,8 @@ local function test4()
     return 0, {box.tuple(tostring(n))}
 end
 
-local function test5()
-    local os = box.object_space[1]
+local function test5(ushard)
+    local os = ushard:object_space(1)
     local a = os:index(0):find(0)
     local b = os:index(1):find(0)
     local c = os:index(2):find(0)
@@ -333,35 +334,37 @@ local function test5()
     return 0, {a,b,c,d}
 end
 
-local function test6()
-    return 0, {box.replace(0, "\0\0\0\0", "\0\0\0\0", "\0\0\0\0")}
+local function test6(ushard)
+    print("ushard", ushard)
+    return 0, {ushard:replace(0, "\0\0\0\0", "\0\0\0\0", "\0\0\0\0")}
 end
 
-local function test7()
+local function test7(ushard)
     return 0, {
-        box.object_space[0]:index(0):find("99"),
-        box.update(0, "99", {2,"set","9999"}),
-        box.delete(0, "99"),
-        box.tuple{ tostring(box.object_space[0]:index(0):find("99")) },
+        ushard:object_space(0):index(0):find("99"),
+        ushard:update(0, "99", {2,"set","9999"}),
+        ushard:delete(0, "99"),
+        box.tuple{ tostring(ushard:object_space(0):index(0):find("99")) },
     }
 end
 
-local function test8()
+local function test8(ushard)
     return 0, {
-        box.object_space[2]:index(0):find(0, 0),
-        box.update(2, {"\0\0\0\0","\0\0\0\0"}, {2,"set","9999"}),
-        box.delete(2, {"\0\0\0\0","\0\0\0\0"}),
-        box.tuple{ tostring(box.object_space[2]:index(0):find(0, 0)) },
+        ushard:object_space(2):index(0):find(0, 0),
+        ushard:update(2, {"\0\0\0\0","\0\0\0\0"}, {2,"set","9999"}),
+        ushard:delete(2, {"\0\0\0\0","\0\0\0\0"}),
+        box.tuple{ tostring(ushard:object_space(2):index(0):find(0, 0)) },
     }
 end
 
-local function test9()
+local function test9(ushard)
+    local os = ushard:object_space(2)
     return 0, {
-        box.replace(2, "\0\0\0\0", "\0\0\0\0", "","",""),
-        box.object_space[2]:index(0):find(0, 0),
-        box.update(2, {"\0\0\0\0","\0\0\0\0"}, {2,"set16",0}, {3,"set32", 0}, {4,"set64", 0}),
-        box.update(2, {"\0\0\0\0","\0\0\0\0"}, {2,"add16", 0}, {3, "or32", 14}, {4, "xor64", 99}),
-        box.object_space[2]:index(0):find(0, 0)
+        os:replace("\0\0\0\0", "\0\0\0\0", "","",""),
+        os:index(0):find(0, 0),
+        os:update({"\0\0\0\0","\0\0\0\0"}, {2,"set16",0}, {3,"set32", 0}, {4,"set64", 0}),
+        os:update({"\0\0\0\0","\0\0\0\0"}, {2,"add16", 0}, {3, "or32", 14}, {4, "xor64", 99}),
+        os:index(0):find(0, 0)
     }
 end
 

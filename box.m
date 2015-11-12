@@ -36,10 +36,13 @@
 #import <objc.h>
 #import <index.h>
 #import <spawn_child.h>
+#import <shard.h>
+#import <paxos.h>
 
 #import <mod/box/box.h>
 #import <mod/box/moonbox.h>
 #import <mod/box/box_version.h>
+#import <mod/feeder/feeder.h>
 
 #include <third_party/crc32.h>
 
@@ -52,30 +55,24 @@
 #include <sysexits.h>
 
 static struct iproto_service box_primary, box_secondary;
-struct object_space *object_space_registry[256];
-struct object_space *
-object_space(int n)
-{
-	if (n < 0 || n > nelem(object_space_registry) - 1)
-		iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "bad namespace number %i", n);
-
-	if (!object_space_registry[n])
-		iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "object_space %i is not enabled", n);
-
-	return object_space_registry[n];
-}
-
 const int object_space_max_idx = MAX_IDX;
 
-static void
-configure(void)
+struct object_space *
+object_space(Box *box, int n)
 {
-	if (cfg.object_space == NULL)
-		return;
+	if (n < 0 || n > nelem(box->object_space_registry) - 1)
+		iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "bad namespace number %i", n);
 
-	say_warn("legacy configuration mode");
+	if (!box->object_space_registry[n])
+		iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "object_space %i is not enabled", n);
 
-	for (int i = 0; i < nelem(object_space_registry); i++) {
+	return box->object_space_registry[n];
+}
+
+static void
+configure(Box *box)
+{
+	for (int i = 0; i < nelem(box->object_space_registry); i++) {
 		if (cfg.object_space[i] == NULL)
 			break;
 
@@ -83,7 +80,7 @@ configure(void)
 		if (!CNF_STRUCT_DEFINED(cfg.object_space[i]))
 			continue;
 
-		obj_spc = object_space_registry[i] = xcalloc(1, sizeof(struct object_space));
+		obj_spc = box->object_space_registry[i] = xcalloc(1, sizeof(struct object_space));
 
 		obj_spc->n = i;
 		obj_spc->ignored = !!cfg.object_space[i]->ignored;
@@ -180,48 +177,6 @@ build_object_space_trees(struct object_space *object_space)
 	}
 }
 
-static void
-build_secondary_indexes()
-{
-	@try {
-		for (u32 n = 0; n < nelem(object_space_registry); n++) {
-			if (object_space_registry[n])
-				build_object_space_trees(object_space_registry[n]);
-		}
-	}
-	@catch (Error *e) {
-		[e autorelease];
-		raise_fmt("unable to built tree indexes: %s", e->reason);
-	}
-
-	for (u32 n = 0; n < nelem(object_space_registry); n++) {
-		struct object_space *obj_spc = object_space_registry[n];
-		if (obj_spc == NULL)
-			continue;
-
-		say_info("Object space %i", n);
-		foreach_index(index, obj_spc)
-			say_info("\tindex[%i]: %s", index->conf.n, [[index class] name]);
-	}
-}
-
-static void
-initialize_service()
-{
-	iproto_service(&box_primary, cfg.primary_addr, NULL);
-	box_service(&box_primary);
-
-	for (int i = 0; i < MAX(1, cfg.wal_writer_inbox_size); i++)
-		fiber_create("box_worker", iproto_worker, &box_primary);
-
-	if (cfg.secondary_addr != NULL && strcmp(cfg.secondary_addr, cfg.primary_addr) != 0) {
-		iproto_service(&box_secondary, cfg.secondary_addr, NULL);
-		box_service_ro(&box_secondary);
-		fiber_create("box_secondary_worker", iproto_worker, &box_secondary);
-	}
-	say_info("(silver)box initialized (%i workers)", cfg.wal_writer_inbox_size);
-}
-
 @implementation Box
 
 - (id)
@@ -229,20 +184,35 @@ init_shard:(Shard<Shard> *)shard_
 {
 	[super init];
 	shard = shard_;
+
+	if (cfg.object_space != NULL) {
+		if (shard->dummy)
+			configure(self);
+		else
+			say_warn("cfg.object_space ignored");
+	}
+
 	return self;
+}
+
+- (void)
+set_shard:(Shard<Shard> *)shard_
+{
+	shard = shard_;
 }
 
 - (void)
 apply:(struct tbuf *)data tag:(u16)tag
 {
-	say_debug("%s tag:%s data:%s", __func__,
-		   xlog_tag_to_a(tag), tbuf_to_hex(data));
+	say_debug("%s tag:%s %s", __func__,
+		  xlog_tag_to_a(tag), box_row_to_a(tag, data));
 
 	int tag_type = tag & ~TAG_MASK;
 	tag &= TAG_MASK;
 
 	if (tag >= CREATE_OBJECT_SPACE << 5) {
-		struct box_meta_txn txn = { .op = tag >> 5 };
+		struct box_meta_txn txn = { .op = tag >> 5,
+					    .box = self };
 		@try {
 			box_prepare_meta(&txn, data);
 			box_commit_meta(&txn);
@@ -252,7 +222,7 @@ apply:(struct tbuf *)data tag:(u16)tag
 			@throw;
 		}
 	} else {
-		struct box_txn txn = { .op = 0 };
+		struct box_txn txn = { .box = self };
 		@try {
 			switch (tag_type) {
 			case TAG_WAL:
@@ -285,7 +255,7 @@ apply:(struct tbuf *)data tag:(u16)tag
 				prepare_replace(&txn, snap->tuple_size, snap->data, snap->data_size);
 				break;
 			case TAG_SYS:
-				return;
+				abort();
 			}
 
 			box_commit(&txn);
@@ -300,13 +270,42 @@ apply:(struct tbuf *)data tag:(u16)tag
 	}
 }
 
+- (void)
+build_secondary_indexes
+{
+	if (built_seconday_indexes)
+		return;
+	built_seconday_indexes = true;
+
+	@try {
+		for (u32 n = 0; n < nelem(object_space_registry); n++) {
+			if (object_space_registry[n])
+				build_object_space_trees(object_space_registry[n]);
+		}
+	}
+	@catch (Error *e) {
+		raise_fmt("unable to built tree indexes: %s", e->reason);
+	}
+
+	for (u32 n = 0; n < nelem(object_space_registry); n++) {
+		struct object_space *obj_spc = object_space_registry[n];
+		if (obj_spc == NULL)
+			continue;
+
+		say_info("Object space %i", n);
+		foreach_index(index, obj_spc)
+			say_info("\tindex[%i]: %s", index->conf.n, [[index class] name]);
+	}
+}
+
 
 - (void)
 wal_final_row
 {
+	[self build_secondary_indexes];
+
 	if (box_primary.name == NULL) {
-		build_secondary_indexes();
-		initialize_service();
+		// initialize_service();
 		[self status_changed];
 	}
 }
@@ -314,17 +313,11 @@ wal_final_row
 - (void)
 status_changed
 {
+	// FIXME: раньше все изменения статус откладывались до полной загрузки
+	// после которотой box_primary.name != NULL
+
 	if (box_primary.name == NULL)
 		return;
-	if (shard->status == PRIMARY) {
-		box_primary.proxy = NULL;
-		return;
-	}
-	if (shard->status == REMOTE_STANDBY && [shard proxy_addr]) {
-		box_primary.proxy = iproto_add_remote_peer([ shard proxy_addr], box_primary.pool, NULL);
-		box_primary.proxy->ts.name = "proxy_to_primary";
-		return;
-	}
 }
 
 - (void)
@@ -427,7 +420,9 @@ snapshot_write_rows:(XLog *)l
 		struct object_space *o = object_space_registry[n];
 		Index<BasicIndex> *pk = o->index[0];
 
-		if (cfg.object_space == NULL) {
+		assert(n == o->n);
+
+		if (!shard->dummy) {
 			tbuf_reset(row);
 			write_i32(row, n);
 			write_i32(row, 0); // flags
@@ -436,7 +431,9 @@ snapshot_write_rows:(XLog *)l
 			write_i8(row, o->wal);
 			index_conf_write(row, &pk->conf);
 
-			if ([l append_row:row scn:shard_scn tag:(CREATE_OBJECT_SPACE << 5)|TAG_SNAP] == NULL) {
+			if ([l append_row:row->ptr len:tbuf_len(row)
+				    shard:shard tag:(CREATE_OBJECT_SPACE << 5)|TAG_SNAP] == NULL)
+			{
 				ret = -1;
 				goto out;
 			}
@@ -471,7 +468,9 @@ snapshot_write_rows:(XLog *)l
 			tbuf_append(row, &header, sizeof(header));
 			tbuf_append(row, tuple->data, tuple->bsize);
 
-			if ([l append_row:row scn:shard_scn tag:snap_data|TAG_SNAP] == NULL) {
+			if ([l append_row:row->ptr len:tbuf_len(row)
+				    shard:shard tag:snap_data|TAG_SNAP] == NULL)
+			{
 				ret = -1;
 				goto out;
 			}
@@ -489,14 +488,16 @@ snapshot_write_rows:(XLog *)l
 		foreach_index(index, o) {
 			if (index->conf.n == 0)
 				continue;
-			if (cfg.object_space == NULL) {
+			if (!shard->dummy) {
 				tbuf_reset(row);
 				write_i32(row, n);
 				write_i32(row, 0); // flags
 				write_i8(row, index->conf.n);
 				index_conf_write(row, &index->conf);
 
-				if ([l append_row:row scn:shard_scn tag:(CREATE_INDEX << 5)|TAG_SNAP] == NULL) {
+				if ([l append_row:row->ptr len:tbuf_len(row)
+					    shard:shard tag:(CREATE_INDEX << 5)|TAG_SNAP] == NULL)
+				{
 					ret = -1;
 					goto out;
 				}
@@ -517,10 +518,37 @@ out:
 
 @end
 
+static void
+initialize_service()
+{
+	iproto_service(&box_primary, cfg.primary_addr);
+	box_primary.options = SERVICE_SHARDED;
+	box_service(&box_primary);
+	feeder_service(&box_primary);
 
-static void init_second_stage(va_list ap __attribute__((unused)));
+	for (int i = 0; i < MAX(1, cfg.wal_writer_inbox_size); i++)
+		fiber_create("box_worker", iproto_worker, &box_primary);
 
-Box *box;
+	if (cfg.secondary_addr != NULL && strcmp(cfg.secondary_addr, cfg.primary_addr) != 0) {
+		iproto_service(&box_secondary, cfg.secondary_addr);
+		box_secondary.options = SERVICE_SHARDED;
+		box_service_ro(&box_secondary);
+		fiber_create("box_secondary_worker", iproto_worker, &box_secondary);
+	}
+	say_info("(silver)box initialized (%i workers)", cfg.wal_writer_inbox_size);
+}
+
+static void
+init_second_stage(va_list ap)
+{
+	Recovery *recovery = va_arg(ap, Recovery *);
+	luaT_openbox(root_L);
+	luaT_require_or_panic("box_init", false, NULL);
+
+	[recovery simple];
+}
+
+
 static void
 init(void)
 {
@@ -528,26 +556,16 @@ init(void)
 
 	extern Recovery *recovery;
 	recovery = [[Recovery alloc] init];
-	box = [[Box alloc] init_shard:[recovery shard]];
-	[[recovery shard] set_executor:box];
+	recovery->default_exec_class = [Box class];
 
 	if (init_storage)
 		return;
 
+	initialize_service();
+	[Recovery service:&box_primary];
+
 	/* fiber is required to successfully pull from remote */
-	fiber_create("box_init", init_second_stage);
-}
-
-static void
-init_second_stage(va_list ap __attribute__((unused)))
-{
-	luaT_openbox(root_L);
-	luaT_require_or_panic("box_init", false, NULL);
-
-	configure();
-
-	extern Recovery *recovery;
-	[recovery simple];
+	fiber_create("box_init", init_second_stage, recovery);
 }
 
 static void
@@ -559,35 +577,41 @@ info(struct tbuf *out, const char *what)
 		tbuf_printf(out, "  uptime: %i" CRLF, tnt_uptime());
 		tbuf_printf(out, "  pid: %i" CRLF, getpid());
 		extern Recovery *recovery;
-		const struct child *wal_writer = [recovery wal_writer];
-		tbuf_printf(out, "  wal_writer_pid: %" PRIi64 CRLF,
-			    (i64)wal_writer->pid);
 		tbuf_printf(out, "  lsn: %" PRIi64 CRLF, [recovery lsn]);
-		tbuf_printf(out, "  scn: %" PRIi64 CRLF, [[recovery shard] scn]);
-		if ([box->shard is_replica]) {
-			tbuf_printf(out, "  recovery_lag: %.3f" CRLF, [[recovery shard] lag]);
-			tbuf_printf(out, "  recovery_last_update: %.3f" CRLF, [[recovery shard] last_update_tstamp]);
-			if (!cfg.ignore_run_crc) {
-				tbuf_printf(out, "  recovery_run_crc_lag: %.3f" CRLF, [[recovery shard] run_crc_lag]);
-				tbuf_printf(out, "  recovery_run_crc_status: %s" CRLF, [[recovery shard] run_crc_status]);
+		tbuf_printf(out, "  shards:" CRLF);
+		for (int i = 0; i < MAX_SHARD; i++) {
+			id<Shard> shard = [recovery shard:i];
+			if (shard == nil)
+				continue;
+			tbuf_printf(out, "  - shard_id: %i" CRLF, i);
+			tbuf_printf(out, "    scn: %" PRIi64 CRLF, [shard scn]);
+			if ([shard is_replica]) {
+				tbuf_printf(out, "    recovery_lag: %.3f" CRLF, [shard lag]);
+				tbuf_printf(out, "    recovery_last_update: %.3f" CRLF, [shard last_update_tstamp]);
+				if (!cfg.ignore_run_crc) {
+					tbuf_printf(out, "    recovery_run_crc_lag: %.3f" CRLF, [shard run_crc_lag]);
+					tbuf_printf(out, "    recovery_run_crc_status: %s" CRLF, [shard run_crc_status]);
+				}
+			}
+			tbuf_printf(out, "    status: %s%s%s" CRLF, [shard status],
+				    cfg.custom_proc_title ? "@" : "",
+				    cfg.custom_proc_title ?: "");
+
+			Box *box = [shard executor];
+			tbuf_printf(out, "  namespaces:" CRLF);
+			for (uint32_t n = 0; n < nelem(box->object_space_registry); ++n) {
+				if (box->object_space_registry[n] == NULL)
+					continue;
+				tbuf_printf(out, "  - n: %i"CRLF, n);
+				tbuf_printf(out, "    objects: %i"CRLF, [box->object_space_registry[n]->index[0] size]);
+				tbuf_printf(out, "    indexes:"CRLF);
+				foreach_index(index, box->object_space_registry[n])
+					tbuf_printf(out, "    - { index: %i, slots: %i, bytes: %zi }" CRLF,
+						    index->conf.n, [index slots], [index bytes]);
 			}
 		}
-		tbuf_printf(out, "  status: %s%s%s" CRLF, [[recovery shard] status],
-			    cfg.custom_proc_title ? "@" : "",
-			    cfg.custom_proc_title ?: "");
 		tbuf_printf(out, "  config: \"%s\""CRLF, cfg_filename);
 
-		tbuf_printf(out, "  namespaces:" CRLF);
-		for (uint32_t n = 0; n < nelem(object_space_registry); ++n) {
-			if (object_space_registry[n] == NULL)
-				continue;
-			tbuf_printf(out, "  - n: %i"CRLF, n);
-			tbuf_printf(out, "    objects: %i"CRLF, [object_space_registry[n]->index[0] size]);
-			tbuf_printf(out, "    indexes:"CRLF);
-			foreach_index(index, object_space_registry[n])
-				tbuf_printf(out, "    - { index: %i, slots: %i, bytes: %zi }" CRLF,
-					    index->conf.n, [index slots], [index bytes]);
-		}
 		return;
 	}
 
@@ -621,7 +645,15 @@ reload_config(struct octopus_cfg *old _unused_,
 	struct feeder_param feeder;
 	feeder_param_fill_from_cfg(&feeder, new);
 	extern Recovery *recovery;
-	[recovery feeder_changed:&feeder];
+	Shard<Shard> *shard = [recovery shard:0];
+	if (shard == nil || !shard->dummy) {
+		say_error("ignoring lagacy configuration request");
+		return;
+	}
+	if ([(id)shard respondsTo:@selector(feeder_changed:)])
+		[(id)shard feeder_changed:&feeder];
+	else
+		say_error("ignoring unsupported configuration request");
 }
 
 static struct tnt_module box_mod = {
@@ -632,7 +664,7 @@ static struct tnt_module box_mod = {
 	.reload_config = reload_config,
 	.cat = box_cat,
 	.cat_scn = box_cat_scn,
-	.info = info
+	.info = info,
 };
 
 register_module(box_mod);

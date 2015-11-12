@@ -94,12 +94,14 @@ master.connect_eval do
   end
 end
 
+# $options = {valgrind: true}
+
 SlaveEnv.connect_eval do |env|
   wait_for "readable 00000000000000000301.snap" do
     FileTest.readable?("00000000000000000301.snap")
   end
 
-  wait_for { select_nolog([99]).length > 0 }
+  wait_for "non empty select [99]" do  select_nolog([99]).length > 0 end
 
   select [99]
   select [99], :object_space => 1

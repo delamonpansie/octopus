@@ -38,6 +38,7 @@
 #import <objc.h>
 #import <index.h>
 #import <paxos.h>
+#import <shard.h>
 
 #import <mod/box/box.h>
 #import <mod/box/moonbox.h>
@@ -509,6 +510,7 @@ process_select(struct netmsg_head *h, Index<BasicIndex> *index,
 		u32 c = read_u32(data);
 		if (index->conf.unique && index->conf.cardinality == c) {
 			obj = [index find_key:data cardinalty:c];
+
 			if (obj == NULL)
 				continue;
 			if (unlikely(ghost(obj)))
@@ -584,7 +586,7 @@ box_prepare(struct box_txn *txn, struct tbuf *data)
 	say_debug("%s op:%i", __func__, txn->op);
 
 	i32 n = read_u32(data);
-	txn->object_space = object_space(n);
+	txn->object_space = object_space(txn->box, n);
 	if (txn->object_space->ignored) {
 		/* txn->object_space == NULL means this txn will be ignored */
 		txn->object_space = NULL;
@@ -706,15 +708,20 @@ box_rollback(struct box_txn *txn)
 	}
 }
 
+
+#define RT_EXECUTOR(arg)					     \
+	({ if (!arg) iproto_raise(ERR_CODE_NONMASTER, "no such microshard"); \
+	   ((struct shard_route *)arg)->executor; })
+
 static void
-box_lua_cb(struct netmsg_head *wbuf, struct iproto *request)
+box_lua_cb(struct netmsg_head *wbuf, struct iproto *request, void *arg)
 {
 	say_debug("%s: op:0x%02x sync:%u", __func__, request->msg_code, request->sync);
 
 	@try {
 		ev_tstamp start = ev_now(), stop;
 
-		box_dispach_lua(wbuf, request);
+		box_dispach_lua(wbuf, request, RT_EXECUTOR(arg));
 		stat_collect(stat_base, EXEC_LUA, 1);
 
 		stop = ev_now();
@@ -732,7 +739,7 @@ box_lua_cb(struct netmsg_head *wbuf, struct iproto *request)
 
 struct rwlock {
 	bool locked;
-	SLIST_HEAD(, fiber) wait;
+	SLIST_HEAD(, Fiber) wait;
 	int readers;
 };
 
@@ -756,7 +763,7 @@ void
 wunlock(struct rwlock *lock)
 {
 	lock->locked--;
-	struct fiber *waiter = SLIST_FIRST(&lock->wait), *next;
+	struct Fiber *waiter = SLIST_FIRST(&lock->wait), *next;
 	SLIST_INIT(&lock->wait);
 	while (waiter) {
 		next = SLIST_NEXT(waiter, worker_link);
@@ -784,14 +791,24 @@ runlock(struct rwlock *lock)
 static struct rwlock lock;
 
 void
-box_meta_cb(struct netmsg_head *wbuf, struct iproto *request)
+box_meta_cb(struct netmsg_head *wbuf, struct iproto *request, void *arg)
 {
+	Box *box = RT_EXECUTOR(arg);
+
 	say_debug2("%s: op:0x%02x sync:%u", __func__, request->msg_code, request->sync);
 	if ([box->shard is_replica])
 		iproto_raise(ERR_CODE_NONMASTER, "replica is readonly");
 
+	if (box->shard->dummy // && cfg.object_space
+		)
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "metadata updates are forbidden because cfg.object_space is configured");
+
 	wlock(&lock);
-	struct box_meta_txn txn = { .op = request->msg_code };
+	if (cfg.object_space)
+		say_warn("metadata updates with configured cfg.object_space");
+
+	struct box_meta_txn txn = { .op = request->msg_code,
+				    .box = box };
 	@try {
 		@try {
 			box_prepare_meta(&txn, &TBUF(request->data, request->data_len, NULL));
@@ -806,8 +823,7 @@ box_meta_cb(struct netmsg_head *wbuf, struct iproto *request)
 		}
 		@try {
 			box_commit_meta(&txn);
-			struct iproto_retcode *reply = iproto_reply(wbuf, request, ERR_CODE_OK);
-			iproto_reply_fixup(wbuf, reply);
+			iproto_reply_small(wbuf, request, ERR_CODE_OK);
 		}
 		@catch (Error *e) {
 			panic_exc_fmt(e, "can't handle exception after WAL write: %s", e->reason);
@@ -822,14 +838,15 @@ box_meta_cb(struct netmsg_head *wbuf, struct iproto *request)
 }
 
 static void
-box_cb(struct netmsg_head *wbuf, struct iproto *request)
+box_cb(struct netmsg_head *wbuf, struct iproto *request, void *arg)
 {
+	Box *box = RT_EXECUTOR(arg);
 	say_debug2("%s: c:%p op:0x%02x sync:%u", __func__, NULL, request->msg_code, request->sync);
-
 	if ([box->shard is_replica])
 		iproto_raise(ERR_CODE_NONMASTER, "replica is readonly");
 
-	struct box_txn txn = { .op = request->msg_code };
+	struct box_txn txn = { .op = request->msg_code & 0xffff,
+			       .box = box };
 	rlock(&lock);
 	@try {
 		ev_tstamp start = ev_now(), stop;
@@ -886,8 +903,9 @@ box_cb(struct netmsg_head *wbuf, struct iproto *request)
 }
 
 static void
-box_select_cb(struct netmsg_head *wbuf, struct iproto *request)
+box_select_cb(struct netmsg_head *wbuf, struct iproto *request, void *arg)
 {
+	Box *box = RT_EXECUTOR(arg);
 	struct tbuf data = TBUF(request->data, request->data_len, fiber->pool);
 	struct iproto_retcode *reply = iproto_reply(wbuf, request, ERR_CODE_OK);
 	struct object_space *obj_spc;
@@ -897,7 +915,7 @@ box_select_cb(struct netmsg_head *wbuf, struct iproto *request)
 	u32 offset = read_u32(&data);
 	u32 limit = read_u32(&data);
 
-	obj_spc = object_space(n);
+	obj_spc = object_space(box, n);
 
 	if (i > MAX_IDX)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index too big");
@@ -907,7 +925,7 @@ box_select_cb(struct netmsg_head *wbuf, struct iproto *request)
 
 	process_select(wbuf, obj_spc->index[i], limit, offset, &data);
 	iproto_reply_fixup(wbuf, reply);
-	stat_collect(stat_base, request->msg_code, 1);
+	stat_collect(stat_base, request->msg_code & 0xffff, 1);
 }
 
 #define foreach_op(...) for(int *op = (int[]){__VA_ARGS__, 0}; *op; op++)
@@ -927,7 +945,8 @@ box_service(struct iproto_service *s)
 
 static void
 box_roerr(struct netmsg_head *h __attribute__((unused)),
-	  struct iproto *request __attribute__((unused)))
+	  struct iproto *request __attribute__((unused)),
+	  void *arg __attribute__((unused)))
 {
 	iproto_raise(ERR_CODE_NONMASTER, "updates are forbidden");
 }

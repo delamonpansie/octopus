@@ -9,20 +9,20 @@ class RunEnvX < RunEnv
     File.open("box_init.lua", "w") do |io|
       io.write <<-EOD
         local box = require 'box'
-        user_proc.select = box.wrap(function (n)
-	  local object_space = box.object_space[n]
-	  local pk = object_space.index[0]
-	  return 0, {pk['0']}
+        user_proc.select = box.wrap(function (shard, n)
+	  local object_space = shard:object_space(n)
+	  local pk = object_space:index(0)
+	  return 0, {pk:find('0')}
         end)
 
-        user_proc.update = box.wrap(function (n)
-	  local object_space = box.object_space[n]
-	  local pk = object_space.index[0]
-	  box.update(n, '0', { 2, 'delete' } )
-	  return 0, {pk['0']}
+        user_proc.update = box.wrap(function (shard, n)
+	  local object_space = shard:object_space(n)
+	  local pk = object_space:index(0)
+	  object_space:update('0', { 2, 'delete' } )
+	  return 0, {pk:find('0')}
         end)
 
-	user_proc.error = box.wrap(function (n)
+	user_proc.error = box.wrap(function (shard, n)
           error('fooo')
         end)
 

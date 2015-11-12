@@ -56,7 +56,7 @@ SlaveEnv.new.env_eval do
     s.puts "sh in"
     s.puts "quit"
     r = YAML.load(s.read)
-    info = r["info"]
+    info = r["info"]["shards"][0]
 
     %w/recovery_lag recovery_run_crc_status/.each do |p|
       puts "#{p}: #{info[p]}"

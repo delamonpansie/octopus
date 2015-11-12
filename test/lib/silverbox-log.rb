@@ -2,7 +2,7 @@ $: << File.dirname($0) + '/../client/ruby'
 require 'silverbox'
 
 class SilverBox
-  LOG_OVERRIDE = %w{ping insert delete select update_fields lua pks object_space= create_index create_object_space drop_object_space drop_index truncate}
+  LOG_OVERRIDE = %w{ping insert delete select update_fields lua pks object_space= create_index create_object_space drop_object_space drop_index truncate create_shard}
 
   LOG_OVERRIDE.map(&:to_sym).each do |name|
     orig_name = "#{name}_nolog".to_sym

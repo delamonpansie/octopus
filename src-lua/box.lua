@@ -1,3 +1,5 @@
+local sddump = sddump
+
 local assert, error, print, type, pairs, ipairs, table, setmetatable, getmetatable =
       assert, error, print, type, pairs, ipairs, table, setmetatable, getmetatable
 
@@ -19,6 +21,9 @@ local lselect = select
 local dyn_tuple = require 'box.dyn_tuple'
 local box_op = require 'box.op'
 require 'box.string_ext'
+for k, v in pairs(require('box.cast')) do
+    _G[k] = v
+end
 
 local add_stat_exec_lua = function(name) end
 local add_stat_exec_lua_ok = function(name) end
@@ -32,7 +37,19 @@ if graphite then
 end
 
 local _G = _G
+
 module(...)
+
+local function cache_call(table, k)
+    local v = table[k]
+    if v then return v end
+    v = table.__ctor(k)
+    table[k] = v
+    return v
+end
+local function cache(fun)
+    return setmetatable({__ctor = fun}, {__call = cache_call })
+end
 
 user_proc = {}
 
@@ -43,109 +60,118 @@ struct object_space {
 	int cardinality;
 	const struct BasicIndex *index[10];
 };
-struct object_space *object_space(int n);
+struct Box;
+struct Box *shard_box(int n);
+struct object_space *object_space(struct Box *box, int n);
 extern const int object_space_max_idx;
 ]]
 
-local object_space_mt = {
-   __tostring = function(self)
-      return tostring(self.__ptr)
-   end
-}
+local _dispatch = _dispatch
+
+--- jit.off(_dispatch) not needed, because C API calls are NYI
 
 local maxidx = tonumber(ffi.C.object_space_max_idx)
-local index_registry_mt = {
-   __index = function (table, i)
-       i = tonumber(i)
-       if i == nil or i < 0 or i >= maxidx or table.__object_space.index[i] == nil then
-           return nil
-       end
-       if not rawget(table, i) then
-           local legacy, new = index.cast(table.__object_space.index[i])
-           table[i] = legacy
-       end
-       return rawget(table, i)
-   end,
-   __call = function (t, object_space, i)
-       i = tonumber(i)
-       assertarg(object_space, object_space_mt, 2)
-       if i == nil or i < 0 or i >= maxidx or object_space.__ptr.index[i] == nil then
-	   return nil
-       end
-       if not rawget(t, i + maxidx) then
-	   local legacy, new = index.cast(object_space.__ptr.index[i])
-	   t[i + maxidx] = new
-       end
 
-       return rawget(t, i + maxidx)
-   end
+local object_space_mt = {
+    __index = {
+        index = function (self, i)
+            i = tonumber(i)
+            if i == nil or i < 0 or i >= maxidx or self.__ptr.index[i] == nil then
+                error("no such index")
+            end
+            return index.cast(self.__ptr.index[i])
+        end
+    },
+    __tostring = function(self)
+        return tostring(self.__ptr)
+    end
 }
 
-object_space_registry = setmetatable({}, {
-   __index = function(table, k)
-      local i
-      -- string and starts from digit
-      if type(k) == 'string' and 48 <= k:byte(1) and k:byte(1) <= 57 then
-	 i = tonumber(k)
-      else
-	 i = k
-      end
-
-      if type(i) ~= 'number' then
-	 return nil
-      end
-
-      local ptr = ffi.C.object_space(i)
-      if ptr == nil or ptr.ignored then
-          return nil
-      end
-      local index_registry = setmetatable({ __object_space = ptr }, index_registry_mt)
-      local object_space = setmetatable({ __ptr = ptr,
-					  n = ptr.n,
-					  cardinality = ptr.cardinality,
-					  index = index_registry }, object_space_mt)
-      table[k] = object_space
-      return object_space
-   end
-})
-
-
--- make useful aliases
-space, object_space = object_space_registry, object_space_registry
-
-
--- install automatic cast of object() return value
-object_cast[dyn_tuple.obj_type] = dyn_tuple.obj_cast
-
-local object_space = object_space
-function select(n, ...)
-        local index = object_space[n].index[0]
-        local result = {}
-        for k = 1, lselect('#', ...) do
-            result[k] = index[lselect(k, ...)]
-        end
-        return result
-end
-
-local _dispatch = _dispatch
---- jit.off(_dispatch) not needed, because C API calls are NYI
 for _, v in pairs{'add', 'replace', 'delete', 'update'} do
     local pack = box_op.pack[v]
-    _M[v..'_ret'] = function (...)
-        local ptr = _dispatch(pack(1, ...))
+    object_space_mt.__index[v .. '_ret'] = function (object_space, ...)
+        local ptr = _dispatch(object_space.__shard.__ptr, pack(1, object_space.n, ...))
         local tuple = object(ptr)
         if ptr then ffi.C.object_decr_ref(ptr) end
         return tuple
     end
-    _M[v..'_noret'] = function (...)
-        _dispatch(pack(0, ...))
+    object_space_mt.__index[v .. '_noret'] = function (object_space, ...)
+        _dispatch(object_space.__shard.__ptr, pack(0, object_space.n, ...))
+    end
+end
+object_space_mt.__index.add     =     object_space_mt.__index.add_ret
+object_space_mt.__index.replace =     object_space_mt.__index.replace_ret
+object_space_mt.__index.update  =     object_space_mt.__index.update_ret
+object_space_mt.__index.delete  =     object_space_mt.__index.delete_ret
+
+object_space_mt.__index.select = function (self, ...)
+    local index = self:object_space(self.n):index(0)
+    local result = {}
+    for k = 1, lselect('#', ...) do
+        result[k] = index[lselect(k, ...)]
+    end
+    return result
+end
+
+
+local ushard_mt = {
+    __index = {
+        object_space = function (self, n)
+            n = tonumber(n)
+            local ptr = ffi.C.object_space(self.__ptr, n)
+            if ptr == nil or ptr.ignored then
+                error("no such object space");
+            end
+
+            return setmetatable({__shard = self,
+                                 __ptr = ptr,
+                                 n = ptr.n,
+                                 cardinality = ptr.cardinality},
+                object_space_mt)
+        end,
+        __tostring = function(self)
+            return tostring(self.__ptr)
+        end
+    }
+}
+for _, v in pairs{'add', 'replace', 'delete', 'update'} do
+    local pack = box_op.pack[v]
+    ushard_mt.__index[v..'_ret'] = function (shard, n, ...)
+        local ptr = _dispatch(shard.__ptr, pack(1, n, ...))
+        local tuple = object(ptr)
+        if ptr then ffi.C.object_decr_ref(ptr) end
+        return tuple
+    end
+    ushard_mt.__index[v..'_noret'] = function (shard, n, ...)
+        _dispatch(shard.__ptr, pack(0, n, ...))
     end
 end
 
-_M.add     = _M.add_ret
-_M.replace = _M.replace_ret
-_M.update  = _M.update_ret
-_M.delete  = _M.delete_ret
+ushard_mt.__index.add     = ushard_mt.__index.add_ret
+ushard_mt.__index.replace = ushard_mt.__index.replace_ret
+ushard_mt.__index.update  = ushard_mt.__index.update_ret
+ushard_mt.__index.delete  = ushard_mt.__index.delete_ret
+
+local ushard = function(i)
+    i = tonumber(i)
+    return setmetatable({__ptr = ffi.C.shard_box(i)}, ushard_mt)
+end
+_M.ushard = ushard
+
+do
+    local deprecated = {'select', 'add', 'replace', 'delete', 'update',
+                        'object_space_registry', 'space', 'object_space',
+                        'add_ret', 'replace_ret', 'delete_ret', 'update_ret',
+                        'add_noret', 'replace_noret', 'delete_noret', 'update_noret'}
+    local err = setmetatable({}, { __index = function () error("deprecated") end,
+                                   __call = function () error("deprecated") end })
+
+    for _, v in pairs(deprecated) do _M[v] = err end
+end
+
+
+-- install automatic cast of object() return value
+object_cast[dyn_tuple.obj_type] = dyn_tuple.obj_cast
 
 function ctuple(obj)
    assert(obj ~= nil and obj.__tuple ~= nil)
@@ -249,12 +275,12 @@ local function clear_cache()
 end
 fiber.create(clear_cache)
 
-function entry(name, wbuf, request, ...)
+function entry(name, wbuf, request, shard_id, ...)
     add_stat_exec_lua(name)
 
     local proc = fn_cache[name]
     if wrapped[proc] then
-        local rcode, res = proc(...)
+        local rcode, res = proc(ushard(shard_id), ...)
         add_stat_exec_lua_rcode(name, rcode)
         return append, rcode, res
     end
@@ -264,55 +290,4 @@ function entry(name, wbuf, request, ...)
     add_stat_exec_lua_ok(name)
 end
 
-
-local charbuf = ffi.typeof('char *')
-function decode_varint32(ptr, offt)
-    local value, len = varint32.read(ffi.cast(charbuf, ptr) + offt)
-    return value, offt + len
-end
-
-decode = {}
-function decode.varint32(obj, offt) return obj:datacast('varint32', offt) end
-function decode.string(obj, offt, len) return obj:datacast('string', offt, len) end
-function decode.u8(obj, offt) return obj:datacast('uint8_t', offt) end
-function decode.u16(obj, offt) return obj:datacast('uint16_t', offt) end
-function decode.u32(obj, offt) return obj:datacast('uint32_t', offt) end
-
-bytes_to_int = {}
-cast = bytes_to_int -- legacy compat of cast.u32()
-local strlen = string.len
-for _, v in ipairs({8, 16, 32}) do
-    local t = 'uint' .. v .. '_t'
-    local pt = 'const ' .. t .. ' *'
-
-    local function f(str)
-        assertarg(str, 'string', 1)
-        assert(strlen(str) == ffi.sizeof(t),
-               "Invalid bytes length: !!want " .. ffi.sizeof(t) .. " but given " .. strlen(str))
-        return ffi.cast(pt, str)[0]
-    end
-    bytes_to_int[v] = f
-    bytes_to_int['u' .. v] = f
-end
-
-bytes_to_arr = {}
-for _, v in ipairs({8, 16, 32}) do
-    local t = 'uint' .. v .. '_t'
-    local pt = 'const ' .. t .. ' *'
-
-    local function f(str)
-        assertarg(str, 'string', 1)
-        assert(strlen(str) % ffi.sizeof(t) == 0,
-               "Invalid bytes length: " .. strlen(str) .. " isn't multiple of " .. ffi.sizeof(t))
-
-        local ptr = ffi.cast(pt, str)
-        local r = {}
-        for i = 1, strlen(str) / ffi.sizeof(t) do
-            r[i] = tonumber(ptr[i - 1])
-        end
-        return r
-    end
-    bytes_to_arr[v] = f
-    bytes_to_arr['u' .. v] = f
-end
 
