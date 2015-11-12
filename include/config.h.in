@@ -58,6 +58,9 @@
 /* Define to 1 if you have the `rt' library (-lrt). */
 #undef HAVE_LIBRT
 
+/* Define to 1 if you have the <linux/falloc.h> header file. */
+#undef HAVE_LINUX_FALLOC_H
+
 /* Define to 1 if you have the `madvise' function. */
 #undef HAVE_MADVISE
 
@@ -139,6 +142,9 @@
 /* Define to 1 if you have the `sync_file_range' function. */
 #undef HAVE_SYNC_FILE_RANGE
 
+/* Define to 1 if you have the <syscall.h> header file. */
+#undef HAVE_SYSCALL_H
+
 /* Define to 1 if you have the `sysconf' function. */
 #undef HAVE_SYSCONF
 
@@ -172,6 +178,9 @@
 /* Define to 1 if you have the <sys/stat.h> header file. */
 #undef HAVE_SYS_STAT_H
 
+/* Define to 1 if you have the <sys/syscall.h> header file. */
+#undef HAVE_SYS_SYSCALL_H
+
 /* Define to 1 if you have the <sys/types.h> header file. */
 #undef HAVE_SYS_TYPES_H
 
@@ -189,15 +198,6 @@
 
 /* Define to 1 if you have the <valgrind/valgrind.h> header file. */
 #undef HAVE_VALGRIND_VALGRIND_H
-
-/* Define to 1 if you have the <linux/falloc.h> header file. */
-#undef HAVE_LINUX_FALLOC_H
-
-/* Define to 1 if you have the <sys/syscall.h> header file. */
-#undef HAVE_SYS_SYSCALL_H
-
-/* Define to 1 if you have the <syscall.h> header file. */
-#undef HAVE_SYSCALL_H
 
 /* Define to 1 if the C compiler supports __attribute__((cold)) */
 #undef HAVE__ATTRIBUTE_COLD
