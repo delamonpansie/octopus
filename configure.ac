@@ -197,6 +197,7 @@ AC_DEFUN([AC_CC_FLAG_CHECK], [
   CFLAGS="$CFLAGS_saved"
 ])
 
+ac_ext=m
 AC_PROG_CC_C99
 
 AC_MSG_CHECKING([whether the compiler supports __builtin_expect])
