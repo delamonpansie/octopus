@@ -43,6 +43,8 @@ struct object_space {
 	int n;
 	bool ignored, snap, wal;
 	int cardinality;
+	size_t obj_bytes;
+	size_t slab_bytes;
 	Index<BasicIndex> *index[MAX_IDX];
 };
 

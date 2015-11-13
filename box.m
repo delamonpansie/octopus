@@ -605,6 +605,8 @@ info(struct tbuf *out, const char *what)
 				struct object_space *sp = box->object_space_registry[n];
 				tbuf_printf(out, "    - n: %i"CRLF, n);
 				tbuf_printf(out, "      objects: %i"CRLF, [sp->index[0] size]);
+				tbuf_printf(out, "      obj_bytes: %zi"CRLF, sp->obj_bytes);
+				tbuf_printf(out, "      slab_bytes: %zi"CRLF, sp->slab_bytes);
 				tbuf_printf(out, "      indexes:"CRLF);
 				foreach_index(index, sp)
 					tbuf_printf(out, "      - { index: %i, slots: %i, bytes: %zi }" CRLF,

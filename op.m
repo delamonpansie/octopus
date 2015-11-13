@@ -659,13 +659,15 @@ box_commit(struct box_txn *txn)
 {
 	if (!txn->object_space)
 		return;
-
+#define tuple_overhead (sizeof(struct tnt_object) + sizeof(struct box_tuple))
 	if (txn->old_obj) {
 		foreach_index(index, txn->object_space) {
 			if (!index->conf.unique ||
 			    (txn->index_eqmask & 1 << index->conf.n) == 0)
 				[index remove:txn->old_obj];
 		}
+		txn->object_space->obj_bytes -= box_tuple(txn->old_obj)->bsize + tuple_overhead;
+		txn->object_space->slab_bytes -= salloc_usable_size(txn->old_obj);
 		object_decr_ref(txn->old_obj);
 	}
 
@@ -675,6 +677,8 @@ box_commit(struct box_txn *txn)
 			    txn->index_eqmask & 1 << index->conf.n)
 				[index replace:txn->obj];
 		}
+		txn->object_space->obj_bytes += box_tuple(txn->obj)->bsize + tuple_overhead;
+		txn->object_space->slab_bytes += salloc_usable_size(txn->obj);
 		object_incr_ref(txn->obj);
 	}
 
