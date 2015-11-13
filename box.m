@@ -598,15 +598,16 @@ info(struct tbuf *out, const char *what)
 				    cfg.custom_proc_title ?: "");
 
 			Box *box = [shard executor];
-			tbuf_printf(out, "  namespaces:" CRLF);
+			tbuf_printf(out, "    namespaces:" CRLF);
 			for (uint32_t n = 0; n < nelem(box->object_space_registry); ++n) {
 				if (box->object_space_registry[n] == NULL)
 					continue;
-				tbuf_printf(out, "  - n: %i"CRLF, n);
-				tbuf_printf(out, "    objects: %i"CRLF, [box->object_space_registry[n]->index[0] size]);
-				tbuf_printf(out, "    indexes:"CRLF);
-				foreach_index(index, box->object_space_registry[n])
-					tbuf_printf(out, "    - { index: %i, slots: %i, bytes: %zi }" CRLF,
+				struct object_space *sp = box->object_space_registry[n];
+				tbuf_printf(out, "    - n: %i"CRLF, n);
+				tbuf_printf(out, "      objects: %i"CRLF, [sp->index[0] size]);
+				tbuf_printf(out, "      indexes:"CRLF);
+				foreach_index(index, sp)
+					tbuf_printf(out, "      - { index: %i, slots: %i, bytes: %zi }" CRLF,
 						    index->conf.n, [index slots], [index bytes]);
 			}
 		}
