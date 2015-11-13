@@ -169,6 +169,12 @@ slab_cache_of_ptr(const void *ptr)
 	return slab_of_ptr(ptr)->cache;
 }
 
+size_t
+salloc_usable_size(const void *ptr)
+{
+	return slab_cache_of_ptr(ptr)->item_size;
+}
+
 void
 slab_cache_init(struct slab_cache *cache, size_t item_size, enum arena_type type, const char *name)
 {
