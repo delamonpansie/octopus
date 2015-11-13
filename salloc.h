@@ -79,5 +79,6 @@ void slab_stat(struct tbuf *buf);
 void slab_total_stat(uint64_t *bytes_used, uint64_t *items);
 void slab_cache_stat(struct slab_cache *cache, uint64_t *bytes_used, uint64_t *items);
 struct slab_cache *slab_cache_of_ptr(const void *ptr);
+size_t salloc_usable_size(const void *ptr);
 
 #endif // _SALLOC_H_
