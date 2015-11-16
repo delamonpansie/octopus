@@ -65,6 +65,7 @@ struct object_space {
 };
 struct Box;
 struct Box *shard_box(int n);
+int    box_version(struct Box* box);
 struct object_space *object_space(struct Box *box, int n);
 extern const int object_space_max_idx;
 ]]
@@ -79,10 +80,15 @@ local object_space_mt = {
     __index = {
         index = function (self, i)
             i = tonumber(i)
+            if self.__indexes[i] then
+                return self.__indexes[i]
+            end
             if i == nil or i < 0 or i >= maxidx or self.__ptr.index[i] == nil then
                 error("no such index")
             end
-            return index.cast(self.__ptr.index[i])
+            local ind = index.cast(self.__ptr.index[i])
+            self.__indexes[i] = ind
+            return ind
         end,
         size = function (self)
             return self:index(0):size()
@@ -130,16 +136,23 @@ local ushard_mt = {
     __index = {
         object_space = function (self, n)
             n = tonumber(n)
+            if self.__spaces[n] ~= nil then
+                return self.__spaces[n]
+            end
             local ptr = ffi.C.object_space(self.__ptr, n)
             if ptr == nil or ptr.ignored then
                 error("no such object space");
             end
 
-            return setmetatable({__shard = self,
+            local space = setmetatable({__shard = self,
                                  __ptr = ptr,
                                  n = ptr.n,
-                                 cardinality = ptr.cardinality},
+                                 cardinality = ptr.cardinality,
+                                 __indexes = {},
+                                },
                 object_space_mt)
+            self.__spaces[n] = space
+            return space
         end,
         __tostring = function(self)
             return tostring(self.__ptr)
@@ -164,13 +177,23 @@ ushard_mt.__index.replace = ushard_mt.__index.replace_ret
 ushard_mt.__index.update  = ushard_mt.__index.update_ret
 ushard_mt.__index.delete  = ushard_mt.__index.delete_ret
 
+local ushards = {}
 local ushard = function(i)
     i = tonumber(i)
     local ptr = ffi.C.shard_box(i)
     if ptr == nil then
         error("shard "..i.." is not defined")
     end
-    return setmetatable({__ptr = ffi.C.shard_box(i)}, ushard_mt)
+    local version = ffi.C.box_version(ptr)
+    local cached = ushards[i]
+    if cached == nil or cached.__version ~= version then
+        ushards[i] = setmetatable({
+            __ptr = ffi.C.shard_box(i),
+            __spaces = {},
+            __version = version
+        }, ushard_mt)
+    end
+    return ushards[i]
 end
 _M.ushard = ushard
 

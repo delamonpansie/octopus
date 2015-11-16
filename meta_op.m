@@ -193,6 +193,7 @@ box_commit_meta(struct box_meta_txn *txn)
 		foreach_index(index, txn->object_space)
 			[index clear];
 	}
+	txn->box->version++;
 }
 
 void

@@ -172,9 +172,11 @@ extern char * const box_ops[];
 	Shard<Shard> *shard;
 	struct object_space *object_space_registry[256];
 	const int object_space_max_idx;
+	int version;
 }
 @end
 struct object_space *object_space(Box *box, int n);
+int box_version(Box* box);
 
 void *next_field(void *f);
 void append_field(struct tbuf *b, void *f);
