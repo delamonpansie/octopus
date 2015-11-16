@@ -57,6 +57,7 @@ static int stat_base;
 
 struct worker_arg {
 	iproto_cb cb;
+	int ushard;
 	struct iproto *r;
 	struct netmsg_io *io;
 	void *arg;
@@ -74,6 +75,7 @@ iproto_worker(va_list ap)
 
 		@try {
 			netmsg_io_retain(a.io);
+			fiber->ushard = a.ushard;
 			a.cb(&a.io->wbuf, a.r, a.arg);
 		}
 		@catch (Error *e) {
@@ -89,6 +91,7 @@ iproto_worker(va_list ap)
 			[e release];
 		}
 		@finally {
+			fiber->ushard = -1;
 			if (a.io->wbuf.bytes > 0 && a.io->fd > 0)
 				ev_io_start(&a.io->out);
 			netmsg_io_release(a.io);
@@ -348,6 +351,7 @@ process_requests(struct iproto_service *service, struct iproto_ingress_svc *c)
 			struct netmsg_mark header_mark;
 			netmsg_getmark(&io->wbuf, &header_mark);
 			@try {
+				fiber->ushard = route_id;
 				ih->cb(&io->wbuf, request, arg);
 			}
 			@catch (Error *e) {
@@ -361,6 +365,9 @@ process_requests(struct iproto_service *service, struct iproto_ingress_svc *c)
 				iproto_error(&io->wbuf, request, rc, e->reason);
 				[e release];
 			}
+			@finally {
+				fiber->ushard = -1;
+			}
 		} else {
 			struct Fiber *w = SLIST_FIRST(&service->workers);
 			if (w) {
@@ -369,7 +376,7 @@ process_requests(struct iproto_service *service, struct iproto_ingress_svc *c)
 				void *request_copy = memcpy(palloc(w->pool, req_size), request, req_size);
 
 				SLIST_REMOVE_HEAD(&service->workers, worker_link);
-				resume(w, &(struct worker_arg){ih->cb, request_copy, io, arg});
+				resume(w, &(struct worker_arg){ih->cb, route_id, request_copy, io, arg});
 			} else {
 				stat_collect(stat_base, IPROTO_WORKER_STARVATION, 1);
 				break; // FIXME: need state for this

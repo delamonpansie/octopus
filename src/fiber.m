@@ -276,6 +276,7 @@ fiber_create(const char *name, void (*f)(va_list va), ...)
 		SLIST_INSERT_HEAD(&fibers, new, link);
 	}
 
+	new->ushard = -1;
 	new->name = name;
 	palloc_name(new->pool, name);
 	/* fids from 0 to 100 are reserved */
@@ -478,6 +479,7 @@ fiber_init(const char *sched_name)
 	sched = [Fiber alloc];
 	sched->fid = 1;
 	sched->name = sched_name ?: "sched";
+	sched->ushard = -1;
 	fiber_alloc(sched);
 	sched_ctx = &sched->coro.ctx;
 

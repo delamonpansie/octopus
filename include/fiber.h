@@ -64,6 +64,7 @@ static inline bool not_sched(struct Fiber* fib) { return fib != sched; }
 	TAILQ_ENTRY(Fiber) wake_link;
 	void *wake;
 	enum {WAKE_VALUE=1, WAKE_ERROR} wake_flag;
+	int   ushard;
 
 	struct lua_State *L;
 	struct {
