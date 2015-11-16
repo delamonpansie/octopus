@@ -30,8 +30,6 @@ local function insert(flags, n, ...)
         local req = cached_packer()
 
         assert(n ~= nil)
-        print("flags", flags)
-        print("n", n)
 
         req:u32(n)
         req:u32(flags)
