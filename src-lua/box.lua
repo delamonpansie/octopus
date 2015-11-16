@@ -82,7 +82,16 @@ local object_space_mt = {
                 error("no such index")
             end
             return index.cast(self.__ptr.index[i])
-        end
+        end,
+        size = function (self)
+            return self:index(0):size()
+        end,
+        bytes = function (self)
+            return tonumber(self.__ptr.obj_bytes)
+        end,
+        slab_bytes = function (self)
+            return tonumber(self.__ptr.slab_bytes)
+        end,
     },
     __tostring = function(self)
         return tostring(self.__ptr)
