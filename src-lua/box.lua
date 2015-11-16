@@ -8,11 +8,12 @@ local string, tostring, tonumber =
 
 local rawget, rawset = rawget, rawset
 local printf = printf
-
+local say_error = say_error
 
 local ffi, bit, debug = require("ffi"), require("bit"), require("debug")
 local index = require('index')
 local fiber = require("fiber")
+local os = require('os')
 local netmsg_ptr = require("net").netmsg_ptr
 local object, object_cast, varint32, packer = object, object_cast, varint32, packer
 local safeptr, assertarg = safeptr, assertarg
@@ -165,19 +166,46 @@ ushard_mt.__index.delete  = ushard_mt.__index.delete_ret
 
 local ushard = function(i)
     i = tonumber(i)
+    local ptr = ffi.C.shard_box(i)
+    if ptr == nil then
+        error("shard "..i.." is not defined")
+    end
     return setmetatable({__ptr = ffi.C.shard_box(i)}, ushard_mt)
 end
 _M.ushard = ushard
 
 do
+    local ts = os.ev_now()
+    local function deprecate(name)
+        if os.ev_now() > ts + 10 then
+            say_error("box."..name.." is deprecated")
+            ts = os.ev_now()
+        end
+    end
+    local function cur_ushard()
+        return ushard(ffi.C.current_fiber().ushard)
+    end
+
     local deprecated = {'select', 'add', 'replace', 'delete', 'update',
-                        'object_space_registry', 'space', 'object_space',
                         'add_ret', 'replace_ret', 'delete_ret', 'update_ret',
                         'add_noret', 'replace_noret', 'delete_noret', 'update_noret'}
-    local err = setmetatable({}, { __index = function () error("deprecated") end,
-                                   __call = function () error("deprecated") end })
-
-    for _, v in pairs(deprecated) do _M[v] = err end
+    for _, name in ipairs(deprecated) do
+        _M[name] = function (...)
+            deprecate(name)
+            local sh = cur_ushard()
+            return sh[name](sh, ...)
+        end
+    end
+    local object_space = setmetatable({},
+        { __index = function (t, i)
+            deprecate("object_space")
+            local sh = cur_ushard()
+            return sh:object_space(i)
+        end}
+    )
+    for _, name in ipairs{'object_space_registry', 'space', 'object_space'} do
+        _M[name] = object_space
+    end
 end
 
 
@@ -205,6 +233,15 @@ function wrap(proc_body)
                 return nil
         end
         wrapped[proc_body] = true
+
+        return proc_body
+end
+
+function wrap_old(proc_body)
+        if type(proc_body) ~= "function" then
+                return nil
+        end
+        wrapped[proc_body] = 'old'
 
         return proc_body
 end
@@ -290,8 +327,14 @@ function entry(name, wbuf, request, shard_id, ...)
     add_stat_exec_lua(name)
 
     local proc = fn_cache[name]
-    if wrapped[proc] then
-        local rcode, res = proc(ushard(shard_id), ...)
+    local w = wrapped[proc]
+    if w then
+        local rcode, res
+        if w == true then
+            rcode, res = proc(ushard(shard_id), ...)
+        else
+            rcode, res = proc(...)
+        end
         add_stat_exec_lua_rcode(name, rcode)
         return append, rcode, res
     end
