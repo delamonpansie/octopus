@@ -131,6 +131,7 @@ local __tuple_index = {
        if self._long_living then
            ffi.gc(self.__obj, nil)
            ffi.C.object_incr_ref_autorelease(self.__obj)
+           ffi.C.object_decr_ref(self.__obj)
            self._long_living = nil
        end
    end,
