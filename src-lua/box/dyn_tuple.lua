@@ -119,7 +119,22 @@ local __tuple_index = {
 	 return ffi.cast(ctinfo[1], self.data + offt)[0]
       end
    end,
-   raw_box_tuple = function(self) return self.__tuple end
+   raw_box_tuple = function(self) return self.__tuple end,
+   make_long_living = function(self)
+       if not self._long_living then
+           ffi.gc(self.__obj, ffi.C.object_decr_ref)
+           ffi.C.object_incr_ref(self.__obj)
+           self._long_living = true
+       end
+   end,
+   make_short_living = function(self)
+       if self._long_living then
+           ffi.gc(self.__obj, nil)
+           ffi.C.object_incr_ref_autorelease(self.__obj)
+           ffi.C.object_decr_ref(self.__obj)
+           self._long_living = nil
+       end
+   end,
 }
 
 local tuple_mt = {
