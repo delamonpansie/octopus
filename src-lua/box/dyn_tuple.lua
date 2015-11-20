@@ -123,6 +123,9 @@ local __tuple_index = {
    make_long_living = function(self)
        if not self._long_living then
            ffi.gc(self.__obj, ffi.C.object_decr_ref)
+           local __cache = ffi.new('u32[?]', self.cardinality*2)
+           ffi.copy(__cache, self.__cache, self.cardinality*2*4)
+           self.__cache = __cache
            ffi.C.object_incr_ref(self.__obj)
            self._long_living = true
        end
