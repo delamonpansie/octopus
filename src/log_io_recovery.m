@@ -657,7 +657,7 @@ load_from_remote
 				continue;
 
 			feeder = (struct feeder_param){ .ver = 1,
-							.filter.type = FILTER_TYPE_ID };
+							.filter = {.type = FILTER_TYPE_ID }};
 			memcpy(&feeder.addr, shard_addr((*p)->name, PORT_REPLICATION), sizeof(feeder.addr));
 			count = [remote_reader load_from_remote:&feeder];
 			if (count >= 0)

@@ -43,7 +43,7 @@
 feeder
 {
 	static struct feeder_param feeder = { .ver = 1,
-					      .filter.type = FILTER_TYPE_ID };
+					      .filter = {.type = FILTER_TYPE_ID }};
 	if (dummy) {
 		enum feeder_cfg_e fid_err = feeder_param_fill_from_cfg(&feeder, NULL);
 		if (fid_err) panic("wrong feeder conf");

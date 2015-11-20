@@ -851,7 +851,7 @@ run_protocol(Paxos *paxos, struct proposal *p, char *value, u32 value_len, u16 t
 
 	char *orig_value = NULL;
 	u32 orig_value_len = 0;
-	u16 orig_tag;
+	u16 orig_tag = 0;
 
 	u64 ballot = 0, nack_ballot = 0;
 	int votes;
