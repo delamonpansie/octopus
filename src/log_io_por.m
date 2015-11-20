@@ -58,7 +58,7 @@ load_from_remote
 {
 	XLogRemoteReader *reader = [[XLogRemoteReader alloc] init_recovery:self];
 	struct feeder_param feeder = { .ver = 1,
-				       .filter.type = FILTER_TYPE_ID };
+				       .filter = { .type = FILTER_TYPE_ID } };
 	for (int i = 0; i < nelem(peer); i++) {
 		if (strcmp(peer[i], cfg.hostname) == 0)
 			continue;
