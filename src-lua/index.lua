@@ -214,7 +214,15 @@ local basic_mt = {
         end,
         get = function(self, i)
             assert(self.__ptr.conf.type == ffi.C.HASH)
-            return object(get(self.__ptr, ffi.cast(int32_t, i)))
+            local ptr = get(self.__ptr, ffi.cast(int32_t, i))
+            if ptr == nil then
+                return nil
+            end
+            local obj = ffi.cast('struct tnt_object *', ptr)
+            if bit.band(obj.flags, ffi.C.GHOST) ~= 0 then
+               return nil
+            end
+            return object(ptr)
         end,
         type = function(self)
             local tpe = self.__ptr.conf.type
