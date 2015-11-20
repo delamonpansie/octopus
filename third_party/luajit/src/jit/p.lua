@@ -237,6 +237,7 @@ local function prof_finish()
     prof_count1 = nil
     prof_count2 = nil
     prof_ud = nil
+    out:flush()
   end
 end
 
