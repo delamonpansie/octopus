@@ -57,17 +57,44 @@ feeder
 load_from_remote
 {
 	XLogRemoteReader *reader = [[XLogRemoteReader alloc] init_recovery:self];
-	[reader load_from_remote:[self feeder]];
+	struct feeder_param feeder = { .ver = 1,
+				       .filter.type = FILTER_TYPE_ID };
+	for (int i = 0; i < nelem(peer); i++) {
+		if (strcmp(peer[i], cfg.hostname) == 0)
+			continue;
+
+		memcpy(&feeder.addr, shard_addr(peer[i], PORT_REPLICATION), sizeof(feeder.addr));
+		if ([reader load_from_remote:&feeder] >= 0)
+			break;
+	}
 	[reader free];
 }
 
 - (void)
-remote_hot_standby
+remote_hot_standby:(const char *)name
 {
-	remote = [[XLogReplica alloc] init_shard:self];
-	[remote hot_standby:[self feeder] writer:[recovery writer]];
+	struct feeder_param feeder;
+	if (dummy) {
+		enum feeder_cfg_e fid_err = feeder_param_fill_from_cfg(&feeder, NULL);
+		if (fid_err) panic("wrong feeder conf");
+	} else {
+		extern void shard_feeder(const char *name, struct feeder_param *feeder);
+		shard_feeder(name ?: peer[0], &feeder);
+	}
+	if (remote == nil) {
+		remote = [[XLogReplica alloc] init_shard:self];
+		[remote hot_standby:&feeder writer:[recovery writer]];
+	} else {
+		[remote feeder_changed:&feeder];
+	}
 }
 
+
+- (void)
+reload_from:(const char *)name;
+{
+	[self remote_hot_standby:name];
+}
 - (bool)
 standalone
 {
@@ -85,7 +112,7 @@ start
 	if ([self standalone])
 		[self status_update:PRIMARY fmt:"primary"];
 	else
-		[self remote_hot_standby];
+		[self remote_hot_standby:NULL];
 }
 
 - (int)
@@ -126,27 +153,22 @@ submit:(const void *)data len:(u32)len tag:(u16)tag
 - (void)
 adjust_route
 {
-	const struct sockaddr_in *master_addr = shard_addr(peer[0], PORT_PRIMARY);
-	if (peer[0] == NULL || strlen(peer[0]) == 0) {
-		assert(false); // А когда вообще такое может быть? Если перед улаением, то правильней занулить роут в [free]
-		update_rt(self->id, SHARD_MODE_NONE, nil, NULL);
-		return;
-	}
-
-	if (strcmp(peer[0], cfg.hostname) == 0) {
+	if (dummy || strcmp(peer[0], cfg.hostname) == 0) {
 		update_rt(self->id, SHARD_MODE_LOCAL, self, NULL);
-		[self status_update:PRIMARY fmt:""];
-		return;
+		[self status_update:PRIMARY fmt:"primary"];
+		struct feeder_param empty = { .addr = { .sin_family = AF_UNSPEC } };
+		[remote feeder_changed:&empty];
+	} else {
+		enum shard_mode mode = SHARD_MODE_PROXY;
+		for (int i = 0; i < nelem(peer) && peer[i]; i++)
+			if (strcmp(peer[i], cfg.hostname) == 0) {
+				mode = SHARD_MODE_PARTIAL_PROXY;
+				break;
+			}
+		update_rt(self->id, mode, self, peer[0]);
+		[self status_update:REMOTE_STANDBY fmt:"replicating from %s", peer[0]];
+		[self remote_hot_standby:NULL];
 	}
-
-	enum shard_mode mode = SHARD_MODE_PROXY;
-	for (int i = 0; i < nelem(peer) && peer[i]; i++)
-		if (strcmp(peer[i], cfg.hostname) == 0) {
-			mode = SHARD_MODE_PARTIAL_PROXY;
-			break;
-		}
-	[self status_update:REMOTE_STANDBY fmt:"replicating from %s", peer[0]];
-	update_rt(self->id, mode, self, master_addr);
 }
 
 - (void)

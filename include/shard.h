@@ -58,7 +58,7 @@ struct shard_conf {
 
 struct shard_route shard_rt[MAX_SHARD];
 
-void update_rt(int shard_id, enum shard_mode mode, Shard<Shard> *shard, const struct sockaddr_in *addr);
+void update_rt(int shard_id, enum shard_mode mode, Shard<Shard> *shard, const char *peer_name);
 
 enum port_type { PORT_PRIMARY, PORT_REPLICATION };
 const struct sockaddr_in *shard_addr(const char *name, enum port_type port_type);

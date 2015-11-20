@@ -1177,9 +1177,9 @@ again:
 @implementation Paxos
 
 - (id)
-init_id:(int)shard_id scn:(i64)scn_ recovery:(Recovery *)recovery_ executor:(id<Executor>)executor_ sop:(const struct shard_op *)sop
+init_id:(int)shard_id scn:(i64)scn_ recovery:(Recovery *)recovery_ sop:(const struct shard_op *)sop
 {
-	[super init_id:shard_id scn:scn_ recovery:recovery_ executor:executor_ sop:sop];
+	[super init_id:shard_id scn:scn_ recovery:recovery_ sop:sop];
 	if (cfg.local_hot_standby)
 		panic("wal_hot_standby is incompatible with paxos");
 
@@ -1427,7 +1427,7 @@ adjust_route
 		[self status_update:REMOTE_STANDBY fmt:"paxos/slave"];
 	} else if (!paxos_leader(self)) {
 		struct paxos_peer *leader = paxos_peer(self, leader_id);
-		update_rt(self->id, SHARD_MODE_PARTIAL_PROXY, self, &leader->addr);
+		update_rt(self->id, SHARD_MODE_PARTIAL_PROXY, self, leader->name);
 		[self status_update:REMOTE_STANDBY fmt:"paxos/slave"];
 		say_info("leader is %s, %i -> %i", leader->name, prev_leader, leader->id);
 	} else if (paxos_leader(self)) {
