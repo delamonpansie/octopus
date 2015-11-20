@@ -1,3 +1,4 @@
+local jit = require 'jit'
 local reload_files = {}
 local reload_modules = {}
 local reload_lock = {"it is reload loop lock"}
@@ -68,7 +69,10 @@ local function do_reload(name)
     local mod, err = load(loader, stat.filename)
     file:close()
     assert(mod, err)
+    jit.off()
+    jit.flush();
     local res = { mod(name) }
+    jit.on()
     if version then
         say_info("reloadfile '%s': {ver=%s, file='%s', require='%s'}",
             stat.name, version, stat.filename, name)
