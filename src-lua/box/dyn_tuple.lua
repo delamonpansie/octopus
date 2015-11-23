@@ -99,6 +99,10 @@ local __tuple_index = {
       local ptr = ffi.cast(ctinfo[1], self.data + offt)
       return safeptr(self.__obj, ptr, len / ctinfo[2])
    end,
+   ptrfield = function(self, i)
+      local len, offt = self:field(i, 1)
+      return self.data + offt, len
+   end,
    datacast = function(self, ctype, offt, len)
       if ctype == 'string' then
 	 if (offt < 0 or offt + len > self.bsize) then
