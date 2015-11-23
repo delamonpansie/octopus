@@ -371,14 +371,24 @@ static struct tac_list iproto_tac_list;
 struct iproto_egress *
 iproto_remote_add_peer(struct iproto_egress *peer, const struct sockaddr_in *daddr, struct palloc_pool *pool)
 {
+	struct tac_state *ts;
 	static struct Fiber *rendevouz_fiber;
 	if (rendevouz_fiber == NULL)
 		rendevouz_fiber = fiber_create("iproto_rendevouz", rendevouz, NULL, &iproto_tac_list);
-	if (peer == nil)
+
+	if (peer == nil) {
+		SLIST_FOREACH(ts, &iproto_tac_list, link) {
+			peer = container_of(ts, struct iproto_egress, ts);
+			if (memcmp(&ts->daddr, daddr, sizeof(*daddr)) == 0 &&
+			    peer->pool == pool)
+				return peer;
+		}
+
 		peer = [iproto_egress alloc];
+	}
 	netmsg_io_init(peer, pool, -1);
 
-	struct tac_state *ts = &peer->ts;
+	ts = &peer->ts;
 	ts->io = peer;
 	ts->io->fd = ts->ev.fd = -1;
 	memcpy(&ts->daddr, daddr, sizeof(*daddr));
