@@ -67,6 +67,7 @@ struct Box;
 struct Box *shard_box(int n);
 int    box_version(struct Box* box);
 struct object_space *object_space(struct Box *box, int n);
+bool   box_is_primary(struct Box *box);
 extern const int object_space_max_idx;
 ]]
 
@@ -153,6 +154,9 @@ local ushard_mt = {
                 object_space_mt)
             self.__spaces[n] = space
             return space
+        end,
+        is_primary = function(self)
+            return ffi.C.box_is_primary(self.__ptr)
         end,
         __tostring = function(self)
             return tostring(self.__ptr)

@@ -54,6 +54,12 @@ shard_box(int n)
 	return shard_rt[n].executor;
 }
 
+bool
+box_is_primary(Box* box)
+{
+	return shard_rt[box->shard->id].mode == SHARD_MODE_LOCAL;
+}
+
 u32 *
 box_tuple_cache_update(int cardinality, const unsigned char *data)
 {
