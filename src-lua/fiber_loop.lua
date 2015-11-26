@@ -36,9 +36,9 @@ local function loop_run(self)
     self.fiber_id = fiber.current
     local name_cnt = self.name .. "_cnt"
     while self.running do
-        if self:paused() then
+        if self._paused then
             say_warn("Loop '%s' paused", self.name)
-            loop_sleep(self, 5, function() return self:paused() end)
+            loop_sleep(self, 5, function() return self._paused end)
         elseif self.error then
             loop_say_error(self, "Not resolved error")
         else
@@ -88,27 +88,19 @@ end
 
 local PRIMARY = tonumber(ffi.C.PRIMARY)
 function Loop:paused()
-    return self._paused or
-        (self.mutable and tonumber(ffi.C.current_recovery_status_code()) ~= PRIMARY)
+    return self._paused
 end
 
-function fiber.loop(name, func, ops)
-    if ops == nil then ops = {} end
-    local mutable = ops.mutable == nil and true or ops.mutable
+function fiber.loop(name, func)
     local loop = fiber.loops[name]
     if loop == nil then
         if func == nil then
             return nil
         end
-        loop = setmetatable({name=name, func=func, mutable=mutable}, loop_mt)
+        loop = setmetatable({name=name, func=func}, loop_mt)
         fiber.loops[name] = loop
         loop:run()
     else
-        if loop.mutable ~= mutable then
-            say_error("cannot change mutability of fiber.loop[\"%s\"] from %s to %s",
-                name, loop.mutable, mutable)
-            return
-        end
         if func ~= nil then
             loop.func = func
             if loop.error then

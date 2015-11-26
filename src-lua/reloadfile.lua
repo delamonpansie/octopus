@@ -170,8 +170,8 @@ local function reload_queue_pusher()
 end
 
 fiber._lock(reload_lock)
-fiber.loop("core:reload_loop", reload_loop, {mutable=false})
-fiber.loop("core:reload_loop_pusher", reload_queue_pusher, {mutable=false})
+fiber.loop("core:reload_loop", reload_loop)
+fiber.loop("core:reload_loop_pusher", reload_queue_pusher)
 
 function reloadfile(name)
     assertarg(name, 'string', 1)
