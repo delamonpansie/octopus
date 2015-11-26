@@ -1,4 +1,5 @@
 local ffi = require('ffi')
+local bit = require('bit')
 local objc = require('objc')
 local object, varint32 = object, varint32
 local fiber = fiber
