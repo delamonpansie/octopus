@@ -82,7 +82,7 @@ register_filter: (const char*)name call: (filter_callback)filter
 		registered.callbacks = xcalloc(sizeof(*registered.callbacks), 4);
 		registered.capa = 4;
 	} else if (registered.count == registered.capa) {
-		registered.callbacks = xrealloc(registered.callbacks, sizeof(*registered.callbacks) * registered.capa * 2); 
+		registered.callbacks = xrealloc(registered.callbacks, sizeof(*registered.callbacks) * registered.capa * 2);
 		registered.capa *= 2;
 	}
 
