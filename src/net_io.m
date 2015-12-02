@@ -371,17 +371,16 @@ netmsg_writev(int fd, struct netmsg_head *head)
 		netmsg_reset(head);
 	} else {
 		iov_count -= iov_unsent;
-		struct netmsg *m = TAILQ_LAST(&head->q, netmsg_tailq), *tmp;
+		struct netmsg *m = TAILQ_LAST(&head->q, netmsg_tailq), *prev;
 		while (iov_count > m->count) {
 			iov_count -= m->count;
-			tmp = TAILQ_PREV(m, netmsg_tailq, link);
+			prev = TAILQ_PREV(m, netmsg_tailq, link);
 			netmsg_dealloc(&head->q, m);
-			m = tmp;
+			m = prev;
 		}
 		netmsg_releasel(m, iov_count);
 		*m->iov = *iov;
 	}
-
 	return result;
 }
 
