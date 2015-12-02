@@ -434,6 +434,8 @@ feeder_accept(int fd, void *data __attribute__((unused)))
 	struct timeval tm = { .tv_sec = 120, .tv_usec = 0};
 	setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tm,sizeof(tm));
 	setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tm,sizeof(tm));
+	int zero = 0;
+	ioctl(fd, FIONBIO, &zero);
 
 	struct child child = spawn_child("feeder/worker", feeder_child_trampoline, NULL, 0);
 	if (child.pid > 0) {
