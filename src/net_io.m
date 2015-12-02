@@ -138,11 +138,12 @@ netmsg_releaser(struct netmsg *m, int from)
 static void
 netmsg_releasel(struct netmsg *m, int count)
 {
+	int live_count = m->count - count;
 	netmsg_release(m, 0, count);
-	memmove(m->ref, m->ref + count, (m->count - count) * sizeof(m->ref[0]));
-	memmove(m->iov, m->iov + count, (m->count - count) * sizeof(m->iov[0]));
-	memset(m->ref + count, 0, count * sizeof(m->ref[0]));
-	memset(m->iov + count, 0, count * sizeof(m->iov[0]));
+	memmove(m->ref, m->ref + count, live_count * sizeof(m->ref[0]));
+	memmove(m->iov, m->iov + count, live_count * sizeof(m->iov[0]));
+	memset(m->ref + live_count, 0, count * sizeof(m->ref[0]));
+	memset(m->iov + live_count, 0, count * sizeof(m->iov[0]));
 	m->count -= count;
 }
 
@@ -160,6 +161,7 @@ netmsg_reset(struct netmsg_head *h)
 	struct netmsg *m, *tmp;
 	m = TAILQ_FIRST(&h->q);
 	netmsg_releaser(m, 0);
+	h->last_used_iov = m->iov;
 	for (m = TAILQ_NEXT(m, link); m; m = tmp) {
 		tmp = TAILQ_NEXT(m, link);
 		netmsg_dealloc(&h->q, m);
@@ -377,6 +379,7 @@ netmsg_writev(int fd, struct netmsg_head *head)
 			m = tmp;
 		}
 		netmsg_releasel(m, iov_count);
+		*m->iov = *iov;
 	}
 
 	return result;
