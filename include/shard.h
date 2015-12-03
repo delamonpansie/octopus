@@ -35,8 +35,11 @@
 @protocol Shard;
 @protocol Executor;
 
-enum shard_mode { SHARD_MODE_NONE, SHARD_MODE_LOADING,
-		  SHARD_MODE_LOCAL, SHARD_MODE_PROXY,
+enum shard_mode { SHARD_MODE_NONE,
+		  SHARD_MODE_LOADING,
+		  SHARD_MODE_LOCAL,
+		  SHARD_MODE_STANDBY,
+		  SHARD_MODE_PROXY,
 		  SHARD_MODE_PARTIAL_PROXY };
 enum shard_type { SHARD_TYPE_POR, SHARD_TYPE_PAXOS } ;
 

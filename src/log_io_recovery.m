@@ -145,7 +145,8 @@ update_rt(int shard_id, enum shard_mode mode, Shard<Shard> *shard, const char *m
 			return;
 		route->proxy = iproto_remote_add_peer(NULL, addr, proxy_pool);
 		route->proxy->ts.name = master_name;
-	}
+	} else
+		route->proxy = NULL;
 }
 
 void
@@ -279,6 +280,9 @@ shard_log(Shard *shard)
 	case SHARD_MODE_NONE:
 		tbuf_printf(buf, "NONE");
 		break;
+	case SHARD_MODE_STANDBY:
+		tbuf_printf(buf, "STANDBY");
+		break;
 	case SHARD_MODE_LOADING:
 		tbuf_printf(buf, "LOADING");
 		break;
@@ -401,7 +405,7 @@ submit_run_crc
 
 
 - (void)
-status_update:(enum recovery_status)new_status fmt:(const char *)fmt, ...
+status_update:(const char *)fmt, ...
 {
 	char buf[sizeof(status_buf)];
 	va_list ap;
@@ -409,20 +413,18 @@ status_update:(enum recovery_status)new_status fmt:(const char *)fmt, ...
 	vsnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
 
-	if (strcmp(buf, status_buf) == 0 && new_status == status)
+	if (strcmp(buf, status_buf) == 0 && shard_rt[self->id].mode == old_mode)
 		return;
 
 	shard_log(self);
 
-	say_info("recovery status: %i %s", new_status, buf);
 	strncpy(status_buf, buf, sizeof(status_buf));
 	title(NULL);
 
-	if (new_status == status)
+	if (shard_rt[self->id].mode == old_mode)
 		return;
 
-	prev_status = status;
-	status = new_status;
+	old_mode = shard_rt[self->id].mode;
 	[executor status_changed];
 }
 
@@ -483,7 +485,7 @@ shard_add:(int)shard_id scn:(i64)scn sop:(const struct shard_op *)sop
 	if (sop->peer[0][0] == 0)
 		shard->dummy = true;
 	[shard init_id:shard_id scn:scn recovery:self sop:sop];
-	update_rt(shard_id, SHARD_MODE_LOCAL, shard, NULL);
+	update_rt(shard_id, SHARD_MODE_LOADING, shard, NULL);
 	return shard;
 }
 
@@ -575,7 +577,8 @@ recover_row:(struct row_v12 *)r
 	@try {
 		say_debug("%s: LSN:%"PRIi64" SCN:%"PRIi64" tag:%s",
 			  __func__, r->lsn, r->scn, xlog_tag_to_a(r->tag));
-		say_debug2("	%s", tbuf_to_hex(&TBUF(r->data, r->len, fiber->pool)));
+		if (r->len)
+			say_debug2("	%s", tbuf_to_hex(&TBUF(r->data, r->len, fiber->pool)));
 
 		if (unlikely((r->tag & ~TAG_MASK) == TAG_SYS)) {
 			int tag = r->tag & TAG_MASK;
@@ -956,6 +959,7 @@ iproto_shard_cb_aux(va_list ap)
 	case SHARD_MODE_NONE:
 		[recovery shard_create:shard_id sop:sop];
 		break;
+	case SHARD_MODE_STANDBY:
 	case SHARD_MODE_PROXY:
 	case SHARD_MODE_PARTIAL_PROXY:
 	case SHARD_MODE_LOADING:
@@ -997,6 +1001,7 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req, void *arg __attrib
 	case SHARD_MODE_LOADING:
 		iproto_error(wbuf, req, ERR_CODE_ILLEGAL_PARAMS, "shard is loading");
 		return;
+	case SHARD_MODE_STANDBY:
 	case SHARD_MODE_PARTIAL_PROXY:
 	case SHARD_MODE_PROXY:
 		assert(false);

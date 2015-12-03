@@ -86,7 +86,6 @@ function Loop:pause(pause)
     end
 end
 
-local PRIMARY = tonumber(ffi.C.PRIMARY)
 function Loop:paused()
     return self._paused
 end

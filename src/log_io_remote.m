@@ -114,11 +114,9 @@ load_from_remote:(struct feeder_param *)param
 - (void)
 status:(const char *)status reason:(const char *)reason
 {
-	say_warn("%s: status:%s shard:%p", __func__, status, shard);
-
 	if (strcmp(status, "unconfigured") == 0) {
 		// assert(local_writes);
-		[shard status_update:PRIMARY fmt:"primary"];
+		// [shard status_update:"primary"];
 		return;
 	}
 	if (strcmp(status, "configured") == 0) {
@@ -126,7 +124,7 @@ status:(const char *)status reason:(const char *)reason
 		return;
 	}
 
-	[shard status_update:REMOTE_STANDBY fmt:"hot_standby/%s/%s%s%s",
+	[shard status_update:"hot_standby/%s/%s%s%s",
 	       sintoa(&feeder.addr), status, reason ? ":" : "", reason ?: ""];
 	if (strcmp([shard status], "fail") == 0)
 		say_error("replication failure: %s", reason);

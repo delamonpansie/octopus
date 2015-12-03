@@ -38,6 +38,14 @@
 @implementation POR
 - (i64) scn { return scn; }
 
+- (void)
+set_feeder:(struct feeder_param*)new
+{
+	/* legacy */
+	if (shard_rt[self->id].mode == SHARD_MODE_STANDBY)
+		[remote set_feeder:new];
+}
+
 - (struct feeder_param *)
 feeder
 {
@@ -108,9 +116,8 @@ standalone
 - (void)
 start
 {
-	if ([self standalone])
-		[self status_update:PRIMARY fmt:"primary"];
-	else
+	[self adjust_route];
+	if (![self standalone])
 		[self remote_hot_standby:NULL];
 }
 
@@ -130,8 +137,8 @@ submit:(const void *)data len:(u32)len tag:(u16)tag
 		return 0;
 	}
 
-	if (status == REMOTE_STANDBY) {
-		say_warn("remote hot standby");
+	if (shard_rt[self->id].mode != SHARD_MODE_LOCAL) {
+		say_warn("not master");
 		return 0;
 	}
 
@@ -152,21 +159,24 @@ submit:(const void *)data len:(u32)len tag:(u16)tag
 - (void)
 adjust_route
 {
-	if (dummy || strcmp(peer[0], cfg.hostname) == 0) {
+	if ([self standalone]) {
 		update_rt(self->id, SHARD_MODE_LOCAL, self, NULL);
-		[self status_update:PRIMARY fmt:"primary"];
+		[self status_update:"primary"];
 		struct feeder_param empty = { .addr = { .sin_family = AF_UNSPEC } };
-		[remote feeder_changed:&empty];
+		[remote set_feeder:&empty];
 	} else {
-		enum shard_mode mode = SHARD_MODE_PROXY;
-		for (int i = 0; i < nelem(peer) && peer[i]; i++)
-			if (strcmp(peer[i], cfg.hostname) == 0) {
-				mode = SHARD_MODE_PARTIAL_PROXY;
-				break;
-			}
-		update_rt(self->id, mode, self, peer[0]);
-		[self status_update:REMOTE_STANDBY fmt:"replicating from %s", peer[0]];
-		[self remote_hot_standby:NULL];
+		if (dummy) {
+			update_rt(self->id, SHARD_MODE_STANDBY, self, NULL);
+		} else {
+			enum shard_mode mode = SHARD_MODE_PROXY;
+			for (int i = 0; i < nelem(peer) && peer[i]; i++)
+				if (strcmp(peer[i], cfg.hostname) == 0) {
+					mode = SHARD_MODE_PARTIAL_PROXY;
+					break;
+				}
+			update_rt(self->id, mode, self, peer[0]);
+			[self status_update:"replicating from %s", peer[0]];
+		}
 	}
 }
 
@@ -233,8 +243,18 @@ is_replica
 {
 	if (cfg.wal_writer_inbox_size == 0)
 		return 0;
-	return recovery->writer == nil || status != PRIMARY;
+	if (recovery->writer == nil)
+		return 1;
+	switch (shard_rt[self->id].mode) {
+	case SHARD_MODE_PARTIAL_PROXY:
+	case SHARD_MODE_PROXY:
+	case SHARD_MODE_STANDBY:
+		return true;
+	default:
+		return false;
+	}
 }
+
 @end
 
 

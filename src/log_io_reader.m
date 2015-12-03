@@ -229,8 +229,8 @@ load_from_local:(i64)initial_lsn
 	}
 
 	say_info("local recovery start");
-	if ([(id)recovery respondsTo:@selector(status_update:fmt:)])
-		[(id)recovery status_update:LOADING fmt:"loading/local"];
+	if ([(id)recovery respondsTo:@selector(status_update:)])
+		[(id)recovery status_update:"loading/local"];
 
 	i64 snap_lsn = -1;
 	if (initial_lsn == 0) {
@@ -330,8 +330,8 @@ recover_finalize
 local_hot_standby
 {
 	[self recover_follow:cfg.wal_dir_rescan_delay];
-	if ([(id)recovery respondsTo:@selector(status_update:fmt:)])
-		[(id)recovery status_update:LOCAL_STANDBY fmt:"hot_standby/local"];
+	if ([(id)recovery respondsTo:@selector(status_update:)])
+		[(id)recovery status_update:"hot_standby/local"];
 }
 
 - (id)
