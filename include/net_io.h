@@ -70,13 +70,15 @@ struct netmsg {
 	uintptr_t ref[NETMSG_IOV_SIZE];
 };
 
+#define NETMSG_IO_SHARED_POOL 1
 @interface netmsg_io : Object {
 @public
 	struct palloc_pool *pool;
 	struct tbuf rbuf;
 	struct netmsg_head wbuf;
 	ev_io in, out;
-	int fd, rc;
+	int fd, rc, flags;
+	size_t pool_allocated;
 }
 - (void)release; /* do not override : IMP caching in process_requests()  */
 - (id)retain; /* do not override : IMP caching in process_requests()  */

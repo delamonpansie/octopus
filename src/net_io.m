@@ -415,8 +415,14 @@ netmsg_io_read_cb(ev_io *ev, int __attribute__((unused)) events)
 {
 	struct netmsg_io *io = container_of(ev, struct netmsg_io, in);
 
-	if (palloc_allocated(io->pool) > 256 * 1024)
-		palloc_gc(io->pool);
+	if ((io->flags & NETMSG_IO_SHARED_POOL) == 0) {
+		size_t diff = palloc_allocated(io->pool) - io->pool_allocated;
+		if (diff > 256 * 1024  && diff > io->pool_allocated) {
+			palloc_gc(io->pool);
+			io->pool_allocated = palloc_allocated(io->pool);
+		}
+	}
+
 	tbuf_ensure(&io->rbuf, 16 * 1024);
 	ssize_t r = tbuf_recv(&io->rbuf, ev->fd);
 	if (r == 0) {
