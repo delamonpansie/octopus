@@ -354,6 +354,9 @@ netmsg_writev(int fd, struct netmsg_head *head)
 		head->bytes -= r;
 		result += r;
 
+		if (head->bytes == 0)
+			goto reset;
+
 		do {
 			if (iov->iov_len > r) {
 				iov->iov_base += r;
@@ -368,7 +371,7 @@ netmsg_writev(int fd, struct netmsg_head *head)
 
 	int iov_unsent = end - iov;
 	if (iov_unsent == 0) {
-		netmsg_reset(head);
+reset:		netmsg_reset(head);
 	} else {
 		iov_count -= iov_unsent;
 		struct netmsg *m = TAILQ_LAST(&head->q, netmsg_tailq), *prev;
