@@ -38,7 +38,6 @@
 @implementation POR
 - (i64) scn { return scn; }
 
-- (bool) feeder_changed:(struct feeder_param*)new { return [remote feeder_changed:new]; }
 - (struct feeder_param *)
 feeder
 {
@@ -85,7 +84,7 @@ remote_hot_standby:(const char *)name
 		remote = [[XLogReplica alloc] init_shard:self];
 		[remote hot_standby:&feeder writer:[recovery writer]];
 	} else {
-		[remote feeder_changed:&feeder];
+		[remote set_feeder:&feeder];
 	}
 }
 

@@ -133,31 +133,31 @@ status:(const char *)status reason:(const char *)reason
 }
 
 
-- (bool)
-feeder_changed:(struct feeder_param*)new
+- (void)
+set_feeder:(struct feeder_param*)new
 {
 	static struct msg_void_ptr msg;
-	if (feeder_param_eq(&feeder, new) != true) {
-		free(feeder.filter.name);
-		free(feeder.filter.arg);
-		feeder = *new;
-		if (feeder.filter.name) {
-			feeder.filter.name = strdup(feeder.filter.name);
-		}
-		if (feeder.filter.arg) {
-			feeder.filter.arg = xmalloc(feeder.filter.arglen);
-			memcpy(feeder.filter.arg, new->filter.arg, feeder.filter.arglen);
-		}
 
-		[remote_puller abort_recv];
-		if ([self feeder_addr_configured]) {
-			[self status:"configured" reason:sintoa(&feeder.addr)];
-			if (msg.link.tqe_prev == NULL)
-				mbox_put(&mbox, &msg, link);
-		}
-		return true;
+	if (feeder_param_eq(&feeder, new))
+		return;
+
+	free(feeder.filter.name);
+	free(feeder.filter.arg);
+	feeder = *new;
+	if (feeder.filter.name) {
+		feeder.filter.name = strdup(feeder.filter.name);
 	}
-	return false;
+	if (feeder.filter.arg) {
+		feeder.filter.arg = xmalloc(feeder.filter.arglen);
+		memcpy(feeder.filter.arg, new->filter.arg, feeder.filter.arglen);
+	}
+
+	[remote_puller abort_recv];
+	if ([self feeder_addr_configured]) {
+		[self status:"configured" reason:sintoa(&feeder.addr)];
+		if (msg.link.tqe_prev == NULL)
+			mbox_put(&mbox, &msg, link);
+	}
 }
 
 - (struct sockaddr_in)
@@ -363,7 +363,7 @@ hot_standby:(struct feeder_param*)feeder_ writer:(id<XLogWriter>)writer_
 {
 	assert(writer_ != nil);
 	writer = writer_;
-	[self feeder_changed:feeder_];
+	[self set_feeder:feeder_];
 	fiber_create("remote_hot_standby", hot_standby, self);
 }
 

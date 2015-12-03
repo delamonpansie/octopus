@@ -465,7 +465,7 @@ enum {
 }
 - (struct sockaddr_in) feeder_addr;
 - (bool) feeder_addr_configured;
-- (bool) feeder_changed:(struct feeder_param*)new;
+- (void) set_feeder:(struct feeder_param*)new;
 - (void) hot_standby:(struct feeder_param*)feeder_ writer:(id<XLogWriter>)writer_;
 @end
 
