@@ -116,7 +116,7 @@ SlaveEnv.connect_eval do |env|
   end
   Process.kill("CONT", env.pid)
 
-  wait_for { select_nolog([999]).length > 0 }
+  wait_for "non empty select [999]" do select_nolog([999]).length > 0 end
   select [998]
   select [999]
   select [998], :object_space => 1

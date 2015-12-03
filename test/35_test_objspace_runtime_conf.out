@@ -35,13 +35,13 @@ Failed with: {code: 0x202, message: 'metadata updates are forbidden because cfg.
 # box.select("foo", "bar", "baz", "baf")
 [["foo"], ["bar"], ["baz"], ["baf"]]
 
-lsn:7 scn:-1 t:sys/snap_initial 0.0.0.0:0 ver:0 count:3 flags:0x00000000
-lsn:7 scn:5 t:sys/shard_tag 0.0.0.0:0 SHARD_CREATE shard_id:0 shard_SCN:5 POR Box count:3 run_crc:0x3e239886 master:one
-lsn:7 scn:5 t:snap/usr240 0.0.0.0:0 CREATE_OBJECT_SPACE n:0 flags:00000000 cardinalty:-1 snap:1 wal:1 PK: i:0 min_tuple_cardinality:1 cardinality:1 type:0 unique:1 field0:{index:0 type:7 sort:1}
-lsn:7 scn:5 t:snap/snap_data 0.0.0.0:0 n:0 <"bar">
-lsn:7 scn:5 t:snap/snap_data 0.0.0.0:0 n:0 <"baz">
-lsn:7 scn:5 t:snap/snap_data 0.0.0.0:0 n:0 <"foo">
-lsn:7 scn:5 t:snap/usr241 0.0.0.0:0 CREATE_INDEX n:0 flags:00000000 i:1 min_tuple_cardinality:1 cardinality:1 type:4 unique:1 field0:{index:0 type:7 sort:-1}
-lsn:7 scn:2 t:sys/shard_tag 0.0.0.0:0 SHARD_CREATE shard_id:1 shard_SCN:2 POR Box count:0 run_crc:0xd34defb3 master:one
-lsn:7 scn:2 t:snap/usr240 0.0.0.0:0 CREATE_OBJECT_SPACE n:0 flags:00000000 cardinalty:0 snap:1 wal:1 PK: i:0 min_tuple_cardinality:1 cardinality:1 type:4 unique:1 field0:{index:0 type:7 sort:-1}
-lsn:7 scn:-1 t:sys/snap_final 0.0.0.0:0 
+lsn:8 scn:-1 t:sys/snap_initial 0.0.0.0:0 ver:0 count:3 flags:0x00000000
+lsn:8 scn:6 t:sys/shard_tag 0.0.0.0:0 SHARD_CREATE shard_id:0  POR Box count:3 run_crc:0x3e239886 master:one
+lsn:8 scn:6 t:snap/usr240 0.0.0.0:0 CREATE_OBJECT_SPACE n:0 flags:00000000 cardinalty:-1 snap:1 wal:1 PK: i:0 min_tuple_cardinality:1 cardinality:1 type:0 unique:1 field0:{index:0 type:7 sort:1}
+lsn:8 scn:6 t:snap/snap_data 0.0.0.0:0 n:0 <"bar">
+lsn:8 scn:6 t:snap/snap_data 0.0.0.0:0 n:0 <"baz">
+lsn:8 scn:6 t:snap/snap_data 0.0.0.0:0 n:0 <"foo">
+lsn:8 scn:6 t:snap/usr241 0.0.0.0:0 CREATE_INDEX n:0 flags:00000000 i:1 min_tuple_cardinality:1 cardinality:1 type:4 unique:1 field0:{index:0 type:7 sort:-1}
+lsn:8 scn:2 t:sys/shard_tag 0.0.0.0:0 SHARD_CREATE shard_id:1  POR Box count:0 run_crc:0xd34defb3 master:one
+lsn:8 scn:2 t:snap/usr240 0.0.0.0:0 CREATE_OBJECT_SPACE n:0 flags:00000000 cardinalty:0 snap:1 wal:1 PK: i:0 min_tuple_cardinality:1 cardinality:1 type:4 unique:1 field0:{index:0 type:7 sort:-1}
+lsn:8 scn:-1 t:sys/snap_final 0.0.0.0:0 

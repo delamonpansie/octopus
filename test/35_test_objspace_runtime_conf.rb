@@ -16,7 +16,6 @@ env.connect_eval do
   env.stop
 end
 
-
 env.connect_eval do
   select "foo", "bar"
   env.stop
@@ -44,7 +43,6 @@ env.cd do
   File.open(Env::ConfigFile, "w") { |io| io.puts(env.config) }
 end
 
-
 env.connect_eval do
   select "foo", "bar"
   insert ["baz"]
@@ -52,13 +50,13 @@ env.connect_eval do
   env.stop
 end
 
-
 env.cd do
   File.open(Env::ConfigFile, "w") { |io| io.puts(env.config :hostname => "one") }
 end
 
 env.connect_eval do
   create_shard 0, "one"
+  sleep 0.2
   # create_object_space 0, :shard => 0, :index => {:type => :FASTTREE, :unique => 1, :field_0 => { :type => :STRING, :index => 0 , :sort_order => :DESC }}
   create_index 1, :type => :FASTTREE, :unique => 1, :field_0 => { :type => :STRING, :index => 0 , :sort_order => :DESC }
 
@@ -76,5 +74,5 @@ env.connect_eval do
 end
 
 env.cd do
-  puts `./octopus --cat 00000000000000000007.snap | sed 's/tm:[0-9.]\\+ //g'`
+  puts `./octopus --cat 00000000000000000008.snap | sed 's/tm:[0-9.]\\+ //g;'`
 end

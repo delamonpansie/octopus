@@ -106,6 +106,5 @@ SlaveEnv.new.env_eval do
   master_env.cd do
     puts "Master\n" + `./octopus --cat 00000000000000000002.xlog 2>/dev/null| sed 's/tm:[^ ]* //'` + "\n"
   end
-
 end
 

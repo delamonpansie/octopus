@@ -659,8 +659,8 @@ reload_config(struct octopus_cfg *old _unused_,
 		say_error("ignoring lagacy configuration request");
 		return;
 	}
-	if ([(id)shard respondsTo:@selector(feeder_changed:)])
-		[(id)shard feeder_changed:&feeder];
+	if ([(id)shard respondsTo:@selector(set_feeder:)])
+		[(id)shard set_feeder:&feeder];
 	else
 		say_error("ignoring unsupported configuration request");
 }
