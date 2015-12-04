@@ -153,11 +153,11 @@ twlerrcode_t twltree_find_by_index_key_and_copy(twltree_t *tt, void const *index
 void twltree_iterator_init(twltree_t *tt, twliterator_t *it, 
 			   twlscan_direction_t direction);
 /* could return error only if tuple_key_2_index_key returns error */
-int  twltree_iterator_init_set(twltree_t *tt, twliterator_t *it, void *index_key,
-			       twlscan_direction_t direction);
+twlerrcode_t twltree_iterator_init_set(twltree_t *tt, twliterator_t *it, void *tuple_key,
+		twlscan_direction_t direction);
 /* could return error only if tuple_key_2_index_key returns error for already stored tuple */
-int  twltree_iterator_init_set_index_key(twltree_t *tt, twliterator_t *it, void *index_key,
-			       twlscan_direction_t direction);
+twlerrcode_t twltree_iterator_init_set_index_key(twltree_t *tt, twliterator_t *it,
+		void *index_key, twlscan_direction_t direction);
 void* twltree_iterator_next(twliterator_t *it);
 
 size_t twltree_bytes(twltree_t *tt);

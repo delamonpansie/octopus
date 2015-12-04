@@ -212,6 +212,8 @@ twltree_free(twltree_t *tt) {
 		while( (key = twltree_iterator_next(&tt->pi_iterator)) != NULL) {
 			tt->conf->index_key_free(key->key, tt->arg);
 		}
+	} else if (tt->n_tuple_keys != 0 && tt->conf->index_key_free != NULL) {
+		tt->conf->index_key_free(tt->firstpage, tt->arg);
 	}
 	if (tt->page_index != NULL) {
 		twltree_free(tt->page_index);
@@ -224,10 +226,7 @@ twltree_free(twltree_t *tt) {
 		page = page->right;
 		tt->tlrealloc(tp, 0);
 	}
-	if (tt->search_index_key != NULL) {
-		tt->tlrealloc(tt->search_index_key, 0);
-		tt->search_index_key = NULL;
-	}
+	tt->tlrealloc(tt->search_index_key, 0);
 }
 
 static twlpage_t*
@@ -291,8 +290,8 @@ twltree_free_page(twltree_t *tt, index_key_t *key) {
 		tt->firstpage->page = page->right;
 		if (page->right->right == NULL) {
 			assert(tt->page_index->page_index == NULL);
-			free_index_key(tt, FIRST_INNER_INDEX_KEY(tt));
 			twltree_free(tt->page_index);
+			tt->tlrealloc(tt->page_index, 0);
 			tt->page_index = NULL;
 			tt->n_index_keys--;
 		}
@@ -555,13 +554,9 @@ split_page(twltree_t *tt, index_key_t *key) {
 			r = TWL_NOMEMORY;
 			goto rollback_split;
 		}
-		r = make_search_key2(tt, TUPITH(tt, page, page->n_tuple_keys-1), tt->firstpage);
-		if (r != TWL_OK) {
-			goto rollback_split;
-		}
 		twltree_insert(tt->page_index, tt->firstpage, false);
 		tt->n_index_keys++;
-		key = FIRST_INNER_INDEX_KEY(tt);
+		key = (index_key_t*)tt->page_index->firstpage->page->data;
 		assert(key->page == page);
 	}
 
@@ -601,6 +596,7 @@ rollback_split:
 			if (tt->firstpage->page == page && page->right == NULL && tt->page_index != NULL) {
 				free_index_key(tt, key);
 				twltree_free(tt->page_index);
+				tt->tlrealloc(tt->page_index, 0);
 				tt->page_index = NULL;
 			}
 			return r;
@@ -614,8 +610,10 @@ rollback_split:
 	leftpage->left = page->left;
 	if (leftpage->left)
 		leftpage->left->right = leftpage;
-	else
+	else {
+		memcpy(tt->firstpage->key, tt->search_index_key->key, tt->sizeof_index_key);
 		tt->firstpage->page = leftpage;
+	}
 	leftpage->right = page;
 	page->left = leftpage;
 
@@ -623,22 +621,24 @@ rollback_split:
 }
 
 static void
-copy_current_index_key_to_upper(twltree_t *tt, index_key_t *key) {
+copy_current_index_key_to_upper(twltree_t *tt, index_key_t *key, char* ikey) {
+	memcpy(key->key, ikey, tt->sizeof_index_key);
+	if (tt->page_index == NULL) {
+		assert(key == tt->firstpage);
+		return;
+	}
 	twliterator_t *it = &tt->pi_iterator;
-	index_key_t *upper;
-	assert((char*)key == TUPITH(it, it->page, it->ith));
 	if (it->ith < it->page->n_tuple_keys-1) {
 		return;
 	}
-	if (tt->page_index->page_index == NULL) {
-		assert(it->page == tt->page_index->firstpage->page);
-		return;
+	index_key_t* upper;
+	if (tt->page_index->page_index) {
+		it = &tt->page_index->pi_iterator;
+		upper = (__typeof__(upper))(TUPITH(it, it->page, it->ith));
+	} else {
+		upper = tt->page_index->firstpage;
 	}
-	it = &tt->page_index->pi_iterator;
-	upper = (__typeof__(upper))(TUPITH(it, it->page, it->ith));
-	assert(upper->page == tt->pi_iterator.page);
-	memcpy(upper->key, key->key, tt->page_index->sizeof_index_key);
-	copy_current_index_key_to_upper(tt->page_index, upper);
+	copy_current_index_key_to_upper(tt->page_index, upper, ikey);
 }
 
 twlerrcode_t
@@ -649,6 +649,8 @@ twltree_insert(twltree_t *tt, void *tuple_key, bool replace) {
 	if (tt->n_tuple_keys == 0) {
 		s.page = tt->firstpage->page;
 		memcpy(TUPITH(tt, s.page, 0), tuple_key, tt->sizeof_tuple_key);
+		if ((r = make_search_key2(tt, tuple_key, tt->firstpage)) != TWL_OK)
+			return  r;
 		s.page->n_tuple_keys++;
 		tt->n_tuple_keys++;
 		return TWL_OK;
@@ -663,11 +665,10 @@ restart:
 		if (r == TWL_OK && replace) {
 			memcpy(TUPITH(tt, s.page, s.pos), tuple_key, tt->sizeof_tuple_key);
 
-			if (s.pos == s.page->n_tuple_keys-1 && tt->page_index != NULL) {
+			if (s.pos == s.page->n_tuple_keys-1) {
 				/* update key of upper index */
 				free_index_key(tt, s.key);
-				memcpy(s.key->key, tt->search_index_key->key, tt->sizeof_index_key);
-				copy_current_index_key_to_upper(tt, s.key);
+				copy_current_index_key_to_upper(tt, s.key, tt->search_index_key->key);
 			} else {
 				free_search_key(tt);
 			}
@@ -707,11 +708,10 @@ restart:
 
 	memcpy(TUPITH(tt, s.page, s.pos), tuple_key, tt->sizeof_tuple_key);
 
-	if (s.page->right == NULL && s.pos == s.page->n_tuple_keys && tt->page_index != NULL) {
+	if (s.page->right == NULL && s.pos == s.page->n_tuple_keys) {
 		/* update key of right-most page */
 		free_index_key(tt, s.key);
-		memcpy(s.key->key, tt->search_index_key->key, tt->sizeof_index_key);
-		copy_current_index_key_to_upper(tt, s.key);
+		copy_current_index_key_to_upper(tt, s.key, tt->search_index_key->key);
 	} else {
 		free_search_key(tt);
 	}
@@ -857,25 +857,31 @@ twltree_delete(twltree_t *tt, void *tuple_key) {
 		return TWL_NOTFOUND;
 
 	assert(tt->n_tuple_keys > 0);
-	tt->n_tuple_keys--;
 
 	if (s.page->n_tuple_keys == 1) {
+		tt->n_tuple_keys--;
 		if (tt->firstpage->page != s.page || s.page->right != NULL)
 			twltree_free_page(tt, s.key);
-		else
+		else {
+			assert(s.key == tt->firstpage);
+			free_index_key(tt, s.key);
 			s.page->n_tuple_keys = 0;
+		}
 		return TWL_OK;
 	}
 
 	if (s.pos != s.page->n_tuple_keys - 1) {
 		TUPMOVE(tt, s.page, s.pos, s.pos+1, s.page->n_tuple_keys - s.pos - 1);
-	} else if (tt->page_index != NULL) {
+	} else {
 		/* we need to rewrite stored key in inner twltree */
 		/* no need to delete-insert cause order is not disturbed */
+		r = make_search_key(tt, TUPITH(tt, s.page, s.page->n_tuple_keys - 2));
+		if (r != TWL_OK)
+			return r;
 		free_index_key(tt, s.key);
-		make_search_key2(tt, TUPITH(tt, s.page, s.page->n_tuple_keys - 2), s.key);
-		copy_current_index_key_to_upper(tt, s.key);
+		copy_current_index_key_to_upper(tt, s.key, tt->search_index_key->key);
 	}
+	tt->n_tuple_keys--;
 	s.page->n_tuple_keys--;
 
 	if (s.page->n_tuple_keys + 1 + SMALLEST(tt)/8 < s.page->page_n) {
@@ -960,7 +966,7 @@ twltree_iterator_init(twltree_t *tt, twliterator_t *it, twlscan_direction_t dire
 
 }
 
-int
+twlerrcode_t
 twltree_iterator_init_set(twltree_t *tt, twliterator_t *it, void* tuple_key, twlscan_direction_t direction) {
 	search_result_t s;
 	twlerrcode_t	r;
@@ -988,7 +994,7 @@ twltree_iterator_init_set(twltree_t *tt, twliterator_t *it, void* tuple_key, twl
 	return TWL_OK;
 }
 
-int
+twlerrcode_t
 twltree_iterator_init_set_index_key(twltree_t *tt, twliterator_t *it, void *index_key, twlscan_direction_t direction) {
 	search_result_t s;
 	twlerrcode_t	r;
@@ -1051,8 +1057,8 @@ twltree_bytes(twltree_t *tt)
 	size_t res = 0;
 	res += sizeof(*tt);
 	res += (tt->sizeof_index_key + TWLIKTHDRSZ + 8) / 8 * 8 * 3; /* search_index_key */
-	res += tt->sizeof_tuple_key * tt->n_tuple_keys;
-	res += offsetof(twlpage_t, data) * (tt->n_index_keys + 1);
+	res += tt->sizeof_tuple_key * tt->n_tuple_space;
+	res += TWLPAGEHDRSZ * (tt->n_index_keys + 1);
 	if (tt->page_index)
 		res += twltree_bytes(tt->page_index);
 	return res;
