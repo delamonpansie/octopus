@@ -228,6 +228,11 @@ validate_sop(void *data, int len)
 		return NULL;
 	}
 
+	if (strlen(sop->peer[0]) == 0) {
+		say_syserror("sop: empty master");
+		return NULL;
+	}
+
 	for (int i = 0; i < nelem(sop->peer); i++) {
 		if (sop->peer[i][15] != 0) {
 			say_error("sop: bad peer");
