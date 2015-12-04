@@ -174,6 +174,8 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 		d->type = FASTTREE;
 	else if (strcmp(c->type, "SPTREE") == 0)
 		d->type = SPTREE;
+	else if (strcmp(c->type, "POSTREE") == 0)
+		d->type = POSTREE;
 	else
 		panic("unknown index type");
 
