@@ -559,7 +559,7 @@ shard_load:(int)shard_id sop:(struct shard_op *)sop
 		[shard free];
 		return;
 	}
-	[shard start];
+	[shard adjust_route];
 }
 
 - (void)
@@ -798,7 +798,7 @@ enable_local_writes
 	}
 
 	for (int i = 0; i < MAX_SHARD; i++)
-		[[self shard:i] start];
+		[[self shard:i] adjust_route];
 
 	if (cfg.peer && *cfg.peer && cfg.hostname)
 		fiber_create("udpate_rt_notify", update_rt_notify);

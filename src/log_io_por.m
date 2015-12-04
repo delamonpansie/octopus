@@ -113,14 +113,6 @@ standalone
 	return strcmp(cfg.hostname, peer[0]) == 0;
 }
 
-- (void)
-start
-{
-	[self adjust_route];
-	if (![self standalone])
-		[self remote_hot_standby:NULL];
-}
-
 - (int)
 submit:(const void *)data len:(u32)len tag:(u16)tag
 {
@@ -167,6 +159,9 @@ adjust_route
 	} else {
 		if (dummy) {
 			update_rt(self->id, SHARD_MODE_PARTIAL_PROXY, self, NULL);
+			if (recovery->writer)
+				[self remote_hot_standby:NULL];
+
 		} else {
 			enum shard_mode mode = SHARD_MODE_PROXY;
 			for (int i = 0; i < nelem(peer) && peer[i]; i++)
@@ -176,6 +171,8 @@ adjust_route
 				}
 			update_rt(self->id, mode, self, peer[0]);
 			[self status_update:"replicating from %s", peer[0]];
+			if (recovery->writer)
+				[self remote_hot_standby:peer[0]];
 		}
 	}
 }

@@ -482,7 +482,6 @@ enum {
 - (ev_tstamp) run_crc_lag;
 - (u32) run_crc_log;
 
-- (void) start;
 - (void) load_from_remote;
 
 - (int) submit:(const void *)data len:(u32)len tag:(u16)tag;
