@@ -308,12 +308,11 @@ proxy_requst(struct iproto_handler *ih, struct shard_route *route,
 		iproto_proxy_send(route->proxy, c, request, NULL, 0);
 		return true;
 	case SHARD_MODE_PARTIAL_PROXY:
-		if (ih->flags & IPROTO_PROXY) {
+		if (ih->flags & IPROTO_PROXY && route->proxy) {
 			tbuf_ltrim(&io->rbuf, req_size);
 			iproto_proxy_send(route->proxy, c, request, NULL, 0);
 			return true;
 		}
-	case SHARD_MODE_STANDBY:
 	case SHARD_MODE_LOCAL:
 		*arg = route;
 		break;

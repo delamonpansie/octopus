@@ -42,7 +42,7 @@
 set_feeder:(struct feeder_param*)new
 {
 	/* legacy */
-	if (shard_rt[self->id].mode == SHARD_MODE_STANDBY)
+	if (shard_rt[self->id].mode == SHARD_MODE_PARTIAL_PROXY)
 		[remote set_feeder:new];
 }
 
@@ -166,7 +166,7 @@ adjust_route
 		[remote set_feeder:&empty];
 	} else {
 		if (dummy) {
-			update_rt(self->id, SHARD_MODE_STANDBY, self, NULL);
+			update_rt(self->id, SHARD_MODE_PARTIAL_PROXY, self, NULL);
 		} else {
 			enum shard_mode mode = SHARD_MODE_PROXY;
 			for (int i = 0; i < nelem(peer) && peer[i]; i++)
@@ -248,7 +248,6 @@ is_replica
 	switch (shard_rt[self->id].mode) {
 	case SHARD_MODE_PARTIAL_PROXY:
 	case SHARD_MODE_PROXY:
-	case SHARD_MODE_STANDBY:
 		return true;
 	default:
 		return false;

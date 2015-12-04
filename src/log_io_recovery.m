@@ -138,15 +138,19 @@ update_rt(int shard_id, enum shard_mode mode, Shard<Shard> *shard, const char *m
 	route->shard = shard;
 	route->executor = [shard executor];
 	route->mode = mode;
+	route->proxy = NULL;
 
 	if (mode == SHARD_MODE_PARTIAL_PROXY || mode == SHARD_MODE_PROXY) {
+		if (!master_name) {
+			assert(shard->dummy);
+			return;
+		}
 		assert(master_name);
 		if (route->proxy && strcmp(route->proxy->ts.name, master_name) == 0) /* already proxying */
 			return;
 		route->proxy = iproto_remote_add_peer(NULL, addr, proxy_pool);
 		route->proxy->ts.name = master_name;
-	} else
-		route->proxy = NULL;
+	}
 }
 
 void
@@ -280,17 +284,18 @@ shard_log(Shard *shard)
 	case SHARD_MODE_NONE:
 		tbuf_printf(buf, "NONE");
 		break;
-	case SHARD_MODE_STANDBY:
-		tbuf_printf(buf, "STANDBY");
-		break;
 	case SHARD_MODE_LOADING:
 		tbuf_printf(buf, "LOADING");
 		break;
 	case SHARD_MODE_PARTIAL_PROXY:
 		tbuf_printf(buf, "PARTIAL_");
 	case SHARD_MODE_PROXY:
-		tbuf_printf(buf, "PROXY: %s,%s",
-			    route->proxy->ts.name, sintoa(&route->proxy->ts.daddr));
+		tbuf_printf(buf, "PROXY");
+		if (route->proxy)
+			tbuf_printf(buf, ": %s,%s",
+				    route->proxy->ts.name, sintoa(&route->proxy->ts.daddr));
+		else
+			tbuf_printf(buf, ": legacy mode");
 		break;
 	case SHARD_MODE_LOCAL:
 		tbuf_printf(buf, "LOCAL");
@@ -959,7 +964,6 @@ iproto_shard_cb_aux(va_list ap)
 	case SHARD_MODE_NONE:
 		[recovery shard_create:shard_id sop:sop];
 		break;
-	case SHARD_MODE_STANDBY:
 	case SHARD_MODE_PROXY:
 	case SHARD_MODE_PARTIAL_PROXY:
 	case SHARD_MODE_LOADING:
@@ -1001,7 +1005,6 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req, void *arg __attrib
 	case SHARD_MODE_LOADING:
 		iproto_error(wbuf, req, ERR_CODE_ILLEGAL_PARAMS, "shard is loading");
 		return;
-	case SHARD_MODE_STANDBY:
 	case SHARD_MODE_PARTIAL_PROXY:
 	case SHARD_MODE_PROXY:
 		assert(false);
