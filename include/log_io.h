@@ -465,13 +465,11 @@ enum {
 }
 - (struct sockaddr_in) feeder_addr;
 - (bool) feeder_addr_configured;
-- (bool) feeder_changed:(struct feeder_param*)new;
+- (void) set_feeder:(struct feeder_param*)new;
 - (void) hot_standby:(struct feeder_param*)feeder_ writer:(id<XLogWriter>)writer_;
 @end
 
 
-enum recovery_status { LOADING = 1, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY };
-enum recovery_status current_recovery_status_code();
 @protocol Shard <RecoverRow>
 - (int) id;
 - (i64) scn;
@@ -484,13 +482,12 @@ enum recovery_status current_recovery_status_code();
 - (ev_tstamp) run_crc_lag;
 - (u32) run_crc_log;
 
-- (void) start;
 - (void) load_from_remote;
 
 - (int) submit:(const void *)data len:(u32)len tag:(u16)tag;
 
 - (const char *) status;
-- (void) status_update:(enum recovery_status)s fmt:(const char *)fmt, ...;
+- (void) status_update:(const char *)fmt, ...;
 - (bool) is_replica;
 
 - (void) adjust_route;
@@ -503,11 +500,11 @@ enum recovery_status current_recovery_status_code();
 	u32 run_crc_log;
 	struct run_crc run_crc_state;
 	char status_buf[64];
+	int old_mode;
 @public
 	int id;
 	id<Executor> executor;
 	i64 scn;
-	enum recovery_status status, prev_status;
 	Recovery *recovery;
 	char peer[5][16];
 	bool dummy;
@@ -522,7 +519,7 @@ enum recovery_status current_recovery_status_code();
 - (const char *) run_crc_status;
 - (u32) run_crc_log;
 - (int) submit_run_crc;
-- (void) status_update:(enum recovery_status)new_status fmt:(const char *)fmt, ...;
+- (void) status_update:(const char *)fmt, ...;
 - (const char *)status;
 
 - (ev_tstamp) lag;

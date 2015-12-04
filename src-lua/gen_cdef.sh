@@ -29,7 +29,6 @@ $CPP $srcdir/include/fiber.h | $SED -n '/^@interface Fiber/,/^}/p' | $SED '{s/@i
 echo " Fiber;"
 echo "struct Fiber *current_fiber();"
 echo "int fiber_switch_cnt();"
-$CPP $srcdir/include/log_io.h | $SED -n '/^enum recovery_status/p'
 $CPP $srcdir/include/octopus_ev.h | $SED -n '/^typedef [a-z]\+ ev_tstamp/p; /typedef struct ev_\(io\|timer\)/,/^}/p;'
 $CPP $srcdir/include/iproto_def.h | $SED -n '/^struct iproto\(_retcode\)\? \+{/,/^}/{s/\[0\?\]/[?]/;p;}'
 $CPP $srcdir/include/iproto_def.h | $SED -n '/^struct iproto\(_retcode\)\? \+{/,/^}/{s/\(iproto\w*\)/\1_0/;/\[0\?\]/ d;p;}'

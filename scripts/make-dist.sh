@@ -51,9 +51,9 @@ for repo in ${@:-client/* mod/*}; do
     fi
 done
 
-
+major_version=$(git describe HEAD | grep -o 'oc[0-9.]\+' | sed 's/^oc//')
 last_commit=$(git log --date-order --format=format:%ct -n1)
-suffix=$(git name-rev HEAD | cut -f2 -d' ' | sed 's/^master$/experimental/'):$(git describe --always | sed 's/.*-//')
+suffix=$(git name-rev HEAD | cut -f2 -d' '):$(git describe --always | sed 's/.*-//')
 for mod in $modules; do
     mod_suffix="$mod_suffix+$mod:"$(cd mod/$mod; git describe --always | sed 's/.*-//')
     mod_last_commit=$(cd mod/$mod; git log --date-order --format=format:%ct -n1)
@@ -63,7 +63,7 @@ for mod in $modules; do
 done
 
 bundle=$(date +%Y%m%d%H%M --date="@$last_commit")
-name=octopus-${bundle}-${suffix}${mod_suffix}
+name=octopus${major_version}-${bundle}-${suffix}${mod_suffix}
 
 
 (echo -n "configuring ... "

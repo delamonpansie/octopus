@@ -138,8 +138,13 @@ update_rt(int shard_id, enum shard_mode mode, Shard<Shard> *shard, const char *m
 	route->shard = shard;
 	route->executor = [shard executor];
 	route->mode = mode;
+	route->proxy = NULL;
 
 	if (mode == SHARD_MODE_PARTIAL_PROXY || mode == SHARD_MODE_PROXY) {
+		if (!master_name) {
+			assert(shard->dummy);
+			return;
+		}
 		assert(master_name);
 		if (route->proxy && strcmp(route->proxy->ts.name, master_name) == 0) /* already proxying */
 			return;
@@ -223,6 +228,11 @@ validate_sop(void *data, int len)
 		return NULL;
 	}
 
+	if (strlen(sop->peer[0]) == 0) {
+		say_syserror("sop: empty master");
+		return NULL;
+	}
+
 	for (int i = 0; i < nelem(sop->peer); i++) {
 		if (sop->peer[i][15] != 0) {
 			say_error("sop: bad peer");
@@ -285,8 +295,12 @@ shard_log(Shard *shard)
 	case SHARD_MODE_PARTIAL_PROXY:
 		tbuf_printf(buf, "PARTIAL_");
 	case SHARD_MODE_PROXY:
-		tbuf_printf(buf, "PROXY: %s,%s",
-			    route->proxy->ts.name, sintoa(&route->proxy->ts.daddr));
+		tbuf_printf(buf, "PROXY");
+		if (route->proxy)
+			tbuf_printf(buf, ": %s,%s",
+				    route->proxy->ts.name, sintoa(&route->proxy->ts.daddr));
+		else
+			tbuf_printf(buf, ": legacy mode");
 		break;
 	case SHARD_MODE_LOCAL:
 		tbuf_printf(buf, "LOCAL");
@@ -401,7 +415,7 @@ submit_run_crc
 
 
 - (void)
-status_update:(enum recovery_status)new_status fmt:(const char *)fmt, ...
+status_update:(const char *)fmt, ...
 {
 	char buf[sizeof(status_buf)];
 	va_list ap;
@@ -409,20 +423,18 @@ status_update:(enum recovery_status)new_status fmt:(const char *)fmt, ...
 	vsnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
 
-	if (strcmp(buf, status_buf) == 0 && new_status == status)
+	if (strcmp(buf, status_buf) == 0 && shard_rt[self->id].mode == old_mode)
 		return;
 
 	shard_log(self);
 
-	say_info("recovery status: %i %s", new_status, buf);
 	strncpy(status_buf, buf, sizeof(status_buf));
 	title(NULL);
 
-	if (new_status == status)
+	if (shard_rt[self->id].mode == old_mode)
 		return;
 
-	prev_status = status;
-	status = new_status;
+	old_mode = shard_rt[self->id].mode;
 	[executor status_changed];
 }
 
@@ -483,7 +495,7 @@ shard_add:(int)shard_id scn:(i64)scn sop:(const struct shard_op *)sop
 	if (sop->peer[0][0] == 0)
 		shard->dummy = true;
 	[shard init_id:shard_id scn:scn recovery:self sop:sop];
-	update_rt(shard_id, SHARD_MODE_LOCAL, shard, NULL);
+	update_rt(shard_id, SHARD_MODE_LOADING, shard, NULL);
 	return shard;
 }
 
@@ -547,7 +559,7 @@ shard_load:(int)shard_id sop:(struct shard_op *)sop
 		[shard free];
 		return;
 	}
-	[shard start];
+	[shard adjust_route];
 }
 
 - (void)
@@ -575,7 +587,8 @@ recover_row:(struct row_v12 *)r
 	@try {
 		say_debug("%s: LSN:%"PRIi64" SCN:%"PRIi64" tag:%s",
 			  __func__, r->lsn, r->scn, xlog_tag_to_a(r->tag));
-		say_debug2("	%s", tbuf_to_hex(&TBUF(r->data, r->len, fiber->pool)));
+		if (r->len)
+			say_debug2("	%s", tbuf_to_hex(&TBUF(r->data, r->len, fiber->pool)));
 
 		if (unlikely((r->tag & ~TAG_MASK) == TAG_SYS)) {
 			int tag = r->tag & TAG_MASK;
@@ -785,7 +798,7 @@ enable_local_writes
 	}
 
 	for (int i = 0; i < MAX_SHARD; i++)
-		[[self shard:i] start];
+		[[self shard:i] adjust_route];
 
 	if (cfg.peer && *cfg.peer && cfg.hostname)
 		fiber_create("udpate_rt_notify", update_rt_notify);

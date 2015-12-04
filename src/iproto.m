@@ -200,6 +200,7 @@ init:(int)fd_ service:(struct iproto_service *)service_
 	say_debug2("%s: peer %s", __func__, net_peer_name(fd_));
 	service = service_;
 	netmsg_io_init(self, service->pool, fd_);
+	self->flags |= NETMSG_IO_SHARED_POOL;
 	LIST_INSERT_HEAD(&service->clients, self, link);
 	ev_io_start(&in);
 }
@@ -295,24 +296,23 @@ proxy_requst(struct iproto_handler *ih, struct shard_route *route,
 	     struct iproto_ingress_svc *c, struct iproto *request, void **arg)
 {
 	struct netmsg_io *io = c;
-	int route_mode = route->mode;
+	enum shard_mode mode = route->mode;
 	size_t req_size = sizeof(struct iproto) + request->data_len;
 
 	if (unlikely(ih->flags & IPROTO_FORCE_LOCAL))
-		route_mode = SHARD_MODE_LOCAL;
+		mode = SHARD_MODE_LOCAL;
 
-	switch (route_mode) {
+	switch (mode) {
 	case SHARD_MODE_PROXY:
 		tbuf_ltrim(&io->rbuf, req_size);
 		iproto_proxy_send(route->proxy, c, request, NULL, 0);
 		return true;
 	case SHARD_MODE_PARTIAL_PROXY:
-		if (ih->flags & IPROTO_PROXY) {
+		if (ih->flags & IPROTO_PROXY && route->proxy) {
 			tbuf_ltrim(&io->rbuf, req_size);
 			iproto_proxy_send(route->proxy, c, request, NULL, 0);
 			return true;
 		}
-		*arg = route;
 	case SHARD_MODE_LOCAL:
 		*arg = route;
 		break;

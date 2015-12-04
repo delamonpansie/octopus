@@ -184,8 +184,7 @@ BUNDLE=NONE
 octopus_version.h: FORCE
 	@echo -n 'const char octopus_version_string[] = "' > $@_
 	@cd $(srcdir); $(GIT) describe --always HEAD | tr -d \\n >> $@_
-	@echo -n - >> $@_
-	@cd $(srcdir); $(GIT) branch | grep  '\*' | cut -f2 -d' ' | sed 's/^master$$/experimental/' | tr -d \\n >> $@_
+	@cd $(srcdir); $(GIT) branch | grep  '\*' | cut -f2 -d' ' | sed 's/^master$$//' | tr -d \\n >> $@_
 	@echo '";' >> $@_
 	@echo 'const char octopus_bundle_string[] = "$(BUNDLE)";' >> $@_;
 	@diff -q $@ $@_ 2>/dev/null >/dev/null || (echo "GEN	$(notdir $@)"; cp $@_ $@)

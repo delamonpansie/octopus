@@ -226,19 +226,23 @@ mode2str(int mode)
 }
 
 static int
-request_row_count(const struct tbuf *rbuf)
+request_row_count(struct tbuf *rbuf)
 {
 	const u32 *ptr = (const u32 *)rbuf->ptr;
 	int len = tbuf_len(rbuf);
-	if (len > sizeof(u32) && len >= ptr[0])
-		return ptr[1];
+
+	if (len > sizeof(u32)) {
+		if (len >= ptr[0])
+			return ptr[1];
+		tbuf_ensure(rbuf, ptr[0]);
+	}
 	return -1;
 }
 
 static void
 request_parse(struct request *request, int row_count, struct tbuf *rbuf)
 {
-	tbuf_ltrim(rbuf, sizeof(u32) * 2); /* drop packet_len & row_count */
+	tbuf_ltrim(rbuf, sizeof(u32[2])); /* drop packet_len & row_count */
 
 	request->row_count = row_count;
 	request->rows = p0alloc(fiber->pool, sizeof(void *) * row_count);

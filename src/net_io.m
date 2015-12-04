@@ -138,11 +138,12 @@ netmsg_releaser(struct netmsg *m, int from)
 static void
 netmsg_releasel(struct netmsg *m, int count)
 {
+	int live_count = m->count - count;
 	netmsg_release(m, 0, count);
-	memmove(m->ref, m->ref + count, (m->count - count) * sizeof(m->ref[0]));
-	memmove(m->iov, m->iov + count, (m->count - count) * sizeof(m->iov[0]));
-	memset(m->ref + count, 0, count * sizeof(m->ref[0]));
-	memset(m->iov + count, 0, count * sizeof(m->iov[0]));
+	memmove(m->ref, m->ref + count, live_count * sizeof(m->ref[0]));
+	memmove(m->iov, m->iov + count, live_count * sizeof(m->iov[0]));
+	memset(m->ref + live_count, 0, count * sizeof(m->ref[0]));
+	memset(m->iov + live_count, 0, count * sizeof(m->iov[0]));
 	m->count -= count;
 }
 
@@ -160,6 +161,7 @@ netmsg_reset(struct netmsg_head *h)
 	struct netmsg *m, *tmp;
 	m = TAILQ_FIRST(&h->q);
 	netmsg_releaser(m, 0);
+	h->last_used_iov = m->iov;
 	for (m = TAILQ_NEXT(m, link); m; m = tmp) {
 		tmp = TAILQ_NEXT(m, link);
 		netmsg_dealloc(&h->q, m);
@@ -352,6 +354,9 @@ netmsg_writev(int fd, struct netmsg_head *head)
 		head->bytes -= r;
 		result += r;
 
+		if (head->bytes == 0)
+			goto reset;
+
 		do {
 			if (iov->iov_len > r) {
 				iov->iov_base += r;
@@ -366,19 +371,19 @@ netmsg_writev(int fd, struct netmsg_head *head)
 
 	int iov_unsent = end - iov;
 	if (iov_unsent == 0) {
-		netmsg_reset(head);
+reset:		netmsg_reset(head);
 	} else {
 		iov_count -= iov_unsent;
-		struct netmsg *m = TAILQ_LAST(&head->q, netmsg_tailq), *tmp;
+		struct netmsg *m = TAILQ_LAST(&head->q, netmsg_tailq), *prev;
 		while (iov_count > m->count) {
 			iov_count -= m->count;
-			tmp = TAILQ_PREV(m, netmsg_tailq, link);
+			prev = TAILQ_PREV(m, netmsg_tailq, link);
 			netmsg_dealloc(&head->q, m);
-			m = tmp;
+			m = prev;
 		}
 		netmsg_releasel(m, iov_count);
+		*m->iov = *iov;
 	}
-
 	return result;
 }
 
@@ -413,8 +418,14 @@ netmsg_io_read_cb(ev_io *ev, int __attribute__((unused)) events)
 {
 	struct netmsg_io *io = container_of(ev, struct netmsg_io, in);
 
-	if (palloc_allocated(io->pool) > 256 * 1024)
-		palloc_gc(io->pool);
+	if ((io->flags & NETMSG_IO_SHARED_POOL) == 0) {
+		size_t diff = palloc_allocated(io->pool) - io->pool_allocated;
+		if (diff > 256 * 1024  && diff > io->pool_allocated) {
+			palloc_gc(io->pool);
+			io->pool_allocated = palloc_allocated(io->pool);
+		}
+	}
+
 	tbuf_ensure(&io->rbuf, 16 * 1024);
 	ssize_t r = tbuf_recv(&io->rbuf, ev->fd);
 	if (r == 0) {

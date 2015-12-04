@@ -38,7 +38,14 @@
 @implementation POR
 - (i64) scn { return scn; }
 
-- (bool) feeder_changed:(struct feeder_param*)new { return [remote feeder_changed:new]; }
+- (void)
+set_feeder:(struct feeder_param*)new
+{
+	/* legacy */
+	if (shard_rt[self->id].mode == SHARD_MODE_PARTIAL_PROXY)
+		[remote set_feeder:new];
+}
+
 - (struct feeder_param *)
 feeder
 {
@@ -85,7 +92,7 @@ remote_hot_standby:(const char *)name
 		remote = [[XLogReplica alloc] init_shard:self];
 		[remote hot_standby:&feeder writer:[recovery writer]];
 	} else {
-		[remote feeder_changed:&feeder];
+		[remote set_feeder:&feeder];
 	}
 }
 
@@ -106,15 +113,6 @@ standalone
 	return strcmp(cfg.hostname, peer[0]) == 0;
 }
 
-- (void)
-start
-{
-	if ([self standalone])
-		[self status_update:PRIMARY fmt:"primary"];
-	else
-		[self remote_hot_standby:NULL];
-}
-
 - (int)
 submit:(const void *)data len:(u32)len tag:(u16)tag
 {
@@ -131,8 +129,8 @@ submit:(const void *)data len:(u32)len tag:(u16)tag
 		return 0;
 	}
 
-	if (status == REMOTE_STANDBY) {
-		say_warn("remote hot standby");
+	if (shard_rt[self->id].mode != SHARD_MODE_LOCAL) {
+		say_warn("not master");
 		return 0;
 	}
 
@@ -153,21 +151,29 @@ submit:(const void *)data len:(u32)len tag:(u16)tag
 - (void)
 adjust_route
 {
-	if (dummy || strcmp(peer[0], cfg.hostname) == 0) {
+	if ([self standalone]) {
 		update_rt(self->id, SHARD_MODE_LOCAL, self, NULL);
-		[self status_update:PRIMARY fmt:"primary"];
+		[self status_update:"primary"];
 		struct feeder_param empty = { .addr = { .sin_family = AF_UNSPEC } };
-		[remote feeder_changed:&empty];
+		[remote set_feeder:&empty];
 	} else {
-		enum shard_mode mode = SHARD_MODE_PROXY;
-		for (int i = 0; i < nelem(peer) && peer[i]; i++)
-			if (strcmp(peer[i], cfg.hostname) == 0) {
-				mode = SHARD_MODE_PARTIAL_PROXY;
-				break;
-			}
-		update_rt(self->id, mode, self, peer[0]);
-		[self status_update:REMOTE_STANDBY fmt:"replicating from %s", peer[0]];
-		[self remote_hot_standby:NULL];
+		if (dummy) {
+			update_rt(self->id, SHARD_MODE_PARTIAL_PROXY, self, NULL);
+			if (recovery->writer)
+				[self remote_hot_standby:NULL];
+
+		} else {
+			enum shard_mode mode = SHARD_MODE_PROXY;
+			for (int i = 0; i < nelem(peer) && peer[i]; i++)
+				if (strcmp(peer[i], cfg.hostname) == 0) {
+					mode = SHARD_MODE_PARTIAL_PROXY;
+					break;
+				}
+			update_rt(self->id, mode, self, peer[0]);
+			[self status_update:"replicating from %s", peer[0]];
+			if (recovery->writer)
+				[self remote_hot_standby:peer[0]];
+		}
 	}
 }
 
@@ -234,8 +240,17 @@ is_replica
 {
 	if (cfg.wal_writer_inbox_size == 0)
 		return 0;
-	return recovery->writer == nil || status != PRIMARY;
+	if (recovery->writer == nil)
+		return 1;
+	switch (shard_rt[self->id].mode) {
+	case SHARD_MODE_PARTIAL_PROXY:
+	case SHARD_MODE_PROXY:
+		return true;
+	default:
+		return false;
+	}
 }
+
 @end
 
 
