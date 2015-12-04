@@ -42,6 +42,8 @@ local iterator_init_with_direction = objc.msg_lookup("iterator_init_with_directi
 local iterator_init_with_node_direction = objc.msg_lookup("iterator_init_with_node:direction:")
 local iterator_init_with_object_direction = objc.msg_lookup("iterator_init_with_object:direction:")
 local iterator_next = objc.msg_lookup("iterator_next")
+local position_with_node = objc.msg_lookup("position_with_node:")
+local position_with_object = objc.msg_lookup("position_with_object:")
 local get = objc.msg_lookup('get:')
 
 local maxnodesize = ffi.sizeof('struct index_node') + 8 * ffi.sizeof('union index_field')
@@ -229,7 +231,7 @@ local basic_mt = {
             local tpe = self.__ptr.conf.type
             if tpe == ffi.C.HASH or tpe == ffi.C.NUMHASH then
                 return "HASH"
-            elseif tpe == ffi.C.COMPACTTREE or tpe == ffi.C.FASTTREE or tpe == ffi.C.SPTREE then
+            elseif tpe == ffi.C.COMPACTTREE or tpe == ffi.C.FASTTREE or tpe == ffi.C.SPTREE or tpe == ffi.C.POSTREE then
                 return "TREE"
             else
                 error("bad index type", 2)
@@ -280,10 +282,31 @@ local tree_mt = {
 }
 setmetatable(tree_mt.__index, basic_mt)
 
+local postree_mt = {
+    __index = {
+        position = function (self, o, ...)
+            if type(o) == 'table' then
+                local init = o
+                assert(init.__obj)
+                local v = position_with_object(self.__ptr, init.__obj)
+                return tonumber(ffi.cast(uint32_t, v))
+            elseif o ~= nil then
+                local node = self:packnode(o, ...)
+                local v = position_with_node(self.__ptr, node)
+                return tonumber(ffi.cast(uint32_t, v))
+            else
+                error('bad call to index:position')
+            end
+        end
+    }
+}
+setmetatable(postree_mt.__index, tree_mt)
+
 local index_mt = {
     [tonumber(ffi.C.SPTREE)] = tree_mt,
     [tonumber(ffi.C.FASTTREE)] = tree_mt,
     [tonumber(ffi.C.COMPACTTREE)] = tree_mt,
+    [tonumber(ffi.C.POSTREE)] = postree_mt,
     [tonumber(ffi.C.HASH)] = basic_mt,
     [tonumber(ffi.C.NUMHASH)] = basic_mt,
 }

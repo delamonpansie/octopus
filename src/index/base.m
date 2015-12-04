@@ -73,6 +73,8 @@ new_conf:(const struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 		i = [TWLFastTree alloc];
 	} else if (ic->type == COMPACTTREE) {
 		i = [TWLCompactTree alloc];
+	} else if (ic->type == POSTREE) {
+		i = [NIHCompactTree alloc];
 	} else {
 		abort();
 	}

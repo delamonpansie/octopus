@@ -34,6 +34,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <third_party/twltree/twltree.h>
+#include <third_party/nihtree/nihtree.h>
 
 
 union index_field {
@@ -73,7 +74,7 @@ struct index_field_desc {
 	char sort_order, type;
 };
 
-enum index_type { HASH, NUMHASH, SPTREE, FASTTREE, COMPACTTREE };
+enum index_type { HASH, NUMHASH, SPTREE, FASTTREE, COMPACTTREE, POSTREE };
 struct index_conf {
 	char min_tuple_cardinality /* minimum required tuple cardinality */,
 	     cardinality;
@@ -154,9 +155,9 @@ typedef struct tnt_object* tnt_ptr;
 			     struct index_node *pattern, void *);
 
 	struct index_node node_a;
-	struct index_node __padding_a[7];
+	union index_field  __padding_a[7];
 	struct index_node search_pattern;
-	struct index_node __tree_padding[7];
+	union index_field __tree_padding[7];
 }
 
 + (id)new_conf:(const struct index_conf *)ic dtor:(const struct dtor_conf *)dc;
@@ -231,6 +232,7 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 @end
 
 @interface TWLTree : Tree {
+@public
 	struct twltree_t tree;
 	struct twliterator_t iter;
 }
@@ -240,6 +242,22 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 @end
 
 @interface TWLCompactTree : TWLTree
+@end
+
+@interface NIHTree : Tree {
+@public
+	nihtree_t tree;
+	nihtree_conf_t tconf;
+	struct index_node node_b;
+	union index_field __padding_b[7];
+	nihtree_iter_t iter;
+	void* __iter_padding[2*6]; /* spare space for iter */
+}
+- (uint32_t) position_with_node:(const struct index_node *)key;
+- (uint32_t) position_with_object:(struct tnt_object*)obj;
+@end
+
+@interface NIHCompactTree : NIHTree
 @end
 
 #define foreach_index(ivar, obj_space)					\
