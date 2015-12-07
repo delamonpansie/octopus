@@ -161,10 +161,11 @@ nihtree_iter_max_height(size_t bytes) {
  * nihtree_iter_t* iter = NULL;
  * nihtree_iter_realloc(&iter, nihtree_height(tree));
  */
+
 static inline void
 nihtree_iter_realloc(nihtree_iter_t** tt, int height, void* (*realloc)(void*, size_t)) {
 	if (*tt == NULL) {
-		*tt = (nihtree_iter_t*)malloc(nihtree_iter_need_size(height));
+		*tt = (nihtree_iter_t*)realloc(NULL, nihtree_iter_need_size(height));
 		(*tt)->max_height = height;
 	} else if ((*tt)->max_height < height) {
 		*tt = (nihtree_iter_t*)realloc((void*)*tt, nihtree_iter_need_size(height));
