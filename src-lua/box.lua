@@ -233,6 +233,9 @@ do
     for _, name in ipairs{'object_space_registry', 'space', 'object_space'} do
         _M[name] = object_space
     end
+    function _M.set_ushard(nom)
+        ffi.C.current_fiber().ushard = nom
+    end
 end
 
 
