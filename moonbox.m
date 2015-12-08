@@ -54,6 +54,21 @@ shard_box(int n)
 	return shard_rt[n].executor;
 }
 
+int
+shard_box_next_primary_n(int n)
+{
+	int i = MAX_SHARD;
+	n++;
+	if (n < 0) n = 0;
+	for (;i>0;n++,i--) {
+		if (n >= MAX_SHARD)
+			n = 0;
+		if (shard_rt[n].mode == SHARD_MODE_LOCAL)
+			return n;
+	}
+	return -1;
+}
+
 bool
 box_is_primary(Box* box)
 {

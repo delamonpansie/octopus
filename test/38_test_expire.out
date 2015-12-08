@@ -1,0 +1,1215 @@
+# box.ping()
+:pong
+
+# box.object_space=(0)
+0
+
+# box.insert([1, "1"])
+1
+
+# box.insert([2, "0"])
+1
+
+# box.insert([3, "1"])
+1
+
+# box.insert([4, "0"])
+1
+
+# box.insert([5, "1"])
+1
+
+# box.insert([6, "0"])
+1
+
+# box.insert([7, "1"])
+1
+
+# box.insert([8, "0"])
+1
+
+# box.insert([9, "1"])
+1
+
+# box.insert([10, "0"])
+1
+
+# box.insert([11, "1"])
+1
+
+# box.insert([12, "0"])
+1
+
+# box.insert([13, "1"])
+1
+
+# box.insert([14, "0"])
+1
+
+# box.insert([15, "1"])
+1
+
+# box.insert([16, "0"])
+1
+
+# box.insert([17, "1"])
+1
+
+# box.insert([18, "0"])
+1
+
+# box.insert([19, "1"])
+1
+
+# box.insert([20, "0"])
+1
+
+# box.insert([21, "1"])
+1
+
+# box.insert([22, "0"])
+1
+
+# box.insert([23, "1"])
+1
+
+# box.insert([24, "0"])
+1
+
+# box.insert([25, "1"])
+1
+
+# box.insert([26, "0"])
+1
+
+# box.insert([27, "1"])
+1
+
+# box.insert([28, "0"])
+1
+
+# box.insert([29, "1"])
+1
+
+# box.insert([30, "0"])
+1
+
+# box.insert([31, "1"])
+1
+
+# box.insert([32, "0"])
+1
+
+# box.insert([33, "1"])
+1
+
+# box.insert([34, "0"])
+1
+
+# box.insert([35, "1"])
+1
+
+# box.insert([36, "0"])
+1
+
+# box.insert([37, "1"])
+1
+
+# box.insert([38, "0"])
+1
+
+# box.insert([39, "1"])
+1
+
+# box.insert([40, "0"])
+1
+
+# box.insert([41, "1"])
+1
+
+# box.insert([42, "0"])
+1
+
+# box.insert([43, "1"])
+1
+
+# box.insert([44, "0"])
+1
+
+# box.insert([45, "1"])
+1
+
+# box.insert([46, "0"])
+1
+
+# box.insert([47, "1"])
+1
+
+# box.insert([48, "0"])
+1
+
+# box.insert([49, "1"])
+1
+
+# box.insert([50, "0"])
+1
+
+# box.insert([51, "1"])
+1
+
+# box.insert([52, "0"])
+1
+
+# box.insert([53, "1"])
+1
+
+# box.insert([54, "0"])
+1
+
+# box.insert([55, "1"])
+1
+
+# box.insert([56, "0"])
+1
+
+# box.insert([57, "1"])
+1
+
+# box.insert([58, "0"])
+1
+
+# box.insert([59, "1"])
+1
+
+# box.insert([60, "0"])
+1
+
+# box.insert([61, "1"])
+1
+
+# box.insert([62, "0"])
+1
+
+# box.insert([63, "1"])
+1
+
+# box.insert([64, "0"])
+1
+
+# box.insert([65, "1"])
+1
+
+# box.insert([66, "0"])
+1
+
+# box.insert([67, "1"])
+1
+
+# box.insert([68, "0"])
+1
+
+# box.insert([69, "1"])
+1
+
+# box.insert([70, "0"])
+1
+
+# box.insert([71, "1"])
+1
+
+# box.insert([72, "0"])
+1
+
+# box.insert([73, "1"])
+1
+
+# box.insert([74, "0"])
+1
+
+# box.insert([75, "1"])
+1
+
+# box.insert([76, "0"])
+1
+
+# box.insert([77, "1"])
+1
+
+# box.insert([78, "0"])
+1
+
+# box.insert([79, "1"])
+1
+
+# box.insert([80, "0"])
+1
+
+# box.insert([81, "1"])
+1
+
+# box.insert([82, "0"])
+1
+
+# box.insert([83, "1"])
+1
+
+# box.insert([84, "0"])
+1
+
+# box.insert([85, "1"])
+1
+
+# box.insert([86, "0"])
+1
+
+# box.insert([87, "1"])
+1
+
+# box.insert([88, "0"])
+1
+
+# box.insert([89, "1"])
+1
+
+# box.insert([90, "0"])
+1
+
+# box.insert([91, "1"])
+1
+
+# box.insert([92, "0"])
+1
+
+# box.insert([93, "1"])
+1
+
+# box.insert([94, "0"])
+1
+
+# box.insert([95, "1"])
+1
+
+# box.insert([96, "0"])
+1
+
+# box.insert([97, "1"])
+1
+
+# box.insert([98, "0"])
+1
+
+# box.insert([99, "1"])
+1
+
+# box.insert([100, "0"])
+1
+
+# box.lua("user_proc.start_expire", "0")
+[]
+
+# box.select(1)
+[]
+
+# box.select(2)
+[["\x02\x00\x00\x00", "0"]]
+
+# box.select(3)
+[]
+
+# box.select(4)
+[["\x04\x00\x00\x00", "0"]]
+
+# box.select(5)
+[]
+
+# box.select(6)
+[["\x06\x00\x00\x00", "0"]]
+
+# box.select(7)
+[]
+
+# box.select(8)
+[["\b\x00\x00\x00", "0"]]
+
+# box.select(9)
+[]
+
+# box.select(10)
+[["\n\x00\x00\x00", "0"]]
+
+# box.select(11)
+[]
+
+# box.select(12)
+[["\f\x00\x00\x00", "0"]]
+
+# box.select(13)
+[]
+
+# box.select(14)
+[["\x0E\x00\x00\x00", "0"]]
+
+# box.select(15)
+[]
+
+# box.select(16)
+[["\x10\x00\x00\x00", "0"]]
+
+# box.select(17)
+[]
+
+# box.select(18)
+[["\x12\x00\x00\x00", "0"]]
+
+# box.select(19)
+[]
+
+# box.select(20)
+[["\x14\x00\x00\x00", "0"]]
+
+# box.select(21)
+[]
+
+# box.select(22)
+[["\x16\x00\x00\x00", "0"]]
+
+# box.select(23)
+[]
+
+# box.select(24)
+[["\x18\x00\x00\x00", "0"]]
+
+# box.select(25)
+[]
+
+# box.select(26)
+[["\x1A\x00\x00\x00", "0"]]
+
+# box.select(27)
+[]
+
+# box.select(28)
+[["\x1C\x00\x00\x00", "0"]]
+
+# box.select(29)
+[]
+
+# box.select(30)
+[["\x1E\x00\x00\x00", "0"]]
+
+# box.select(31)
+[]
+
+# box.select(32)
+[[" \x00\x00\x00", "0"]]
+
+# box.select(33)
+[]
+
+# box.select(34)
+[["\"\x00\x00\x00", "0"]]
+
+# box.select(35)
+[]
+
+# box.select(36)
+[["$\x00\x00\x00", "0"]]
+
+# box.select(37)
+[]
+
+# box.select(38)
+[["&\x00\x00\x00", "0"]]
+
+# box.select(39)
+[]
+
+# box.select(40)
+[["(\x00\x00\x00", "0"]]
+
+# box.select(41)
+[]
+
+# box.select(42)
+[["*\x00\x00\x00", "0"]]
+
+# box.select(43)
+[]
+
+# box.select(44)
+[[",\x00\x00\x00", "0"]]
+
+# box.select(45)
+[]
+
+# box.select(46)
+[[".\x00\x00\x00", "0"]]
+
+# box.select(47)
+[]
+
+# box.select(48)
+[["0\x00\x00\x00", "0"]]
+
+# box.select(49)
+[]
+
+# box.select(50)
+[["2\x00\x00\x00", "0"]]
+
+# box.select(51)
+[]
+
+# box.select(52)
+[["4\x00\x00\x00", "0"]]
+
+# box.select(53)
+[]
+
+# box.select(54)
+[["6\x00\x00\x00", "0"]]
+
+# box.select(55)
+[]
+
+# box.select(56)
+[["8\x00\x00\x00", "0"]]
+
+# box.select(57)
+[]
+
+# box.select(58)
+[[":\x00\x00\x00", "0"]]
+
+# box.select(59)
+[]
+
+# box.select(60)
+[["<\x00\x00\x00", "0"]]
+
+# box.select(61)
+[]
+
+# box.select(62)
+[[">\x00\x00\x00", "0"]]
+
+# box.select(63)
+[]
+
+# box.select(64)
+[["@\x00\x00\x00", "0"]]
+
+# box.select(65)
+[]
+
+# box.select(66)
+[["B\x00\x00\x00", "0"]]
+
+# box.select(67)
+[]
+
+# box.select(68)
+[["D\x00\x00\x00", "0"]]
+
+# box.select(69)
+[]
+
+# box.select(70)
+[["F\x00\x00\x00", "0"]]
+
+# box.select(71)
+[]
+
+# box.select(72)
+[["H\x00\x00\x00", "0"]]
+
+# box.select(73)
+[]
+
+# box.select(74)
+[["J\x00\x00\x00", "0"]]
+
+# box.select(75)
+[]
+
+# box.select(76)
+[["L\x00\x00\x00", "0"]]
+
+# box.select(77)
+[]
+
+# box.select(78)
+[["N\x00\x00\x00", "0"]]
+
+# box.select(79)
+[]
+
+# box.select(80)
+[["P\x00\x00\x00", "0"]]
+
+# box.select(81)
+[]
+
+# box.select(82)
+[["R\x00\x00\x00", "0"]]
+
+# box.select(83)
+[]
+
+# box.select(84)
+[["T\x00\x00\x00", "0"]]
+
+# box.select(85)
+[]
+
+# box.select(86)
+[["V\x00\x00\x00", "0"]]
+
+# box.select(87)
+[]
+
+# box.select(88)
+[["X\x00\x00\x00", "0"]]
+
+# box.select(89)
+[]
+
+# box.select(90)
+[["Z\x00\x00\x00", "0"]]
+
+# box.select(91)
+[]
+
+# box.select(92)
+[["\\\x00\x00\x00", "0"]]
+
+# box.select(93)
+[]
+
+# box.select(94)
+[["^\x00\x00\x00", "0"]]
+
+# box.select(95)
+[]
+
+# box.select(96)
+[["`\x00\x00\x00", "0"]]
+
+# box.select(97)
+[]
+
+# box.select(98)
+[["b\x00\x00\x00", "0"]]
+
+# box.select(99)
+[]
+
+# box.select(100)
+[["d\x00\x00\x00", "0"]]
+
+# box.object_space=(1)
+1
+
+# box.insert([1, "1"])
+1
+
+# box.insert([2, "0"])
+1
+
+# box.insert([3, "1"])
+1
+
+# box.insert([4, "0"])
+1
+
+# box.insert([5, "1"])
+1
+
+# box.insert([6, "0"])
+1
+
+# box.insert([7, "1"])
+1
+
+# box.insert([8, "0"])
+1
+
+# box.insert([9, "1"])
+1
+
+# box.insert([10, "0"])
+1
+
+# box.insert([11, "1"])
+1
+
+# box.insert([12, "0"])
+1
+
+# box.insert([13, "1"])
+1
+
+# box.insert([14, "0"])
+1
+
+# box.insert([15, "1"])
+1
+
+# box.insert([16, "0"])
+1
+
+# box.insert([17, "1"])
+1
+
+# box.insert([18, "0"])
+1
+
+# box.insert([19, "1"])
+1
+
+# box.insert([20, "0"])
+1
+
+# box.insert([21, "1"])
+1
+
+# box.insert([22, "0"])
+1
+
+# box.insert([23, "1"])
+1
+
+# box.insert([24, "0"])
+1
+
+# box.insert([25, "1"])
+1
+
+# box.insert([26, "0"])
+1
+
+# box.insert([27, "1"])
+1
+
+# box.insert([28, "0"])
+1
+
+# box.insert([29, "1"])
+1
+
+# box.insert([30, "0"])
+1
+
+# box.insert([31, "1"])
+1
+
+# box.insert([32, "0"])
+1
+
+# box.insert([33, "1"])
+1
+
+# box.insert([34, "0"])
+1
+
+# box.insert([35, "1"])
+1
+
+# box.insert([36, "0"])
+1
+
+# box.insert([37, "1"])
+1
+
+# box.insert([38, "0"])
+1
+
+# box.insert([39, "1"])
+1
+
+# box.insert([40, "0"])
+1
+
+# box.insert([41, "1"])
+1
+
+# box.insert([42, "0"])
+1
+
+# box.insert([43, "1"])
+1
+
+# box.insert([44, "0"])
+1
+
+# box.insert([45, "1"])
+1
+
+# box.insert([46, "0"])
+1
+
+# box.insert([47, "1"])
+1
+
+# box.insert([48, "0"])
+1
+
+# box.insert([49, "1"])
+1
+
+# box.insert([50, "0"])
+1
+
+# box.insert([51, "1"])
+1
+
+# box.insert([52, "0"])
+1
+
+# box.insert([53, "1"])
+1
+
+# box.insert([54, "0"])
+1
+
+# box.insert([55, "1"])
+1
+
+# box.insert([56, "0"])
+1
+
+# box.insert([57, "1"])
+1
+
+# box.insert([58, "0"])
+1
+
+# box.insert([59, "1"])
+1
+
+# box.insert([60, "0"])
+1
+
+# box.insert([61, "1"])
+1
+
+# box.insert([62, "0"])
+1
+
+# box.insert([63, "1"])
+1
+
+# box.insert([64, "0"])
+1
+
+# box.insert([65, "1"])
+1
+
+# box.insert([66, "0"])
+1
+
+# box.insert([67, "1"])
+1
+
+# box.insert([68, "0"])
+1
+
+# box.insert([69, "1"])
+1
+
+# box.insert([70, "0"])
+1
+
+# box.insert([71, "1"])
+1
+
+# box.insert([72, "0"])
+1
+
+# box.insert([73, "1"])
+1
+
+# box.insert([74, "0"])
+1
+
+# box.insert([75, "1"])
+1
+
+# box.insert([76, "0"])
+1
+
+# box.insert([77, "1"])
+1
+
+# box.insert([78, "0"])
+1
+
+# box.insert([79, "1"])
+1
+
+# box.insert([80, "0"])
+1
+
+# box.insert([81, "1"])
+1
+
+# box.insert([82, "0"])
+1
+
+# box.insert([83, "1"])
+1
+
+# box.insert([84, "0"])
+1
+
+# box.insert([85, "1"])
+1
+
+# box.insert([86, "0"])
+1
+
+# box.insert([87, "1"])
+1
+
+# box.insert([88, "0"])
+1
+
+# box.insert([89, "1"])
+1
+
+# box.insert([90, "0"])
+1
+
+# box.insert([91, "1"])
+1
+
+# box.insert([92, "0"])
+1
+
+# box.insert([93, "1"])
+1
+
+# box.insert([94, "0"])
+1
+
+# box.insert([95, "1"])
+1
+
+# box.insert([96, "0"])
+1
+
+# box.insert([97, "1"])
+1
+
+# box.insert([98, "0"])
+1
+
+# box.insert([99, "1"])
+1
+
+# box.insert([100, "0"])
+1
+
+# box.lua("user_proc.start_expire", "1")
+[]
+
+# box.select(1)
+[]
+
+# box.select(2)
+[["\x02\x00\x00\x00", "0"]]
+
+# box.select(3)
+[]
+
+# box.select(4)
+[["\x04\x00\x00\x00", "0"]]
+
+# box.select(5)
+[]
+
+# box.select(6)
+[["\x06\x00\x00\x00", "0"]]
+
+# box.select(7)
+[]
+
+# box.select(8)
+[["\b\x00\x00\x00", "0"]]
+
+# box.select(9)
+[]
+
+# box.select(10)
+[["\n\x00\x00\x00", "0"]]
+
+# box.select(11)
+[]
+
+# box.select(12)
+[["\f\x00\x00\x00", "0"]]
+
+# box.select(13)
+[]
+
+# box.select(14)
+[["\x0E\x00\x00\x00", "0"]]
+
+# box.select(15)
+[]
+
+# box.select(16)
+[["\x10\x00\x00\x00", "0"]]
+
+# box.select(17)
+[]
+
+# box.select(18)
+[["\x12\x00\x00\x00", "0"]]
+
+# box.select(19)
+[]
+
+# box.select(20)
+[["\x14\x00\x00\x00", "0"]]
+
+# box.select(21)
+[]
+
+# box.select(22)
+[["\x16\x00\x00\x00", "0"]]
+
+# box.select(23)
+[]
+
+# box.select(24)
+[["\x18\x00\x00\x00", "0"]]
+
+# box.select(25)
+[]
+
+# box.select(26)
+[["\x1A\x00\x00\x00", "0"]]
+
+# box.select(27)
+[]
+
+# box.select(28)
+[["\x1C\x00\x00\x00", "0"]]
+
+# box.select(29)
+[]
+
+# box.select(30)
+[["\x1E\x00\x00\x00", "0"]]
+
+# box.select(31)
+[]
+
+# box.select(32)
+[[" \x00\x00\x00", "0"]]
+
+# box.select(33)
+[]
+
+# box.select(34)
+[["\"\x00\x00\x00", "0"]]
+
+# box.select(35)
+[]
+
+# box.select(36)
+[["$\x00\x00\x00", "0"]]
+
+# box.select(37)
+[]
+
+# box.select(38)
+[["&\x00\x00\x00", "0"]]
+
+# box.select(39)
+[]
+
+# box.select(40)
+[["(\x00\x00\x00", "0"]]
+
+# box.select(41)
+[]
+
+# box.select(42)
+[["*\x00\x00\x00", "0"]]
+
+# box.select(43)
+[]
+
+# box.select(44)
+[[",\x00\x00\x00", "0"]]
+
+# box.select(45)
+[]
+
+# box.select(46)
+[[".\x00\x00\x00", "0"]]
+
+# box.select(47)
+[]
+
+# box.select(48)
+[["0\x00\x00\x00", "0"]]
+
+# box.select(49)
+[]
+
+# box.select(50)
+[["2\x00\x00\x00", "0"]]
+
+# box.select(51)
+[]
+
+# box.select(52)
+[["4\x00\x00\x00", "0"]]
+
+# box.select(53)
+[]
+
+# box.select(54)
+[["6\x00\x00\x00", "0"]]
+
+# box.select(55)
+[]
+
+# box.select(56)
+[["8\x00\x00\x00", "0"]]
+
+# box.select(57)
+[]
+
+# box.select(58)
+[[":\x00\x00\x00", "0"]]
+
+# box.select(59)
+[]
+
+# box.select(60)
+[["<\x00\x00\x00", "0"]]
+
+# box.select(61)
+[]
+
+# box.select(62)
+[[">\x00\x00\x00", "0"]]
+
+# box.select(63)
+[]
+
+# box.select(64)
+[["@\x00\x00\x00", "0"]]
+
+# box.select(65)
+[]
+
+# box.select(66)
+[["B\x00\x00\x00", "0"]]
+
+# box.select(67)
+[]
+
+# box.select(68)
+[["D\x00\x00\x00", "0"]]
+
+# box.select(69)
+[]
+
+# box.select(70)
+[["F\x00\x00\x00", "0"]]
+
+# box.select(71)
+[]
+
+# box.select(72)
+[["H\x00\x00\x00", "0"]]
+
+# box.select(73)
+[]
+
+# box.select(74)
+[["J\x00\x00\x00", "0"]]
+
+# box.select(75)
+[]
+
+# box.select(76)
+[["L\x00\x00\x00", "0"]]
+
+# box.select(77)
+[]
+
+# box.select(78)
+[["N\x00\x00\x00", "0"]]
+
+# box.select(79)
+[]
+
+# box.select(80)
+[["P\x00\x00\x00", "0"]]
+
+# box.select(81)
+[]
+
+# box.select(82)
+[["R\x00\x00\x00", "0"]]
+
+# box.select(83)
+[]
+
+# box.select(84)
+[["T\x00\x00\x00", "0"]]
+
+# box.select(85)
+[]
+
+# box.select(86)
+[["V\x00\x00\x00", "0"]]
+
+# box.select(87)
+[]
+
+# box.select(88)
+[["X\x00\x00\x00", "0"]]
+
+# box.select(89)
+[]
+
+# box.select(90)
+[["Z\x00\x00\x00", "0"]]
+
+# box.select(91)
+[]
+
+# box.select(92)
+[["\\\x00\x00\x00", "0"]]
+
+# box.select(93)
+[]
+
+# box.select(94)
+[["^\x00\x00\x00", "0"]]
+
+# box.select(95)
+[]
+
+# box.select(96)
+[["`\x00\x00\x00", "0"]]
+
+# box.select(97)
+[]
+
+# box.select(98)
+[["b\x00\x00\x00", "0"]]
+
+# box.select(99)
+[]
+
+# box.select(100)
+[["d\x00\x00\x00", "0"]]
+

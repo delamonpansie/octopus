@@ -68,6 +68,7 @@ struct Box *shard_box(int n);
 int    box_version(struct Box* box);
 struct object_space *object_space(struct Box *box, int n);
 bool   box_is_primary(struct Box *box);
+int    shard_box_next_primary_n(int n);
 extern const int object_space_max_idx;
 ]]
 
@@ -200,6 +201,10 @@ local ushard = function(i)
     return ushards[i]
 end
 _M.ushard = ushard
+
+function _M.next_primary_ushard_n(n)
+    return ffi.C.shard_box_next_primary_n(n)
+end
 
 do
     local ts = os.ev_now()

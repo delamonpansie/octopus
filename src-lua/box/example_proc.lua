@@ -4,6 +4,7 @@ require("index")
 local ffi = require("ffi")
 local bit = require("bit")
 local net = require("net")
+local require = require
 
 local assert, pcall, error, print, ipairs, pairs, type = assert, pcall, error, print, ipairs, pairs, type
 local string, tonumber, tostring, table, box, fiber = string, tonumber, tostring, table, box, fiber
@@ -376,4 +377,12 @@ end
 user_proc.position = box.wrap(function(ushard, ind, i)
     local pos = ushard:object_space(0):index(tonumber(ind)):position(tonumber(i))
     return 0, {box.tuple{tostring(pos)}}
+end)
+
+user_proc.start_expire = box.wrap(function(ushard, n)
+    local expire = require 'box.expire'
+    expire.start(tonumber(n), function(tuple)
+        return tuple:strfield(1) > '0'
+    end)
+    return 0, {}
 end)
