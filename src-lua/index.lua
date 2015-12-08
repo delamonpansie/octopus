@@ -316,7 +316,11 @@ local function proxy(index)
     local p = { __ptr = index,
                 __packnode = gen_packnode(index),
                 __switchcnt = 0,
+                __field_indexes = {},
               }
+    for i=1,index.conf.cardinality do
+        p.__field_indexes[i] = tonumber(index.conf.field[i-1].index)
+    end
     return setmetatable(p, index_mt[tonumber(index.conf.type)])
 end
 
