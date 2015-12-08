@@ -205,7 +205,7 @@ do
     local ts = os.ev_now()
     local function deprecate(name)
         if os.ev_now() > ts + 10 then
-            say_error("box."..name.." is deprecated")
+            say_warn("box."..name.." is deprecated")
             ts = os.ev_now()
         end
     end
