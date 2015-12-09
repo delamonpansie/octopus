@@ -92,6 +92,16 @@ iproto_worker(va_list ap)
 		}
 		@finally {
 			fiber->ushard = -1;
+#ifndef IPROTO_PESSIMISTIC_WRITES
+			if (a.io->wbuf.bytes > 0 && a.io->fd > 0) {
+				ssize_t r = netmsg_writev(a.io->fd, &a.io->wbuf);
+				if (r < 0) {
+					say_syswarn("writev() to %s failed, closing connection",
+						    net_peer_name(a.io->fd));
+					[a.io close];
+				}
+			}
+#endif
 			if (a.io->wbuf.bytes > 0 && a.io->fd > 0)
 				ev_io_start(&a.io->out);
 			netmsg_io_release(a.io);
