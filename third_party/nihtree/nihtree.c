@@ -726,7 +726,7 @@ static niherrcode_t nihnode_compact_high_level_join(nihtree_conf_t* conf, nihnod
 
 static niherrcode_t
 nihnode_compact(nihtree_conf_t* conf, nihnode_t* node, int pos, void* buf) {
-	struct reorg_action acts[1] = {{RA_NOOP}};
+	struct reorg_action acts[1] = {{RA_NOOP,0,0,0}};
 	if (!simulate(node, pos, node->height == 1 ? conf->leaf_max : conf->inner_max, acts))
 		return NIH_OK;
 
