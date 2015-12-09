@@ -11,8 +11,12 @@ local loop_mt = { __index = Loop }
 
 local function loop_sleep(self, sleep, _while)
     fiber.gc()
-    while sleep > 1 do
-        sleep = sleep - 1
+    if sleep == 0 then
+        fiber.sleep(0)
+        return
+    end
+    local till = os.ev_now() + sleep
+    while till > os.ev_now()+1 do
         fiber.sleep(1)
         if not self.running then
             return
@@ -21,8 +25,8 @@ local function loop_sleep(self, sleep, _while)
             return
         end
     end
-    if sleep > 0 then
-        fiber.sleep(sleep)
+    if till > os.ev_now() then
+        fiber.sleep(till - os.ev_now())
     end
 end
 
