@@ -212,7 +212,7 @@ paxos_broadcast(Paxos *paxos, struct iproto_mbox *mbox,
 	struct iovec iov[1] = { { .iov_base = (char *)value,
 				  .iov_len = value_len } };
 
-	say_debug("%s: [%i]%s> %s SCN:%"PRIi64" ballot:%"PRIu64,
+	say_debug("%s: [%i]%s> %s SCN:%"PRIi64" ballot:%"PRIx64,
 		  __func__, msg.msg_id, mbox ? "" : " OWT", paxos_msg_code[code], scn, ballot);
 	assert(tag == 0 || value_len > 0);
 	if (tag != 0)
@@ -256,7 +256,7 @@ paxos_respond(Paxos *paxos, struct paxos_request *req, enum paxos_msg_code code,
 				   .msg_id = req->msg->msg_id,
 				   .version = paxos_default_version };
 
-	say_debug("%s: [%i]> %s sync:%i SCN:%"PRIi64" ballot:%"PRIu64,
+	say_debug("%s: [%i]> %s sync:%i SCN:%"PRIi64" ballot:%"PRIx64,
 		  __func__, msg->msg_id, paxos_msg_code[code], msg->header.sync, msg->scn, msg->ballot);
 	if (p) {
 		msg->tag = p->tag;
@@ -463,7 +463,7 @@ find_proposal(Paxos *paxos, i64 scn)
 void
 proposal_update_ballot(struct proposal *p, u64 ballot)
 {
-	say_debug2("%s: SCN:%"PRIi64" ballot:%"PRIu64, __func__, p->scn, ballot);
+	say_debug2("%s: SCN:%"PRIi64" ballot:%"PRIx64, __func__, p->scn, ballot);
 	assert(p->ballot <= ballot);
 	if (p->ballot == ULLONG_MAX)
 		assert(ballot == ULLONG_MAX); /* decided proposal is immutable */
@@ -561,7 +561,7 @@ proposal(Paxos *paxos, i64 scn)
 #define nack(paxos, req, msg_ballot) ({			\
 	i64 nack_ballot = (req)->p->ballot;		\
 	assert(nack_ballot != ULLONG_MAX);						\
-	say_info("NACK(%i%s) sync:%i SCN:%"PRIi64" ballot:%"PRIu64 " nack_ballot:%"PRIu64, \
+	say_info("NACK(%i%s) sync:%i SCN:%"PRIi64" ballot:%"PRIx64" nack_ballot:%"PRIx64, \
 		 __LINE__, (msg_ballot & 0xff) == (paxos)->self_id ? "self" : "", \
 		 (req)->msg->header.sync, (req)->p->scn, (req)->p->ballot, (nack_ballot)); \
 	paxos_respond((paxos), (req), NACK, (nack_ballot));		\
@@ -691,7 +691,7 @@ learn(Paxos *paxos, struct proposal *p)
 	for (; p != NULL; p = RB_NEXT(ptree, &r->proposals, p)) {
 		assert(paxos->scn <= paxos->max_scn);
 
-		say_debug2("   proposal flags:%u SCN:%"PRIi64" ballot:%"PRIu64, p->flags, p->scn, p->ballot);
+		say_debug2("   proposal flags:%u SCN:%"PRIi64" ballot:%"PRIx64, p->flags, p->scn, p->ballot);
 		if (p->scn != paxos->scn + 1)
 			return;
 
@@ -701,7 +701,7 @@ learn(Paxos *paxos, struct proposal *p)
 		if (p->flags & P_APPLIED)
 			return;
 
-		say_debug("%s: SCN:%"PRIi64" ballot:%"PRIu64, __func__, p->scn, p->ballot);
+		say_debug("%s: SCN:%"PRIi64" ballot:%"PRIx64, __func__, p->scn, p->ballot);
 		say_debug2("|  value_len:%i value:%s",
 			   p->value_len, tbuf_to_hex(&TBUF(p->value, p->value_len, fiber->pool)));
 
@@ -725,11 +725,11 @@ msg_dump(const char *prefix, const struct paxos_peer *peer, const struct msg_pax
 	const char *code = paxos_msg_code[req->header.msg_code];
 	switch (req->header.msg_code) {
 	case PREPARE:
-		say_debug("%s peer:%i/%s sync:%i type:%s SCN:%"PRIi64" ballot:%"PRIu64,
+		say_debug("%s peer:%i/%s sync:%i type:%s SCN:%"PRIi64" ballot:%"PRIx64,
 			  prefix, peer->id, peer->name, req->header.sync, code, req->scn, req->ballot);
 		break;
 	default:
-		say_debug("%s peer:%i/%s sync:%i type:%s SCN:%"PRIi64" ballot:%"PRIu64" tag:%s",
+		say_debug("%s peer:%i/%s sync:%i type:%s SCN:%"PRIi64" ballot:%"PRIx64" tag:%s",
 			  prefix, peer->id, peer->name, req->header.sync, code, req->scn, req->ballot, xlog_tag_to_a(req->tag));
 		say_debug2("|  tag:%s value_len:%i value:%s", xlog_tag_to_a(req->tag), req->value_len,
 			   tbuf_to_hex(&TBUF(req->value, req->value_len, fiber->pool)));
@@ -878,7 +878,7 @@ retry:
 
 	while ((req = (struct msg_paxos *)iproto_mbox_get(&mbox))) {
 		assert(req->msg_id == msg_id);
-		say_debug("|  %s peer:%s SCN:%"PRIi64" ballot:%"PRIu64" tag:%s value_len:%i",
+		say_debug("|  %s peer:%s SCN:%"PRIi64" ballot:%"PRIx64" tag:%s value_len:%i",
 			  paxos_msg_code[req->header.msg_code], paxos_peer_name(paxos, req->peer_id), req->scn, req->ballot,
 			  xlog_tag_to_a(req->tag), req->value_len);
 
@@ -940,7 +940,7 @@ retry:
 	votes = 0;
 	while ((req = (struct msg_paxos *)iproto_mbox_get(&mbox))) {
 		assert(req->msg_id == msg_id);
-		say_debug("|  %s peer:%s SCN:%"PRIi64" ballot:%"PRIu64" value_len:%i",
+		say_debug("|  %s peer:%s SCN:%"PRIi64" ballot:%"PRIx64" value_len:%i",
 			  paxos_msg_code[req->header.msg_code], paxos_peer_name(paxos, req->peer_id),
 			  req->scn, req->ballot, req->value_len);
 
@@ -1080,7 +1080,7 @@ catchup(Paxos *paxos, i64 upto_scn)
 
 	for (i64 i = paxos->scn + 1; i <= upto_scn; i++) {
 		struct proposal *p = proposal(paxos, i);
-		say_debug("|	SCN:%"PRIi64" ballot:%"PRIu64, p->scn, p->ballot);
+		say_debug("|	SCN:%"PRIi64" ballot:%"PRIx64, p->scn, p->ballot);
 		if (p->ballot == ULLONG_MAX)
 			continue;
 
