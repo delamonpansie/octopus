@@ -354,8 +354,10 @@ netmsg_writev(int fd, struct netmsg_head *head)
 		head->bytes -= r;
 		result += r;
 
-		if (head->bytes == 0)
-			goto reset;
+		if (head->bytes == 0) {
+			netmsg_reset(head);
+			return result;
+		}
 
 		do {
 			if (iov->iov_len > r) {
@@ -370,20 +372,24 @@ netmsg_writev(int fd, struct netmsg_head *head)
 	} while (end > iov);
 
 	int iov_unsent = end - iov;
-	if (iov_unsent == 0) {
-reset:		netmsg_reset(head);
-	} else {
-		iov_count -= iov_unsent;
-		struct netmsg *m = TAILQ_LAST(&head->q, netmsg_tailq), *prev;
-		while (iov_count > m->count) {
-			iov_count -= m->count;
-			prev = TAILQ_PREV(m, netmsg_tailq, link);
-			netmsg_dealloc(&head->q, m);
-			m = prev;
-		}
-		netmsg_releasel(m, iov_count);
-		*m->iov = *iov;
+	iov_count -= iov_unsent;
+
+	struct netmsg *m = TAILQ_LAST(&head->q, netmsg_tailq), *prev;
+	while (iov_count >= m->count) {
+		prev = TAILQ_PREV(m, netmsg_tailq, link);
+		if (!prev)
+			break;
+		iov_count -= m->count;
+		netmsg_dealloc(&head->q, m);
+		m = prev;
 	}
+
+	if (iov_count)
+		netmsg_releasel(m, iov_count);
+
+	if (iov_unsent)
+		*m->iov = *iov;
+
 	return result;
 }
 
