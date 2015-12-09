@@ -25,8 +25,8 @@ local unpack = unpack
 
 module(...)
 
-expires_per_second = 1024
-batch_size = 1024
+expires_per_second = 1000
+batch_size = 100
 
 -- every space modification must be done _outside_ of iterator running
 local function delete_batch(space, pk, batch)
@@ -47,10 +47,10 @@ local function loop_inner(n, func, state)
     local pk = space:index(0)
     local key = state.key
     state.key = nil
+    local batch = {}
 
     if pk:type() == "HASH" then
         local i, j = key or 0, batch_size
-        local batch = {}
         while i < pk:slots() and j > 0 do
             local tuple = pk:get(i)
             if tuple ~= nil and func(tuple) then
@@ -59,34 +59,29 @@ local function loop_inner(n, func, state)
             i, j = i + 1, j - 1
         end
 
-        delete_batch(space, pk, batch)
-
         if i < pk:slots() then
             state.key = i
         end
-        return #batch / expires_per_second
     else
         local count = 0
-        local batch = {}
-
-        -- must restart iterator after fiber.sleep
         for tuple in pk:iter(key) do
             if func(tuple) then
                 insert(batch, tuple)
             end
+            count = count + 1
             if count == batch_size then
+                tuple:make_long_living()
+                state.key = tuple
                 break
             end
-            count = count + 1
         end
-
-        delete_batch(space, pk, batch)
-        if #batch > 0 then
-            state.key = batch[#batch]
-            state.key:make_long_living()
-        end
-        return #batch / expires_per_second
     end
+
+    if #batch > 0 then
+        delete_batch(space, pk, batch)
+    end
+
+    return (#batch + 1) * batch_size / ((batch_size+1) * expires_per_second)
 end
 
 local function loop(n, func, state)
@@ -100,7 +95,7 @@ local function loop(n, func, state)
             if _M.testing then
                 return nil, 0.03
             else
-                return
+                return -- sleep for 1 second
             end
         end
         state.ushardn = next_ushardn

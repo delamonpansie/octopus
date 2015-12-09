@@ -30,7 +30,7 @@ Env.connect_eval do
       insert [i, (i%2).to_s]
     end
     lua "user_proc.start_expire", o.to_s
-    sleep 0.1
+    sleep 0.12
     1.upto(100) do |i|
       select i
     end
