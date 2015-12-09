@@ -381,6 +381,8 @@ end)
 
 user_proc.start_expire = box.wrap(function(ushard, n)
     local expire = require 'box.expire'
+    expire.batch_size = 4
+    expire.testing = true
     expire.start(tonumber(n), function(tuple)
         return tuple:strfield(1) > '0'
     end)
