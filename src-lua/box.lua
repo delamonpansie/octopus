@@ -8,7 +8,7 @@ local string, tostring, tonumber =
 
 local rawget, rawset = rawget, rawset
 local printf = printf
-local say_error = say_error
+local say_error, say_warn = say_error, say_warn
 
 local ffi, bit, debug = require("ffi"), require("bit"), require("debug")
 local index = require('index')
