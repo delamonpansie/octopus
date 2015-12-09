@@ -246,6 +246,7 @@ struct wal_pack {
 	struct netmsg_head *netmsg;
 	u32 packet_len;
 	u32 row_count;
+	u32 magic;
 	struct Fiber *sender;
 	u32 fid;
 } __attribute__((packed));

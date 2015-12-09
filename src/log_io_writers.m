@@ -243,6 +243,8 @@ static void
 request_parse(struct request *request, int row_count, struct tbuf *rbuf)
 {
 	tbuf_ltrim(rbuf, sizeof(u32[2])); /* drop packet_len & row_count */
+	u32 magic = read_u32(rbuf);
+	assert(magic == 0xba0babed);
 
 	request->row_count = row_count;
 	request->rows = p0alloc(fiber->pool, sizeof(void *) * row_count);
@@ -595,6 +597,7 @@ wal_pack_prepare(XLogWriter *w, struct wal_pack *pack)
 {
 	pack->netmsg = &w->io->wbuf;
 	pack->packet_len = sizeof(*pack) - offsetof(struct wal_pack, packet_len);
+	pack->magic = 0xba0babed;
 	pack->fid = fiber->fid;
 	pack->sender = fiber;
 	pack->row_count = 0;
