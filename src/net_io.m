@@ -129,7 +129,7 @@ netmsg_release(struct netmsg *m, int from, int count)
 static void
 netmsg_releaser(struct netmsg *m, int from)
 {
-	netmsg_release(m, from, m->count);
+	netmsg_release(m, from, m->count - from);
 	memset(m->ref + from, 0, (m->count - from) * sizeof(m->ref[0]));
 	memset(m->iov + from, 0, (m->count - from) * sizeof(m->iov[0]));
 	m->count = from;
