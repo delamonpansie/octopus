@@ -13,6 +13,6 @@ end
 
 Env.connect_eval do
   12.times {|i| insert [i,i]}
-
+  12.times {|i| select i}
   puts Dir.glob("*.xlog").sort.join("\n")
 end

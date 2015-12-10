@@ -72,7 +72,7 @@ shard_box_next_primary_n(int n)
 bool
 box_is_primary(Box* box)
 {
-	return shard_rt[box->shard->id].mode == SHARD_MODE_LOCAL;
+	return ![box->shard is_replica];
 }
 
 u32 *
