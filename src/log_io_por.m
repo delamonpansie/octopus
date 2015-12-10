@@ -119,18 +119,13 @@ submit:(const void *)data len:(u32)len tag:(u16)tag
 	static unsigned count;
 	static struct msg_void_ptr msg;
 
-	if (cfg.wal_writer_inbox_size == 0) {
-		scn++;
-		return 1;
+	if (shard_rt[self->id].mode != SHARD_MODE_LOCAL) {
+		say_warn("not master");
+		return 0;
 	}
 
 	if (recovery->writer == nil) {
 		say_warn("local writes disabled");
-		return 0;
-	}
-
-	if (shard_rt[self->id].mode != SHARD_MODE_LOCAL) {
-		say_warn("not master");
 		return 0;
 	}
 
@@ -238,17 +233,11 @@ recover_row:(struct row_v12 *)row
 - (bool)
 is_replica
 {
-	if (cfg.wal_writer_inbox_size == 0)
-		return 0;
+	if (shard_rt[self->id].mode != SHARD_MODE_LOCAL)
+		return 1;
 	if (recovery->writer == nil)
 		return 1;
-	switch (shard_rt[self->id].mode) {
-	case SHARD_MODE_PARTIAL_PROXY:
-	case SHARD_MODE_PROXY:
-		return true;
-	default:
-		return false;
-	}
+	return 0;
 }
 
 @end
