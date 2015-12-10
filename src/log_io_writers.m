@@ -518,8 +518,10 @@ submit:(const void *)data len:(u32)data_len tag:(u16)tag shard_id:(u16)shard_id
 	(void)data_len;
 	(void)tag;
 	(void)shard_id;
+	static struct wal_reply reply = { .row_count = 1 };
 	lsn++;
-	return NULL;
+	reply.scn = lsn;
+	return &reply;
 }
 
 @end
