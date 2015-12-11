@@ -636,7 +636,7 @@ recover_row:(struct row_v12 *)r
 		@throw;
 	}
 	@finally {
-		say_debug("%s: => LSN:%"PRIi64, __func__, [self lsn]);
+		say_debug2("%s: => recovery LSN:%"PRIi64, __func__, [self lsn]);
 	}
 }
 
@@ -1209,7 +1209,7 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 	case paxos_promise:
 	case paxos_nop:
 		ballot = read_u64(&row_data);
-		tbuf_printf(buf, "ballot:%"PRIi64, ballot);
+		tbuf_printf(buf, "ballot:%"PRIx64, ballot);
 		break;
 	case paxos_accept:
 		ballot = read_u64(&row_data);
@@ -1217,7 +1217,7 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 		value_len = read_u32(&row_data);
 		(void)value_len;
 		assert(value_len == tbuf_len(&row_data));
-		tbuf_printf(buf, "ballot:%"PRIi64" it:%s ", ballot, xlog_tag_to_a(inner_tag));
+		tbuf_printf(buf, "ballot:%"PRIx64" it:%s ", ballot, xlog_tag_to_a(inner_tag));
 
 		switch(inner_tag & TAG_MASK) {
 		case run_crc: {
@@ -1235,7 +1235,7 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 		}
 		break;
 	default:
-		hexdump(buf, row->tag, &row_data);
+		handler(buf, row->tag, &TBUF(row->data, row->len, fiber->pool));
 	}
 }
 

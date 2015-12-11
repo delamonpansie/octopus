@@ -475,9 +475,9 @@ proposal_update_ballot(struct proposal *p, u64 ballot)
 void
 proposal_update_value(struct proposal *p, u32 value_len, const char *value, u16 tag)
 {
-	say_debug2("%s: SCN:%"PRIi64" tag:%s value_len:%i value:%s", __func__,
-		   p->scn, xlog_tag_to_a(tag), value_len,
-		   tbuf_to_hex(&TBUF(value, value_len, fiber->pool)));
+	say_debug2("%s: SCN:%"PRIi64" tag:%s value_len:%i", __func__,
+		   p->scn, xlog_tag_to_a(tag), value_len);
+	say_debug3("\tvalue:%s", tbuf_to_hex(&TBUF(value, value_len, fiber->pool)));
 
 	assert(tag == 0 || value_len > 0);
 
@@ -1103,7 +1103,8 @@ paxos_stat(va_list ap)
 {
 	Paxos *paxos = va_arg(ap, Paxos *);
 loop:
-	say_info("%s leader:%i %s",
+	say_info("shard:%i %s leader:%i %s",
+		 paxos->id,
 		 scn_info(paxos), paxos->leader_id,
 		 paxos_leader(paxos) ? "leader" : "");
 
