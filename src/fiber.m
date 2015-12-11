@@ -685,4 +685,49 @@ yield
 }
 @end
 
+void
+wlock(struct rwlock *lock)
+{
+	while (lock->locked) {
+		SLIST_INSERT_HEAD(&lock->wait, fiber, worker_link);
+		yield();
+	}
+	lock->locked++;
+	ev_prepare w = { .coro = 1 };
+	ev_prepare_init(&w, (void *)fiber);
+	ev_prepare_start(&w);
+	while (lock->readers > 0)
+		yield();
+	ev_prepare_stop(&w);
+}
+
+void
+wunlock(struct rwlock *lock)
+{
+	lock->locked--;
+	struct Fiber *waiter = SLIST_FIRST(&lock->wait), *next;
+	SLIST_INIT(&lock->wait);
+	while (waiter) {
+		next = SLIST_NEXT(waiter, worker_link);
+		fiber_wake(waiter, NULL);
+		waiter = next;
+	}
+}
+
+void
+rlock(struct rwlock *lock)
+{
+	while (lock->locked) {
+		SLIST_INSERT_HEAD(&lock->wait, fiber, worker_link);
+		yield();
+	}
+	lock->readers++;
+}
+
+void
+runlock(struct rwlock *lock)
+{
+	lock->readers--;
+}
+
 register_source();

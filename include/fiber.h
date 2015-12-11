@@ -114,4 +114,15 @@ struct netmsg_head;
 ssize_t fiber_writev(int fd, struct netmsg_head *head);
 
 int luaT_openfiber(struct lua_State *L);
+
+struct rwlock {
+	bool locked;
+	SLIST_HEAD(, Fiber) wait;
+	int readers;
+};
+void wlock(struct rwlock *lock);
+void wunlock(struct rwlock *lock);
+void rlock(struct rwlock *lock);
+void runlock(struct rwlock *lock);
+
 #endif
