@@ -327,7 +327,7 @@ admin_dispatch(int fd, struct tbuf *rbuf)
 		}
 
 		action save_snapshot {
-			int ret = [recovery fork_and_snapshot:true];
+			int ret = [recovery fork_and_snapshot];
 
 			if (ret == 0)
 				ok(out);

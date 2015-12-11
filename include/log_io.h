@@ -545,7 +545,7 @@ enum {
 	SnapWriter *snap_writer;
 @public
 	id<XLogWriter> writer;
-
+	struct rwlock snapshot_lock;
 	struct mbox_void_ptr run_crc_mbox;
 	Class default_exec_class;
 }
@@ -561,7 +561,8 @@ enum {
 - (void) enable_local_writes;
 
 - (int) write_initial_state;
-- (int) fork_and_snapshot:(bool)wait_for_child;
+- (int) fork_and_snapshot;
+void fork_and_snapshot(va_list ap);
 
 struct iproto_service;
 + (void) service:(struct iproto_service *)s;

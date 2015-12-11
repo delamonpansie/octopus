@@ -223,11 +223,9 @@ replicate_row_stream:(id<XLogPullerAsync>)puller
 			break;
 	}
 
+	extern Recovery *recovery;
 	if (pack_rows > 0) {
-		/* we'r use our own lsn numbering */
-		for (int j = 0; j < pack_rows; j++)
-			rows[j]->lsn = [writer lsn] + 1 + j;
-
+		rlock(&recovery->snapshot_lock);
 		if (cfg.io_compat) {
 			for (int j = 0; j < pack_rows; j++) {
 				u16 tag = rows[j]->tag & TAG_MASK;
@@ -247,8 +245,7 @@ replicate_row_stream:(id<XLogPullerAsync>)puller
 		}
 #ifndef NDEBUG
 		i64 pack_min_scn = rows[0]->scn,
-		    pack_max_scn = rows[pack_rows - 1]->scn,
-		    pack_max_lsn = rows[pack_rows - 1]->lsn;
+		    pack_max_scn = rows[pack_rows - 1]->scn;
 #endif
 		assert(!cfg.sync_scn_with_lsn || [shard scn] == pack_min_scn - 1);
 		@try {
@@ -259,7 +256,7 @@ replicate_row_stream:(id<XLogPullerAsync>)puller
 		}
 		@catch (Error *e) {
 			panic("Replication failure: %s at %s:%i"
-			      " remote row LSN:%"PRIi64 " SCN:%"PRIi64, /* FIXME: here we primting "fixed" LSN */
+			      " remote row LSN:%"PRIi64 " SCN:%"PRIi64,
 			      e->reason, e->file, e->line,
 			      row->lsn, row->scn);
 			[e release];
@@ -273,8 +270,10 @@ replicate_row_stream:(id<XLogPullerAsync>)puller
 				struct wal_pack pack;
 
 				wal_pack_prepare(writer, &pack);
-				for (int i = confirmed; i < pack_rows; i++)
+				for (int i = confirmed; i < pack_rows; i++) {
+					rows[i]->lsn = 0;
 					wal_pack_append_row(&pack, rows[i]);
+				}
 
 				struct wal_reply *reply = [writer wal_pack_submit];
 				confirmed += reply->row_count;
@@ -287,7 +286,7 @@ replicate_row_stream:(id<XLogPullerAsync>)puller
 		}
 
 		assert([shard scn] == pack_max_scn);
-		assert([writer lsn] == pack_max_lsn);
+		runlock(&recovery->snapshot_lock);
 	}
 
 	fiber_gc();

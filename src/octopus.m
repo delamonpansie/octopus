@@ -326,7 +326,7 @@ tnt_uptime(void)
 static void
 save_snapshot(void *ev __attribute__((unused)), int events __attribute__((unused)))
 {
-	[recovery fork_and_snapshot:false];
+	fiber_create("snapshot", fork_and_snapshot);
 }
 #endif
 

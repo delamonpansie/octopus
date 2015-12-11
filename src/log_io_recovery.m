@@ -554,7 +554,7 @@ shard_load:(int)shard_id sop:(struct shard_op *)sop
 	reply = [writer submit:sop len:sizeof(*sop)
 			   tag:shard_tag|TAG_SYS shard_id:shard->id];
 	if (reply->row_count != 1 ||
-	    [self fork_and_snapshot:true] != 0)
+	    [self fork_and_snapshot] != 0)
 	{
 		[shard free];
 		return;
@@ -794,7 +794,7 @@ enable_local_writes
 	if (reader_lsn == 0) {
 		say_debug("Saving initial replica snapshot LSN:%"PRIi64, writer_lsn);
 		/* don't wait for snapshot. our goal to be replica as fast as possible */
-		[self fork_and_snapshot:(getenv("SYNC_DUMP") == NULL)];
+		fiber_create("snapshot", fork_and_snapshot);
 	}
 
 	for (int i = 0; i < MAX_SHARD; i++)
@@ -894,17 +894,29 @@ write_initial_state
 	return [snap_writer snapshot_write];
 }
 
+void
+fork_and_snapshot(va_list ap __attribute__((unused)))
+{
+	extern Recovery *recovery;
+	[recovery fork_and_snapshot];
+}
+
 - (int)
-fork_and_snapshot:(bool)wait
+fork_and_snapshot
 {
 	pid_t p;
+
+	assert(fiber != sched);
 
 	if ([self lsn] <= 0) {
 		say_error("can't save snapshot: LSN is unknown");
 		return -1;
 	}
 
-	switch ((p = oct_fork())) {
+	wlock(&snapshot_lock);
+	p = oct_fork();
+	wunlock(&snapshot_lock);
+	switch (p) {
 	case -1:
 		say_syserror("fork");
 		return -1;
@@ -929,8 +941,8 @@ fork_and_snapshot:(bool)wait
 #endif
 		_exit(r != 0 ? errno : 0);
 
-	default: /* parent, may wait for child */
-		return wait ? wait_for_child(p) : 0;
+	default: /* parent, wait for child */
+		return wait_for_child(p);
 	}
 }
 
