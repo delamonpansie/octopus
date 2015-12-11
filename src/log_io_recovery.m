@@ -188,13 +188,15 @@ update_rt_notify(va_list ap __attribute__((unused)))
 				continue;
 
 			id<Shard> shard = shard_rt[i].shard;
+			char hostname[16];
+			strncpy(hostname, cfg.hostname, 16);
 			i64 scn = [shard scn];
 			struct shard_op *sop = [shard snapshot_header];
 			sop->op |= 0x80; /* mark as rt update */
 			struct iproto header = { .msg_code = [shard id] << 16 | MSG_SHARD,
 						 .data_len = 16 + sizeof(scn) + sizeof(*sop)};
 			struct iovec iov[] = { { &header, sizeof(header) },
-					       { cfg.hostname, 16 },
+					       { hostname, 16 },
 					       { &scn, sizeof(scn) },
 					       { sop, sizeof(*sop) } };
 			struct msghdr msg = (struct msghdr){
