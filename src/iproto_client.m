@@ -272,16 +272,17 @@ iproto_future_resolve_err(struct iproto_egress *c)
 	TAILQ_FOREACH_SAFE(future, &c->future, link, tmp) {
 		switch (future->type) {
 		case IPROTO_FUTURE_MBOX:
+			LIST_REMOVE(future, waiting_link);
 			mbox = future->mbox;
 			future->msg = NULL;
 			mbox_put(mbox, future, link);
 			break;
 		case IPROTO_FUTURE_PROXY:
+			LIST_REMOVE(future, waiting_link);
 			io = future->ingress;
 			iproto_error(&io->wbuf, &future->proxy_request,
 				     ERR_CODE_BAD_CONNECTION, "proxy connection failed");
 			ev_io_start(&io->out);
-			LIST_REMOVE(future, waiting_link);
 			slab_cache_free(&future_cache, future);
 			break;
 		case IPROTO_FUTURE_BLACKHOLE:
