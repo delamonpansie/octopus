@@ -282,9 +282,10 @@ propose_leadership(Paxos *paxos, struct iproto_mbox *mbox, int leader_id)
 					     .expire = expire };
 	iproto_mbox_broadcast(mbox, &paxos->paxos_remotes,
 			      &leader_propose.header, NULL, 0);
-	if (mbox)
+	if (mbox) {
 		mbox_timedwait(mbox, quorum, 1);
-	say_debug2("PROPOSE_LEADERSHIP got %i replies", mbox->msg_count);
+		say_debug2("PROPOSE_LEADERSHIP got %i replies", mbox->msg_count);
+	}
 	return leader_propose.expire;
 }
 
