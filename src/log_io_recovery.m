@@ -273,19 +273,20 @@ validate_sop(void *data, int len)
 - (u32) run_crc_log { return run_crc_log; }
 
 static void
-shard_log(Shard *shard)
+shard_log(const char *msg, Shard *shard)
 {
 	struct shard_route *route = &shard_rt[shard->id];
 	struct tbuf *buf = tbuf_alloc(fiber->pool);
 	tbuf_printf(buf, "shard:%i ", shard->id);
 
-	if (shard) {
-		tbuf_printf(buf, "peer:{%s", shard->peer[0]);
-		for (int i = 1; i < 5; i++)
-			if (shard->peer[i][0])
-				tbuf_printf(buf, ", %s", shard->peer[i]);
-		tbuf_printf(buf, "} ");
-	}
+	tbuf_printf(buf, "SCN:%"PRIi64" %s %s ", [shard scn],
+		    [[shard class] name], [[(id)[shard executor] class] name]);
+
+	tbuf_printf(buf, "peer:{%s", shard->peer[0]);
+	for (int i = 1; i < 5; i++)
+		if (shard->peer[i][0])
+			tbuf_printf(buf, ", %s", shard->peer[i]);
+	tbuf_printf(buf, "} ");
 
 	switch (route->mode) {
 	case SHARD_MODE_NONE:
@@ -308,6 +309,7 @@ shard_log(Shard *shard)
 		tbuf_printf(buf, "LOCAL");
 		break;
 	}
+	tbuf_printf(buf, " => %s", msg);
 	say_info("META %s", (char *)buf->ptr);
 }
 
@@ -345,9 +347,7 @@ shard_log(Shard *shard)
 
 	executor = [[objc_lookUpClass(sop->mod_name) alloc] init_shard:self];
 
-	say_info("init shard%i SCN:%"PRIi64" %s %s", shard_id, scn,
-		 [[self class] name], [[(id)executor class] name]);
-	shard_log(self);
+	shard_log("init", self);
 	return self;
 }
 
@@ -369,7 +369,6 @@ alter_peers:(struct shard_op *)sop
 	for (int i = 0; i < nelem(sop->peer); i++)
 		strncpy(peer[i], sop->peer[i], 16);
 	[self adjust_route];
-	shard_log(self);
 }
 
 - (struct shard_op *)
@@ -428,7 +427,7 @@ status_update:(const char *)fmt, ...
 	if (strcmp(buf, status_buf) == 0 && shard_rt[self->id].mode == old_mode)
 		return;
 
-	shard_log(self);
+	shard_log(buf, self);
 
 	strncpy(status_buf, buf, sizeof(status_buf));
 	title(NULL);
