@@ -210,8 +210,8 @@ set_shard:(Shard<Shard> *)shard_
 - (void)
 apply:(struct tbuf *)data tag:(u16)tag
 {
-	say_debug("%s tag:%s %s", __func__,
-		  xlog_tag_to_a(tag), box_row_to_a(tag, data));
+	say_debug2("%s tag:%s", __func__, xlog_tag_to_a(tag));
+	say_debug3("%s row:%s", __func__, box_row_to_a(tag, data));
 
 	int tag_type = tag & ~TAG_MASK;
 	tag &= TAG_MASK;
