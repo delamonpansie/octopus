@@ -311,7 +311,6 @@ handshake:(i64)scn
 		       	.filter_arglen = feeder->filter.arglen};
 		if (feeder->filter.name)
 			strncpy(hshake.filter, feeder->filter.name, sizeof(hshake.filter));
-		strncpy(hshake.filter, feeder->filter.name, sizeof(hshake.filter));
 		tbuf_add_dup(hbuf, &hshake);
 		tbuf_append(hbuf, feeder->filter.arg, feeder->filter.arglen);
 
