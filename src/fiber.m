@@ -685,26 +685,14 @@ yield
 }
 @end
 
-void
-wlock(struct rwlock *lock)
-{
-	while (lock->locked) {
-		SLIST_INSERT_HEAD(&lock->wait, fiber, worker_link);
-		yield();
-	}
-	lock->locked++;
-	ev_prepare w = { .coro = 1 };
-	ev_prepare_init(&w, (void *)fiber);
-	ev_prepare_start(&w);
-	while (lock->readers > 0)
-		yield();
-	ev_prepare_stop(&w);
+static void
+rwcond_wait(struct rwlock *lock) {
+	SLIST_INSERT_HEAD(&lock->wait, fiber, worker_link);
+	yield();
 }
 
-void
-wunlock(struct rwlock *lock)
-{
-	lock->locked--;
+static void
+rwbroadcast(struct rwlock *lock) {
 	struct Fiber *waiter = SLIST_FIRST(&lock->wait), *next;
 	SLIST_INIT(&lock->wait);
 	while (waiter) {
@@ -715,12 +703,27 @@ wunlock(struct rwlock *lock)
 }
 
 void
+wlock(struct rwlock *lock)
+{
+	while (lock->locked)
+		rwcond_wait(lock);
+	lock->locked = 1;
+	while (lock->readers)
+		rwcond_wait(lock);
+}
+
+void
+wunlock(struct rwlock *lock)
+{
+	lock->locked = 0;
+	rwbroadcast(lock);
+}
+
+void
 rlock(struct rwlock *lock)
 {
-	while (lock->locked) {
-		SLIST_INSERT_HEAD(&lock->wait, fiber, worker_link);
-		yield();
-	}
+	while (lock->locked)
+		rwcond_wait(lock);
 	lock->readers++;
 }
 
@@ -728,6 +731,8 @@ void
 runlock(struct rwlock *lock)
 {
 	lock->readers--;
+	if (lock->readers == 0 && !SLIST_EMPTY(&lock->wait))
+		rwbroadcast(lock);
 }
 
 register_source();
