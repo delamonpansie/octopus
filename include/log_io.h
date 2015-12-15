@@ -441,7 +441,7 @@ enum feeder_cfg_e feeder_param_fill_from_cfg(struct feeder_param *param, struct 
 bool feeder_param_set_addr(struct feeder_param *param, const char *addr);
 bool feeder_param_eq(struct feeder_param *this, struct feeder_param *that);
 
-enum {
+enum feeder_filter_type {
 	FILTER_TYPE_ID  = 0,
 	FILTER_TYPE_LUA = 1,
 	FILTER_TYPE_C   = 2,
