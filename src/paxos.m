@@ -232,7 +232,7 @@ paxos_broadcast(Paxos *paxos, struct iproto_mbox *mbox,
 static void
 paxos_respond(Paxos *paxos, struct paxos_request *req, enum paxos_msg_code code, u64 ballot)
 {
-	struct msg_paxos *msg = NULL;;
+	struct msg_paxos *msg = NULL;
 	const struct proposal *p = req->p;
 	int value_len = p ? p->value_len : 0,
 	      msg_len = sizeof(*msg) + value_len;
