@@ -79,7 +79,7 @@ our_shard(const struct shard_op *sop)
 	return false;
 }
 
-static struct octopus_cfg_peer *
+struct octopus_cfg_peer *
 cfg_peer_by_name(const char *name)
 {
 	for (struct octopus_cfg_peer **c = cfg.peer; *c; c++)

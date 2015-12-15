@@ -599,4 +599,6 @@ int read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, st
 void print_row(struct tbuf *out, const struct row_v12 *row,
 	       void (*handler)(struct tbuf *out, u16 tag, struct tbuf *row));
 
+struct octopus_cfg_peer *cfg_peer_by_name(const char *name);
+
 #endif
