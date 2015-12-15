@@ -347,9 +347,7 @@ process_requests(struct iproto_service *service, struct iproto_ingress_svc *c)
 		struct iproto_handler *ih = service_find_code(service, request->msg_code & 0xffff);
 		size_t req_size = sizeof(struct iproto) + request->data_len;
 		void *arg = NULL;
-		int route_id = service->options == SERVICE_SHARDED ?
-			       request->msg_code >> 16 :
-			       0;
+		int route_id = service->options == SERVICE_SHARDED ? request->shard_id : 0;
 		struct shard_route *route = &shard_rt[route_id];
 
 		if (proxy_requst(ih, route, c, request, &arg))
@@ -475,7 +473,8 @@ iproto_reply(struct netmsg_head *h, const struct iproto *request, u32 ret_code)
 {
 	struct iproto_retcode *header = palloc(h->pool, sizeof(*header));
 	net_add_iov(h, header, sizeof(*header));
-	*header = (struct iproto_retcode){ .msg_code = request->msg_code,
+	*header = (struct iproto_retcode){ .shard_id = request->shard_id,
+					   .msg_code = request->msg_code,
 					   .data_len = h->bytes,
 					   .sync = request->sync,
 					   .ret_code = ret_code };
@@ -487,7 +486,8 @@ iproto_reply_small(struct netmsg_head *h, const struct iproto *request, u32 ret_
 {
 	struct iproto_retcode *header = palloc(h->pool, sizeof(*header));
 	net_add_iov(h, header, sizeof(*header));
-	*header = (struct iproto_retcode){ .msg_code = request->msg_code,
+	*header = (struct iproto_retcode){ .shard_id = request->shard_id,
+					   .msg_code = request->msg_code,
 					   .data_len = sizeof(ret_code),
 					   .sync = request->sync,
 					   .ret_code = ret_code };

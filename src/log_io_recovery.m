@@ -193,7 +193,8 @@ update_rt_notify(va_list ap __attribute__((unused)))
 			i64 scn = [shard scn];
 			struct shard_op *sop = [shard snapshot_header];
 			sop->op |= 0x80; /* mark as rt update */
-			struct iproto header = { .msg_code = [shard id] << 16 | MSG_SHARD,
+			struct iproto header = { .msg_code = MSG_SHARD,
+						 .shard_id = [shard id],
 						 .data_len = 16 + sizeof(scn) + sizeof(*sop)};
 			struct iovec iov[] = { { &header, sizeof(header) },
 					       { hostname, 16 },
@@ -992,7 +993,7 @@ iproto_shard_cb_aux(va_list ap)
 static void
 iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req, void *arg __attribute__((unused)))
 {
-	int shard_id = req->msg_code >> 16;
+	int shard_id = req->shard_id;
 	struct shard_route *route = &shard_rt[shard_id];
 	Shard<Shard> *shard = route->shard;
 	struct shard_op *sop = validate_sop(req->data, req->data_len);
@@ -1048,7 +1049,7 @@ iproto_shard_udpcb(const char *buf, ssize_t len, void *data __attribute__((unuse
 	if (req->data_len != 16 + sizeof(i64) + sizeof(struct shard_op))
 		return;
 
-	int shard_id = req->msg_code >> 16;
+	int shard_id = req->shard_id;
 	struct shard_route *route = &shard_rt[shard_id];
 	Shard<Shard> *shard = route->shard;
 	const char *peer_name = (char *)req->data;

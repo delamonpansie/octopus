@@ -34,7 +34,7 @@ end
 function netmsg_op:add_iov_iproto_header(request)
    assert(request ~= nil)
    local request = ffi.new(iproto_ptr_t, request)
-   local header = ffi.new(iproto_retcode0_t, request.msg_code, 4, request.sync)
+   local header = ffi.new(iproto_retcode0_t, request.msg_code, request.shard_id, 4, request.sync)
    self:add_iov_ref(header, ffi.sizeof(iproto_retcode0_t))
    return header
 end

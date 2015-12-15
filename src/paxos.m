@@ -200,7 +200,8 @@ paxos_broadcast(Paxos *paxos, struct iproto_mbox *mbox,
 {
 	static u32 msg_id;
 	struct msg_paxos msg = { .header = { .data_len = sizeof(msg) - sizeof(struct iproto),
-					     .msg_code = code },
+					     .msg_code = code,
+					     .shard_id = paxos->id },
 				 .scn = scn,
 				 .ballot = ballot,
 				 .peer_id = paxos->self_id,
@@ -248,6 +249,7 @@ paxos_respond(Paxos *paxos, struct paxos_request *req, enum paxos_msg_code code,
 	}
 
 	*msg = (struct msg_paxos){ .header = { .msg_code = code,
+					       .shard_id = req->msg->header.shard_id,
 					       .data_len = msg_len - sizeof(struct iproto),
 					       .sync = req->msg->header.sync },
 				   .scn = req->msg->scn,
@@ -275,6 +277,7 @@ propose_leadership(Paxos *paxos, struct iproto_mbox *mbox, int leader_id)
 	say_debug("PROPOSE_LEADERSHIP leader:%i", leader_id);
 	ev_tstamp expire = leader_id < 0 ? 0 : ev_now() + leader_lease_interval;
 	struct msg_leader leader_propose = { .header = { .msg_code = LEADER_PROPOSE,
+							 .shard_id = paxos->id,
 							 .data_len = sizeof(leader_propose) - sizeof(struct iproto) },
 					     .peer_id = paxos->self_id,
 					     .version = paxos_default_version,
@@ -1272,6 +1275,7 @@ submit:(const void *)data len:(u32)len tag:(u16)tag
 write_scn:(i64)scn_ data:(const void *)data len:(u32)len tag:(u16)tag
 {
 	struct row_v12 row = { .scn = scn_,
+			       .shard_id = self->id,
 			       .tag = tag };
 	struct wal_pack pack;
 	wal_pack_prepare(recovery->writer, &pack);
