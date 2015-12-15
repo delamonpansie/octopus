@@ -207,7 +207,7 @@ close
 - (void)
 init:(int)fd_ service:(struct iproto_service *)service_
 {
-	say_debug2("%s: peer %s", __func__, net_peer_name(fd_));
+	say_debug2("%s: service:%s peer:%s", __func__, service_->name, net_peer_name(fd_));
 	service = service_;
 	netmsg_io_init(self, service->pool, fd_);
 	self->flags |= NETMSG_IO_SHARED_POOL;
