@@ -580,7 +580,7 @@ shard_alter:(Shard<Shard> *)shard sop:(struct shard_op *)sop
 recover_row:(struct row_v12 *)r
 {
 	assert(r->shard_id < nelem(shard_rt));
-	id<Shard> shard;
+	Shard<Shard> *shard;
 	if (shard_rt[0].shard && shard_rt[0].shard->dummy)
 		shard = shard_rt[0].shard;
 	else
@@ -590,32 +590,34 @@ recover_row:(struct row_v12 *)r
 		say_debug("%s: LSN:%"PRIi64" SCN:%"PRIi64" tag:%s",
 			  __func__, r->lsn, r->scn, xlog_tag_to_a(r->tag));
 		if (r->len)
-			say_debug2("	%s", tbuf_to_hex(&TBUF(r->data, r->len, fiber->pool)));
+			say_debug3("	%s", tbuf_to_hex(&TBUF(r->data, r->len, fiber->pool)));
 
-		if (unlikely((r->tag & ~TAG_MASK) == TAG_SYS)) {
-			int tag = r->tag & TAG_MASK;
-			switch (tag) {
-			case snap_initial:
-				if (r->scn != -1) /* no sharding */
-					shard = [self shard_add_dummy:r];
-			case snap_final:
-				return;
-			case shard_tag:
-				if (shard == nil) {
-					struct shard_op *sop = (struct shard_op *)r->data;
-					shard = [self shard_add:r->shard_id scn:r->scn sop:sop];
-				}
-				break;
-			default:
-				break;
+		int tag = r->tag & TAG_MASK;
+		switch (tag) {
+		case snap_initial:
+			if (r->scn != -1) /* no sharding */
+				shard = [self shard_add_dummy:r];
+		case snap_final:
+			return;
+		case shard_tag:
+			if (shard == nil) {
+				struct shard_op *sop = (struct shard_op *)r->data;
+				shard = [self shard_add:r->shard_id scn:r->scn sop:sop];
 			}
+			break;
+		default:
+			break;
 		}
 
-		if (unlikely(r->tag & TAG_MASK) == wal_final)
+		if (unlikely(tag == wal_final))
 			return;
 
 		if (unlikely(shard == nil))
 			raise_fmt("shard %i is not configured", r->shard_id);
+
+		if (unlikely(r->scn - shard->scn != 1 && (r->tag & ~TAG_MASK) == TAG_WAL &&
+			     cfg.panic_on_scn_gap))
+			panic("SCN sequence has gap after %"PRIi64 " -> %"PRIi64, shard->scn, r->scn);
 
 		[shard recover_row:r];
 
