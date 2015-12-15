@@ -173,12 +173,16 @@ adjust_route
 }
 
 - (void)
-recover_row_sys:(struct row_v12 *)r
+recover_row:(struct row_v12 *)row
 {
-	int tag = r->tag & TAG_MASK;
-	struct tbuf row_data = TBUF(r->data, r->len, NULL);
+	// calculate run_crc _before_ calling executor: it may change row
+	if (unlikely(cfg.sync_scn_with_lsn && dummy && row->lsn != row->scn))
+		panic("LSN != SCN : %"PRIi64 " != %"PRIi64, row->lsn, row->scn);
 
-	switch (tag) {
+	if (scn_changer(row->tag))
+		run_crc_calc(&run_crc_log, row->tag, row->data, row->len);
+
+	switch (row->tag & TAG_MASK) {
 	case snap_initial:
 	case snap_final:
 		break;
@@ -186,42 +190,29 @@ recover_row_sys:(struct row_v12 *)r
 		if (cfg.ignore_run_crc)
 			break;
 
-		if (r->len != sizeof(i64) + sizeof(u32) * 2)
+		if (row->len != sizeof(i64) + sizeof(u32) * 2)
 			break;
 
-		run_crc_verify(r, &run_crc_state, &row_data);
+		run_crc_verify(row, &run_crc_state, &TBUF(row->data, row->len, NULL));
 		break;
 	case nop:
 		break;
 	case shard_tag:
-		[self alter_peers:(struct shard_op *)r->data];
+		[self alter_peers:(struct shard_op *)row->data];
 		break;
 	default:
-		say_warn("%s row ignored", xlog_tag_to_a(r->tag));
+		[executor apply:&TBUF(row->data, row->len, fiber->pool) tag:row->tag];
 		break;
 	}
-}
 
-- (void)
-recover_row:(struct row_v12 *)row
-{
-	// calculate run_crc _before_ calling executor: it may change row
-	if (scn_changer(row->tag))
-		run_crc_calc(&run_crc_log, row->tag, row->data, row->len);
-
-	if ((row->tag & ~TAG_MASK) != TAG_SYS)
-		[executor apply:&TBUF(row->data, row->len, fiber->pool) tag:row->tag];
-	else
-		[self recover_row_sys:row];
 	last_update_tstamp = ev_now();
 	lag = last_update_tstamp - row->tm;
 
 	if (scn_changer(row->tag)) {
 		run_crc_record(&run_crc_state, (struct run_crc_hist){ .scn = row->scn, .value = run_crc_log });
-		assert(cfg.sync_scn_with_lsn == 0 || row->scn - self->scn == 1);
 		scn = row->scn;
 
-		if (row->tag == (shard_tag|TAG_SYS)) {
+		if ((row->tag & TAG_MASK) == shard_tag) {
 			for (int i = 0; i < nelem(peer) && peer[i]; i++)
 				if (strcmp(peer[i], cfg.hostname) == 0)
 					return;
