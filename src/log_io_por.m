@@ -193,7 +193,7 @@ recover_row:(struct row_v12 *)row
 		if (row->len != sizeof(i64) + sizeof(u32) * 2)
 			break;
 
-		run_crc_verify(row, &run_crc_state, &TBUF(row->data, row->len, NULL));
+		run_crc_verify(&run_crc_state, &TBUF(row->data, row->len, NULL));
 		break;
 	case nop:
 		break;

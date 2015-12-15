@@ -49,7 +49,7 @@ run_crc_record(struct run_crc *run_crc, struct run_crc_hist entry)
 }
 
 void
-run_crc_verify(const struct row_v12 *r, struct run_crc *run_crc, struct tbuf *buf)
+run_crc_verify(struct run_crc *run_crc, struct tbuf *buf)
 {
 	i64 scn_of_crc = read_u64(buf);
 	u32 log = read_u32(buf);
@@ -65,17 +65,17 @@ run_crc_verify(const struct row_v12 *r, struct run_crc *run_crc, struct tbuf *bu
 	}
 
 	if (!h) {
-		say_warn("run_crc: crc history too short shard:%i CRC_SCN:%"PRIi64,
-			 r->shard_id, scn_of_crc);
+		say_warn("run_crc: crc history too short CRC_SCN:%"PRIi64,
+			 scn_of_crc);
 		return;
 	}
 
 	if (h->value != log) {
 		run_crc->mismatch |= 1;
-		say_error("run_crc: error shard:%i SCN:%"PRIi64" saved:0x%08x computed:0x%08x",
-			  r->shard_id, scn_of_crc, log, h->value);
+		say_error("run_crc: error SCN:%"PRIi64" saved:0x%08x computed:0x%08x",
+			  scn_of_crc, log, h->value);
 	} else {
-		say_info("run_crc: ok shard:%i SCN:%"PRIi64, r->shard_id, h->scn);
+		say_info("run_crc: ok SCN:%"PRIi64, h->scn);
 	}
 	run_crc->verify_tstamp = ev_now();
 }
