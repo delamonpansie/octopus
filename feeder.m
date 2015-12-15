@@ -449,7 +449,7 @@ static void
 iproto_feeder_cb(struct netmsg_head *wbuf, struct iproto *req, void *arg __attribute__((unused)))
 {
 	struct netmsg_io *io = container_of(wbuf, struct netmsg_io, wbuf);
-	int fd = io->fd, zero;
+	int fd = io->fd, zero = 0;
 
 	if (ioctl(fd, FIONBIO, &zero) < 0)
 		say_syserror("ioctl");
