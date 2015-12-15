@@ -1275,8 +1275,8 @@ submit:(const void *)data len:(u32)len tag:(u16)tag
 write_scn:(i64)scn_ data:(const void *)data len:(u32)len tag:(u16)tag
 {
 	struct row_v12 row = { .scn = scn_,
-			       .shard_id = self->id,
 			       .tag = tag };
+	row.shard_id = self->id;
 	struct wal_pack pack;
 	wal_pack_prepare(recovery->writer, &pack);
 	wal_pack_append_row(&pack, &row);
