@@ -267,31 +267,32 @@ request_parse(struct request *request, int row_count, struct tbuf *rbuf)
 }
 
 static void
-update_scn_state(struct shard_state *st, struct row_v12 *h)
+assign_scn(struct shard_state *st, struct row_v12 *h)
 {
-	struct shard_state *cst = &st[h->shard_id];
+	st += h->shard_id;
 	const struct shard_op *sop = NULL;
 
-	if (unlikely(h->tag == (shard_tag|TAG_SYS))) {
+	if (unlikely((h->tag & TAG_MASK) == shard_tag)) {
 		sop = (void *)h->data;
 		assert(sop->ver == 0);
 		assert((sop->op & 0x7f) == 0);
 
 		/* shard first seen first time */
-		if (cst->scn == 0 && our_shard(sop)) {
-			cst->scn = h->scn;
-			cst->scn_mode = sop->type == 0 ? SCN_ASSIGN : SCN_PASS;
+		if (st->scn == 0 && our_shard(sop)) {
+			st->scn_mode = sop->type == 0 ? SCN_ASSIGN : SCN_PASS;
+			if (st->scn_mode == SCN_PASS && h->scn == 0)
+				h->scn = 1;
 		}
 	}
 
-	switch (cst->scn_mode) {
+	switch (st->scn_mode) {
 	case SCN_PASS:
 		break;
 	case SCN_ASSIGN:
-		cst->wet_scn++;
+		st->wet_scn++;
 		// either: a new row or replicated row with predefined scn
-		if (h->scn == 0 || h->scn == cst->wet_scn) {
-			h->scn = cst->wet_scn;
+		if (h->scn == 0 || h->scn == st->wet_scn) {
+			h->scn = st->wet_scn;
 			break;
 		} else {
 			say_warn("ASSIGN override SCN:%"PRIi64, h->scn);
@@ -388,7 +389,7 @@ wal_disk_writer(int fd, void *state, int len)
 			int j = 0;
 			for (; j < row_count && !io_failure; j++) {
 				struct row_v12 *row = request->rows[j];
-				update_scn_state(st, row);
+				assign_scn(st, row);
 
 				if ([writer append_row:row data:row->data] == NULL) {
 					say_error("append_row failed");
@@ -435,11 +436,14 @@ wal_disk_writer(int fd, void *state, int len)
 				/* next_scn is used for writing XLog header, which is turn used to
 				   find correct file for replication replay.
 				   so, next_scn should be updated only when data modification occurs */
-				if (cfg.panic_on_scn_gap && row->scn - st[row->shard_id].scn != 1)
+				if (cfg.panic_on_scn_gap &&
+				    row->scn - st[row->shard_id].scn != 1 &&
+					st[row->shard_id].scn != 0)
 					panic("SCN GAP:%"PRIi64" rows:%i", row->scn - st[row->shard_id].scn, reply->row_count);
+
 				st[row->shard_id].scn = row->scn;
 
-				if (unlikely(row->tag == (shard_tag|TAG_SYS))) {
+				if (unlikely((row->tag & TAG_MASK) == shard_tag)) {
 					const struct shard_op *sop = (void *)row->data;
 					if (!our_shard(sop))
 						memset(&st[row->shard_id], 0, sizeof(st[row->shard_id]));
