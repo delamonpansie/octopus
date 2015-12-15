@@ -306,7 +306,7 @@ static void
 paxos_elect(va_list ap)
 {
 	Paxos *paxos = va_arg(ap, Paxos *);
-
+	fiber->ushard = paxos->id;
 
 	fiber_sleep(0.3); /* wait connections to be up */
 	for (;;) {
@@ -1029,7 +1029,7 @@ wal_dumper_fib(va_list ap)
 {
 	Paxos *paxos = va_arg(ap, Paxos *);
 	struct proposal *p = NULL;
-
+	fiber->ushard = paxos->id;
 loop:
 	mbox_timedwait(&wal_dumper_mbox, 1, 1);
 	while (mbox_get(&wal_dumper_mbox, link)); /* flush mbox */

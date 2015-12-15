@@ -233,6 +233,8 @@ vsay(int level, const char *filename, unsigned line,
 
 	if (fiber != nil) {
 		p += snprintf(buf + p, len - p, "%.3f %i %i/%s", ev_now(), getpid(), fiber->fid, fiber->name);
+		if (fiber->ushard != -1)
+			p += snprintf(buf + p, len - p, " {%i}", fiber->ushard);
 	} else {
 		p += snprintf(buf + p, len - p, "%.3f %i", ev_now(), getpid());
 	}

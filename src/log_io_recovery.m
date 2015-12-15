@@ -276,9 +276,11 @@ validate_sop(void *data, int len)
 static void
 shard_log(const char *msg, Shard *shard)
 {
+	int old_ushard = fiber->ushard;
+	fiber->ushard = shard->id;
+
 	struct shard_route *route = &shard_rt[shard->id];
 	struct tbuf *buf = tbuf_alloc(fiber->pool);
-	tbuf_printf(buf, "shard:%i ", shard->id);
 
 	tbuf_printf(buf, "SCN:%"PRIi64" %s %s ", [shard scn],
 		    [[shard class] name], [[(id)[shard executor] class] name]);
@@ -312,6 +314,7 @@ shard_log(const char *msg, Shard *shard)
 	}
 	tbuf_printf(buf, " => %s", msg);
 	say_info("META %s", (char *)buf->ptr);
+	fiber->ushard = old_ushard;
 }
 
 
@@ -585,7 +588,9 @@ recover_row:(struct row_v12 *)r
 		shard = shard_rt[0].shard;
 	else
 		shard = shard_rt[r->shard_id].shard;
-
+	int old_ushard = fiber->ushard;
+	if (shard)
+		fiber->ushard = shard->id;
 	@try {
 		say_debug("%s: LSN:%"PRIi64" SCN:%"PRIi64" tag:%s",
 			  __func__, r->lsn, r->scn, xlog_tag_to_a(r->tag));
@@ -640,6 +645,7 @@ recover_row:(struct row_v12 *)r
 	}
 	@finally {
 		say_debug2("%s: => recovery LSN:%"PRIi64, __func__, [self lsn]);
+		fiber->ushard = old_ushard;
 	}
 }
 
