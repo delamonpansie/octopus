@@ -181,6 +181,7 @@ build_object_space_trees(struct object_space *object_space)
 			   count:n_tuples
 		       allocated:estimated_tuples];
 	}
+	title(NULL);
 }
 
 @implementation Box
@@ -309,21 +310,11 @@ build_secondary_indexes
 wal_final_row
 {
 	[self build_secondary_indexes];
-
-	if (box_primary.name == NULL) {
-		// initialize_service();
-		[self status_changed];
-	}
 }
 
 - (void)
 status_changed
 {
-	// FIXME: раньше все изменения статус откладывались до полной загрузки
-	// после которотой box_primary.name != NULL
-
-	if (box_primary.name == NULL)
-		return;
 }
 
 - (void)
