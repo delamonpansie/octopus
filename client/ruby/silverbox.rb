@@ -273,6 +273,7 @@ class SilverBox < IProtoRetCode
     fail ":shard missing" unless conf[:shard]
     fail ":index missing" unless conf[:index]
     msg :code => 240, :shard => shard, :raw => [n, flags, cardinalty, snap, wal, *pack_index_conf(conf[:index])].pack("LLC*")
+    :success
   end
 
   def create_index(i, index_conf)
@@ -303,7 +304,8 @@ class SilverBox < IProtoRetCode
     :success
   end
 
-  def create_shard(shard, master, replica1 = "", replica2 = "", type = 0)
+
+  def create_shard(shard, type, master, replica1 = "", replica2 = "")
     version = 0
     op = 0 # create
     tm = 0
@@ -313,6 +315,8 @@ class SilverBox < IProtoRetCode
     replica3 = ""
     replica4 = ""
     format = "CCCQLL" + ("a16" * 6)
+    type = {:POR => 0, :PAXOS =>1}[type]
+
     msg :code => 0xff02, :shard => shard,
         :raw => [version, op, type, tm, row_count, run_crc,
                  mod_name, master, replica1, replica2, replica3, replica4].pack(format)

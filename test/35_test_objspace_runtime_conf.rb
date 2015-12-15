@@ -55,12 +55,12 @@ env.cd do
 end
 
 env.connect_eval do
-  create_shard 0, "one"
+  create_shard 0, :POR, "one"
   sleep 0.2
   # create_object_space 0, :shard => 0, :index => {:type => :FASTTREE, :unique => 1, :field_0 => { :type => :STRING, :index => 0 , :sort_order => :DESC }}
   create_index 1, :type => :FASTTREE, :unique => 1, :field_0 => { :type => :STRING, :index => 0 , :sort_order => :DESC }
 
-  create_shard 1, "one"
+  create_shard 1, :POR, "one"
   create_object_space 0, :shard => 1, :index => {:type => :FASTTREE, :unique => 1, :field_0 => { :type => :STRING, :index => 0 , :sort_order => :DESC }}
 
   env.snapshot

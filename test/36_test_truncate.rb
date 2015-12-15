@@ -10,7 +10,7 @@ class Env < RunEnv
 end
 
 Env.connect_eval do
-  create_shard(0, "one")
+  create_shard 0, :POR, "one"
   create_object_space 0, :shard => 0, :index => {:type => :FASTTREE, :unique => 1, :field_0 => { :type => :STRING, :index => 0 , :sort_order => :DESC }}
   keys = []
   5.times  do |i|

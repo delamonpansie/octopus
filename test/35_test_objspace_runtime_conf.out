@@ -17,17 +17,17 @@ exception: object_space 0 is not configured
 
 # box.create_index(1, {:type=>:FASTTREE, :unique=>1, :field_0=>{:type=>:STRING, :index=>0, :sort_order=>:DESC}})
 Failed with: {code: 0x202, message: 'metadata updates are forbidden because cfg.object_space is configured'}
-# box.create_shard(0, "one")
+# box.create_shard(0, :POR, "one")
 :success
 
 # box.create_index(1, {:type=>:FASTTREE, :unique=>1, :field_0=>{:type=>:STRING, :index=>0, :sort_order=>:DESC}})
 :success
 
-# box.create_shard(1, "one")
+# box.create_shard(1, :POR, "one")
 :success
 
 # box.create_object_space(0, {:shard=>1, :index=>{:type=>:FASTTREE, :unique=>1, :field_0=>{:type=>:STRING, :index=>0, :sort_order=>:DESC}}})
-""
+:success
 
 # box.insert(["baf"])
 1
