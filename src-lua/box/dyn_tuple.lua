@@ -63,6 +63,11 @@ local __tuple_index = {
       self[i] = ffi.string(self.data + offt, len)
       return self[i]
    end,
+   u8field = function(self, i)
+       local len, offt = self:field(i, 1)
+       if len ~= 1 then error('field level not equal to 1', 2) end
+       return self.data[offt]
+   end,
    u16field = function(self, i)
        local len, offt = self:field(i, 1)
        if len ~= 2 then error('field level not equal to 2', 2) end
