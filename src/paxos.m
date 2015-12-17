@@ -168,7 +168,6 @@ proposal_cmp(const struct proposal *a, const struct proposal *b)
 #endif
 RB_GENERATE_STATIC(ptree, proposal, link, proposal_cmp)
 
-static ev_tstamp leadership_expire;
 static const ev_tstamp leader_lease_interval = 10;
 static const ev_tstamp paxos_default_timeout = 0.2;
 
@@ -295,9 +294,8 @@ propose_leadership(Paxos *paxos, struct iproto_mbox *mbox, int leader_id)
 void
 giveup_leadership(Paxos *paxos)
 {
-	assert(paxos_leader(paxos));
 	paxos->leader_id = -1;
-	leadership_expire = -1;
+	paxos->leadership_expire = -1;
 	propose_leadership(paxos, NULL, -1);
 }
 
@@ -310,8 +308,10 @@ paxos_elect(va_list ap)
 
 	fiber_sleep(0.3); /* wait connections to be up */
 	for (;;) {
-		if (ev_now() > leadership_expire)
+		if (ev_now() > paxos->leadership_expire) {
 			paxos->leader_id = -1;
+			paxos->leadership_expire = -1;
+		}
 
 		if (paxos->leader_id < 0) {
 			ev_tstamp delay = drand(leader_lease_interval * 0.1);
@@ -319,10 +319,11 @@ paxos_elect(va_list ap)
 				delay += leader_lease_interval * 2;
 			fiber_sleep(delay);
 		} else {
+			assert(paxos->leadership_expire > 0);
 			if (!paxos_leader(paxos))
-				fiber_sleep(leadership_expire + leader_lease_interval * .01 - ev_now());
+				fiber_sleep(paxos->leadership_expire + leader_lease_interval * .01 - ev_now());
 			else
-				fiber_sleep(leadership_expire - leader_lease_interval * .1 - ev_now());
+				fiber_sleep(paxos->leadership_expire - leader_lease_interval * .1 - ev_now());
 		}
 
 		if (paxos->leader_id >= 0 && !paxos_leader(paxos))
@@ -355,14 +356,14 @@ paxos_elect(va_list ap)
 		}
 		if (votes >= quorum - 1) { // -1 because we don't message ourselfs
 			say_debug("%s: quorum reached v/q:%i/%i", __func__, votes, quorum);
-			leadership_expire = proposed_expire;
+			paxos->leadership_expire = proposed_expire;
 			paxos->leader_id = paxos->self_id;
 		} else {
 			if (nack_msg && proposed_expire - nack_msg->expire > leader_lease_interval * .05 ) {
 				struct paxos_peer *peer = paxos_peer(paxos, nack_msg->peer_id);
 				say_debug("%s: nack from peer:%i/%s leader_id:%i", __func__,
 					  peer->id, peer->name, nack_msg->leader_id);
-				leadership_expire = nack_msg->expire;
+				paxos->leadership_expire = nack_msg->expire;
 				paxos->leader_id = nack_msg->leader_id;
 			} else {
 				say_debug("%s: no quorum v/q:%i/%i", __func__, votes, quorum);
@@ -416,7 +417,7 @@ leader(struct netmsg_head *wbuf, struct iproto *msg, void *arg)
 	struct msg_leader *pmsg = (struct msg_leader *)msg;
 	struct paxos_peer *peer = paxos_peer(paxos, pmsg->peer_id);
 	const char *ret = "accept";
-	const ev_tstamp to_expire = leadership_expire - ev_now();
+	const ev_tstamp to_expire = paxos->leadership_expire - ev_now();
 
 	say_debug("%s: msg:%x", __func__, msg->msg_code);
 
@@ -429,27 +430,27 @@ leader(struct netmsg_head *wbuf, struct iproto *msg, void *arg)
 		say_debug("|     proposal matches current leader");
 		msg->msg_code = LEADER_ACK;
 		if (pmsg->leader_id != paxos->self_id)
-			leadership_expire = pmsg->expire;
+			paxos->leadership_expire = pmsg->expire;
 		if (paxos->leader_id < 0)
-			leadership_expire = 0;
+			paxos->leadership_expire = -1;
 	} else if (to_expire < 0) {
 		say_debug("|     current leader expired");
 		msg->msg_code = LEADER_ACK;
 		if (pmsg->leader_id != paxos->self_id) {
 			paxos->leader_id = pmsg->leader_id;
-			leadership_expire = pmsg->expire;
+			paxos->leadership_expire = pmsg->expire;
 			[paxos adjust_route];
 		}
 	} else if (paxos->leader_id == pmsg->peer_id && pmsg->leader_id < 0) {
 		ret = "ack giveup";
 		msg->msg_code = LEADER_ACK;
 		paxos->leader_id = pmsg->leader_id;
-		leadership_expire = 0;
+		paxos->leadership_expire = 0;
 	} else {
 		ret = "nack";
 		msg->msg_code = LEADER_NACK;
 		pmsg->leader_id = paxos->leader_id;
-		pmsg->expire = leadership_expire;
+		pmsg->expire = paxos->leadership_expire;
 	}
 
 	pmsg->peer_id = paxos->self_id;

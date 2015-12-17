@@ -49,6 +49,7 @@ RB_HEAD(ptree, proposal);
 	i64 app_scn, max_scn, run_crc_scn;
 	bool wal_dumper_busy;
 	int leader_id, self_id;
+	ev_tstamp leadership_expire;
 
 	struct ptree proposals;
 }
