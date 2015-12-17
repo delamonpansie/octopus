@@ -49,8 +49,6 @@
 #include <unistd.h>
 #include <sysexits.h>
 
-Class paxos = Nil;
-
 i64 fold_scn = 0;
 
 struct row_v12 *
@@ -487,7 +485,7 @@ shard_add:(int)shard_id scn:(i64)scn sop:(const struct shard_op *)sop
 	Shard<Shard> *shard;
 	switch (sop->type) {
 	case SHARD_TYPE_PAXOS:
-		shard = [paxos alloc];
+		shard = [Paxos alloc];
 		break;
 	case SHARD_TYPE_POR:
 		shard = [POR alloc];
@@ -1099,8 +1097,7 @@ service:(struct iproto_service *)s
 		return;
 	fiber_create("route_recv", udp_server, s->addr, iproto_shard_udpcb, NULL, NULL);
 	service_register_iproto(s, MSG_SHARD, iproto_shard_cb, 0);
-	paxos = objc_lookUpClass("Paxos");
-	[paxos service:s];
+	[[Paxos class] service:s];
 }
 
 @end
