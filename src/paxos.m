@@ -1182,9 +1182,9 @@ again:
 @implementation Paxos
 
 - (id)
-init_id:(int)shard_id scn:(i64)scn_ recovery:(Recovery *)recovery_ sop:(const struct shard_op *)sop
+init_id:(int)shard_id scn:(i64)scn_ sop:(const struct shard_op *)sop
 {
-	[super init_id:shard_id scn:scn_ recovery:recovery_ sop:sop];
+	[super init_id:shard_id scn:scn_ sop:sop];
 	if (cfg.local_hot_standby)
 		panic("wal_hot_standby is incompatible with paxos");
 

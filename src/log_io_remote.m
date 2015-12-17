@@ -223,7 +223,6 @@ replicate_row_stream:(id<XLogPullerAsync>)puller
 			break;
 	}
 
-	extern Recovery *recovery;
 	if (pack_rows > 0) {
 		rlock(&recovery->snapshot_lock);
 		if (cfg.io_compat) {

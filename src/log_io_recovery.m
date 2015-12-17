@@ -327,12 +327,10 @@ shard_log(const char *msg, Shard *shard)
 
 - (id) init_id:(int)shard_id
 	   scn:(i64)scn_
-      recovery:(Recovery *)recovery_
 	   sop:(const struct shard_op *)sop
 {
 	[super init];
 	self->id = shard_id;
-	recovery = recovery_;
 	scn = scn_;
 	run_crc_log = sop->run_crc_log;
 
@@ -499,7 +497,7 @@ shard_add:(int)shard_id scn:(i64)scn sop:(const struct shard_op *)sop
 	}
 	if (sop->peer[0][0] == 0)
 		shard->dummy = true;
-	[shard init_id:shard_id scn:scn recovery:self sop:sop];
+	[shard init_id:shard_id scn:scn sop:sop];
 	update_rt(shard_id, SHARD_MODE_LOADING, shard, NULL);
 	return shard;
 }
@@ -704,14 +702,12 @@ load_from_remote
 }
 
 void
-wal_lock(va_list ap)
+wal_lock(va_list ap __attribute__((unused)))
 {
-	Recovery *r = va_arg(ap, Recovery *);
-
 	while ([wal_dir lock] != 0)
 		fiber_sleep(1);
 
-	[r enable_local_writes];
+	[recovery enable_local_writes];
 }
 
 static void
@@ -817,7 +813,6 @@ enable_local_writes
 static void
 run_crc_writer(va_list ap)
 {
-	Recovery *recovery = va_arg(ap, Recovery *);
 	ev_tstamp submit_tstamp = ev_now(),
 			  delay = va_arg(ap, ev_tstamp);
 	for (;;) {
@@ -852,7 +847,6 @@ run_crc_writer(va_list ap)
 static void
 nop_hb_writer(va_list ap)
 {
-	Recovery *recovery = va_arg(ap, Recovery *);
 	ev_tstamp delay = va_arg(ap, ev_tstamp);
 	char body[2] = {0};
 
@@ -887,10 +881,10 @@ configure_wal_writer:(i64)lsn
 					state:self];
 
 	if (!cfg.io_compat && cfg.run_crc_delay > 0)
-		fiber_create("run_crc", run_crc_writer, self, cfg.run_crc_delay);
+		fiber_create("run_crc", run_crc_writer, cfg.run_crc_delay);
 
 	if (!cfg.io_compat && cfg.nop_hb_delay > 0)
-		fiber_create("nop_hb", nop_hb_writer, self, cfg.nop_hb_delay);
+		fiber_create("nop_hb", nop_hb_writer, cfg.nop_hb_delay);
 }
 
 - (int)
@@ -907,7 +901,6 @@ write_initial_state
 void
 fork_and_snapshot(va_list ap __attribute__((unused)))
 {
-	extern Recovery *recovery;
 	[recovery fork_and_snapshot];
 }
 
@@ -977,7 +970,6 @@ iproto_shard_cb_aux(va_list ap)
 	memcpy(tmp, sop, sizeof(*sop));
 	sop = tmp;
 
-	extern Recovery *recovery;
 	switch (route->mode) {
 	case SHARD_MODE_LOCAL:
 		if (shard->dummy) {

@@ -96,6 +96,8 @@ const char *xlog_tag_to_a(u16 tag);
 @protocol Shard;
 @class Shard;
 
+extern Recovery *recovery;
+
 @protocol XLogPuller
 - (struct row_v12 *) fetch_row;
 - (u32) version;
@@ -508,12 +510,11 @@ enum feeder_filter_type {
 	int id;
 	id<Executor> executor;
 	i64 scn;
-	Recovery *recovery;
 	char peer[5][16];
 	bool dummy;
 }
 - (id) init_id:(int)shard_id scn:(i64)scn_
-      recovery:(Recovery *)recovery_ sop:(const struct shard_op *)sop;
+      sop:(const struct shard_op *)sop;
 
 - (int) id;
 - (i64) scn;
