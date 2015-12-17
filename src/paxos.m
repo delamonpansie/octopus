@@ -46,19 +46,6 @@
 @end
 
 
-#define PAXOS_CODE(_)					\
-	_(NACK,	0xfff0)					\
-	_(LEADER_PROPOSE, 0xfff1)			\
-	_(LEADER_ACK, 0xfff2)				\
-	_(LEADER_NACK, 0xfff3)				\
-	_(PREPARE, 0xfff4)				\
-	_(PROMISE, 0xfff5)				\
-	_(ACCEPT, 0xfff6)				\
-	_(ACCEPTED, 0xfff7)				\
-	_(DECIDE, 0xfff8)				\
-	_(STALE, 0xfffa)
-
-enum paxos_msg_code ENUM_INITIALIZER(PAXOS_CODE);
 const char *paxos_msg_code[] = ENUM_STR_INITIALIZER(PAXOS_CODE);
 const int proposal_history_size = 16 * 1024;
 const int quorum = 2; /* FIXME: hardcoded */

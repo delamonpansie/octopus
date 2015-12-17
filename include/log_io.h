@@ -555,7 +555,7 @@ enum feeder_filter_type {
 - (i64) lsn;
 - (id<XLogWriter>)writer;
 
-- (void) simple;
+- (void) simple:(struct iproto_service *)service;
 - (void) lock; /* lock wal_dir & snap_dir */
 
 - (void) configure_wal_writer:(i64)lsn;
@@ -566,9 +566,6 @@ enum feeder_filter_type {
 - (int) write_initial_state;
 - (int) fork_and_snapshot;
 void fork_and_snapshot(va_list ap);
-
-struct iproto_service;
-+ (void) service:(struct iproto_service *)s;
 @end
 
 @interface Recovery (Deprecated)

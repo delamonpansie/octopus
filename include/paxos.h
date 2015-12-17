@@ -31,6 +31,20 @@
 #include <third_party/tree.h>
 #import <log_io.h>
 
+#define PAXOS_CODE(_)					\
+	_(NACK,	0xfff0)					\
+	_(LEADER_PROPOSE, 0xfff1)			\
+	_(LEADER_ACK, 0xfff2)				\
+	_(LEADER_NACK, 0xfff3)				\
+	_(PREPARE, 0xfff4)				\
+	_(PROMISE, 0xfff5)				\
+	_(ACCEPT, 0xfff6)				\
+	_(ACCEPTED, 0xfff7)				\
+	_(DECIDE, 0xfff8)				\
+	_(STALE, 0xfffa)
+
+enum paxos_msg_code ENUM_INITIALIZER(PAXOS_CODE);
+
 struct paxos_peer;
 struct proposal;
 RB_HEAD(ptree, proposal);
@@ -53,9 +67,6 @@ RB_HEAD(ptree, proposal);
 
 	struct ptree proposals;
 }
-
-struct iproto_service;
-+ (void) service:(struct iproto_service *)s;
 
 @end
 
@@ -84,5 +95,5 @@ void proposal_mark_applied(Paxos *r, struct proposal *p);
 
 int paxos_submit(Paxos *paxos, const void *data, u32 len, u16 tag);
 
-
+void paxos_service(struct iproto_service *s);
 #endif

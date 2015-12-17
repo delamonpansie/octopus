@@ -49,7 +49,11 @@
 #include <unistd.h>
 #include <sysexits.h>
 
+static struct iproto_service *recovery_service;
 i64 fold_scn = 0;
+
+static void recovery_iproto_ignore(void);
+static void recovery_iproto(void);
 
 struct row_v12 *
 dummy_row(i64 lsn, i64 scn, u16 tag)
@@ -717,8 +721,11 @@ validate_cfg()
 }
 
 - (void)
-simple
+simple:(struct iproto_service *)service
 {
+	recovery_service = service;
+	recovery_iproto_ignore();
+
 	validate_cfg();
 	i64 local_lsn = [self load_from_local];
 
@@ -800,6 +807,8 @@ enable_local_writes
 		/* don't wait for snapshot. our goal to be replica as fast as possible */
 		fiber_create("snapshot", fork_and_snapshot);
 	}
+
+	recovery_iproto();
 
 	for (int i = 0; i < MAX_SHARD; i++)
 		[[self shard:i] adjust_route];
@@ -1090,14 +1099,30 @@ iproto_shard_luacb(struct iproto *req __attribute__((unused)))
 	return "error";
 }
 
-+ (void)
-service:(struct iproto_service *)s
+static void
+recovery_iproto(void)
 {
-	if (cfg.wal_writer_inbox_size == 0)
-		return;
-	fiber_create("route_recv", udp_server, s->addr, iproto_shard_udpcb, NULL, NULL);
-	service_register_iproto(s, MSG_SHARD, iproto_shard_cb, 0);
-	[[Paxos class] service:s];
+	fiber_create("route_recv", udp_server,
+		     recovery_service->addr, iproto_shard_udpcb, NULL, NULL);
+	service_register_iproto(recovery_service, MSG_SHARD, iproto_shard_cb, 0);
+	paxos_service(recovery_service);
+}
+
+static void
+iproto_ignore(struct netmsg_head *h __attribute__((unused)),
+	      struct iproto *r __attribute__((unused)),
+	      void *arg __attribute__((unused)))
+{
+}
+
+static void
+recovery_iproto_ignore()
+{
+	service_register_iproto(recovery_service, MSG_SHARD, iproto_ignore, IPROTO_NONBLOCK);
+	service_register_iproto(recovery_service, LEADER_PROPOSE, iproto_ignore, IPROTO_NONBLOCK);
+	service_register_iproto(recovery_service, PREPARE, iproto_ignore, IPROTO_NONBLOCK);
+	service_register_iproto(recovery_service, ACCEPT, iproto_ignore, IPROTO_NONBLOCK);
+	service_register_iproto(recovery_service, DECIDE, iproto_ignore, IPROTO_NONBLOCK);
 }
 
 @end
