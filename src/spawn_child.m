@@ -208,11 +208,12 @@ fork_spawner()
 
 		ssize_t len = recvmsg(fsock, &msg, 0);
 		if (len == 0 || len < 0 || len == sizeof(request) + sizeof(buf)) {
-			if (len < 0)
+			if (len < 0 && kill(0, master_pid) != -1)
 				say_syserror("recvmsg");
+
 			if (len == sizeof(request) + sizeof(buf))
 				say_error("spawner: request buffer overflow");
-			break;
+			_exit(0);
 		}
 
 		int sock = -1;
@@ -242,7 +243,6 @@ fork_spawner()
 			_exit(rc);
 		}
 	}
-	_exit(0);
 }
 
 static void
