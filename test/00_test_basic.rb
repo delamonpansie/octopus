@@ -49,6 +49,7 @@ env.connect_eval do
   puts `./octopus --cat 00000000000000000500.xlog | sed 's/tm:[^ ]* //'` + "\n"
   puts `./octopus --cat 00000000000000001002.xlog | sed 's/tm:[^ ]* //'` + "\n"
   puts `./octopus --cat 00000000000000001001.snap | sed 's/tm:[^ ]* //' | egrep 't:snap_(initial|final)_tag'`
+  puts `grep 'E>' octopus.log`
 end
 
 env.connect_eval do

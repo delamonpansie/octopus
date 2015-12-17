@@ -3147,6 +3147,7 @@ lsn:1002 scn:1002 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <1:"\x01\x00\x
 lsn:1003 scn:1003 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <2:"\x02\x00\x00\x00">
 
 
+
 # box.select(1, 2)
 [["\x01\x00\x00\x00"], ["\x02\x00\x00\x00"]]
 
