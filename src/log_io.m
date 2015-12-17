@@ -237,9 +237,18 @@ free
 {
 	ev_stat_stop(&stat);
 
-	if (fclose(fd) < 0)
-		say_syserror("can't close");
-	fd = NULL;
+	if (mode == LOG_READ && rows == 0 && access(filename, F_OK) == 0) {
+		bool legacy_snap = ![self isMemberOf:[XLog12 class]] &&
+				   [dir isMemberOf:[SnapDir class]];
+		if (!legacy_snap)
+			panic("no valid rows were read");
+	}
+
+	if (fd) {
+		if (mode == LOG_WRITE)
+			[self write_eof_marker];
+		[self close];
+	}
 
 	free(filename);
 	free(vbuf);
@@ -289,33 +298,39 @@ inprogress_rename
 - (int)
 close
 {
-	int result = 0;
+	if (fd == NULL)
+		return 0;
 
-	if (mode == LOG_WRITE) {
-		if (fwrite(&eof_marker, sizeof(eof_marker), 1, fd) != 1) {
-			result = -1;
-			say_error("can't write eof_marker");
-		}
-		/* partially written tail of WAL will be cause of LSN
-		   gap, which will prevent server from startup.
-		   NB: it's ok to lose tail from last WAL. */
-		if ([self flush] == -1)
-			result = -1;
-	} else {
-		if (rows == 0 && access(filename, F_OK) == 0) {
-			bool legacy_snap = ![self isMemberOf:[XLog12 class]] &&
-					   [dir isMemberOf:[SnapDir class]];
-			if (!legacy_snap)
-				panic("no valid rows were read");
-		}
-#if HAVE_SYNC_FILE_RANGE
-		if (sync_file_range(fileno(fd), 0, 0, SYNC_FILE_RANGE_WRITE) < 0)
-			say_syserror("sync_file_range");
+#if HAVE_POSIX_FADVISE
+	if ([dir isMemberOf:[SnapDir class]])
+		posix_fadvise(fileno(fd), 0, ftello(fd), POSIX_FADV_DONTNEED);
 #endif
+
+	if (fclose(fd) < 0) {
+		say_syserror("can't close");
+		return -1;
+	}
+	fd = NULL;
+	return 0;
+}
+
+- (int)
+write_eof_marker
+{
+	assert(mode == LOG_WRITE);
+	assert(fd != NULL);
+
+	if (fwrite(&eof_marker, sizeof(eof_marker), 1, fd) != 1) {
+		say_syserror("can't write eof_marker");
+		return -1;
 	}
 
-	[self free];
-	return result;
+	if ([self flush] == -1)
+		return -1;
+
+	if ([self close] == -1)
+		return -1;
+	return 0;
 }
 
 - (int)

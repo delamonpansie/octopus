@@ -152,7 +152,7 @@ recover_snap
 	}
 	@finally {
 		palloc_cutoff(fiber->pool);
-		[snap close];
+		[snap free];
 		snap = nil;
 		snap_lsn = 0;
 	}
@@ -169,7 +169,7 @@ close_current_wal
 	if (![current_wal eof])
 		say_warn("WAL `%s' wasn't correctly closed", current_wal->filename);
 	say_info("close `%s' LSN:%"PRIi64, current_wal->filename, lsn);
-	[current_wal close];
+	[current_wal free];
 	current_wal = nil;
 }
 

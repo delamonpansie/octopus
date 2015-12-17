@@ -225,6 +225,7 @@ typedef struct marker_desc {
 - (i64) confirm_write;
 - (void) append_successful:(size_t)bytes;
 - (int) fileno;
+- (int) write_eof_marker;
 @end
 
 struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);

@@ -146,7 +146,7 @@ confirm_write
 			}
 
 			say_info("created `%s'", current_wal->filename);
-			[wal_to_close close];
+			[wal_to_close free];
 			wal_to_close = nil;
 		}
 
@@ -465,7 +465,7 @@ wal_disk_writer(int fd, void *state, int len)
 		fiber_gc();
 	}
 exit:
-	[writer->current_wal close];
+	[writer->current_wal free];
 	writer->current_wal = nil;
 	return result;
 }
@@ -775,17 +775,17 @@ snapshot_write
 		return -1;
 	}
 
+	if ([snap write_eof_marker] == -1) {
+		say_syserror("snap close failed");
+		return -1;
+	}
+
 	if ([snap inprogress_rename] == -1) {
 		say_syserror("snap inprogress rename failed");
 		return -1;
 	}
 
-	if ([snap close] == -1) {
-		say_syserror("snap close failed");
-		return -1;
-	}
-	snap = nil;
-
+	[snap free];
 	say_info("done");
 	return 0;
 }
