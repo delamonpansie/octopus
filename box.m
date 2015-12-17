@@ -538,7 +538,6 @@ initialize_service()
 static void
 init_second_stage(va_list ap)
 {
-	Recovery *recovery = va_arg(ap, Recovery *);
 	luaT_openbox(root_L);
 	luaT_require_or_panic("box_init", false, NULL);
 
@@ -551,7 +550,6 @@ init(void)
 {
 	title("loading");
 
-	extern Recovery *recovery;
 	recovery = [[Recovery alloc] init];
 	recovery->default_exec_class = [Box class];
 
@@ -562,7 +560,7 @@ init(void)
 	[Recovery service:&box_primary];
 
 	/* fiber is required to successfully pull from remote */
-	fiber_create("box_init", init_second_stage, recovery);
+	fiber_create("box_init", init_second_stage);
 }
 
 static void
@@ -644,7 +642,6 @@ reload_config(struct octopus_cfg *old _unused_,
 {
 	struct feeder_param feeder;
 	feeder_param_fill_from_cfg(&feeder, new);
-	extern Recovery *recovery;
 	Shard<Shard> *shard = [recovery shard:0];
 	if (shard == nil || !shard->dummy) {
 		say_error("ignoring lagacy configuration request");
