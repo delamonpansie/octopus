@@ -898,7 +898,7 @@ init_storage:
 		salloc_init(0, 0, 0);
 		fiber_init(NULL);
 		luaT_init();
-#ifdef CFG_wal_feeder_addr
+#if CFG_wal_feeder_addr
 		if (cfg.wal_feeder_addr) {
 			say_warn("--init-storage is no op in replica");
 			exit(EX_USAGE);

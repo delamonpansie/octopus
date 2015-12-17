@@ -278,6 +278,11 @@ inprogress_rename
 	}
 
 	free(final_filename);
+	if (result >= 0) {
+		result = [dir sync];
+		if (result < 0)
+			say_syserror("can't fsync dir");
+	}
 	return result;
 }
 
@@ -1121,9 +1126,15 @@ init_dirname:(const char *)dirname_
         dirname = dirname_;
 	fd = open(dirname, O_RDONLY);
 	if (fd < 0)
-		say_syserror("can't open wal_dir");
+		panic("can't open dir: %s: %s", dirname, strerror_o(errno));
 	xlog_class = cfg.io_compat ? [XLog11 class] : [XLog12 class];
         return self;
+}
+
+- (int)
+sync
+{
+	return fsync(fd);
 }
 
 - (id)

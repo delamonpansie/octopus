@@ -36,6 +36,11 @@
 #import <palloc.h>
 #import <net_io.h>
 #import <octopus.h>
+#import <cfg/defs.h>
+
+#if CFG_snap_dir
+#import <log_io.h>
+#endif
 
 struct fork_request {
 	char name[64];
@@ -164,7 +169,14 @@ fork_spawner()
 		return pid;
 	}
 
-#if OCT_CHILDREN
+#if CFG_snap_dir
+#if !OCT_CHILDREN
+#error CFG_snap_dir implies OCT_CHILDREN
+#endif
+	extern int keepalive_pipe[2];
+	close_all_xcpt(6, fsock, stderrfd, sayfd, keepalive_pipe[1],
+		       snap_dir->fd, wal_dir->fd);
+#elif OCT_CHILDREN
 	extern int keepalive_pipe[2];
 	close_all_xcpt(4, fsock, stderrfd, sayfd, keepalive_pipe[1]);
 #else

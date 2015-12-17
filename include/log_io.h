@@ -112,9 +112,9 @@ const char *xlog_tag_to_a(u16 tag);
 typedef void (follow_cb)(ev_stat *w, int events);
 
 @interface XLogDir: Object {
-	int fd;
 	Class xlog_class;
 @public
+	int fd;
 	const char *filetype;
 	const char *suffix;
 	const char *dirname;
@@ -127,6 +127,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 - (i64) containg_scn:(i64)target_scn;
 - (int) lock;
 - (int) stat:(struct stat *)buf;
+- (int) sync;
 @end
 
 @interface SnapDir: XLogDir

@@ -937,7 +937,7 @@ fork_and_snapshot
 		title("(%" PRIu32 ")", getppid());
 		fiber_destroy_all();
 		palloc_unmap_unused();
-		close_all_xcpt(2, stderrfd, sayfd);
+		close_all_xcpt(3, stderrfd, sayfd, snap_dir->fd);
 
 		int fd = open("/proc/self/oom_score_adj", O_WRONLY);
 		if (fd) {
