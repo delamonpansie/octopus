@@ -346,29 +346,30 @@ admin_dispatch(int fd, struct tbuf *rbuf)
 		}
 
 		eol = "\n" | "\r\n";
-		show = "sh"("o"("w")?)?;
-		info = "in"("f"("o")?)?;
 		check = "ch"("e"("c"("k")?)?)?;
 		configuration = "co"("n"("f"("i"("g"("u"("r"("a"("t"("i"("o"("n")?)?)?)?)?)?)?)?)?)?)?;
-		fiber = "fi"("b"("e"("r")?)?)?;
-		slab = "sl"("a"("b")?)?;
-		mod = "mo"("d")?;
-		lua = "lu"("a")?;
-		palloc = "pa"("l"("l"("o"("c")?)?)?)?;
-		stat = "st"("a"("t")?)?;
-		help = "h"("e"("l"("p")?)?)?;
-		exit = "e"("x"("i"("t")?)?)? | "q"("u"("i"("t")?)?)?;
-		save = "sa"("v"("e")?)?;
-		enable = "en"("a"("b"("l"("e")?)?)?)?;
 		coredump = "co"("r"("e"("d"("u"("m"("p")?)?)?)?)?)?;
-		snapshot = "sn"("a"("p"("s"("h"("o"("t")?)?)?)?)?)?;
-		exec = "ex"("e"("c")?)?;
-		string = [^\r\n]+ >{strstart = p;}  %{strend = p;};
-		reload = "re"("l"("o"("a"("d")?)?)?)?;
-		incr = "inc"("r")?;
 		decr = "dec"("r")?;
+		enable = "en"("a"("b"("l"("e")?)?)?)?;
+		exec = "ex"("e"("c")?)?;
+		exit = "e"("x"("i"("t")?)?)? | "q"("u"("i"("t")?)?)?;
+		fiber = "fi"("b"("e"("r")?)?)?;
+		help = "h"("e"("l"("p")?)?)?;
+		incr = "inc"("r")?;
+		info = "in"("f"("o")?)?;
 		log = "log"("_"("l"("e"("v"("e"("l")?)?)?)?)?)?;
+		lua = "lu"("a")?;
+		mod = "mo"("d")?;
+		palloc = "pa"("l"("l"("o"("c")?)?)?)?;
+		reload = "re"("l"("o"("a"("d")?)?)?)?;
+		save = "sa"("v"("e")?)?;
+		show = "sh"("o"("w")?)?;
+		slab = "sl"("a"("b")?)?;
+		snapshot = "sn"("a"("p"("s"("h"("o"("t")?)?)?)?)?)?;
+		stat = "st"("a"("t")?)?;
+		string = [^\r\n]+ >{strstart = p;}  %{strend = p;};
                 net = "n"("e"("t")?)? %{ info_net = 1;};
+
 		info_string = string %{ info_string = 1;};
 		info_option = (" "+ (net | info_string))?;
 
