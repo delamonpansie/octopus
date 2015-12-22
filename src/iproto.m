@@ -124,28 +124,6 @@ iproto_ping(struct netmsg_head *h, struct iproto *r, void *arg __attribute__((un
 	net_add_iov_dup(h, r, sizeof(struct iproto));
 }
 
-void
-service_register_iproto(struct iproto_service *s, u32 cmd, iproto_cb cb, int flags)
-{
-	service_set_handler(s, (struct iproto_handler){
-			.code = cmd,
-			.cb = cb,
-			.flags = flags
-		});
-}
-
-static inline void
-service_alloc_handlers(struct iproto_service *s, int capa)
-{
-	int i;
-	s->ih_size = 0;
-	s->ih = xcalloc(capa, sizeof(struct iproto_handler));
-	s->ih_mask = capa - 1;
-	for(i = 0; i < capa; i++) {
-		s->ih[i].code = -1;
-	}
-}
-
 @implementation iproto_ingress
 - (void)
 init:(int)fd_ pool:(struct palloc_pool *)pool_
@@ -234,6 +212,18 @@ iproto_accept_client(int fd, void *data)
 	[[service->ingress_class alloc] init:fd service:service];
 }
 
+static inline void
+service_alloc_handlers(struct iproto_service *s, int capa)
+{
+	int i;
+	s->ih_size = 0;
+	s->ih = xcalloc(capa, sizeof(struct iproto_handler));
+	s->ih_mask = capa - 1;
+	for(i = 0; i < capa; i++) {
+		s->ih[i].code = -1;
+	}
+}
+
 static void iproto_wakeup_workers(ev_prepare *ev);
 void
 iproto_service(struct iproto_service *service, const char *addr)
@@ -292,6 +282,16 @@ service_set_handler(struct iproto_service *s, struct iproto_handler h)
 	if (s->ih[pos].code != h.code)
 		s->ih_size++;
 	s->ih[pos] = h;
+}
+
+void
+service_register_iproto(struct iproto_service *s, u32 cmd, iproto_cb cb, int flags)
+{
+	service_set_handler(s, (struct iproto_handler){
+			.code = cmd,
+			.cb = cb,
+			.flags = flags
+		});
 }
 
 static int
