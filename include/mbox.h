@@ -115,6 +115,7 @@ struct name {								\
 	while ((mbox)->msg_count < count) {				\
 		msg = yield();						\
 		if (msg == (void *)&w) { /* timeout */			\
+			fiber_cancel_wake(fiber);			\
 			msg = NULL;					\
 			break;						\
 		}							\
