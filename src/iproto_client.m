@@ -79,10 +79,10 @@ mbox_future(struct iproto_egress *dst, struct iproto_mbox *mbox, u32 sync)
 }
 
 static void
-proxy_future(struct iproto_egress *dst, struct iproto_ingress *src, const struct iproto *msg, u32 proxy_sync)
+proxy_future(struct iproto_egress *dst, struct iproto_ingress *src, const struct iproto *msg, u32 sync)
 {
 	struct iproto_future *future = slab_cache_alloc(&future_cache);
-	mh_i32_put(sync2future, proxy_sync, future, NULL);
+	mh_i32_put(sync2future, sync, future, NULL);
 	TAILQ_INSERT_HEAD(&dst->future, future, link);
 	future->dst = dst;
 	future->sync = proxy_sync;
@@ -107,6 +107,39 @@ iproto_mbox_release(struct iproto_mbox *mbox)
 
 	mbox->sent = 0;
 	mbox_init(mbox);
+}
+
+static int
+msg_send_wrap(struct iproto_egress *peer,
+	 u32 wrap_code,
+	 const struct iproto *orig_msg,
+	 const struct iovec *iov, int iovcnt)
+{
+	struct netmsg_head *h = &peer->wbuf;
+	int msglen = sizeof(*orig_msg) + orig_msg->data_len;
+	struct iproto *wrap = palloc(h->pool, msglen + sizeof(*wrap));
+	struct iproto *msg = wrap + 1;
+
+	memcpy(msg, orig_msg, msglen);
+	msg->sync = iproto_next_sync();
+	for (int i = 0; i < iovcnt; i++)
+		msg->data_len += iov[i].iov_len;
+
+	wrap->msg_code = wrap_code;
+	wrap->shard_id = msg->shard_id; // not used at reciever
+	wrap->sync = msg->sync;
+	wrap->data_len = msg->data_len + sizeof(*msg);
+	net_add_iov(h, msg - 1, msglen + sizeof(*msg));
+
+	for (int i = 0; i < iovcnt; i++)
+		net_add_iov_dup(h, iov[i].iov_base, iov[i].iov_len);
+	if (peer->fd >= 0)
+		ev_io_start(&peer->out);
+
+	say_debug3("|    peer:%s\tPROXY op:0x%x sync:%u len:%zu data_len:%i", net_peer_name(peer->fd),
+		   msg->msg_code, msg->sync, sizeof(*msg) + msg->data_len,
+		   msg->data_len);
+	return msg->sync;
 }
 
 static int
@@ -217,13 +250,18 @@ iproto_sync_send(struct iproto_egress *peer,
 	return future;
 }
 
-void
-iproto_proxy_send(struct iproto_egress *to, struct iproto_ingress *from,
+u32
+iproto_proxy_send(struct iproto_egress *to, struct iproto_ingress *from, u32 wrap_code,
 		  const struct iproto *msg, const struct iovec *iov, int iovcnt)
 {
-	u32 sync = msg_send(to, msg, iov, iovcnt);
+	say_debug2("%s: op:0x%x %s", __func__, msg->msg_code, wrap_code ? "WRAP" : "");
+
+	u32 sync = wrap_code ?
+		   msg_send_wrap(to, wrap_code, msg, iov, iovcnt) :
+		   msg_send(to, msg, iov, iovcnt);
 	if (sync)
 		proxy_future(to, from, msg, sync);
+	return sync;
 }
 
 void

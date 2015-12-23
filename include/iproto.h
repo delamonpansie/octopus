@@ -41,6 +41,7 @@
 #define MSG_PING  0xff00
 #define MSG_REPLICA  0xff01
 #define MSG_SHARD  0xff02
+#define MSG_IPROXY  0xff03
 
 
 static inline struct iproto *iproto(const struct tbuf *t)
@@ -207,8 +208,8 @@ void iproto_mbox_wait_all(struct iproto_mbox *mbox, ev_tstamp timeout);
 struct iproto *iproto_sync_send(struct iproto_egress *peer,
 				const struct iproto *msg, const struct iovec *iov, int iovcnt);
 
-void iproto_proxy_send(struct iproto_egress *to, struct iproto_ingress *from,
-		       const struct iproto *msg, const struct iovec *iov, int iovcnt);
+u32 iproto_proxy_send(struct iproto_egress *to, struct iproto_ingress *from,
+		      u32 wrap_code, const struct iproto *msg, const struct iovec *iov, int iovcnt);
 
 struct iproto_egress *iproto_remote_add_peer(struct iproto_egress *peer, const struct sockaddr_in *daddr, struct palloc_pool *pool);
 void iproto_remote_stop_reconnect(struct iproto_egress *peer);
