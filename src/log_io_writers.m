@@ -675,12 +675,13 @@ snapshot_write
 	scn = xcalloc(MAX_SHARD, sizeof(*scn));
 	for (int i = 0; i < MAX_SHARD; i++) {
 		Shard<Shard> *shard = [state shard:i];
-		if (i == 0 && shard && shard->dummy)
+		if (shard == nil)
+			continue;
+		if (i == 0 && shard->dummy)
 			legacy_mode = 1;
-		if (shard) {
-			scn[i] = [shard scn];
-			total_rows += [[shard executor] snapshot_estimate];
-		}
+
+		scn[i] = [shard scn];
+		total_rows += [[shard executor] snapshot_estimate];
 	}
 
 	snap = [snap_dir open_for_write:[state lsn] scn:scn];
