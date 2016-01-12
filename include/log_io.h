@@ -549,7 +549,7 @@ enum feeder_filter_type {
 @public
 	id<XLogWriter> writer;
 	struct rwlock snapshot_lock;
-	struct mbox_void_ptr run_crc_mbox;
+	struct mbox_void_ptr run_crc_mbox, rt_notify_mbox;
 	Class default_exec_class;
 }
 - (i64) lsn;

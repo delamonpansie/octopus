@@ -55,6 +55,8 @@ i64 fold_scn = 0;
 static void recovery_iproto_ignore(void);
 static void recovery_iproto(void);
 
+static void shard_log(const char *msg, int shard_id);
+
 struct row_v12 *
 dummy_row(i64 lsn, i64 scn, u16 tag)
 {
@@ -122,6 +124,7 @@ shard_feeder(const char *name, struct feeder_param *feeder)
 void
 update_rt(int shard_id, Shard<Shard> *shard, const char *master_name)
 {
+	static struct msg_void_ptr msg;
 	// FIXME: do a broadcast after change local destinations
 	struct shard_route *route = &shard_rt[shard_id];
 	static struct palloc_pool *proxy_pool;
@@ -135,6 +138,9 @@ update_rt(int shard_id, Shard<Shard> *shard, const char *master_name)
 			say_error("Unknown peer %s, ignoring shard %i route update", master_name, shard_id);
 			return;
 		}
+		memcpy(route->master_name, master_name, 16);
+	} else {
+		route->master_name[0] = 0;
 	}
 
 	route->shard = shard;
@@ -149,6 +155,13 @@ update_rt(int shard_id, Shard<Shard> *shard, const char *master_name)
 		route->proxy = iproto_remote_add_peer(NULL, addr, proxy_pool); // will check for existing connect
 		route->proxy->ts.name = "proxy_to_primary";
 	}
+exit:
+	if (shard != nil && cfg.hostname &&
+	    strcmp(shard->peer[0], cfg.hostname) == 0) {
+		shard_log("route update, force notify", shard_id);
+		if (msg.link.tqe_prev == NULL)
+			mbox_put(&recovery->rt_notify_mbox, &msg, link);
+	}
 }
 
 void
@@ -160,25 +173,28 @@ update_rt_notify(va_list ap __attribute__((unused)))
 		return;
 	}
 
-	int cnt = 0;
-	static struct sockaddr_in peer_addr[16];
+	int peer_count = 0;
+	for (struct octopus_cfg_peer **p = cfg.peer; *p; p++)
+		if (strcmp((*p)->name, cfg.hostname) != 0)
+			peer_count++;
+
+	struct sockaddr_in *buf = calloc(peer_count + 1, sizeof(*buf));
+	struct sockaddr_in *peer_addr = buf;
 	for (struct octopus_cfg_peer **p = cfg.peer; *p; p++) {
 		if (strcmp((*p)->name, cfg.hostname) == 0)
 			continue;
-		if (cnt == nelem(peer_addr)) {
-			say_error("to many peers");
-			break;
-		}
 		const struct sockaddr_in *addr = shard_addr((*p)->name, PORT_PRIMARY);
 		if (!addr || addr->sin_family == AF_UNSPEC) {
 			say_error("bad peer addr %s", (*p)->name);
 			continue;
 		}
-		peer_addr[cnt++] = *addr;
+		*peer_addr++ = *addr;
 	}
+	peer_addr->sin_family = AF_UNSPEC;
 
 	for (;;) {
-		fiber_sleep(1);
+		mbox_timedwait(&recovery->rt_notify_mbox, 1, 1);
+		mbox_clear(&recovery->rt_notify_mbox);
 
 		for (int i = 0; i < nelem(shard_rt); i++) {
 			if (shard_rt[i].shard == nil)
@@ -192,7 +208,9 @@ update_rt_notify(va_list ap __attribute__((unused)))
 			sop->op |= 0x80; /* mark as rt update */
 			struct iproto header = { .msg_code = MSG_SHARD,
 						 .shard_id = [shard id],
-						 .data_len = 16 + sizeof(scn) + sizeof(*sop)};
+						 .data_len = sizeof(hostname) +
+							     sizeof(scn) +
+							     sizeof(*sop)};
 			struct iovec iov[] = { { &header, sizeof(header) },
 					       { hostname, 16 },
 					       { &scn, sizeof(scn) },
@@ -202,8 +220,9 @@ update_rt_notify(va_list ap __attribute__((unused)))
 				.msg_iov = iov,
 				.msg_iovlen = nelem(iov)
 			};
-			for (int j = 0; j < cnt; j++) {
-				msg.msg_name = &peer_addr[j];
+
+			for (peer_addr = buf; peer_addr->sin_family != AF_UNSPEC; peer_addr++) {
+				msg.msg_name = peer_addr;
 				if (sendmsg(sock, &msg, 0) < 0)
 					say_syserror("sendmsg");
 			}
@@ -270,23 +289,18 @@ validate_sop(void *data, int len)
 - (const char *) run_crc_status { return run_crc_status(&run_crc_state); }
 - (u32) run_crc_log { return run_crc_log; }
 
+
 static void
-shard_log(const char *msg, Shard *shard)
+shard_info(Shard *shard, struct tbuf *buf)
 {
-	int old_ushard = fiber->ushard;
-	fiber->ushard = shard->id;
-
-	struct shard_route *route = &shard_rt[shard->id];
-	struct tbuf *buf = tbuf_alloc(fiber->pool);
-
 	tbuf_printf(buf, "SCN:%"PRIi64" %s %s ", [shard scn],
 		    [[shard class] name], [[(id)[shard executor] class] name]);
 
 	tbuf_printf(buf, "peer:{%s", shard->peer[0]);
-	for (int i = 1; i < 5; i++)
-		if (shard->peer[i][0])
-			tbuf_printf(buf, ", %s", shard->peer[i]);
+	for (int i = 1; i < nelem(shard->peer) && shard->peer[i][0]; i++)
+		tbuf_printf(buf, ", %s", shard->peer[i]);
 	tbuf_printf(buf, "} ");
+}
 
 static void
 route_info(const struct shard_route *route, struct tbuf *buf)
@@ -359,7 +373,7 @@ shard_log(const char *msg, int shard_id)
 
 	executor = [[objc_lookUpClass(sop->mod_name) alloc] init_shard:self];
 
-	shard_log("init", self);
+	shard_log("init", self->id);
 	return self;
 }
 
@@ -439,7 +453,7 @@ status_update:(const char *)fmt, ...
 	if (strcmp(buf, status_buf) == 0)
 		return;
 
-	shard_log(buf, self);
+	shard_log(buf, self->id);
 
 	strncpy(status_buf, buf, sizeof(status_buf));
 	title(NULL);
@@ -465,6 +479,8 @@ init
 {
 	[super init];
 	mbox_init(&run_crc_mbox);
+	mbox_init(&rt_notify_mbox);
+
 	reader = [[XLogReader alloc] init_recovery:self];
 	snap_writer = [[SnapWriter alloc] init_state:self];
 
@@ -825,9 +841,6 @@ enable_local_writes
 
 	for (int i = 0; i < MAX_SHARD; i++)
 		[[self shard:i] adjust_route];
-
-	if (cfg.peer && *cfg.peer && cfg.hostname)
-		fiber_create("udpate_rt_notify", update_rt_notify);
 }
 
 static void
@@ -978,60 +991,27 @@ status
 	return cfg.hostname;
 }
 
-static void
-iproto_shard_cb_aux(va_list ap)
-{
-	int shard_id = va_arg(ap, int);
-	struct shard_route *route = va_arg(ap, struct shard_route *);
-	struct shard_op *sop = va_arg(ap, struct shard_op *);
-	Shard<Shard> *shard = route->shard;
-
-	void *tmp = palloc(fiber->pool, sizeof(*sop));
-	memcpy(tmp, sop, sizeof(*sop));
-	sop = tmp;
-
-	switch (route->mode) {
-	case SHARD_MODE_LOCAL:
-		if (shard->dummy) {
-			assert(shard_id == 0);
-			assert(strcmp(cfg.hostname, sop->peer[0]) == 0);
-		}
-		[recovery shard_alter:shard sop:sop];
-		if (shard->dummy)
-			shard->dummy = false;
-		break;
-	case SHARD_MODE_NONE:
-		[recovery shard_create:shard_id sop:sop];
-		break;
-	case SHARD_MODE_PROXY:
-	case SHARD_MODE_PARTIAL_PROXY:
-	case SHARD_MODE_LOADING:
-		abort();
-	}
-}
 
 static void
 iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req, void *arg __attribute__((unused)))
 {
 	int shard_id = req->shard_id;
-	struct shard_route *route = &shard_rt[shard_id];
-	Shard<Shard> *shard = route->shard;
 	struct shard_op *sop = validate_sop(req->data, req->data_len);
 
-	if (!sop || (sop->op & 0x80)) {
+	if (!sop || (sop->op & 0x80) || req->shard_id > nelem(shard_rt)) {
 		iproto_error(wbuf, req, ERR_CODE_ILLEGAL_PARAMS, "bad request");
 		return;
 	}
-	if (route->mode == SHARD_MODE_PROXY || route->mode == SHARD_MODE_PARTIAL_PROXY) {
-		if (sop->op & 0x40) {
-			iproto_error(wbuf, req, ERR_CODE_ILLEGAL_PARAMS, "route loop");
-		} else {
-			sop->op |= 0x40;
-			struct iproto_ingress *ingress = container_of(wbuf, struct iproto_ingress, wbuf);
-			iproto_proxy_send(route->proxy, ingress, req, NULL, 0);
-		}
+
+	struct shard_route *route = shard_rt + shard_id;
+	Shard<Shard> *shard = route->shard;
+
+	if (route->proxy) {
+		struct iproto_ingress *ingress = container_of(wbuf, struct iproto_ingress, wbuf);
+		iproto_proxy_send(route->proxy, ingress, MSG_IPROXY, req, NULL, 0);
 		return;
 	}
+
 	bool new_master = strncmp(sop->peer[0], cfg.hostname, 16) == 0,
 	     old_master = shard && strncmp(shard->peer[0], cfg.hostname, 16) == 0;
 
@@ -1056,13 +1036,27 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req, void *arg __attrib
 		[recovery shard_create:shard_id sop:sop];
 
 	}
-	sop->op &= ~0x40;
 
-	say_warn("route %p, mode %i", route, route->mode);
-	fiber_create("load/alter shard", iproto_shard_cb_aux, shard_id, route, sop);
-	while (route->mode == SHARD_MODE_NONE || route->mode == SHARD_MODE_LOADING)
-		fiber_sleep(0.1);
 	iproto_reply_small(wbuf, req, ERR_CODE_OK);
+}
+
+static void
+iproto_shard_load_aux(va_list ap)
+{
+	int shard_id = va_arg(ap, int);
+	struct shard_op *sop = va_arg(ap, struct shard_op *);
+
+	void *tmp = palloc(fiber->pool, sizeof(*sop));
+	memcpy(tmp, sop, sizeof(*sop));
+
+	@try {
+		[recovery shard_create:shard_id sop:tmp];
+	}
+	@catch (Error *e) {
+		say_error("Failed to load shard, [%s reason:\"%s\"] at %s:%d",
+			 [[e class] name], e->reason, e->file, e->line);
+		[e release];
+	}
 }
 
 static void
@@ -1119,9 +1113,12 @@ iproto_shard_luacb(struct iproto *req __attribute__((unused)))
 static void
 recovery_iproto(void)
 {
-	fiber_create("route_recv", udp_server,
-		     recovery_service->addr, iproto_shard_udpcb, NULL, NULL);
-	service_register_iproto(recovery_service, MSG_SHARD, iproto_shard_cb, 0);
+	if (cfg.peer && *cfg.peer && cfg.hostname) {
+		fiber_create("route_recv", udp_server,
+			     recovery_service->addr, iproto_shard_udpcb, NULL, NULL);
+		fiber_create("udpate_rt_notify", update_rt_notify);
+	}
+	service_register_iproto(recovery_service, MSG_SHARD, iproto_shard_cb, IPROTO_LOCAL);
 	paxos_service(recovery_service);
 }
 
