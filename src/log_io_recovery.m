@@ -247,8 +247,13 @@ validate_sop(void *data, int len)
 		return NULL;
 	}
 
+	if (objc_lookUpClass(sop->mod_name) == Nil) {
+		say_error("bad mod name '%s'", sop->mod_name);
+		return NULL;
+	}
+
 	if (strlen(sop->peer[0]) == 0) {
-		say_syserror("sop: empty master");
+		say_error("sop: empty master");
 		return NULL;
 	}
 
@@ -369,7 +374,7 @@ shard_log(const char *msg, int shard_id)
 	}
 
 	if (objc_lookUpClass(sop->mod_name) == Nil)
-		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "bad mod name");
+		iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "bad mod name '%s'", sop->mod_name);
 
 	executor = [[objc_lookUpClass(sop->mod_name) alloc] init_shard:self];
 
@@ -593,6 +598,10 @@ shard_load:(int)shard_id sop:(struct shard_op *)sop
 - (void)
 shard_alter:(Shard<Shard> *)shard sop:(struct shard_op *)sop
 {
+	if ((sop->type == SHARD_TYPE_PAXOS && [shard class] != [Paxos class]) ||
+	    (sop->type == SHARD_TYPE_POR   && [shard class] != [POR class]))
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't change shard type");
+
 	struct shard_op *new_sop = [shard snapshot_header];
 	for (int i = 0; i < nelem(sop->peer); i++)
 		strncpy(new_sop->peer[i], sop->peer[i], 16);
