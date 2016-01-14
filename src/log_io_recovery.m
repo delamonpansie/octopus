@@ -298,13 +298,11 @@ validate_sop(void *data, int len)
 static void
 shard_info(Shard *shard, struct tbuf *buf)
 {
-	tbuf_printf(buf, "SCN:%"PRIi64" %s %s ", [shard scn],
-		    [[shard class] name], [[(id)[shard executor] class] name]);
-
-	tbuf_printf(buf, "peer:{%s", shard->peer[0]);
+	tbuf_printf(buf, "SCN: %"PRIi64", type: %s, ", [shard scn], [[shard class] name]);
+	tbuf_printf(buf, "peer: [%s", shard->peer[0]);
 	for (int i = 1; i < nelem(shard->peer) && shard->peer[i][0]; i++)
 		tbuf_printf(buf, ", %s", shard->peer[i]);
-	tbuf_printf(buf, "} ");
+	tbuf_printf(buf, "]");
 }
 
 static void
@@ -1148,6 +1146,18 @@ recovery_iproto_ignore()
 	service_register_iproto(recovery_service, DECIDE, iproto_ignore, IPROTO_NONBLOCK);
 }
 
+- (void)
+shard_info:(struct tbuf *)buf
+{
+	for (int i = 0; i < nelem(shard_rt); i++) {
+		const struct shard_route *rt = shard_rt + i;
+		if (rt->shard || rt->proxy) {
+			tbuf_printf(buf, "%i: {", i);
+			route_info(rt, buf);
+			tbuf_printf(buf, "}\r\n");
+		}
+	}
+}
 @end
 
 

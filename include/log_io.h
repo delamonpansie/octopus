@@ -510,6 +510,7 @@ enum feeder_filter_type {
 - (i64) load_from_local; /* load from local snap+wal */
 - (void) enable_local_writes;
 
+- (void) shard_info:(struct tbuf *)buf;
 - (int) write_initial_state;
 - (int) fork_and_snapshot;
 void fork_and_snapshot(va_list ap);

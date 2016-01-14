@@ -53,6 +53,7 @@ static const char help[] =
 	" - show slab" CRLF
 	" - show palloc" CRLF
 	" - show stat" CRLF
+	" - show shard" CRLF
 	" - save coredump" CRLF
 	" - enable coredump" CRLF
 	" - save snapshot" CRLF
@@ -266,6 +267,12 @@ admin_dispatch(int fd, struct tbuf *rbuf)
 			end(out);
 		}
 
+		action show_shard {
+			start(out);
+			[recovery shard_info:out];
+			end(out);
+		}
+
 		action lua_exec {
 			start(out);
 			exec_lua(fiber->L, strstart, strend - strstart, out);
@@ -363,6 +370,7 @@ admin_dispatch(int fd, struct tbuf *rbuf)
 		palloc = "pa"("l"("l"("o"("c")?)?)?)?;
 		reload = "re"("l"("o"("a"("d")?)?)?)?;
 		save = "sa"("v"("e")?)?;
+		shard = "sh"("a"("r"("d")?)?)?;
 		show = "sh"("o"("w")?)?;
 		slab = "sl"("a"("b")?)?;
 		snapshot = "sn"("a"("p"("s"("h"("o"("t")?)?)?)?)?)?;
@@ -381,6 +389,7 @@ admin_dispatch(int fd, struct tbuf *rbuf)
 			    show " "+ slab		%{start(out); slab_stat(out); end(out);}	|
 			    show " "+ palloc		%{start(out); palloc_stat_info(out); end(out);}	|
 			    show " "+ stat		%show_stat					|
+			    show " "+ shard		%show_shard					|
 			    enable " "+ coredump        %{maximize_core_rlimit(); ok(out);}		|
 			    save " "+ coredump		%save_core					|
 			    save " "+ snapshot		%save_snapshot					|
