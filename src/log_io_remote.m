@@ -334,7 +334,8 @@ again:
 		}
 		@catch (Error *e) {
 			[remote_puller close];
-			[self status:"fail" reason:e->reason];
+			if ([self feeder_addr_configured])
+				[self status:"fail" reason:e->reason];
 			[e release];
 		}
 	sleep:
