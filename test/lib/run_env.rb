@@ -173,9 +173,22 @@ EOD
     end
   end
 
+  def rotate_logs
+    i = 0
+    while true do
+      if readable? "#{LogFile}.#{i}" then
+        i += 1
+        next
+      end
+      mv LogFile, "#{LogFile}.#{i}" if readable? LogFile
+      break
+    end
+  end
+
   def start
     cd do
       invoke :start
+      rotate_logs
 
       pid = octopus []
 
@@ -236,19 +249,7 @@ EOD
     Process.kill('USR1', @pid)
   end
 
-  task :rotate_logs do
-    i = 0
-    while true do
-      if readable? "#{LogFile}.#{i}" then
-        i += 1
-        next
-      end
-      mv LogFile, "#{LogFile}.#{i}" if readable? LogFile
-      break
-    end
-  end
-
-  task :start => [:setup, :rotate_logs]
+  task :start => [:setup]
   task :stop
 
   def connect(*args)
