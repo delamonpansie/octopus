@@ -621,8 +621,12 @@ confirm_write
 		for (int i = 0; i < wet_rows; i++) {
 			if (wet_rows_offset[i] > tail) {
 				say_error("failed to sync %lli rows", (long long)(wet_rows - i));
-				if (confirmed_offset)
-					fseeko(fd, confirmed_offset, SEEK_SET);
+				if (confirmed_offset) {
+					if (fseeko(fd, confirmed_offset, SEEK_SET) == -1)
+						say_syserror("fseeko");
+					if (ftruncate(fileno(fd), confirmed_offset) == -1)
+						say_syserror("ftruncate");
+				}
 				break;
 			}
 			confirmed_offset = wet_rows_offset[i];
