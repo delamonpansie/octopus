@@ -88,8 +88,26 @@ struct Fiber *fiber_create(const char *name, void (*f)(va_list va), ...);
 void fiber_destroy_all();
 int wait_for_child(pid_t pid);
 
+#ifdef FIBER_DEBUG
+void fiber_resume(struct Fiber *callee, void *w);
+void *fiber_yield(void);
+#define resume(callee, w) ({						\
+	say_debug("resume: %i/%s -> %i/%s arg:%p",			\
+		  fiber->fid, fiber->name, callee->fid, callee->name, w); \
+	fiber_resume(callee, w);					\
+	})
+#define yield() ({						\
+	say_debug("yield: %i/%s -> %i/%s",			\
+		  fiber->fid, fiber->name,			\
+		  fiber->caller->fid, fiber->caller->name);	\
+	void *yield_ret = fiber_yield();			\
+	say_debug("yield: return arg:%p", yield_ret);	\
+	yield_ret;						\
+	})
+#else
 void resume(struct Fiber *callee, void *w);
 void *yield(void);
+#endif
 int fiber_wake(struct Fiber *f, void *arg);
 int fiber_cancel_wake(struct Fiber *f);
 

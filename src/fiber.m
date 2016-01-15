@@ -85,14 +85,14 @@ fiber_ev_cb(void *arg)
 #endif
 
 void
+#ifdef FIBER_DEBUG
+fiber_resume(struct Fiber *callee, void *w)
+#else
 resume(struct Fiber *callee, void *w)
+#endif
 {
 	assert(callee != sched);
 	Fiber *caller = fiber;
-#ifdef FIBER_DEBUG
-	say_debug("%s: %i/%s -> %i/%s arg:%p", __func__,
-		  caller->fid, caller->name, callee->fid, callee->name, w);
-#endif
 	callee->caller = caller;
 	fiber = callee;
 	callee->coro.w = w;
@@ -101,20 +101,15 @@ resume(struct Fiber *callee, void *w)
 }
 
 void *
+#ifdef FIBER_DEBUG
+fiber_yield(void)
+#else
 yield(void)
+#endif
 {
 	Fiber *callee = fiber;
-#ifdef FIBER_DEBUG
-	say_debug("%s: %i/%s -> %i/%s", __func__,
-		  callee->fid, callee->name,
-		  callee->caller->fid, callee->caller->name);
-#endif
 	fiber = callee->caller;
 	oc_coro_transfer(&callee->coro.ctx, &callee->caller->coro.ctx);
-#ifdef FIBER_DEBUG
-	say_debug("%s: return arg:%p", __func__, fiber->coro.w);
-#endif
-
 	return fiber->coro.w;
 }
 
