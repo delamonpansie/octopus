@@ -311,7 +311,7 @@ wal_disk_writer(int fd, void *state, int len)
 	struct tbuf rbuf = TBUF(NULL, 0, fiber->pool);
 	int result = EXIT_FAILURE;
 	i64 start_lsn;
-	bool io_failure = false, delay_read = false;
+	bool io_failure = false;
 	ssize_t r;
 	int request_count;
 
@@ -336,21 +336,18 @@ wal_disk_writer(int fd, void *state, int len)
 	signal(SIGUSR1, SIG_IGN);
 
 	for (;;) {
-		if (!delay_read) {
-			tbuf_ensure(&rbuf, 16 * 1024);
-			r = tbuf_recv(&rbuf, fd);
-			if (r < 0 && (errno == EINTR))
-				continue;
-			else if (r < 0) {
-				say_syserror("recv");
-				result = EX_OSERR;
-				goto exit;
-			} else if (r == 0) {
-				result = EX_OK;
-				goto exit;
-			}
+		tbuf_ensure(&rbuf, 16 * 1024);
+		r = tbuf_recv(&rbuf, fd);
+		if (r < 0 && (errno == EINTR))
+			continue;
+		else if (r < 0) {
+			say_syserror("recv");
+			result = EX_OSERR;
+			goto exit;
+		} else if (r == 0) {
+			result = EX_OK;
+			goto exit;
 		}
-
 
 		if (cfg.coredump > 0 && ev_now() - start_time > cfg.coredump * 60) {
 			maximize_core_rlimit();
@@ -359,7 +356,6 @@ wal_disk_writer(int fd, void *state, int len)
 
 		request_count = 0;
 		start_lsn = writer->lsn;
-		delay_read = false;
 		io_failure = [writer prepare_write:st] == -1;
 		for (int i = 0; i < MAX_SHARD; i++)
 			st[i].wet_scn = st[i].scn;
@@ -374,12 +370,6 @@ wal_disk_writer(int fd, void *state, int len)
 
 			if (row_count < 0) // buffer too short
 				break;
-
-			if (!io_failure && row_count > [writer->current_wal wet_rows_offset_available]) {
-				assert(request_count != 0);
-				delay_read = true;
-				break;
-			}
 
 			request_parse(request, row_count, &rbuf);
 			say_debug("request[%i] shard:%i %s rows:%i",

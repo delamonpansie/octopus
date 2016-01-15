@@ -204,8 +204,8 @@ typedef struct marker_desc {
 
 	bool no_wet, inprogress;
 
-	size_t bytes_written;
-	off_t offset, alloced, wet_rows_offset[WAL_PACK_MAX * 8];
+	size_t bytes_written, wet_rows_offset_size;
+	off_t offset, alloced, *wet_rows_offset;
 }
 + (XLog *) open_for_read_filename:(const char *)filename
 			      dir:(XLogDir *)dir;
@@ -219,7 +219,6 @@ typedef struct marker_desc {
 - (int) flush;
 - (void) fadvise_dont_need;
 - (size_t) rows;
-- (size_t) wet_rows_offset_available;
 - (i64) last_read_lsn;
 - (const struct row_v12 *) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie;
 - (const struct row_v12 *) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag;

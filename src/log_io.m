@@ -150,6 +150,9 @@ init_filename:(const char *)filename_
 	vbuf = vbuf_;
 
 	offset = ftello(fd);
+
+	wet_rows_offset_size = 16;
+	wet_rows_offset = xmalloc(wet_rows_offset_size * sizeof(*wet_rows_offset));
 	return self;
 }
 
@@ -250,6 +253,7 @@ free
 		[self close];
 	}
 
+	free(wet_rows_offset);
 	free(filename);
 	free(vbuf);
 	return [super free];
@@ -259,12 +263,6 @@ free
 rows
 {
 	return rows + wet_rows;
-}
-
-- (size_t)
-wet_rows_offset_available
-{
-	return nelem(wet_rows_offset) - wet_rows;
 }
 
 - (int)
@@ -535,6 +533,12 @@ append_successful:(size_t)bytes
 		return;
 	}
 
+	if (wet_rows_offset_size == wet_rows) {
+		wet_rows_offset_size *= 2;
+		wet_rows_offset = xrealloc(wet_rows_offset,
+					   wet_rows_offset_size * sizeof(*wet_rows_offset));
+	}
+
 	off_t prev_offt = wet_rows == 0 ? offset : wet_rows_offset[wet_rows - 1];
 	wet_rows_offset[wet_rows] = prev_offt + bytes;
 	wet_rows++;
@@ -558,7 +562,6 @@ append_row:(struct row_v12 *)row data:(const void *)data
 - (const struct row_v12 *)
 append_row:(const void *)data len:(u32)len scn:(i64)scn tag:(u16)tag
 {
-	assert(wet_rows < nelem(wet_rows_offset));
 	static struct row_v12 row;
 	row = (struct row_v12){ .scn = scn,
 				.tm = ev_now(),
@@ -572,7 +575,6 @@ append_row:(const void *)data len:(u32)len scn:(i64)scn tag:(u16)tag
 - (const struct row_v12 *)
 append_row:(const void *)data len:(u32)len shard:(Shard *)shard tag:(u16)tag
 {
-	assert(wet_rows < nelem(wet_rows_offset));
 	static struct row_v12 row;
 	row = (struct row_v12){ .scn = shard->scn,
 				.tm = ev_now(),
@@ -586,7 +588,6 @@ append_row:(const void *)data len:(u32)len shard:(Shard *)shard tag:(u16)tag
 - (const struct row_v12 *)
 append_row:(const void *)data len:(u32)len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie
 {
-	assert(wet_rows < nelem(wet_rows_offset));
 	static struct row_v12 row;
 	row = (struct row_v12){ .scn = scn,
 				.tm = ev_now(),
@@ -893,8 +894,6 @@ append_row:(struct row_v12 *)row12 data:(const void *)data
 	u16 tag = row12->tag & TAG_MASK;
 	u32 data_len = row12->len;
 	u64 cookie = row12->cookie;
-
-	assert(wet_rows < nelem(wet_rows_offset));
 
 	if (tag == snap_data) {
 		tag = (u16)-1;
