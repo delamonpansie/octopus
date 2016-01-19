@@ -43,7 +43,7 @@ init_recovery:(id<RecoverRow>)recovery_
 }
 
 - (void)
-recover_row_stream:(id<XLogPuller>)stream
+recover_row_stream:(XLog *)stream
 {
 	@try {
 		unsigned row_count = 0;
@@ -51,28 +51,27 @@ recover_row_stream:(id<XLogPuller>)stream
 		struct row_v12 *row;
 		palloc_register_cut_point(fiber->pool);
 
-		while ((row = [stream fetch_row])) {
-			if (row->lsn > lsn ||
-			    row->tag == (snap_initial|TAG_SYS) ||
-			    row->tag == (snap_final|TAG_SYS) ||
-			    (row->tag & ~TAG_MASK) == TAG_SNAP)
-				break;
-		}
-
-		if (row && row->tag == (snap_initial|TAG_SYS)) {
-			struct tbuf row_data = TBUF(row->data, row->len, NULL);
-			if (row->len == sizeof(u32) * 3) { /* not a dummy row */
-				estimated_snap_rows = read_u32(&row_data);
-				(void)read_u32(&row_data);
-				(void)read_u32(&row_data); /* ignore run_crc_mod */
-			}
-			if (row->len > sizeof(u32) * 3) {
-				int ver = read_u8(&row_data);
-				if (ver == 0)
+		if (stream->dir == snap_dir) {
+			row = [stream fetch_row];
+			if (row && (row->tag & TAG_MASK) == snap_initial) {
+				struct tbuf row_data = TBUF(row->data, row->len, NULL);
+				if (row->len == sizeof(u32) * 3) { /* not a dummy row */
 					estimated_snap_rows = read_u32(&row_data);
-				else
-					say_warn("unknown snap_initial format");
+					(void)read_u32(&row_data);
+					(void)read_u32(&row_data); /* ignore run_crc_mod */
+				}
+				if (row->len > sizeof(u32) * 3) {
+					int ver = read_u8(&row_data);
+					if (ver == 0)
+						estimated_snap_rows = read_u32(&row_data);
+					else
+						say_warn("unknown snap_initial format");
+				}
 			}
+		} else {
+			while ((row = [stream fetch_row]))
+				if (row->lsn > lsn)
+					break;
 		}
 
 		for (; row; row = [stream fetch_row]) {
