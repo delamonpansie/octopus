@@ -32,13 +32,6 @@
 
 #include <assert.h>
 
-#if HAVE_OBJC_RUNTIME_H
-#include <objc/runtime.h>
-#elif HAVE_OBJC_OBJC_API_H
-#include <objc/objc-api.h>
-#define objc_lookUpClass objc_lookup_class
-#endif
-
 
 @implementation XLogRemoteReader
 
