@@ -71,7 +71,6 @@ mbox_future(struct iproto_egress *dst, struct iproto_mbox *mbox, u32 sync)
 	mh_i32_put(sync2future, sync, future, NULL);
 	TAILQ_INSERT_HEAD(&dst->future, future, link);
 	future->dst = dst;
-	future->sync = sync;
 	future->type = IPROTO_FUTURE_MBOX;
 	future->mbox = mbox;
 	LIST_INSERT_HEAD(&mbox->waiting, future, waiting_link);
@@ -85,7 +84,6 @@ proxy_future(struct iproto_egress *dst, struct iproto_ingress *src, const struct
 	mh_i32_put(sync2future, sync, future, NULL);
 	TAILQ_INSERT_HEAD(&dst->future, future, link);
 	future->dst = dst;
-	future->sync = proxy_sync;
 	future->proxy_request = (struct iproto){ .msg_code = msg->msg_code, .sync = msg->sync };
 	if (src && src->fd != -1) {
 		future->type = IPROTO_FUTURE_PROXY;
