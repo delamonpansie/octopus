@@ -47,7 +47,7 @@
 static struct slab_cache future_cache;
 static struct mh_i32_t *sync2future;
 
-void __attribute__((constructor))
+static void __attribute__((constructor))
 iproto_registry_init()
 {
 	sync2future = mh_i32_init(xrealloc);
