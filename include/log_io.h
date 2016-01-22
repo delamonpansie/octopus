@@ -32,6 +32,7 @@
 #include <objc.h>
 #import <spawn_child.h>
 #import <mbox.h>
+#import <run_crc.h>
 
 #include <stdio.h>
 #include <limits.h>
@@ -255,11 +256,6 @@ struct wal_pack {
 	u32 fid;
 } __attribute__((packed));
 
-struct run_crc_hist {
-	i64 scn;
-	u32 value;
-} __attribute__((packed));
-
 struct wal_reply {
 	u32 packet_len;
 	u32 row_count, crc_count;
@@ -275,20 +271,6 @@ void wal_pack_prepare(XLogWriter *r, struct wal_pack *);
 u32 wal_pack_append_row(struct wal_pack *pack, struct row_v12 *row);
 void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
 			  const void *data, size_t len);
-
-struct run_crc {
-	struct run_crc_hist hist[512]; /* should be larger than
-					  cfg.wal_writer_inbox_size */
-	int i;
-	bool mismatch;
-	ev_tstamp verify_tstamp;
-};
-void run_crc_calc(u32 *crc, u16 row_tag, const void *data, int len);
-void run_crc_record(struct run_crc* state, struct run_crc_hist entry);
-void run_crc_verify(struct run_crc *run_crc, struct tbuf *buf);
-
-ev_tstamp run_crc_lag(struct run_crc *run_crc);
-const char *run_crc_status(struct run_crc *run_crc);
 
 struct shard_op_aux {
 	i64 current_scn;
