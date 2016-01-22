@@ -49,7 +49,10 @@ struct row_v12 {
 	i64 lsn;
 	i64 scn;
 	u16 tag;
-	u64 cookie;
+	union {
+		u64 cookie;
+		u16 shard_id;
+	};
 	double tm;
 	u32 len;
 	u32 data_crc32c;
