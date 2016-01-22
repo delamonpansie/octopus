@@ -35,32 +35,26 @@
 @protocol Shard;
 @protocol Executor;
 
-enum shard_mode { SHARD_MODE_NONE,
-		  SHARD_MODE_LOADING,
-		  SHARD_MODE_LOCAL,
-		  SHARD_MODE_PROXY,
-		  SHARD_MODE_PARTIAL_PROXY };
 enum shard_type { SHARD_TYPE_POR, SHARD_TYPE_PAXOS } ;
 
 
 struct shard_route {
-	enum shard_mode mode;
-	struct iproto_egress *proxy;
 	Shard<Shard> *shard;
+	struct iproto_egress *proxy;
 	id<Executor> executor;
+	char master_name[16];
 };
 
 struct shard_conf {
 	int id;
 	const char *mod_name;
 	enum shard_type type;
-	enum shard_mode mode;
 	const struct feeder_param *feeder_param;
 };
 
 struct shard_route shard_rt[MAX_SHARD];
 
-void update_rt(int shard_id, enum shard_mode mode, Shard<Shard> *shard, const char *peer_name);
+void update_rt(int shard_id, Shard<Shard> *shard, const char *peer_name);
 
 enum port_type { PORT_PRIMARY, PORT_REPLICATION };
 const struct sockaddr_in *shard_addr(const char *name, enum port_type port_type);

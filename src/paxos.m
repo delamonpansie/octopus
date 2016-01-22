@@ -1417,11 +1417,11 @@ adjust_route
 
 	if (leader_id < 0) {
 		say_info("leader unknown, %i -> %i", prev_leader, leader_id);
-		update_rt(self->id, SHARD_MODE_LOADING, self, NULL);
+		update_rt(self->id, self, NULL);
 		[self status_update:"paxos/slave"];
 	} else if (!paxos_leader(self)) {
 		struct paxos_peer *leader = paxos_peer(self, leader_id);
-		update_rt(self->id, SHARD_MODE_PARTIAL_PROXY, self, leader->name);
+		update_rt(self->id, self, leader->name);
 		[self status_update:"paxos/slave"];
 		say_info("leader is %s, %i -> %i", leader->name, prev_leader, leader->id);
 	} else if (paxos_leader(self)) {
@@ -1434,7 +1434,7 @@ adjust_route
 			title("paxos_catchup_fail");
 			return;
 		}
-		update_rt(self->id, SHARD_MODE_LOCAL, self, NULL);
+		update_rt(self->id, self, NULL);
 		[self status_update:"paxos/leader"];
 	}
 	prev_leader = leader_id;

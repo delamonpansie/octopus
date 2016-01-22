@@ -511,7 +511,7 @@ enum feeder_filter_type {
 	id<Executor> executor;
 	i64 scn;
 	char peer[5][16];
-	bool dummy;
+	bool dummy, loading;
 }
 - (id) init_id:(int)shard_id scn:(i64)scn_
       sop:(const struct shard_op *)sop;

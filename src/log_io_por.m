@@ -42,7 +42,7 @@
 set_feeder:(struct feeder_param*)new
 {
 	/* legacy */
-	if (shard_rt[self->id].mode == SHARD_MODE_PARTIAL_PROXY)
+	if (shard_rt[self->id].shard && shard_rt[self->id].proxy)
 		[remote set_feeder:new];
 }
 
@@ -119,7 +119,7 @@ submit:(const void *)data len:(u32)len tag:(u16)tag
 	static unsigned count;
 	static struct msg_void_ptr msg;
 
-	if (shard_rt[self->id].mode != SHARD_MODE_LOCAL) {
+	if (shard_rt[self->id].proxy) {
 		say_warn("not master");
 		return 0;
 	}
@@ -146,25 +146,21 @@ submit:(const void *)data len:(u32)len tag:(u16)tag
 - (void)
 adjust_route
 {
+	if (loading)
+		return;
 	if ([self standalone]) {
-		update_rt(self->id, SHARD_MODE_LOCAL, self, NULL);
+		update_rt(self->id, self, NULL);
 		[self status_update:"primary"];
 		struct feeder_param empty = { .addr = { .sin_family = AF_UNSPEC } };
 		[remote set_feeder:&empty];
 	} else {
+		const char *master = dummy ? "<dummy_addr>" : peer[0];
+		update_rt(self->id, self, master);
 		if (dummy) {
-			update_rt(self->id, SHARD_MODE_PARTIAL_PROXY, self, NULL);
 			if (recovery->writer)
 				[self remote_hot_standby:NULL];
 
 		} else {
-			enum shard_mode mode = SHARD_MODE_PROXY;
-			for (int i = 0; i < nelem(peer) && peer[i]; i++)
-				if (strcmp(peer[i], cfg.hostname) == 0) {
-					mode = SHARD_MODE_PARTIAL_PROXY;
-					break;
-				}
-			update_rt(self->id, mode, self, peer[0]);
 			[self status_update:"replicating from %s", peer[0]];
 			if (recovery->writer)
 				[self remote_hot_standby:peer[0]];
@@ -212,7 +208,7 @@ recover_row:(struct row_v12 *)row
 		run_crc_record(&run_crc_state, (struct run_crc_hist){ .scn = row->scn, .value = run_crc_log });
 		scn = row->scn;
 
-		if ((row->tag & TAG_MASK) == shard_tag) {
+		if ((row->tag & TAG_MASK) == shard_tag && !loading) {
 			for (int i = 0; i < nelem(peer) && peer[i]; i++)
 				if (strcmp(peer[i], cfg.hostname) == 0)
 					return;
@@ -224,7 +220,7 @@ recover_row:(struct row_v12 *)row
 - (bool)
 is_replica
 {
-	if (shard_rt[self->id].mode != SHARD_MODE_LOCAL)
+	if (shard_rt[self->id].proxy)
 		return 1;
 	if (recovery->writer == nil)
 		return 1;

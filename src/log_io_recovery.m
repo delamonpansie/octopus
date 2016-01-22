@@ -120,7 +120,7 @@ shard_feeder(const char *name, struct feeder_param *feeder)
 }
 
 void
-update_rt(int shard_id, enum shard_mode mode, Shard<Shard> *shard, const char *master_name)
+update_rt(int shard_id, Shard<Shard> *shard, const char *master_name)
 {
 	// FIXME: do a broadcast after change local destinations
 	struct shard_route *route = &shard_rt[shard_id];
@@ -129,7 +129,7 @@ update_rt(int shard_id, enum shard_mode mode, Shard<Shard> *shard, const char *m
 		proxy_pool = palloc_create_pool((struct palloc_config){.name = "proxy_to_primary"});
 
 	const struct sockaddr_in *addr = NULL;
-	if (master_name) {
+	if (master_name && strcmp(master_name, "<dummy_addr>") != 0) {
 		addr = shard_addr(master_name, PORT_PRIMARY);
 		if (!addr) {
 			say_error("Unknown peer %s, ignoring shard %i route update", master_name, shard_id);
@@ -138,20 +138,16 @@ update_rt(int shard_id, enum shard_mode mode, Shard<Shard> *shard, const char *m
 	}
 
 	route->shard = shard;
-	route->executor = [shard executor];
-	route->mode = mode;
 	route->proxy = NULL;
 
-	if (mode == SHARD_MODE_PARTIAL_PROXY || mode == SHARD_MODE_PROXY) {
-		if (!master_name) {
+	if (master_name) {
+		if (!addr) {
 			assert(shard->dummy);
-			return;
+			route->proxy = (void *)0x1; // FIXME: dummy struct;
+			goto exit;
 		}
-		assert(master_name);
-		if (route->proxy && strcmp(route->proxy->ts.name, master_name) == 0) /* already proxying */
-			return;
-		route->proxy = iproto_remote_add_peer(NULL, addr, proxy_pool);
-		route->proxy->ts.name = master_name;
+		route->proxy = iproto_remote_add_peer(NULL, addr, proxy_pool); // will check for existing connect
+		route->proxy->ts.name = "proxy_to_primary";
 	}
 }
 
@@ -185,8 +181,7 @@ update_rt_notify(va_list ap __attribute__((unused)))
 		fiber_sleep(1);
 
 		for (int i = 0; i < nelem(shard_rt); i++) {
-			if (shard_rt[i].mode != SHARD_MODE_LOCAL &&
-			    shard_rt[i].mode != SHARD_MODE_PARTIAL_PROXY)
+			if (shard_rt[i].shard == nil)
 				continue;
 
 			id<Shard> shard = shard_rt[i].shard;
@@ -293,27 +288,40 @@ shard_log(const char *msg, Shard *shard)
 			tbuf_printf(buf, ", %s", shard->peer[i]);
 	tbuf_printf(buf, "} ");
 
-	switch (route->mode) {
-	case SHARD_MODE_NONE:
+static void
+route_info(const struct shard_route *route, struct tbuf *buf)
+{
+	tbuf_printf(buf, "mode: ");
+	if (route->shard == nil && route->proxy == nil) {
 		tbuf_printf(buf, "NONE");
-		break;
-	case SHARD_MODE_LOADING:
+	} else if (route->shard && route->shard->loading) {
 		tbuf_printf(buf, "LOADING");
-		break;
-	case SHARD_MODE_PARTIAL_PROXY:
-		tbuf_printf(buf, "PARTIAL_");
-	case SHARD_MODE_PROXY:
+	} else if (route->shard && route->proxy) {
+		tbuf_printf(buf, "PARTIAL_PROXY");
+	} else if (route->proxy) {
 		tbuf_printf(buf, "PROXY");
-		if (route->proxy)
-			tbuf_printf(buf, ": %s,%s",
-				    route->proxy->ts.name, sintoa(&route->proxy->ts.daddr));
-		else
-			tbuf_printf(buf, ": legacy mode");
-		break;
-	case SHARD_MODE_LOCAL:
+	} else {
 		tbuf_printf(buf, "LOCAL");
-		break;
 	}
+
+	if (route->shard && !route->shard->loading) {
+		tbuf_printf(buf, ", ");
+		shard_info(route->shard, buf);
+	}
+
+	if (route->proxy && route->proxy != (void *)0x1)
+		tbuf_printf(buf, ", proxy_addr: '%s/%s'",
+			    route->proxy->ts.name, sintoa(&route->proxy->ts.daddr));
+}
+
+static void
+shard_log(const char *msg, int shard_id)
+{
+	int old_ushard = fiber->ushard;
+	fiber->ushard = shard_id;
+
+	struct tbuf *buf = tbuf_alloc(fiber->pool);
+	route_info(shard_rt + shard_id, buf);
 	tbuf_printf(buf, " => %s", msg);
 	say_info("META %s", (char *)buf->ptr);
 	fiber->ushard = old_ushard;
@@ -323,7 +331,7 @@ shard_log(const char *msg, Shard *shard)
 - (id) free
 {
 	[(id)executor free];
-	update_rt(self->id, SHARD_MODE_NONE, nil, NULL);
+	update_rt(self->id, NULL, NULL);
 	return [super free];
 }
 
@@ -332,6 +340,7 @@ shard_log(const char *msg, Shard *shard)
 	   sop:(const struct shard_op *)sop
 {
 	[super init];
+	loading = true;
 	self->id = shard_id;
 	scn = scn_;
 	run_crc_log = sop->run_crc_log;
@@ -345,7 +354,6 @@ shard_log(const char *msg, Shard *shard)
 		assert(cfg.hostname); // cfg.hostname может быть пустым только при создании dummy шарда.
 	}
 
-	assert(dummy || our_shard(sop));
 	if (objc_lookUpClass(sop->mod_name) == Nil)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "bad mod name");
 
@@ -428,7 +436,7 @@ status_update:(const char *)fmt, ...
 	vsnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
 
-	if (strcmp(buf, status_buf) == 0 && shard_rt[self->id].mode == old_mode)
+	if (strcmp(buf, status_buf) == 0)
 		return;
 
 	shard_log(buf, self);
@@ -436,16 +444,13 @@ status_update:(const char *)fmt, ...
 	strncpy(status_buf, buf, sizeof(status_buf));
 	title(NULL);
 
-	if (shard_rt[self->id].mode == old_mode)
-		return;
-
-	old_mode = shard_rt[self->id].mode;
 	[executor status_changed];
 }
 
 - (void)
 wal_final_row
 {
+	loading = false;
 	[self adjust_route];
 	[executor wal_final_row];
 }
@@ -500,7 +505,7 @@ shard_add:(int)shard_id scn:(i64)scn sop:(const struct shard_op *)sop
 	if (sop->peer[0][0] == 0)
 		shard->dummy = true;
 	[shard init_id:shard_id scn:scn sop:sop];
-	update_rt(shard_id, SHARD_MODE_LOADING, shard, NULL);
+	update_rt(shard_id, shard, NULL);
 	return shard;
 }
 
@@ -527,7 +532,9 @@ shard_add_dummy:(const struct row_v12 *)row
 			       .run_crc_log = run_crc };
 	strncpy(op.mod_name, [default_exec_class name], 16);
 
-	return [self shard_add:0 scn:scn sop:&op];
+	Shard<Shard> *shard = [self shard_add:0 scn:scn sop:&op];
+	update_rt(0, shard, NULL);
+	return shard;
 }
 
 - (void)
@@ -700,6 +707,12 @@ load_from_remote
 			break;
 	}
 	[remote_reader free];
+
+	for (int i = 0; i < MAX_SHARD; i++) {
+		Shard *shard = shard_rt[i].shard;
+		if (shard != nil && (shard->dummy || strcmp(cfg.hostname, shard->peer[0]) == 0))
+			[shard wal_final_row];
+	}
 	return count;
 }
 
@@ -1027,16 +1040,21 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req, void *arg __attrib
 		return;
 	}
 
-	switch (route->mode) {
-	case SHARD_MODE_LOADING:
-		iproto_error(wbuf, req, ERR_CODE_ILLEGAL_PARAMS, "shard is loading");
-		return;
-	case SHARD_MODE_PARTIAL_PROXY:
-	case SHARD_MODE_PROXY:
-		assert(false);
-	case SHARD_MODE_NONE:
-	case SHARD_MODE_LOCAL:
-		break;
+	if (route->shard) {
+		if (route->shard->loading) {
+			iproto_error(wbuf, req, ERR_CODE_ILLEGAL_PARAMS, "shard is loading");
+			return;
+		}
+		if (shard->dummy) {
+			assert(shard_id == 0);
+			assert(strcmp(cfg.hostname, sop->peer[0]) == 0);
+		}
+		[recovery shard_alter:shard sop:sop];
+		if (shard->dummy)
+			shard->dummy = false;
+	} else {
+		[recovery shard_create:shard_id sop:sop];
+
 	}
 	sop->op &= ~0x40;
 
@@ -1066,16 +1084,15 @@ iproto_shard_udpcb(const char *buf, ssize_t len, void *data __attribute__((unuse
 	if (sop == NULL || (sop->op & 0x80) == 0) // bad packet or not rt_update
 		return;
 
-	if (route->mode == SHARD_MODE_LOADING) {
+	if (shard && shard->loading) {
 		say_debug("ignore route update, shard loading");
 		return;
 	}
 
 	if (!our_shard(sop)) {
 		assert (shard == nil || !shard->dummy);
-
 		[shard free];
-		update_rt(shard_id, SHARD_MODE_PROXY, nil, sop->peer[0]);
+		update_rt(shard_id, nil, sop->peer[0]);
 		return;
 	}
 
@@ -1087,8 +1104,8 @@ iproto_shard_udpcb(const char *buf, ssize_t len, void *data __attribute__((unuse
 			// FIXME: what to do if shard is as (stale) master ?
 			[shard reload_from:peer_name];
 		} else {
-			assert(route->mode == SHARD_MODE_NONE);
-			fiber_create("load/alter shard", iproto_shard_cb_aux, shard_id, route, sop);
+			assert(route->shard == nil);
+			fiber_create("load/alter shard", iproto_shard_load_aux, shard_id, sop);
 		}
 	}
 }
