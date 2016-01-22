@@ -151,7 +151,7 @@ load_cfg(struct octopus_cfg *conf, i32 check_rdonly)
 int
 reload_cfg(void)
 {
-	struct octopus_cfg new_cfg1, new_cfg2;
+	struct octopus_cfg new_cfg1, new_cfg2, old_cfg;
 	int ret;
 
 	memset(&new_cfg1, 0, sizeof(new_cfg1));
@@ -186,11 +186,12 @@ reload_cfg(void)
 		return -1;
 	}
 	destroy_octopus_cfg(&new_cfg1);
+	old_cfg = cfg;
+	cfg = new_cfg2;
 	foreach_module (m)
 		if (m->reload_config != NULL)
 			m->reload_config(&cfg, &new_cfg2);
-	destroy_octopus_cfg(&cfg);
-	cfg = new_cfg2;
+	destroy_octopus_cfg(&old_cfg);
 
 	if (cfg_err_offt)
 		say_warn("config warnings: %s", cfg_err);
