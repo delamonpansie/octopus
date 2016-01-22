@@ -88,6 +88,7 @@ LIST_HEAD(iproto_future_list, iproto_future);
 	LIST_ENTRY(iproto_ingress_svc) link;
 	TAILQ_ENTRY(iproto_ingress_svc) processing_link;
 	struct iproto_service *service;
+	int batch;
 }
 - (void)init:(int)fd_ service:(struct iproto_service *)service_;
 @end
@@ -108,7 +109,7 @@ void iproto_ping(struct netmsg_head *h, struct iproto *r, void *arg __attribute_
 @class Shard;
 @protocol Shard;
 
-enum { IPROTO_NONBLOCK = 1, IPROTO_PROXY = 2, IPROTO_FORCE_LOCAL = 4 };
+enum { IPROTO_NONBLOCK = 1, IPROTO_LOCAL = 2, IPROTO_ON_MASTER = 4 };
 typedef void (*iproto_cb)(struct netmsg_head *, struct iproto *, void *);
 struct iproto_handler {
 	iproto_cb cb;

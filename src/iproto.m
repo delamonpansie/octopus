@@ -57,7 +57,6 @@ static int stat_base;
 
 struct worker_arg {
 	iproto_cb cb;
-	int ushard;
 	struct iproto *r;
 	struct netmsg_io *io;
 	void *arg;
@@ -71,11 +70,14 @@ iproto_worker(va_list ap)
 
 	for (;;) {
 		SLIST_INSERT_HEAD(&service->workers, fiber, worker_link);
+
 		memcpy(&a, yield(), sizeof(a));
+		size_t req_size = sizeof(struct iproto) + a.r->data_len;
+		a.r = memcpy(palloc(fiber->pool, req_size), a.r, req_size);
 
 		@try {
 			netmsg_io_retain(a.io);
-			fiber->ushard = a.ushard;
+			fiber->ushard = a.r->shard_id;
 			a.cb(&a.io->wbuf, a.r, a.arg);
 		}
 		@catch (Error *e) {
@@ -251,8 +253,8 @@ iproto_service(struct iproto_service *service, const char *addr)
 
 	service_alloc_handlers(service, SERVICE_DEFAULT_CAPA);
 
-	service_register_iproto(service, -1, err, IPROTO_NONBLOCK);
-	service_register_iproto(service, MSG_PING, iproto_ping, IPROTO_NONBLOCK|IPROTO_FORCE_LOCAL);
+	service_register_iproto(service, -1, err, IPROTO_NONBLOCK|IPROTO_LOCAL);
+	service_register_iproto(service, MSG_PING, iproto_ping, IPROTO_NONBLOCK|IPROTO_LOCAL);
 }
 
 void
@@ -301,98 +303,123 @@ has_full_req(const struct tbuf *buf)
 	       tbuf_len(buf) >= sizeof(struct iproto) + iproto(buf)->data_len;
 }
 
-static bool
-proxy_requst(struct iproto_handler *ih, struct shard_route *route,
-	     struct iproto_ingress_svc *c, struct iproto *request, void **arg)
+
+static int
+local(struct iproto *msg, struct shard_route *route, struct iproto_ingress_svc *io, struct iproto_handler *ih)
 {
-	struct netmsg_io *io = c;
-	enum shard_mode mode = route->mode;
-	size_t req_size = sizeof(struct iproto) + request->data_len;
-
-	if (unlikely(ih->flags & IPROTO_FORCE_LOCAL))
-		mode = SHARD_MODE_LOCAL;
-
-	switch (mode) {
-	case SHARD_MODE_PROXY:
-		tbuf_ltrim(&io->rbuf, req_size);
-		iproto_proxy_send(route->proxy, c, request, NULL, 0);
-		return true;
-	case SHARD_MODE_PARTIAL_PROXY:
-		if (ih->flags & IPROTO_PROXY && route->proxy) {
-			tbuf_ltrim(&io->rbuf, req_size);
-			iproto_proxy_send(route->proxy, c, request, NULL, 0);
-			return true;
+	say_debug3("%s: peer:%s op:0x%x sync:%u%s%s", __func__,
+		   net_peer_name(io->fd), msg->msg_code, msg->sync,
+		   ih->flags & IPROTO_NONBLOCK ? " NONBLOCK" : "",
+		   ih->flags & IPROTO_LOCAL ? " LOCAL" : "");
+	if (ih->flags & IPROTO_NONBLOCK) {
+		stat_collect(stat_base, IPROTO_STREAM_OP, 1);
+		struct netmsg_mark header_mark;
+		netmsg_getmark(&io->wbuf, &header_mark);
+		@try {
+			fiber->ushard = msg->shard_id;
+			ih->cb(&io->wbuf, msg, route);
 		}
-	case SHARD_MODE_LOCAL:
-		*arg = route;
-		break;
-	case SHARD_MODE_NONE:
-	case SHARD_MODE_LOADING:
-		*arg = NULL;
-		break;
+		@catch (Error *e) {
+			u32 rc = ERR_CODE_UNKNOWN_ERROR;
+			if ([e respondsTo:@selector(code)])
+				rc = [(id)e code];
+			else if ([e isMemberOf:[IndexError class]])
+				rc = ERR_CODE_ILLEGAL_PARAMS;
+
+			netmsg_rewind(&io->wbuf, &header_mark);
+			iproto_error(&io->wbuf, msg, rc, e->reason);
+			[e release];
+		}
+		@finally {
+			fiber->ushard = -1;
+		}
+	} else {
+		struct iproto_service *service = io->service;
+		struct Fiber *w = SLIST_FIRST(&service->workers);
+		if (!w) {
+			stat_collect(stat_base, IPROTO_WORKER_STARVATION, 1);
+			// FIXME: need state for this
+			return 0;
+		}
+
+		stat_collect(stat_base, IPROTO_BLOCK_OP, 1);
+		SLIST_REMOVE_HEAD(&service->workers, worker_link);
+		resume(w, (&(struct worker_arg){ih->cb, msg, io, route}));
+		io->batch--;
 	}
-	return false;
+	return 1;
+}
+
+static int
+error(struct iproto *msg, struct netmsg_io *io, const char *err)
+{
+	iproto_error(&io->wbuf, msg, ERR_CODE_NONMASTER, err);
+	return 1;
+}
+
+static int
+classify(struct iproto *msg, struct iproto_ingress_svc *io)
+{
+	struct shard_route *route;
+	struct iproto_handler *ih;
+	struct iproto *orig_msg = msg;
+	struct iproto_egress *proxy;
+	Shard<Shard> *shard;
+	@try {
+		if (msg->msg_code == MSG_IPROXY)
+			msg++; // unwrap
+		fiber->ushard = msg->shard_id;
+		say_debug2("%s: %s peer:%s op:0x%x sync:%u  ", __func__, msg == orig_msg ? "" : "PROXY",
+			   net_peer_name(io->fd), msg->msg_code, msg->sync);
+		if (unlikely(msg->shard_id > nelem(shard_rt)))
+			return error(msg, io, "no such shard");
+		route = shard_rt + msg->shard_id;
+		proxy = route->proxy;
+		shard = route->shard;
+		if (unlikely(shard && shard->loading))
+			shard = nil;
+
+		ih = service_find_code(io->service, msg->msg_code);
+		if (ih->flags & IPROTO_LOCAL)
+			goto local;
+		if (orig_msg == msg) { /* not via proxy */
+			if (proxy && (shard == nil || ih->flags & IPROTO_ON_MASTER)) {
+				if (proxy == (void *)0x1)
+					return error(msg, io, "replica is readonly");
+				return !!iproto_proxy_send(proxy, io, MSG_IPROXY, msg, NULL, 0);
+			}
+			if (shard == nil)
+				return error(msg, io, "no such shard");
+		} else {
+			if (shard == nil || (proxy && ih->flags & IPROTO_ON_MASTER))
+				return error(msg, io, "route loop");
+		}
+	local:
+		return local(msg, route, io, ih);
+	}
+	@finally {
+		fiber->ushard = -1;
+	}
+
 }
 
 static void
-process_requests(struct iproto_service *service, struct iproto_ingress_svc *c)
+process_requests(struct iproto_service *service, struct iproto_ingress_svc *io)
 {
-	struct netmsg_io *io = c;
-	int batch = service->batch;
-
 	netmsg_io_retain(io);
+	io->batch = service->batch;
 	while (has_full_req(&io->rbuf))
 	{
-		struct iproto *request = iproto(&io->rbuf);
-		struct iproto_handler *ih = service_find_code(service, request->msg_code & 0xffff);
-		size_t req_size = sizeof(struct iproto) + request->data_len;
-		void *arg = NULL;
-		int route_id = service->options == SERVICE_SHARDED ? request->shard_id : 0;
-		struct shard_route *route = &shard_rt[route_id];
+		struct iproto *msg = iproto(&io->rbuf);
+		size_t msg_size = sizeof(struct iproto) + msg->data_len;
 
-		if (proxy_requst(ih, route, c, request, &arg))
-			continue;
+		if (classify(msg, io))
+			tbuf_ltrim(&io->rbuf, msg_size);
+		else
+			break;
 
-		if (ih->flags & IPROTO_NONBLOCK) {
-			tbuf_ltrim(&io->rbuf, req_size);
-			stat_collect(stat_base, IPROTO_STREAM_OP, 1);
-			struct netmsg_mark header_mark;
-			netmsg_getmark(&io->wbuf, &header_mark);
-			@try {
-				fiber->ushard = route_id;
-				ih->cb(&io->wbuf, request, arg);
-			}
-			@catch (Error *e) {
-				u32 rc = ERR_CODE_UNKNOWN_ERROR;
-				if ([e respondsTo:@selector(code)])
-					rc = [(id)e code];
-				else if ([e isMemberOf:[IndexError class]])
-					rc = ERR_CODE_ILLEGAL_PARAMS;
-
-				netmsg_rewind(&io->wbuf, &header_mark);
-				iproto_error(&io->wbuf, request, rc, e->reason);
-				[e release];
-			}
-			@finally {
-				fiber->ushard = -1;
-			}
-		} else {
-			struct Fiber *w = SLIST_FIRST(&service->workers);
-			if (w) {
-				tbuf_ltrim(&io->rbuf, req_size);
-				stat_collect(stat_base, IPROTO_BLOCK_OP, 1);
-				void *request_copy = memcpy(palloc(w->pool, req_size), request, req_size);
-
-				SLIST_REMOVE_HEAD(&service->workers, worker_link);
-				resume(w, &(struct worker_arg){ih->cb, route_id, request_copy, io, arg});
-			} else {
-				stat_collect(stat_base, IPROTO_WORKER_STARVATION, 1);
-				break; // FIXME: need state for this
-			}
-
-			if (--batch == 0)
-				break;
-		}
+		if (io->batch <= 0)
+			break;
 	}
 
 	if (unlikely(io->fd == -1)) /* handler may close connection */
@@ -403,16 +430,16 @@ process_requests(struct iproto_service *service, struct iproto_ingress_svc *c)
 
 	if (!has_full_req(&io->rbuf))
 	{
-		TAILQ_REMOVE(&service->processing, c, processing_link);
-		c->processing_link.tqe_prev = NULL;
+		TAILQ_REMOVE(&service->processing, io, processing_link);
+		io->processing_link.tqe_prev = NULL;
 
 		/* input buffer is empty or has partially read oversize request */
 		ev_io_start(&io->in);
-	} else if (batch < service->batch) {
+	} else if (io->batch < service->batch) {
 		/* avoid unfair scheduling in case of absense of stream requests
 		   and all workers being busy */
-		TAILQ_REMOVE(&service->processing, c, processing_link);
-		TAILQ_INSERT_TAIL(&service->processing, c, processing_link);
+		TAILQ_REMOVE(&service->processing, io, processing_link);
+		TAILQ_INSERT_TAIL(&service->processing, io, processing_link);
 	}
 
 #ifndef IPROTO_PESSIMISTIC_WRITES
