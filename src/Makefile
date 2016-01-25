@@ -56,6 +56,10 @@ ifneq ($(findstring src/spawn_child.o,$(obj)),)
   src/octopus.o: XCFLAGS += -DOCT_SPAWNER=1
 endif
 
+ifneq ($(findstring src/constant_kv.o,$(obj)),)
+  obj += third_party/ckv/ckv.o
+endif
+
 ifneq (,$(TRACE))
 	obj += src/trace.o
 	$(TRACE): XCFLAGS += -finstrument-functions
