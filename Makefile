@@ -5,6 +5,8 @@ obj += $(obj-log-io)
 obj += src/tnt_obj.o
 obj += src/iproto.o
 obj += src/iproto_client.o
+obj += src/constant_kv.o
+obj += src-lua/ckv.o
 
 src/octopus.o src/net_io.o src/fiber.o: XCFLAGS += -DOCT_OBJECT
 
@@ -32,6 +34,7 @@ cfg_tmpl += cfg/admin.cfg_tmpl
 cfg_tmpl += cfg/iproto.cfg_tmpl
 cfg_tmpl += cfg/log_io.cfg_tmpl
 cfg_tmpl += cfg/replication.cfg_tmpl
+cfg_tmpl += cfg/constant_kv.cfg_tmpl
 cfg_tmpl += mod/box/object_space.cfg_tmpl
 
 
