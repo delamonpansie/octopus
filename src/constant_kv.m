@@ -42,6 +42,7 @@
 
 #import <octopus_ev.h>
 
+static ev_timer constant_kv_timer;
 static constant_kv_cb_f *ckv_callbacks = NULL;
 static int ckv_callbacks_n = 0;
 
@@ -170,6 +171,11 @@ register_constant_kv_or_fail(const char* _name, const char* _path, enum ckv_kind
 	kv->ckv = ckv_open(path, kind, 0, ckv_errcb, NULL);
 	if (kv->ckv == NULL) {
 		panic("registraction constant_kv '%s' failed", name);
+	}
+	say_info("successfully registered constant_kv '%s' at path '%s'",
+			name, path);
+	if (!ev_is_active(&constant_kv_timer)) {
+		ev_timer_start(&constant_kv_timer);
 	}
 }
 
@@ -336,15 +342,13 @@ reload_config(struct octopus_cfg *old _unused_, struct octopus_cfg *new)
 }
 #endif //CFG_constant_kv
 
-static ev_timer constant_kv_timer;
 static void
 init(void)
 {
+	ev_timer_init(&constant_kv_timer, constant_kv_watch, 2, 2);
 #if CFG_constant_kv
 	load_config(&cfg);
 #endif
-	ev_timer_init(&constant_kv_timer, constant_kv_watch, 2, 2);
-	ev_timer_start(&constant_kv_timer);
 	switch (luaT_require("ckv")) {
 	case 1: register_constant_kv_callback(lua_constant_kv_callback);
 	case 0: break;
