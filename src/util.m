@@ -418,6 +418,8 @@ xcalloc(size_t nmemb, size_t size)
 void *
 xrealloc(void *ptr, size_t size)
 {
+	if (size == 0 && ptr == NULL)
+		return NULL;
 	ptr = realloc(ptr, size);
 	if (size > 0 && ptr == NULL)
 		panic("Out of memory");
