@@ -641,7 +641,7 @@ reload_config(struct octopus_cfg *old _unused_,
 	feeder_param_fill_from_cfg(&feeder, new);
 	Shard<Shard> *shard = [recovery shard:0];
 	if (shard == nil || !shard->dummy) {
-		say_error("ignoring lagacy configuration request");
+		say_error("ignoring legacy configuration request");
 		return;
 	}
 	if ([(id)shard respondsTo:@selector(set_feeder:)])
