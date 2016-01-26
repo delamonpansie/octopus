@@ -51,7 +51,9 @@ shard_box(int n)
 {
 	if (n < 0 || n > MAX_SHARD)
 		return NULL;
-	return shard_rt[n].executor;
+	if (shard_rt[n].shard == NULL)
+		return NULL;
+	return shard_rt[n].shard->executor;
 }
 
 int
@@ -63,7 +65,9 @@ shard_box_next_primary_n(int n)
 	for (;i>0;n++,i--) {
 		if (n >= MAX_SHARD)
 			n = 0;
-		if (shard_rt[n].mode == SHARD_MODE_LOCAL)
+		if (shard_rt[n].shard &&
+		    !shard_rt[n].shard->loading &&
+		    shard_rt[n].proxy == NULL)
 			return n;
 	}
 	return -1;

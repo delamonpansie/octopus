@@ -478,8 +478,6 @@ snapshot_write_rows:(XLog *)l
 				say_info("%.1fM/%.2f%% rows written", rows / 1000000., pct);
 				title("snap_dump %.2f%%", pct);
 			}
-			if (rows % 10000 == 0)
-				[l confirm_write];
 		}
 
 		foreach_index(index, o) {
@@ -536,12 +534,12 @@ initialize_service()
 }
 
 static void
-init_second_stage(va_list ap)
+init_second_stage(va_list ap __attribute__((unused)))
 {
 	luaT_openbox(root_L);
 	luaT_require_or_panic("box_init", false, NULL);
 
-	[recovery simple];
+	[recovery simple:&box_primary];
 }
 
 
@@ -557,7 +555,6 @@ init(void)
 		return;
 
 	initialize_service();
-	[Recovery service:&box_primary];
 
 	/* fiber is required to successfully pull from remote */
 	fiber_create("box_init", init_second_stage);

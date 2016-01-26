@@ -714,8 +714,8 @@ box_rollback(struct box_txn *txn)
 
 
 #define RT_EXECUTOR(arg)					     \
-	({ if (!arg) iproto_raise(ERR_CODE_NONMASTER, "no such microshard"); \
-	   ((struct shard_route *)arg)->executor; })
+	({ assert (arg && ((struct shard_route *)arg)->shard); \
+	   ((struct shard_route *)arg)->shard->executor; })
 
 static void
 box_lua_cb(struct netmsg_head *wbuf, struct iproto *request, void *arg)
@@ -884,16 +884,15 @@ box_select_cb(struct netmsg_head *wbuf, struct iproto *request, void *arg)
 
 #define foreach_op(...) for(int *op = (int[]){__VA_ARGS__, 0}; *op; op++)
 
-
 void
 box_service(struct iproto_service *s)
 {
 	foreach_op(NOP, SELECT, SELECT_LIMIT)
 		service_register_iproto(s, *op, box_select_cb, IPROTO_NONBLOCK);
 	foreach_op(INSERT, UPDATE_FIELDS, DELETE, DELETE_1_3)
-		service_register_iproto(s, *op, box_cb, IPROTO_PROXY);
+		service_register_iproto(s, *op, box_cb, IPROTO_ON_MASTER);
 	foreach_op(CREATE_OBJECT_SPACE, CREATE_INDEX, DROP_OBJECT_SPACE, DROP_INDEX, TRUNCATE)
-		service_register_iproto(s, *op, box_meta_cb, IPROTO_PROXY);
+		service_register_iproto(s, *op, box_meta_cb, IPROTO_ON_MASTER);
 	service_register_iproto(s, EXEC_LUA, box_lua_cb, 0);
 }
 
