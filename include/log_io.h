@@ -32,6 +32,7 @@
 #include <objc.h>
 #import <spawn_child.h>
 #import <mbox.h>
+#import <shard.h>
 #import <run_crc.h>
 
 #include <stdio.h>
@@ -444,7 +445,7 @@ enum feeder_filter_type {
 @end
 
 @interface XLogReplica : Object {
-	id<Shard> shard;
+	Shard<Shard> *shard;
 	id<XLogWriter> writer;
 	struct feeder_param feeder;
 	XLogPuller *remote_puller;
@@ -480,42 +481,6 @@ enum feeder_filter_type {
 - (void) adjust_route;
 - (struct shard_op *)snapshot_header;
 - (struct row_v12 *)snapshot_write_header:(XLog *)snap;
-@end
-
-@interface Shard: Object {
-	ev_tstamp last_update_tstamp, lag;
-	u32 run_crc_log;
-	struct run_crc run_crc_state;
-	char status_buf[64];
-	int old_mode;
-@public
-	int id;
-	id<Executor> executor;
-	i64 scn;
-	char peer[5][16];
-	bool dummy, loading;
-}
-- (id) init_id:(int)shard_id scn:(i64)scn_
-      sop:(const struct shard_op *)sop;
-
-- (int) id;
-- (i64) scn;
-- (id<Executor>)executor;
-- (ev_tstamp) run_crc_lag;
-- (const char *) run_crc_status;
-- (u32) run_crc_log;
-- (int) submit_run_crc;
-- (void) status_update:(const char *)fmt, ...;
-- (const char *)status;
-
-- (ev_tstamp) lag;
-- (ev_tstamp) last_update_tstamp;
-
-- (struct shard_op *)snapshot_header;
-- (const struct row_v12 *)snapshot_write_header:(XLog *)snap;
-
-- (void) alter_peers:(struct shard_op *)sop;
-- (void) reload_from:(const char *)name;
 @end
 
 @interface POR: Shard <Shard,RecoverRow> {

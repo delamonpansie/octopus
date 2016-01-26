@@ -28,15 +28,50 @@
 #define SHARD_H
 
 #include <util.h>
+#import <run_crc.h>
 
 #define MAX_SHARD 4096
 
-@class Shard;
+@class XLog;
 @protocol Shard;
 @protocol Executor;
 
-enum shard_type { SHARD_TYPE_POR, SHARD_TYPE_PAXOS } ;
+@interface Shard: Object {
+	ev_tstamp last_update_tstamp, lag;
+	u32 run_crc_log;
+	struct run_crc run_crc_state;
+	char status_buf[64];
+@public
+	int id;
+	id<Executor> executor;
+	i64 scn;
+	bool dummy, loading;
+	char peer[5][16];
+}
+- (id) init_id:(int)shard_id scn:(i64)scn_ sop:(const struct shard_op *)sop;
 
+- (int) id;
+- (i64) scn;
+- (id<Executor>)executor;
+- (ev_tstamp) run_crc_lag;
+- (const char *) run_crc_status;
+- (u32) run_crc_log;
+- (int) submit_run_crc;
+- (void) status_update:(const char *)fmt, ...;
+- (const char *)status;
+
+- (ev_tstamp) lag;
+- (ev_tstamp) last_update_tstamp;
+
+- (struct shard_op *)snapshot_header;
+- (const struct row_v12 *)snapshot_write_header:(XLog *)snap;
+
+- (void) alter_peers:(struct shard_op *)sop;
+- (void) reload_from:(const char *)name;
+- (void) wal_final_row;
+@end
+
+enum shard_type { SHARD_TYPE_POR, SHARD_TYPE_PAXOS } ;
 
 struct shard_route {
 	Shard<Shard> *shard;
