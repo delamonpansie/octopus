@@ -29,14 +29,17 @@
  * it always mmap file into memory, and returns interior pointers.
  */
 
+#ifndef UTIL_CKV_H
+#define UTIL_CKV_H
+
 enum ckv_kind {
 	/* TEXT_WITH_FORMAT - text file with lines like
 	 *     key value
 	 *     key:format value
 	 * where 'format' is custom hint for value parsing
 	 */
-	CKV_TEXT,
 	CKV_TEXT_NOFORMAT,
+	CKV_TEXT_WITH_FORMAT,
 	/* CDB - just cdb file */
 	CKV_CDB_NOFORMAT,
 	/* CDB_BYTEFORMAT - also cdb file, but first value byte counts as a format string */
@@ -73,8 +76,8 @@ struct stat* ckv_fstat(struct ckv* ckv);
 /* returns number of keys */
 int ckv_size(struct ckv* ckv);
 
-/* reads key value, sets val and format to appropriate values
+/* generic accessor: reads key value, sets val and format to appropriate values
  * returns 1 if key exists, 0 otherwise */
 int ckv_key_get(struct ckv *ckv, char const* key, int key_len, struct ckv_str* val, struct ckv_str* format);
-/* reads key value and convert it to int, returns `_default` if no key exists */
-int ckv_key_get_atoi(struct ckv *ckv, char const* key, int key_len, int _default);
+
+#endif

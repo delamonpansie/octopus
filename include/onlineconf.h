@@ -24,26 +24,25 @@
  * SUCH DAMAGE.
  */
 
-#ifndef CONSTANT_KV_H
-#define CONSTANT_KV_H
+#ifndef ONLINECONF_H
+#define ONLINECONF_H
 
 #include <third_party/ckv/ckv.h>
 
-void register_constant_kv_or_fail(const char* _name, const char* _path, enum ckv_kind kind);
-
-// callback will accept name of registered constant_kv file.
+// callback will accept name of registered onlineconf file.
 // it should recheck that name matches.
-typedef void (*constant_kv_cb_f)(const char* name);
+typedef void (*onlineconf_cb_f)(const char* name);
 // register function which will be called on onlineconf file change
-void register_constant_kv_callback(constant_kv_cb_f cb);
+void register_onlineconf_callback(onlineconf_cb_f cb);
 
-bool constant_kv_registered(const char* name);
+bool onlineconf_registered(const char* name);
 
 // get key value.
-// if key_len <= 0 then strlen(name) is called
-// returns 0 if key exists, 1 if key doesn't exists, 2 if kv is not registered
-int constant_kv_get(const char* name, const char* key, int key_len, struct ckv_str* result, struct ckv_str* format);
+// returns 1 if key exists, 0 if key doesn't exists
+int onlineconf_get(const char* name, const char* key, struct ckv_str* result);
+// get key value if format it json
+int onlineconf_get_json(const char* name, const char* key, struct ckv_str* result);
 // get integer value
 // if no key exists, then _default returned
-int constant_kv_geti(const char* name, const char* key, int key_len, int _default);
+int onlineconf_geti(const char* name, const char* key, int _default);
 #endif

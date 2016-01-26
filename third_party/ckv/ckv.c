@@ -203,12 +203,12 @@ ckv_text_parse(struct ckv* ckv, struct ckv_errcb* errcb) {
 		format = NULL;
 		keyend = NULL;
 		uint32_t hash = 5381;
-		if (ckv->kind == CKV_TEXT)
+		if (ckv->kind == CKV_TEXT_WITH_FORMAT)
 			while (cur != endline && jmp1[*cur] == 0) {
 				hash = (hash * 33) ^ *cur;
 				cur++;
 			}
-		else /* CKV_TEXT_WITHOUT_FORMAT */
+		else /* CKV_TEXT_NOFORMAT */
 			while (cur != endline && jmp1[*cur] != 1) {
 				hash = (hash * 33) ^ *cur;
 				cur++;
@@ -282,7 +282,7 @@ ckv_open(char const *path, enum ckv_kind kind, enum ckv_try_mmap try_mmap, ckv_e
 		return NULL;
 	}
 	if (try_mmap == CKV_MMAP_MALLOC_ON_FAIL &&
-			(kind == CKV_TEXT || kind == CKV_TEXT_NOFORMAT) &&
+			(kind == CKV_TEXT_WITH_FORMAT || kind == CKV_TEXT_NOFORMAT) &&
 			(fdstat.st_mode & ~0444) != 0) {
 		try_mmap = CKV_MALLOC_ONLY;
 	}
@@ -327,7 +327,7 @@ ckv_open(char const *path, enum ckv_kind kind, enum ckv_try_mmap try_mmap, ckv_e
 		ckv->mem = mem;
 	}
 	close(fd);
-	int parsed = (kind == CKV_TEXT || kind == CKV_TEXT_NOFORMAT) ?
+	int parsed = (kind == CKV_TEXT_WITH_FORMAT || kind == CKV_TEXT_NOFORMAT) ?
 		ckv_text_parse(ckv, &errcb) :
 		ckv_cdb_check(ckv, &errcb);
 	if (!parsed)
@@ -464,8 +464,8 @@ notfound:
 int
 ckv_key_get(struct ckv *ckv, char const* key, int key_len, struct ckv_str* val, struct ckv_str* fmt) {
 	switch (ckv->kind) {
-	case CKV_TEXT:
 	case CKV_TEXT_NOFORMAT:
+	case CKV_TEXT_WITH_FORMAT:
 		return ckv_text_get(ckv, key, key_len, val, fmt);
 	case CKV_CDB_NOFORMAT:
 	case CKV_CDB_BYTEFORMAT:
@@ -475,13 +475,3 @@ ckv_key_get(struct ckv *ckv, char const* key, int key_len, struct ckv_str* val, 
 	}
 }
 
-int
-ckv_key_get_atoi(struct ckv *ckv, char const* key, int key_len, int _default) {
-	struct ckv_str val;
-	if (ckv_key_get(ckv, key, key_len, &val, NULL)) {
-		char copy[20] = {0};
-		memcpy(copy, val.str, val.len);
-		return atoi(copy);
-	}
-	return _default;
-}

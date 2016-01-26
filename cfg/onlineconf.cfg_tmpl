@@ -1,0 +1,10 @@
+# onlineconf file name
+# it will be appeared as "" namespace
+onlineconf = NULL, rw
+# other onlineconf files
+onlineconf_additional = [
+  {
+    namespace = NULL, ro, required
+    file = NULL, rw, required
+  }, rw
+], rw
