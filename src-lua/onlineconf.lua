@@ -16,6 +16,7 @@ struct ckv_str {
 int onlineconf_get(const char* name, const char* key, struct ckv_str* result);
 int onlineconf_get_json(const char* name, const char* key, struct ckv_str* result);
 int onlineconf_geti(const char* name, const char* key, int _default);
+bool onlineconf_get_bool(const char* name, const char* key);
 bool onlineconf_registered(const char* name);
 ]]
 
@@ -41,6 +42,10 @@ function onlineconf.geti(key, default)
     return ffi.C.onlineconf_geti(nil, key, default or -1)
 end
 
+function onlineconf.bool(key)
+    return ffi.C.onlineconf_get_bool(nil, key)
+end
+
 local kv_key = newproxy()
 local kv_mt = {
     __metatable = "onlineconf",
@@ -60,7 +65,10 @@ local kv_mt = {
             end
         end,
         geti = function(t, key, default)
-            return ffi.C.onlineconf_geti(t[kv_key], key, default)
+            return ffi.C.onlineconf_geti(t[kv_key], key, default or -1)
+        end,
+        bool = function(t, key)
+            return ffi.C.onlineconf_get_bool(t[kv_key], key)
         end
     },
     __newindex = function(t, k, v)

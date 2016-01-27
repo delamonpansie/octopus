@@ -45,4 +45,7 @@ int onlineconf_get_json(const char* name, const char* key, struct ckv_str* resul
 // get integer value
 // if no key exists, then _default returned
 int onlineconf_geti(const char* name, const char* key, int _default);
+// get bool value
+// if no key exists, then false returned
+bool onlineconf_get_bool(const char* name, const char* key);
 #endif

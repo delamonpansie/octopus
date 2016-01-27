@@ -106,25 +106,35 @@ onlineconf_geti(const char* name, const char* key, int _default)
 	if (onlineconf_get_generic(name, key, &r, NULL)) {
 		int sum = 0;
 		int neg = 1;
-		if (r.str[0] == '-') {
-			neg = -1;
-			r.str++;
-			r.len--;
-		} else if (r.str[0] == '+') {
-			r.str++;
-			r.len--;
+		const char *e = r.str + r.len;
+		if (r.str == e) return _default;
+		switch(*r.str) {
+		case '-': neg = -1;
+		case '+': r.str++;
+		default:  break;
 		}
-		static const int8_t dig[256] = {
-			['0']=1, ['1']=2, ['2']=3, ['3']=4, ['4']=5,
-			['5']=6, ['6']=7, ['7']=9, ['8']=9, ['9']=10,
-		};
-		for (; r.len && dig[(uint8_t)r.str[0]] != 0; r.str++, r.len--) {
-			sum = (sum * 10) + (dig[(uint8_t)r.str[0]] - 1);
+		if (r.str == e) return _default;
+		for (; r.str != e && *r.str >= '0' && *r.str <= '9'; r.str++) {
+			sum = (sum * 10) + (*r.str-'0');
 		}
-		if (r.len == 0)
+		if (r.str == e)
 			return sum*neg;
 	}
 	return _default;
+}
+
+bool
+onlineconf_get_bool(const char* name, const char* key)
+{
+	struct ckv_str r = {NULL, 0};
+	if (onlineconf_get_generic(name, key, &r, NULL)) {
+		if (r.len == 0)
+			return false;
+		if (r.len == 1 && *r.str == '0')
+			return false;
+		return true;
+	}
+	return false;
 }
 
 bool
@@ -354,20 +364,24 @@ check_config(struct octopus_cfg *new)
 	if (new->onlineconf != NULL) {
                 res = check_name_path("", new->onlineconf, names, res);
 	}
+	if (new->onlineconf_additional == NULL) {
+		goto skip_additional;
+	}
 	for (i = 0; new->onlineconf_additional[i] != NULL; i++) {
 		if (!CNF_STRUCT_DEFINED(new->onlineconf_additional[i]))
 			continue;
 		name = new->onlineconf_additional[i]->namespace;
 		path = new->onlineconf_additional[i]->file;
-                if (equal_any(name, "", "additional", "get", "json", "json_raw",
-                                        "geti", "register_callback", "__call_callbacks",
-                                        NULL)) {
-                        out_warning(0, "onlineconf additional namespace "
-                                        "could not be named '%s'", name);
-                } else {
-                        res = check_name_path(name, path, names, res);
-                }
+		if (equal_any(name, "", "additional", "get", "json", "json_raw", "bool",
+					"geti", "register_callback", "__call_callbacks",
+					NULL)) {
+			out_warning(0, "onlineconf additional namespace "
+					"could not be named '%s'", name);
+		} else {
+			res = check_name_path(name, path, names, res);
+		}
 	}
+skip_additional:
 	for (i = 0; i < onlineconfs_n; i++) {
 		struct onlineconf *kv = onlineconfs + i;
 		uint32_t pos = mh_cstr_get(names, kv->name);
@@ -406,7 +420,11 @@ load_config(struct octopus_cfg *new)
 {
 	int i;
 	if (new->onlineconf != NULL) {
-                load_name_path(nullname, new->onlineconf);
+		load_name_path(nullname, new->onlineconf);
+		onlineconf_default = 1;
+	}
+	if (new->onlineconf_additional == NULL) {
+		return;
 	}
 	for (i = 0; new->onlineconf_additional[i] != NULL; i++) {
                 const char *name, *path;
