@@ -310,7 +310,7 @@ has_full_req(const struct tbuf *buf)
 
 
 static int
-local(struct iproto *msg, struct shard_route *route, struct iproto_ingress_svc *io, struct iproto_handler *ih)
+local(struct iproto_ingress_svc *io, struct iproto *msg, struct shard_route *route, struct iproto_handler *ih)
 {
 	say_debug3("%s: peer:%s op:0x%x sync:%u%s%s", __func__,
 		   net_peer_name(io->fd), msg->msg_code, msg->sync,
@@ -350,14 +350,14 @@ local(struct iproto *msg, struct shard_route *route, struct iproto_ingress_svc *
 }
 
 static int
-error(struct iproto *msg, struct netmsg_io *io, const char *err)
+error(struct netmsg_io *io, struct iproto *msg, const char *err)
 {
 	iproto_error(&io->wbuf, msg, ERR_CODE_NONMASTER, err);
 	return 1;
 }
 
 static int
-classify(struct iproto *msg, struct iproto_ingress_svc *io)
+classify(struct iproto_ingress_svc *io, struct iproto *msg)
 {
 	struct shard_route *route;
 	struct iproto_handler *ih;
@@ -371,7 +371,7 @@ classify(struct iproto *msg, struct iproto_ingress_svc *io)
 		say_debug2("%s: %s peer:%s op:0x%x sync:%u  ", __func__, msg == orig_msg ? "" : "PROXY",
 			   net_peer_name(io->fd), msg->msg_code, msg->sync);
 		if (unlikely(msg->shard_id > nelem(shard_rt)))
-			return error(msg, io, "no such shard");
+			return error(io, msg, "no such shard");
 		route = shard_rt + msg->shard_id;
 		proxy = route->proxy;
 		shard = route->shard;
@@ -384,17 +384,17 @@ classify(struct iproto *msg, struct iproto_ingress_svc *io)
 		if (orig_msg == msg) { /* not via proxy */
 			if (proxy && (shard == nil || ih->flags & IPROTO_ON_MASTER)) {
 				if (proxy == (void *)0x1)
-					return error(msg, io, "replica is readonly");
+					return error(io, msg, "replica is readonly");
 				return !!iproto_proxy_send(proxy, io, MSG_IPROXY, msg, NULL, 0);
 			}
 			if (shard == nil)
-				return error(msg, io, "no such shard");
+				return error(io, msg, "no such shard");
 		} else {
 			if (shard == nil || (proxy && ih->flags & IPROTO_ON_MASTER))
-				return error(msg, io, "route loop");
+				return error(io, msg, "route loop");
 		}
 	local:
-		return local(msg, route, io, ih);
+		return local(io, msg, route, ih);
 	}
 	@finally {
 		fiber->ushard = -1;
@@ -412,7 +412,7 @@ process_requests(struct iproto_service *service, struct iproto_ingress_svc *io)
 		struct iproto *msg = iproto(&io->rbuf);
 		size_t msg_size = sizeof(struct iproto) + msg->data_len;
 
-		if (classify(msg, io))
+		if (classify(io, msg))
 			tbuf_ltrim(&io->rbuf, msg_size);
 		else
 			break;
