@@ -58,7 +58,7 @@ static int stat_base;
 struct worker_arg {
 	iproto_cb cb;
 	struct iproto *r;
-	struct netmsg_io *io;
+	struct iproto_ingress_svc *io;
 	void *arg;
 };
 
@@ -70,6 +70,15 @@ exc_rc(Error *e)
 	if ([e isMemberOf:[IndexError class]])
 		return ERR_CODE_ILLEGAL_PARAMS;
 	return ERR_CODE_UNKNOWN_ERROR;
+}
+
+static int
+error(struct iproto_ingress_svc *io, struct iproto *msg, int rc, const char *err)
+{
+	struct iproto_handler *ih = service_find_code(io->service, msg->msg_code);
+	if ((ih->flags & IPROTO_DROP_ERROR) == 0)
+		iproto_error(&io->wbuf, msg, rc, err);
+	return 1;
 }
 
 void
@@ -350,13 +359,6 @@ local(struct iproto_ingress_svc *io, struct iproto *msg, struct shard_route *rou
 }
 
 static int
-error(struct netmsg_io *io, struct iproto *msg, const char *err)
-{
-	iproto_error(&io->wbuf, msg, ERR_CODE_NONMASTER, err);
-	return 1;
-}
-
-static int
 classify(struct iproto_ingress_svc *io, struct iproto *msg)
 {
 	struct shard_route *route;
@@ -371,7 +373,7 @@ classify(struct iproto_ingress_svc *io, struct iproto *msg)
 		say_debug2("%s: %s peer:%s op:0x%x sync:%u  ", __func__, msg == orig_msg ? "" : "PROXY",
 			   net_peer_name(io->fd), msg->msg_code, msg->sync);
 		if (unlikely(msg->shard_id > nelem(shard_rt)))
-			return error(io, msg, "no such shard");
+			return error(io, msg, ERR_CODE_NONMASTER, "no such shard");
 		route = shard_rt + msg->shard_id;
 		proxy = route->proxy;
 		shard = route->shard;
@@ -384,14 +386,14 @@ classify(struct iproto_ingress_svc *io, struct iproto *msg)
 		if (orig_msg == msg) { /* not via proxy */
 			if (proxy && (shard == nil || ih->flags & IPROTO_ON_MASTER)) {
 				if (proxy == (void *)0x1)
-					return error(io, msg, "replica is readonly");
+					return error(io, msg, ERR_CODE_NONMASTER, "replica is readonly");
 				return !!iproto_proxy_send(proxy, io, MSG_IPROXY, msg, NULL, 0);
 			}
 			if (shard == nil)
-				return error(io, msg, "no such shard");
+				return error(io, msg, ERR_CODE_NONMASTER, "no such shard");
 		} else {
 			if (shard == nil || (proxy && ih->flags & IPROTO_ON_MASTER))
-				return error(io, msg, "route loop");
+				return error(io, msg, ERR_CODE_NONMASTER, "route loop");
 		}
 	local:
 		return local(io, msg, route, ih);

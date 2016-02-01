@@ -109,7 +109,7 @@ void iproto_ping(struct netmsg_head *h, struct iproto *r, void *arg __attribute_
 @class Shard;
 @protocol Shard;
 
-enum { IPROTO_NONBLOCK = 1, IPROTO_LOCAL = 2, IPROTO_ON_MASTER = 4 };
+enum { IPROTO_NONBLOCK = 1, IPROTO_LOCAL = 2, IPROTO_ON_MASTER = 4, IPROTO_DROP_ERROR = 8 };
 typedef void (*iproto_cb)(struct netmsg_head *, struct iproto *, void *);
 struct iproto_handler {
 	iproto_cb cb;
