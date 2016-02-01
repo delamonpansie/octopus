@@ -62,6 +62,16 @@ struct worker_arg {
 	void *arg;
 };
 
+static int
+exc_rc(Error *e)
+{
+	if ([e respondsTo:@selector(code)])
+		return [(id)e code];
+	if ([e isMemberOf:[IndexError class]])
+		return ERR_CODE_ILLEGAL_PARAMS;
+	return ERR_CODE_UNKNOWN_ERROR;
+}
+
 void
 iproto_worker(va_list ap)
 {
@@ -83,13 +93,8 @@ iproto_worker(va_list ap)
 		@catch (Error *e) {
 			/* FIXME: where is no way to rollback modifications of wbuf.
 			   cb() must not throw any exceptions after it modified wbuf */
-			u32 rc = ERR_CODE_UNKNOWN_ERROR;
-			if ([e respondsTo:@selector(code)])
-				rc = [(id)e code];
-			else if ([e isMemberOf:[IndexError class]])
-				rc = ERR_CODE_ILLEGAL_PARAMS;
 
-			iproto_error(&a.io->wbuf, a.r, rc, e->reason);
+			iproto_error(&a.io->wbuf, a.r, exc_rc(e), e->reason);
 			[e release];
 		}
 		@finally {
@@ -320,14 +325,8 @@ local(struct iproto *msg, struct shard_route *route, struct iproto_ingress_svc *
 			ih->cb(&io->wbuf, msg, route);
 		}
 		@catch (Error *e) {
-			u32 rc = ERR_CODE_UNKNOWN_ERROR;
-			if ([e respondsTo:@selector(code)])
-				rc = [(id)e code];
-			else if ([e isMemberOf:[IndexError class]])
-				rc = ERR_CODE_ILLEGAL_PARAMS;
-
 			netmsg_rewind(&io->wbuf, &header_mark);
-			iproto_error(&io->wbuf, msg, rc, e->reason);
+			iproto_error(&io->wbuf, msg, exc_rc(e), e->reason);
 			[e release];
 		}
 		@finally {
