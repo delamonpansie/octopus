@@ -307,10 +307,12 @@ paxos_elect(va_list ap)
 			fiber_sleep(delay);
 		} else {
 			assert(paxos->leadership_expire > 0);
+			ev_tstamp delay = paxos->leadership_expire - ev_now();
 			if (!paxos_leader(paxos))
-				fiber_sleep(paxos->leadership_expire + leader_lease_interval * .01 - ev_now());
+				delay += leader_lease_interval * .01;
 			else
-				fiber_sleep(paxos->leadership_expire - leader_lease_interval * .1 - ev_now());
+				delay -= leader_lease_interval * .1;
+			fiber_sleep(delay);
 		}
 
 		if (paxos->leader_id >= 0 && !paxos_leader(paxos))
