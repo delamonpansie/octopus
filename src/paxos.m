@@ -67,7 +67,7 @@ make_paxos_peer(int id, const char *name)
 	const struct sockaddr_in *sin;
 	struct paxos_peer *p;
 
-	sin = shard_addr(name, PORT_PRIMARY);
+	sin = peer_addr(name, PORT_PRIMARY);
 	if (sin == NULL)
 		return NULL;
 
@@ -77,7 +77,7 @@ make_paxos_peer(int id, const char *name)
 
 	p->addr = *sin;
 	p->feeder.ver = 1;
-	p->feeder.addr = *shard_addr(name, PORT_REPLICATION);
+	p->feeder.addr = *peer_addr(name, PORT_REPLICATION);
 	p->feeder.filter = (struct feeder_filter){.type = FILTER_TYPE_LUA,
 						  .name = "tag_wal"};
 

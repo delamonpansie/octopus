@@ -56,7 +56,7 @@ feeder
 		if (fid_err) panic("wrong feeder conf");
 		return &feeder;
 	}
-	memcpy(&feeder.addr, shard_addr(peer[0], PORT_REPLICATION), sizeof(feeder.addr));
+	feeder.addr = *peer_addr(peer[0], PORT_REPLICATION);
 	return &feeder;
 }
 
@@ -70,7 +70,7 @@ load_from_remote
 		if (strcmp(peer[i], cfg.hostname) == 0)
 			continue;
 
-		memcpy(&feeder.addr, shard_addr(peer[i], PORT_REPLICATION), sizeof(feeder.addr));
+		feeder.addr = *peer_addr(peer[i], PORT_REPLICATION);
 		if ([reader load_from_remote:&feeder] >= 0)
 			break;
 	}
@@ -80,13 +80,13 @@ load_from_remote
 - (void)
 remote_hot_standby:(const char *)name
 {
-	struct feeder_param feeder;
+	struct feeder_param feeder = { .ver = 1,
+				       .filter = { .type = FILTER_TYPE_ID } };
 	if (dummy) {
 		enum feeder_cfg_e fid_err = feeder_param_fill_from_cfg(&feeder, NULL);
 		if (fid_err) panic("wrong feeder conf");
 	} else {
-		extern void shard_feeder(const char *name, struct feeder_param *feeder);
-		shard_feeder(name ?: peer[0], &feeder);
+		feeder.addr = *peer_addr(name ?: peer[0], PORT_REPLICATION);
 	}
 	if (remote == nil) {
 		remote = [[XLogReplica alloc] init_shard:self];

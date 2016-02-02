@@ -93,7 +93,7 @@ cfg_peer_by_name(const char *name)
 }
 
 const struct sockaddr_in *
-shard_addr(const char *name, enum port_type port_type)
+peer_addr(const char *name, enum port_type port_type)
 {
 	static struct sockaddr_in sin;
 	struct octopus_cfg_peer *c = cfg_peer_by_name(name);
@@ -114,14 +114,6 @@ shard_addr(const char *name, enum port_type port_type)
 }
 
 void
-shard_feeder(const char *name, struct feeder_param *feeder)
-{
-	*feeder = (struct feeder_param){ .ver = 1,
-					 .filter = { .type = FILTER_TYPE_ID } };
-	memcpy(&feeder->addr, shard_addr(name, PORT_REPLICATION), sizeof(feeder->addr));
-}
-
-void
 update_rt(int shard_id, Shard<Shard> *shard, const char *master_name)
 {
 	static struct msg_void_ptr msg;
@@ -133,7 +125,7 @@ update_rt(int shard_id, Shard<Shard> *shard, const char *master_name)
 
 	const struct sockaddr_in *addr = NULL;
 	if (master_name && strcmp(master_name, "<dummy_addr>") != 0) {
-		addr = shard_addr(master_name, PORT_PRIMARY);
+		addr = peer_addr(master_name, PORT_PRIMARY);
 		if (!addr) {
 			say_error("Unknown peer %s, ignoring shard %i route update", master_name, shard_id);
 			return;
@@ -179,18 +171,18 @@ update_rt_notify(va_list ap __attribute__((unused)))
 			peer_count++;
 
 	struct sockaddr_in *buf = calloc(peer_count + 1, sizeof(*buf));
-	struct sockaddr_in *peer_addr = buf;
+	struct sockaddr_in *paddr = buf;
 	for (struct octopus_cfg_peer **p = cfg.peer; *p; p++) {
 		if (strcmp((*p)->name, cfg.hostname) == 0)
 			continue;
-		const struct sockaddr_in *addr = shard_addr((*p)->name, PORT_PRIMARY);
+		const struct sockaddr_in *addr = peer_addr((*p)->name, PORT_PRIMARY);
 		if (!addr || addr->sin_family == AF_UNSPEC) {
 			say_error("bad peer addr %s", (*p)->name);
 			continue;
 		}
-		*peer_addr++ = *addr;
+		*paddr++ = *addr;
 	}
-	peer_addr->sin_family = AF_UNSPEC;
+	paddr->sin_family = AF_UNSPEC;
 
 	for (;;) {
 		mbox_timedwait(&recovery->rt_notify_mbox, 1, 1);
@@ -216,13 +208,13 @@ update_rt_notify(va_list ap __attribute__((unused)))
 					       { &scn, sizeof(scn) },
 					       { sop, sizeof(*sop) } };
 			struct msghdr msg = (struct msghdr){
-				.msg_namelen = sizeof(peer_addr[0]),
+				.msg_namelen = sizeof(paddr[0]),
 				.msg_iov = iov,
 				.msg_iovlen = nelem(iov)
 			};
 
-			for (peer_addr = buf; peer_addr->sin_family != AF_UNSPEC; peer_addr++) {
-				msg.msg_name = peer_addr;
+			for (paddr = buf; paddr->sin_family != AF_UNSPEC; paddr++) {
+				msg.msg_name = paddr;
 				if (sendmsg(sock, &msg, 0) < 0)
 					say_syserror("sendmsg");
 			}
@@ -724,7 +716,7 @@ load_from_remote
 
 		feeder = (struct feeder_param){ .ver = 1,
 						.filter = { .type = FILTER_TYPE_ID } };
-		memcpy(&feeder.addr, shard_addr((*p)->name, PORT_REPLICATION), sizeof(feeder.addr));
+		feeder.addr = *peer_addr((*p)->name, PORT_REPLICATION);
 		count = [remote_reader load_from_remote:&feeder];
 		if (count >= 0)
 			break;
