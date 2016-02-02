@@ -428,8 +428,13 @@ wal_disk_writer(int fd, void *state, int len)
 				   so, next_scn should be updated only when data modification occurs */
 				if (cfg.panic_on_scn_gap &&
 				    row->scn - st[row->shard_id].scn != 1 &&
-					st[row->shard_id].scn != 0)
-					panic("SCN GAP:%"PRIi64" rows:%i", row->scn - st[row->shard_id].scn, reply->row_count);
+				    st[row->shard_id].scn != 0)
+				{
+					struct tbuf *buf = tbuf_alloc(fiber->pool);
+					print_row(buf, row, NULL);
+					panic("SCN GAP:%"PRIi64" rows:%i row:%s", row->scn - st[row->shard_id].scn,
+					      reply->row_count, (const char *)buf->ptr);
+				}
 
 				st[row->shard_id].scn = row->scn;
 

@@ -456,8 +456,12 @@ fetch_row
 
 	row = buf->ptr;
 
-	say_debug("%s: shard:%i SCN:%"PRIi64 " tag:%s", __func__,
-		  row->shard_id, row->scn, xlog_tag_to_a(row->tag));
+	int old_ushard = fiber->ushard;
+	if (row->scn)
+		fiber->ushard = row->shard_id;
+	say_debug("%s: SCN:%"PRIi64 " tag:%s", __func__,
+		  row->scn, xlog_tag_to_a(row->tag));
+	fiber->ushard = old_ushard;
 
 	/* feeder may send keepalive rows */
 	if (row->lsn == 0 && row->scn == 0 && row->tag == (nop|TAG_SYS))

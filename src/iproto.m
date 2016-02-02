@@ -536,8 +536,8 @@ iproto_error(struct netmsg_head *h, const struct iproto *request, u32 ret_code, 
 	if (err && strlen(err) > 0)
 		net_add_iov_dup(h, err, strlen(err));
 	iproto_reply_fixup(h, header);
-	say_debug("%s: op:0x%02x data_len:%i sync:%i ret:%i", __func__,
-		  header->msg_code, header->data_len, header->sync, header->ret_code);
+	say_debug("%s: shard:%i op:0x%02x data_len:%i sync:%i ret:%i", __func__,
+		  header->shard_id, header->msg_code, header->data_len, header->sync, header->ret_code);
 	say_debug2("	%s", err);
 }
 

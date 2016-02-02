@@ -254,7 +254,7 @@ u32
 iproto_proxy_send(struct iproto_egress *to, struct iproto_ingress *from, u32 wrap_code,
 		  const struct iproto *msg, const struct iovec *iov, int iovcnt)
 {
-	say_debug2("%s: op:0x%x %s", __func__, msg->msg_code, wrap_code ? "WRAP" : "");
+	say_debug2("%s: shard:%i op:0x%x %s", __func__, msg->shard_id, msg->msg_code, wrap_code ? "WRAP" : "");
 
 	u32 sync = wrap_code ?
 		   msg_send_wrap(to, wrap_code, msg, iov, iovcnt) :
