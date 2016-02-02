@@ -84,7 +84,9 @@ proxy_future(struct iproto_egress *dst, struct iproto_ingress *src, const struct
 	mh_i32_put(sync2future, sync, future, NULL);
 	TAILQ_INSERT_HEAD(&dst->future, future, link);
 	future->dst = dst;
-	future->proxy_request = (struct iproto){ .msg_code = msg->msg_code, .sync = msg->sync };
+	future->proxy_request = (struct iproto){ .shard_id = msg->shard_id,
+						 .msg_code = msg->msg_code,
+						 .sync = msg->sync };
 	if (src && src->fd != -1) {
 		future->type = IPROTO_FUTURE_PROXY;
 		future->ingress = src;
