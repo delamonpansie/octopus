@@ -1323,6 +1323,7 @@ open_for_read:(i64)lsn
 	return [XLog open_for_read_filename:filename dir:self];
 }
 
+int allow_snap_overwrite = 0;
 - (XLog *)
 open_for_write:(i64)lsn scn:(i64 *)shard_scn_map
 {
@@ -1332,7 +1333,7 @@ open_for_write:(i64)lsn scn:(i64 *)shard_scn_map
 	char *fbuf = NULL;
 
 	const char *final_filename = [self format_filename:lsn];
-	if (access(final_filename, F_OK) == 0) {
+	if (!allow_snap_overwrite && access(final_filename, F_OK) == 0) {
 		errno = EEXIST;
 		say_error("failed to create '%s': file already exists", final_filename);
 		goto error;

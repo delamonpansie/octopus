@@ -562,19 +562,15 @@ shard_load:(int)shard_id sop:(struct shard_op *)sop
 	struct shard_op sop_ = *sop;
 	sop = &sop_;
 	Shard<Shard> *shard;
-	struct wal_reply *reply;
 	assert(shard_rt[shard_id].shard == nil);
 	shard = [self shard_add:shard_id scn:-1 sop:sop];
 	[shard load_from_remote];
-	reply = [writer submit:sop len:sizeof(*sop)
-			   tag:shard_tag|TAG_SYS shard_id:shard->id];
-	if (reply->row_count != 1 ||
-	    [self fork_and_snapshot] != 0)
-	{
+
+	extern int allow_snap_overwrite;
+	allow_snap_overwrite = 1;
+	if ([self fork_and_snapshot] != 0)
 		[shard free];
-		return;
-	}
-	[shard adjust_route];
+	allow_snap_overwrite = 0;
 }
 
 - (void)
