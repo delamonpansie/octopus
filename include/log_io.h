@@ -54,7 +54,8 @@ enum { snap_initial = 1,
        paxos_promise,
        paxos_accept,
        paxos_nop,
-       shard_tag,
+       shard_create,
+       shard_alter,
 
        user_tag = 32
 };
@@ -76,7 +77,7 @@ static inline bool scn_changer(int tag)
 {
 	int tag_type = tag & ~TAG_MASK;
 	tag &= TAG_MASK;
-	return tag_type == TAG_WAL || tag == nop || tag == run_crc || tag == shard_tag;
+	return tag_type == TAG_WAL || tag == nop || tag == run_crc || tag == shard_create || tag == shard_alter;
 }
 
 static inline bool dummy_tag(int tag) /* dummy row tag */
@@ -278,7 +279,6 @@ struct shard_op_aux {
 
 struct shard_op {
 	u8 ver;
-	u8 op;
 	u8 type;
 	i64 tm;
 	u32 row_count;

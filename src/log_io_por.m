@@ -193,7 +193,9 @@ recover_row:(struct row_v12 *)row
 		break;
 	case nop:
 		break;
-	case shard_tag:
+	case shard_create:
+		break;
+	case shard_alter:
 		[self alter_peers:(struct shard_op *)row->data];
 		break;
 	default:
@@ -208,7 +210,7 @@ recover_row:(struct row_v12 *)row
 		run_crc_record(&run_crc_state, (struct run_crc_hist){ .scn = row->scn, .value = run_crc_log });
 		scn = row->scn;
 
-		if ((row->tag & TAG_MASK) == shard_tag && !loading) {
+		if ((row->tag & TAG_MASK) == shard_alter && !loading) {
 			for (int i = 0; i < nelem(peer) && peer[i]; i++)
 				if (strcmp(peer[i], cfg.hostname) == 0)
 					return;

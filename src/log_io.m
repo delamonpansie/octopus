@@ -106,7 +106,8 @@ xlog_tag_to_a(u16 tag)
 	case snap_final:	strcat(p, "snap_final"); break;
 	case wal_data:		strcat(p, "wal_data"); break;
 	case wal_final:		strcat(p, "wal_final"); break;
-	case shard_tag:		strcat(p, "shard_tag"); break;
+	case shard_create:	strcat(p, "shard_create"); break;
+	case shard_alter:	strcat(p, "shard_alter"); break;
 	case run_crc:		strcat(p, "run_crc"); break;
 	case nop:		strcat(p, "nop"); break;
 	case paxos_promise:	strcat(p, "paxos_promise"); break;

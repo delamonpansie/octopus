@@ -197,7 +197,6 @@ update_rt_notify(va_list ap __attribute__((unused)))
 			strncpy(hostname, cfg.hostname, 16);
 			i64 scn = [shard scn];
 			struct shard_op *sop = [shard snapshot_header];
-			sop->op |= 0x80; /* mark as rt update */
 			struct iproto header = { .msg_code = MSG_SHARD,
 						 .shard_id = [shard id],
 						 .data_len = sizeof(hostname) +
@@ -260,11 +259,6 @@ validate_sop(void *data, int len)
 			say_error("sop: unknown peer '%s'", sop->peer[i]);
 			return NULL;
 		}
-	}
-	int op = sop->op & ~ 0xc0;
-	if (op != 0 && op != 1) {
-		say_error("sop: invalid op 0x%02x", sop->op);
-		return NULL;
 	}
 	if (sop->type != SHARD_TYPE_PAXOS && sop->type != SHARD_TYPE_POR) {
 		say_error("sop: invalide shard type %i", sop->type);
@@ -397,7 +391,6 @@ snapshot_header
 {
 	static struct shard_op op;
 	op = (struct shard_op){ .ver = 0,
-				.op = 0,
 				.type = strcmp("POR", [[self class] name]) != 0,
 				.tm = ev_now(),
 				.row_count = [executor snapshot_estimate],
@@ -413,7 +406,7 @@ snapshot_write_header:(XLog *)snap
 {
 	struct shard_op *sop = [self snapshot_header];
 	return [snap append_row:sop len:sizeof(*sop)
-			  shard:self tag:shard_tag|TAG_SYS];
+			  shard:self tag:shard_create|TAG_SYS];
 }
 
 - (int)
@@ -500,7 +493,7 @@ init
 - (Shard<Shard> *)
 shard_add:(int)shard_id scn:(i64)scn sop:(const struct shard_op *)sop
 {
-	assert(sop->ver == 0 && (sop->op == 0 || sop->op == 0x80));
+	assert(sop->ver == 0);
 	assert(shard_rt[shard_id].shard == nil);
 	Shard<Shard> *shard;
 	switch (sop->type) {
@@ -537,7 +530,6 @@ shard_add_dummy:(const struct row_v12 *)row
 	}
 
 	struct shard_op op = { .ver = 0,
-			       .op = 0,
 			       .type = SHARD_TYPE_POR,
 			       .row_count = row_count,
 			       .run_crc_log = run_crc };
@@ -555,7 +547,7 @@ shard_create:(int)shard_id sop:(struct shard_op *)sop
 	struct wal_reply *reply;
 	shard = [self shard_add:shard_id scn:1 sop:sop];
 	reply = [writer submit:sop len:sizeof(*sop)
-			   tag:shard_tag|TAG_SYS shard_id:shard_id];
+			   tag:shard_create|TAG_SYS shard_id:shard_id];
 	if (reply->row_count != 1) {
 		[shard free];
 		iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
@@ -595,7 +587,7 @@ shard_alter:(Shard<Shard> *)shard sop:(struct shard_op *)sop
 	struct shard_op *new_sop = [shard snapshot_header];
 	for (int i = 0; i < nelem(sop->peer); i++)
 		strncpy(new_sop->peer[i], sop->peer[i], 16);
-	if ([shard submit:new_sop len:sizeof(*new_sop) tag:shard_tag|TAG_SYS] != 1)
+	if ([shard submit:new_sop len:sizeof(*new_sop) tag:shard_alter|TAG_SYS] != 1)
 		iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
 
 	[shard alter_peers:sop];
@@ -626,11 +618,11 @@ recover_row:(struct row_v12 *)r
 				shard = [self shard_add_dummy:r];
 		case snap_final:
 			return;
-		case shard_tag:
-			if (shard == nil) {
-				struct shard_op *sop = (struct shard_op *)r->data;
+		case shard_create:
+			assert(shard == nil);
+			struct shard_op *sop = (struct shard_op *)r->data;
+			if (our_shard(sop))
 				shard = [self shard_add:r->shard_id scn:r->scn sop:sop];
-			}
 			break;
 		default:
 			break;
@@ -997,7 +989,7 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req, void *arg __attrib
 	int shard_id = req->shard_id;
 	struct shard_op *sop = validate_sop(req->data, req->data_len);
 
-	if (!sop || (sop->op & 0x80) || req->shard_id > nelem(shard_rt)) {
+	if (!sop || req->shard_id > nelem(shard_rt)) {
 		iproto_error(wbuf, req, ERR_CODE_ILLEGAL_PARAMS, "bad request");
 		return;
 	}
@@ -1074,7 +1066,7 @@ iproto_shard_udpcb(const char *buf, ssize_t len, void *data __attribute__((unuse
 	i64 scn = *(i64 *)(req->data + 16);
 	struct shard_op *sop = validate_sop(req->data + 16 + sizeof(i64),
 					    req->data_len - 16 - sizeof(i64));
-	if (sop == NULL || (sop->op & 0x80) == 0) // bad packet or not rt_update
+	if (sop == NULL)
 		return;
 
 	if (shard && shard->loading) {
@@ -1218,25 +1210,24 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 		tbuf_printf(buf, "SCN:%"PRIi64 " log:0x%08x", scn, log);
 		break;
 	}
-	case shard_tag: {
+	case shard_alter:
+	case shard_create: {
 		int ver = read_u8(&row_data);
 		if (ver != 0) {
 			tbuf_printf(buf, "unknow version: %i", ver);
 			break;
 		}
 
-		int op = read_u8(&row_data);
 		int type = read_u8(&row_data);
 		i64 tm = read_u64(&row_data);
 		u32 estimated_row_count = read_u32(&row_data);
 		u32 run_crc = read_u32(&row_data);
 		const char *mod_name = read_bytes(&row_data, 16);
 
-		switch (op) {
-		case 0: tbuf_printf(buf, "SHARD_CREATE"); break;
-		case 1: tbuf_printf(buf, "SHARD_ALTER"); break;
-		case 0x80 :tbuf_printf(buf, "SHARD_LOAD"); break;
-		default: tbuf_printf(buf, "UNKNOWN"); break;
+		switch (tag & TAG_MASK) {
+		case shard_create: tbuf_printf(buf, "SHARD_CREATE"); break;
+		case shard_alter: tbuf_printf(buf, "SHARD_ALTER"); break;
+		default: assert(false);
 		}
 		tbuf_printf(buf, " shard_id:%i  tm:%"PRIi64" %s %s",
 			    row->shard_id, tm, type == 0 ? "POR" : "PAXOS", mod_name);

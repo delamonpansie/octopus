@@ -272,10 +272,10 @@ assign_scn(struct shard_state *st, struct row_v12 *h)
 	st += h->shard_id;
 	const struct shard_op *sop = NULL;
 
-	if (unlikely((h->tag & TAG_MASK) == shard_tag)) {
+	int tag = h->tag & TAG_MASK;
+	if (unlikely(tag == shard_create || tag == shard_alter)) {
 		sop = (void *)h->data;
 		assert(sop->ver == 0);
-		assert((sop->op & 0x7f) == 0);
 
 		/* shard first seen first time */
 		if (st->scn == 0 && our_shard(sop)) {
@@ -438,7 +438,7 @@ wal_disk_writer(int fd, void *state, int len)
 
 				st[row->shard_id].scn = row->scn;
 
-				if (unlikely((row->tag & TAG_MASK) == shard_tag)) {
+				if (unlikely((row->tag & TAG_MASK) == shard_alter)) {
 					const struct shard_op *sop = (void *)row->data;
 					if (!our_shard(sop))
 						memset(&st[row->shard_id], 0, sizeof(st[row->shard_id]));
