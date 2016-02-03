@@ -586,7 +586,7 @@ shard_alter:(Shard<Shard> *)shard sop:(struct shard_op *)sop
 	if ([shard submit:new_sop len:sizeof(*new_sop) tag:shard_alter|TAG_SYS] != 1)
 		iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
 
-	[shard alter_peers:sop];
+	[shard alter_peers:new_sop];
 }
 
 - (void)
