@@ -634,18 +634,17 @@ check_config(struct octopus_cfg *new)
 }
 
 static void
-reload_config(struct octopus_cfg *old _unused_,
-	      struct octopus_cfg *new)
+reload_config(struct octopus_cfg *old __attribute__((unused)),
+	      struct octopus_cfg *new __attribute__((unused)))
 {
-	struct feeder_param feeder;
-	feeder_param_fill_from_cfg(&feeder, new);
 	Shard<Shard> *shard = [recovery shard:0];
 	if (shard == nil || !shard->dummy) {
 		say_error("ignoring legacy configuration request");
 		return;
 	}
-	if ([(id)shard respondsTo:@selector(set_feeder:)])
-		[(id)shard set_feeder:&feeder];
+
+	if ([(id)shard respondsTo:@selector(remote_hot_standby)])
+		[(id)shard perform:@selector(remote_hot_standby)];
 	else
 		say_error("ignoring unsupported configuration request");
 }
