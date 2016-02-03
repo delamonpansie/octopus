@@ -301,6 +301,34 @@ assign_scn(struct shard_state *st, struct row_v12 *h)
 	}
 }
 
+static void
+commit_scn(struct shard_state *st, struct wal_reply *reply, const struct row_v12 *row)
+{
+	if (!scn_changer(row->tag))
+		return;
+
+	/* next_scn is used for writing XLog header, which is turn used to
+	   find correct file for replication replay.
+	   so, next_scn should be updated only when data modification occurs */
+	if (cfg.panic_on_scn_gap &&
+	    row->scn - st->scn != 1 &&
+	    st->scn != 0)
+	{
+		struct tbuf *buf = tbuf_alloc(fiber->pool);
+		print_row(buf, row, NULL);
+		panic("SCN GAP:%"PRIi64" rows:%i row:%s", row->scn - st->scn,
+		      reply->row_count, (const char *)buf->ptr);
+	}
+
+	run_crc_calc(&st->run_crc, row->tag, row->data, row->len);
+	struct run_crc_hist *row_crc = reply->row_crc + reply->crc_count++;
+	row_crc->scn = row->scn;
+	row_crc->value = st->run_crc;
+
+	reply->scn = row->scn;
+	st->scn = row->scn;
+}
+
 int
 wal_disk_writer(int fd, void *state, int len)
 {
@@ -414,30 +442,7 @@ wal_disk_writer(int fd, void *state, int len)
 
 			for (int k = 0; k < reply->row_count; k++) {
 				const struct row_v12 *row = request->rows[k];
-				if (!scn_changer(row->tag))
-					continue;
-				reply->scn = row->scn;
-
-				u32 *run_crc = &st[row->shard_id].run_crc;
-				run_crc_calc(run_crc, row->tag, row->data, row->len);
-				reply->crc_count++;
-				reply->row_crc[k] = (struct run_crc_hist){ .scn = row->scn, .value = *run_crc };
-
-				/* next_scn is used for writing XLog header, which is turn used to
-				   find correct file for replication replay.
-				   so, next_scn should be updated only when data modification occurs */
-				if (cfg.panic_on_scn_gap &&
-				    row->scn - st[row->shard_id].scn != 1 &&
-				    st[row->shard_id].scn != 0)
-				{
-					struct tbuf *buf = tbuf_alloc(fiber->pool);
-					print_row(buf, row, NULL);
-					panic("SCN GAP:%"PRIi64" rows:%i row:%s", row->scn - st[row->shard_id].scn,
-					      reply->row_count, (const char *)buf->ptr);
-				}
-
-				st[row->shard_id].scn = row->scn;
-
+				commit_scn(st + row->shard_id, reply, row);
 				if (unlikely((row->tag & TAG_MASK) == shard_alter)) {
 					const struct shard_op *sop = (void *)row->data;
 					if (!our_shard(sop))
