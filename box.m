@@ -480,10 +480,10 @@ snapshot_write_rows:(XLog *)l
 			}
 		}
 
-		foreach_index(index, o) {
-			if (index->conf.n == 0)
-				continue;
-			if (!shard->dummy) {
+		if (!shard->dummy) {
+			foreach_index(index, o) {
+				if (index->conf.n == 0)
+					continue;
 				tbuf_reset(row);
 				write_i32(row, n);
 				write_i32(row, 0); // flags
