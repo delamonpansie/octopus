@@ -78,7 +78,7 @@ load_from_remote
 }
 
 - (void)
-remote_hot_standby:(const char *)name
+remote_hot_standby
 {
 	struct feeder_param feeder = { .ver = 1,
 				       .filter = { .type = FILTER_TYPE_ID } };
@@ -86,7 +86,7 @@ remote_hot_standby:(const char *)name
 		enum feeder_cfg_e fid_err = feeder_param_fill_from_cfg(&feeder, NULL);
 		if (fid_err) panic("wrong feeder conf");
 	} else {
-		feeder.addr = *peer_addr(name ?: peer[0], PORT_REPLICATION);
+		feeder.addr = *peer_addr(peer[0], PORT_REPLICATION);
 	}
 	if (remote == nil) {
 		remote = [[XLogReplica alloc] init_shard:self];
@@ -96,12 +96,6 @@ remote_hot_standby:(const char *)name
 	}
 }
 
-
-- (void)
-reload_from:(const char *)name;
-{
-	[self remote_hot_standby:name];
-}
 - (bool)
 standalone
 {
@@ -156,15 +150,9 @@ adjust_route
 	} else {
 		const char *master = dummy ? "<dummy_addr>" : peer[0];
 		update_rt(self->id, self, master);
-		if (dummy) {
-			if (recovery->writer)
-				[self remote_hot_standby:NULL];
-
-		} else {
-			[self status_update:"replicating from %s", peer[0]];
-			if (recovery->writer)
-				[self remote_hot_standby:peer[0]];
-		}
+		[self status_update:"hot_standby/%s/init", master];
+		if (recovery->writer)
+			[self remote_hot_standby];
 	}
 }
 
