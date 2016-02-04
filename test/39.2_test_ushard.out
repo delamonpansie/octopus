@@ -1,0 +1,8 @@
+# one.ping()
+:pong
+
+# two.ping()
+:pong
+
+# one.select(1, {:shard=>33})
+Failed with: {code: 0x102, message: 'no such shard'}

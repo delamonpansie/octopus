@@ -1,0 +1,37 @@
+# one.ping()
+:pong
+
+# two.ping()
+:pong
+
+# one.create_shard(1, :POR, "one")
+:success
+
+# one.create_object_space(0, {:shard=>1, :index=>{:type=>:FASTTREE, :unique=>1, :field_0=>{:type=>:STRING, :index=>0, :sort_order=>:DESC}}})
+:success
+
+restart
+# one.ping()
+:pong
+
+# two.create_shard(1, :POR, "one", "two")
+:success
+
+# one.insert([42, "One"], {:shard=>1})
+1
+
+lsn:1 scn:-1 t:sys/snap_initial 0.0.0.0:0 ver:0 count:10 flags:0x00000000
+lsn:1 scn:13 t:sys/shard_create 0.0.0.0:0 SHARD_CREATE shard_id:1  POR Box count:10 run_crc:0x857cf543 master:one repl:two
+lsn:1 scn:13 t:snap/usr240 0.0.0.0:0 CREATE_OBJECT_SPACE n:0 flags:00000000 cardinalty:0 snap:1 wal:1 PK: i:0 min_tuple_cardinality:1 cardinality:1 type:4 unique:1 field0:{index:0 type:7 sort:-1}
+lsn:1 scn:13 t:snap/snap_data 0.0.0.0:0 n:0 <9:"\x09\x00\x00\x00", 962948719:"one9">
+lsn:1 scn:13 t:snap/snap_data 0.0.0.0:0 n:0 <8:"\x08\x00\x00\x00", 946171503:"one8">
+lsn:1 scn:13 t:snap/snap_data 0.0.0.0:0 n:0 <7:"\x07\x00\x00\x00", 929394287:"one7">
+lsn:1 scn:13 t:snap/snap_data 0.0.0.0:0 n:0 <6:"\x06\x00\x00\x00", 912617071:"one6">
+lsn:1 scn:13 t:snap/snap_data 0.0.0.0:0 n:0 <5:"\x05\x00\x00\x00", 895839855:"one5">
+lsn:1 scn:13 t:snap/snap_data 0.0.0.0:0 n:0 <4:"\x04\x00\x00\x00", 879062639:"one4">
+lsn:1 scn:13 t:snap/snap_data 0.0.0.0:0 n:0 <3:"\x03\x00\x00\x00", 862285423:"one3">
+lsn:1 scn:13 t:snap/snap_data 0.0.0.0:0 n:0 <2:"\x02\x00\x00\x00", 845508207:"one2">
+lsn:1 scn:13 t:snap/snap_data 0.0.0.0:0 n:0 <1:"\x01\x00\x00\x00", 828730991:"one1">
+lsn:1 scn:13 t:snap/snap_data 0.0.0.0:0 n:0 <0:"\x00\x00\x00\x00", 811953775:"one0">
+lsn:1 scn:-1 t:sys/snap_final 0.0.0.0:0 
+lsn:2 scn:14 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <42:"*\x00\x00\x00", "One">

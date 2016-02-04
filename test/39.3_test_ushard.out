@@ -1,0 +1,27 @@
+# one.ping()
+:pong
+
+# two.ping()
+:pong
+
+# one.create_shard(1, :POR, "one")
+:success
+
+# one.create_object_space(0, {:shard=>1, :index=>{:type=>:FASTTREE, :unique=>1, :field_0=>{:type=>:STRING, :index=>0, :sort_order=>:DESC}}})
+:success
+
+# one.insert([1, "one"], {:shard=>1})
+1
+
+# one.select(1, {:shard=>1})
+[["\x01\x00\x00\x00", "one"]]
+
+# two.insert([1, "two"], {:shard=>1})
+2
+
+# two.select(1, {:shard=>1})
+[["\x01\x00\x00\x00", "two"]]
+
+# one.select(1, {:shard=>1})
+[["\x01\x00\x00\x00", "two"]]
+

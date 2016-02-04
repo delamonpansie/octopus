@@ -1,0 +1,11 @@
+# one.ping()
+:pong
+
+# two.ping()
+:pong
+
+# one.create_shard(1, :POR, "one")
+:success
+
+# two.create_shard(1, :POR, "two")
+Failed with: {code: 0x202, message: 'not my shard'}
