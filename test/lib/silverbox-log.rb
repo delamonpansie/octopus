@@ -8,10 +8,12 @@ class SilverBox
     orig_name = "#{name}_nolog".to_sym
     alias_method orig_name, name
     define_method name, ->(*args, &block) do
-      log "# box.#{name}(#{args.map{|arg| arg.inspect}.join(', ')})\n"
+      log "# #{@connect_name or "box"}.#{name}(#{args.map{|arg| arg.inspect}.join(', ')})\n"
       ret_value = self.__send__(orig_name, *args, &block)
       log "#{ret_value.inspect}\n\n"
       ret_value
     end
   end
+
+  attr_writer :connect_name
 end

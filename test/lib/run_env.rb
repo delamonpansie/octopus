@@ -24,7 +24,7 @@ rescue => e
   err = "Failed with: #{e}\n" #FIXME: e.inspect
   err.gsub!('../','')
   err += e.backtrace.reject{|l| l =~ /runtest\.rb/}.join("\n") if $options[:backtrace]
-  log err
+  log err # + "\n"
 end
 
 $timefactor = 5
@@ -55,18 +55,25 @@ class RunEnv < TinyRakeEmbed
   Binary = Root + "../../octopus"
 
   def initialize
-    super
     @primary_port ||= 33013
+    @secondary_port ||= 33014
+    @admin_port ||= 33015
+    if @port_offset then
+      @primary_port += @port_offset
+      @secondary_port += @port_offset
+      @admin_port += @port_offset
+    end
     @test_root_suffix ||= ''
     rm_rf test_root
     mkdir_p test_root
     @test_root ||= test_root.realpath
 
     at_exit do self.stop end
+    super
   end
 
   def connect_string
-    "0:#@primary_port"
+    "0:#{@primary_port}"
   end
 
   def config(object_space: true, hostname: nil)
@@ -75,9 +82,9 @@ class RunEnv < TinyRakeEmbed
 pid_file = "octopus.pid"
 slab_alloc_arena = 0.1
 log_level = 7
-primary_port = #{@primary_port or 33013}
-secondary_port = 33014
-admin_port = #{@admin_port or 33015}
+primary_port = #@primary_port
+secondary_port = #@secondary_port
+admin_port = #@admin_port
 wal_fsync_delay = 0.1
 rows_per_wal = 5000
 coredump = 0.00017

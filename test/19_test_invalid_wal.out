@@ -1,7 +1,7 @@
 # box.ping()
 :pong
 
-raise at src/log_io_reader.m:217 not all WALs have been successfully read greatest_LSN:2 LSN:1 diff:1
+raise at src/log_io_reader.m:216 not all WALs have been successfully read greatest_LSN:2 LSN:1 diff:1
 # box.insert([1, 2, 3])
 1
 
