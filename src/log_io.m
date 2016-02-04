@@ -1391,7 +1391,7 @@ containg_scn:(i64)target_scn shard_id:(int)target_shard_id
 		return initial_lsn;
 
 	if (count <= 0) {
-		say_error("%s: WAL dir is either empty or unreadable", __func__);
+		say_error("%s: dir is either empty or unreadable", __func__);
 		return -1;
 	}
 
@@ -1403,7 +1403,7 @@ containg_scn:(i64)target_scn shard_id:(int)target_shard_id
 			continue;
 		}
 
-		i64 scn = -1;
+		i64 scn;
 		for (;;) {
 			i64 tmp;
 			int shard_id;
@@ -1418,21 +1418,18 @@ containg_scn:(i64)target_scn shard_id:(int)target_shard_id
 			if (strcmp(buf, "\n") == 0 || strcmp(buf, "\r\n") == 0)
 				break;
 
-			if (target_shard_id == 0) {
-				if (sscanf(buf, "SCN: %"PRIi64, &scn) == 1) {
-					/* handly buggy headers where "SCN: 0" :
-					   assume they were written with cfg.sync_scn_with_lsn=1 */
-					if (scn == 0)
-						scn = lsn[i];
-					break;
-				}
-			} else if (sscanf(buf, "SCN-%i: %"PRIi64, &shard_id, &tmp) == 2) {
+			if (sscanf(buf, "SCN-%i: %"PRIi64, &shard_id, &tmp) == 2) {
 				if (target_shard_id == shard_id) {
 					scn = tmp;
 					break;
 				}
 			}
 		}
+
+		/* old header without SCN mapping:
+		   treat it as it written with sync_scn_with_lsn option */
+		if (scn == -1)
+			scn = lsn[i];
 
 		if (scn == target_scn)
 			return lsn[i];
