@@ -208,9 +208,6 @@ replicate_row_stream:(id<XLogPullerAsync>)puller
 		if (row->scn <= min_scn)
 			continue;
 
-		if (cfg.io_compat && tag == run_crc)
-			continue;
-
 		rows[pack_rows++] = row;
 		if (pack_rows == WAL_PACK_MAX)
 			break;
@@ -218,23 +215,6 @@ replicate_row_stream:(id<XLogPullerAsync>)puller
 
 	if (pack_rows > 0) {
 		rlock(&recovery->snapshot_lock);
-		if (cfg.io_compat) {
-			for (int j = 0; j < pack_rows; j++) {
-				u16 tag = rows[j]->tag & TAG_MASK;
-				u16 tag_type = rows[j]->tag & ~TAG_MASK;
-
-				if (tag_type != TAG_WAL)
-					continue;
-
-				switch (tag) {
-				case wal_data:
-				case wal_final:
-					continue;
-				default:
-					panic("can't replicate from non io_compat master");
-				}
-			}
-		}
 #ifndef NDEBUG
 		i64 pack_min_scn = rows[0]->scn,
 		    pack_max_scn = rows[pack_rows - 1]->scn;

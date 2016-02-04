@@ -586,14 +586,6 @@ submit:(const void *)data len:(u32)data_len tag:(u16)tag shard_id:(u16)shard_id
 	struct wal_pack pack;
 	wal_pack_prepare(self, &pack);
 	wal_pack_append_row(&pack, &row);
-
-	/* this conversion is for box only. no other module
-	   should ever use cfg.io_compat */
-	if (cfg.io_compat && (tag & ~TAG_MASK) == TAG_WAL) {
-		u16 op = (tag & TAG_MASK) >> 5;
-		row.tag = wal_data|TAG_WAL;
-		wal_pack_append_data(&pack, &row, &op, sizeof(op));
-	}
 	wal_pack_append_data(&pack, &row, data, data_len);
 	return [self wal_pack_submit];
 }

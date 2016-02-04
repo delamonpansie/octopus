@@ -52,8 +52,6 @@ wal_feeder_filter_arg=NULL, rw
 
 
 ## backward compatibility mode
-# write xlog's in 11 version format. backward compatible with tarantool.org
-io_compat = 0, ro
 # load from xlogs with scn == 0, broken format between 11 and 12
 io12_hack = 0, ro
 # replication master is a tarantool.org

@@ -900,10 +900,10 @@ configure_wal_writer:(i64)lsn
 	writer = [[XLogWriter alloc] init_lsn:lsn
 					state:self];
 
-	if (!cfg.io_compat && cfg.run_crc_delay > 0)
+	if (cfg.run_crc_delay > 0)
 		fiber_create("run_crc", run_crc_writer, cfg.run_crc_delay);
 
-	if (!cfg.io_compat && cfg.nop_hb_delay > 0)
+	if (cfg.nop_hb_delay > 0)
 		fiber_create("nop_hb", nop_hb_writer, cfg.nop_hb_delay);
 }
 

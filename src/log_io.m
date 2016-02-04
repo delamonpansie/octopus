@@ -1146,7 +1146,7 @@ init_dirname:(const char *)dirname_
 	fd = open(dirname, O_RDONLY);
 	if (fd < 0)
 		panic("can't open dir: %s: %s", dirname, strerror_o(errno));
-	xlog_class = cfg.io_compat ? [XLog11 class] : [XLog12 class];
+	xlog_class = [XLog12 class];
         return self;
 }
 
@@ -1358,12 +1358,6 @@ open_for_write:(i64)lsn scn:(i64 *)shard_scn_map
 	l->next_lsn = lsn;
 	l->mode = LOG_WRITE;
 	l->inprogress = 1;
-
-	if (cfg.io_compat) {
-		for (int i = 1; i < MAX_SHARD; i++)
-			assert(shard_scn_map[i] == 0);
-		shard_scn_map = NULL;
-	}
 
 	if ([l write_header:shard_scn_map] < 0) {
 		say_syserror("failed to write header");
