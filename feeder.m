@@ -169,6 +169,9 @@ send_row:(struct row_v12 *)row
 - (void)
 recover_row:(struct row_v12 *)row
 {
+	if (min_scn && row->scn < min_scn)
+		return;
+
 	if ((row = filter(row, NULL, 0)))
 		[self send_row:row];
 }
@@ -228,6 +231,7 @@ prepare_from_scn:(i64)initial_scn filter:(struct feeder_filter*)_filter
 	}
 
 	if (initial_scn != 0) {
+		min_scn = initial_scn;
 		i64 initial_lsn = [wal_dir containg_scn:initial_scn];
 		if (initial_lsn <= 0)
 			raise_fmt("unable to find WAL containing SCN:%"PRIi64, initial_scn);
@@ -478,7 +482,7 @@ feeder_service(struct iproto_service *s)
 	if (cfg.wal_writer_inbox_size == 0)
 		return;
 
-	service_register_iproto(s, MSG_REPLICA, iproto_feeder_cb, 0);
+	service_register_iproto(s, MSG_REPLICA, iproto_feeder_cb, IPROTO_LOCAL);
 }
 
 static void

@@ -32,6 +32,7 @@ typedef struct row_v12 *(*filter_callback)(struct row_v12 *r, const char *arg, i
 @interface Feeder : Object <RecoverRow> {
 	int fd;
 	filter_callback filter;
+	i64 min_scn;
 }
 + (void) register_filter: (const char*)name call: (filter_callback)filter;
 @end
