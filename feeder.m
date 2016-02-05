@@ -169,7 +169,7 @@ send_row:(struct row_v12 *)row
 - (void)
 recover_row:(struct row_v12 *)row
 {
-	if (min_scn && row->scn < min_scn)
+	if (row->scn != 0 && min_scn && row->scn < min_scn)
 		return;
 
 	if ((row = filter(row, NULL, 0)))
