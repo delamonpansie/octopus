@@ -188,6 +188,9 @@ update_rt_notify(va_list ap __attribute__((unused)))
 		mbox_timedwait(&recovery->rt_notify_mbox, 1, 1);
 		mbox_clear(&recovery->rt_notify_mbox);
 
+		if (recovery->writer == nil)
+			continue;
+
 		for (int i = 0; i < nelem(shard_rt); i++) {
 			if (shard_rt[i].shard == nil)
 				continue;
