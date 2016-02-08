@@ -452,10 +452,26 @@ status_update:(const char *)fmt, ...
 	[executor status_changed];
 }
 
+- (bool)
+our_shard
+{
+	if (loading || dummy)
+		return 1;
+	for (int i = 0; i < nelem(peer); i++)
+		if (strcmp(peer[i], cfg.hostname) == 0)
+			return 1;
+	return 0;
+}
+
 - (void)
 wal_final_row
 {
 	loading = false;
+
+	if (![self our_shard]) {
+		[self free];
+		return;
+	}
 	[self adjust_route];
 	[executor wal_final_row];
 }

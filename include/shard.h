@@ -69,6 +69,7 @@
 - (void) alter_peers:(struct shard_op *)sop;
 - (void) reload_from:(const char *)name;
 - (void) wal_final_row;
+- (bool) our_shard;
 @end
 
 enum shard_type { SHARD_TYPE_POR, SHARD_TYPE_PAXOS } ;
