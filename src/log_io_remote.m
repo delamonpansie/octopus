@@ -50,11 +50,14 @@ recover_row_stream:(id<XLogPullerAsync>)puller
 		struct row_v12 *row;
 		[puller recv_row];
 		while ((row = [puller fetch_row])) {
-			int tag = row->tag & TAG_MASK;
+			if ((row->tag & TAG_MASK) == wal_final) {
+				if ([(id)recovery respondsTo:@selector(wal_final_row)])
+					[(id)recovery wal_final_row];
+				return count;
+			}
+
 			[recovery recover_row:row];
 			count++;
-			if (tag == wal_final)
-				return count;
 		}
 		fiber_gc();
 	}
@@ -182,7 +185,7 @@ replicate_row_stream:(id<XLogPullerAsync>)puller
 
 	/* old version doesn's send wal_final_tag for us. */
 	if ([puller version] == 11)
-		[[shard executor] wal_final_row];
+		[shard wal_final_row];
 
 	[puller recv_row];
 
@@ -264,7 +267,7 @@ replicate_row_stream:(id<XLogPullerAsync>)puller
 	fiber_gc();
 
 	if (final_row) {
-		[[shard executor] wal_final_row];
+		[shard wal_final_row];
 		return 1;
 	}
 
@@ -288,7 +291,7 @@ again:
 
 		if ([remote_puller handshake:[self handshake_scn]] <= 0) {
 			/* no more WAL rows in near future, notify module about that */
-			[[shard executor] wal_final_row];
+			[shard wal_final_row];
 
 			if (!warning_said) {
 				[self status:"fail" reason:[remote_puller error]];

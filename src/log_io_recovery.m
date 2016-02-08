@@ -476,6 +476,12 @@ wal_final_row
 	[executor wal_final_row];
 }
 
+- (void)
+enable_local_writes
+{
+	[self wal_final_row];
+}
+
 @end
 
 /// Recovery
@@ -571,7 +577,7 @@ shard_create:(int)shard_id sop:(struct shard_op *)sop
 		[shard free];
 		iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
 	}
-	[shard adjust_route];
+	[shard wal_final_row];
 	assert(shard_rt[shard->id].shard == shard);
 }
 
@@ -584,6 +590,9 @@ shard_load:(int)shard_id sop:(struct shard_op *)sop
 	assert(shard_rt[shard_id].shard == nil);
 	shard = [self shard_add:shard_id scn:-1 sop:sop];
 	[shard load_from_remote];
+	[shard wal_final_row];
+	if ([self shard:shard_id] == nil)
+		return;
 
 	extern int allow_snap_overwrite;
 	allow_snap_overwrite = 1;
@@ -633,6 +642,8 @@ recover_row:(struct row_v12 *)r
 				shard = [self shard_add_dummy:r];
 		case snap_final:
 			return;
+		case wal_final:
+			assert(false);
 		case shard_create:
 			assert(shard == nil);
 			struct shard_op *sop = (struct shard_op *)r->data;
@@ -643,8 +654,6 @@ recover_row:(struct row_v12 *)r
 			break;
 		}
 
-		if (unlikely(tag == wal_final))
-			return;
 
 		if (unlikely(shard == nil))
 			raise_fmt("shard %i is not configured", r->shard_id);
@@ -690,16 +699,6 @@ load_from_local
 	}
 
 	i64 local_lsn = [reader load_from_local:0];
-
-	/* loading is faster until wal_final_row called because service is not yet initialized and
-	   only pk indexes must be updated. remote feeder will send wal_final_row then all remote
-	   rows are read */
-
-	for (int i = 0; i < MAX_SHARD; i++) {
-		Shard *shard = shard_rt[i].shard;
-		if (shard != nil && (shard->dummy || strcmp(cfg.hostname, shard->peer[0]) == 0))
-			[shard wal_final_row];
-	}
 	title(NULL);
 	return local_lsn;
 }
@@ -729,12 +728,6 @@ load_from_remote
 			break;
 	}
 	[remote_reader free];
-
-	for (int i = 0; i < MAX_SHARD; i++) {
-		Shard *shard = shard_rt[i].shard;
-		if (shard != nil && (shard->dummy || strcmp(cfg.hostname, shard->peer[0]) == 0))
-			[shard wal_final_row];
-	}
 	return count;
 }
 
@@ -782,6 +775,9 @@ simple:(struct iproto_service *)service
 	if (cfg.local_hot_standby) {
 		[reader local_hot_standby];
 		fiber_create("wal_lock", wal_lock, self);
+
+		for (int i = 0; i < MAX_SHARD; i++)
+			[[self shard:i] wal_final_row];
 	} else {
 		[self enable_local_writes];
 	}
@@ -846,7 +842,7 @@ enable_local_writes
 	recovery_iproto();
 
 	for (int i = 0; i < MAX_SHARD; i++)
-		[[self shard:i] adjust_route];
+		[[self shard:i] enable_local_writes];
 }
 
 static void

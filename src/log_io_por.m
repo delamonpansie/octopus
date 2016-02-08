@@ -77,9 +77,21 @@ load_from_remote
 	[reader free];
 }
 
+- (bool)
+master
+{
+	if (dummy) {
+		struct feeder_param feeder;
+		enum feeder_cfg_e fid_err = feeder_param_fill_from_cfg(&feeder, NULL);
+		return fid_err || feeder.addr.sin_family == AF_UNSPEC;
+	}
+	return strcmp(cfg.hostname, peer[0]) == 0;
+}
+
 - (void)
 remote_hot_standby
 {
+	assert(![self master]);
 	struct feeder_param feeder = { .ver = 1,
 				       .filter = { .type = FILTER_TYPE_ID } };
 	if (dummy) {
@@ -94,17 +106,6 @@ remote_hot_standby
 	} else {
 		[remote set_feeder:&feeder];
 	}
-}
-
-- (bool)
-standalone
-{
-	if (dummy) {
-		struct feeder_param feeder;
-		enum feeder_cfg_e fid_err = feeder_param_fill_from_cfg(&feeder, NULL);
-		return fid_err || feeder.addr.sin_family == AF_UNSPEC;
-	}
-	return strcmp(cfg.hostname, peer[0]) == 0;
 }
 
 - (int)
@@ -142,7 +143,8 @@ adjust_route
 {
 	if (loading)
 		return;
-	if ([self standalone]) {
+
+	if ([self master]) {
 		update_rt(self->id, self, NULL);
 		[self status_update:"primary"];
 		struct feeder_param empty = { .addr = { .sin_family = AF_UNSPEC } };
@@ -150,10 +152,21 @@ adjust_route
 	} else {
 		const char *master = dummy ? "<dummy_addr>" : peer[0];
 		update_rt(self->id, self, master);
-		[self status_update:"hot_standby/%s/init", master];
-		if (recovery->writer)
+		// writer == nil => local_hot_standby
+		if (recovery->writer) {
+			[self status_update:"hot_standby/%s/init", master];
 			[self remote_hot_standby];
+		}
 	}
+}
+
+- (void)
+enable_local_writes
+{
+	if ([self master])
+		[self wal_final_row];
+	else
+		[self remote_hot_standby];
 }
 
 - (void)
@@ -181,6 +194,8 @@ recover_row:(struct row_v12 *)row
 		break;
 	case nop:
 		break;
+	case wal_final:
+		assert(false);
 	case shard_create:
 		break;
 	case shard_alter:
