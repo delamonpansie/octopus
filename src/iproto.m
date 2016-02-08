@@ -36,6 +36,7 @@
 #import <objc.h>
 #import <stat.h>
 #import <shard.h>
+#import <log_io.h>
 
 #import <cfg/defs.h>
 #include <stdio.h>
@@ -395,6 +396,8 @@ classify(struct iproto_ingress_svc *io, struct iproto *msg)
 			if (shard == nil || (proxy && ih->flags & IPROTO_ON_MASTER))
 				return error(io, msg, ERR_CODE_NONMASTER, "route loop");
 		}
+		if (ih->flags & IPROTO_ON_MASTER && recovery->writer == nil)
+			return error(io, msg, ERR_CODE_NONMASTER, "replica is readonly");
 	local:
 		return local(io, msg, route, ih);
 	}
