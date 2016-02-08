@@ -189,6 +189,11 @@ replicate_row_stream:(id<XLogPullerAsync>)puller
 	while ((row = [puller fetch_row])) {
 		int tag = row->tag & TAG_MASK;
 
+		if (tag == wal_final) {
+			final_row = row;
+			break;
+		}
+
 		if (row->shard_id != shard_id)
 			continue;
 
@@ -199,11 +204,6 @@ replicate_row_stream:(id<XLogPullerAsync>)puller
 		    tag == paxos_accept ||
 		    tag == paxos_nop)
 			continue;
-
-		if (tag == wal_final) {
-			final_row = row;
-			break;
-		}
 
 		if (row->scn <= min_scn)
 			continue;
