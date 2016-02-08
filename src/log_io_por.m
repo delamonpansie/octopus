@@ -90,7 +90,7 @@ remote_hot_standby
 	}
 	if (remote == nil) {
 		remote = [[XLogReplica alloc] init_shard:self];
-		[remote hot_standby:&feeder writer:[recovery writer]];
+		[remote hot_standby:&feeder];
 	} else {
 		[remote set_feeder:&feeder];
 	}

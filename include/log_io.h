@@ -445,7 +445,6 @@ enum feeder_filter_type {
 
 @interface XLogReplica : Object {
 	Shard<Shard> *shard;
-	id<XLogWriter> writer;
 	struct feeder_param feeder;
 	XLogPuller *remote_puller;
 	struct mbox_void_ptr mbox;
@@ -453,7 +452,7 @@ enum feeder_filter_type {
 - (struct sockaddr_in) feeder_addr;
 - (bool) feeder_addr_configured;
 - (void) set_feeder:(struct feeder_param*)new;
-- (void) hot_standby:(struct feeder_param*)feeder_ writer:(id<XLogWriter>)writer_;
+- (void) hot_standby:(struct feeder_param*)feeder_;
 @end
 
 

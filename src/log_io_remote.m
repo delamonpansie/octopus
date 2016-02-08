@@ -172,11 +172,11 @@ replicate_row_stream:(id<XLogPullerAsync>)puller
 	struct row_v12 *row, *final_row = NULL, *rows[WAL_PACK_MAX];
 	/* TODO: use designated palloc_pool */
 	say_debug("%s: scn:%"PRIi64, __func__, [shard scn]);
-	assert(writer != nil);
-	assert([writer lsn] > 0);
+	assert(recovery->writer != nil);
+	assert([recovery->writer lsn] > 0);
 
 	const i64 shard_id = [shard id];
-	bool dummy_writer = [DummyXLogWriter class] == [(id)writer class];
+	bool dummy_writer = [DummyXLogWriter class] == [(id)recovery->writer class];
 	i64 min_scn = [shard scn];
 	int pack_rows = 0;
 
@@ -235,19 +235,19 @@ replicate_row_stream:(id<XLogPullerAsync>)puller
 		}
 
 		if (dummy_writer) {
-			[(id)writer incr_lsn:pack_rows];
+			[(id)recovery->writer incr_lsn:pack_rows];
 		} else {
 			int confirmed = 0;
 			while (confirmed != pack_rows) {
 				struct wal_pack pack;
 
-				wal_pack_prepare(writer, &pack);
+				wal_pack_prepare(recovery->writer, &pack);
 				for (int i = confirmed; i < pack_rows; i++) {
 					rows[i]->lsn = 0;
 					wal_pack_append_row(&pack, rows[i]);
 				}
 
-				struct wal_reply *reply = [writer wal_pack_submit];
+				struct wal_reply *reply = [recovery->writer wal_pack_submit];
 				confirmed += reply->row_count;
 				if (confirmed != pack_rows) {
 					say_warn("WAL write failed confirmed:%i != sent:%i",
@@ -329,10 +329,9 @@ hot_standby(va_list ap)
 }
 
 - (void)
-hot_standby:(struct feeder_param*)feeder_ writer:(id<XLogWriter>)writer_
+hot_standby:(struct feeder_param*)feeder_
 {
-	assert(writer_ != nil);
-	writer = writer_;
+	assert(recovery->writer != nil);
 	[self set_feeder:feeder_];
 	fiber_create("remote_hot_standby", hot_standby, self);
 }
