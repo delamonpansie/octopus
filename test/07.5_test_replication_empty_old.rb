@@ -58,6 +58,7 @@ SlaveEnv.connect_eval do |env|
     FileTest.readable?("00000000000000000001.snap")
   end
   env.stop
+  sleep 0.1
   env.start
   wait_for "reconnect" do reconnect end
 
@@ -69,6 +70,7 @@ SlaveEnv.connect_eval do |env|
   select [1]
 
   env.stop
+  sleep 0.1
   env.start
   wait_for "reconnect" do reconnect end
   wait_for "non empty select [1]" do  select_nolog([1]).length > 0 end
