@@ -227,6 +227,9 @@ recover_row:(struct row_v12 *)row
 			return;
 		}
 		break;
+	case shard_final:
+		snap_loaded = true;
+		break;
 	default:
 		[executor apply:&TBUF(row->data, row->len, fiber->pool) tag:row->tag];
 		break;

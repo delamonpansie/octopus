@@ -739,7 +739,7 @@ snapshot_write
 		}
 
 		for (int i = 0; i < MAX_SHARD; i++) {
-			id<Shard> shard = [state shard:i];
+			Shard<Shard> *shard = [state shard:i];
 			if (shard == nil)
 				continue;
 

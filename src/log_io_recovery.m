@@ -627,8 +627,12 @@ recover_row:(struct row_v12 *)r
 		shard = shard_rt[r->shard_id].shard;
 	int old_ushard = fiber->ushard;
 	if (shard) {
-		if (r->scn >= shard->scn && !shard->dummy)
+		if (r->scn <= shard->scn && shard->snap_loaded && !shard->dummy) {
+			say_debug("%s: skip LSN:%"PRIi64" SCN:%"PRIi64" tag:%s",
+				  __func__, r->lsn, r->scn, xlog_tag_to_a(r->tag));
+
 			return;
+		}
 
 		fiber->ushard = shard->id;
 	}
@@ -1249,6 +1253,7 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 
 		break;
 	}
+	case shard_final:
 	case snap_final:
 	case nop:
 		break;

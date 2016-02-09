@@ -45,7 +45,7 @@
 	int id;
 	id<Executor> executor;
 	i64 scn;
-	bool dummy, loading;
+	bool dummy, loading, snap_loaded;
 	char peer[5][16];
 }
 - (id) init_id:(int)shard_id scn:(i64)scn_ sop:(const struct shard_op *)sop;

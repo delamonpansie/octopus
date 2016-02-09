@@ -56,6 +56,7 @@ enum { snap_initial = 1,
        paxos_nop,
        shard_create,
        shard_alter,
+       shard_final,
 
        user_tag = 32
 };
