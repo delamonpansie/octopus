@@ -644,18 +644,12 @@ recover_row:(struct row_v12 *)r
 			struct shard_op *sop = (struct shard_op *)r->data;
 			if (our_shard(sop))
 				shard = [self shard_add:r->shard_id scn:r->scn sop:sop];
-			break;
+			else
+				say_error("shard %i will be ignored", r->shard_id);
+			return;
 		default:
 			break;
 		}
-
-
-		if (unlikely(shard == nil))
-			raise_fmt("shard %i is not configured", r->shard_id);
-
-		if (unlikely(r->scn - shard->scn != 1 && (r->tag & ~TAG_MASK) == TAG_WAL &&
-			     cfg.panic_on_scn_gap))
-			panic("SCN sequence has gap after %"PRIi64 " -> %"PRIi64, shard->scn, r->scn);
 
 		[shard recover_row:r];
 

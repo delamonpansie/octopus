@@ -179,10 +179,16 @@ enable_local_writes
 - (void)
 recover_row:(struct row_v12 *)row
 {
-	// calculate run_crc _before_ calling executor: it may change row
 	if (unlikely(cfg.sync_scn_with_lsn && dummy && row->lsn != row->scn))
 		panic("LSN != SCN : %"PRIi64 " != %"PRIi64, row->lsn, row->scn);
 
+	if (unlikely(row->scn - scn != 1 && (row->tag & ~TAG_MASK) == TAG_WAL &&
+		     cfg.panic_on_scn_gap))
+		panic("SCN sequence has gap after %"PRIi64 " -> %"PRIi64, scn, row->scn);
+
+	assert(row->scn <= 0 || row->shard_id == self->id);
+
+	// calculate run_crc _before_ calling executor: it may change row
 	if (scn_changer(row->tag))
 		run_crc_calc(&run_crc_log, row->tag, row->data, row->len);
 
