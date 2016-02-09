@@ -592,7 +592,7 @@ shard_load:(int)shard_id sop:(struct shard_op *)sop
 	extern int allow_snap_overwrite;
 	allow_snap_overwrite = 1;
 	if ([self fork_and_snapshot] != 0)
-		[shard free];
+		say_error("Can't save snapshot"); // FIXME
 	allow_snap_overwrite = 0;
 }
 
