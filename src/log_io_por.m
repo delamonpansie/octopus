@@ -187,6 +187,8 @@ recover_row:(struct row_v12 *)row
 		panic("SCN sequence has gap after %"PRIi64 " -> %"PRIi64, scn, row->scn);
 
 	assert(row->scn <= 0 || row->shard_id == self->id);
+	int old_ushard = fiber->ushard;
+	fiber->ushard = self->id;
 
 	// calculate run_crc _before_ calling executor: it may change row
 	if (scn_changer(row->tag))
@@ -215,6 +217,7 @@ recover_row:(struct row_v12 *)row
 		[self alter_peers:(struct shard_op *)row->data];
 		if (![self our_shard]) {
 			[self free];
+			fiber->ushard = old_ushard;
 			return;
 		}
 		break;
@@ -230,6 +233,7 @@ recover_row:(struct row_v12 *)row
 		run_crc_record(&run_crc_state, (struct run_crc_hist){ .scn = row->scn, .value = run_crc_log });
 		scn = row->scn;
 	}
+	fiber->ushard = old_ushard;
 }
 
 - (bool)
