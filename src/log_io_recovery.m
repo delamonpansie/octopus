@@ -148,11 +148,15 @@ update_rt(int shard_id, Shard<Shard> *shard, const char *master_name)
 		route->proxy->ts.name = "proxy_to_primary";
 	}
 exit:
-	if (shard != nil && cfg.hostname &&
-	    strcmp(shard->peer[0], cfg.hostname) == 0) {
-		shard_log("route update, force notify", shard_id);
-		if (msg.link.tqe_prev == NULL)
-			mbox_put(&recovery->rt_notify_mbox, &msg, link);
+	if (shard != nil) {
+		if (shard->loading)
+			return;
+		if (cfg.hostname &&
+		    strcmp(shard->peer[0], cfg.hostname) == 0) {
+			shard_log("route update, force notify", shard_id);
+			if (msg.link.tqe_prev == NULL)
+				mbox_put(&recovery->rt_notify_mbox, &msg, link);
+		}
 	}
 }
 
