@@ -712,9 +712,7 @@ load_from_remote
 		feeder = (struct feeder_param){ .ver = 1,
 						.filter = { .type = FILTER_TYPE_ID } };
 		feeder.addr = *peer_addr((*p)->name, PORT_REPLICATION);
-		count = [remote_reader load_from_remote:&feeder];
-		if (count >= 0)
-			break;
+		count += [remote_reader load_from_remote:&feeder];
 	}
 	[remote_reader free];
 	return count;
