@@ -751,6 +751,11 @@ snapshot_write
 
 			if ([[shard executor] snapshot_write_rows:snap] < 0)
 				return -1;
+
+			char dummy[2] = { 0 };
+			if ([snap append_row:dummy len:sizeof(dummy)
+				       shard:shard tag:shard_final|TAG_SYS] == NULL)
+				return -1;
 		}
 	}
 
