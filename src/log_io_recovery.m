@@ -622,8 +622,12 @@ recover_row:(struct row_v12 *)r
 	else
 		shard = shard_rt[r->shard_id].shard;
 	int old_ushard = fiber->ushard;
-	if (shard)
+	if (shard) {
+		if (r->scn >= shard->scn)
+			return;
+
 		fiber->ushard = shard->id;
+	}
 	@try {
 		say_debug("%s: LSN:%"PRIi64" SCN:%"PRIi64" tag:%s",
 			  __func__, r->lsn, r->scn, xlog_tag_to_a(r->tag));
