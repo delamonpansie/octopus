@@ -623,7 +623,7 @@ recover_row:(struct row_v12 *)r
 		shard = shard_rt[r->shard_id].shard;
 	int old_ushard = fiber->ushard;
 	if (shard) {
-		if (r->scn >= shard->scn)
+		if (r->scn >= shard->scn && !shard->dummy)
 			return;
 
 		fiber->ushard = shard->id;
