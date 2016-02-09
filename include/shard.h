@@ -67,7 +67,6 @@
 - (const struct row_v12 *)snapshot_write_header:(XLog *)snap;
 
 - (void) alter_peers:(struct shard_op *)sop;
-- (void) reload_from:(const char *)name;
 - (void) wal_final_row;
 - (void) enable_local_writes;
 - (bool) our_shard;

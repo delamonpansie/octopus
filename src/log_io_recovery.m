@@ -378,12 +378,6 @@ adjust_route
 }
 
 - (void)
-reload_from:(const char *)name
-{
-	(void)name;
-}
-
-- (void)
 alter_peers:(struct shard_op *)sop
 {
 	for (int i = 0; i < nelem(sop->peer); i++)
@@ -563,7 +557,6 @@ shard_add_dummy:(const struct row_v12 *)row
 	strncpy(op.mod_name, [default_exec_class name], 16);
 
 	Shard<Shard> *shard = [self shard_add:0 scn:scn sop:&op];
-	update_rt(0, shard, NULL);
 	return shard;
 }
 
@@ -1054,7 +1047,7 @@ iproto_shard_load_aux(va_list ap)
 	memcpy(tmp, sop, sizeof(*sop));
 
 	@try {
-		[recovery shard_create:shard_id sop:tmp];
+		[recovery shard_load:shard_id sop:tmp];
 	}
 	@catch (Error *e) {
 		say_error("Failed to load shard, [%s reason:\"%s\"] at %s:%d",
@@ -1083,28 +1076,30 @@ iproto_shard_udpcb(const char *buf, ssize_t len, void *data __attribute__((unuse
 		return;
 
 	if (shard && shard->loading) {
-		say_debug("ignore route update, shard loading");
+		say_debug("ignore route update, shard %i loading", shard_id);
+		return;
+	}
+
+	if (shard == nil) {
+		if (!our_shard(sop))
+			update_rt(shard_id, nil, sop->peer[0]);
+		else
+			fiber_create("load shard", iproto_shard_load_aux, shard_id, sop);
 		return;
 	}
 
 	if (!our_shard(sop)) {
-		assert (shard == nil || !shard->dummy);
-		[shard free];
-		update_rt(shard_id, nil, sop->peer[0]);
+		// we must get shard_alter via replication
+		say_warn("route update from %s: shard %i master %s, FIXME ignoring delete request",
+			 peer_name, shard_id, sop->peer[0]);
 		return;
 	}
-
-	if (shard == nil || ev_now() - sop->tm > 4) {
-		if (shard) {
-			if (scn < [shard scn]) // ignore stale update
-				return;
-
-			// FIXME: what to do if shard is as (stale) master ?
-			[shard reload_from:peer_name];
-		} else {
-			assert(route->shard == nil);
-			fiber_create("load/alter shard", iproto_shard_load_aux, shard_id, sop);
-		}
+	if (ev_now() - sop->tm > 4 && scn > [shard scn] &&
+	    strcmp(shard->peer[0], sop->peer[0]) != 0)
+	{
+		say_warn("route update from %s: shard %i master %s, FIXME ignoring alter request",
+			 peer_name, shard_id, sop->peer[0]);
+		return;
 	}
 }
 
