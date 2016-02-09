@@ -139,7 +139,7 @@ EOD
     ln_s Root + "../../.gdbinit", ".gdbinit"
     ln_s Root + "../../.gdb_history", ".gdb_history"
 
-    if not readable? "00000000000000000001.snap"
+    if not @skip_init and not readable? "00000000000000000001.snap"
       waitpid(octopus ['--init-storage'], :out => "/dev/null", :err => "/dev/null")
     end
 

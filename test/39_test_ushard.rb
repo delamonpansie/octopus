@@ -39,6 +39,7 @@ class ThreeEnv < ShardEnv
   def initialize
     @port_offset = 20
     @hostname = "three"
+    @skip_init = true
     super
   end
 end

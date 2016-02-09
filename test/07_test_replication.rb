@@ -56,6 +56,7 @@ class SlaveEnv < RunEnv
   def initialize
     @primary_port = 33023
     @test_root_suffix = "_slave"
+    @skip_init = true
     super
   end
 

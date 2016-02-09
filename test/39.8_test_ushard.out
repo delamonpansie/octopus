@@ -33,5 +33,6 @@ lsn:1 scn:13 t:snap/snap_data 0.0.0.0:0 n:0 <3:"\x03\x00\x00\x00", 862285423:"on
 lsn:1 scn:13 t:snap/snap_data 0.0.0.0:0 n:0 <2:"\x02\x00\x00\x00", 845508207:"one2">
 lsn:1 scn:13 t:snap/snap_data 0.0.0.0:0 n:0 <1:"\x01\x00\x00\x00", 828730991:"one1">
 lsn:1 scn:13 t:snap/snap_data 0.0.0.0:0 n:0 <0:"\x00\x00\x00\x00", 811953775:"one0">
+lsn:1 scn:13 t:sys/shard_final 0.0.0.0:0 
 lsn:1 scn:-1 t:sys/snap_final 0.0.0.0:0 
 lsn:2 scn:14 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <42:"*\x00\x00\x00", "One">

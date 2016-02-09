@@ -19,23 +19,11 @@
 # two.create_shard(1, :POR, "two", "one")
 :success
 
-# one.insert([1, "one2"], {:shard=>1})
-2
+# two.create_shard(1, :POR, "two", "three", "one")
+:success
 
-# one.select(1, {:shard=>1})
-[["\x01\x00\x00\x00", "one2"]]
-
-# two.select(1, {:shard=>1})
-[["\x01\x00\x00\x00", "one2"]]
-
-# two.insert([1, "two2"], {:shard=>1})
-2
-
-# one.select(1, {:shard=>1})
-[["\x01\x00\x00\x00", "two2"]]
-
-# two.select(1, {:shard=>1})
-[["\x01\x00\x00\x00", "two2"]]
+# two.create_shard(1, :POR, "two", "three")
+:success
 
 lsn:1 scn:-1 t:sys/snap_initial 0.0.0.0:0 ver:0 count:1 flags:0x00000000
 lsn:1 scn:4 t:sys/shard_create 0.0.0.0:0 SHARD_CREATE shard_id:1  POR Box count:1 run_crc:0xc3054bbb master:one repl:two
@@ -44,8 +32,8 @@ lsn:1 scn:4 t:snap/snap_data 0.0.0.0:0 n:0 <1:"\x01\x00\x00\x00", "one">
 lsn:1 scn:4 t:sys/shard_final 0.0.0.0:0 
 lsn:1 scn:-1 t:sys/snap_final 0.0.0.0:0 
 lsn:2 scn:5 t:sys/shard_alter 0.0.0.0:0 SHARD_ALTER shard_id:1  POR Box count:1 run_crc:0x0bcafead master:two repl:one
-lsn:3 scn:6 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00", 845508207:"one2">
-lsn:4 scn:7 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00", 846165876:"two2">
+lsn:3 scn:6 t:sys/shard_alter 0.0.0.0:0 SHARD_ALTER shard_id:1  POR Box count:1 run_crc:0xc3054bbb master:two repl:three repl:one
+lsn:4 scn:7 t:sys/shard_alter 0.0.0.0:0 SHARD_ALTER shard_id:1  POR Box count:1 run_crc:0x00000000 master:two repl:three
 241/load shard {1} I> META mode: PROXY, proxy_addr: 'proxy_to_primary/127.0.0.1:33013' => init
 241/load shard {1} I> META mode: PARTIAL_PROXY, SCN: 4, type: POR, peer: [one, two], proxy_addr: 'proxy_to_primary/127.0.0.1:33013' => hot_standby/one/init
 242/remote_hot_standby {1} I> META mode: PARTIAL_PROXY, SCN: 4, type: POR, peer: [one, two], proxy_addr: 'proxy_to_primary/127.0.0.1:33013' => hot_standby/127.0.0.1:33013/connect
@@ -54,3 +42,5 @@ lsn:4 scn:7 t:wal/usr13 0.0.0.0:0 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00
 242/remote_hot_standby {1} I> META mode: PARTIAL_PROXY, SCN: 4, type: POR, peer: [one, two], proxy_addr: 'proxy_to_primary/127.0.0.1:33013' => hot_standby/one/init
 242/remote_hot_standby {1} I> META mode: LOCAL, SCN: 4, type: POR, peer: [two, one] => route update, force notify
 242/remote_hot_standby {1} I> META mode: LOCAL, SCN: 4, type: POR, peer: [two, one] => primary
+232/box_worker {1} I> META mode: LOCAL, SCN: 6, type: POR, peer: [two, three, one] => route update, force notify
+232/box_worker {1} I> META mode: LOCAL, SCN: 7, type: POR, peer: [two, three] => route update, force notify
