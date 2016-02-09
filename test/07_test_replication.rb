@@ -11,7 +11,6 @@ class MasterEnv < RunEnv
   def config
     super + <<EOD
 wal_feeder_bind_addr = ":33034"
-#{$io_compat}
 
 object_space[1].enabled = 1
 object_space[1].index[0].type = "HASH"
@@ -65,7 +64,6 @@ class SlaveEnv < RunEnv
 admin_port = 33025
 wal_feeder_addr = "127.0.0.1:33034"
 wal_feeder_filter = "id_xlog"
-#{$io_compat}
 
 object_space[1].enabled = 1
 object_space[1].index[0].type = "HASH"
