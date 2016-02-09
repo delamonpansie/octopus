@@ -497,6 +497,7 @@ close
 - (id)
 free
 {
+	assert(in_recv == 0);
 	[self close];
 	palloc_unregister_gc_root(fiber->pool, &rbuf);
 	return [super free];

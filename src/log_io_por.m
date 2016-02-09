@@ -38,6 +38,13 @@
 @implementation POR
 - (i64) scn { return scn; }
 
+- (id) free
+{
+	if (remote)
+		remote->shard = nil;
+	return [super free];
+}
+
 - (void)
 set_feeder:(struct feeder_param*)new
 {

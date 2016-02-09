@@ -337,7 +337,9 @@ shard_log(const char *msg, int shard_id)
 - (id) free
 {
 	[(id)executor free];
-	update_rt(self->id, NULL, NULL);
+	update_rt(self->id, nil, peer[0]);
+	shard_log("removed", self->id);
+
 	return [super free];
 }
 

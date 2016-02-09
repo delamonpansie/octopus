@@ -444,10 +444,11 @@ enum feeder_filter_type {
 @end
 
 @interface XLogReplica : Object {
-	Shard<Shard> *shard;
 	struct feeder_param feeder;
 	XLogPuller *remote_puller;
 	struct mbox_void_ptr mbox;
+@public
+	Shard<Shard> *shard;
 }
 - (struct sockaddr_in) feeder_addr;
 - (bool) feeder_addr_configured;

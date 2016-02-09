@@ -105,6 +105,13 @@ load_from_remote:(struct feeder_param *)param
 	return self;
 }
 
+- (id)
+free
+{
+	[remote_puller free];
+	return [super free];
+}
+
 - (i64) handshake_scn { return [shard scn]; }
 
 - (void)
@@ -212,7 +219,7 @@ replicate_row_stream:(id<XLogPullerAsync>)puller
 			continue;
 
 		rows[pack_rows++] = row;
-		if (pack_rows == WAL_PACK_MAX)
+		if (pack_rows == WAL_PACK_MAX || tag == shard_alter)
 			break;
 	}
 
@@ -260,6 +267,9 @@ replicate_row_stream:(id<XLogPullerAsync>)puller
 			}
 		}
 
+		if (shard == nil)
+			return 2;
+
 		assert([shard scn] == pack_max_scn);
 		runlock(&recovery->snapshot_lock);
 	}
@@ -305,8 +315,13 @@ again:
 
 		@try {
 			[self status:"ok" reason:NULL];
-			for (;;)
+			for (;;) {
 				[self replicate_row_stream:remote_puller];
+				if (shard == nil) {
+					[self free];
+					return;
+				}
+			}
 		}
 		@catch (Error *e) {
 			[remote_puller close];
