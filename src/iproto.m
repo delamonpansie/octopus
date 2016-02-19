@@ -402,18 +402,12 @@ process_requests(struct iproto_service *service, struct iproto_ingress_svc *io)
 {
 	netmsg_io_retain(io);
 	io->batch = service->batch;
-	while (has_full_req(&io->rbuf))
-	{
+	while (has_full_req(&io->rbuf) && io->batch > 0) {
 		struct iproto *msg = iproto(&io->rbuf);
 		size_t msg_size = sizeof(struct iproto) + msg->data_len;
-
-		if (classify(io, msg))
-			tbuf_ltrim(&io->rbuf, msg_size);
-		else
+		if (classify(io, msg) == 0)
 			break;
-
-		if (io->batch <= 0)
-			break;
+		tbuf_ltrim(&io->rbuf, msg_size);
 	}
 
 	if (unlikely(io->fd == -1)) /* handler may close connection */
