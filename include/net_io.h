@@ -114,8 +114,8 @@ void netmsg_io_init(struct netmsg_io *io, struct palloc_pool *pool, int fd);
 void netmsg_io_gc(struct palloc_pool *pool, void *ptr);
 void netmsg_head_gc(struct palloc_pool *pool, void *ptr);
 
-int netmsg_io_write_cb(ev_io *ev, int __attribute__((unused)) events);
-int netmsg_io_read_cb(ev_io *ev, int __attribute__((unused)) events);
+void netmsg_io_write_cb(ev_io *ev, int __attribute__((unused)) events);
+void netmsg_io_read_cb(ev_io *ev, int __attribute__((unused)) events);
 
 void netmsg_io_setfd(struct netmsg_io *io, int fd);
 

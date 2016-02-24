@@ -85,7 +85,7 @@ LIST_HEAD(iproto_future_list, iproto_future);
 
 @interface iproto_ingress_svc: iproto_ingress {
 @public
-	LIST_ENTRY(iproto_ingress_svc) link;
+	LIST_ENTRY(iproto_ingress_svc) link, prepare_link;
 	TAILQ_ENTRY(iproto_ingress_svc) processing_link;
 	struct iproto_service *service;
 	int batch;
@@ -122,7 +122,7 @@ struct iproto_service {
 	size_t pool_allocated; /* used for differential calls to palloc_gc */
 	const char *name;
 	TAILQ_HEAD(ingress_tailq, iproto_ingress_svc) processing;
-	LIST_HEAD(, iproto_ingress_svc) clients;
+	LIST_HEAD(, iproto_ingress_svc) clients, prepare;
 	struct Fiber *acceptor;
 	SLIST_HEAD(, Fiber) workers; /* <- handlers */
 	int batch;

@@ -393,33 +393,23 @@ netmsg_writev(int fd, struct netmsg_head *head)
 	return result;
 }
 
-int
+void
 netmsg_io_write_cb(ev_io *ev, int __attribute__((unused)) events)
 {
-	struct netmsg_io *io = (void *)ev - offsetof(struct netmsg_io, out);
+	struct netmsg_io *io = container_of(ev, struct netmsg_io, out);
 
 	ssize_t r = netmsg_writev(ev->fd, &io->wbuf);
-
-	if (r < 0) {
-		if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
-			say_syswarn("writev(%i) to %s failed", ev->fd, net_peer_name(ev->fd));
-			[io close];
-			return r;
-		} else {
-			return 0;
-		}
+	if (r < 0 && (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)) {
+		say_syswarn("writev(%i) to %s failed", ev->fd, net_peer_name(ev->fd));
+		[io close];
+		return;
 	}
 
 	if (io->wbuf.bytes == 0)
 		ev_io_stop(ev);
-
-	if ((tbuf_len(&io->rbuf) < cfg.input_low_watermark) && io->wbuf.bytes < cfg.output_low_watermark)
-		ev_io_start(&io->in);
-
-	return r;
 }
 
-int
+void
 netmsg_io_read_cb(ev_io *ev, int __attribute__((unused)) events)
 {
 	struct netmsg_io *io = container_of(ev, struct netmsg_io, in);
@@ -432,12 +422,15 @@ netmsg_io_read_cb(ev_io *ev, int __attribute__((unused)) events)
 		}
 	}
 
+
 	tbuf_ensure(&io->rbuf, 16 * 1024);
 	ssize_t r = tbuf_recv(&io->rbuf, ev->fd);
+	[io data_ready];
+
 	if (r == 0) {
 		say_debug("peer %s closed connection", net_peer_name(ev->fd));
 		[io close];
-		return 0;
+		return;
 	}
 
 	if (r < 0) {
@@ -445,11 +438,8 @@ netmsg_io_read_cb(ev_io *ev, int __attribute__((unused)) events)
 			say_syswarn("recv(%i) from %s failed", ev->fd, net_peer_name(ev->fd));
 			[io close];
 		}
-		return r;
+		return;
 	}
-
-	[io data_ready];
-	return r;
 }
 
 void
@@ -485,8 +475,8 @@ netmsg_io_init(struct netmsg_io *io, struct palloc_pool *pool, int fd)
 	io->rbuf = TBUF(NULL, 0, pool);
 	io->pool = pool;
 	palloc_register_gc_root(pool, io, netmsg_io_gc);
-	ev_init(&io->in, (void (*)(ev_io *, int))netmsg_io_read_cb);
-	ev_init(&io->out, (void (*)(ev_io *, int))netmsg_io_write_cb);
+	ev_init(&io->in, netmsg_io_read_cb);
+	ev_init(&io->out, netmsg_io_write_cb);
 
 	if (fd >= 0)
 		netmsg_io_setfd(io, fd);

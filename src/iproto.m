@@ -109,8 +109,8 @@ iproto_worker(va_list ap)
 		}
 		@finally {
 			fiber->ushard = -1;
-			if (a.io->wbuf.bytes > 0 && a.io->fd > 0)
-				ev_io_start(&a.io->out);
+			if (a.io->fd >= 0 && a.io->prepare_link.le_prev == NULL)
+				LIST_INSERT_HEAD(&service->prepare, a.io, prepare_link);
 			netmsg_io_release(a.io);
 		}
 
@@ -184,9 +184,28 @@ close
 		TAILQ_REMOVE(&service->processing, self, processing_link);
 		processing_link.tqe_prev = NULL;
 	}
+	if (prepare_link.le_prev != NULL) {
+		LIST_REMOVE(self, prepare_link);
+		prepare_link.le_prev = NULL;
+	}
 	LIST_REMOVE(self, link);
 	[super close];
 	netmsg_io_release(self);
+}
+
+static void
+iproto_service_svc_write_cb(ev_io *ev, int events)
+{
+	struct netmsg_io *io = container_of(ev, struct netmsg_io, out);
+
+	netmsg_io_retain(io);
+	netmsg_io_write_cb(ev, events);
+
+	if (io->fd >= 0 &&
+	    tbuf_len(&io->rbuf) < cfg.input_low_watermark &&
+	    io->wbuf.bytes < cfg.output_low_watermark)
+		ev_io_start(&io->in);
+	netmsg_io_release(io);
 }
 
 - (void)
@@ -195,6 +214,7 @@ init:(int)fd_ service:(struct iproto_service *)service_
 	say_debug2("%s: service:%s peer:%s", __func__, service_->name, net_peer_name(fd_));
 	service = service_;
 	netmsg_io_init(self, service->pool, fd_);
+	ev_init(&self->out, iproto_service_svc_write_cb);
 	self->flags |= NETMSG_IO_SHARED_POOL;
 	LIST_INSERT_HEAD(&service->clients, self, link);
 	ev_io_start(&in);
@@ -413,11 +433,7 @@ process_requests(struct iproto_service *service, struct iproto_ingress_svc *io)
 	if (unlikely(io->fd == -1)) /* handler may close connection */
 		goto out;
 
-	if (tbuf_len(&io->rbuf) >= cfg.input_low_watermark && has_full_req(&io->rbuf))
-		ev_io_stop(&io->in);
-
-	if (!has_full_req(&io->rbuf))
-	{
+	if (!has_full_req(&io->rbuf)) {
 		TAILQ_REMOVE(&service->processing, io, processing_link);
 		io->processing_link.tqe_prev = NULL;
 
@@ -429,6 +445,21 @@ process_requests(struct iproto_service *service, struct iproto_ingress_svc *io)
 		TAILQ_REMOVE(&service->processing, io, processing_link);
 		TAILQ_INSERT_TAIL(&service->processing, io, processing_link);
 	}
+out:
+	netmsg_io_release(io);
+}
+
+static void
+service_prepare_io(struct iproto_ingress_svc *io)
+{
+	if (tbuf_len(&io->rbuf) >= cfg.input_low_watermark && has_full_req(&io->rbuf)) {
+		say_warn("peer %s input buffer low watermark overflow (size %i)",
+			 net_peer_name(io->fd), tbuf_len(&io->rbuf));
+		ev_io_stop(&io->in);
+	}
+
+	if (tbuf_len(&io->rbuf) < cfg.input_low_watermark && io->wbuf.bytes < cfg.output_low_watermark)
+		ev_io_start(&io->in);
 
 #ifndef IPROTO_PESSIMISTIC_WRITES
 	if (io->wbuf.bytes > 0) {
@@ -437,7 +468,7 @@ process_requests(struct iproto_service *service, struct iproto_ingress_svc *io)
 			say_syswarn("writev() to %s failed, closing connection",
 				    net_peer_name(io->fd));
 			[io close];
-			goto out;
+			return;
 		}
 	}
 #endif
@@ -449,12 +480,14 @@ process_requests(struct iproto_service *service, struct iproto_ingress_svc *io)
 		   output size is below output_low_watermark.
 		   Otherwise output flusher will start reading,
 		   when size of output is small enought  */
-		if (io->wbuf.bytes >= cfg.output_high_watermark)
+		if (io->wbuf.bytes >= cfg.output_high_watermark) {
+			say_warn("peer %s output buffer high watermark (size %zi)",
+				 net_peer_name(io->fd), io->wbuf.bytes);
 			ev_io_stop(&io->in);
-	} else
+		}
+	} else {
 		ev_io_stop(&io->out);
-out:
-	netmsg_io_release(io);
+	}
 }
 
 static void
@@ -462,25 +495,31 @@ iproto_wakeup_workers(ev_prepare *ev)
 {
 	struct iproto_service *service = (void *)ev - offsetof(struct iproto_service, wakeup);
 	struct iproto_ingress_svc *c, *tmp, *last;
-	struct palloc_pool *saved_pool = fiber->pool;
-	assert(saved_pool == sched->pool);
+	palloc_register_cut_point(fiber->pool);
+	do {
+		last = TAILQ_LAST(&service->processing, ingress_tailq);
+		TAILQ_FOREACH_SAFE(c, &service->processing, processing_link, tmp) {
+			if (c->prepare_link.le_prev == NULL)
+				LIST_INSERT_HEAD(&service->prepare, c, prepare_link);
 
-	fiber->pool = service->pool;
+			process_requests(service, c);
+			/* process_requests() may move *c to the end of tailq */
+			if (c == last) break;
+		}
 
-	last = TAILQ_LAST(&service->processing, ingress_tailq);
-	TAILQ_FOREACH_SAFE(c, &service->processing, processing_link, tmp) {
-		process_requests(service, c);
-		/* process_requests() may move *c to the end of tailq */
-		if (c == last) break;
+		size_t diff = palloc_allocated(service->pool) - service->pool_allocated;
+		if (diff > 4 * 1024 * 1024 && diff > service->pool_allocated) {
+			palloc_gc(service->pool);
+			service->pool_allocated = palloc_allocated(service->pool);
+		}
+	} while (!SLIST_EMPTY(&service->workers) && !TAILQ_EMPTY(&service->processing));
+
+	LIST_FOREACH_SAFE(c, &service->prepare, prepare_link, tmp) {
+		LIST_REMOVE(c, prepare_link);
+		c->prepare_link.le_prev = NULL;
+		service_prepare_io(c);
 	}
-
-	fiber->pool = saved_pool;
-
-	size_t diff = palloc_allocated(service->pool) - service->pool_allocated;
-	if (diff > 4 * 1024 * 1024 && diff > service->pool_allocated) {
-		palloc_gc(service->pool);
-		service->pool_allocated = palloc_allocated(service->pool);
-	}
+	palloc_cutoff(fiber->pool);
 }
 
 
