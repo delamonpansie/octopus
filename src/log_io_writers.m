@@ -535,6 +535,29 @@ submit:(const void *)data len:(u32)data_len tag:(u16)tag shard_id:(u16)shard_id
 - (i64) lsn { return lsn; }
 - (const struct child *) wal_writer { return &wal_writer; };
 
+void optimistic_write(ev_prepare *ev, int events __attribute__((unused)))
+{
+	XLogWriter *self = container_of(ev, XLogWriter, prepare);
+	struct netmsg_io *io = self->io;
+	if (io->wbuf.bytes > 0) {
+		ssize_t r;
+		do r = netmsg_writev(io->fd, &io->wbuf);
+		while (r > 0);
+
+		if (r < 0) {
+			say_syswarn("writev() to %s failed, closing connection",
+				    net_peer_name(io->fd));
+			[io close];
+			return;
+		}
+	}
+
+	if (io->wbuf.bytes > 0)
+		ev_io_start(&io->out);
+	else
+		ev_io_stop(&io->out);
+}
+
 - (id)
 init_lsn:(i64)init_lsn
    state:(id<RecoveryState>)state_
@@ -572,7 +595,9 @@ init_lsn:(i64)init_lsn
 	ev_set_priority(&io->in, 1);
 	ev_set_priority(&io->out, 1);
 	ev_io_start(&io->in);
-
+	ev_prepare_init(&self->prepare, optimistic_write);
+	ev_set_priority(&self->prepare, -1);
+	ev_prepare_start(&self->prepare);
 	return self;
 }
 
@@ -637,7 +662,6 @@ wal_pack_append_data(struct wal_pack *pack, const void *data, size_t len)
 - (struct wal_reply *)
 wal_pack_submit
 {
-	ev_io_start(&io->out);
 	struct wal_reply *reply = yield();
 	if (reply->row_count == 0)
 		say_warn("wal writer returned error status");
