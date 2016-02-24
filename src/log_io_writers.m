@@ -475,17 +475,20 @@ wal_disk_writer_input_dispatch(ev_io *ev, int __attribute__((unused)) events)
 {
 	struct netmsg_io *io = container_of(ev, struct netmsg_io, in);
 	struct tbuf *rbuf = &io->rbuf;
-	tbuf_ensure(rbuf, 128 * 1024);
 
-	ssize_t r = tbuf_recv(rbuf, io->in.fd);
-	if (unlikely(r <= 0)) {
-		if (r < 0) {
-			if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
-				return;
+	ssize_t r;
+	do {
+		tbuf_ensure(rbuf, 128 * 1024);
+		r = tbuf_recv(rbuf, io->in.fd);
+	} while (tbuf_free(rbuf) == 0);
+
+	if (r == 0)
+		panic("WAL writer connection EOF");
+	if (r < 0) {
+		if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
 			say_syserror("%s: recv", __func__);
 			panic("WAL writer connection read error");
-		} else
-			panic("WAL writer connection EOF");
+		}
 	}
 
 	while (tbuf_len(rbuf) > sizeof(u32) &&
