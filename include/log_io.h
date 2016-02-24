@@ -251,6 +251,11 @@ u16 fix_tag_v2(u16 tag);
 
 struct wal_pack {
 	struct netmsg_head *netmsg;
+	struct row_v12 *row;
+	struct wal_request *request;
+};
+
+struct wal_request {
 	u32 packet_len;
 	u32 row_count;
 	u32 magic;
@@ -271,8 +276,7 @@ struct wal_reply {
 
 void wal_pack_prepare(XLogWriter *r, struct wal_pack *);
 u32 wal_pack_append_row(struct wal_pack *pack, struct row_v12 *row);
-void wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
-			  const void *data, size_t len);
+void wal_pack_append_data(struct wal_pack *pack, const void *data, size_t len);
 
 struct shard_op_aux {
 	i64 current_scn;

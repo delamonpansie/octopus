@@ -586,7 +586,7 @@ submit:(const void *)data len:(u32)data_len tag:(u16)tag shard_id:(u16)shard_id
 	struct wal_pack pack;
 	wal_pack_prepare(self, &pack);
 	wal_pack_append_row(&pack, &row);
-	wal_pack_append_data(&pack, &row, data, data_len);
+	wal_pack_append_data(&pack, data, data_len);
 	return [self wal_pack_submit];
 }
 
@@ -594,35 +594,44 @@ void
 wal_pack_prepare(XLogWriter *w, struct wal_pack *pack)
 {
 	pack->netmsg = &w->io->wbuf;
-	pack->packet_len = sizeof(*pack) - offsetof(struct wal_pack, packet_len);
-	pack->magic = 0xba0babed;
-	pack->fid = fiber->fid;
-	pack->sender = fiber;
-	pack->row_count = 0;
-	net_add_iov(pack->netmsg, &pack->packet_len, pack->packet_len);
+	pack->request = palloc(pack->netmsg->pool, sizeof(*pack->request));
+	pack->request->packet_len = sizeof(*pack->request);
+	pack->request->magic = 0xba0babed;
+	pack->request->fid = fiber->fid;
+	pack->request->sender = fiber;
+	pack->request->row_count = 0;
+	net_add_iov(pack->netmsg, pack->request, pack->request->packet_len);
 }
 
 u32
 wal_pack_append_row(struct wal_pack *pack, struct row_v12 *row)
 {
-	assert(pack->row_count <= WAL_PACK_MAX);
+	assert(pack->request->row_count <= WAL_PACK_MAX);
 	assert(row->tag & ~TAG_MASK);
 
-	pack->packet_len += sizeof(*row) + row->len;
-	pack->row_count++;
-	net_add_iov(pack->netmsg, row, sizeof(*row));
-	if (row->len > 0)
-		net_add_iov(pack->netmsg, row->data, row->len);
-	return WAL_PACK_MAX - pack->row_count;
+	pack->request->packet_len += sizeof(*row) + row->len;
+	pack->request->row_count++;
+
+	int row_len = sizeof(*row) + row->len;
+	if (row_len < 512) {
+		pack->row = palloc(pack->netmsg->pool, row_len);
+		memcpy(pack->row, row, row_len);
+	} else {
+		pack->row = row;
+	}
+	net_add_iov(pack->netmsg, pack->row, row_len);
+	return WAL_PACK_MAX - pack->request->row_count;
 }
 
 void
-wal_pack_append_data(struct wal_pack *pack, struct row_v12 *row,
-		     const void *data, size_t len)
+wal_pack_append_data(struct wal_pack *pack, const void *data, size_t len)
 {
-	pack->packet_len += len;
-	row->len += len;
-	net_add_iov(pack->netmsg, data, len);
+	pack->request->packet_len += len;
+	pack->row->len += len;
+	if (len < 512)
+		net_add_iov_dup(pack->netmsg, data, len);
+	else
+		net_add_iov(pack->netmsg, data, len);
 }
 
 - (struct wal_reply *)
