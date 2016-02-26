@@ -721,14 +721,15 @@ octopus(int argc, char **argv)
 		salloc_init(0, 0, 0);
 		fiber_init(NULL);
 		set_proc_title("cat %s", cat_filename);
-
 		gopt_arg(opt, 'c', &cfg_filename);
-		if (fill_default_octopus_cfg(&cfg) != 0 || load_cfg(&cfg, 0) != 0)
+		fill_default_octopus_cfg(&cfg);
+
+		bool config_loaded = false;
+#ifdef CAT_NEED_CONFIG
+		if (load_cfg(&cfg, 0) != 0)
 			panic("can't load config: %s", cfg_err);
-
-		snap_dir = [[SnapDir alloc] init_dirname:strdup(cfg.snap_dir)];
-		wal_dir = [[WALDir alloc] init_dirname:strdup(cfg.wal_dir)];
-
+		config_loaded = true;
+#endif
 		if (strchr(cat_filename, '.') || strchr(cat_filename, '/')) {
 			if (access(cat_filename, R_OK) == -1) {
 				say_syserror("access(\"%s\")", cat_filename);
@@ -739,6 +740,13 @@ octopus(int argc, char **argv)
 				if (m->cat != NULL)
 					return m->cat(cat_filename);
 		} else {
+			if (!config_loaded) {
+				if (load_cfg(&cfg, 0) != 0)
+					panic("can't load config: %s", cfg_err);
+			}
+			snap_dir = [[SnapDir alloc] init_dirname:strdup(cfg.snap_dir)];
+			wal_dir = [[WALDir alloc] init_dirname:strdup(cfg.wal_dir)];
+
 			i64 stop_scn = atol(cat_filename);
 			if (!stop_scn) {
 				say_error("invalid SCN: `%s'", cat_filename);
