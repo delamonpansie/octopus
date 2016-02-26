@@ -114,6 +114,7 @@ remote_hot_standby
 		feeder.addr = *peer_addr(peer[0], PORT_REPLICATION);
 	}
 	if (remote == nil) {
+		[self status_update:"hot_standby/%s/init", net_sin_name(&feeder.addr)];
 		remote = [[XLogReplica alloc] init_shard:self];
 		[remote hot_standby:&feeder];
 	} else {
@@ -163,13 +164,11 @@ adjust_route
 		struct feeder_param empty = { .addr = { .sin_family = AF_UNSPEC } };
 		[remote set_feeder:&empty];
 	} else {
-		const char *master = dummy ? "<dummy_addr>" : peer[0];
-		update_rt(self->id, self, master);
-		// writer == nil => local_hot_standby
-		if (recovery->writer) {
-			[self status_update:"hot_standby/%s/init", master];
+		update_rt(self->id, self, dummy ? "<dummy_addr>" : peer[0]);
+		if (recovery->writer)
 			[self remote_hot_standby];
-		}
+		else
+			[self status_update:"hot_standby/local"];
 	}
 }
 
