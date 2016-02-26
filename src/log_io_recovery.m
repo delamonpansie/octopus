@@ -467,6 +467,7 @@ wal_final_row
 	}
 	[self adjust_route];
 	[executor wal_final_row];
+	shard_log("wal_final_row", self->id);
 }
 
 - (void)
