@@ -121,7 +121,7 @@ update_rt(int shard_id, Shard<Shard> *shard, const char *master_name)
 	struct shard_route *route = &shard_rt[shard_id];
 	static struct palloc_pool *proxy_pool;
 	if (!proxy_pool)
-		proxy_pool = palloc_create_pool((struct palloc_config){.name = "proxy_to_primary"});
+		proxy_pool = palloc_create_pool((struct palloc_config){.name = "proxy_pool"});
 
 	const struct sockaddr_in *addr = NULL;
 	if (master_name && strcmp(master_name, "<dummy_addr>") != 0) {
@@ -130,9 +130,6 @@ update_rt(int shard_id, Shard<Shard> *shard, const char *master_name)
 			say_error("Unknown peer %s, ignoring shard %i route update", master_name, shard_id);
 			return;
 		}
-		memcpy(route->master_name, master_name, 16);
-	} else {
-		route->master_name[0] = 0;
 	}
 
 	route->shard = shard;
@@ -147,15 +144,13 @@ update_rt(int shard_id, Shard<Shard> *shard, const char *master_name)
 		route->proxy = iproto_remote_add_peer(NULL, addr, proxy_pool); // will check for existing connect
 	}
 exit:
-	if (shard != nil) {
-		if (shard->loading)
-			return;
-		if (cfg.hostname &&
-		    strcmp(shard->peer[0], cfg.hostname) == 0) {
-			shard_log("route update, force notify", shard_id);
-			if (msg.link.tqe_prev == NULL)
-				mbox_put(&recovery->rt_notify_mbox, &msg, link);
-		}
+	if (shard == nil || shard->loading)
+		return;
+
+	if (cfg.hostname && strcmp(shard->peer[0], cfg.hostname) == 0) {
+		shard_log("route update, force notify", shard_id);
+		if (msg.link.tqe_prev == NULL)
+			mbox_put(&recovery->rt_notify_mbox, &msg, link);
 	}
 }
 

@@ -78,7 +78,6 @@ struct shard_route {
 	Shard<Shard> *shard;
 	struct iproto_egress *proxy;
 	id<Executor> executor;
-	char master_name[16];
 };
 
 struct shard_conf {
