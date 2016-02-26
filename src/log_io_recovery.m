@@ -145,7 +145,6 @@ update_rt(int shard_id, Shard<Shard> *shard, const char *master_name)
 			goto exit;
 		}
 		route->proxy = iproto_remote_add_peer(NULL, addr, proxy_pool); // will check for existing connect
-		route->proxy->ts.name = "proxy_to_primary";
 	}
 exit:
 	if (shard != nil) {
@@ -320,8 +319,7 @@ route_info(const struct shard_route *route, struct tbuf *buf)
 	}
 
 	if (route->proxy && route->proxy != (void *)0x1)
-		tbuf_printf(buf, ", proxy_addr: '%s/%s'",
-			    route->proxy->ts.name, sintoa(&route->proxy->ts.daddr));
+		tbuf_printf(buf, ", proxy_addr: '%s'", net_sin_name(&route->proxy->ts.daddr));
 }
 
 static void

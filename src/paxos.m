@@ -82,8 +82,6 @@ make_paxos_peer(int id, const char *name)
 						  .name = "tag_wal"};
 
 	p->egress = iproto_remote_add_peer(NULL, &p->addr, paxos_pool);
-	p->egress->ts.name = p->name;
-
 	return p;
 }
 

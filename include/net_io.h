@@ -143,7 +143,6 @@ struct tac_state {
 	ev_tstamp error_tstamp;
 	bool error_printed;
 	struct sockaddr_in daddr;
-	const char *name;
 	unsigned flags;
 	SLIST_ENTRY(tac_state) link;
 };
@@ -171,9 +170,9 @@ int server_socket(int type, struct sockaddr_in *src, int nonblock,
 
 int atosin(const char *orig, struct sockaddr_in *addr) LUA_DEF;
 const char *sintoa(const struct sockaddr_in *addr);
+const char *net_fd_name(int fd);
+const char *net_sin_name(const struct sockaddr_in *addr);
 int net_fixup_addr(char **addr, int port);
-const char *net_peer_name(int fd);
-
 
 void luaT_opennet(struct lua_State *L);
 int luaT_pushnetmsg(struct lua_State *L);

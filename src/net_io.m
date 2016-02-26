@@ -400,7 +400,7 @@ netmsg_io_write_cb(ev_io *ev, int __attribute__((unused)) events)
 
 	ssize_t r = netmsg_writev(ev->fd, &io->wbuf);
 	if (r < 0 && (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)) {
-		say_syswarn("writev(%i) to %s failed", ev->fd, net_peer_name(ev->fd));
+		say_syswarn("writev(%i) to %s failed", ev->fd, net_fd_name(ev->fd));
 		[io close];
 		return;
 	}
@@ -428,14 +428,14 @@ netmsg_io_read_cb(ev_io *ev, int __attribute__((unused)) events)
 	[io data_ready];
 
 	if (r == 0) {
-		say_debug("peer %s closed connection", net_peer_name(ev->fd));
+		say_debug("peer %s closed connection", net_fd_name(ev->fd));
 		[io close];
 		return;
 	}
 
 	if (r < 0) {
 		if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
-			say_syswarn("recv(%i) from %s failed", ev->fd, net_peer_name(ev->fd));
+			say_syswarn("recv(%i) from %s failed", ev->fd, net_fd_name(ev->fd));
 			[io close];
 		}
 		return;
@@ -537,7 +537,7 @@ close
 {
 	if (fd < 0)
 		return;
-	say_debug("closing connection to %s", net_peer_name(fd));
+	say_debug("closing connection to %s", net_fd_name(fd));
 	if (close(fd) < 0)
 		say_syswarn("close");
 	ev_io_stop(&out);
@@ -546,27 +546,6 @@ close
 }
 
 @end
-const char *
-net_peer_name(int fd)
-{
-	static char buf[22];  /* aaa.bbb.ccc.ddd:xxxxx */
-	struct sockaddr_in peer;
-	socklen_t peer_len = sizeof(peer);
-
-	if (fd < 3)
-		return NULL;
-
-	memset(&peer, 0, peer_len);
-	if (getpeername(fd, (struct sockaddr *)&peer, &peer_len) < 0)
-		return NULL;
-
-	uint32_t zero = 0;
-	if (memcmp(&peer.sin_addr, &zero, sizeof(zero)) == 0)
-		return NULL;
-
-	snprintf(buf, sizeof(buf), "%s:%d", inet_ntoa(peer.sin_addr), ntohs(peer.sin_port));
-	return buf;
-}
 
 enum tac_result
 tcp_async_connect(struct tac_state *s, ev_watcher *w /* result of yield() */,
@@ -678,12 +657,12 @@ loop:
 			continue;
 		case tac_error:
 			if (!ts->error_printed)
-				say_syserror("connect to %s/%s failed", ts->name, sintoa(&ts->daddr));
+				say_syserror("connect to %s failed", net_sin_name(&ts->daddr));
 			ts->error_printed = true;
 			break;
 		default:
 			assert(ts->io->fd < 0);
-			say_info("connect(%i) to %s/%s", r, ts->name, sintoa(&ts->daddr));
+			say_info("connect(%i) to %s", r, net_sin_name(&ts->daddr));
 			netmsg_io_setfd(ts->io, r);
 			ev_io_start(&ts->io->in);
 			if (ts->io->wbuf.bytes > 0)
@@ -1003,6 +982,58 @@ sintoa(const struct sockaddr_in *addr)
 	snprintf(buf, sizeof(buf), "%s:%i",
 		 inet_ntoa(addr->sin_addr), ntohs(addr->sin_port));
 	return buf;
+}
+
+static const char *
+sintoname(const struct sockaddr_in *addr)
+{
+	static struct sockaddr_in sin;
+	if (cfg.peer == NULL)
+		return NULL;
+	for (struct octopus_cfg_peer **c = cfg.peer; *c; c++) {
+		if (atosin((*c)->addr, &sin) == -1)
+			continue;
+		if (memcmp(addr, &sin, sizeof(sin)) == 0)
+			return (*c)->name;
+		if ((*c)->replication_port > 0) {
+			sin.sin_port = htons((*c)->replication_port);
+			if (memcmp(addr, &sin, sizeof(sin)) == 0)
+				return (*c)->name;
+		}
+	}
+	return NULL;
+}
+
+const char *
+net_sin_name(const struct sockaddr_in *addr)
+{
+	static char buf[16+22];
+	const char *name = sintoname(addr);
+	if (name) {
+		snprintf(buf, sizeof(buf), "%s/%s", sintoname(addr), sintoa(addr));
+		return buf;
+	}
+	return sintoa(addr);
+}
+
+const char *
+net_fd_name(int fd)
+{
+	struct sockaddr_in peer;
+	socklen_t peer_len = sizeof(peer);
+
+	if (fd < 3)
+		return NULL;
+
+	memset(&peer, 0, peer_len);
+	if (getpeername(fd, (struct sockaddr *)&peer, &peer_len) < 0)
+		return NULL;
+
+	uint32_t zero = 0;
+	if (memcmp(&peer.sin_addr, &zero, sizeof(zero)) == 0)
+		return NULL;
+
+	return net_sin_name(&peer);
 }
 
 int

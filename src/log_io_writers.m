@@ -549,7 +549,7 @@ void optimistic_write(ev_prepare *ev, int events __attribute__((unused)))
 
 		if (r < 0) {
 			say_syswarn("writev() to %s failed, closing connection",
-				    net_peer_name(io->fd));
+				    net_fd_name(io->fd));
 			[io close];
 			return;
 		}

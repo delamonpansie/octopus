@@ -135,7 +135,7 @@ iproto_ping(struct netmsg_head *h, struct iproto *r, void *arg __attribute__((un
 - (void)
 init:(int)fd_ pool:(struct palloc_pool *)pool_
 {
-	say_debug2("%s: peer %s", __func__, net_peer_name(fd_));
+	say_debug2("%s: peer %s", __func__, net_fd_name(fd_));
 	netmsg_io_init(self, pool_, fd_);
 	ev_io_start(&in);
 }
@@ -211,7 +211,7 @@ iproto_service_svc_write_cb(ev_io *ev, int events)
 - (void)
 init:(int)fd_ service:(struct iproto_service *)service_
 {
-	say_debug2("%s: service:%s peer:%s", __func__, service_->name, net_peer_name(fd_));
+	say_debug2("%s: service:%s peer:%s", __func__, service_->name, net_fd_name(fd_));
 	service = service_;
 	netmsg_io_init(self, service->pool, fd_);
 	ev_init(&self->out, iproto_service_svc_write_cb);
@@ -333,7 +333,7 @@ static int
 local(struct iproto_ingress_svc *io, struct iproto *msg, struct shard_route *route, struct iproto_handler *ih)
 {
 	say_debug3("%s: peer:%s op:0x%x sync:%u%s%s", __func__,
-		   net_peer_name(io->fd), msg->msg_code, msg->sync,
+		   net_fd_name(io->fd), msg->msg_code, msg->sync,
 		   ih->flags & IPROTO_NONBLOCK ? " NONBLOCK" : "",
 		   ih->flags & IPROTO_LOCAL ? " LOCAL" : "");
 	if (ih->flags & IPROTO_NONBLOCK) {
@@ -382,7 +382,7 @@ classify(struct iproto_ingress_svc *io, struct iproto *msg)
 			msg++; // unwrap
 		fiber->ushard = msg->shard_id;
 		say_debug2("%s: %s peer:%s op:0x%x sync:%u  ", __func__, msg == orig_msg ? "" : "PROXY",
-			   net_peer_name(io->fd), msg->msg_code, msg->sync);
+			   net_fd_name(io->fd), msg->msg_code, msg->sync);
 		if (unlikely(msg->shard_id > nelem(shard_rt)))
 			return error(io, msg, ERR_CODE_NONMASTER, "no such shard");
 		route = shard_rt + msg->shard_id;
@@ -454,7 +454,7 @@ service_prepare_io(struct iproto_ingress_svc *io)
 {
 	if (tbuf_len(&io->rbuf) >= cfg.input_low_watermark && has_full_req(&io->rbuf)) {
 		say_warn("peer %s input buffer low watermark overflow (size %i)",
-			 net_peer_name(io->fd), tbuf_len(&io->rbuf));
+			 net_fd_name(io->fd), tbuf_len(&io->rbuf));
 		ev_io_stop(&io->in);
 	}
 
@@ -466,7 +466,7 @@ service_prepare_io(struct iproto_ingress_svc *io)
 		ssize_t r = netmsg_writev(io->fd, &io->wbuf);
 		if (r < 0) {
 			say_syswarn("writev() to %s failed, closing connection",
-				    net_peer_name(io->fd));
+				    net_fd_name(io->fd));
 			[io close];
 			return;
 		}
@@ -482,7 +482,7 @@ service_prepare_io(struct iproto_ingress_svc *io)
 		   when size of output is small enought  */
 		if (io->wbuf.bytes >= cfg.output_high_watermark) {
 			say_warn("peer %s output buffer high watermark (size %zi)",
-				 net_peer_name(io->fd), io->wbuf.bytes);
+				 net_fd_name(io->fd), io->wbuf.bytes);
 			ev_io_stop(&io->in);
 		}
 	} else {
@@ -590,7 +590,7 @@ iproto_service_info(struct tbuf *out, struct iproto_service *service)
 	tbuf_printf(out, "%s:" CRLF, service->name);
 	LIST_FOREACH(c, &service->clients, link) {
 		struct netmsg_io *io = c;
-		tbuf_printf(out, "    - peer: %s" CRLF, net_peer_name(io->fd));
+		tbuf_printf(out, "    - peer: %s" CRLF, net_fd_name(io->fd));
 		tbuf_printf(out, "      fd: %i" CRLF, io->fd);
 		tbuf_printf(out, "      state: %s%s" CRLF,
 			    ev_is_active(&io->in) ? "in" : "",
