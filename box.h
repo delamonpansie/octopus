@@ -34,7 +34,6 @@
 #import <log_io.h>
 
 @class Box;
-struct box_tuple;
 struct index;
 
 /* if you change this struct also change definition in box.lua */
@@ -172,23 +171,33 @@ int box_version(Box* box);
 void *next_field(void *f);
 ssize_t fields_bsize(u32 cardinality, const void *data, u32 max_len);
 void __attribute__((noreturn)) bad_object_type(void);
+#define box_tuple(obj) ((struct box_tuple *)((obj) + 1))
 static inline int tuple_bsize(const struct tnt_object *obj)
 {
-	if (unlikely(obj->type != BOX_TUPLE))
+	switch (obj->type) {
+	case BOX_TUPLE:
+		return box_tuple(obj)->bsize;
+	default:
 		bad_object_type();
-	return ((struct box_tuple *)obj->data)->bsize;
+	}
 }
 static inline int tuple_cardinality(const struct tnt_object *obj)
 {
-	if (unlikely(obj->type != BOX_TUPLE))
+	switch (obj->type) {
+	case BOX_TUPLE:
+		return box_tuple(obj)->cardinality;
+	default:
 		bad_object_type();
-	return ((struct box_tuple *)obj->data)->cardinality;
+	}
 }
 static inline void * tuple_data(struct tnt_object *obj)
 {
-	if (unlikely(obj->type != BOX_TUPLE))
+	switch (obj->type) {
+	case BOX_TUPLE:
+		return box_tuple(obj)->data;
+	default:
 		bad_object_type();
-	return ((struct box_tuple *)obj->data)->data;
+	}
 }
 void * tuple_field(struct tnt_object *obj, size_t i);
 int tuple_valid(struct tnt_object *obj);

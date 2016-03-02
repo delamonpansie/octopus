@@ -80,7 +80,7 @@ static struct tnt_object *
 tuple_alloc(unsigned cardinality, unsigned size)
 {
 	struct tnt_object *obj = object_alloc(BOX_TUPLE, sizeof(struct box_tuple) + size);
-	struct box_tuple *tuple = (struct box_tuple *)obj->data;
+	struct box_tuple *tuple = box_tuple(obj);
 
 	tuple->bsize = size;
 	tuple->cardinality = cardinality;
@@ -101,28 +101,31 @@ fields_bsize(u32 cardinality, const void *data, u32 max_len)
 int
 tuple_valid(struct tnt_object *obj)
 {
-	if (unlikely(obj->type != BOX_TUPLE))
-		bad_object_type();
-	struct box_tuple *tuple = (struct box_tuple *)obj->data;
-	return fields_bsize(tuple->cardinality, tuple->data, tuple->bsize) == tuple->bsize;
+	return fields_bsize(tuple_cardinality(obj), tuple_data(obj), tuple_bsize(obj)) ==
+		tuple_bsize(obj);
 }
 
 static void
 tuple_add(struct netmsg_head *h, struct tnt_object *obj)
 {
-	if (unlikely(obj->type != BOX_TUPLE))
-		bad_object_type();
-	struct box_tuple *tuple = (struct box_tuple *)obj->data;
-	size_t size = tuple->bsize +
-		      sizeof(tuple->bsize) +
-		      sizeof(tuple->cardinality);
+	switch (obj->type) {
+	case BOX_TUPLE: {
+		struct box_tuple *tuple = box_tuple(obj);
+		size_t size = tuple->bsize +
+			      sizeof(tuple->bsize) +
+			      sizeof(tuple->cardinality);
 
-	/* it's faster to copy & join small tuples into single large
-	   iov entry. join is done by net_add_iov() */
-	if (tuple->bsize > 512)
-		net_add_obj_iov(h, obj, &tuple->bsize, size);
-	else
-		net_add_iov_dup(h, &tuple->bsize, size);
+		/* it's faster to copy & join small tuples into single large
+		   iov entry. join is done by net_add_iov() */
+		if (tuple->bsize > 512)
+			net_add_obj_iov(h, obj, &tuple->bsize, size);
+		else
+			net_add_iov_dup(h, &tuple->bsize, size);
+		break;
+	}
+	default:
+		bad_object_type();
+	}
 }
 
 static void
