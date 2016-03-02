@@ -63,11 +63,11 @@ next_field(void *f)
 }
 
 void *
-tuple_field(struct box_tuple *tuple, size_t i)
+tuple_field(struct tnt_object *obj, size_t i)
 {
-	void *field = tuple->data;
+	void *field = tuple_data(obj);
 
-	if (i >= tuple->cardinality)
+	if (i >= tuple_cardinality(obj))
 		return NULL;
 
 	while (i-- > 0)
@@ -80,7 +80,7 @@ static struct tnt_object *
 tuple_alloc(unsigned cardinality, unsigned size)
 {
 	struct tnt_object *obj = object_alloc(BOX_TUPLE, sizeof(struct box_tuple) + size);
-	struct box_tuple *tuple = box_tuple(obj);
+	struct box_tuple *tuple = (struct box_tuple *)obj->data;
 
 	tuple->bsize = size;
 	tuple->cardinality = cardinality;
@@ -98,10 +98,21 @@ fields_bsize(u32 cardinality, const void *data, u32 max_len)
 	return tmp.ptr - data;
 }
 
+int
+tuple_valid(struct tnt_object *obj)
+{
+	if (unlikely(obj->type != BOX_TUPLE))
+		bad_object_type();
+	struct box_tuple *tuple = (struct box_tuple *)obj->data;
+	return fields_bsize(tuple->cardinality, tuple->data, tuple->bsize) == tuple->bsize;
+}
+
 static void
 tuple_add(struct netmsg_head *h, struct tnt_object *obj)
 {
-	struct box_tuple *tuple = box_tuple(obj);
+	if (unlikely(obj->type != BOX_TUPLE))
+		bad_object_type();
+	struct box_tuple *tuple = (struct box_tuple *)obj->data;
 	size_t size = tuple->bsize +
 		      sizeof(tuple->bsize) +
 		      sizeof(tuple->cardinality);
@@ -168,8 +179,7 @@ prepare_replace(struct box_txn *txn, size_t cardinality, const void *data, u32 d
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "tuple encoding error");
 
 	txn_acquire(txn, tuple_alloc(cardinality, data_len), YOUNG);
-	struct box_tuple *tuple = box_tuple(txn->obj);
-	memcpy(tuple->data, data, data_len);
+	memcpy(tuple_data(txn->obj), data, data_len);
 
 	struct tnt_object *obj;
 	ev_tstamp wait_st = ev_now();
@@ -357,13 +367,13 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 	}
 	txn->obj_affected = 1;
 
-	struct box_tuple *old_tuple = box_tuple(txn->old_obj);
-	size_t bsize = old_tuple->bsize;
-	int cardinality = old_tuple->cardinality;
+	size_t bsize = tuple_bsize(txn->old_obj);
+	int cardinality = tuple_cardinality(txn->old_obj);
+	void *tdata = tuple_data(txn->old_obj);
 	int field_count = cardinality * 1.2;
 	fields = palloc(fiber->pool, field_count * sizeof(struct tbuf));
 
-	for (i = 0, field = old_tuple->data; i < cardinality; i++) {
+	for (i = 0, field = tdata; i < cardinality; i++) {
 		const void *src = field;
 		int len = LOAD_VARINT32(field);
 		/* .ptr  - start of varint
@@ -441,7 +451,7 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 			if (unlikely(field_count == cardinality)) {
 				struct tbuf *tmp = fields;
 				fields = p0alloc(fiber->pool,
-						 (old_tuple->cardinality + 128) * sizeof(struct tbuf));
+						 (cardinality + 128) * sizeof(struct tbuf));
 				memcpy(fields, tmp, field_count * sizeof(struct tbuf));
 			}
 			for (int i = cardinality - 1; i >= field_no; i--)
@@ -462,7 +472,7 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 
 	txn_acquire(txn, tuple_alloc(cardinality, bsize), YOUNG);
 
-	u8 *p = box_tuple(txn->obj)->data;
+	u8 *p = tuple_data(txn->obj);
 	i = 0;
 	do {
 		if (fields[i].pool == NULL) {
@@ -622,15 +632,14 @@ box_prepare(struct box_txn *txn, struct tbuf *data)
 	}
 
 	if (txn->obj) {
-		struct box_tuple *tuple = box_tuple(txn->obj);
 		if (txn->object_space->cardinality > 0 &&
-		    txn->object_space->cardinality != tuple->cardinality)
+		    txn->object_space->cardinality != tuple_cardinality(txn->obj))
 		{
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS,
 				     "tuple cardinality must match object_space cardinality");
 		}
 
-		if (fields_bsize(tuple->cardinality, tuple->data, tuple->bsize) != tuple->bsize)
+		if (!tuple_valid(txn->obj))
 			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "internal error");
 	}
 	if (tbuf_len(data) != 0)
@@ -666,7 +675,7 @@ box_commit(struct box_txn *txn)
 			    (txn->index_eqmask & 1 << index->conf.n) == 0)
 				[index remove:txn->old_obj];
 		}
-		txn->object_space->obj_bytes -= box_tuple(txn->old_obj)->bsize + tuple_overhead;
+		txn->object_space->obj_bytes -= tuple_bsize(txn->old_obj) + tuple_overhead;
 		txn->object_space->slab_bytes -= salloc_usable_size(txn->old_obj);
 		object_decr_ref(txn->old_obj);
 	}
@@ -677,7 +686,7 @@ box_commit(struct box_txn *txn)
 			    txn->index_eqmask & 1 << index->conf.n)
 				[index replace:txn->obj];
 		}
-		txn->object_space->obj_bytes += box_tuple(txn->obj)->bsize + tuple_overhead;
+		txn->object_space->obj_bytes += tuple_bsize(txn->obj) + tuple_overhead;
 		txn->object_space->slab_bytes += salloc_usable_size(txn->obj);
 		object_incr_ref(txn->obj);
 	}

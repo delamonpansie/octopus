@@ -58,15 +58,6 @@ struct box_tuple {
 	u8 data[0];
 } __attribute__((packed));
 
-void __attribute__((noreturn)) bad_object_type(void);
-static inline struct box_tuple * __attribute__((always_inline))
-box_tuple(struct tnt_object *obj)
-{
-	if (unlikely(obj->type != BOX_TUPLE))
-		bad_object_type();
-	return (struct box_tuple *)obj->data;
-}
-
 struct box_snap_row {
 	u32 object_space;
 	u32 tuple_size;
@@ -179,9 +170,28 @@ struct object_space *object_space(Box *box, int n);
 int box_version(Box* box);
 
 void *next_field(void *f);
-void append_field(struct tbuf *b, void *f);
-void *tuple_field(struct box_tuple *tuple, size_t i);
 ssize_t fields_bsize(u32 cardinality, const void *data, u32 max_len);
+void __attribute__((noreturn)) bad_object_type(void);
+static inline int tuple_bsize(const struct tnt_object *obj)
+{
+	if (unlikely(obj->type != BOX_TUPLE))
+		bad_object_type();
+	return ((struct box_tuple *)obj->data)->bsize;
+}
+static inline int tuple_cardinality(const struct tnt_object *obj)
+{
+	if (unlikely(obj->type != BOX_TUPLE))
+		bad_object_type();
+	return ((struct box_tuple *)obj->data)->cardinality;
+}
+static inline void * tuple_data(struct tnt_object *obj)
+{
+	if (unlikely(obj->type != BOX_TUPLE))
+		bad_object_type();
+	return ((struct box_tuple *)obj->data)->data;
+}
+void * tuple_field(struct tnt_object *obj, size_t i);
+int tuple_valid(struct tnt_object *obj);
 
 int box_cat_scn(i64 stop_scn);
 int box_cat(const char *filename);

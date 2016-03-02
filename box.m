@@ -327,7 +327,6 @@ print:(const struct row_v12 *)row into:(struct tbuf *)buf
 snapshot_fold
 {
 	struct tnt_object *obj;
-	struct box_tuple *tuple;
 
 	u32 crc = 0;
 #ifdef FOLD_DEBUG
@@ -345,16 +344,15 @@ snapshot_fold
 			[pk iterator_init];
 
 		while ((obj = [pk iterator_next])) {
-			tuple = box_tuple(obj);
 #ifdef FOLD_DEBUG
 			struct tbuf *b = tbuf_alloc(fiber->pool);
 			extern void tuple_print(struct tbuf *buf, u32 cardinality, void *f);
 			tuple_print(b, tuple->cardinality, tuple->data);
 			say_info("row %i: %.*s", count++, tbuf_len(b), (char *)b->ptr);
 #endif
-			crc = crc32c(crc, (unsigned char *)&tuple->bsize,
-				     tuple->bsize + sizeof(tuple->bsize) +
-				     sizeof(tuple->cardinality));
+			u32 header[2] = { tuple_bsize(obj) ,tuple_cardinality(obj) };
+			crc = crc32c(crc, (unsigned char *)header, 8);
+			crc = crc32c(crc, tuple_data(obj), header[0] /* bsize */);
 		}
 	}
 	printf("CRC: 0x%08x\n", crc);
@@ -404,7 +402,6 @@ snapshot_write_rows:(XLog *)l
 {
 	struct box_snap_row header;
 	struct tnt_object *obj;
-	struct box_tuple *tuple;
 	struct palloc_pool *pool = palloc_create_pool((struct palloc_config){.name = __func__});
 	struct tbuf *row = tbuf_alloc(pool);
 	int ret = 0;
@@ -449,8 +446,7 @@ snapshot_write_rows:(XLog *)l
 				goto out;
 			}
 
-			tuple = box_tuple(obj);
-			if (fields_bsize(tuple->cardinality, tuple->data, tuple->bsize) != tuple->bsize) {
+			if (!tuple_valid(obj)) {
 				say_error("heap invariant violation: n:%i invalid tuple %p", n, obj);
 				errno = EINVAL;
 				ret = -1;
@@ -458,12 +454,12 @@ snapshot_write_rows:(XLog *)l
 			}
 
 			header.object_space = n;
-			header.tuple_size = tuple->cardinality;
-			header.data_size = tuple->bsize;
+			header.tuple_size = tuple_cardinality(obj);
+			header.data_size = tuple_bsize(obj);
 
 			tbuf_reset(row);
 			tbuf_append(row, &header, sizeof(header));
-			tbuf_append(row, tuple->data, tuple->bsize);
+			tbuf_append(row, tuple_data(obj), header.data_size);
 
 			if ([l append_row:row->ptr len:tbuf_len(row)
 				    shard:shard tag:snap_data|TAG_SNAP] == NULL)
