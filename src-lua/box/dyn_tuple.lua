@@ -7,6 +7,7 @@ local tonumber, tostring = tonumber, tostring
 local assertarg = assertarg
 local varint32 = varint32
 local safeptr = safeptr
+local object_cast= object_cast
 
 module(...)
 
@@ -167,8 +168,9 @@ local tuple_mt = {
 
 local box_tuple = ffi.typeof('const struct box_tuple *')
 ffi.cdef 'u32 *box_tuple_cache_update(int cardinality, const unsigned char *data);' -- palloc allocated!
-obj_type = ffi.C.BOX_TUPLE
-obj_cast = function(obj)
+local box_tuple_cast = function(obj)
+    ffi.C.object_incr_ref_autorelease(obj)
+
     local tuple = ffi.cast(box_tuple, obj + 1) --  tuple starts right after 'struct tnt_object'
     return setmetatable({ __obj = obj,
                           __tuple = tuple,
@@ -189,3 +191,7 @@ function new(obj, cardinality, data, bsize)
                           bsize = bsize},
                         tuple_mt)
 end
+
+-- install automatic cast of object() return value
+object_cast[ffi.C.BOX_TUPLE] = box_tuple_cast
+

@@ -15,7 +15,7 @@ local index = require('index')
 local fiber = require("fiber")
 local os = require('os')
 local netmsg_ptr = require("net").netmsg_ptr
-local object, object_cast, varint32, packer = object, object_cast, varint32, packer
+local object, varint32, packer = object, varint32, packer
 local safeptr, assertarg = safeptr, assertarg
 local lselect = select
 
@@ -242,10 +242,6 @@ do
         ffi.C.current_fiber().ushard = nom
     end
 end
-
-
--- install automatic cast of object() return value
-object_cast[dyn_tuple.obj_type] = dyn_tuple.obj_cast
 
 function ctuple(obj)
    assert(obj ~= nil and obj.__tuple ~= nil)
