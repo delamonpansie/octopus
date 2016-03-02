@@ -40,7 +40,11 @@ tag = { mask = tag_mask,
         code =  tag_code,
         value = tag_value,
         name = tag_name,
-        type = tag_type }
+        type = tag_type,
+        WAL = 0x8000,
+        SNAP = 0x4000,
+        SYS = 0xc000,
+    }
 
 
 ffi.cdef([[
