@@ -153,39 +153,4 @@ object_unlock(struct tnt_object *obj)
 	}
 }
 
-const char *objectlib_name = "Octopus.object"; /* there is a copy of this string
-						  in src/net2.lua */
-
-void
-luaT_pushobject(struct lua_State *L, struct tnt_object *obj)
-{
-	void **ptr = lua_newuserdata(L, sizeof(void *));
-	luaL_getmetatable(L, objectlib_name);
-	lua_setmetatable(L, -2);
-	*ptr = obj;
-	object_incr_ref(obj);
-}
-
-static int
-object_gc_(struct lua_State *L)
-{
-	struct tnt_object *obj = *(void **)luaL_checkudata(L, 1, objectlib_name);
-	object_decr_ref(obj);
-	return 0;
-}
-
-static const struct luaL_reg object_mt [] = {
-	{"__gc", object_gc_},
-	{NULL, NULL}
-};
-
-int
-luaT_objinit(struct lua_State *L)
-{
-	luaL_newmetatable(L, objectlib_name);
-	luaL_register(L, NULL, object_mt);
-	lua_pop(L, 1);
-	return 0;
-}
-
 register_source();

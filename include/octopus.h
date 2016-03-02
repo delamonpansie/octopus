@@ -119,8 +119,6 @@ struct lua_src {
 extern struct lua_src *lua_src;
 
 void luaT_init(void);
-void luaT_pushobject(struct lua_State *L, struct tnt_object *obj);
-int luaT_objinit(struct lua_State *L);
 int luaT_require(const char *filename);
 void luaT_require_or_panic(const char *filename, bool panic_on_missing, const char *error_format);
 int luaT_find_proc(lua_State *L, const char *fname, i32 len);
