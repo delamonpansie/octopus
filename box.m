@@ -450,7 +450,7 @@ snapshot_write_rows:(XLog *)l
 			}
 
 			tuple = box_tuple(obj);
-			if (tuple_bsize(tuple->cardinality, tuple->data, tuple->bsize) != tuple->bsize) {
+			if (fields_bsize(tuple->cardinality, tuple->data, tuple->bsize) != tuple->bsize) {
 				say_error("heap invariant violation: n:%i invalid tuple %p", n, obj);
 				errno = EINVAL;
 				ret = -1;

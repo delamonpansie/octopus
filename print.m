@@ -115,7 +115,7 @@ xlog_print(struct tbuf *out, u16 op, struct tbuf *b)
 		void *data = read_bytes(b, data_len);
 
 		tbuf_printf(out, "flags:%08X ", flags);
-		if (tuple_bsize(cardinality, data, data_len) == data_len)
+		if (fields_bsize(cardinality, data, data_len) == data_len)
 			tuple_print(out, cardinality, data);
 		else
 			tbuf_printf(out, "<CORRUPT TUPLE>");
@@ -129,7 +129,7 @@ xlog_print(struct tbuf *out, u16 op, struct tbuf *b)
 		key_bsize = tbuf_len(b);
 		key = read_bytes(b, key_bsize);
 
-		if (tuple_bsize(key_cardinality, key, key_bsize) != key_bsize) {
+		if (fields_bsize(key_cardinality, key, key_bsize) != key_bsize) {
 			tbuf_printf(out, "<CORRUPT KEY>");
 			break;
 		}
@@ -143,7 +143,7 @@ xlog_print(struct tbuf *out, u16 op, struct tbuf *b)
 		tbuf_printf(out, "%s n:%i ", box_ops[op], n);
 		flags = read_u32(b);
 		key_cardinality = read_u32(b);
-		key_bsize = tuple_bsize(key_cardinality, b->ptr, tbuf_len(b));
+		key_bsize = fields_bsize(key_cardinality, b->ptr, tbuf_len(b));
 		key = read_bytes(b, key_bsize);
 
 		op_cnt = read_u32(b);

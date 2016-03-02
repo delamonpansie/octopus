@@ -89,7 +89,7 @@ tuple_alloc(unsigned cardinality, unsigned size)
 }
 
 ssize_t
-tuple_bsize(u32 cardinality, const void *data, u32 max_len)
+fields_bsize(u32 cardinality, const void *data, u32 max_len)
 {
 	struct tbuf tmp = TBUF(data, max_len, NULL);
 	for (int i = 0; i < cardinality; i++)
@@ -164,7 +164,7 @@ prepare_replace(struct box_txn *txn, size_t cardinality, const void *data, u32 d
 {
 	if (cardinality == 0)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "cardinality can't be equal to 0");
-	if (data_len == 0 || tuple_bsize(cardinality, data, data_len) != data_len)
+	if (data_len == 0 || fields_bsize(cardinality, data, data_len) != data_len)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "tuple encoding error");
 
 	txn_acquire(txn, tuple_alloc(cardinality, data_len), YOUNG);
@@ -630,7 +630,7 @@ box_prepare(struct box_txn *txn, struct tbuf *data)
 				     "tuple cardinality must match object_space cardinality");
 		}
 
-		if (tuple_bsize(tuple->cardinality, tuple->data, tuple->bsize) != tuple->bsize)
+		if (fields_bsize(tuple->cardinality, tuple->data, tuple->bsize) != tuple->bsize)
 			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "internal error");
 	}
 	if (tbuf_len(data) != 0)

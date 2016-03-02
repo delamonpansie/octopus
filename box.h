@@ -181,7 +181,7 @@ int box_version(Box* box);
 void *next_field(void *f);
 void append_field(struct tbuf *b, void *f);
 void *tuple_field(struct box_tuple *tuple, size_t i);
-ssize_t tuple_bsize(u32 cardinality, const void *data, u32 max_len);
+ssize_t fields_bsize(u32 cardinality, const void *data, u32 max_len);
 
 int box_cat_scn(i64 stop_scn);
 int box_cat(const char *filename);
