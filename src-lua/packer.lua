@@ -22,6 +22,7 @@ local pack_meths = {
         self:willneed(i)
         local off = self.stop - self.ptr
         self.stop = self.stop + i
+        self.free = self.free - i
         return off
     end,
     -- Warning: :need_ptr() gives you unstable pointer. You should use it immediately
@@ -72,6 +73,7 @@ local pack_meths = {
     _need = function(self, i)
         local ptr = self.stop
         self.stop = self.stop + i
+        self.free = self.free - i
         return ptr
     end,
     _u8 = function(self, i)
