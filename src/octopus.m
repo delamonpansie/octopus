@@ -959,6 +959,11 @@ init_storage:
 		current_module = module("feeder");
 		module_init(current_module);
 	}
+#if CFG_wal_feeder_standalone
+	if (cfg.wal_feeder_standalone) {
+		goto run_loop;
+	}
+#endif
 	ev_signal ev_sig = { .coro = 0 };
 	ev_signal_init(&ev_sig, (void *)save_snapshot, SIGUSR1);
 	ev_signal_start(&ev_sig);
@@ -994,7 +999,9 @@ init_storage:
 
 	/* run Lua init _after_ module init */
 	luaT_require_or_panic("init", false, NULL);
-
+#if CFG_snap_dir && CFG_wal_feeder_standalone
+run_loop:
+#endif
 	prelease(fiber->pool);
 	say_debug("entering event loop");
 	if (cfg.io_collect_interval > 0)
