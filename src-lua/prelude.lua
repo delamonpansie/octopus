@@ -106,6 +106,7 @@ end
 
 object_cast = {}
 local object_t = ffi.typeof('struct tnt_object *')
+local object_cast = object_cast
 function object(ptr)
    if ptr == nil then
       return nil
@@ -115,14 +116,11 @@ function object(ptr)
       return nil
    end
 
-   ffi.C.object_incr_ref_autorelease(obj)
-
    local ct = object_cast[obj.type]
    if ct then
       return ct(obj)
-   else
-      return obj
    end
+   return nil
 end
 
 local safeptr_mt = {
