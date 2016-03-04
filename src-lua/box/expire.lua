@@ -102,7 +102,7 @@ local function loop(n, func, state)
     end
     local ok, sleep = xpcall(loop_inner, traceback, n, func, state)
     if not ok then
-        say_error('%s', state_or_err)
+        say_error('%s', sleep)
         return state -- state.key == nil, so we are moving to next ushard
     end
     return state, sleep
