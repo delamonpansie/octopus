@@ -1,9 +1,9 @@
 #!/bin/sh
 set -e
 
-CPP=${CPP:-cpp -I. -Iinclude}
-SED=${SED:-sed}
 srcdir=${srcdir:-..}
+CPP=${CPP:-cpp -I$srcdir -I$srcdir/include}
+SED=${SED:-sed}
 
 cat <<EOF
 local ffi = require 'ffi'
