@@ -74,12 +74,7 @@ extern const int object_space_max_idx;
 
 local _dispatch = _dispatch
 local function dispatch(box, op, body, len)
-    local obj = _dispatch(box, op, body, len)
-    local tuple = object(obj)
-    if tuple and ffi.C.object_type(obj) == ffi.C.BOX_TUPLE then
-        ffi.C.object_decr_ref(obj)
-    end
-    return tuple
+    return object(_dispatch(box, op, body, len))
 end
 
 --- jit.off(_dispatch) not needed, because C API calls are NYI
@@ -121,7 +116,7 @@ for _, v in pairs{'add', 'replace', 'delete', 'update'} do
         return dispatch(object_space.__shard.__ptr, pack(1, object_space.n, ...))
     end
     object_space_mt.__index[v .. '_noret'] = function (object_space, ...)
-        dispatch(object_space.__shard.__ptr, pack(0, object_space.n, ...))
+        _dispatch(object_space.__shard.__ptr, pack(0, object_space.n, ...))
     end
 end
 object_space_mt.__index.add     =     object_space_mt.__index.add_ret
@@ -175,7 +170,7 @@ for _, v in pairs{'add', 'replace', 'delete', 'update'} do
         return dispatch(shard.__ptr, pack(1, n, ...))
     end
     ushard_mt.__index[v..'_noret'] = function (shard, n, ...)
-        dispatch(shard.__ptr, pack(0, n, ...))
+        _dispatch(shard.__ptr, pack(0, n, ...))
     end
 end
 

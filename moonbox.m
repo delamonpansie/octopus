@@ -107,7 +107,7 @@ push_obj(struct lua_State *L, struct tnt_object *obj)
 {
 	switch (obj->type) {
 	case BOX_TUPLE:
-		object_incr_ref(obj);
+		object_incr_ref_autorelease(obj);
 		lua_pushlightuserdata(L, obj);
 		return 1;
 	case BOX_SMALL_TUPLE:
