@@ -20,38 +20,49 @@ EOD
     f = open("feeder_init.lua", "w")
     f.write <<-EOD
 local wal = require 'wal'
-local box = require 'box.op'
+local box_op = require 'box.op'
+require 'box.string_ext'
 
-function replication_filter.test_filter(row)
+local tou32 = string.tou32
+
+local shard
+
+replication_filter.test_filter = box_op.wal_filter(function (row, arg)
+  if row == nil then
+     shard = tonumber(arg)
+     return nil
+  end
   print(row)
 
-  if row:tag_name() ~= 'wal_tag' and not row:tag_name():find('usr') then
-  	return true
-  end
-
-  if row.scn < 5 and row.scn % 2 == 0 then
-   	return false
-  end
-
-  local cmd = box.wal_parse(row.tag, row.data, row.len)
-  if not cmd then
-      print("can't parse cmd")
+  local cmd = row.cmd
+  if cmd == nil then
       return true
   end
 
-  if cmd.op == box.op.UPDATE_FIELDS then
+  if cmd.op_name == 'insert' then
+      if cmd.tuple:u32field(0) % 2 ~= shard then
+          return row:nop()
+      end
+      return row:replace(cmd.n, {cmd.tuple[0], tou32(cmd.tuple:u32field(1) + 1)})
+  elseif cmd.op_name == 'update' then
+      if cmd.key:u32field(0) % 2 ~= shard then
+          return row:nop()
+      end
       for _, v in ipairs(cmd.update_mops) do
           if v[2] == "add" then
               v[3] = v[3] + 1  -- preserve type
           end
       end
 
-      local flags = 0
-      local _, data, len = box.pack.update(flags, cmd.n, cmd.key:strfield(0), cmd.update_mops)
-      return row:update_data(data, len)
+      return row:update(cmd.n, {cmd.key[0]}, cmd.update_mops)
+  elseif cmd.op_name == 'delete' then
+      if cmd.key:u32field(0) % 2 ~= shard then
+          return row:nop()
+      end
+      return true
   end
   return true
-end
+end)
     EOD
     f.close
   end
@@ -68,6 +79,7 @@ class SlaveEnv < RunEnv
     super + <<EOD
 wal_feeder_addr = "127.0.0.1:33034"
 wal_feeder_filter = "test_filter"
+wal_feeder_filter_arg = "1"
 sync_scn_with_lsn = 0
 panic_on_scn_gap = 0
 
@@ -97,7 +109,15 @@ SlaveEnv.new.env_eval do
   end
 
   master.select 0,1,2,3,4,5
-  slave.select 0,1,2,3,5
+  slave.select 0,1,2,3,4,5
+
+  master.delete 1
+  master.delete 2
+
+  sleep 0.01
+  master.select 1, 2
+  slave.select 1, 2
+
 
   restart
   master_env.stop
