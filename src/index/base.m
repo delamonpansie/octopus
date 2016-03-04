@@ -199,6 +199,18 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 	return memcmp(&node_a.key, &node_b[0].key, node_size - sizeof(struct tnt_object *)) == 0;
 }
 
+- (struct tnt_object *) iterator_next: (int)n
+{
+	SEL s = @selector(iterator_next);
+	IMP m = [self methodFor: s];
+	struct tnt_object *r = NULL;
+	for (;n>0; n--) {
+		r = (struct tnt_object*)m(self, s);
+		if (r == NULL)
+			break;
+	}
+	return r;
+}
 @end
 
 void __attribute__((noreturn)) oct_cold

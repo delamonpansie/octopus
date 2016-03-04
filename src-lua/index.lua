@@ -42,6 +42,7 @@ local iterator_init_with_direction = objc.msg_lookup("iterator_init_with_directi
 local iterator_init_with_node_direction = objc.msg_lookup("iterator_init_with_node:direction:")
 local iterator_init_with_object_direction = objc.msg_lookup("iterator_init_with_object:direction:")
 local iterator_next = objc.msg_lookup("iterator_next")
+local iterator_next_n = objc.msg_lookup("iterator_next:")
 local position_with_node = objc.msg_lookup("position_with_node:")
 local position_with_object = objc.msg_lookup("position_with_object:")
 local get = objc.msg_lookup('get:')
@@ -196,6 +197,15 @@ local function iter_next(index)
     return object(iterator_next(index.__ptr))
 end
 
+local function offset(off, itnxt, index)
+    if index.__switchcnt ~= fiber.switch_cnt then
+        error("context switch during index iteration", 2)
+    end
+    assert(itnxt == iter_next)
+    iterator_next_n(index.__ptr, int(off))
+    return itnxt, index
+end
+
 local basic_mt = {
     __index = {
         packnode = function(self, ...)
@@ -327,3 +337,6 @@ end
 function cast(cdata)
     return proxy(cdata)
 end
+
+-- index.offset(1000, space:index(ix):iter(key))
+_M.offset = offset
