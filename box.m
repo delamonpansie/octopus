@@ -385,7 +385,7 @@ static int verify_indexes(struct object_space *o, size_t pk_rows)
 		size_t index_rows = 0;
 		[index iterator_init];
 		while ((obj = [index iterator_next])) {
-			if (unlikely(ghost(obj)))
+			if (unlikely(object_ghost(obj)))
 				continue;
 			index_rows++;
 		}
@@ -436,7 +436,7 @@ snapshot_write_rows:(XLog *)l
 		pk_rows = 0;
 		[pk iterator_init];
 		while ((obj = [pk iterator_next])) {
-			if (unlikely(ghost(obj)))
+			if (unlikely(object_ghost(obj)))
 				continue;
 
 			if (obj->refs <= 0) {

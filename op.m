@@ -526,7 +526,7 @@ process_select(struct netmsg_head *h, Index<BasicIndex> *index,
 
 			if (obj == NULL)
 				continue;
-			if (unlikely(ghost(obj)))
+			if (unlikely(object_ghost(obj)))
 				continue;
 			if (unlikely(limit == 0))
 				continue;
@@ -548,7 +548,7 @@ process_select(struct netmsg_head *h, Index<BasicIndex> *index,
 				continue;
 
 			while ((obj = [tree iterator_next_check:cmp]) != NULL) {
-				if (unlikely(ghost(obj)))
+				if (unlikely(object_ghost(obj)))
 					continue;
 				if (unlikely(offset > 0)) {
 					offset--;
