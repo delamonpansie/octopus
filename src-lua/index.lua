@@ -222,7 +222,7 @@ local basic_mt = {
                 return nil
             end
             local obj = ffi.cast('struct tnt_object *', ptr)
-            if bit.band(obj.flags, ffi.C.GHOST) ~= 0 then
+            if ffi.C.object_ghost(obj) then
                return nil
             end
             return object(ptr)

@@ -102,9 +102,15 @@ enum tnt_object_flags {
 	YIELD = 0x4
 };
 
-static inline bool ghost(struct tnt_object *obj)
+inline bool object_ghost(const struct tnt_object *obj);
+inline bool object_ghost(const struct tnt_object *obj)
 {
 	return obj->flags & GHOST;
+}
+inline int object_type(const struct tnt_object *obj);
+inline int object_type(const struct tnt_object *obj)
+{
+	return obj->type;
 }
 
 void zero_io_collect_interval();

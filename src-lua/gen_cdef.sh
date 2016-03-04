@@ -13,7 +13,8 @@ ffi.cdef [[
 struct palloc_pool;
 EOF
 $CPP $srcdir/include/octopus.h | $SED -n '/^\(enum tnt_object_flags\|struct tnt_object\) \+{/,/^}/p'
-$CPP $srcdir/include/octopus.h | $SED -n '/^void object_/p; /^extern struct octopus_cfg/p;'
+$CPP $srcdir/include/octopus.h | $SED -n '/^\(inline \)\?\(_Bool\|void\|int\) object_.*;$/{s/^inline //;p};'
+$CPP $srcdir/include/octopus.h | $SED -n '/^extern struct octopus_cfg/p;'
 $CPP $srcdir/include/index.h | $SED -n '/struct field_desc \+{/,/^}/p'
 $CPP $srcdir/include/index.h | $SED -n '/^\(struct\|union\|enum\) index_[a-z_]\+ \+{/,/^}/p'
 $CPP $srcdir/include/index.h | $SED -n '/^enum iterator_direction\+ \+{/,/^}/p'
