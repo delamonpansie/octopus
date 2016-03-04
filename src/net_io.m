@@ -292,7 +292,7 @@ net_add_ref_iov(struct netmsg_head *h, uintptr_t obj, const void *buf, size_t le
 void
 net_add_obj_iov(struct netmsg_head *o, struct tnt_object *obj, const void *buf, size_t len)
 {
-	assert(((uintptr_t)obj & 1) == 0);
+	assert(((uintptr_t)obj & 1) == 0); // will work because sizeof(gc_oct_object->refs) == 4
 	object_incr_ref(obj);
 	net_add_ref_iov(o, (uintptr_t)obj, buf, len);
 }

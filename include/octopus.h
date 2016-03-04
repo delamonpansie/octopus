@@ -34,11 +34,15 @@
 #include <stdbool.h>
 
 struct tnt_object {
-	int32_t refs;
-	uint8_t type;
-	uint8_t flags;
+	uint8_t type: 4;
+	uint8_t flags: 4;
 	uint8_t data[0];
 } __attribute__((packed));
+
+struct gc_oct_object {
+	int32_t refs;
+	struct tnt_object obj;
+};
 
 enum {
 	TNT_MODULE_WAITING = 0,
@@ -87,7 +91,7 @@ unsigned tnt_uptime(void);
 char **init_set_proc_title(int argc, char **argv);
 void set_proc_title(const char *format, ...);
 
-struct tnt_object *object_alloc(u8 type, size_t size);
+struct tnt_object *object_alloc(u8 type, int gc, size_t size);
 void object_ref(struct tnt_object *obj, int count);
 void object_incr_ref(struct tnt_object *obj);
 void object_incr_ref_autorelease(struct tnt_object *obj);

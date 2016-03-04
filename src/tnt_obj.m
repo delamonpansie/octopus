@@ -40,58 +40,71 @@
 
 
 struct tnt_object *
-object_alloc(u8 type, size_t size)
+object_alloc(u8 type, int gc, size_t size)
 {
-	struct tnt_object *obj = salloc(sizeof(struct tnt_object) + size);
-
-	if (obj == NULL)
-		iproto_raise(ERR_CODE_MEMORY_ISSUE,
-			     salloc_error == ESALLOC_NOCACHE ?
-			     "bad object size":
-			     "can't allocate object");
-
+	struct tnt_object *obj;
+	if (gc) {
+		struct gc_oct_object *gcobj = salloc(sizeof(struct gc_oct_object) + size);
+		if (gcobj == NULL)
+			goto err;
+		gcobj->refs = 0;
+		obj = &gcobj->obj;
+	} else {
+		obj = salloc(sizeof(struct tnt_object) + size);
+		if (obj == NULL)
+			goto err;
+	}
 	obj->type = type;
-	obj->flags = obj->refs = 0;
+	obj->flags = 0;
 
 	say_debug3("object_alloc(%zu) = %p", size, obj);
 	return obj;
+err:
+	iproto_raise(ERR_CODE_MEMORY_ISSUE,
+		     salloc_error == ESALLOC_NOCACHE ?
+		     "bad object size": "can't allocate object");
 }
 
 
 void
 object_ref(struct tnt_object *obj, int count)
 {
-	assert(obj->refs + count >= 0);
-	obj->refs += count;
+	struct gc_oct_object *gcobj = container_of(obj, struct gc_oct_object, obj);
+	assert(gcobj->refs + count >= 0);
+	gcobj->refs += count;
 
-	if (obj->refs == 0)
-		sfree(obj);
+	if (gcobj->refs == 0)
+		sfree(gcobj);
 }
 
 void
 object_incr_ref(struct tnt_object *obj)
 {
-	assert(obj->refs + 1 > 0);
-	obj->refs++;
+	assert(obj->type == 1);
+	struct gc_oct_object *gcobj = container_of(obj, struct gc_oct_object, obj);
+	assert(gcobj->refs + 1 > 0);
+	gcobj->refs++;
 }
 
 void
 object_incr_ref_autorelease(struct tnt_object *obj)
 {
-	assert(obj->refs + 1 > 0);
-	obj->refs++;
+	struct gc_oct_object *gcobj = container_of(obj, struct gc_oct_object, obj);
+	assert(gcobj->refs + 1 > 0);
+	gcobj->refs++;
 	autorelease((id)((uintptr_t)obj | 1));
 }
 
 void
 object_decr_ref(struct tnt_object *obj)
 {
-	assert(obj->refs - 1 >= 0);
-	obj->refs--;
+	struct gc_oct_object *gcobj = container_of(obj, struct gc_oct_object, obj);
+	assert(gcobj->refs - 1 >= 0);
+	gcobj->refs--;
 
-	if (obj->refs == 0) {
-		say_debug3("object_decr_ref(%p) free", obj);
-		sfree(obj);
+	if (gcobj->refs == 0) {
+		say_debug3("object_decr_ref(%p) free", gcobj);
+		sfree(gcobj);
 	}
 }
 
