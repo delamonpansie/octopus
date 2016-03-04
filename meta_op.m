@@ -188,7 +188,7 @@ box_commit_meta(struct box_meta_txn *txn)
 		[pk iterator_init];
 		while ((obj = [pk iterator_next]) != NULL) {
 			assert(!(object_ghost(obj)));
-			object_decr_ref(obj);
+			tuple_free(obj);
 		}
 		foreach_index(index, txn->object_space)
 			[index clear];

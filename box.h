@@ -48,7 +48,8 @@ struct object_space {
 };
 
 enum object_type {
-	BOX_TUPLE = 1
+	BOX_TUPLE = 1,
+	BOX_SMALL_TUPLE = 2
 };
 
 struct box_tuple {
@@ -56,6 +57,12 @@ struct box_tuple {
 	u32 cardinality;
 	u8 data[0];
 } __attribute__((packed));
+
+struct box_small_tuple {
+	uint8_t bsize;
+	uint8_t cardinality;
+	uint8_t data[0];
+};
 
 struct box_snap_row {
 	u32 object_space;
@@ -86,7 +93,7 @@ struct box_txn {
 	u16 index_eqmask;
 	u32 obj_affected;
 
-	bool closed;
+	enum { UNDECIDED, COMMIT, ROLLBACK } state;
 };
 
 struct box_meta_txn {
@@ -172,11 +179,14 @@ void *next_field(void *f);
 ssize_t fields_bsize(u32 cardinality, const void *data, u32 max_len);
 void __attribute__((noreturn)) bad_object_type(void);
 #define box_tuple(obj) ((struct box_tuple *)((obj) + 1))
+#define box_small_tuple(obj) ((struct box_small_tuple *)((obj) + 1))
 static inline int tuple_bsize(const struct tnt_object *obj)
 {
 	switch (obj->type) {
 	case BOX_TUPLE:
 		return box_tuple(obj)->bsize;
+	case BOX_SMALL_TUPLE:
+		return box_small_tuple(obj)->bsize;
 	default:
 		bad_object_type();
 	}
@@ -186,6 +196,8 @@ static inline int tuple_cardinality(const struct tnt_object *obj)
 	switch (obj->type) {
 	case BOX_TUPLE:
 		return box_tuple(obj)->cardinality;
+	case BOX_SMALL_TUPLE:
+		return box_small_tuple(obj)->cardinality;
 	default:
 		bad_object_type();
 	}
@@ -195,12 +207,15 @@ static inline void * tuple_data(struct tnt_object *obj)
 	switch (obj->type) {
 	case BOX_TUPLE:
 		return box_tuple(obj)->data;
+	case BOX_SMALL_TUPLE:
+		return box_small_tuple(obj)->data;
 	default:
 		bad_object_type();
 	}
 }
 void * tuple_field(struct tnt_object *obj, size_t i);
 int tuple_valid(struct tnt_object *obj);
+void tuple_free(struct tnt_object *obj);
 
 int box_cat_scn(i64 stop_scn);
 int box_cat(const char *filename);

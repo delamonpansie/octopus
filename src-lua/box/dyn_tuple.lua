@@ -7,13 +7,15 @@ local tonumber, tostring = tonumber, tostring
 local assertarg = assertarg
 local varint32 = varint32
 local safeptr = safeptr
-local object_cast= object_cast
+local object_cast = object_cast
+local palloc = palloc
 
 module(...)
 
 ffi.cdef [[
 enum object_type {
-	BOX_TUPLE = 1
+	BOX_TUPLE = 1,
+	BOX_SMALL_TUPLE = 2
 };
 
 struct box_tuple {
@@ -22,8 +24,18 @@ struct box_tuple {
 	uint8_t data[0];
 } __attribute__((packed));
 
+struct box_small_tuple {
+	uint8_t bsize;
+	uint8_t cardinality;
+	uint8_t data[0];
+};
+
+u32 *box_tuple_cache_update(int cardinality, const unsigned char *data); /* palloc allocated! */
+struct tnt_object *box_small_tuple_palloc_clone(struct tnt_object *obj);
 ]]
 
+local box_tuple = ffi.typeof('const struct box_tuple *')
+local box_small_tuple = ffi.typeof('const struct box_small_tuple *')
 local u16_ptr = ffi.typeof("uint16_t *")
 local u32_ptr = ffi.typeof("uint32_t *")
 local u64_ptr = ffi.typeof("uint64_t *")
@@ -132,16 +144,25 @@ local __tuple_index = {
    raw_box_tuple = function(self) return self.__tuple end,
    make_long_living = function(self)
        if not self._long_living then
-           ffi.gc(self.__obj, ffi.C.object_decr_ref)
+           if ffi.istype(box_tuple, self.__tuple) then
+               ffi.gc(self.__obj, ffi.C.object_decr_ref)
+               ffi.C.object_incr_ref(self.__obj)
+           else
+               local obj_size = ffi.sizeof('struct tnt_object') + ffi.sizeof('struct box_small_tuple') + self.bsize
+               local clone = ffi.new('char[?]', obj_size)
+               ffi.copy(clone, self.__obj, obj_size)
+               self.__obj = clone
+               self.__tuple = ffi.cast(box_small_tuple, clone + 1)
+               self.data = self.__tuple.data
+           end
            local __cache = ffi.new('u32[?]', self.cardinality*2)
            ffi.copy(__cache, self.__cache, self.cardinality*2*4)
            self.__cache = __cache
-           ffi.C.object_incr_ref(self.__obj)
            self._long_living = true
        end
    end,
    make_short_living = function(self)
-       if self._long_living then
+       if self._long_living and ffi.istype(box_tuple, self.__tuple)then
            ffi.gc(self.__obj, nil)
            ffi.C.object_incr_ref_autorelease(self.__obj)
            ffi.C.object_decr_ref(self.__obj)
@@ -166,24 +187,32 @@ local tuple_mt = {
    end
 }
 
-local box_tuple = ffi.typeof('const struct box_tuple *')
-ffi.cdef 'u32 *box_tuple_cache_update(int cardinality, const unsigned char *data);' -- palloc allocated!
-local box_tuple_cast = function(obj)
-    ffi.C.object_incr_ref_autorelease(obj)
 
-    local tuple = ffi.cast(box_tuple, obj + 1) --  tuple starts right after 'struct tnt_object'
+local function meta(obj, tuple, cardinality, bsize, data)
     return setmetatable({ __obj = obj,
                           __tuple = tuple,
-                          __cache = ffi.C.box_tuple_cache_update(tuple.cardinality, tuple.data),
-                          cardinality = tonumber(tuple.cardinality),
-                          data = tuple.data,
-                          bsize = tonumber(tuple.bsize)},
-                        tuple_mt)
+                          __cache = ffi.C.box_tuple_cache_update(cardinality, data),
+                          cardinality = cardinality,
+                          data = data,
+                          bsize = bsize},
+        tuple_mt)
 end
 
+local function box_tuple_cast (obj)
+    ffi.C.object_incr_ref_autorelease(obj)
+    local tuple = ffi.cast(box_tuple, obj + 1) --  tuple starts right after 'struct tnt_object'
+    return meta(obj, tuple, tonumber(tuple.cardinality), tonumber(tuple.bsize), tuple.data)
+end
+local function box_small_tuple_cast (obj)
+    obj = ffi.C.box_small_tuple_palloc_clone(obj)
+    local tuple = ffi.cast(box_small_tuple, obj + 1)
+    return meta(obj, tuple, tonumber(tuple.cardinality), tonumber(tuple.bsize), tuple.data)
+end
+-- install automatic cast of object() return value
+object_cast[ffi.C.BOX_TUPLE] = box_tuple_cast
+object_cast[ffi.C.BOX_SMALL_TUPLE] = box_small_tuple_cast
 
 function new(obj, cardinality, data, bsize)
-    local len0, offt0 = varint32.read(data)
     return setmetatable({ __obj = obj,
                           __cache = ffi.C.box_tuple_cache_update(cardinality, data),
                           cardinality = cardinality,
@@ -192,6 +221,4 @@ function new(obj, cardinality, data, bsize)
                         tuple_mt)
 end
 
--- install automatic cast of object() return value
-object_cast[ffi.C.BOX_TUPLE] = box_tuple_cast
 

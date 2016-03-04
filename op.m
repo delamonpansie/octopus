@@ -79,13 +79,38 @@ tuple_field(struct tnt_object *obj, size_t i)
 static struct tnt_object *
 tuple_alloc(unsigned cardinality, unsigned size)
 {
-	struct tnt_object *obj = object_alloc(BOX_TUPLE, sizeof(struct box_tuple) + size);
-	struct box_tuple *tuple = box_tuple(obj);
+	struct tnt_object *obj;
+	if (cardinality < 256 && size < 256) {
+		obj = object_alloc(BOX_SMALL_TUPLE, 0, sizeof(struct box_small_tuple) + size);
+		struct box_small_tuple *tuple = box_small_tuple(obj);
+		tuple->bsize = size;
+		tuple->cardinality = cardinality;
+	} else {
+		obj = object_alloc(BOX_TUPLE, 1, sizeof(struct box_tuple) + size);
+		object_incr_ref(obj);
+		struct box_tuple *tuple = box_tuple(obj);
+		tuple->bsize = size;
+		tuple->cardinality = cardinality;
+	}
 
-	tuple->bsize = size;
-	tuple->cardinality = cardinality;
-	say_debug3("tuple_alloc(%u, %u) = %p", cardinality, size, tuple);
+	say_debug3("tuple_alloc(%u, %u) = %p", cardinality, size, obj + 1);
 	return obj;
+}
+
+void
+tuple_free(struct tnt_object *obj)
+{
+	switch (obj->type) {
+	case BOX_TUPLE:
+		object_decr_ref(obj);
+		break;
+	case BOX_SMALL_TUPLE:
+		say_debug("object_free(%p)", obj);
+		sfree(obj);
+		break;
+	default:
+		assert(false);
+	}
 }
 
 ssize_t
@@ -105,22 +130,23 @@ tuple_valid(struct tnt_object *obj)
 		tuple_bsize(obj);
 }
 
-static void
-tuple_add(struct netmsg_head *h, struct tnt_object *obj)
+void
+net_tuple_add(struct netmsg_head *h, struct tnt_object *obj)
 {
 	switch (obj->type) {
 	case BOX_TUPLE: {
 		struct box_tuple *tuple = box_tuple(obj);
-		size_t size = tuple->bsize +
-			      sizeof(tuple->bsize) +
-			      sizeof(tuple->cardinality);
-
-		/* it's faster to copy & join small tuples into single large
-		   iov entry. join is done by net_add_iov() */
-		if (tuple->bsize > 512)
-			net_add_obj_iov(h, obj, &tuple->bsize, size);
-		else
-			net_add_iov_dup(h, &tuple->bsize, size);
+		size_t size = tuple->bsize + 8;
+		net_add_obj_iov(h, obj, &tuple->bsize, size);
+		break;
+	}
+	case BOX_SMALL_TUPLE: {
+		struct box_small_tuple *tuple = box_small_tuple(obj);
+		struct box_tuple *reply = palloc(h->pool, sizeof(*reply) + tuple->bsize);
+		reply->bsize = tuple->bsize;
+		reply->cardinality = tuple->cardinality;
+		memcpy(reply->data, tuple->data, tuple->bsize);
+		net_add_iov(h, (void *)reply, sizeof(*reply) + tuple->bsize);
 		break;
 	}
 	default:
@@ -169,7 +195,6 @@ txn_acquire(struct box_txn *txn, struct tnt_object *obj, enum obj_age age)
 	} else {
 		txn->old_obj = obj;
 	}
-	object_incr_ref(obj);
 	return obj;
 }
 
@@ -536,7 +561,7 @@ process_select(struct netmsg_head *h, Index<BasicIndex> *index,
 			}
 
 			(*found)++;
-			tuple_add(h, obj);
+			net_tuple_add(h, obj);
 			limit--;
 		} else if (index->conf.type == HASH || index->conf.type == NUMHASH) {
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "cardinality mismatch");
@@ -556,7 +581,7 @@ process_select(struct netmsg_head *h, Index<BasicIndex> *index,
 				}
 
 				(*found)++;
-				tuple_add(h, obj);
+				net_tuple_add(h, obj);
 
 				if (--limit == 0)
 					break;
@@ -652,17 +677,20 @@ box_prepare(struct box_txn *txn, struct tbuf *data)
 void
 box_cleanup(struct box_txn *txn)
 {
-	assert(!txn->closed);
-	txn->closed = true;
-
-	if (txn->old_obj) {
-		object_unlock(txn->old_obj);
-		object_decr_ref(txn->old_obj);
-	}
-	if (txn->obj) {
-		object_unlock(txn->obj);
-		txn->obj->flags &= ~GHOST;
-		object_decr_ref(txn->obj);
+	say_debug3("%s: old_obj:%p obj:%p", __func__, txn->old_obj, txn->obj);
+	switch (txn->state) {
+	case COMMIT:
+		if (txn->old_obj)
+			tuple_free(txn->old_obj);
+		break;
+	case ROLLBACK:
+		if (txn->obj)
+			tuple_free(txn->obj);
+		break;
+	default:
+		if (!txn->object_space)
+			return;
+		assert(false);
 	}
 }
 
@@ -671,31 +699,55 @@ box_commit(struct box_txn *txn)
 {
 	if (!txn->object_space)
 		return;
-#define tuple_overhead (sizeof(struct tnt_object) + sizeof(struct box_tuple))
-	if (txn->old_obj) {
-		foreach_index(index, txn->object_space) {
-			if (!index->conf.unique ||
-			    (txn->index_eqmask & 1 << index->conf.n) == 0)
-				[index remove:txn->old_obj];
-		}
-		txn->object_space->obj_bytes -= tuple_bsize(txn->old_obj) + tuple_overhead;
-		txn->object_space->slab_bytes -= salloc_usable_size(txn->old_obj);
-		object_decr_ref(txn->old_obj);
-	}
 
+	say_debug2("%s: old_obj:%p obj:%p", __func__, txn->old_obj, txn->obj);
+
+#define small_tuple_overhead (sizeof(struct tnt_object) + sizeof(struct box_small_tuple))
+#define tuple_overhead (sizeof(struct gc_oct_object) + sizeof(struct box_tuple))
+
+	txn->state = COMMIT;
 	if (txn->obj) {
 		foreach_index(index, txn->object_space) {
 			if (index->conf.unique &&
 			    txn->index_eqmask & 1 << index->conf.n)
 				[index replace:txn->obj];
 		}
-		txn->object_space->obj_bytes += tuple_bsize(txn->obj) + tuple_overhead;
+		switch (txn->obj->type) {
+		case BOX_TUPLE:
+			txn->object_space->obj_bytes += tuple_bsize(txn->obj) + tuple_overhead;
+			break;
+		case BOX_SMALL_TUPLE:
+			txn->object_space->obj_bytes += tuple_bsize(txn->obj) + small_tuple_overhead;
+			break;
+		default:
+			assert(false);
+		}
 		txn->object_space->slab_bytes += salloc_usable_size(txn->obj);
-		object_incr_ref(txn->obj);
+		object_unlock(txn->obj);
+		txn->obj->flags &= ~GHOST;
+	}
+
+	if (txn->old_obj) {
+		foreach_index(index, txn->object_space) {
+			if (!index->conf.unique ||
+			    (txn->index_eqmask & 1 << index->conf.n) == 0)
+				[index remove:txn->old_obj];
+		}
+		switch (txn->old_obj->type) {
+		case BOX_TUPLE:
+			txn->object_space->obj_bytes -= tuple_bsize(txn->old_obj) + tuple_overhead;
+			break;
+		case BOX_SMALL_TUPLE:
+			txn->object_space->obj_bytes -= tuple_bsize(txn->old_obj) + small_tuple_overhead;
+			break;
+		default:
+			assert(false);
+		}
+
+		txn->object_space->slab_bytes -= salloc_usable_size(txn->old_obj);
 	}
 
 	stat_collect(stat_base, txn->op, 1);
-
 }
 
 void
@@ -703,6 +755,11 @@ box_rollback(struct box_txn *txn)
 {
 	if (!txn->object_space)
 		return;
+
+	say_debug2("%s: old_obj:%p obj:%p", __func__, txn->old_obj, txn->obj);
+	txn->state = ROLLBACK;
+	if (txn->old_obj)
+		object_unlock(txn->old_obj);
 
 	if (txn->obj == NULL)
 		return;
@@ -832,7 +889,8 @@ box_cb(struct netmsg_head *wbuf, struct iproto *request, void *arg)
 		@catch (Error *e) {
 			if (e->file && strcmp(e->file, "src/paxos.m") != 0) {
 				say_warn("aborting txn, [%s reason:\"%s\"] at %s:%d peer:%s",
-					 [[e class] name], e->reason, e->file, e->line, "" /*net_peer_name(c->fd)*/);
+					 [[e class] name], e->reason, e->file, e->line,
+					 net_fd_name(container_of(wbuf, struct netmsg_io, wbuf)->fd));
 				if (e->backtrace)
 					say_debug("backtrace:\n%s", e->backtrace);
 			}
@@ -845,9 +903,9 @@ box_cb(struct netmsg_head *wbuf, struct iproto *request, void *arg)
 			net_add_iov_dup(wbuf, &txn.obj_affected, sizeof(u32));
 			if (txn.flags & BOX_RETURN_TUPLE) {
 				if (txn.obj)
-					tuple_add(wbuf, txn.obj);
+					net_tuple_add(wbuf, txn.obj);
 				else if (request->msg_code == DELETE && txn.old_obj)
-					tuple_add(wbuf, txn.old_obj);
+					net_tuple_add(wbuf, txn.old_obj);
 			}
 			iproto_reply_fixup(wbuf, reply);
 

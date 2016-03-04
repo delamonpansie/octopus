@@ -93,6 +93,31 @@ box_tuple_cache_update(int cardinality, const unsigned char *data)
 	return cache;
 }
 
+struct tnt_object *
+box_small_tuple_palloc_clone(struct tnt_object *obj)
+{
+	assert(obj->type == BOX_SMALL_TUPLE);
+	int obj_size = sizeof(struct tnt_object) + sizeof(struct box_small_tuple) + tuple_bsize(obj);
+	struct tnt_object *copy = palloc(fiber->pool, obj_size);
+	return memcpy(copy, obj, obj_size);
+}
+
+static int
+push_obj(struct lua_State *L, struct tnt_object *obj)
+{
+	switch (obj->type) {
+	case BOX_TUPLE:
+		object_incr_ref(obj);
+		lua_pushlightuserdata(L, obj);
+		return 1;
+	case BOX_SMALL_TUPLE:
+		obj = box_small_tuple_palloc_clone(obj);
+		lua_pushlightuserdata(L, obj);
+		return 1;
+	}
+	abort();
+}
+
 static int
 luaT_box_dispatch(struct lua_State *L)
 {
@@ -123,17 +148,10 @@ luaT_box_dispatch(struct lua_State *L)
 		if ((txn.flags & BOX_RETURN_TUPLE) == 0)
 			return 0;
 
-		if (txn.obj != NULL) {
-			object_incr_ref(txn.obj);
-			lua_pushlightuserdata(L, txn.obj);
-			return 1;
-		} else if (txn.op == DELETE && txn.old_obj != NULL) {
-			/* object_incr_ref is require because box_cleanup() is called before
-			   lua has chance to increase ref counter on passed pointer */
-			object_incr_ref(txn.old_obj);
-			lua_pushlightuserdata(L, txn.old_obj);
-			return 1;
-		}
+		if (txn.obj != NULL)
+			return push_obj(L, txn.obj);
+		else if (txn.op == DELETE && txn.old_obj != NULL)
+			return push_obj(L, txn.old_obj);
 	}
 	@catch (Error *e) {
 		box_rollback(&txn);

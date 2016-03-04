@@ -73,6 +73,14 @@ extern const int object_space_max_idx;
 ]]
 
 local _dispatch = _dispatch
+local function dispatch(box, op, body, len)
+    local obj = _dispatch(box, op, body, len)
+    local tuple = object(obj)
+    if tuple and ffi.C.object_type(obj) == ffi.C.BOX_TUPLE then
+        ffi.C.object_decr_ref(obj)
+    end
+    return tuple
+end
 
 --- jit.off(_dispatch) not needed, because C API calls are NYI
 
@@ -110,13 +118,10 @@ local object_space_mt = {
 for _, v in pairs{'add', 'replace', 'delete', 'update'} do
     local pack = box_op.pack[v]
     object_space_mt.__index[v .. '_ret'] = function (object_space, ...)
-        local ptr = _dispatch(object_space.__shard.__ptr, pack(1, object_space.n, ...))
-        local tuple = object(ptr)
-        if ptr then ffi.C.object_decr_ref(ptr) end
-        return tuple
+        return dispatch(object_space.__shard.__ptr, pack(1, object_space.n, ...))
     end
     object_space_mt.__index[v .. '_noret'] = function (object_space, ...)
-        _dispatch(object_space.__shard.__ptr, pack(0, object_space.n, ...))
+        dispatch(object_space.__shard.__ptr, pack(0, object_space.n, ...))
     end
 end
 object_space_mt.__index.add     =     object_space_mt.__index.add_ret
@@ -167,13 +172,10 @@ local ushard_mt = {
 for _, v in pairs{'add', 'replace', 'delete', 'update'} do
     local pack = box_op.pack[v]
     ushard_mt.__index[v..'_ret'] = function (shard, n, ...)
-        local ptr = _dispatch(shard.__ptr, pack(1, n, ...))
-        local tuple = object(ptr)
-        if ptr then ffi.C.object_decr_ref(ptr) end
-        return tuple
+        return dispatch(shard.__ptr, pack(1, n, ...))
     end
     ushard_mt.__index[v..'_noret'] = function (shard, n, ...)
-        _dispatch(shard.__ptr, pack(0, n, ...))
+        dispatch(shard.__ptr, pack(0, n, ...))
     end
 end
 
@@ -282,12 +284,13 @@ local uintptr = ffi.typeof('uintptr_t')
 local u32buf = ffi.new('uint32_t[1]')
 local p = packer()
 
+ffi.cdef 'void net_tuple_add(struct netmsg_head *h, struct tnt_object *obj);'
+
 local function append_value(out, v)
     if type(v) == "string" then
         out:add_iov_string(v)
     elseif type(v) == "table" and v.__obj then
-        ffi.C.object_incr_ref(v.__obj)
-        out:add_iov_ref(v.__tuple, v.bsize + 8, ffi.cast(uintptr, v.__obj))
+        ffi.C.net_tuple_add(out, v.__obj)
     elseif type(v) == "table" and getmetatable(v) == tuple_mt then
         p:string("....----") -- placeholder for bsize, cardinality
         for i = 1, #v do

@@ -439,8 +439,9 @@ snapshot_write_rows:(XLog *)l
 			if (unlikely(object_ghost(obj)))
 				continue;
 
-			if (obj->refs <= 0) {
-				say_error("heap invariant violation: n:%i obj->refs == %i", n, obj->refs);
+			if (obj->type == BOX_TUPLE && container_of(obj, struct gc_oct_object, obj)->refs <= 0) {
+				say_error("heap invariant violation: n:%i obj->refs == %i", n,
+					  container_of(obj, struct gc_oct_object, obj)->refs);
 				errno = EINVAL;
 				ret = -1;
 				goto out;
