@@ -1,6 +1,6 @@
 require("fiber")
 require("box")
-require("index")
+local index = require("index")
 local ffi = require("ffi")
 local bit = require("bit")
 local net = require("net")
@@ -194,10 +194,11 @@ user_proc.truncate = box.wrap(function (ushard, n)
 end)
 
 
-user_proc.iterator = box.wrap(function (ushard, n, key, limit, dir)
+user_proc.iterator = box.wrap(function (ushard, n, key, limit, dir, offset)
 	local os = ushard:object_space(n)
         local pk = os:index(0)
         local result = {}
+        local off = offset and tonumber(offset) or 0
 
 	if limit == nil then
 	   limit = 1024
@@ -212,7 +213,7 @@ user_proc.iterator = box.wrap(function (ushard, n, key, limit, dir)
             next, state = pk:iter(key)
         end
 
-        for tuple in next, state do
+        for tuple in index.offset(off, next, state) do
 	   table.insert(result, tuple)
 	   limit = limit - 1
 	   if limit == 0 then

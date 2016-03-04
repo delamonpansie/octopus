@@ -21,4 +21,6 @@ Env.connect_eval do
 
   lua 'user_proc.iterator', '0', '5', '5'
   lua 'user_proc.iterator', '0', '5', '5', 'backward'
+  lua 'user_proc.iterator', '0', '5', '5', 'forward', '3'
+  lua 'user_proc.iterator', '0', '5', '5', 'backward', '3'
 end
