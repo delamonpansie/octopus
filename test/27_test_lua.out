@@ -311,7 +311,7 @@
 [["cdata<const struct BasicIndex *>: 0xPTR", "cdata<const struct BasicIndex *>: 0xPTR"]]
 
 # box.lua("user_proc.test3")
-[["cdata<const struct box_tuple *>: 0xPTR", "11", "11"]]
+[["cdata<const struct box_small_tuple *>: 0xPTR", "11", "11"]]
 
 # box.lua("user_proc.test4")
 [["300"]]
