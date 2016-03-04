@@ -1161,7 +1161,8 @@ void
 print_row(struct tbuf *buf, const struct row_v12 *row,
 	  void (*handler)(struct tbuf *out, u16 tag, struct tbuf *row))
 {
-	struct tbuf row_data = TBUF(row->data, row->len, fiber->pool);
+	static struct tbuf row_data;
+	row_data = TBUF(row->data, row->len, fiber->pool);
 
 	int tag = row->tag & TAG_MASK;
 	int tag_type = row->tag & ~TAG_MASK;
@@ -1185,7 +1186,7 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 		handler = hexdump;
 
 	if (tag_type != TAG_SYS) {
-		handler(buf, row->tag, &TBUF(row->data, row->len, fiber->pool));
+		handler(buf, row->tag, &row_data);
 		return;
 	}
 
@@ -1281,7 +1282,7 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 		}
 		break;
 	default:
-		handler(buf, row->tag, &TBUF(row->data, row->len, fiber->pool));
+		handler(buf, row->tag, &row_data);
 	}
 }
 
