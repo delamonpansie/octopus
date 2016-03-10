@@ -24,6 +24,7 @@
  * SUCH DAMAGE.
  */
 
+#define OBJECT_FUN_INLINE
 #import <salloc.h>
 #import <octopus.h>
 #import <say.h>
@@ -166,7 +167,5 @@ object_unlock(struct tnt_object *obj)
 	}
 }
 
-extern inline bool object_ghost(const struct tnt_object *obj);
-extern inline int object_type(const struct tnt_object *obj);
 
 register_source();

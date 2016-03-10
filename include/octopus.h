@@ -106,13 +106,18 @@ enum tnt_object_flags {
 	YIELD = 0x4
 };
 
-inline bool object_ghost(const struct tnt_object *obj);
-inline bool object_ghost(const struct tnt_object *obj)
+#ifndef OBJECT_FUN_INLINE
+# if __GNUC__ && !__GNUC_STDC_INLINE__
+#  define OBJECT_FUN_INLINE extern inline
+# else
+#  define OBJECT_FUN_INLINE inline
+# endif
+#endif
+OBJECT_FUN_INLINE bool object_ghost(const struct tnt_object *obj)
 {
 	return obj->flags & GHOST;
 }
-inline int object_type(const struct tnt_object *obj);
-inline int object_type(const struct tnt_object *obj)
+OBJECT_FUN_INLINE int object_type(const struct tnt_object *obj)
 {
 	return obj->type;
 }
