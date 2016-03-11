@@ -77,7 +77,6 @@ enum shard_type { SHARD_TYPE_POR, SHARD_TYPE_PAXOS } ;
 struct shard_route {
 	Shard<Shard> *shard;
 	struct iproto_egress *proxy;
-	id<Executor> executor;
 };
 
 struct shard_conf {

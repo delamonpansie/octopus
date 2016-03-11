@@ -1480,7 +1480,7 @@ append_row:(struct row_v12 *)row12 data:(const void *)data
 		last = ev_now();
 	}
 
-	bytes += tbuf_len(data) + sizeof(struct row_v12);
+	bytes += sizeof(*row12) + row12->len;
 
 	while (bytes >= io_rate_limit) {
 		if ([self flush] < 0) {

@@ -1110,6 +1110,9 @@ iproto_shard_luacb(struct iproto *req __attribute__((unused)))
 static void
 recovery_iproto(void)
 {
+	if (recovery_service == NULL)
+		return;
+
 	if (cfg.peer && *cfg.peer && cfg.hostname) {
 		fiber_create("route_recv", udp_server,
 			     recovery_service->addr, iproto_shard_udpcb, NULL, NULL);
@@ -1129,6 +1132,8 @@ iproto_ignore(struct netmsg_head *h __attribute__((unused)),
 static void
 recovery_iproto_ignore()
 {
+	if (recovery_service == NULL)
+		return;
 	service_register_iproto(recovery_service, MSG_SHARD, iproto_ignore, IPROTO_NONBLOCK);
 	service_register_iproto(recovery_service, LEADER_PROPOSE, iproto_ignore, IPROTO_NONBLOCK);
 	service_register_iproto(recovery_service, PREPARE, iproto_ignore, IPROTO_NONBLOCK);

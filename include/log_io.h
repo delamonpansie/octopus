@@ -519,6 +519,8 @@ enum feeder_filter_type {
 - (int) write_initial_state;
 - (int) fork_and_snapshot;
 void fork_and_snapshot(va_list ap);
+
+- (Shard<Shard> *) shard_add_dummy:(const struct row_v12 *)row;
 @end
 
 @interface Recovery (Deprecated)
