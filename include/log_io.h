@@ -554,4 +554,16 @@ void print_row(struct tbuf *out, const struct row_v12 *row,
 
 struct octopus_cfg_peer *cfg_peer_by_name(const char *name);
 
+@interface DefaultExecutor : Object {
+@public
+	Shard<Shard> *shard;
+}
+- (id) init_shard:(Shard<Shard> *)shard_;
+- (void) set_shard:(Shard<Shard> *)shard_;
+- (u32) snapshot_estimate;
+- (void) wal_final_row;
+- (void) status_changed;
+- (void) print:(const struct row_v12 *)row into:(struct tbuf *)buf;
+@end
+
 #endif

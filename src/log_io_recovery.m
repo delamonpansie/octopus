@@ -1286,5 +1286,41 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 	}
 }
 
+@implementation DefaultExecutor
+- (id)
+init_shard:(Shard<Shard> *)shard_
+{
+	[super init];
+	shard = shard_;
+	return self;
+}
+
+- (void)
+set_shard:(Shard<Shard> *)shard_
+{
+	shard = shard_;
+}
+
+- (u32)
+snapshot_estimate
+{
+	return 0;
+}
+- (void)
+wal_final_row
+{
+}
+
+- (void)
+status_changed
+{
+}
+
+- (void)
+print:(const struct row_v12 *)row into:(struct tbuf *)buf
+{
+	tbuf_printf(buf, "%s: row=%p", __func__, row);
+}
+@end
 
 register_source();
