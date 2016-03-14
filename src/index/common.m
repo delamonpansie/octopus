@@ -579,12 +579,18 @@ gen_hash_node(const struct index_node *n, struct index_conf *ic)
 		switch (ic->field[0].type) {
 		case SNUM32:
 		case UNUM32:
-			return n->key.u32;
+			h ^= n->key.u32;
+			h ^= h >> 11; h ^= h >> 13;
+			return h;
 		case SNUM64:
 		case UNUM64:
-			return (u32)(((u64)n->key.u64 * KNUTH_MULT) >> 32);
+			h ^= n->key.u64;
+			h ^= h >> 24;
+			h *= KNUTH_MULT;
+			return (u32)h ^ (u32)(h >> 40);
 		case STRING:
-			return lstr_hash(&n->key, h) >> 32;
+			h = lstr_hash(&n->key, h);
+			return (u32)h ^ (u32)(h >> 40);
 		default:
 			abort();
 		}
@@ -614,7 +620,7 @@ gen_hash_node(const struct index_node *n, struct index_conf *ic)
 		h = (h << 13) | (h >> 51);
 	}
 	h *= KNUTH_MULT;
-	return (u32)(h >> 32);
+	return (u32)(h >> 40) ^ ((u32)h);
 }
 
 void
