@@ -476,7 +476,7 @@ struct _mh(find_loop) {
  */
 static inline void _mh(find_loop_init)(struct _mh(find_loop) *l, unsigned k, unsigned mask) {
 	l->step = mh_neighbors;
-	l->i = k % mask;
+	l->i = k & mask;
 	l->dlt = (k % (mask / (2 * mh_neighbors))) * 2 * mh_neighbors;
 	l->inc = 0;
 }
