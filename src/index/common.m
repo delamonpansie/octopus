@@ -606,7 +606,7 @@ gen_hash_node(const struct index_node *n, struct index_conf *ic)
 			h = (h ^ key->u64) * KNUTH_MULT;
 			break;
 		case STRING:
-			h = lstr_hash(&n->key, h);
+			h = lstr_hash(key, h);
 			break;
 		case UNDEF:
 			abort();
