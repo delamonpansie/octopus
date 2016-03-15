@@ -206,6 +206,11 @@ local function offset(off, itnxt, index)
     return itnxt, index
 end
 
+local function first(itnxt, index)
+    assert(itnxt == iter_next)
+    return itnxt(index)
+end
+
 local basic_mt = {
     __index = {
         packnode = function(self, ...)
@@ -287,7 +292,10 @@ local tree_mt = {
             return iter_next, self
         end,
         iter = function(self, ...) return self:diter("forward", ...) end,
-	riter = function(self, ...) return self:diter("backward", ...) end
+	riter = function(self, ...) return self:diter("backward", ...) end,
+        first = function(self, ...)
+            return self:iter(...)(self)
+        end,
    }
 }
 setmetatable(tree_mt.__index, basic_mt)
@@ -340,3 +348,5 @@ end
 
 -- index.offset(1000, space:index(ix):iter(key))
 _M.offset = offset
+-- index.first(space:index(ix):iter(key))
+_M.first = first
