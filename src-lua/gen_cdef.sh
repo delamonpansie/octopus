@@ -11,9 +11,13 @@ require('cdef_base')
 module (...)
 ffi.cdef [[
 struct palloc_pool;
+struct tnt_object {
+       char opaque;
+       char data[0];
+};
 EOF
-$CPP $srcdir/include/octopus.h | $SED -n '/^\(enum tnt_object_flags\|struct tnt_object\) \+{/,/^}/p'
-$CPP $srcdir/include/octopus.h | $SED -n '/^\(inline \)\?\(_Bool\|void\|int\) object_.*;$/{s/^inline //;p};'
+# $CPP $srcdir/include/octopus.h | $SED -n '/^\(struct tnt_object\) \+{/,/^}/p'
+$CPP $srcdir/include/octopus.h | $SED '/^\(extern \)\?\(inline \)\?\(_Bool\|void\|int\) object_.*$/!d; s/^extern //; s/^inline //; /;$/!s/$/;/'
 $CPP $srcdir/include/octopus.h | $SED -n '/^extern struct octopus_cfg/p;'
 $CPP $srcdir/include/index.h | $SED -n '/struct field_desc \+{/,/^}/p'
 $CPP $srcdir/include/index.h | $SED -n '/^\(struct\|union\|enum\) index_[a-z_]\+ \+{/,/^}/p'
