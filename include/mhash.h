@@ -451,6 +451,10 @@ static inline unsigned mh_str_hash(const char *kk) { return  mh_MurmurHash2(kk, 
 #  define mh_may_skip 0
 #endif
 #endif
+#if mh_neighbors == 1 && mh_may_skip
+#undef mh_may_skip
+#define mh_may_skip 0
+#endif
 #if mh_may_skip
 #  define mh_need_dirty(loop)    ((loop).step & 1)
 #  define mh_occupied_as_dirty(h, i)     (mh_dirty(h, (i)) || mh_dirty(h, ((i)+1) & h->n_mask))
