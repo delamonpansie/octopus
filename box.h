@@ -91,6 +91,7 @@ struct box_txn {
 	struct tnt_object *old_obj, *obj;
 	struct tnt_object *ref[2];
 	u16 index_eqmask;
+	bool pk_affected;
 	u32 obj_affected;
 
 	enum { UNDECIDED, COMMIT, ROLLBACK } state;

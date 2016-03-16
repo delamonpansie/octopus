@@ -161,6 +161,15 @@ box_replace(struct box_txn *txn)
 		return;
 
 	foreach_index(index, txn->object_space) {
+		if (index->conf.n == 0 && !txn->pk_affected) {
+			if (txn->old_obj == NULL)
+				[index replace:txn->obj];
+			else {
+				[index valid_object:txn->obj];
+				txn->index_eqmask |= 1 << index->conf.n;
+			}
+			continue;
+		}
 		if (index->conf.unique) {
 			struct tnt_object *obj = [index find_obj:txn->obj];
 			if (obj == NULL) {
@@ -422,6 +431,13 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 		op = read_u8(data);
 		arg = read_field(data);
 		arg_size = LOAD_VARINT32(arg);
+
+		for (int i = 0; i < txn->index->conf.cardinality; i++) {
+			if (txn->index->conf.field[i].index == field_no) {
+				txn->pk_affected = 1;
+				break;
+			}
+		}
 
 		if (op <= 6) {
 			if (field_no >= cardinality)
