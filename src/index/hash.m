@@ -408,9 +408,9 @@ free
 - (int)
 eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 {
-	struct index_node node_b;
+	struct index_node node_b[8];
 	struct index_node *na = GET_NODE(obj_a, node_a),
-			  *nb = GET_NODE(obj_b, node_b);
+			  *nb = GET_NODE(obj_b, node_b[0]);
 	return eq(na, nb, self->dtor_arg);
 }
 
