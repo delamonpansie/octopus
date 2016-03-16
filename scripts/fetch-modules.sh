@@ -47,8 +47,8 @@ git branch -a | sed -ne 's/^..//; /^mod_/p; /^client_/p' | while read branch_nam
     [ -e $dir ] || git clone -q --branch $branch . $dir
 done
 
-git remote show | while read remote_name; do
-    remote_url=$(git remote show -n origin | sed '/Fetch URL:/!d; s/.*Fetch URL:[[:space:]]*//')
+git remote -v | while read remote_name remote_url kind; do
+    if [ kind != '(fetch)' ] ; then continue ; fi
 
     git branch -a | sed -ne "s/^..remotes[/]$remote_name[/]//; /^mod_/p; /^client_/p" | while read branch_name; do
 	branch_name=${branch_name#$remote_name/}
@@ -75,7 +75,7 @@ for repo in mod/* client/*; do
 	(set -e;
 	 echo -n "$repo ... "
 	 cd "$repo"
-	 if ! git branch --list HEAD | grep -q detached; then
+	 if ! git branch | grep -q '^\*.*detached'; then
 	     git pull --quiet && echo "ok" || echo "fail"
 	 else
 	     echo "skip (detached)"

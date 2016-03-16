@@ -6,4 +6,7 @@ AC_ARG_ENABLE([modules],
               [octopus_modules=${bundled_modules:-box feeder}])
 
 AC_MSG_NOTICE([Fetching modules/($octopus_modules) clients/($octopus_clients)])
-"${srcdir}"/scripts/fetch-modules.sh `for m in $octopus_modules; do echo mod/$m; done; for c in $octopus_clients; do echo client/$c; done`
+(
+  cd "${srcdir}"
+  scripts/fetch-modules.sh `for m in $octopus_modules; do echo mod/$m; done; for c in $octopus_clients; do echo client/$c; done`
+)
