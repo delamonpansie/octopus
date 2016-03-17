@@ -72,6 +72,8 @@ box_tuple_lstr_dtor(struct tnt_object *obj, struct index_node *node, void  *arg)
 	if (f == NULL)
 		index_raise("cardinality too small");
 	size_t size = LOAD_VARINT32(f);
+	if (size > 0xffff)
+		index_raise("string key too long");
 	node->obj = obj;
 	set_lstr_field(&node->key, size, f);
 	return node;
