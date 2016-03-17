@@ -405,6 +405,8 @@ lstr_init_pattern(struct tbuf *key, int cardinality,
 	pattern->obj = NULL;
 	if (cardinality == 1) {
 		u32 size = read_varint32(key);
+		if (size > 0xffff)
+			index_raise("string key too long");
 		set_lstr_field(&pattern->key, size, read_bytes(key, size));
 	} else if (cardinality == 0) {
 		set_lstr_field(&pattern->key, 0, NULL);
