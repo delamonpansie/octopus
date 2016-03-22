@@ -223,46 +223,51 @@ update_rt_notify(va_list ap __attribute__((unused)))
 }
 
 static struct shard_op *
-validate_sop(void *data, int len)
+validate_sop(struct netmsg_head *wbuf, const struct iproto *req, void *data, int len)
 {
-	struct shard_op *sop = data;
+#define sop_err(...) ({							\
+		if (wbuf) iproto_error_fmt(wbuf, req, ERR_CODE_ILLEGAL_PARAMS, __VA_ARGS__); \
+		say_error(__VA_ARGS__);					\
+		})
+
 	if (len < sizeof(struct shard_op)) {
-		say_error("sop: packet len is too small");
+		sop_err("sop: packet len is too small");
 		return NULL;
 	}
+	struct shard_op *sop = data;
 	if (sop->ver != 0) {
-		say_error("sop: bad version");
+		sop_err("sop: bad version");
 		return NULL;
 	}
 	if (!cfg.hostname || !cfg.peer || !cfg.peer[0]) {
-		say_error("sop: cfg.hostname or cfg.peer unconfigured");
+		sop_err("sop: cfg.hostname or cfg.peer unconfigured");
 		return NULL;
 	}
 
 	if (objc_lookUpClass(sop->mod_name) == Nil) {
-		say_error("bad mod name '%s'", sop->mod_name);
+		sop_err("bad mod name '%s'", sop->mod_name);
 		return NULL;
 	}
 
 	if (strlen(sop->peer[0]) == 0) {
-		say_error("sop: empty master");
+		sop_err("sop: empty master");
 		return NULL;
 	}
 
 	for (int i = 0; i < nelem(sop->peer); i++) {
 		if (sop->peer[i][15] != 0) {
-			say_error("sop: bad peer");
+			sop_err("sop: bad peer");
 			return NULL;
 		}
 		if (strlen(sop->peer[i]) == 0)
 			continue;
 		if (!cfg_peer_by_name(sop->peer[i])) {
-			say_error("sop: unknown peer '%s'", sop->peer[i]);
+			sop_err("sop: unknown peer '%s'", sop->peer[i]);
 			return NULL;
 		}
 	}
 	if (sop->type != SHARD_TYPE_PAXOS && sop->type != SHARD_TYPE_POR) {
-		say_error("sop: invalide shard type %i", sop->type);
+		sop_err("sop: invalide shard type %i", sop->type);
 		return NULL;
 	}
 	return sop;
@@ -991,10 +996,12 @@ static void
 iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req, void *arg __attribute__((unused)))
 {
 	int shard_id = req->shard_id;
-	struct shard_op *sop = validate_sop(req->data, req->data_len);
+	struct shard_op *sop = validate_sop(wbuf, req, req->data, req->data_len);
+	if (!sop)
+		return;
 
-	if (!sop || req->shard_id > nelem(shard_rt)) {
-		iproto_error(wbuf, req, ERR_CODE_ILLEGAL_PARAMS, "bad request");
+	if (req->shard_id > nelem(shard_rt)) {
+		iproto_error(wbuf, req, ERR_CODE_ILLEGAL_PARAMS, "shard_id too big");
 		return;
 	}
 
@@ -1068,7 +1075,8 @@ iproto_shard_udpcb(const char *buf, ssize_t len, void *data __attribute__((unuse
 	Shard<Shard> *shard = route->shard;
 	const char *peer_name = (char *)req->data;
 	i64 scn = *(i64 *)(req->data + 16);
-	struct shard_op *sop = validate_sop(req->data + 16 + sizeof(i64),
+	struct shard_op *sop = validate_sop(NULL, NULL,
+					    req->data + 16 + sizeof(i64),
 					    req->data_len - 16 - sizeof(i64));
 	if (sop == NULL)
 		return;
