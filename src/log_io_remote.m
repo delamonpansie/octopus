@@ -112,7 +112,7 @@ free
 	return [super free];
 }
 
-- (i64) handshake_scn { return [shard scn]; }
+- (i64) handshake_scn { return [shard scn] + 1; }
 
 - (void)
 status:(const char *)status reason:(const char *)reason
