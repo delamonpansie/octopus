@@ -227,6 +227,9 @@ load_from_local:(i64)initial_lsn
 		return 0;
 	}
 
+	say_debug("snap greatest LSN:%"PRIi64 ", wal greatest LSN:%"PRIi64,
+		  [snap_dir greatest_lsn], [wal_dir greatest_lsn]);
+
 	say_info("local recovery start");
 	if ([(id)recovery respondsTo:@selector(status_update:)])
 		[(id)recovery status_update:"loading/local"];
@@ -247,8 +250,7 @@ load_from_local:(i64)initial_lsn
 					  valid lsn is vital for [recover_follow]: [open_next_wal] is relies on valid LSN */
 		current_wal = [wal_dir containg_lsn:initial_lsn];
 		if (current_wal == nil) {
-			say_info("unable to find WAL with LSN:%"PRIi64", greatest_LSN:%"PRIi64,
-				 initial_lsn, [wal_dir greatest_lsn]);
+			say_info("unable to find WAL containing LSN:%"PRIi64, initial_lsn);
 			return 0;
 		}
 	}
