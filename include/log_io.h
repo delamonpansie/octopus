@@ -44,21 +44,22 @@
 
 /* despite having type encoding tag must be unique */
 
-enum { snap_initial = 1,
-       snap_data,
-       wal_data,
-       snap_final,
-       wal_final,
-       run_crc,
-       nop,
-       paxos_promise,
-       paxos_accept,
-       paxos_nop,
-       shard_create,
-       shard_alter,
-       shard_final,
+enum row_tag {
+	snap_initial = 1,
+	snap_data,
+	wal_data,
+	snap_final,
+	wal_final,
+	run_crc,
+	nop,
+	paxos_promise,
+	paxos_accept,
+	paxos_nop,
+	shard_create,
+	shard_alter,
+	shard_final,
 
-       user_tag = 32
+	user_tag = 32
 };
 
 

@@ -42,6 +42,7 @@ $CPP -DLUA_DEF='@@@' $srcdir/include/net_io.h | $SED -n '/@@@/!d; s/@@@//; p'
 $CPP $srcdir/include/pickle.h | $SED -n '/write.*(.*struct tbuf/p'
 $CPP $srcdir/include/say.h | $SED -n '/^extern int.*max_level/p; /^enum say_level {/,/^}/p; /^void _say(/{s/$/;/;p;}'
 $CPP $srcdir/include/palloc.h | $SED -n '/palloc(/p'
+$CPP $srcdir/include/log_io.h | $SED -n '/^struct row_v12 {/,/^}/p; /^enum row_tag {/,/^}/p;'
 $CPP cfg/octopus.h | $SED -n 's/u_int32_t/uint32_t/; /^typedef struct octopus_.* {/,/^}/p'
 echo "]]"
 echo "autoconf = {}"
