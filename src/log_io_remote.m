@@ -303,6 +303,8 @@ again:
 			/* no more WAL rows in near future, notify module about that */
 			[shard wal_final_row];
 
+			if (shard == nil) /* [shard wal_final_row] may delete shard */
+				goto close;
 			if (!warning_said) {
 				[self status:"fail" reason:[remote_puller error]];
 				say_warn("feeder handshake failed: %s", [remote_puller error]);
@@ -317,10 +319,8 @@ again:
 			[self status:"ok" reason:NULL];
 			for (;;) {
 				[self replicate_row_stream:remote_puller];
-				if (shard == nil) {
-					[self free];
-					return;
-				}
+				if (shard == nil)
+					goto close;
 			}
 		}
 		@catch (Error *e) {
@@ -337,6 +337,10 @@ again:
 	[self status:"unconfigured" reason:NULL];
 
 	goto again;
+close:
+	say_info("close");
+	[self free];
+
 }
 
 static void
@@ -352,6 +356,13 @@ hot_standby:(struct feeder_param*)feeder_
 	assert(recovery->writer != nil);
 	[self set_feeder:feeder_];
 	fiber_create("remote_hot_standby", hot_standby, self);
+}
+
+- (void)
+abort_and_free
+{
+	[remote_puller abort_recv];
+	shard = nil; // connect_loop() will exit if shard is nil
 }
 
 @end

@@ -41,7 +41,7 @@
 - (id) free
 {
 	if (remote)
-		remote->shard = nil;
+		[remote abort_and_free];
 	return [super free];
 }
 

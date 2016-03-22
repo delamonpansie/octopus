@@ -461,6 +461,7 @@ enum feeder_filter_type {
 - (bool) feeder_addr_configured;
 - (void) set_feeder:(struct feeder_param*)new;
 - (void) hot_standby:(struct feeder_param*)feeder_;
+- (void) abort_and_free;
 @end
 
 
