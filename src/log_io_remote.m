@@ -288,7 +288,7 @@ replicate_row_stream:(id<XLogPullerAsync>)puller
 connect_loop
 {
 	ev_tstamp reconnect_delay = 0.1;
-	bool warning_said = false;
+	ev_tstamp warning_said = 0;
 
 	remote_puller = [[XLogPuller alloc] init];
 again:
@@ -305,15 +305,16 @@ again:
 
 			if (shard == nil) /* [shard wal_final_row] may delete shard */
 				goto close;
-			if (!warning_said) {
+			if (!warning_said || ev_now() > warning_said + 300) {
 				[self status:"fail" reason:[remote_puller error]];
 				say_warn("feeder handshake failed: %s", [remote_puller error]);
 				say_info("will retry every %.2f second", reconnect_delay);
-				warning_said = true;
+				warning_said = ev_now();
 			}
 			goto sleep;
 		}
-		warning_said = false;
+		warning_said = 0;
+		reconnect_delay = 0.1;
 
 		@try {
 			[self status:"ok" reason:NULL];
@@ -332,6 +333,9 @@ again:
 	sleep:
 		fiber_gc();
 		fiber_sleep(reconnect_delay);
+
+		if (reconnect_delay < 60)
+			reconnect_delay *= 1.15;
 	} while ([self feeder_addr_configured]);
 
 	[self status:"unconfigured" reason:NULL];
