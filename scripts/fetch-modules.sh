@@ -48,7 +48,7 @@ git branch -a | sed -ne 's/^..//; /^mod_/p; /^client_/p' | while read branch_nam
 done
 
 git remote -v | while read remote_name remote_url kind; do
-    if [ kind != '(fetch)' ] ; then continue ; fi
+    if [ $kind != '(fetch)' ] ; then continue ; fi
 
     git branch -a | sed -ne "s/^..remotes[/]$remote_name[/]//; /^mod_/p; /^client_/p" | while read branch_name; do
 	branch_name=${branch_name#$remote_name/}
