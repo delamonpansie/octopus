@@ -186,11 +186,8 @@ wal_final_row
 - (i64)
 prepare_from_scn:(i64)initial_scn filter:(struct feeder_filter*)_filter
 {
-	int i;
-	if (_filter->type == FILTER_TYPE_ID)
-		say_info("%s initial_scn:%"PRIi64" filter: type=ID", __func__, initial_scn);
-	else
-		say_info("%s initial_scn:%"PRIi64" filter: type=%s name='%s'", __func__, initial_scn, filter_type_names[_filter->type], _filter->name);
+	int i, shard_id = 0;
+
 	switch (_filter->type) {
 	case FILTER_TYPE_ID:
 		filter = id_filter;
@@ -230,9 +227,23 @@ prepare_from_scn:(i64)initial_scn filter:(struct feeder_filter*)_filter
 		filter(NULL, _filter->arg, _filter->arglen);
 	}
 
+	if (_filter->type == FILTER_TYPE_ID)
+		say_info("%s initial_scn:%"PRIi64" filter: type=ID", __func__, initial_scn);
+	else
+		say_info("%s initial_scn:%"PRIi64" shard:%i filter: type=%s name='%s'", __func__,
+			 initial_scn, shard_id, filter_type_names[_filter->type], _filter->name);
+
 	if (initial_scn != 0) {
+		/* special case: newborn peer without WALs */
+		if ([snap_dir containg_scn:initial_scn shard:shard_id]) {
+			while ([wal_dir greatest_lsn] <= 0) {
+				sleep(1);
+				keepalive();
+			}
+		}
+
 		min_scn = initial_scn;
-		i64 initial_lsn = [wal_dir containg_scn:initial_scn];
+		i64 initial_lsn = [wal_dir containg_scn:initial_scn shard:shard_id];
 		if (initial_lsn <= 0)
 			raise_fmt("unable to find WAL containing SCN:%"PRIi64, initial_scn);
 		say_debug("%s: SCN:%"PRIi64" => LSN:%"PRIi64, __func__, initial_scn, initial_lsn);
