@@ -687,7 +687,7 @@ index_conf_validate(struct index_conf *d)
 		index_raise("index_conf.cardinality is 0");
 	if (d->cardinality > nelem(d->field))
 		index_raise("index_conf.cardinality is too big");
-	if (d->type < 0 || d->type > COMPACTTREE)
+	if (d->type < 0 || d->type >= MAX_INDEX_TYPE)
 		index_raise("index_conf.type is invalid");
 	if (d->unique > 1)
 		index_raise("index_conf.unique is not bool");

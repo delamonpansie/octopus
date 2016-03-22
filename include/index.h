@@ -74,7 +74,7 @@ struct index_field_desc {
 	char sort_order, type;
 };
 
-enum index_type { HASH, NUMHASH, SPTREE, FASTTREE, COMPACTTREE, POSTREE };
+enum index_type { HASH, NUMHASH, SPTREE, FASTTREE, COMPACTTREE, POSTREE, MAX_INDEX_TYPE };
 struct index_conf {
 	char min_tuple_cardinality /* minimum required tuple cardinality */,
 	     cardinality;
