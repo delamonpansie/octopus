@@ -439,6 +439,20 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 			}
 		}
 
+		for (int i = txn->index->conf.cardinality - 1; i >= 0 ; i--) {
+			if (txn->index->conf.field[i].index == field_no) {
+				txn->pk_affected = 1;
+				break;
+			}
+		}
+
+		for (int i = txn->index->conf.cardinality; i != 0 ; i--) {
+			if (txn->index->conf.field[i - 1].index == field_no) {
+				txn->pk_affected = 1;
+				break;
+			}
+		}
+
 		if (op <= 6) {
 			if (field_no >= cardinality)
 				iproto_raise(ERR_CODE_ILLEGAL_PARAMS,
