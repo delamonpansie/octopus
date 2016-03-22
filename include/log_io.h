@@ -131,7 +131,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 - (XLog *) open_for_write:(i64)lsn scn:(const i64 *)shard_scn_map;
 - (i64) greatest_lsn;
 - (XLog *) containg_lsn:(i64)target_lsn;
-- (i64) containg_scn:(i64)target_scn;
+- (i64) containg_scn:(i64)target_scn shard:(int)target_shard_id;
 - (int) lock;
 - (int) stat:(struct stat *)buf;
 - (int) sync;

@@ -1375,7 +1375,7 @@ open_for_write:(i64)lsn scn:(i64 *)shard_scn_map
 }
 
 - (i64)
-containg_scn:(i64)target_scn shard_id:(int)target_shard_id
+containg_scn:(i64)target_scn shard:(int)target_shard_id
 {
 	i64 *lsn;
 	ssize_t count = [self scan_dir:&lsn];
@@ -1435,11 +1435,6 @@ containg_scn:(i64)target_scn shard_id:(int)target_shard_id
 	return lsn[count - 1];
 }
 
-- (i64)
-containg_scn:(i64)target_scn
-{
-	return [self containg_scn:target_scn shard_id:0];
-}
 @end
 
 @implementation WALDir

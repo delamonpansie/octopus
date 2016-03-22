@@ -673,7 +673,7 @@ recover_row:(struct row_v12 *)r
 load_from_local
 {
 	if (fold_scn)  {
-		snap_lsn = [snap_dir containg_scn:fold_scn]; /* select snapshot before desired scn */
+		snap_lsn = [snap_dir containg_scn:fold_scn shard:0]; /* select snapshot before desired scn */
 		[reader load_from_local:0];
 		say_error("unable to find record with SCN:%"PRIi64, fold_scn);
 		exit(EX_OSFILE);
