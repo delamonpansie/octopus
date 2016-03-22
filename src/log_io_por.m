@@ -53,31 +53,16 @@ set_feeder:(struct feeder_param*)new
 		[remote set_feeder:new];
 }
 
-- (struct feeder_param *)
-feeder
-{
-	static struct feeder_param feeder = { .ver = 1,
-					      .filter = {.type = FILTER_TYPE_ID }};
-	if (dummy) {
-		enum feeder_cfg_e fid_err = feeder_param_fill_from_cfg(&feeder, NULL);
-		if (fid_err) panic("wrong feeder conf");
-		return &feeder;
-	}
-	feeder.addr = *peer_addr(peer[0], PORT_REPLICATION);
-	return &feeder;
-}
-
 - (void)
 load_from_remote
 {
 	XLogRemoteReader *reader = [[XLogRemoteReader alloc] init_recovery:self];
-	static char arg[32];
-	static struct feeder_param feeder = { .ver = 2,
-					      .filter = {.type = FILTER_TYPE_LUA,
-							 .name = "changer",
-							 .arg = arg,
-							 .arglen = 0 }};
-	feeder.filter.arglen = sprintf(arg, "%i", self->id);
+	feeder = (struct feeder_param){ .ver = 2,
+					.filter = {.type = FILTER_TYPE_LUA,
+						   .name = "changer",
+						    .arg = feeder_param_arg,
+						   .arglen = 0 }};
+	feeder.filter.arglen = sprintf(feeder.filter.arg, "%i", self->id);
 
 	for (int i = 0; i < nelem(peer) && *peer[i]; i++) {
 		if (strcmp(peer[i], cfg.hostname) == 0)
@@ -94,7 +79,6 @@ load_from_remote
 master
 {
 	if (dummy) {
-		struct feeder_param feeder;
 		enum feeder_cfg_e fid_err = feeder_param_fill_from_cfg(&feeder, NULL);
 		return fid_err || feeder.addr.sin_family == AF_UNSPEC;
 	}
@@ -105,13 +89,17 @@ master
 remote_hot_standby
 {
 	assert(![self master]);
-	struct feeder_param feeder = { .ver = 1,
-				       .filter = { .type = FILTER_TYPE_ID } };
 	if (dummy) {
 		enum feeder_cfg_e fid_err = feeder_param_fill_from_cfg(&feeder, NULL);
 		if (fid_err) panic("wrong feeder conf");
 	} else {
-		feeder.addr = *peer_addr(peer[0], PORT_REPLICATION);
+		feeder = (struct feeder_param){ .ver = 2,
+						.addr = *peer_addr(peer[0], PORT_REPLICATION),
+						.filter = {.type = FILTER_TYPE_LUA,
+							   .name = "changer",
+							   .arg = feeder_param_arg,
+							   .arglen = 0 }};
+		feeder.filter.arglen = sprintf(feeder.filter.arg, "%i", self->id);
 	}
 	if (remote == nil) {
 		[self status_update:"hot_standby/%s/init", net_sin_name(&feeder.addr)];
