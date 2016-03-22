@@ -14,5 +14,6 @@ end
 Env.connect_eval do
   200.times {|i| insert [i, "x" * i] }
 
-  lua('user_proc.get_all_tuples', '0', '0').each do |t| puts t[1] end
+  lua_nolog('user_proc.get_all_tuples', '0', '0').map{|t| t[1]}.sort.
+    each{|f| puts(f)}
 end
