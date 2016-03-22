@@ -71,7 +71,7 @@ static struct twltree_conf_t twltree_compact_conf = {
 
 static int twl_slabs_n = 0;
 static struct slab_cache **twl_slabs = NULL;
-static void*
+void*
 twl_realloc(void *old, size_t new_size)
 {
 	int i;
