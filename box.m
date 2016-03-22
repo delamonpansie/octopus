@@ -574,6 +574,9 @@ info(struct tbuf *out, const char *what)
 				continue;
 			tbuf_printf(out, "  - shard_id: %i" CRLF, i);
 			tbuf_printf(out, "    scn: %" PRIi64 CRLF, [shard scn]);
+			tbuf_printf(out, "    status: %s%s%s" CRLF, [shard status],
+				    cfg.custom_proc_title ? "@" : "",
+				    cfg.custom_proc_title ?: "");
 			if ([shard is_replica]) {
 				tbuf_printf(out, "    recovery_lag: %.3f" CRLF, [shard lag]);
 				tbuf_printf(out, "    recovery_last_update: %.3f" CRLF, [shard last_update_tstamp]);
@@ -582,10 +585,6 @@ info(struct tbuf *out, const char *what)
 					tbuf_printf(out, "    recovery_run_crc_status: %s" CRLF, [shard run_crc_status]);
 				}
 			}
-			tbuf_printf(out, "    status: %s%s%s" CRLF, [shard status],
-				    cfg.custom_proc_title ? "@" : "",
-				    cfg.custom_proc_title ?: "");
-
 			Box *box = [shard executor];
 			tbuf_printf(out, "    namespaces:" CRLF);
 			for (uint32_t n = 0; n < nelem(box->object_space_registry); ++n) {
