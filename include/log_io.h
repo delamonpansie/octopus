@@ -392,15 +392,15 @@ extern i64 snap_lsn; /* may be used for overriding initial snapshot,
 - (const char *)error;
 @end
 
+#define REPLICATION_FILTER_NAME_LEN 32
 #define replication_handshake_base_fields \
 	u32 ver; \
 	i64 scn; \
-	char filter[32]
+	char filter[REPLICATION_FILTER_NAME_LEN]
 
 struct replication_handshake_base {
 	replication_handshake_base_fields;
 } __attribute__((packed));
-#define REPLICATION_FILTER_NAME_LEN field_sizeof(struct replication_handshake_base, filter)
 
 #define replication_handshake_v1 replication_handshake_base
 
@@ -411,17 +411,15 @@ struct replication_handshake_v2 {
 	char filter_arg[];
 } __attribute__((packed));
 
-struct feeder_filter {
-	u32 type;
-	u32 arglen;
-	char *name;
-	void *arg;
-};
-
 struct feeder_param {
 	struct sockaddr_in addr;
 	u32 ver;
-	struct feeder_filter filter;
+	struct feeder_filter {
+		u32 type;
+		u32 arglen;
+		char *name;
+		void *arg;
+	} filter;
 };
 
 enum feeder_cfg_e {
