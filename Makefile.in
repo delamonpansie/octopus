@@ -63,6 +63,7 @@ endif
 
 primary_module=$(firstword $(modules))
 binary=octopus$(if $(WITH_MODNAME),_$(primary_module),)
+XCFLAGS += $(foreach m,$(modules),-DMOD_$(m)=1)
 
 DCFLAGS=$(filter -g%,$(XCFLAGS) $(CFLAGS))
 %.o: XCFLAGS += -Wno-strict-aliasing -funwind-tables
