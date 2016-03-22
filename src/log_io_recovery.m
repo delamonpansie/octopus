@@ -579,25 +579,6 @@ shard_create:(int)shard_id sop:(struct shard_op *)sop
 	assert(shard_rt[shard->id].shard == shard);
 }
 
-- (void)
-shard_load:(int)shard_id sop:(struct shard_op *)sop
-{
-	struct shard_op sop_ = *sop;
-	sop = &sop_;
-	Shard<Shard> *shard;
-	assert(shard_rt[shard_id].shard == nil);
-	shard = [self shard_add:shard_id scn:-1 sop:sop];
-	[shard load_from_remote];
-	[shard wal_final_row];
-	if ([self shard:shard_id] == nil)
-		return;
-
-	extern int allow_snap_overwrite;
-	allow_snap_overwrite = 1;
-	if ([self fork_and_snapshot] != 0)
-		say_error("Can't save snapshot"); // FIXME
-	allow_snap_overwrite = 0;
-}
 
 - (void)
 shard_alter:(Shard<Shard> *)shard sop:(struct shard_op *)sop
@@ -1052,7 +1033,19 @@ iproto_shard_load_aux(va_list ap)
 	memcpy(tmp, sop, sizeof(*sop));
 
 	@try {
-		[recovery shard_load:shard_id sop:tmp];
+		Shard<Shard> *shard;
+		assert(shard_rt[shard_id].shard == nil);
+		shard = [recovery shard_add:shard_id scn:-1 sop:sop];
+		[shard load_from_remote];
+		[shard wal_final_row];
+		if ([recovery shard:shard_id] == nil)
+			return;
+
+		extern int allow_snap_overwrite;
+		allow_snap_overwrite = 1;
+		if ([recovery fork_and_snapshot] != 0)
+			say_error("Can't save snapshot"); // FIXME
+		allow_snap_overwrite = 0;
 	}
 	@catch (Error *e) {
 		say_error("Failed to load shard, [%s reason:\"%s\"] at %s:%d",
