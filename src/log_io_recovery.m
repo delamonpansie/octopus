@@ -820,8 +820,13 @@ enable_local_writes
 
 	recovery_iproto();
 
-	for (int i = 0; i < MAX_SHARD; i++)
-		[[self shard:i] enable_local_writes];
+	for (int i = 0; i < MAX_SHARD; i++) {
+		Shard *shard = [self shard:i];
+		if (shard && [shard our_shard])
+			[shard enable_local_writes];
+		else
+			[shard free];
+	}
 }
 
 static void
