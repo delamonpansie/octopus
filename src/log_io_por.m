@@ -208,7 +208,7 @@ recover_row:(struct row_v12 *)row
 		break;
 	case shard_alter:
 		[self alter_peers:(struct shard_op *)row->data];
-		if (![self our_shard]) {
+		if (!loading && ![self our_shard]) {
 			[self free];
 			fiber->ushard = old_ushard;
 			return;

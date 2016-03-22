@@ -448,7 +448,7 @@ status_update:(const char *)fmt, ...
 - (bool)
 our_shard
 {
-	if (loading || dummy)
+	if (dummy)
 		return 1;
 	for (int i = 0; i < nelem(peer); i++)
 		if (strcmp(peer[i], cfg.hostname) == 0)
