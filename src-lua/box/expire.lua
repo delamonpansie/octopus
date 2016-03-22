@@ -50,18 +50,18 @@ local function loop_inner(n, func, state)
     local batch = {}
 
     if pk:type() == "HASH" then
-        local i, j = key or 0, batch_size
-        while i < pk:slots() and j > 0 do
-            local tuple = pk:get(i)
+        local nxt = nil
+        for tuple in pk:iter_from_pos(key or 0) do
             if tuple ~= nil and func(tuple) then
                 insert(batch, tuple)
+                if #batch == batch_size then
+                    nxt = pk:cur_iter()
+                    break
+                end
             end
-            i, j = i + 1, j - 1
         end
 
-        if i < pk:slots() then
-            state.key = i
-        end
+        state.key = nxt
     else
         local count = 0
         for tuple in pk:iter(key) do
