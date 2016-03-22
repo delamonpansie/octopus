@@ -322,7 +322,7 @@ box_cat_scn(i64 stop_scn)
 {
 	BoxPrint *printer = [[BoxPrint alloc] init_stop_scn:stop_scn];
 	XLogReader *reader = [[XLogReader alloc] init_recovery:(id)printer];
-	snap_lsn = [snap_dir containg_scn:stop_scn];
+	snap_lsn = [snap_dir containg_scn:stop_scn shard:0];
 	[reader load_from_local:0];
 	return 0;
 }
