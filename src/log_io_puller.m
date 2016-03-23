@@ -181,10 +181,31 @@ establish_connection
 	assert(feeder != NULL);
 
 	say_debug2("%s: connect", __func__);
-	if ((fd = tcp_connect(&feeder->addr, NULL, 5)) < 0) {
-		snprintf(errbuf, sizeof(errbuf), "can't connect, %s", strerror_o(errno));
-		return -1;
-	}
+
+	struct tac_state s = { .daddr = feeder->addr, .ev = {.fd = -1} };
+	ev_watcher *w = NULL;
+	do {
+		fd = tcp_async_connect(&s, w, NULL, 5);
+		switch (fd) {
+		case tac_wait:
+			in_recv = fiber;
+			w = yield();
+			in_recv = NULL;
+			if (abort) {
+				fiber_cancel_wake(fiber);
+				snprintf(errbuf, sizeof(errbuf), "connect aborted");
+				return -1;
+			}
+			break;
+		case tac_error:
+			snprintf(errbuf, sizeof(errbuf), "can't connect, %s", strerror_o(errno));
+			return -1;
+		case tac_alien_event:
+			assert(false);
+		default:
+			break;
+		}
+	} while (fd < 0);
 
 	int one = 1;
 	if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &one, sizeof(one)) < 0)
@@ -497,7 +518,7 @@ close
 - (id)
 free
 {
-	assert(in_recv == 0);
+	assert(!in_recv);
 	[self close];
 	palloc_unregister_gc_root(fiber->pool, &rbuf);
 	return [super free];
