@@ -330,7 +330,7 @@ commit_scn(struct shard_state *st, struct wal_reply *reply, const struct row_v12
 }
 
 int
-wal_disk_writer(int fd, void *state, int len)
+wal_disk_writer(int fd, int cfd __attribute__((unused)), void *state, int len)
 {
 	struct wal_disk_writer_conf *conf = state;
 	WALDiskWriter *writer = [[WALDiskWriter alloc] init_conf:conf];
@@ -589,7 +589,7 @@ init_lsn:(i64)init_lsn
 		if (conf->st[i].scn)
 			say_info("\tShard:%i SCN:%"PRIi64" %s", i, conf->st[i].scn, mode2str(conf->st[i].scn_mode));
 	}
-	wal_writer = spawn_child("wal_writer", wal_disk_writer, conf, sizeof(*conf));
+	wal_writer = spawn_child("wal_writer", wal_disk_writer, -1, conf, sizeof(*conf));
 	if (wal_writer.pid < 0)
 		panic("unable to start WAL writer");
 	io = [netmsg_io alloc];

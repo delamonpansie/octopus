@@ -44,7 +44,7 @@
 
 struct fork_request {
 	char name[64];
-	int (*handler)(int fd, void *state, int len);
+	int (*handler)(int parent_fd, int fd, void *state, int len);
 };
 
 struct fork_reply {
@@ -90,13 +90,11 @@ fork_pair(int type, int *sock)
 static int spawner_fd = -1;
 
 ssize_t
-sendfd(int sock, int fd_to_send, void *buf, size_t buflen)
+sendfd(int sock, int fd_to_send, struct iovec *iov, int iovlen)
 {
 	char cmsgbuf[CMSG_SPACE(sizeof(int))];
-	struct iovec iov = { .iov_base = buf,
-			     .iov_len = buflen };
-	struct msghdr msg = { .msg_iov = &iov,
-			      .msg_iovlen = 1 };
+	struct msghdr msg = { .msg_iov = iov,
+			      .msg_iovlen = iovlen };
 
 	if (fd_to_send >= 0) {
 		msg.msg_control = cmsgbuf;
@@ -112,20 +110,18 @@ sendfd(int sock, int fd_to_send, void *buf, size_t buflen)
 	ssize_t r;
 	while ((r = sendmsg(sock, &msg, 0)) < 0) {
 		say_syserror("sendmsg");
-		if (errno != EAGAIN || errno != EINTR)
+		if (errno != EAGAIN || errno != EWOULDBLOCK || errno != EINTR)
 			break;
 	}
 	return r;
 }
 
 ssize_t
-recvfd(int sock, int *fd, void *buf, size_t buflen)
+recvfd(int sock, int *fd, struct iovec *iov, int iovlen)
 {
-	struct iovec iov = { .iov_base = buf,
-			     .iov_len = buflen };
 	char fdbuf[CMSG_SPACE(sizeof(int))];
-	struct msghdr msg = { .msg_iov = &iov,
-			      .msg_iovlen = 1,
+	struct msghdr msg = { .msg_iov = iov,
+			      .msg_iovlen = iovlen,
 			      .msg_control = fdbuf,
 			      .msg_controllen = sizeof(fdbuf) };
 	ssize_t r;
@@ -135,13 +131,17 @@ recvfd(int sock, int *fd, void *buf, size_t buflen)
 		say_syserror("recvmsg");
 		return -1;
 	}
-	if (r == 0) {
-		say_error("recvmsg: EOF");
+	if (r == 0)
+		return 0;
+
+	if (msg.msg_flags & MSG_CTRUNC) {
+		say_error("recvmsg: control data truncated");
 		return -1;
 	}
 
 	struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
-	memcpy(fd, CMSG_DATA(cmsg), sizeof(int));
+	if (cmsg)
+		memcpy(fd, CMSG_DATA(cmsg), sizeof(int));
 	return r;
 }
 
@@ -202,11 +202,8 @@ fork_spawner()
 					  .iov_len = sizeof(request) },
 					{ .iov_base = buf,
 					  .iov_len = sizeof(buf) } };
-		struct msghdr msg = { .msg_iov = iov,
-				      .msg_iovlen = 2 };
-
-
-		ssize_t len = recvmsg(fsock, &msg, 0);
+		int fd = -1;
+		ssize_t len = recvfd(fsock, &fd, iov, nelem(iov));
 		if (len == 0 || len < 0 || len == sizeof(request) + sizeof(buf)) {
 			if (len < 0 && kill(0, master_pid) != -1)
 				say_syserror("recvmsg");
@@ -220,9 +217,13 @@ fork_spawner()
 		pid = fork_pair(SOCK_STREAM, &sock);
 		if (pid != 0) {
 			struct fork_reply reply = { .pid = pid };
-			if (sendfd(fsock, sock, &reply, sizeof(reply)) < 0)
+			struct iovec iov[1] = { { .iov_base = &reply,
+						  .iov_len = sizeof(reply) } };
+			if (sendfd(fsock, sock, iov, nelem(iov)) < 0)
 				_exit(0);
 			close(sock);
+			if (fd != -1)
+				close(fd);
 		} else {
 			close(fsock);
 			octopus_ev_init();
@@ -238,7 +239,7 @@ fork_spawner()
 				  sock);
 #endif
 			atexit(flush_and_exit);
-			int rc = request.handler(sock, buf, len - sizeof(request));
+			int rc = request.handler(sock, fd, buf, len - sizeof(request));
 			fflush(NULL); /* safe, because all inherited fd's were closeed */
 			_exit(rc);
 		}
@@ -248,58 +249,53 @@ fork_spawner()
 static void
 io_ready(int event)
 {
-	ev_io io = { .coro = 1 };
-
-	ev_io_init(&io, (void *)fiber, spawner_fd, event);
-	ev_io_start(&io);
-	yield();
-	ev_io_stop(&io);
+	if (fiber != sched) {
+		ev_io io = { .coro = 1 };
+		ev_io_init(&io, (void *)fiber, spawner_fd, event);
+		ev_io_start(&io);
+		yield();
+		ev_io_stop(&io);
+	}
 }
 
 struct child
-spawn_child(const char *name, int (*handler)(int fd, void *state, int len), void *state, int len)
+spawn_child(const char *name, int (*handler)(int parent_fd, int fd, void *state, int len),
+	    int fd, void *state, int len)
 {
-	struct child err = { .pid = -1, .fd = -1};
-	int fd = -1;
-	pid_t pid;
+	static struct child err = { .pid = -1, .fd = -1};
+	int child_fd = -1;
 
 	assert(spawner_fd != -1);
 	struct fork_request request = { .handler = handler };
 	assert(strlen(name) < sizeof(request.name));
 	strcpy(request.name, name);
 
-	struct iovec iov[2] = { { .iov_base = &request,
-				  .iov_len = sizeof(request) },
-				{ .iov_base = state,
-				  .iov_len = len } };
-	struct msghdr msg = { .msg_iov = iov,
-			      .msg_iovlen = 2 };
+	struct iovec req_iov[2] = { { .iov_base = &request,
+				      .iov_len = sizeof(request) },
+				    { .iov_base = state,
+				      .iov_len = len } };
 
-	if (fiber != sched)
-		io_ready(EV_WRITE);
-	while (sendmsg(spawner_fd, &msg, 0) !=  sizeof(request) + len) {
-		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
-			continue;
-		say_syserror("sendmsg");
+	io_ready(EV_WRITE);
+	if (sendfd(spawner_fd, fd, req_iov, nelem(req_iov)) < 0)
 		return err;
-	}
 
 	struct fork_reply reply;
-
-	if (fiber != sched)
-		io_ready(EV_READ);
-
-	if (recvfd(spawner_fd, &fd, &reply, sizeof(reply)) < 0)
+	struct iovec rep_iov[1] = { { .iov_base = &reply,
+				      .iov_len = sizeof(reply) } };
+	io_ready(EV_READ);
+	ssize_t r = recvfd(spawner_fd, &child_fd, rep_iov, nelem(rep_iov));
+	if (r <= 0) {
+		if (r == 0)
+			say_error("recvfd: EOF");
 		return err;
-
+	}
 	/* fd is in non blocking mode, fork_pair() already did ioctl() */
 
-	pid = reply.pid;
-	if (pid <= 0) {
+	if (reply.pid <= 0) {
 		say_error("unable to spawn %s", name);
 		return err;
 	}
 
-	assert(fd >= 0);
-	return (struct child){ .pid = pid, .fd = fd};
+	assert(child_fd >= 0);
+	return (struct child){ .pid = reply.pid, .fd = child_fd};
 }
