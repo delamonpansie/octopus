@@ -425,16 +425,28 @@ recv_req(int fd)
 }
 
 static int
-feeder_child_trampoline(int fd, void *state __attribute__((unused)), int state_len __attribute__((unused)))
+feeder_worker(int parent_fd, int fd, void *state, int len)
 {
-	int client, len;
-	const int bufsize = 512;
-	void *buf = palloc(fiber->pool, bufsize);
-	if ((len = recvfd(fd, &client, buf, bufsize)) < 0)
-		return -1;
-	close(fd);
-	recover_feed_slave(client, len > 1 ? buf : recv_req(client));
+	close(parent_fd);
+	recover_feed_slave(fd, len > 1 ? state : recv_req(fd));
 	return 0;
+}
+
+static void
+feeder_spawn_worker(int fd, void *req, int len)
+{
+	struct timeval tm = { .tv_sec = 120, .tv_usec = 0};
+	setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tm,sizeof(tm));
+	setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tm,sizeof(tm));
+	int zero = 0;
+	if (ioctl(fd, FIONBIO, &zero) < 0)
+		say_syserror("ioctl");
+
+	struct child child = spawn_child("feeder/worker", feeder_worker, fd, req, len);
+	if (child.pid > 0) {
+		say_info("WAL feeder client");
+		close(child.fd);
+	}
 }
 
 static void
@@ -445,18 +457,7 @@ feeder_accept(int fd, void *data __attribute__((unused)))
 		close(fd);
 		return;
 	}
-
-	struct timeval tm = { .tv_sec = 120, .tv_usec = 0};
-	setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tm,sizeof(tm));
-	setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tm,sizeof(tm));
-	int zero = 0;
-	ioctl(fd, FIONBIO, &zero);
-
-	struct child child = spawn_child("feeder/worker", feeder_child_trampoline, NULL, 0);
-	if (child.pid > 0) {
-		say_info("WAL feeder client");
-		sendfd(child.fd, fd, "\0", 1);
-	}
+	feeder_spawn_worker(fd, "\0", 1);
 	close(fd);
 }
 
@@ -464,26 +465,7 @@ static void
 iproto_feeder_cb(struct netmsg_head *wbuf, struct iproto *req, void *arg __attribute__((unused)))
 {
 	struct netmsg_io *io = container_of(wbuf, struct netmsg_io, wbuf);
-	int fd = io->fd, zero = 0;
-
-	if (ioctl(fd, FIONBIO, &zero) < 0)
-		say_syserror("ioctl");
-
-	struct timeval tm = { .tv_sec = 120, .tv_usec = 0};
-	setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tm,sizeof(tm));
-	setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tm,sizeof(tm));
-
-	struct child child = spawn_child("feeder/worker", feeder_child_trampoline, NULL ,0);
-	if (child.pid > 0) {
-		say_info("WAL feeder client");
-		ev_io io = { .coro = 1 };
-		ev_io_init(&io, (void *)fiber, child.fd, EV_WRITE);
-		ev_io_start(&io);
-		yield();
-		ev_io_stop(&io);
-
-		sendfd(child.fd, fd, req, sizeof(*req) + req->data_len);
-	}
+	feeder_spawn_worker(io->fd, req, sizeof(*req) + req->data_len);
 	[io close];
 }
 
