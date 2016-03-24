@@ -539,60 +539,83 @@ tree_node_eq_with_addr(struct index_node *na, struct index_node *nb, struct inde
 	return na->obj == nb->obj && tree_node_eq(na, nb, ic);
 }
 
-#define KNUTH_MULT 0x5851f42d4c957f2dULL
+#define MULT1 0x6956abd6ed268a3bULL
+#define MULT2 0xacd5ad43274593b1ULL;
+#define ROTL32(h) (((h) << 32) | ((h) >> 32))
 
-static inline u64
-lstr_hash(const union index_field *f, u64 h) {
-	h = (h ^ f->str.len) * KNUTH_MULT;
-	h = (h << 13) | (h >> 51);
+static void
+mix_u32(u32 v, u64 *a, u64 *b)
+{
+	*a = ROTL32(*a); *a ^= v; *a *= MULT1;
+	*b = ROTL32(*b); *b ^= v; *b *= MULT2;
+}
+
+static void
+mix_u64(u64 v, u64 *a, u64 *b)
+{
+	*a ^= v; *a = ROTL32(*a); *a *= MULT1;
+	*b = ROTL32(*b); *b ^= v; *b *= MULT2;
+}
+
+static u64
+fin(u64 a, u64 b)
+{
+	a ^= a >> 32;
+	b ^= b >> 32;
+	a *= MULT1;
+	b *= MULT2;
+	return a ^ b ^ (a >> 32) ^ (b >> 33);
+}
+
+static void
+lstr_hash(const union index_field *f, u64 *a, u64 *b) {
+	mix_u32(f->str.len, a, b);
 	if (f->str.len > 6) {
 		if (f->str.len > 14) {
 			const u8 *d = f->str.data.ptr;
 			u32 l = f->str.len - 6;
 			while (l >= 4) {
-				u32 k = *(u32*)d;
-				h = (h ^ k) * KNUTH_MULT;
-				h = (h << 13) | (h >> 51);
+				mix_u32(*(u32*)d, a, b);
 				d += 4;
 				l -= 4;
 			}
-			if (l & 1) h ^= d[0];
-			if (l & 2) h ^= *(u16*)(d+(l&1)) << ((l&1) * 8);
-			h *= KNUTH_MULT;
-			h = (h << 13) | (h >> 51);
+			u32 v = 0;
+			if (l & 1) v ^= d[0];
+			if (l & 2) {
+				v <<= 8;
+				v ^= *(u16*)(d+(l&1));
+			}
+			mix_u32(v, a, b);
 		} else {
-			h = (h ^ f->str.data.u64) * KNUTH_MULT;
-			h = (h << 13) | (h >> 51);
+			mix_u64(f->str.data.u64, a, b);
 		}
 	}
-	h = (h ^ f->str.prefix2) * KNUTH_MULT;
-	h = (h << 13) | (h >> 51);
-	h = (h ^ f->str.prefix1) * KNUTH_MULT;
-	return h;
+	mix_u32(f->str.prefix2, a, b);
+	mix_u32(f->str.prefix1, a, b);
 }
 
-u32
+u64
 gen_hash_node(const struct index_node *n, struct index_conf *ic)
 {
-	u64 h = 0xbada5515bad;
+	u64 a = 0xbada5515bad;
+	u64 b = 0x1addbadfee1;
 	int c = ic->cardinality;
 
 	if (c == 1) {
 		switch (ic->field[0].type) {
 		case SNUM32:
 		case UNUM32:
-			h ^= n->key.u32;
-			h ^= h >> 11; h ^= h >> 13;
-			return h;
+			a ^= n->key.u32;
+			a ^= a >> 11; a ^= a >> 13;
+			a *= MULT1;
+			return a;
 		case SNUM64:
 		case UNUM64:
-			h ^= n->key.u64;
-			h ^= h >> 24;
-			h *= KNUTH_MULT;
-			return (u32)h ^ (u32)(h >> 40);
+			mix_u64(n->key.u64, &a, &b);
+			return fin(a, b);
 		case STRING:
-			h = lstr_hash(&n->key, h);
-			return (u32)h ^ (u32)(h >> 40);
+			lstr_hash(&n->key, &a, &b);
+			return fin(a, b);
 		default:
 			abort();
 		}
@@ -603,26 +626,24 @@ gen_hash_node(const struct index_node *n, struct index_conf *ic)
 		switch(ic->field[i].type) {
 		case SNUM16:
 		case UNUM16:
-			h = (h ^ key->u16) * KNUTH_MULT;
+			mix_u32(key->u16, &a, &b);
 			break;
 		case SNUM32:
 		case UNUM32:
-			h = (h ^ key->u32) * KNUTH_MULT;
+			mix_u32(key->u32, &a, &b);
 			break;
 		case SNUM64:
 		case UNUM64:
-			h = (h ^ key->u64) * KNUTH_MULT;
+			mix_u64(key->u64, &a, &b);
 			break;
 		case STRING:
-			h = lstr_hash(key, h);
+			lstr_hash(key, &a, &b);
 			break;
 		case UNDEF:
 			abort();
 		}
-		h = (h << 13) | (h >> 51);
 	}
-	h *= KNUTH_MULT;
-	return (u32)(h >> 40) ^ ((u32)h);
+	return fin(a, b);
 }
 
 void

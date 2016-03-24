@@ -328,7 +328,7 @@ int tree_node_eq(struct index_node *na, struct index_node *nb, struct index_conf
 int tree_node_eq_with_addr(struct index_node *na, struct index_node *nb, struct index_conf *ic);
 void gen_init_pattern(struct tbuf *key_data, int cardinality, struct index_node *pattern_, void *arg);
 void gen_set_field(union index_field *f, enum index_field_type type, int len, const void *data);
-u32 gen_hash_node(const struct index_node *n, struct index_conf *ic);
+u64 gen_hash_node(const struct index_node *n, struct index_conf *ic);
 
 static inline int llexstrcmp(const void *a, const void *b)
 {
