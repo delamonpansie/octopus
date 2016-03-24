@@ -951,9 +951,7 @@ _mh(start_resize)(struct mhash_t *h, uint32_t want_size)
 	}
 
 #if MH_INCREMENTAL_RESIZE
-	h->resize_batch = h->n_mask / (256 * 1024);
-	if (h->resize_batch < 256) /* minimum resize_batch is 3 */
-		h->resize_batch = 256;
+	h->resize_batch = 64;
 #endif
 	memcpy(s, h, sizeof(*h));
 	s->resize_position = 0;
