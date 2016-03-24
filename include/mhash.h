@@ -223,6 +223,7 @@ struct _mh(slot) {
 #ifndef mh_byte_map
 # define mh_byte_map 0
 #endif
+#ifndef mh_custom_map
 #if mh_byte_map
 # if mh_byte_map == 1
 #  define mh_map_t		uint8_t
@@ -251,11 +252,14 @@ struct _mh(slot) {
 # define mh_dirty(h, i)		(h->map[(i) >> 4] & (1 << (((i) & 0xf) + 0x10)))
 # define mh_setdirty(h, i)	h->map[(i) >> 4] |= (0x10000UL << ((i) & 0xf))
 #endif
+#endif
 
 #define mhash_t _mh(t)
 struct _mh(t) {
 	mh_slot_t *slots;
+#ifndef mh_custom_map
 	mh_map_t  *map;
+#endif
 	uint32_t node_size;
 	uint32_t n_mask, n_occupied, size, upper_bound;
 
@@ -462,8 +466,8 @@ static inline unsigned mh_str_hash(const char *kk) { return  mh_MurmurHash2(kk, 
 #endif
 #if mh_may_skip
 #  define mh_need_dirty(loop)    ((loop).step & 1)
-#  define mh_occupied_as_dirty(h, i)     (mh_dirty(h, (i)) || mh_dirty(h, ((i)+1) & h->n_mask))
-#  define mh_occupied_as_dirty_opt(h, i) (mh_dirty(h, ((i)+1) & h->n_mask))
+#  define mh_occupied_as_dirty(h, i)     (mh_dirty(h, (i)) || mh_dirty(h, (((i)+1) & h->n_mask)))
+#  define mh_occupied_as_dirty_opt(h, i) (mh_dirty(h, (((i)+1) & h->n_mask)))
 #else
 #  define mh_need_dirty(loop)    1
 #  define mh_occupied_as_dirty(h, i)     mh_dirty(h, (i))
@@ -486,17 +490,30 @@ struct _mh(find_loop) {
 static inline void _mh(find_loop_init)(struct _mh(find_loop) *l, unsigned k, unsigned mask) {
 	l->step = mh_neighbors;
 	l->i = k & mask;
+#if MH_QUADRATIC_PROBING
+	l->dlt = 0;
+#else
 	l->dlt = (k % (mask / (2 * mh_neighbors))) * 2 * mh_neighbors;
+#endif
 	l->inc = 0;
 }
 static inline void _mh(find_loop_step)(struct _mh(find_loop) *l, unsigned mask) {
+#ifdef mh_count_collisions
+	mh_count_collisions;
+#endif
 	l->step--;
 	l->i++;
 	if (!l->step) {
+#if MH_QUADRATIC_PROBING
+		l->step = mh_neighbors;
+		l->i += l->inc;
+		l->inc += mh_neighbors;
+#else
 		uint32_t d = l->inc * 4 + l->dlt;
 		l->step = mh_neighbors;
 		l->i += d;
 		l->inc += d + mh_neighbors;
+#endif
 	}
 	l->i &= mask;
 }
@@ -813,7 +830,9 @@ _mh(hijack_slot_free)(struct mhash_t *d, uint32_t dx)
 
 #ifdef MH_SOURCE
 
+#ifndef load_factor
 #define load_factor 0.73
+#endif
 
 MH_DECL struct mhash_t *
 _mh(init)(void *(*custom_realloc)(void *, size_t))
@@ -836,10 +855,12 @@ _mh(initialize)(struct mhash_t *h)
 	h->n_mask = mh_neighbors * 4 - 1;
 
 	h->slots = mh_calloc(h, mh_end(h), mh_slot_size(h));
+#ifndef mh_custom_map
 #if mh_byte_map
 	h->map = mh_calloc(h, mh_end(h), sizeof(mh_map_t)); /* 4 maps per char */
 #else
 	h->map = mh_calloc(h, (mh_end(h) + 15) / 16, 4); /* 4 maps per char */
+#endif
 #endif
 	h->size = 0;
 	h->n_occupied = 0;
@@ -882,7 +903,9 @@ _mh(resize_step)(struct mhash_t *h)
 	if (end == mh_end(h)) {
 		assert(s->size == h->size);
 		mh_free(h, h->slots);
+#ifndef mh_custom_map
 		mh_free(h, h->map);
+#endif
 		memcpy(h, s, sizeof(*h));
 		memset(s, 0, sizeof(*s));
 	}
@@ -939,10 +962,12 @@ _mh(start_resize)(struct mhash_t *h, uint32_t want_size)
 	s->n_occupied = 0;
 	s->size = 0;
 	s->slots = mh_calloc(h, (size_t)mh_end(s), mh_slot_size(h));
+#ifndef mh_custom_map
 #if mh_byte_map
 	s->map = mh_calloc(h, mh_end(s), sizeof(mh_map_t)); /* 4 maps per char */
 #else
 	s->map = mh_calloc(h, (mh_end(s) + 15) / 16, 4); /* 4 maps per char */
+#endif
 #endif
 
 	_mh(resize_step)(h);
@@ -954,12 +979,16 @@ _mh(bytes)(struct mhash_t *h)
 	return h->resize_position ? _mh(bytes)(h->shadow) : 0 +
 		sizeof(*h) +
 		((size_t)mh_end(h)) * mh_slot_size(h) +
+#ifndef mh_custom_map
 #if mh_byte_map == 0
 		((size_t)h->n_mask / 16 + 1) *  sizeof(uint32_t)
 #elif mh_byte_map == 1
 		(size_t)h->n_mask
 #elif mh_byte_map == 2
 		(size_t)h->n_mask * 2
+#endif
+#else
+		0
 #endif
 		;
 
@@ -978,11 +1007,15 @@ _mh(destruct)(struct mhash_t *h)
 #ifdef MH_INCREMENTAL_RESIZE
 	if (h->shadow->slots) {
 		mh_free(h, h->shadow->slots);
+#ifndef mh_custom_map
 		mh_free(h, h->shadow->map);
+#endif
 	}
 #endif
 	mh_free(h, h->shadow);
+#ifndef mh_custom_map
 	mh_free(h, h->map);
+#endif
 	mh_free(h, h->slots);
 }
 
