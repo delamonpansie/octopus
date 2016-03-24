@@ -364,13 +364,31 @@ iterator_init_with_key:(struct tbuf *)key_data cardinalty:(u32)cardinality
 #define mh_byte_map 1
 #define mh_may_skip 1
 #define mh_name _gen
-#define mh_slot_t tnt_ptr
+struct gen_slot {
+	tnt_ptr ptr;
+	uint8_t hsh : 7;
+	uint8_t collision : 1;
+} __attribute__((packed));
+typedef struct gen_slot gen_slot_t;
+#define mh_slot_t gen_slot_t
+#define mh_custom_map
+#define mh_map_t uint8_t
+#define mh_get_hashik(k)      (k % 125 + 1)
+#define mh_exist(h, i)       (mh_slot(h, i)->hsh)
+#define mh_setfree(h, i)      mh_slot(h, i)->hsh = 0
+#define mh_mayequal(h, i, hk) (mh_slot(h, i)->hsh == hk)
+#define mh_setexist(h, i, hk) mh_slot(h, i)->hsh = hk
+#define mh_dirty(h, i)        (mh_slot(h, i)->collision)
+#define mh_setdirty(h, i)     mh_slot(h, i)->collision = 1
+#define mh_slot_copy(h, a, b) (a)->ptr = (b)->ptr
 #define mh_arg_t GenHash*
-static const struct index_node* gen_hash_slot_key(struct mh_gen_t const * h, tnt_ptr const * slot);
+#define MH_QUADRATIC_PROBING 1
+
+static const struct index_node* gen_hash_slot_key(struct mh_gen_t const * h, gen_slot_t const * slot);
 #define mh_slot_key(h, slot) gen_hash_slot_key(h, slot)
 #define mh_slot_key_eq(h, i, key) ({ \
 		GenHash *hs = (h)->arg; \
-		hs->dtor(tnt_ptr2obj(*mh_slot(h, i)), &hs->search_pattern, hs->dtor_arg); \
+		hs->dtor(tnt_ptr2obj(mh_slot(h, i)->ptr), &hs->search_pattern, hs->dtor_arg); \
 		hs->eq(key, &hs->search_pattern, &hs->conf); \
 		})
 #define mh_slot_set_key(h, slot, key)
@@ -378,10 +396,10 @@ static const struct index_node* gen_hash_slot_key(struct mh_gen_t const * h, tnt
 #include <mhash.h>
 
 static const struct index_node*
-gen_hash_slot_key(struct mh_gen_t const * h, tnt_ptr const * slot)
+gen_hash_slot_key(struct mh_gen_t const * h, gen_slot_t const * slot)
 {
 	GenHash *hs = (h)->arg;
-	hs->dtor(tnt_ptr2obj(*slot), &hs->node_a, hs->dtor_arg);
+	hs->dtor(tnt_ptr2obj(slot->ptr), &hs->node_a, hs->dtor_arg);
 	return &hs->node_a;
 }
 
@@ -405,14 +423,6 @@ free
 	mh_gen_destroy(h);
 	return [super free];
 }
-- (int)
-eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
-{
-	struct index_node node_b[8];
-	struct index_node *na = GET_NODE(obj_a, node_a),
-			  *nb = GET_NODE(obj_b, node_b[0]);
-	return eq(na, nb, self->dtor_arg);
-}
 
 - (struct tnt_object*)
 get:(u32)i
@@ -420,7 +430,7 @@ get:(u32)i
 	if (i >= mh_end(h) || !mh_gen_slot_occupied(h, i)) {
 		return NULL;
 	}
-	return tnt_ptr2obj(*mh_gen_slot(h, i));
+	return tnt_ptr2obj(mh_gen_slot(h, i)->ptr);
 }
 - (void)
 resize:(u32)buckets
@@ -430,10 +440,10 @@ resize:(u32)buckets
 - (struct tnt_object*)
 find_obj:(struct tnt_object*)obj
 {
-	tnt_ptr p = tnt_obj2ptr(obj);
+	gen_slot_t p = {.ptr = tnt_obj2ptr(obj), .hsh = 0, .collision= 0} ;
 	u32 k = mh_gen_sget(h, &p);
 	if (k != mh_end(h))
-		return tnt_ptr2obj(*mh_gen_slot(h, k));
+		return tnt_ptr2obj(mh_gen_slot(h, k)->ptr);
 	return NULL;
 }
 - (struct tnt_object*)
@@ -441,25 +451,25 @@ find_node:(const struct index_node *)node
 {
 	u32 k = mh_gen_sget_by_key(h, node);
 	if (k != mh_end(h))
-		return tnt_ptr2obj(*mh_gen_slot(h, k));
+		return tnt_ptr2obj(mh_gen_slot(h, k)->ptr);
 	return NULL;
 }
 - (void)
 replace:(struct tnt_object *)obj
 {
-	tnt_ptr p = tnt_obj2ptr(obj);
+	gen_slot_t p = {.ptr = tnt_obj2ptr(obj), .hsh = 0, .collision= 0} ;
 	mh_gen_sput(h, &p, NULL);
 }
 - (int)
 remove:(struct tnt_object *)obj
 {
-	tnt_ptr p = tnt_obj2ptr(obj);
+	gen_slot_t p = {.ptr = tnt_obj2ptr(obj), .hsh = 0, .collision= 0} ;
 	return mh_gen_sremove(h, &p, NULL);
 }
 - (void)
 iterator_init_with_object:(struct tnt_object*)obj
 {
-	tnt_ptr p = tnt_obj2ptr(obj);
+	gen_slot_t p = {.ptr = tnt_obj2ptr(obj), .hsh = 0, .collision= 0} ;
 	iter = mh_gen_sget(h, &p);
 }
 - (void)
@@ -473,7 +483,7 @@ iterator_next
 	for (; iter < mh_end(h); iter++) {
 		if (!mh_gen_slot_occupied(h, iter))
 			continue;
-		return tnt_ptr2obj(*mh_gen_slot(h, iter++));
+		return tnt_ptr2obj(mh_gen_slot(h, iter++)->ptr);
 	}
 	return NULL;
 }
@@ -491,13 +501,13 @@ ordered_iterator_init
 		if (!mh_gen_slot_occupied(h, i))
 			continue;
 
-		dtor(tnt_ptr2obj(*mh_gen_slot(h, i)), (struct index_node*)current, dtor_arg);
+		dtor(tnt_ptr2obj(mh_gen_slot(h, i)->ptr), (struct index_node*)current, dtor_arg);
 		current += node_size;
 	}
 	qsort_arg(slots, mh_size(h), node_size, compare, self);
 	current = slots;
 	for (i = 0; i < mh_size(h); i++) {
-		tnt_ptr ptr = tnt_obj2ptr(*(void**)current);
+		gen_slot_t ptr = {.ptr = tnt_obj2ptr(*(void**)current), .hsh = 0, .collision= 0} ;
 		mh_gen_hijack_slot_put(h, i, &ptr);
 		current += node_size;
 	}
