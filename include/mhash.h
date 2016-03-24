@@ -934,7 +934,7 @@ _mh(start_resize)(struct mhash_t *h, uint32_t want_size)
 	uint32_t upper_bound;
 	uint32_t n_buckets;
 
-	if (h->size > want_size) want_size = h->size;
+	if (h->size + 1 > want_size) want_size = h->size + 1;
 	if ((double)want_size < (uint32_t)(1 << 31) * (load_factor * 0.84)) {
 		want_size = want_size / (load_factor * 0.85) + 1;
 	} else if (want_size < ((uint32_t)1 << 31)) {
