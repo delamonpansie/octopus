@@ -181,6 +181,8 @@ typedef struct tnt_object* tnt_ptr;
 @protocol HashIndex <BasicIndex>
 - (void) resize:(u32)buckets;
 - (struct tnt_object *) get:(u32)i;
+- (u32)  cur_iter;
+- (void) iterator_init_pos: (u32)i;
 - (void) ordered_iterator_init; /* WARNING! after this the index become corrupt! */
 @end
 

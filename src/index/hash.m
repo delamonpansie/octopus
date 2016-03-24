@@ -87,6 +87,16 @@ iterator_init
 	iter = 0;
 }
 
+- (void)
+iterator_init_pos: (u32)pos
+{
+	iter = pos;
+}
+- (u32)
+cur_iter
+{
+	return iter;
+}
 @end
 
 #define DEFINE_METHODS(type)						\
