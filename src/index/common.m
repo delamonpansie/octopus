@@ -720,10 +720,9 @@ void
 index_conf_read(struct tbuf *data, struct index_conf *c)
 {
 	char version = read_i8(data);
-	if (version != 1)
+	if (version != 0x10)
 		index_raise("index_conf bad version");
 
-	c->min_tuple_cardinality = read_u8(data);
 	c->cardinality = read_u8(data);
 	c->type = read_i8(data);
 	c->unique = read_u8(data);
@@ -751,10 +750,9 @@ index_conf_print(struct tbuf *out, const struct index_conf *c)
 void
 index_conf_write(struct tbuf *data, struct index_conf *c)
 {
-	char version = 1;
+	char version = 0x10;
 	write_i8(data, version);
 
-	write_i8(data, c->min_tuple_cardinality);
 	write_i8(data, c->cardinality);
 	write_i8(data, c->type);
 	write_i8(data, c->unique);
