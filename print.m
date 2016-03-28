@@ -199,8 +199,6 @@ xlog_print(struct tbuf *out, u16 op, struct tbuf *b)
 		flags = read_u32(b);
 		tbuf_printf(out, "flags:%08X ", flags);
 		tbuf_printf(out, "cardinalty:%i ", read_i8(b));
-		tbuf_printf(out, "snap:%i ", read_u8(b));
-		tbuf_printf(out, "wal:%i ", read_u8(b));
 		index_conf_read(b, &ic);
 		tbuf_printf(out, "PK: ");
 		index_conf_print(out, &ic);

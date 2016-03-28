@@ -18,6 +18,11 @@ nop_hb_delay=-1
 EOD
   end
 
+  def meta(arg)
+    puts "# #@hostname.meta(#{arg})"
+    puts `perl client/shard/shardbox.pl -s=localhost:#{33013 + (@port_offset || 0)} #{arg}`
+    puts
+  end
 end
 
 class OneEnv < ShardEnv

@@ -4,11 +4,11 @@
 # two.ping()
 :pong
 
-# one.create_shard(1, :POR, "one")
-:success
+# one.meta(shard 1 alter por one)
+ok
 
-# one.create_object_space(0, {:shard=>1, :index=>{:type=>:FASTTREE, :unique=>1, :field_0=>{:type=>:STRING, :index=>0, :sort_order=>:DESC}}})
-:success
+# one.meta(shard 1 obj_space 0 create tree unique string 0)
+ok
 
 # one.insert([1, "one"], {:shard=>1})
 1

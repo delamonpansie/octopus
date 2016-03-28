@@ -4,35 +4,35 @@
 # two.ping()
 :pong
 
-# one.create_shard(1, :POR, "one")
-:success
+# one.meta(shard 1 alter por one)
+ok
 
-# one.create_object_space(0, {:shard=>1, :index=>{:type=>:FASTTREE, :unique=>1, :field_0=>{:type=>:STRING, :index=>0, :sort_order=>:DESC}}})
-:success
+# one.meta(shard 1 obj_space 0 create tree unique string 0)
+ok
 
 # one.insert([1, "one"], {:shard=>1})
 1
 
-# two.create_shard(1, :POR, "one", "two")
-:success
+# two.meta(shard 1 alter por one two)
+ok
 
-# two.create_shard(1, :POR, "two", "one")
-:success
+# two.meta(shard 1 alter por two one)
+ok
 
-# two.create_shard(1, :POR, "two", "three", "one")
-:success
+# two.meta(shard 1 alter por two three one)
+ok
 
-# two.create_shard(1, :POR, "two", "three")
-:success
+# two.meta(shard 1 alter por two three)
+ok
 
 lsn:1 scn:-1 t:sys/snap_initial 0.0.0.0:0 ver:0 count:1 flags:0x00000000
-lsn:1 scn:4 t:sys/shard_create 0.0.0.0:0 SHARD_CREATE shard_id:1  POR Box count:1 run_crc:0xc3054bbb master:one repl:two
-lsn:1 scn:4 t:snap/usr240 0.0.0.0:0 CREATE_OBJECT_SPACE n:0 flags:00000000 cardinalty:0 snap:1 wal:1 PK: i:0 min_tuple_cardinality:1 cardinality:1 type:4 unique:1 field0:{index:0 type:7 sort:-1}
+lsn:1 scn:4 t:sys/shard_create 0.0.0.0:0 SHARD_CREATE shard_id:1  POR Box count:1 run_crc:0xa628743f master:one repl:two
+lsn:1 scn:4 t:snap/usr240 0.0.0.0:0 CREATE_OBJECT_SPACE n:0 flags:00000003 cardinalty:0 PK: i:0 min_tuple_cardinality:0 cardinality:1 type:5 unique:1 field0:{index:0 type:7 sort:1}
 lsn:1 scn:4 t:snap/snap_data 0.0.0.0:0 n:0 <1:"\x01\x00\x00\x00", "one">
 lsn:1 scn:4 t:sys/shard_final 0.0.0.0:0 
 lsn:1 scn:-1 t:sys/snap_final 0.0.0.0:0 
-lsn:2 scn:5 t:sys/shard_alter 0.0.0.0:0 SHARD_ALTER shard_id:1  POR Box count:1 run_crc:0x0bcafead master:two repl:one
-lsn:3 scn:6 t:sys/shard_alter 0.0.0.0:0 SHARD_ALTER shard_id:1  POR Box count:1 run_crc:0xc3054bbb master:two repl:three repl:one
+lsn:2 scn:5 t:sys/shard_alter 0.0.0.0:0 SHARD_ALTER shard_id:1  POR Box count:1 run_crc:0x3a6501e4 master:two repl:one
+lsn:3 scn:6 t:sys/shard_alter 0.0.0.0:0 SHARD_ALTER shard_id:1  POR Box count:1 run_crc:0xa628743f master:two repl:three repl:one
 lsn:4 scn:7 t:sys/shard_alter 0.0.0.0:0 SHARD_ALTER shard_id:1  POR Box count:1 run_crc:0x00000000 master:two repl:three
 241/load shard {1} I> META mode: PROXY, proxy_addr: 'one/127.0.0.1:33013' => init
 241/load shard {1} I> META mode: PARTIAL_PROXY, SCN: 4, type: POR, peer: [one, two], proxy_addr: 'one/127.0.0.1:33013' => hot_standby/one/127.0.0.1:33013/init

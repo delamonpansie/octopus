@@ -4,8 +4,9 @@
 # two.ping()
 :pong
 
-# one.create_shard(1, :POR, "one")
-:success
+# one.meta(shard 1 alter por one)
+ok
 
-# two.create_shard(1, :POR, "two")
-Failed with: {code: 0x202, message: 'not my shard'}
+# two.meta(shard 1 alter por two)
+error: 0x202 not my shard
+

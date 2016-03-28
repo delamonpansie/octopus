@@ -36,8 +36,6 @@ prepare_create_object_space(struct box_meta_txn *txn, char n, struct tbuf *data)
 {
 	say_debug("%s n:%i", __func__, n);
 	char cardinalty = read_u8(data);
-	char snap = read_u8(data);
-	char wal = read_u8(data);
 	struct index_conf ic = {.n = 0};
 	index_conf_read(data, &ic);
 	index_conf_validate(&ic);
@@ -57,9 +55,11 @@ prepare_create_object_space(struct box_meta_txn *txn, char n, struct tbuf *data)
 	txn->object_space = xcalloc(1, sizeof(struct object_space));
 	txn->object_space->n = n;
 	txn->object_space->cardinality = cardinalty;
-	txn->object_space->snap = snap;
-	txn->object_space->wal = wal;
+	txn->object_space->snap = txn->flags & 1;
+	txn->object_space->wal = txn->flags & 2;
 	txn->object_space->index[0] = txn->index;
+	assert(txn->object_space->snap);
+	assert(txn->object_space->wal);
 }
 
 static void __attribute__((noinline))

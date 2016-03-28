@@ -419,10 +419,9 @@ snapshot_write_rows:(XLog *)l
 		if (!shard->dummy) {
 			tbuf_reset(row);
 			write_i32(row, n);
-			write_i32(row, 0); // flags
+			int flags = (o->snap ? 1 : 0) | (o->wal ? 2 : 0);
+			write_i32(row, flags);
 			write_i8(row, o->cardinality);
-			write_i8(row, o->snap);
-			write_i8(row, o->wal);
 			index_conf_write(row, &pk->conf);
 
 			if ([l append_row:row->ptr len:tbuf_len(row)

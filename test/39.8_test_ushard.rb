@@ -4,8 +4,8 @@
 $: << File.dirname($0)
 require '39_test_ushard'
 
-$one.create_shard 1, :POR, "one"
-$one.create_object_space 0, :shard => 1, :index => DEFIDX
+$one_env.meta 'shard 1 alter por one'
+$one_env.meta 'shard 1 obj_space 0 create tree unique string 0'
 
 10.times {|i|
   $one.insert_nolog [i, "one#{i}"], :shard => 1
@@ -24,7 +24,7 @@ $one_env.env_eval do
 end
 
 # join two into shard 1
-$two.create_shard 1, :POR, "one", "two"
+$two_env.meta 'shard 1 alter por one two'
 sleep 0.1
 $one.insert [42, "One"], :shard => 1
 

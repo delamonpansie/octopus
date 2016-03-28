@@ -5,8 +5,8 @@ $: << File.dirname($0)
 require '39_test_ushard'
 
 
-$one.create_shard 1, :POR, "one"
+$one_env.meta 'shard 1 alter por one'
 
 # change shard type
-log_try { $one.create_shard 1, :PAXOS, "one" }
+log_try { $one_env.meta 'shard 1 alter paxos one' }
 

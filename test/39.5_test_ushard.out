@@ -4,8 +4,9 @@
 # two.ping()
 :pong
 
-# one.create_shard(1, :POR, "one")
-:success
+# one.meta(shard 1 alter por one)
+ok
 
-# one.create_shard(1, :PAXOS, "one")
-Failed with: {code: 0x202, message: 'can't change shard type'}
+# one.meta(shard 1 alter paxos one)
+error: 0x202 can't change shard type
+

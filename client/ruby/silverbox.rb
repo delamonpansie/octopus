@@ -217,7 +217,7 @@ class SilverBox < IProtoRetCode
 
   def pack_index_conf(conf)
     cardinalty = 0
-    version = 1
+    version = 0x10
     field_descr = []
     conf.select {|key| key.match /^field_\d+$/ } .sort.each do |key, field|
       field_descr << case field[:index]
@@ -239,15 +239,10 @@ class SilverBox < IProtoRetCode
                      when :STRING then 7
                      else fail "invalid field :type (#{key})"
                      end
-      cardinalty += 1
     end
+    cardinalty = field_descr.length / 3
     fail "cardinality invalid" if cardinalty < 1 or cardinalty > 8
-    descr = [version]
-    descr << case conf[:min_tuple_cardinality]
-             when nil, 0..255 then conf[:min_tuple_cardinality] || 0
-             else fail ":min_tuple_cardinality invalid"
-             end
-    descr << cardinalty
+    descr = [version, cardinalty]
     descr << case conf[:type]
              when nil, :HASH then 1
              when :NUMHASH then 2
@@ -267,12 +262,12 @@ class SilverBox < IProtoRetCode
   def create_object_space(n, conf)
     flags = 0
     cardinalty = conf[:cardinalty] || 0
-    snap = conf[:snap] || 1
-    wal = conf[:wal] || 1
+    flags |= 1 unless conf[:no_snap]
+    flags |= 2 unless conf[:no_wal]
     shard = conf[:shard] || 0
     fail ":shard missing" unless conf[:shard]
     fail ":index missing" unless conf[:index]
-    msg :code => 240, :shard => shard, :raw => [n, flags, cardinalty, snap, wal, *pack_index_conf(conf[:index])].pack("LLC*")
+    msg :code => 240, :shard => shard, :raw => [n, flags, cardinalty, *pack_index_conf(conf[:index])].pack("LLC*")
     :success
   end
 
