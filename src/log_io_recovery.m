@@ -487,6 +487,36 @@ enable_local_writes
 	[self wal_final_row];
 }
 
+- (void)
+fill_feeder_param:(struct feeder_param *)feeder peer:(int)i
+{
+	void *filter_arg = feeder->filter.arg;
+	*feeder = (struct feeder_param){
+		.ver = 2,
+		.addr = *peer_addr(peer[i], PORT_REPLICATION),
+		.filter = {.type = FILTER_TYPE_LUA,
+			   .name = "changer",
+			   .arg = filter_arg,
+			   .arglen = sprintf(filter_arg, "%i", self->id) }
+	};
+}
+
+- (void)
+load_from_remote
+{
+	char feeder_param_arg[16];
+	struct feeder_param feeder = { .filter = { .arg = feeder_param_arg } };
+	XLogRemoteReader *reader = [[XLogRemoteReader alloc] init_recovery:(id)self];
+
+	for (int i = 0; i < nelem(peer) && *peer[i]; i++) {
+		if (strcmp(peer[i], cfg.hostname) == 0)
+			continue;
+
+		[self fill_feeder_param:&feeder peer:i];
+		if ([reader load_from_remote:&feeder] >= 0)
+			break;
+	}
+	[reader free];
 @end
 
 /// Recovery
@@ -707,9 +737,10 @@ load_from_remote
 		if (strcmp((*p)->name, cfg.hostname) == 0)
 			continue;
 
-		feeder = (struct feeder_param){ .ver = 1,
-						.filter = { .type = FILTER_TYPE_ID } };
-		feeder.addr = *peer_addr((*p)->name, PORT_REPLICATION);
+		feeder = (struct feeder_param){ .ver = 2,
+						.addr = *peer_addr((*p)->name, PORT_REPLICATION),
+						.filter = {.type = FILTER_TYPE_LUA,
+							   .name = "changer" }};
 		count += [remote_reader load_from_remote:&feeder];
 	}
 	[remote_reader free];

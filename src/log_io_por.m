@@ -36,6 +36,15 @@
 #include <string.h>
 
 @implementation POR
+- (id)
+init_id:(int)shard_id
+    scn:(i64)scn_
+    sop:(const struct shard_op *)sop
+{
+	[super init_id:shard_id scn:scn_ sop:sop];
+	feeder.filter.arg = feeder_param_arg;
+	return self;
+}
 - (i64) scn { return scn; }
 
 - (id) free
@@ -51,28 +60,6 @@ set_feeder:(struct feeder_param*)new
 	/* legacy */
 	if (shard_rt[self->id].shard && shard_rt[self->id].proxy)
 		[remote set_feeder:new];
-}
-
-- (void)
-load_from_remote
-{
-	XLogRemoteReader *reader = [[XLogRemoteReader alloc] init_recovery:self];
-	feeder = (struct feeder_param){ .ver = 2,
-					.filter = {.type = FILTER_TYPE_LUA,
-						   .name = "changer",
-						    .arg = feeder_param_arg,
-						   .arglen = 0 }};
-	feeder.filter.arglen = sprintf(feeder.filter.arg, "%i", self->id);
-
-	for (int i = 0; i < nelem(peer) && *peer[i]; i++) {
-		if (strcmp(peer[i], cfg.hostname) == 0)
-			continue;
-
-		feeder.addr = *peer_addr(peer[i], PORT_REPLICATION);
-		if ([reader load_from_remote:&feeder] >= 0)
-			break;
-	}
-	[reader free];
 }
 
 - (bool)
@@ -93,13 +80,7 @@ remote_hot_standby
 		enum feeder_cfg_e fid_err = feeder_param_fill_from_cfg(&feeder, NULL);
 		if (fid_err) panic("wrong feeder conf");
 	} else {
-		feeder = (struct feeder_param){ .ver = 2,
-						.addr = *peer_addr(peer[0], PORT_REPLICATION),
-						.filter = {.type = FILTER_TYPE_LUA,
-							   .name = "changer",
-							   .arg = feeder_param_arg,
-							   .arglen = 0 }};
-		feeder.filter.arglen = sprintf(feeder.filter.arg, "%i", self->id);
+		[self fill_feeder_param:&feeder peer:0];
 	}
 	if (remote == nil) {
 		[self status_update:"hot_standby/%s/init", net_sin_name(&feeder.addr)];

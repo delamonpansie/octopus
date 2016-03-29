@@ -1219,15 +1219,6 @@ init_id:(int)shard_id scn:(i64)scn_ sop:(const struct shard_op *)sop
 	return self;
 }
 
-- (void)
-load_from_remote
-{
-	XLogRemoteReader *remote_reader = [[XLogRemoteReader alloc] init_shard:self];
-	struct paxos_peer *p;
-	SLIST_FOREACH(p, &group, link)
-		[remote_reader load_from_remote:&p->feeder];
-	[remote_reader free];
-}
 
 - (void)
 start

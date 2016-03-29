@@ -70,6 +70,9 @@
 - (void) wal_final_row;
 - (void) enable_local_writes;
 - (bool) our_shard;
+
+- (void) fill_feeder_param:(struct feeder_param *)feeder peer:(int)i;
+- (void) load_from_remote;
 @end
 
 enum shard_type { SHARD_TYPE_POR, SHARD_TYPE_PAXOS } ;
