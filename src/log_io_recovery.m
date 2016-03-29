@@ -265,9 +265,15 @@ validate_sop(struct netmsg_head *wbuf, const struct iproto *req, void *data, int
 			sop_err("sop: unknown peer '%s'", sop->peer[i]);
 			return NULL;
 		}
+		for (int j = 0; j < i; j++) {
+			if (strcmp(sop->peer[i], sop->peer[j]) == 0) {
+				sop_err("sop: duplicate peer '%s'", sop->peer[i]);
+				return NULL;
+			}
+		}
 	}
 	if (sop->type != SHARD_TYPE_PAXOS && sop->type != SHARD_TYPE_POR) {
-		sop_err("sop: invalide shard type %i", sop->type);
+		sop_err("sop: invalid shard type %i", sop->type);
 		return NULL;
 	}
 	return sop;
