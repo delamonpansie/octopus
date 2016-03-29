@@ -453,8 +453,11 @@ static void
 service_prepare_io(struct iproto_ingress_svc *io)
 {
 	if (tbuf_len(&io->rbuf) >= cfg.input_low_watermark && has_full_req(&io->rbuf)) {
-		say_warn("peer %s input buffer low watermark overflow (size %i)",
-			 net_fd_name(io->fd), tbuf_len(&io->rbuf));
+		if (ev_now() - io->input_overflow_warn > 10) {
+			say_warn("peer %s input buffer low watermark overflow (size %i)",
+				 net_fd_name(io->fd), tbuf_len(&io->rbuf));
+			io->input_overflow_warn = ev_now();
+		}
 		ev_io_stop(&io->in);
 	}
 

@@ -89,6 +89,7 @@ LIST_HEAD(iproto_future_list, iproto_future);
 	TAILQ_ENTRY(iproto_ingress_svc) processing_link;
 	struct iproto_service *service;
 	int batch;
+	ev_tstamp input_overflow_warn;
 }
 - (void)init:(int)fd_ service:(struct iproto_service *)service_;
 @end
