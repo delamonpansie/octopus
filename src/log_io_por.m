@@ -45,7 +45,6 @@ init_id:(int)shard_id
 	feeder.filter.arg = feeder_param_arg;
 	return self;
 }
-- (i64) scn { return scn; }
 
 - (id) free
 {
