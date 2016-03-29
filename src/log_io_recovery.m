@@ -1144,12 +1144,6 @@ iproto_shard_udpcb(const char *buf, ssize_t len, void *data __attribute__((unuse
 	}
 }
 
-const char *
-iproto_shard_luacb(struct iproto *req __attribute__((unused)))
-{
-	return "error";
-}
-
 static void
 recovery_iproto(void)
 {
