@@ -1443,10 +1443,10 @@ adjust_route
 void
 paxos_service(struct iproto_service *s)
 {
-	service_register_iproto(s, LEADER_PROPOSE, leader, IPROTO_DROP_ERROR);
-	service_register_iproto(s, PREPARE, iproto_acceptor, IPROTO_DROP_ERROR);
-	service_register_iproto(s, ACCEPT, iproto_acceptor, IPROTO_DROP_ERROR);
-	service_register_iproto(s, DECIDE, learner, IPROTO_DROP_ERROR);
+	service_register_iproto(s, LEADER_PROPOSE, leader, IPROTO_LOCAL|IPROTO_DROP_ERROR);
+	service_register_iproto(s, PREPARE, iproto_acceptor, IPROTO_LOCAL|IPROTO_DROP_ERROR);
+	service_register_iproto(s, ACCEPT, iproto_acceptor, IPROTO_LOCAL|IPROTO_DROP_ERROR);
+	service_register_iproto(s, DECIDE, learner, IPROTO_LOCAL|IPROTO_DROP_ERROR);
 }
 
 @end

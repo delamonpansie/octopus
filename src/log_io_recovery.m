@@ -1146,11 +1146,11 @@ recovery_iproto_ignore()
 {
 	if (recovery_service == NULL)
 		return;
-	service_register_iproto(recovery_service, MSG_SHARD, iproto_ignore, IPROTO_NONBLOCK);
-	service_register_iproto(recovery_service, LEADER_PROPOSE, iproto_ignore, IPROTO_NONBLOCK);
-	service_register_iproto(recovery_service, PREPARE, iproto_ignore, IPROTO_NONBLOCK);
-	service_register_iproto(recovery_service, ACCEPT, iproto_ignore, IPROTO_NONBLOCK);
-	service_register_iproto(recovery_service, DECIDE, iproto_ignore, IPROTO_NONBLOCK);
+	service_register_iproto(recovery_service, MSG_SHARD, iproto_ignore, IPROTO_LOCAL|IPROTO_NONBLOCK);
+	service_register_iproto(recovery_service, LEADER_PROPOSE, iproto_ignore, IPROTO_LOCAL|IPROTO_NONBLOCK);
+	service_register_iproto(recovery_service, PREPARE, iproto_ignore, IPROTO_LOCAL|IPROTO_NONBLOCK);
+	service_register_iproto(recovery_service, ACCEPT, iproto_ignore, IPROTO_LOCAL|IPROTO_NONBLOCK);
+	service_register_iproto(recovery_service, DECIDE, iproto_ignore, IPROTO_LOCAL|IPROTO_NONBLOCK);
 }
 
 - (void)
