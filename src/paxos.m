@@ -1022,7 +1022,7 @@ loop:
 
 			struct row_v12 row = { .scn = p->scn,
 					       .tag = p->tag,
-					       .shard_id = paxos->id };
+					       {.shard_id = paxos->id} };
 			wal_pack_append_row(&pack, &row); // will copy &row
 			wal_pack_append_data(&pack, p->value, p->value_len);
 
