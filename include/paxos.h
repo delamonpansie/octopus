@@ -56,7 +56,6 @@ RB_HEAD(ptree, proposal);
 
 @interface Paxos: Shard <Shard> {
 @public
-	SLIST_HEAD(paxos_group, paxos_peer) group;
 	struct iproto_egress_list paxos_remotes;
 	struct Fiber *proposer_fiber;
 	struct Fiber *output_flusher, *reply_reader, *follower, *wal_dumper;

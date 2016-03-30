@@ -52,59 +52,6 @@ const int quorum = 2; /* FIXME: hardcoded */
 
 static struct palloc_pool *paxos_pool;
 
-struct paxos_peer {
-	int id;
-	const char *name;
-	struct sockaddr_in addr;
-	struct iproto_egress *egress;
-	struct feeder_param feeder;
-	SLIST_ENTRY(paxos_peer) link;
-};
-
-struct paxos_peer *
-make_paxos_peer(int id, const char *name)
-{
-	const struct sockaddr_in *sin;
-	struct paxos_peer *p;
-
-	sin = peer_addr(name, PORT_PRIMARY);
-	if (sin == NULL)
-		return NULL;
-
-	p = xcalloc(1, sizeof(*p));
-	p->id = id;
-	p->name = strdup(name);
-
-	p->addr = *sin;
-	p->feeder.ver = 1;
-	p->feeder.addr = *peer_addr(name, PORT_REPLICATION);
-	p->feeder.filter = (struct feeder_filter){.type = FILTER_TYPE_LUA,
-						  .name = "tag_wal"};
-
-	p->egress = iproto_remote_add_peer(NULL, &p->addr, paxos_pool);
-	return p;
-}
-
-struct paxos_peer *
-paxos_peer(Paxos *paxos, int id)
-{
-	struct paxos_peer *p;
-	SLIST_FOREACH(p, &paxos->group, link)
-		if (p->id == id)
-			return p;
-	return NULL;
-}
-
-static const char *
-paxos_peer_name(struct Paxos *paxos, int id)
-{
-	static char buf[32];
-	struct paxos_peer *peer = paxos_peer(paxos, id);
-	assert(peer || id == paxos->self_id);
-	snprintf(buf, sizeof(buf), "%i/%s", id, peer ? peer->name : "self");
-	return buf;
-}
-
 static u16 paxos_default_version;
 
 struct msg_leader {
@@ -182,6 +129,7 @@ paxos_broadcast(Paxos *paxos, struct iproto_mbox *mbox,
 		enum paxos_msg_code code, /* ev_tstamp timeout, */
 		i64 scn, u64 ballot, const char *value, u32 value_len, u16 tag)
 {
+	assert(tag == 0 || value_len > 0);
 	static u32 msg_id;
 	struct msg_paxos msg = { .header = { .data_len = sizeof(msg) - sizeof(struct iproto),
 					     .msg_code = code,
@@ -199,12 +147,11 @@ paxos_broadcast(Paxos *paxos, struct iproto_mbox *mbox,
 
 	say_debug("%s: [%i]%s> %s SCN:%"PRIi64" ballot:%"PRIx64,
 		  __func__, msg.msg_id, mbox ? "" : " OWT", paxos_msg_code[code], scn, ballot);
-	assert(tag == 0 || value_len > 0);
 	if (tag != 0)
 		say_debug2("|  tag:%s value_len:%i value:%s", xlog_tag_to_a(tag), value_len,
 			   tbuf_to_hex(&TBUF(value, value_len, fiber->pool)));
 
-	iproto_mbox_broadcast(mbox, &paxos->paxos_remotes, &msg.header, iov, 1);
+	iproto_mbox_broadcast(mbox, &paxos->paxos_remotes, &msg.header, iov, nelem(iov));
 	if (code == PREPARE || code == ACCEPT) {
 		struct paxos_request req = { .msg = &msg, .value = value, .type = PAXOS_REQ_INTERNAL, {.mbox = mbox} };
 		acceptor(paxos, &req);
@@ -326,19 +273,16 @@ paxos_elect(va_list ap)
 		}
 
 		int votes = 0;
-		struct msg_leader *nack_msg = NULL;
-
-		struct iproto *reply;
+		struct msg_leader *reply, *nack_msg = NULL;
 		int reply_count = 0;
-		while ((reply = iproto_mbox_get(&mbox))) {
-			struct msg_leader *leader_reply = (struct msg_leader *)reply;
-			assert(paxos->self_id != leader_reply->peer_id);
+		while ((reply = (struct msg_leader *)iproto_mbox_get(&mbox))) {
+			assert(paxos->self_id != reply->peer_id);
 			reply_count++;
-			if (reply->msg_code == LEADER_ACK) {
+			if (reply->header.msg_code == LEADER_ACK) {
 				votes++;
 			} else {
-				assert(reply->msg_code == LEADER_NACK);
-				nack_msg = (struct msg_leader *)reply;
+				assert(reply->header.msg_code == LEADER_NACK);
+				nack_msg = reply;
 			}
 		}
 		if (votes >= quorum - 1) { // -1 because we don't message ourselfs
@@ -347,9 +291,8 @@ paxos_elect(va_list ap)
 			paxos->leader_id = paxos->self_id;
 		} else {
 			if (nack_msg && proposed_expire - nack_msg->expire > leader_lease_interval * .05 ) {
-				struct paxos_peer *peer = paxos_peer(paxos, nack_msg->peer_id);
-				say_debug("%s: nack from peer:%i/%s leader_id:%i", __func__,
-					  peer->id, peer->name, nack_msg->leader_id);
+				say_debug("%s: nack from peer:%s leader_id:%i", __func__,
+					  paxos->peer[nack_msg->peer_id], nack_msg->leader_id);
 				paxos->leadership_expire = nack_msg->expire;
 				paxos->leader_id = nack_msg->leader_id;
 			} else {
@@ -378,18 +321,19 @@ paxos_elect(va_list ap)
 #define PAXOS_MSG_DROP(h) (void)h
 #endif
 
-#define PAXOS_MSG_CHECK(wbuf, msg, peer)	({			\
+#define PAXOS_MSG_CHECK(paxos, wbuf, msg)	({			\
 	struct netmsg_io *io = container_of(wbuf, struct netmsg_io, wbuf); \
 	if ((msg)->version != paxos_default_version) {			\
 		say_warn("%s: bad version %i, closing connect from peer %i", \
 			 __func__, (msg)->version, (msg)->peer_id);	\
-		if (io->fd != -1) [io close];				\
+		[io close];						\
 		return;							\
 	}								\
-	if (!peer) {					\
+	if ((msg)->peer_id >= 5 || *paxos->peer[(msg)->peer_id] == 0)	\
+	{								\
 		say_warn("%s: closing connect from unknown peer %i",	\
 			 __func__, (msg)->peer_id);			\
-		if (io->fd != -1) [io close];				\
+		[io close];						\
 		return;							\
 	}								\
 	PAXOS_MSG_DROP(&(msg)->header);					\
@@ -400,18 +344,18 @@ paxos_elect(va_list ap)
 static void
 leader(struct netmsg_head *wbuf, struct iproto *msg, void *arg)
 {
-	Paxos *paxos = RT_SHARD(arg);
+	Paxos *paxos;
+	if (!arg)
+		return;
+	paxos = (Paxos *)((struct shard_route *)arg)->shard;
 	struct msg_leader *pmsg = (struct msg_leader *)msg;
-	struct paxos_peer *peer = paxos_peer(paxos, pmsg->peer_id);
 	const char *ret = "accept";
 	const ev_tstamp to_expire = paxos->leadership_expire - ev_now();
 
-	say_debug("%s: msg:%x", __func__, msg->msg_code);
+	PAXOS_MSG_CHECK(paxos, wbuf, pmsg);
 
-	PAXOS_MSG_CHECK(wbuf, pmsg, peer);
-
-	say_debug("<LEADER_PROPOSE from %i/%s to_expire:%.2f leader:%i/propos:%i",
-		  peer->id, peer->name, to_expire, paxos->leader_id, pmsg->leader_id);
+	say_debug("<LEADER_PROPOSE from %s to_expire:%.2f leader:%i/propos:%i",
+		  paxos->peer[pmsg->peer_id], to_expire, paxos->leader_id, pmsg->leader_id);
 
 	if (paxos->leader_id == pmsg->leader_id) {
 		say_debug("|     proposal matches current leader");
@@ -471,6 +415,7 @@ proposal_update_value(struct proposal *p, u32 value_len, const char *value, u16 
 	say_debug3("\tvalue:%s", tbuf_to_hex(&TBUF(value, value_len, fiber->pool)));
 
 	assert(tag == 0 || value_len > 0);
+	assert((tag & ~TAG_MASK) != TAG_SNAP);
 
 	if (p->ballot == ULLONG_MAX) { /* decided proposal is immutable */
 		assert(p->tag == tag);
@@ -526,7 +471,6 @@ purge_walled_proposals(struct Paxos *paxos)
 static struct proposal *
 create_proposal(Paxos *paxos, i64 scn)
 {
-	assert(scn > paxos->scn);
 	struct proposal *p = slab_cache_alloc(&proposal_cache);
 	struct proposal ini = { .scn = scn, .delay = paxos_default_timeout, .tstamp = ev_now() };
 	memcpy(p, &ini, sizeof(*p));
@@ -661,8 +605,9 @@ proposal_mark_applied(Paxos *paxos, struct proposal *p)
 {
 	assert(p->ballot == ULLONG_MAX);
 	assert((p->flags & P_APPLIED) == 0);
-	assert(paxos->scn + 1 == p->scn);
+	assert(paxos->scn + 1 == p->scn || paxos->scn == 1);
 
+	assert((p->tag & ~ TAG_MASK) != TAG_SNAP);
 	p->flags |= P_APPLIED;
 	paxos->scn = p->scn;
 	say_debug("%s: new SCN:%"PRIi64, __func__, paxos->scn);
@@ -699,7 +644,8 @@ learn(Paxos *paxos, struct proposal *p)
 
 
 		@try {
-			[[paxos executor] apply:&TBUF(p->value, p->value_len, fiber->pool) tag:p->tag];
+			if ((p->tag & ~TAG_MASK) != TAG_SYS)
+				[[paxos executor] apply:&TBUF(p->value, p->value_len, fiber->pool) tag:p->tag];
 			proposal_mark_applied(paxos, p);
 		}
 		@catch (Error *e) {
@@ -711,18 +657,19 @@ learn(Paxos *paxos, struct proposal *p)
 	}
 }
 
-static void
-msg_dump(const char *prefix, const struct paxos_peer *peer, const struct msg_paxos *req)
+void
+msg_dump(Paxos *paxos, const char *prefix, const struct msg_paxos *req)
 {
 	const char *code = paxos_msg_code[req->header.msg_code];
+	const char *peer_name = paxos->peer[req->peer_id];
 	switch (req->header.msg_code) {
 	case PREPARE:
-		say_debug("%s peer:%i/%s sync:%i type:%s SCN:%"PRIi64" ballot:%"PRIx64,
-			  prefix, peer->id, peer->name, req->header.sync, code, req->scn, req->ballot);
+		say_debug("%s peer:%s sync:%i type:%s SCN:%"PRIi64" ballot:%"PRIx64,
+			  prefix, peer_name, req->header.sync, code, req->scn, req->ballot);
 		break;
 	default:
-		say_debug("%s peer:%i/%s sync:%i type:%s SCN:%"PRIi64" ballot:%"PRIx64" tag:%s",
-			  prefix, peer->id, peer->name, req->header.sync, code, req->scn, req->ballot, xlog_tag_to_a(req->tag));
+		say_debug("%s peer:%s sync:%i type:%s SCN:%"PRIi64" ballot:%"PRIx64" tag:%s",
+			  prefix, peer_name, req->header.sync, code, req->scn, req->ballot, xlog_tag_to_a(req->tag));
 		say_debug2("|  tag:%s value_len:%i value:%s", xlog_tag_to_a(req->tag), req->value_len,
 			   tbuf_to_hex(&TBUF(req->value, req->value_len, fiber->pool)));
 	}
@@ -732,39 +679,43 @@ static void
 learner(struct netmsg_head *wbuf, struct iproto *imsg, void *arg)
 {
 	Paxos *paxos = RT_SHARD(arg);
-	struct msg_paxos *msg = (struct msg_paxos *)imsg;
-	struct paxos_peer *peer = paxos_peer(paxos, msg->peer_id);
-	struct proposal *p;
+	int old_ushard = fiber->ushard;
+	fiber->ushard = paxos->id;
+	@try {
+		struct msg_paxos *msg = (struct msg_paxos *)imsg;
+		struct proposal *p;
 
-	PAXOS_MSG_CHECK(wbuf, msg, peer);
+		PAXOS_MSG_CHECK(paxos, wbuf, msg);
+		msg_dump(paxos, "learner: <", msg);
 
-	msg_dump("learner: <", peer, msg);
-
-	if (msg->peer_id == paxos->self_id)
-		return;
-
-	if (msg->scn <= paxos->scn) {
-		/* если у нас такой proposal есть, то сверим его содержимое для надежности */
-		p = find_proposal(paxos, msg->scn);
-		if (!p)
+		if (msg->peer_id == paxos->self_id)
 			return;
-	} else {
-		p = proposal(paxos, msg->scn);
+
+		if (msg->scn <= paxos->scn) {
+			p = find_proposal(paxos, msg->scn);
+			if (!p)
+				return;
+		} else {
+			p = proposal(paxos, msg->scn);
+		}
+
+		assert(msg->scn > paxos->scn || p->ballot == ULLONG_MAX);
+		if (p->ballot == ULLONG_MAX) {
+			assert(p->tag == msg->tag);
+			assert(msg->value_len == p->value_len);
+			assert(memcmp(msg->value, p->value, p->value_len) == 0);
+			return;
+		}
+
+		proposal_update_value(p, msg->value_len, msg->value, msg->tag);
+		proposal_update_ballot(p, ULLONG_MAX);
+
+		learn(paxos, p);
+		maybe_wake_dumper(paxos, p);
 	}
-
-	assert(msg->scn > paxos->scn || p->ballot == ULLONG_MAX);
-	if (p->ballot == ULLONG_MAX) {
-		assert(p->tag == msg->tag);
-		assert(msg->value_len == p->value_len);
-		assert(memcmp(msg->value, p->value, p->value_len) == 0);
-		return;
+	@finally {
+		fiber->ushard = old_ushard;
 	}
-
-	proposal_update_value(p, msg->value_len, msg->value, msg->tag);
-	proposal_update_ballot(p, ULLONG_MAX);
-
-	learn(paxos, p);
-	maybe_wake_dumper(paxos, p);
 }
 
 static void
@@ -814,10 +765,8 @@ iproto_acceptor(struct netmsg_head *wbuf, struct iproto *imsg, void *arg __attri
 	struct Paxos *paxos = RT_SHARD(arg);
 	struct msg_paxos *msg = (struct msg_paxos *)imsg;
 	struct paxos_request req = { .msg = msg, .value = msg->value, .type = PAXOS_REQ_REMOTE, {.wbuf = wbuf} };
-	struct paxos_peer *peer = paxos_peer(paxos, msg->peer_id);
-	PAXOS_MSG_CHECK(wbuf, msg, peer);
-
-	msg_dump("acceptor: <", peer, msg);
+	PAXOS_MSG_CHECK(paxos, wbuf, msg);
+	msg_dump(paxos, "acceptor: <", msg);
 	acceptor(paxos, &req);
 }
 
@@ -933,7 +882,7 @@ retry:
 	while ((req = (struct msg_paxos *)iproto_mbox_get(&mbox))) {
 		assert(req->msg_id == msg_id);
 		say_debug("|  %s peer:%s SCN:%"PRIi64" ballot:%"PRIx64" value_len:%i",
-			  paxos_msg_code[req->header.msg_code], paxos_peer_name(paxos, req->peer_id),
+			  paxos_msg_code[req->header.msg_code], paxos->peer[req->peer_id],
 			  req->scn, req->ballot, req->value_len);
 
 		switch (req->header.msg_code) {
@@ -985,8 +934,8 @@ decide:
 	    p->flags & P_APPLIED)
 		return 0;
 
-	if (paxos->scn + 1 != p->scn) {
-		struct proposal *pp = proposal(paxos, paxos->scn);
+	if (p->scn != paxos->scn + 1) {
+		struct proposal *pp = proposal(paxos, p->scn - 1);
 		assert((pp->flags & P_APPLIED) == 0);
 		pp->waiter = fiber;
 		yield();
@@ -1012,6 +961,35 @@ maybe_wake_dumper(Paxos *paxos, struct proposal *p)
 	mbox_put(&wal_dumper_mbox, m, link);
 }
 
+static void plog(const struct proposal *p)
+{
+	static int flags;
+	static i64 scn, scn2;
+
+	if (p && flags == (p->flags & (P_WALED|P_APPLIED))) {
+		scn2 = p->scn;
+	} else {
+		if (scn) {
+			if (scn2)
+				say_info("|  %"PRIi64" - %"PRIi64"%s%s", scn, scn2,
+					   flags & P_WALED ? " CLOSED" : "",
+					   flags & P_APPLIED ? " APPLIED" : "");
+			else
+				say_info("|  %"PRIi64"%s%s", scn,
+					   flags & P_WALED ? " CLOSED" : "",
+					   flags & P_APPLIED ? " APPLIED" : "");
+		}
+		if (p) {
+			scn = p->scn;
+			flags = p->flags & (P_WALED|P_APPLIED);
+		} else {
+			scn = 0;
+			flags = 0;
+		}
+		scn2 = 0;
+	}
+}
+
 static void
 wal_dumper_fib(va_list ap)
 {
@@ -1024,26 +1002,44 @@ loop:
 	fiber_gc(); /* NB: put comment */
 
 	p = RB_MIN(ptree, &paxos->proposals);
-	// say_debug("wal_dump %s", scn_info(paxos));
-
-	while (p && p->flags & P_WALED) {
-		say_debug2("|  % 8"PRIi64" CLOSED", p->scn);
-		p = RB_NEXT(ptree, &r->proposals, p);
-	}
 
 	while (p && p->scn <= paxos->scn) {
-		assert(p->ballot == ULLONG_MAX);
-		assert(p->flags & P_APPLIED);
-		say_debug2("|  % 8"PRIi64" APPLIED", p->scn);
-
-		/* TODO: batch write */
-		if (submit(paxos, p->value, p->value_len, p->scn, p->tag) != 1) {
-			say_error("unable to writer wal row");
-			goto loop;
+		while (p && p->flags & P_WALED) {
+			plog(p);
+			p = RB_NEXT(ptree, &r->proposals, p);
 		}
 
-		p->flags |= P_WALED;
-		p = RB_NEXT(ptree, &r->proposals, p);
+		if (!(p && p->scn <= paxos->scn))
+			break;
+
+		struct proposal *pack_first = p;
+		struct wal_pack pack;
+		wal_pack_prepare(recovery->writer, &pack);
+		do {
+			assert(p->ballot == ULLONG_MAX);
+			assert(p->flags & P_APPLIED);
+			plog(p);
+
+			struct row_v12 row = { .scn = p->scn,
+					       .tag = p->tag,
+					       .shard_id = paxos->id };
+			wal_pack_append_row(&pack, &row); // will copy &row
+			wal_pack_append_data(&pack, p->value, p->value_len);
+
+			if (pack.request->row_count == WAL_PACK_MAX)
+				break;
+			p = RB_NEXT(ptree, &r->proposals, p);
+		} while (p && p->scn <= paxos->scn);
+
+		struct wal_reply *reply = [recovery->writer wal_pack_submit];
+		if (reply->row_count) {
+			p = pack_first;
+			for (int i = 0; i < reply->row_count; i++) {
+				p->flags |= P_WALED;
+				p = RB_NEXT(ptree, &r->proposals, p);
+			}
+			[paxos update_run_crc:reply];
+		}
 	}
 	if (!paxos_leader(paxos)) {
 		bool delay_too_big = p && ev_now() - p->tstamp > 1;
@@ -1060,6 +1056,7 @@ loop:
 			catchup(paxos, p->scn);
 		}
 	}
+	plog(NULL);
 
 	goto loop;
 }
@@ -1093,6 +1090,7 @@ void
 paxos_stat(va_list ap)
 {
 	Paxos *paxos = va_arg(ap, Paxos *);
+	fiber->ushard = paxos->id;
 loop:
 	say_info("shard:%i %s leader:%i %s",
 		 paxos->id,
@@ -1111,10 +1109,11 @@ learn_wal(Paxos *paxos, id<XLogPullerAsync> puller)
 
 	[puller recv_row];
 	while ((row = [puller fetch_row])) {
-		if (row->scn <= paxos->scn)
+		if ((row->tag & TAG_MASK) == wal_final)
 			continue;
-		if ((row->tag & ~TAG_MASK) != TAG_WAL)
+		if (row->scn <= paxos->scn) /* puller may stall */
 			continue;
+		assert (row->shard_id == paxos->id);
 
 		p = proposal(paxos, row->scn);
 		if (p->flags & P_APPLIED) {
@@ -1137,19 +1136,19 @@ learner_puller(va_list ap)
 	Paxos *paxos = va_arg(ap, Paxos *);
 	int i = va_arg(ap, int);
 
-	if (paxos->self_id == i)
+	if (paxos->self_id == i || *paxos->peer[i] == 0)
 		return;
-
 	XLogPuller *puller = [[XLogPuller alloc] init];
+	char feeder_param_arg[16];
+	struct feeder_param feeder = { .filter = { .arg = feeder_param_arg } };
 again:
 	fiber_gc();
 	fiber_sleep(0.5);
 
 	@try {
-		struct paxos_peer *peer = paxos_peer(paxos, i);
-		assert(peer != NULL);
-		[puller feeder_param:&peer->feeder];
-		if ([puller handshake:paxos->scn] < 0)
+		[paxos fill_feeder_param:&feeder peer:i];
+		[puller feeder_param:&feeder];
+		if ([puller handshake:paxos->scn + 1] < 0)
 			goto again;
 
 		for (;;)
@@ -1176,60 +1175,28 @@ init_id:(int)shard_id scn:(i64)scn_ sop:(const struct shard_op *)sop
 	if (cfg.local_hot_standby)
 		panic("wal_hot_standby is incompatible with paxos");
 
-	SLIST_INIT(&group);
+	max_scn = scn;
 	RB_INIT(&proposals);
 
 	self_id = leader_id = -1;
 	say_info("configuring paxos peers");
 
-
-	for (int i = 0; ; i++)
-	{
-		if (peer[i] == NULL)
-			break;
-
-		for (int j = 0; ; j++) {
-			struct octopus_cfg_peer *c;
-			if ((c = cfg.peer[j]) == NULL)
-				break;
-
-			if (strcmp(peer[i], c->name) != 0)
-				continue;
-
-			if (paxos_peer(self, c->id) != NULL)
-				panic("paxos peer %s already exists", c->name);
-
-			say_info("  %s -> %s", c->name, c->addr);
-
-			if (strcmp(cfg.hostname, c->name) == 0) {
-				self_id = c->id;
-				continue;
-			}
-
-			struct paxos_peer *p = make_paxos_peer(c->id, c->name);
-			if (!p)
-				panic("bad addr %s", c->addr);
-
-			SLIST_INSERT_HEAD(&group, p, link);
-			SLIST_INSERT_HEAD(&paxos_remotes, p->egress, link);
+	for (int i = 0; i < nelem(peer); i++) {
+		if (*peer[i] == 0)
+			continue;
+		if (strcmp(cfg.hostname, peer[i]) == 0) {
+			self_id = i;
+			continue;
 		}
+
+		const struct sockaddr_in *sin = peer_addr(peer[i], PORT_PRIMARY);
+		struct iproto_egress *egress = iproto_remote_add_peer(NULL, sin, paxos_pool);
+
+		SLIST_INSERT_HEAD(&paxos_remotes, egress, link);
 	}
 	assert(self_id >= 0);
 	fiber_create("paxos/stat", paxos_stat, self);
 	return self;
-}
-
-
-- (void)
-start
-{
-	/* peer id starts from 1 */
-	for (int i = 1; i <= 3; i++)
-		fiber_create("paxos/puller", learner_puller, self, i);
-
-	fiber_create("paxos/elect", paxos_elect, self);
-	wal_dumper = fiber_create("paxos/wal_dump", wal_dumper_fib, self);
-	[executor wal_final_row]; // FIXME: может быть надо как нибудь по другому сигнализировать executor-у что пора начинать?
 }
 
 - (int)
@@ -1239,6 +1206,11 @@ submit:(const void *)data len:(u32)len tag:(u16)tag
 	static struct msg_void_ptr msg;
 	if (++count % 32 == 0 && msg.link.tqe_prev == NULL)
 	 	mbox_put(&recovery->run_crc_mbox, &msg, link);
+
+	assert(max_scn >= scn);
+
+	while (max_scn - scn > 1024)
+		fiber_sleep(0.01);
 
 	assert(recovery->writer != nil);
 	struct proposal *p = proposal(self, ++max_scn);
@@ -1283,9 +1255,12 @@ recover_row_sys:(const struct row_v12 *)r
 	struct tbuf row_data = TBUF(r->data, r->len, NULL);
 
 	u64 ballot;
+	struct proposal *p;
 
 	if (tag_type != TAG_SYS) {
-		struct proposal *p = proposal(self, r->scn);
+		if (tag_type == TAG_SNAP)
+			return;
+		p = proposal(self, r->scn);
 		proposal_update_value(p, r->len, (const char *)r->data, r->tag);
 		proposal_update_ballot(p, ULLONG_MAX);
 		p->flags |= P_WALED;
@@ -1295,15 +1270,6 @@ recover_row_sys:(const struct row_v12 *)r
 
 	switch (tag) {
 	case snap_initial:
-		assert(snap_lsn == 0 || r->lsn == snap_lsn);
-		if (r->len == sizeof(u32) * 3) { /* not a dummy row */
-			(void)read_u32(&row_data);
-			run_crc_log = read_u32(&row_data);
-			(void)read_u32(&row_data); /* ignore run_crc_mod */
-		}
-		scn = max_scn = r->scn;
-		// say_debug("%s: run_crc_log: 0x%x", __func__, run_crc_log);
-		break;
 	case snap_final:
 		break;
 	case run_crc:
@@ -1314,7 +1280,7 @@ recover_row_sys:(const struct row_v12 *)r
 			break;
 
 
-		struct proposal *p = proposal(self, r->scn);
+		p = proposal(self, r->scn);
 		proposal_update_value(p, r->len, (const char *)r->data, r->tag);
 		proposal_update_ballot(p, ULLONG_MAX);
 		p->flags |= P_WALED;
@@ -1348,6 +1314,23 @@ recover_row_sys:(const struct row_v12 *)r
 			proposal_update_ballot(p, ballot);
 		}
 		return;
+
+	case shard_create:
+		break;
+	case shard_final:
+		snap_loaded = true;
+		break;
+	case shard_alter:
+	case nop:
+		p = proposal(self, r->scn);
+		proposal_update_value(p, r->len, (const char *)r->data, r->tag);
+		proposal_update_ballot(p, ULLONG_MAX);
+		p->flags |= P_WALED;
+
+		proposal_mark_applied(self, p);
+		break;
+	default:
+		assert(false);
 	}
 }
 
@@ -1358,14 +1341,24 @@ recover_row:(struct row_v12 *)r
 	if (scn_changer(r->tag))
 		run_crc_calc(&run_crc_log, r->tag, r->data, r->len);
 
-	if ((r->tag & ~TAG_MASK) != TAG_SYS)
+	if ((r->tag & ~TAG_MASK) != TAG_SYS) {
 		[executor apply:&TBUF(r->data, r->len, fiber->pool) tag:r->tag];
-	else
+
+		struct proposal *p = find_proposal(self, r->scn);
+		if (p) {
+			proposal_update_value(p, r->len, (const char *)r->data, r->tag);
+			proposal_update_ballot(p, ULLONG_MAX);
+			p->flags |= P_WALED;
+			proposal_mark_applied(self, p);
+		}
+	} else
 		[self recover_row_sys:r];
 
 	if (scn_changer(r->tag)) {
 		run_crc_record(&run_crc_state, (struct run_crc_hist){ .scn = r->scn, .value = run_crc_log });
 		scn = r->scn;
+		if (max_scn < scn)
+			max_scn = scn;
 	}
 }
 
@@ -1385,7 +1378,7 @@ submit_run_crc
 	typeof(run_crc_log) run_crc_mod = 0;
 	tbuf_append(b, &run_crc_mod, sizeof(run_crc_mod));
 
-	return [self submit:b->ptr len:tbuf_len(b) tag:run_crc|TAG_SYS];
+	return [self submit:b->ptr len:tbuf_len(b) tag:run_crc|TAG_WAL];
 }
 
 
@@ -1403,6 +1396,18 @@ adjust_route
 		 scn_info(self), leader_id,
 		 paxos_leader(self) ? "leader" : "");
 
+	if (recovery->writer && wal_dumper == NULL) {
+		if (scn == 1)
+			max_scn = scn;
+
+		for (int i = 0; i < nelem(peer); i++)
+			fiber_create("paxos/puller", learner_puller, self, i);
+
+		fiber_create("paxos/elect", paxos_elect, self);
+		wal_dumper = fiber_create("paxos/wal_dump", wal_dumper_fib, self);
+		[executor wal_final_row];
+	}
+	assert(max_scn >= scn);
 	if (prev_leader == leader_id)
 		return;
 
@@ -1411,10 +1416,9 @@ adjust_route
 		update_rt(self->id, self, NULL);
 		[self status_update:"paxos/slave"];
 	} else if (!paxos_leader(self)) {
-		struct paxos_peer *leader = paxos_peer(self, leader_id);
-		update_rt(self->id, self, leader->name);
+		update_rt(self->id, self, peer[leader_id]);
 		[self status_update:"paxos/slave"];
-		say_info("leader is %s, %i -> %i", leader->name, prev_leader, leader->id);
+		say_info("leader is %s, %i -> %i", peer[leader_id], prev_leader, leader_id);
 	} else if (paxos_leader(self)) {
 		say_info("I am leader, %i -> %i", prev_leader, leader_id);
 		catchup(self, max_scn);

@@ -435,6 +435,15 @@ submit_run_crc
 	return [self submit:b->ptr len:tbuf_len(b) tag:run_crc|TAG_SYS];
 }
 
+- (void)
+update_run_crc:(const struct wal_reply *)reply
+{
+	for (int i = 0; i < reply->crc_count; i++) {
+		run_crc_log = reply->row_crc[i].value;
+		run_crc_record(&run_crc_state, reply->row_crc[i]);
+	}
+}
+
 
 - (void)
 status_update:(const char *)fmt, ...
@@ -517,6 +526,7 @@ load_from_remote
 			break;
 	}
 	[reader free];
+}
 @end
 
 /// Recovery

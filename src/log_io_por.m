@@ -112,10 +112,7 @@ submit:(const void *)data len:(u32)len tag:(u16)tag
 	struct wal_reply *reply = [recovery->writer submit:data len:len tag:tag shard_id:self->id];
 	if (reply->row_count) {
 		scn = reply->scn;
-		for (int i = 0; i < reply->crc_count; i++) {
-			run_crc_log = reply->row_crc[i].value;
-			run_crc_record(&run_crc_state, reply->row_crc[i]);
-		}
+		[self update_run_crc:reply];
 	}
 	return reply->row_count;
 }
