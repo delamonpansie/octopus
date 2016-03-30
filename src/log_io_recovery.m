@@ -652,6 +652,7 @@ recover_row:(struct row_v12 *)r
 	else
 		shard = shard_rt[r->shard_id].shard;
 	int old_ushard = fiber->ushard;
+	static int state = -1;
 	if (shard) {
 		if (r->scn <= shard->scn && shard->snap_loaded && !shard->dummy) {
 			say_debug("%s: skip LSN:%"PRIi64" SCN:%"PRIi64" tag:%s",
@@ -673,17 +674,23 @@ recover_row:(struct row_v12 *)r
 		case snap_initial:
 			if (r->scn != -1) /* no sharding */
 				shard = [self shard_add_dummy:r];
+			state = snap_initial;
+			break;
 		case snap_final:
+			state = snap_final;
 			return;
 		case wal_final:
 			assert(false);
 		case shard_create:
 			assert(shard == nil);
 			struct shard_op *sop = (struct shard_op *)r->data;
-			if (our_shard(sop))
+			if (our_shard(sop)) {
 				shard = [self shard_add:r->shard_id scn:r->scn sop:sop];
-			else
+				if (state == snap_final)
+					shard->snap_loaded = true;
+			} else {
 				say_error("shard %i will be ignored", r->shard_id);
+			}
 			return;
 		default:
 			break;
