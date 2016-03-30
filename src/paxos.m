@@ -820,7 +820,7 @@ retry:
 	while ((req = (struct msg_paxos *)iproto_mbox_get(&mbox))) {
 		assert(req->msg_id == msg_id);
 		say_debug("|  %s peer:%s SCN:%"PRIi64" ballot:%"PRIx64" tag:%s value_len:%i",
-			  paxos_msg_code[req->header.msg_code], paxos_peer_name(paxos, req->peer_id), req->scn, req->ballot,
+			  paxos_msg_code[req->header.msg_code], paxos->peer[req->peer_id], req->scn, req->ballot,
 			  xlog_tag_to_a(req->tag), req->value_len);
 
 		switch(req->header.msg_code) {
