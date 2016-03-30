@@ -7,7 +7,6 @@
 hostname = NULL, ro
 peer = [
   {
-     id = -1, required
      name = NULL, required
      addr = NULL, required
      replication_port = -1
