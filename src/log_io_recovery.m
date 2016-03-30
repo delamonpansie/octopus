@@ -1083,6 +1083,28 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req, void *arg __attrib
 }
 
 static void
+iproto_shard_rt_cb(struct netmsg_head *wbuf, struct iproto *req, void *arg __attribute__((unused)))
+{
+	struct iproto_retcode *reply = iproto_reply(wbuf, req, 0);
+
+	int sz = sizeof(struct sockaddr_in);
+	struct sockaddr_in none = { .sin_family = AF_UNSPEC };
+	char version = 0x01;
+
+	net_add_iov_dup(wbuf, &version, sizeof(version));
+	for (int i = 0; i < nelem(shard_rt); i++) {
+		struct shard_route *e = &shard_rt[i];
+		if (e->shard == nil && e->proxy == NULL)
+			net_add_iov_dup(wbuf, &none, sz);
+		else if (e->proxy)
+			net_add_iov_dup(wbuf, &e->proxy->ts.daddr, sz);
+		else
+			net_add_iov_dup(wbuf, peer_addr(e->shard->peer[0], PORT_PRIMARY), sz);
+	};
+
+	iproto_reply_fixup(wbuf, reply);
+}
+static void
 iproto_shard_load_aux(va_list ap)
 {
 	int shard_id = va_arg(ap, int);
@@ -1173,6 +1195,7 @@ recovery_iproto(void)
 		fiber_create("udpate_rt_notify", update_rt_notify);
 	}
 	service_register_iproto(recovery_service, MSG_SHARD, iproto_shard_cb, IPROTO_LOCAL);
+	service_register_iproto(recovery_service, MSG_SHARD_RT, iproto_shard_rt_cb, IPROTO_LOCAL);
 	paxos_service(recovery_service);
 }
 

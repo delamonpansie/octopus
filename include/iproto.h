@@ -38,10 +38,11 @@
 
 #include <iproto_def.h>
 
-#define MSG_PING  0xff00
-#define MSG_REPLICA  0xff01
-#define MSG_SHARD  0xff02
-#define MSG_IPROXY  0xff03
+#define MSG_PING	0xff00
+#define MSG_REPLICA	0xff01
+#define MSG_SHARD	0xff02
+#define MSG_IPROXY	0xff03
+#define MSG_SHARD_RT	0xff04
 
 
 static inline struct iproto *iproto(const struct tbuf *t)
