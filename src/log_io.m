@@ -885,8 +885,8 @@ read_row
 	/* some of old tarantool snapshots has all rows with lsn == 0,
 	   so using lsn from record will reset recovery lsn set by snap_initial_tag to 0,
 	   also v11 snapshots imply that SCN === LSN */
-	if (r->lsn == 0 && (r->tag & TAG_SNAP) == TAG_SNAP && snap_lsn > 0)
-		r->scn = r->lsn = snap_lsn;
+	if (r->lsn == 0 && (r->tag & TAG_SNAP) == TAG_SNAP)
+		r->scn = r->lsn = self->lsn;
 
 	return r;
 }
@@ -1321,7 +1321,10 @@ format_filename:(i64)lsn
 open_for_read:(i64)lsn
 {
 	const char *filename = [self format_filename:lsn];
-	return [XLog open_for_read_filename:filename dir:self];
+	XLog *xlog = [XLog open_for_read_filename:filename dir:self];
+	if (xlog)
+		xlog->lsn = lsn;
+	return xlog;
 }
 
 int allow_snap_overwrite = 0;

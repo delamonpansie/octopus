@@ -105,7 +105,7 @@ recover_row_stream:(XLog *)stream
 	}
 }
 
-i64 snap_lsn = 0;
+XLog *initial_snap = nil;
 - (i64)
 recover_snap
 {
@@ -114,17 +114,20 @@ recover_snap
 	@try {
 		palloc_register_cut_point(fiber->pool);
 
-		if (snap_lsn == 0)
-			snap_lsn = [snap_dir greatest_lsn];
-		if (snap_lsn == -1)
-			raise_fmt("snap_dir reading failed");
+		if (initial_snap == nil) {
+			i64 snap_lsn = [snap_dir greatest_lsn];
+			if (snap_lsn == -1)
+				raise_fmt("snap_dir reading failed");
 
-		if (snap_lsn < 1)
-			return 0;
+			if (snap_lsn < 1)
+				return 0;
 
-		snap = [snap_dir open_for_read:snap_lsn];
-		if (snap == nil)
-			raise_fmt("can't find/open snapshot");
+			snap = [snap_dir open_for_read:snap_lsn];
+			if (snap == nil)
+				raise_fmt("can't find/open snapshot");
+		} else {
+			snap = initial_snap;
+		}
 
 		say_info("recover from `%s'", snap->filename);
 
@@ -133,16 +136,16 @@ recover_snap
 		if (legacy_snap && !cfg.sync_scn_with_lsn)
 			panic("sync_scn_with_lsn is required when loading from v11 snapshots");
 
-		lsn = snap_lsn;
+		lsn = snap->lsn;
 
 		if (legacy_snap)
-			[recovery recover_row:dummy_row(snap_lsn, snap_lsn, snap_initial|TAG_SYS)];
+			[recovery recover_row:dummy_row(snap->lsn, snap->lsn, snap_initial|TAG_SYS)];
 
 		[self recover_row_stream:snap];
 
 		/* old v11 snapshot, scn == lsn from filename */
 		if (legacy_snap)
-			[recovery recover_row:dummy_row(snap_lsn, snap_lsn, snap_final|TAG_SYS)];
+			[recovery recover_row:dummy_row(snap->lsn, snap->lsn, snap_final|TAG_SYS)];
 
 		if (![snap eof])
 			raise_fmt("unable to fully read snapshot");
@@ -153,7 +156,7 @@ recover_snap
 		palloc_cutoff(fiber->pool);
 		[snap free];
 		snap = nil;
-		snap_lsn = 0;
+		initial_snap = nil;
 	}
 	say_info("snapshot recovered, LSN:%"PRIi64, lsn);
 	return lsn;

@@ -198,7 +198,7 @@ typedef struct marker_desc {
 	char *filename;
 
 	XLogDir *dir;
-	i64 next_lsn;
+	i64 lsn, next_lsn;
 
 	enum log_mode {
 		LOG_READ,
@@ -317,8 +317,9 @@ bool our_shard(const struct shard_op *sop);
 - (void) recover_row:(struct row_v12 *)row;
 @end
 
-extern i64 snap_lsn; /* may be used for overriding initial snapshot,
-			valid while loading snapshot */
+extern XLog *initial_snap; /* may be used for overriding initial snapshot,
+			      valid while loading snapshot */
+
 @interface XLogReader : Object {
 	i64 lsn;
 	id<RecoverRow> recovery;
