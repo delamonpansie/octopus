@@ -68,6 +68,8 @@ static struct registered_callbacks registered = {NULL, 0, 0};
 {
 	[super init];
 	fd = fd_;
+	shard_id = -1;
+	reader = [[XLogReader alloc] init_recovery:(id)self];
 	return self;
 }
 
@@ -169,8 +171,12 @@ send_row:(struct row_v12 *)row
 - (void)
 recover_row:(struct row_v12 *)row
 {
-	if (row->scn != 0 && min_scn && row->scn < min_scn)
-		return;
+	if (row->scn != 0) {
+		if (shard_id != -1 && row->shard_id != shard_id)
+			return;
+		if (min_scn && row->scn < min_scn)
+			return;
+	}
 
 	if ((row = filter(row, NULL, 0)))
 		[self send_row:row];
@@ -182,11 +188,10 @@ wal_final_row
 	[self recover_row:dummy_row(0, 0, wal_final|TAG_SYS)];
 }
 
-
-- (i64)
-prepare_from_scn:(i64)initial_scn filter:(struct feeder_filter*)_filter
+- (void)
+setup_filter:(struct feeder_filter*)_filter
 {
-	int i, shard_id = 0;
+	int i;
 
 	switch (_filter->type) {
 	case FILTER_TYPE_ID:
@@ -208,6 +213,13 @@ prepare_from_scn:(i64)initial_scn filter:(struct feeder_filter*)_filter
 			lua_pushnil(fiber->L);
 		}
 		filter = lua_filter;
+		if (strcmp(_filter->name, "changer") == 0 &&
+		    _filter->arglen > 0 && _filter->arglen < 63 )
+		{
+			char buf[64] = {0};
+			memcpy(buf, _filter->arg, _filter->arglen);
+			shard_id = atoi(buf);
+		}
 		break;
 	case FILTER_TYPE_C:
 		for(i = 0; i < registered.count; i++) {
@@ -223,19 +235,26 @@ prepare_from_scn:(i64)initial_scn filter:(struct feeder_filter*)_filter
 		break;
 	}
 
+	if (_filter->type == FILTER_TYPE_ID)
+		say_info("%s filter: type=ID", __func__);
+	else
+		say_info("%s shard:%i filter: type=%s name='%s'", __func__,
+			 shard_id, filter_type_names[_filter->type], _filter->name);
+
 	if (_filter->arg) {
 		filter(NULL, _filter->arg, _filter->arglen);
 	}
+}
 
-	if (_filter->type == FILTER_TYPE_ID)
-		say_info("%s initial_scn:%"PRIi64" filter: type=ID", __func__, initial_scn);
-	else
-		say_info("%s initial_scn:%"PRIi64" shard:%i filter: type=%s name='%s'", __func__,
-			 initial_scn, shard_id, filter_type_names[_filter->type], _filter->name);
+- (void)
+load_from_scn:(i64)initial_scn
+{
+
+	say_info("%s initial_scn:%"PRIi64, __func__, initial_scn);
 
 	if (initial_scn != 0) {
 		/* special case: newborn peer without WALs */
-		if ([snap_dir containg_scn:initial_scn shard:shard_id]) {
+		if ([snap_dir greatest_lsn]) {
 			while ([wal_dir greatest_lsn] <= 0) {
 				sleep(1);
 				keepalive();
@@ -243,23 +262,21 @@ prepare_from_scn:(i64)initial_scn filter:(struct feeder_filter*)_filter
 		}
 
 		min_scn = initial_scn;
-		i64 initial_lsn = [wal_dir containg_scn:initial_scn shard:shard_id];
-		if (initial_lsn <= 0)
-			raise_fmt("unable to find WAL containing SCN:%"PRIi64, initial_scn);
-		say_debug("%s: SCN:%"PRIi64" => LSN:%"PRIi64, __func__, initial_scn, initial_lsn);
-		return initial_lsn;
+		XLog *initial_wal = [wal_dir find_with_scn:initial_scn shard:shard_id];
+		if (initial_wal == nil)
+			raise_fmt("unable to find WAL containing shard:%i SCN:%"PRIi64, shard_id, initial_scn);
+		say_debug("%s: SCN:%"PRIi64" => LSN:%"PRIi64, __func__, initial_scn, initial_wal->lsn);
+
+		[reader load_incr:initial_wal];
 	} else {
 		/* load from last valid snapshot */
-		return 0;
+		[reader load_full:nil];
 	}
 }
 
 - (void)
-start_reader:(i64)lsn
+follow
 {
-	XLogReader *reader = [[XLogReader alloc] init_recovery:(id)self];
-
-	[reader load_from_local:lsn];
 	[self wal_final_row];
 	[reader recover_follow:cfg.wal_dir_rescan_delay];
 }
@@ -269,12 +286,9 @@ start_reader:(i64)lsn
 static struct iproto * recv_req(int fd);
 
 static i64
-handshake(int sock, struct iproto *req, Feeder *feeder, struct feeder_filter *filter)
+handshake(int sock, struct iproto *req, struct feeder_filter *filter)
 {
-	struct tbuf *rep;
-	i64 scn, lsn;
-
-	rep = tbuf_alloc(fiber->pool);
+	struct tbuf *rep = tbuf_alloc(fiber->pool);
 
 	if (req->data_len < sizeof(struct replication_handshake_base)) {
 		say_error("bad handshake len");
@@ -321,9 +335,6 @@ handshake(int sock, struct iproto *req, Feeder *feeder, struct feeder_filter *fi
 		say_error("bad replication version");
 		_exit(EXIT_FAILURE);
 	}
-	scn = hshake->scn;
-	lsn = [feeder prepare_from_scn:scn filter:filter];
-
 	tbuf_append(rep, &(struct iproto_retcode)
 			 { .msg_code = req->msg_code,
 			   .data_len = sizeof(default_version) +
@@ -335,9 +346,7 @@ handshake(int sock, struct iproto *req, Feeder *feeder, struct feeder_filter *fi
 	tbuf_append(rep, &default_version, sizeof(default_version));
 	writef(sock, rep->ptr, tbuf_len(rep));
 
-	[feeder start_reader:lsn];
-
-	return lsn;
+	return hshake->scn;
 }
 
 static void
@@ -387,7 +396,11 @@ recover_feed_slave(int sock, struct iproto *req)
 
 	feeder = [[Feeder alloc] init_fd:sock];
 
-	handshake(sock, req, feeder, &filter);
+	i64 scn = handshake(sock, req, &filter);
+	[feeder setup_filter:&filter];
+	[feeder load_from_scn:scn];
+	[feeder follow];
+
 	ev_io_init(&io, (void *)eof_monitor, sock, EV_READ);
 	ev_io_start(&io);
 

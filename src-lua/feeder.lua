@@ -42,7 +42,7 @@ function replication_filter.changer(row, arg)
 
     if row.lsn == 0 and row.scn == 0 then return true end
     if row.scn == -1 then return true end
-    if row.shard_id ~= shard_id then return false end
+    if shard_id and row.shard_id ~= shard_id then return false end
 
     local tag = wal_tag.name(row.tag)
     if tag == "paxos_promise" then return false end
