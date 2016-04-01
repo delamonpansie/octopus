@@ -726,14 +726,14 @@ recover_row:(struct row_v12 *)r
 load_from_local
 {
 	if (fold_scn)  {
-		i64 snap_lsn = [snap_dir containg_scn:fold_scn shard:0]; /* select snapshot before desired scn */
-		initial_snap = [snap_dir open_for_read:snap_lsn];
-		[reader load_from_local:0];
+		/* select snapshot before desired scn */
+		XLog *snap = [snap_dir find_with_scn:fold_scn shard:0];
+		[reader load_full:snap];
 		say_error("unable to find record with SCN:%"PRIi64, fold_scn);
 		exit(EX_OSFILE);
 	}
 
-	i64 local_lsn = [reader load_from_local:0];
+	i64 local_lsn = [reader load_full:nil];
 	title(NULL);
 	return local_lsn;
 }
@@ -807,7 +807,7 @@ simple:(struct iproto_service *)service
 #endif
 
 	if (cfg.local_hot_standby) {
-		[reader local_hot_standby];
+		[reader hot_standby];
 		fiber_create("wal_lock", wal_lock, self);
 
 		for (int i = 0; i < MAX_SHARD; i++)

@@ -1377,39 +1377,65 @@ open_for_write:(i64)lsn scn:(i64 *)shard_scn_map
 	return NULL;
 }
 
-- (i64)
-containg_scn:(i64)target_scn shard:(int)target_shard_id
+
+static i64
+find(int count, const char *type, i64 needle, i64 *haystack, i64 *lsn)
 {
-	i64 *lsn;
-	ssize_t count = [self scan_dir:&lsn];
-	const i64 initial_lsn = 2;
-
-	/* new born master without a single commit */
-	if (count == 0 && target_scn <= 2)
-		return initial_lsn;
-
-	if (count <= 0) {
-		say_error("%s: dir is either empty or unreadable", __func__);
+	if (needle < *haystack) {
+		say_warn("%s: requested %s:%"PRIi64" is missing", __func__, type, needle);
 		return -1;
 	}
+
+	for (int i = 0; i < count; i++) {
+		say_warn("%s: [%i] haystack:%i lsn:%i", __func__, i, (int)haystack[i], (int)lsn[i]);
+	}
+
+	/* shard scn may appear in the middle of WALs */
+	for (; count > 1; count--, lsn++, haystack++)
+		if (*haystack != 0)
+			break;
+
+	int err = 0;
+	for (; count > 1; count--, lsn++, haystack++) {
+		if (*haystack <= 0) {
+			err = 1;
+			continue;
+		}
+
+		if (*haystack <= needle && needle < *(haystack + 1)) {
+			say_debug2("%s: %s:%"PRIi64 " file_lsn:%"PRIi64, __func__, type, needle, *lsn);
+			return *lsn;
+		}
+	}
+
+	if (err)
+		return -1;
+	say_debug2("%s: %s:%"PRIi64 " file_lsn:%"PRIi64, __func__, type, needle, *lsn);
+	return *lsn;
+}
+
+- (i64 *)
+scan_scn_shard:(int)target_shard_id lsn:(i64 *)lsn count:(int)count
+{
+	i64 *scn = p0alloc(fiber->pool, sizeof(i64) * count);
 
 	for (int i = 0; i < count; i++) {
 		const char *filename = [self format_filename:lsn[i]];
 		FILE *file = fopen(filename, "r");
 		if (file == NULL) {
 			say_syserror("fopen of %s for reading failed", filename);
+			scn[i] = -1;
 			continue;
 		}
 
-		i64 scn;
 		for (;;) {
 			i64 tmp;
 			int shard_id;
 			char buf[256];
 
-			scn = -1;
 			if (fgets(buf, sizeof(buf), file) == NULL) {
 				say_syserror("fgets");
+				scn[i] = -1;
 				break;
 			}
 
@@ -1418,24 +1444,38 @@ containg_scn:(i64)target_scn shard:(int)target_shard_id
 
 			if (sscanf(buf, "SCN-%i: %"PRIi64, &shard_id, &tmp) == 2) {
 				if (target_shard_id == shard_id) {
-					scn = tmp;
+					scn[i] = tmp;
 					break;
 				}
 			}
 		}
-
-		/* old header without SCN mapping:
-		   treat it as it written with sync_scn_with_lsn option */
-		if (scn == -1)
-			scn = lsn[i];
-
-		if (scn == target_scn)
-			return lsn[i];
-		if (scn > target_scn)
-			return i > 0 ? lsn[i - 1] : initial_lsn;
 	}
+	return scn;
+}
 
-	return lsn[count - 1];
+- (XLog *)
+find_with_lsn:(i64)lsn
+{
+	i64 *dir_lsn;
+	ssize_t count = [self scan_dir:&dir_lsn];
+
+	i64 file_lsn = find(count, "LSN", lsn, dir_lsn, dir_lsn);
+	if (file_lsn <= 0)
+		return nil;
+	return [self open_for_read:file_lsn];
+}
+
+- (XLog *)
+find_with_scn:(i64)scn shard:(int)shard_id
+{
+	i64 *dir_lsn, *dir_scn;
+	ssize_t count = [self scan_dir:&dir_lsn];
+	dir_scn = [self scan_scn_shard:shard_id lsn:dir_lsn count:count];
+
+	i64 file_lsn = find(count, "SCN", scn, dir_scn, dir_lsn);
+	if (file_lsn <= 0)
+		return nil;
+	return [self open_for_read:file_lsn];
 }
 
 @end

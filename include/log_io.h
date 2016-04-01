@@ -129,9 +129,9 @@ typedef void (follow_cb)(ev_stat *w, int events);
 - (id) init_dirname:(const char *)dirname_;
 - (XLog *) open_for_read:(i64)lsn;
 - (XLog *) open_for_write:(i64)lsn scn:(const i64 *)shard_scn_map;
+- (XLog *) find_with_lsn:(i64)lsn;
+- (XLog *) find_with_scn:(i64)scn shard:(int)shard_id;
 - (i64) greatest_lsn;
-- (XLog *) containg_lsn:(i64)target_lsn;
-- (i64) containg_scn:(i64)target_scn shard:(int)target_shard_id;
 - (int) lock;
 - (int) stat:(struct stat *)buf;
 - (int) sync;
@@ -328,8 +328,10 @@ extern XLog *initial_snap; /* may be used for overriding initial snapshot,
 }
 - (id) init_recovery:(id<RecoverRow>)recovery;
 - (i64) lsn;
-- (i64) load_from_local:(i64)initial_lsn;
-- (void) local_hot_standby;
+
+- (i64) load_full:(XLog *)preferred_snap;
+- (i64) load_incr:(XLog *)initial_xlog;
+- (void) hot_standby;
 
 - (void) recover_follow:(ev_tstamp)wal_dir_rescan_delay;
 - (i64) recover_snap;

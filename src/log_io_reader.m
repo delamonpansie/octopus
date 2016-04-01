@@ -105,28 +105,22 @@ recover_row_stream:(XLog *)stream
 	}
 }
 
-XLog *initial_snap = nil;
-- (i64)
-recover_snap
-{
-	XLog *snap = nil;
 
+- (i64)
+recover_snap:(XLog *)snap
+{
 	@try {
 		palloc_register_cut_point(fiber->pool);
 
-		if (initial_snap == nil) {
+		if (snap == nil) {
 			i64 snap_lsn = [snap_dir greatest_lsn];
 			if (snap_lsn == -1)
 				raise_fmt("snap_dir reading failed");
-
 			if (snap_lsn < 1)
 				return 0;
-
 			snap = [snap_dir open_for_read:snap_lsn];
 			if (snap == nil)
 				raise_fmt("can't find/open snapshot");
-		} else {
-			snap = initial_snap;
 		}
 
 		say_info("recover from `%s'", snap->filename);
@@ -156,10 +150,15 @@ recover_snap
 		palloc_cutoff(fiber->pool);
 		[snap free];
 		snap = nil;
-		initial_snap = nil;
 	}
 	say_info("snapshot recovered, LSN:%"PRIi64, lsn);
 	return lsn;
+}
+
+- (i64)
+recover_snap
+{
+	return [self recover_snap:nil];
 }
 
 - (void)
@@ -221,10 +220,8 @@ recover_remaining_wals
 
 
 - (i64)
-load_from_local:(i64)initial_lsn
+load_full:(XLog *)preferred_snap
 {
-	say_debug("%s: initial_LSN:%"PRIi64, __func__, initial_lsn);
-
 	if ([wal_dir greatest_lsn] == 0 && [snap_dir greatest_lsn] == 0) {
 		say_info("local state is empty: no snapshot and xlog found");
 		return 0;
@@ -233,30 +230,18 @@ load_from_local:(i64)initial_lsn
 	say_debug("snap greatest LSN:%"PRIi64 ", wal greatest LSN:%"PRIi64,
 		  [snap_dir greatest_lsn], [wal_dir greatest_lsn]);
 
-	say_info("local recovery start");
+	say_info("local full recovery start");
 	if ([(id)recovery respondsTo:@selector(status_update:)])
 		[(id)recovery status_update:"loading/local"];
 
-	i64 snap_lsn = -1;
-	if (initial_lsn == 0) {
-		snap_lsn = [self recover_snap];
-		assert(lsn > 0);
+	i64 snap_lsn = [self recover_snap:preferred_snap];
+	assert(lsn > 0);
 
-		/*
-		 * just after snapshot recovery current_wal isn't known
-		 * so find wal which contains record with _next_ lsn
-		 */
-		current_wal = [wal_dir containg_lsn:lsn + 1];
-	} else {
-		assert(initial_lsn > 1);
-		lsn = initial_lsn - 1; /* since initial_lsn is > 1, lsn is >= 1
-					  valid lsn is vital for [recover_follow]: [open_next_wal] is relies on valid LSN */
-		current_wal = [wal_dir containg_lsn:initial_lsn];
-		if (current_wal == nil) {
-			say_info("unable to find WAL containing LSN:%"PRIi64, initial_lsn);
-			return 0;
-		}
-	}
+	/*
+	 * just after snapshot recovery current_wal isn't known
+	 * so find wal which contains record with _next_ lsn
+	 */
+	current_wal = [wal_dir find_with_lsn:lsn + 1];
 
 	if (current_wal != nil)
 		say_info("recover from `%s'", current_wal->filename);
@@ -269,6 +254,20 @@ load_from_local:(i64)initial_lsn
 		raise_fmt("last WAL is missing or truncated: snapshot LSN:%"PRIi64" > last WAL row LSN:%"PRIi64,
 			  snap_lsn, [current_wal last_read_lsn]);
 
+	return lsn;
+}
+
+- (i64)
+load_incr:(XLog *)initial_xlog
+{
+	say_info("local incremental recovery start");
+
+	current_wal = initial_xlog;
+	lsn = current_wal->lsn - 1; /* valid lsn is vital for [recover_follow]:
+				       [open_next_wal] relies on valid LSN */
+	say_info("recover from `%s'", current_wal->filename);
+	[self recover_remaining_wals];
+	say_info("WALs recovered, LSN:%"PRIi64, lsn);
 	return lsn;
 }
 
@@ -331,7 +330,7 @@ recover_finalize
 }
 
 - (void)
-local_hot_standby
+hot_standby
 {
 	[self recover_follow:cfg.wal_dir_rescan_delay];
 	if ([(id)recovery respondsTo:@selector(status_update:)])
