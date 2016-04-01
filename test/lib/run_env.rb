@@ -107,14 +107,11 @@ EOD
     cfg << <<EOD if hostname
 sync_scn_with_lsn = 0
 hostname = "#{hostname}"
-peer = [ { id = 1
-           name = "one"
+peer = [ { name = "one"
            addr = "127.0.0.1:33013" },
-         { id = 2
-           name  = "two"
+         { name  = "two"
            addr = "127.0.0.1:33023" },
-         { id = 3
-           name = "three"
+         { name = "three"
            addr = "127.0.0.1:33033" } ]
 EOD
     cfg
