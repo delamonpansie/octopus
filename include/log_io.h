@@ -317,9 +317,6 @@ bool our_shard(const struct shard_op *sop);
 - (void) recover_row:(struct row_v12 *)row;
 @end
 
-extern XLog *initial_snap; /* may be used for overriding initial snapshot,
-			      valid while loading snapshot */
-
 @interface XLogReader : Object {
 	i64 lsn;
 	id<RecoverRow> recovery;
