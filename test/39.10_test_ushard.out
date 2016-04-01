@@ -31,12 +31,12 @@
 # one.insert([1, "one"], {:shard=>3})
 1
 
-# box.ping()
+# three.ping()
 :pong
 
-# box.select(1, {:shard=>1})
+# three.select(1, {:shard=>1})
 [["\x01\x00\x00\x00", "one"]]
 
-# box.select(1, {:shard=>3})
+# three.select(1, {:shard=>3})
 [["\x01\x00\x00\x00", "one"]]
 

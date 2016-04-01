@@ -18,6 +18,7 @@ $one.create_object_space 0, :shard => 3, :index => DEFIDX
 $one.insert [1,"one"], :shard => 3
 
 $three = ThreeEnv.new.connect_eval do
+  self.connect_name = "three"
   ping
   self
 end
