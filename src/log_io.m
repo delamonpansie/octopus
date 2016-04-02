@@ -1386,10 +1386,6 @@ find(int count, const char *type, i64 needle, i64 *haystack, i64 *lsn)
 		return -1;
 	}
 
-	for (int i = 0; i < count; i++) {
-		say_warn("%s: [%i] haystack:%i lsn:%i", __func__, i, (int)haystack[i], (int)lsn[i]);
-	}
-
 	/* shard scn may appear in the middle of WALs */
 	for (; count > 1; count--, lsn++, haystack++)
 		if (*haystack != 0)
