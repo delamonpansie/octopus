@@ -80,7 +80,7 @@ LIST_HEAD(iproto_future_list, iproto_future);
 @public
 	struct iproto_future_list waiting;
 }
-- (void)init:(int)fd_ pool:(struct palloc_pool *)pool;
+- (id)init:(int)fd_ pool:(struct palloc_pool *)pool;
 - (void)packet_ready:(struct iproto *)msg;
 @end
 

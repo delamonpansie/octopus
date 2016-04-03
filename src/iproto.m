@@ -132,12 +132,13 @@ iproto_ping(struct netmsg_head *h, struct iproto *r, void *arg __attribute__((un
 }
 
 @implementation iproto_ingress
-- (void)
+- (id)
 init:(int)fd_ pool:(struct palloc_pool *)pool_
 {
 	say_debug2("%s: peer %s", __func__, net_fd_name(fd_));
 	netmsg_io_init(self, pool_, fd_);
 	ev_io_start(&in);
+	return self;
 }
 
 - (void)
