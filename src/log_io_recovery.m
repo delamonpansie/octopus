@@ -502,8 +502,8 @@ fill_feeder_param:(struct feeder_param *)feeder peer:(int)i
 	*feeder = (struct feeder_param){
 		.ver = 2,
 		.addr = *peer_addr(peer[i], PORT_REPLICATION),
-		.filter = {.type = FILTER_TYPE_LUA,
-			   .name = "changer",
+		.filter = {.type = FILTER_TYPE_C,
+			   .name = "shard",
 			   .arg = filter_arg,
 			   .arglen = sprintf(filter_arg, "%i", self->id) }
 	};
@@ -756,8 +756,8 @@ load_from_remote
 
 		feeder = (struct feeder_param){ .ver = 2,
 						.addr = *peer_addr((*p)->name, PORT_REPLICATION),
-						.filter = {.type = FILTER_TYPE_LUA,
-							   .name = "changer" }};
+						.filter = {.type = FILTER_TYPE_C,
+							   .name = "shard" } };
 		count += [remote_reader load_from_remote:&feeder];
 	}
 	[remote_reader free];
