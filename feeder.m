@@ -63,6 +63,7 @@ struct registered_callbacks {
 
 static struct registered_callbacks registered = {NULL, 0, 0};
 
+static Feeder *feeder;
 @implementation Feeder
 - (id) init_fd:(int)fd_
 {
@@ -126,6 +127,30 @@ id_filter(struct row_v12 *r, __attribute((unused)) const char *arg, __attribute_
 }
 
 struct row_v12 *
+shard_filter(struct row_v12 *row, const char *arg, int arglen)
+{
+	static int shard_id = -1;
+	if (row == NULL) {
+		if (arglen)
+			shard_id = atoi(arg);
+		feeder->shard_id = shard_id;
+		return NULL;
+	}
+	if (row->scn == -1 || (row->lsn == 0 && row->scn == 0))
+		return row;
+	if (shard_id != -1 && row->shard_id != shard_id)
+		return NULL;
+	switch (row->tag & TAG_MASK) {
+	case paxos_promise:
+	case paxos_accept:
+	case paxos_nop:
+		return NULL;
+	default:
+		return row;
+	}
+}
+
+struct row_v12 *
 lua_filter(struct row_v12 *r, __attribute((unused)) const char *arg, __attribute__((unused)) int arglen)
 {
 	struct lua_State *L = fiber->L;
@@ -171,12 +196,9 @@ send_row:(struct row_v12 *)row
 - (void)
 recover_row:(struct row_v12 *)row
 {
-	if (row->scn != 0) {
-		if (shard_id != -1 && row->shard_id != shard_id)
-			return;
-		if (min_scn && row->scn < min_scn)
-			return;
-	}
+	if ((row->scn != 0 && min_scn && row->scn < min_scn) ||
+	    (row->lsn != 0 && min_lsn && row->lsn < min_lsn))
+		return;
 
 	if ((row = filter(row, NULL, 0)))
 		[self send_row:row];
@@ -213,13 +235,6 @@ setup_filter:(struct feeder_filter*)_filter
 			lua_pushnil(fiber->L);
 		}
 		filter = lua_filter;
-		if (strcmp(_filter->name, "changer") == 0 &&
-		    _filter->arglen > 0 && _filter->arglen < 63 )
-		{
-			char buf[64] = {0};
-			memcpy(buf, _filter->arg, _filter->arglen);
-			shard_id = atoi(buf);
-		}
 		break;
 	case FILTER_TYPE_C:
 		for(i = 0; i < registered.count; i++) {
@@ -241,37 +256,40 @@ setup_filter:(struct feeder_filter*)_filter
 		say_info("%s shard:%i filter: type=%s name='%s'", __func__,
 			 shard_id, filter_type_names[_filter->type], _filter->name);
 
-	if (_filter->arg) {
+	if (_filter->arg)
 		filter(NULL, _filter->arg, _filter->arglen);
-	}
 }
 
 - (void)
-load_from_scn:(i64)initial_scn
+load_from:(i64)xid
 {
+	say_info("%s initial_xid:%"PRIi64, __func__, xid);
 
-	say_info("%s initial_scn:%"PRIi64, __func__, initial_scn);
-
-	if (initial_scn != 0) {
-		/* special case: newborn peer without WALs */
-		if ([snap_dir greatest_lsn]) {
-			while ([wal_dir greatest_lsn] <= 0) {
-				sleep(1);
-				keepalive();
-			}
-		}
-
-		min_scn = initial_scn;
-		XLog *initial_wal = [wal_dir find_with_scn:initial_scn shard:shard_id];
-		if (initial_wal == nil)
-			raise_fmt("unable to find WAL containing shard:%i SCN:%"PRIi64, shard_id, initial_scn);
-		say_debug("%s: SCN:%"PRIi64" => LSN:%"PRIi64, __func__, initial_scn, initial_wal->lsn);
-
-		[reader load_incr:initial_wal];
-	} else {
-		/* load from last valid snapshot */
+	if (xid == 0) {
+		/* full load from last valid snapshot */
 		[reader load_full:nil];
+		return;
 	}
+
+	/* special case: newborn peer without WALs */
+	if ([snap_dir greatest_lsn]) {
+		while ([wal_dir greatest_lsn] <= 0) {
+			sleep(1);
+			keepalive();
+		}
+	}
+
+	XLog *initial_wal;
+	if (shard_id != -1) {
+		min_scn = xid;
+		initial_wal = [wal_dir find_with_scn:xid shard:shard_id];
+	} else {
+		min_lsn = xid;
+		initial_wal = [wal_dir find_with_lsn:xid];
+	}
+	if (initial_wal == nil)
+		raise_fmt("unable to find initial WAL");
+	[reader load_incr:initial_wal];
 }
 
 - (void)
@@ -377,7 +395,6 @@ keepalive_send(va_list ap)
 static void
 recover_feed_slave(int sock, struct iproto *req)
 {
-	Feeder *feeder;
 	struct sockaddr_in addr;
 	socklen_t addrlen = sizeof(addr);
 	const char *peer_name = "<unknown>";
@@ -394,11 +411,12 @@ recover_feed_slave(int sock, struct iproto *req)
 	luaT_require_or_panic("feeder_init", false, NULL);
 	luaT_require_or_panic("init", false, NULL);
 
+	[Feeder register_filter:"shard" call:shard_filter];
 	feeder = [[Feeder alloc] init_fd:sock];
 
-	i64 scn = handshake(sock, req, &filter);
+	i64 xid = handshake(sock, req, &filter);
 	[feeder setup_filter:&filter];
-	[feeder load_from_scn:scn];
+	[feeder load_from:xid];
 	[feeder follow];
 
 	ev_io_init(&io, (void *)eof_monitor, sock, EV_READ);
@@ -520,12 +538,12 @@ feeder_fixup_addr(struct octopus_cfg *cfg)
 	return 0;
 }
 
-static struct tnt_module feeder = {
+static struct tnt_module mod_feeder = {
 	.name = "feeder",
 	.version = feeder_version_string,
 	.check_config = feeder_fixup_addr,
 	.init = init
 };
 
-register_module(feeder);
+register_module(mod_feeder);
 register_source();
