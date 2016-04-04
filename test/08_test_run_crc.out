@@ -100,5 +100,5 @@
 # box.insert([32, 33, 34])
 1
 
-lsn:34 scn:34 t:sys/run_crc 0.0.0.0:0 SCN:32 log:0xc0240090
+lsn:34 shard:0 scn:34 t:sys/run_crc SCN:32 log:0xc0240090
 

@@ -348,7 +348,6 @@ local function wal_pack(r)
     local row = ffi.cast("struct row_v12*", p:need_ptr(ffi.sizeof("struct row_v12")))
     row.lsn = r.lsn
     row.scn = r.scn
-    row.cookie = r.cookie
     row.tm = r.tm
 
     local cmd = r.cmd
@@ -466,7 +465,6 @@ function wal_filter(f)
         r.lsn = row.lsn
         r.scn = row.scn
         r.tag = row.tag
-        r.cookie = row.cookie
         r.tm = row.tm
         r.data = row.data
         r.len = row.len
