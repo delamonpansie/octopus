@@ -317,6 +317,10 @@ class SilverBox < IProtoRetCode
     :success
   end
 
+  def shard_rt
+    msg :code => 0xff04, :raw => ""
+  end
+
   def pks(*args)
     param = args[-1].is_a?(Hash) ? args.pop : {}
     object_space = param[:object_space] || @object_space
