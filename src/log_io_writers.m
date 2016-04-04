@@ -610,7 +610,7 @@ submit:(const void *)data len:(u32)data_len tag:(u16)tag shard_id:(u16)shard_id
 {
 	struct row_v12 row = { .scn = 0,
 			       .tag = tag,
-			       {.shard_id = shard_id} };
+			       .shard_id = shard_id };
 	struct wal_pack pack;
 	wal_pack_prepare(self, &pack);
 	wal_pack_append_row(&pack, &row);

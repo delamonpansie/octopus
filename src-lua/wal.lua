@@ -76,7 +76,7 @@ local meta = { __index = m,
                __tostring = function(self)
                    local tmpl = "lsn:%s scn:%s shard:%i tm:%s cookie:%s t:%s/%s"
                    return tmpl:format(self.lsn, self.scn, self.shard_id,
-                                      self.tm, self.cookie,
+                                      self.tm, 0,
                                       tag_type(self.tag), tag_name(self.tag))
                end }
 

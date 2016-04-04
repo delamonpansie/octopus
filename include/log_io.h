@@ -88,7 +88,6 @@ static inline bool dummy_tag(int tag) /* dummy row tag */
 }
 
 
-extern const u64 default_cookie;
 extern const u32 default_version, version_11;
 extern const u32 marker, eof_marker;
 extern const char *inprogress_suffix;
@@ -165,10 +164,10 @@ struct row_v12 {
 	i64 lsn;
 	i64 scn;
 	u16 tag;
-	union {
-		u64 cookie;
-		u16 shard_id;
-	};
+
+	u16 shard_id;
+	u8 remote_lsn[6];
+
 	double tm;
 	u32 len;
 	u32 data_crc32c;
@@ -223,7 +222,6 @@ typedef struct marker_desc {
 - (void) fadvise_dont_need;
 - (size_t) rows;
 - (i64) last_read_lsn;
-- (const struct row_v12 *) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie;
 - (const struct row_v12 *) append_row:(const void *)data len:(u32)data_len scn:(i64)scn tag:(u16)tag;
 - (const struct row_v12 *) append_row:(const void *)data len:(u32)data_len shard:(Shard *)shard tag:(u16)tag;
 - (const struct row_v12 *) append_row:(struct row_v12 *)row data:(const void *)data;

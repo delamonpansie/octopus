@@ -66,7 +66,6 @@ dummy_row(i64 lsn, i64 scn, u16 tag)
 	r->scn = scn;
 	r->tm = ev_now();
 	r->tag = tag;
-	r->cookie = default_cookie;
 	r->len = 0;
 	r->data_crc32c = crc32c(0, (unsigned char *)"", 0);
 	r->header_crc32c = crc32c(0, (unsigned char *)r + sizeof(r->header_crc32c),
@@ -1252,18 +1251,19 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 	int inner_tag;
 	u64 ballot;
 	u32 value_len;
-	bool print_shard_id = getenv("PRINT_SHARD_ID") != NULL;
 
 	tbuf_printf(buf, "lsn:%" PRIi64, row->lsn);
-	if (print_shard_id && row->scn != -1)
+	if (row->scn != -1) {
 		tbuf_printf(buf, " shard:%i", row->shard_id);
+		i64 rem_lsn = 0;
+		memcpy(&rem_lsn, row->remote_lsn, 6);
+		if (rem_lsn)
+			tbuf_printf(buf, " rem_lsn:%"PRIi64, rem_lsn);
+	}
 
 	tbuf_printf(buf, " scn:%" PRIi64 " tm:%.3f t:%s ",
 		    row->scn, row->tm,
 		    xlog_tag_to_a(row->tag));
-
-	if (!print_shard_id)
-		tbuf_printf(buf, "%s ", sintoa((void *)&row->cookie));
 
 	if (!handler)
 		handler = hexdump;

@@ -568,7 +568,6 @@ append_row:(const void *)data len:(u32)len scn:(i64)scn tag:(u16)tag
 	row = (struct row_v12){ .scn = scn,
 				.tm = ev_now(),
 				.tag = tag,
-				{.cookie = default_cookie},
 				.len = len };
 
 	return [self append_row:&row data:data];
@@ -581,25 +580,11 @@ append_row:(const void *)data len:(u32)len shard:(Shard *)shard tag:(u16)tag
 	row = (struct row_v12){ .scn = shard->scn,
 				.tm = ev_now(),
 				.tag = tag,
-				{.shard_id = shard->id},
+				.shard_id = shard->id,
 				.len = len };
 
 	return [self append_row:&row data:data];
 }
-
-- (const struct row_v12 *)
-append_row:(const void *)data len:(u32)len scn:(i64)scn tag:(u16)tag cookie:(u64)cookie
-{
-	static struct row_v12 row;
-	row = (struct row_v12){ .scn = scn,
-				.tm = ev_now(),
-				.tag = tag,
-				{.cookie = cookie},
-				.len = len };
-
-	return [self append_row:&row data:data];
-}
-
 
 - (i64)
 confirm_write
@@ -702,7 +687,6 @@ convert_row_v04_to_v12(struct tbuf *m)
 	row_v12(n)->tm = 0;
 	row_v12(n)->len = _row_v04(m)->len + sizeof(u16); /* tag */
 	row_v12(n)->tag = wal_data | TAG_WAL;
-	row_v12(n)->cookie = default_cookie;
 
 	tbuf_add_dup(n, &_row_v04(m)->type);
 	tbuf_ltrim(m, sizeof(struct _row_v04));
@@ -808,7 +792,7 @@ convert_row_v11_to_v12(struct tbuf *m)
 		return NULL;
 	}
 
-	row_v12(n)->cookie = read_u64(m);
+	(void)read_u64(m); /* ignore cookie */
 	tbuf_append(n, m->ptr, row_v12(n)->len);
 
 	row_v12(n)->data_crc32c = crc32c(0, m->ptr, row_v12(n)->len);
@@ -899,7 +883,7 @@ append_row:(struct row_v12 *)row12 data:(const void *)data
 	struct _row_v11 row;
 	u16 tag = row12->tag & TAG_MASK;
 	u32 data_len = row12->len;
-	u64 cookie = row12->cookie;
+	u64 cookie = 0;
 
 	if (tag == snap_data) {
 		tag = (u16)-1;
