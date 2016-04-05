@@ -287,6 +287,7 @@ connect_loop
 {
 	ev_tstamp reconnect_delay = 0.1;
 	ev_tstamp warning_said = 0;
+	int wal_final_row = 0;
 
 	remote_puller = [[XLogPuller alloc] init];
 again:
@@ -299,7 +300,10 @@ again:
 
 		if ([remote_puller handshake:[shard handshake_scn]] <= 0) {
 			/* no more WAL rows in near future, notify module about that */
-			[shard wal_final_row];
+			if (!wal_final_row) {
+				wal_final_row = 1;
+				[shard wal_final_row];
+			}
 
 			if (shard == nil) /* [shard wal_final_row] may delete shard */
 				goto close;
