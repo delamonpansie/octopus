@@ -43,7 +43,29 @@ init_id:(int)shard_id
 {
 	[super init_id:shard_id scn:scn_ sop:sop];
 	feeder.filter.arg = feeder_param_arg;
+	if (sop->type == SHARD_TYPE_PART)
+		partial_replica = true;
 	return self;
+}
+
+- (void)
+alter:(struct shard_op *)sop
+{
+	if (sop->type == SHARD_TYPE_PART)
+		partial_replica = true;
+	else
+		remote_scn = 0;
+	[super alter:sop];
+
+}
+
+- (const char *)
+name
+{
+	if (partial_replica)
+		return "POR/PART";
+	else
+		return "POR";
 }
 
 - (id) free
@@ -52,6 +74,29 @@ init_id:(int)shard_id
 		[remote abort_and_free];
 	return [super free];
 }
+
+- (const struct row_v12 *)
+snapshot_write_header:(XLog *)snap
+{
+	struct shard_op *sop = [self snapshot_header];
+	struct row_v12 row = { .scn = scn,
+				.tm = ev_now(),
+				.tag = shard_create|TAG_SYS,
+				.shard_id = self->id,
+			       .len = sizeof(*sop) };
+	if (partial_replica)
+		memcpy(row.remote_scn, &remote_scn, 6);
+	return [snap append_row:&row data:sop];
+}
+
+- (i64)
+handshake_scn
+{
+	if (partial_replica)
+		return remote_scn + 1;
+	return scn + 1;
+}
+
 
 - (void)
 set_feeder:(struct feeder_param*)new
@@ -80,6 +125,10 @@ remote_hot_standby
 		if (fid_err) panic("wrong feeder conf");
 	} else {
 		[self fill_feeder_param:&feeder peer:0];
+		if (partial_replica) {
+			feeder.filter.type = FILTER_TYPE_LUA;
+			feeder.filter.name = "partial";
+		}
 	}
 	if (remote == nil) {
 		[self status_update:"hot_standby/%s/init", net_sin_name(&feeder.addr)];
@@ -184,7 +233,7 @@ recover_row:(struct row_v12 *)row
 	case shard_create:
 		break;
 	case shard_alter:
-		[self alter_peers:(struct shard_op *)row->data];
+		[self alter:(struct shard_op *)row->data];
 		if (!loading && ![self our_shard]) {
 			[self free];
 			fiber->ushard = old_ushard;
@@ -205,8 +254,24 @@ recover_row:(struct row_v12 *)row
 	if (scn_changer(row->tag)) {
 		run_crc_record(&run_crc_state, (struct run_crc_hist){ .scn = row->scn, .value = run_crc_log });
 		scn = row->scn;
+		if (partial_replica)
+			memcpy(&remote_scn, row->remote_scn, 6);
 	}
 	fiber->ushard = old_ushard;
+}
+
+- (int)
+prepare_remote_row:(struct row_v12 *)row offt:(int)offt
+{
+	if (partial_replica) {
+		if (row->scn <= remote_scn)
+			return 0;
+		memcpy(&row->remote_scn, &row->scn, 6);
+		row->scn = scn + 1 + offt;
+	}
+	if (row->scn <= scn)
+		return 0;
+	return 1;
 }
 
 - (bool)

@@ -179,13 +179,10 @@ replicate_row_stream:(id<XLogPullerAsync>)puller
 {
 	struct row_v12 *row, *final_row = NULL, *rows[WAL_PACK_MAX];
 	/* TODO: use designated palloc_pool */
-	say_debug("%s: scn:%"PRIi64, __func__, [shard scn]);
 	assert(recovery->writer != nil);
 	assert([recovery->writer lsn] > 0);
 
-	const i64 shard_id = [shard id];
 	bool dummy_writer = [DummyXLogWriter class] == [(id)recovery->writer class];
-	i64 min_scn = [shard scn];
 	int pack_rows = 0;
 
 	/* old version doesn's send wal_final_tag for us. */
@@ -202,18 +199,7 @@ replicate_row_stream:(id<XLogPullerAsync>)puller
 			break;
 		}
 
-		if (row->shard_id != shard_id)
-			continue;
-
-		/* TODO: apply filter on feeder side */
-		/* filter out all paxos rows
-		   these rows define non shared/non replicated state */
-		if (tag == paxos_promise ||
-		    tag == paxos_accept ||
-		    tag == paxos_nop)
-			continue;
-
-		if (row->scn <= min_scn)
+		if ([shard prepare_remote_row:row offt:pack_rows] == 0)
 			continue;
 
 		rows[pack_rows++] = row;

@@ -74,10 +74,11 @@
 - (void) fill_feeder_param:(struct feeder_param *)feeder peer:(int)i;
 - (i64) handshake_scn;
 - (void) load_from_remote;
+- (int) prepare_remote_row:(struct row_v12 *)row offt:(int)offt;
 - (void) update_run_crc:(const struct wal_reply *)reply;
 @end
 
-enum shard_type { SHARD_TYPE_POR, SHARD_TYPE_PAXOS } ;
+enum shard_type { SHARD_TYPE_POR, SHARD_TYPE_PAXOS, SHARD_TYPE_PART } ;
 
 struct shard_route {
 	Shard<Shard> *shard;

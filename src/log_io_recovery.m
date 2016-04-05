@@ -271,7 +271,27 @@ validate_sop(struct netmsg_head *wbuf, const struct iproto *req, void *data, int
 			}
 		}
 	}
-	if (sop->type != SHARD_TYPE_PAXOS && sop->type != SHARD_TYPE_POR) {
+
+	if (sop->type == SHARD_TYPE_PART) {
+		if (strcmp(sop->peer[0], cfg.hostname) == 0) {
+			sop_err("sop: partial shard, bad master");
+			return NULL;
+		}
+		if (strcmp(sop->peer[1], cfg.hostname) != 0) {
+			sop_err("sop: partial shard, bad replica");
+			return NULL;
+		}
+		for (int i = 2; i < nelem(sop->peer); i++)
+			if (strlen(sop->peer[i]) != 0) {
+				sop_err("sop: partial shard, bad replica");
+				return NULL;
+			}
+	}
+
+	if (sop->type != SHARD_TYPE_PAXOS &&
+	    sop->type != SHARD_TYPE_POR &&
+	    sop->type != SHARD_TYPE_PART)
+	{
 		sop_err("sop: invalid shard type %i", sop->type);
 		return NULL;
 	}
@@ -532,6 +552,14 @@ load_from_remote
 	}
 	[reader free];
 }
+
+- (int)
+prepare_remote_row:(struct row_v12 *)row offt:(int)offt
+{
+	(void)row;
+	(void)offt;
+	return 1;
+}
 @end
 
 /// Recovery
@@ -635,10 +663,12 @@ shard_create:(int)shard_id sop:(struct shard_op *)sop
 shard_alter:(Shard<Shard> *)shard sop:(struct shard_op *)sop
 {
 	if ((sop->type == SHARD_TYPE_PAXOS && [shard class] != [Paxos class]) ||
-	    (sop->type == SHARD_TYPE_POR   && [shard class] != [POR class]))
+	    (sop->type == SHARD_TYPE_POR   && [shard class] != [POR class]) ||
+	    (sop->type == SHARD_TYPE_PART  && [shard class] != [POR class]))
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't change shard type");
 
 	struct shard_op *new_sop = [shard snapshot_header];
+	new_sop->type = sop->type;
 	for (int i = 0; i < nelem(sop->peer); i++)
 		strncpy(new_sop->peer[i], sop->peer[i], 16);
 	if ([shard submit:new_sop len:sizeof(*new_sop) tag:shard_alter|TAG_SYS] != 1)
@@ -1054,7 +1084,7 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req, void *arg __attrib
 	struct shard_route *route = shard_rt + shard_id;
 	Shard<Shard> *shard = route->shard;
 
-	if (route->proxy) {
+	if (route->proxy && sop->type != SHARD_TYPE_PART) {
 		struct iproto_ingress *ingress = container_of(wbuf, struct iproto_ingress, wbuf);
 		iproto_proxy_send(route->proxy, ingress, MSG_IPROXY, req, NULL, 0);
 		return;
@@ -1063,11 +1093,15 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req, void *arg __attrib
 	bool new_master = strncmp(sop->peer[0], cfg.hostname, 16) == 0,
 	     old_master = shard && strncmp(shard->peer[0], cfg.hostname, 16) == 0;
 
-	if (!our_shard(sop) || !(new_master || old_master)) {
+	if (!our_shard(sop)) {
 		iproto_error(wbuf, req, ERR_CODE_ILLEGAL_PARAMS, "not my shard");
 		return;
 	}
 
+	if (!new_master && !old_master) {
+		iproto_error(wbuf, req, ERR_CODE_ILLEGAL_PARAMS, "not master");
+		return;
+	}
 	if (route->shard) {
 		if (route->shard->loading) {
 			iproto_error(wbuf, req, ERR_CODE_ILLEGAL_PARAMS, "shard is loading");
@@ -1261,10 +1295,10 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 	tbuf_printf(buf, "lsn:%" PRIi64, row->lsn);
 	if (row->scn != -1) {
 		tbuf_printf(buf, " shard:%i", row->shard_id);
-		i64 rem_lsn = 0;
-		memcpy(&rem_lsn, row->remote_lsn, 6);
-		if (rem_lsn)
-			tbuf_printf(buf, " rem_lsn:%"PRIi64, rem_lsn);
+		i64 rem_scn = 0;
+		memcpy(&rem_scn, row->remote_scn, 6);
+		if (rem_scn)
+			tbuf_printf(buf, " rem_scn:%"PRIi64, rem_scn);
 	}
 
 	tbuf_printf(buf, " scn:%" PRIi64 " tm:%.3f t:%s ",

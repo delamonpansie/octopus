@@ -166,7 +166,7 @@ struct row_v12 {
 	u16 tag;
 
 	u16 shard_id;
-	u8 remote_lsn[6];
+	u8 remote_scn[6];
 
 	double tm;
 	u32 len;
@@ -488,6 +488,8 @@ enum feeder_filter_type {
 
 @interface POR: Shard <Shard,RecoverRow> {
 	XLogReplica *remote;
+	bool partial_replica;
+	i64 remote_scn;
 	struct feeder_param feeder;
 	char feeder_param_arg[32];
 }
