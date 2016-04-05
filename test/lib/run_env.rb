@@ -83,12 +83,15 @@ pid_file = "octopus.pid"
 slab_alloc_arena = 0.1
 log_level = 7
 primary_port = #@primary_port
-secondary_port = #@secondary_port
 admin_port = #@admin_port
 wal_fsync_delay = 0.1
 rows_per_wal = 5000
 coredump = 0.00017
 EOD
+
+    if @secondary_port then
+      cfg << "secondary_port = #@secondary_port\n"
+    end
 
     if not $options[:valgrind] then
       cfg << %Q{logger = "exec cat - >> octopus.log"\n}

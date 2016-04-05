@@ -7,8 +7,8 @@ require 'run_env'
 class ShardEnv < RunEnv
   def initialize
     @test_root_suffix = "_#@hostname"
-    @secondary_port = nil
     super
+    @secondary_port = nil
   end
 
   def config
