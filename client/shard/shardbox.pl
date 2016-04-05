@@ -16,7 +16,7 @@ sub usage {
     print "$msg\n\n" if $msg;
     print <<EOD;
 Shard create/alter:
-$name -s=<HOST> shard <SID> alter <por|paxos> <MASTER> [REPLICA1] [REPLICA2] [REPLICA3] [REPLICA4]
+$name -s=<HOST> shard <SID> alter <por|paxos|part> <MASTER> [REPLICA1] [REPLICA2] [REPLICA3] [REPLICA4]
 
 Object space create/drop/truncate:
 $name -s=<HOST> shard <SID> obj_space <OID> create [no_snap] [no_wal] <INDEX CONF>
@@ -74,7 +74,7 @@ sub shift_int {
 sub msg_shard {
     my ($sid) = @_;
     my $msg_code = shift_cast('alter' => 0xff02);
-    my $type = shift_cast(por => 0, paxos => 1);
+    my $type = shift_cast(por => 0, paxos => 1, part => 2);
     my ($master, $replica1, $replica2, $replica3, $replica4) = @ARGV;
 
     my $version = 0;
