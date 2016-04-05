@@ -329,6 +329,7 @@ function wal_parse(tag, data, len)
 
     return cmd
 end
+local wal_parse = wal_parse
 
 local function snap_insert(n, t, p)
     local l = p:len()
