@@ -299,10 +299,6 @@ follow
 	[reader recover_follow:cfg.wal_dir_rescan_delay];
 }
 
-@end
-
-static struct iproto * recv_req(int fd);
-
 static i64
 handshake(int sock, struct iproto *req, struct feeder_filter *filter)
 {
@@ -339,6 +335,7 @@ handshake(int sock, struct iproto *req, struct feeder_filter *filter)
 			say_error("bad handshake filter type %d", hshake2->filter_type);
 			_exit(EXIT_FAILURE);
 		}
+		feeder->shard_id = 0;
 		if (strnlen(hshake2->filter, sizeof(hshake2->filter)) > 0) {
 			filter->type = hshake2->filter_type;
 			filter->name = hshake->filter;
@@ -366,6 +363,9 @@ handshake(int sock, struct iproto *req, struct feeder_filter *filter)
 
 	return hshake->scn;
 }
+
+@end
+
 
 static void
 eof_monitor(void)
