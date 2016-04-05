@@ -66,12 +66,13 @@
 - (struct shard_op *)snapshot_header;
 - (const struct row_v12 *)snapshot_write_header:(XLog *)snap;
 
-- (void) alter_peers:(struct shard_op *)sop;
+- (void) alter:(struct shard_op *)sop;
 - (void) wal_final_row;
 - (void) enable_local_writes;
 - (bool) our_shard;
 
 - (void) fill_feeder_param:(struct feeder_param *)feeder peer:(int)i;
+- (i64) handshake_scn;
 - (void) load_from_remote;
 - (void) update_run_crc:(const struct wal_reply *)reply;
 @end

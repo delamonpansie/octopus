@@ -286,7 +286,8 @@ validate_sop(struct netmsg_head *wbuf, const struct iproto *req, void *data, int
 - (ev_tstamp) lag { return lag; }
 - (ev_tstamp) last_update_tstamp { return last_update_tstamp; }
 
-- (const char *)status { return status_buf; }
+- (const char *) name { return [[self class] name]; }
+- (const char *) status { return status_buf; }
 - (ev_tstamp) run_crc_lag { return run_crc_lag(&run_crc_state); }
 - (const char *) run_crc_status { return run_crc_status(&run_crc_state); }
 - (u32) run_crc_log { return run_crc_log; }
@@ -295,7 +296,7 @@ validate_sop(struct netmsg_head *wbuf, const struct iproto *req, void *data, int
 static void
 shard_info(Shard *shard, struct tbuf *buf)
 {
-	tbuf_printf(buf, "SCN: %"PRIi64", type: %s, ", [shard scn], [[shard class] name]);
+	tbuf_printf(buf, "SCN: %"PRIi64", type: %s, ", [shard scn], [shard name]);
 	tbuf_printf(buf, "peer: [%s", shard->peer[0]);
 	for (int i = 1; i < nelem(shard->peer) && shard->peer[i][0]; i++)
 		tbuf_printf(buf, ", %s", shard->peer[i]);
@@ -385,7 +386,7 @@ adjust_route
 }
 
 - (void)
-alter_peers:(struct shard_op *)sop
+alter:(struct shard_op *)sop
 {
 	for (int i = 0; i < nelem(sop->peer); i++)
 		strncpy(peer[i], sop->peer[i], 16);
@@ -509,6 +510,11 @@ fill_feeder_param:(struct feeder_param *)feeder peer:(int)i
 	};
 }
 
+- (i64)
+handshake_scn
+{
+	return scn + 1;
+}
 - (void)
 load_from_remote
 {
@@ -638,7 +644,7 @@ shard_alter:(Shard<Shard> *)shard sop:(struct shard_op *)sop
 	if ([shard submit:new_sop len:sizeof(*new_sop) tag:shard_alter|TAG_SYS] != 1)
 		iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
 
-	[shard alter_peers:new_sop];
+	[shard alter:new_sop];
 }
 
 - (void)

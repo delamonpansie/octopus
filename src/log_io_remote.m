@@ -112,8 +112,6 @@ free
 	return [super free];
 }
 
-- (i64) handshake_scn { return [shard scn] + 1; }
-
 - (void)
 status:(const char *)status reason:(const char *)reason
 {
@@ -299,7 +297,7 @@ again:
 	do {
 		[remote_puller feeder_param:&feeder];
 
-		if ([remote_puller handshake:[self handshake_scn]] <= 0) {
+		if ([remote_puller handshake:[shard handshake_scn]] <= 0) {
 			/* no more WAL rows in near future, notify module about that */
 			[shard wal_final_row];
 
