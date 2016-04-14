@@ -340,14 +340,16 @@ paxos_elect(va_list ap)
 })
 
 #define RT_SHARD(arg) ({ if (!arg) iproto_raise(ERR_CODE_BAD_CONNECTION, "unkown shard"); \
+			 if ([(id)(((struct shard_route *)arg)->shard) class] != [Paxos class]) iproto_raise(ERR_CODE_BAD_CONNECTION, "not a paxos shard"); \
 			 (Paxos *)((struct shard_route *)arg)->shard; })
 static void
 leader(struct netmsg_head *wbuf, struct iproto *msg, void *arg)
 {
 	Paxos *paxos;
-	if (!arg)
+	if (!arg || [(id)(((struct shard_route *)arg)->shard) class] != [Paxos class])
 		return;
 	paxos = (Paxos *)((struct shard_route *)arg)->shard;
+
 	struct msg_leader *pmsg = (struct msg_leader *)msg;
 	const char *ret = "accept";
 	const ev_tstamp to_expire = paxos->leadership_expire - ev_now();
@@ -1173,7 +1175,7 @@ init_id:(int)shard_id scn:(i64)scn_ sop:(const struct shard_op *)sop
 {
 	[super init_id:shard_id scn:scn_ sop:sop];
 	if (cfg.local_hot_standby)
-		panic("wal_hot_standby is incompatible with paxos");
+		panic("local_hot_standby is incompatible with paxos");
 
 	max_scn = scn;
 	RB_INIT(&proposals);

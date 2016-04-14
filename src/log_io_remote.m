@@ -217,7 +217,10 @@ replicate_row_stream:(id<XLogPullerAsync>)puller
 		@try {
 			for (int j = 0; j < pack_rows; j++) {
 				row = rows[j]; /* this pointer required for catch below */
-				[shard recover_row:row];
+				if ((row->tag & TAG_MASK) == shard_alter)
+					[recovery recover_row:row];
+				else
+					[shard recover_row:row];
 			}
 		}
 		@catch (Error *e) {

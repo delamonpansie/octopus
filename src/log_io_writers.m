@@ -52,7 +52,7 @@
 #endif
 
 
-enum scn_mode { SCN_PASS, SCN_ASSIGN };
+enum scn_mode { SCN_NONE, SCN_PASS, SCN_ASSIGN };
 
 struct shard_state {
 	i64 scn, wet_scn;
@@ -221,6 +221,7 @@ mode2str(int mode)
 	switch(mode) {
 	case SCN_PASS: return "PASS";
 	case SCN_ASSIGN : return "ASSIGN";
+	case SCN_NONE: return "NONE";
 	default: assert(false);
 	}
 }
@@ -272,6 +273,7 @@ assign_scn(struct shard_state *st, struct row_v12 *h)
 	st += h->shard_id;
 	const struct shard_op *sop = NULL;
 
+	bool first_time = false;
 	int tag = h->tag & TAG_MASK;
 	if (unlikely(tag == shard_create || tag == shard_alter)) {
 		sop = (void *)h->data;
@@ -279,9 +281,13 @@ assign_scn(struct shard_state *st, struct row_v12 *h)
 
 		/* shard first seen first time */
 		if (st->scn == 0 && our_shard(sop)) {
-			st->scn_mode = sop->type == 0 ? SCN_ASSIGN : SCN_PASS;
+			first_time = true;
+			st->scn_mode = sop->type == 1 ? SCN_PASS : SCN_ASSIGN;
+			st->run_crc = sop->run_crc_log;
 			if (st->scn_mode == SCN_PASS && h->scn == 0)
 				h->scn = 1;
+
+			say_info("\tshard:%i SCN:%"PRIi64" %s", h->shard_id, st->scn, mode2str(st->scn_mode));
 		}
 	}
 
@@ -298,7 +304,11 @@ assign_scn(struct shard_state *st, struct row_v12 *h)
 			say_warn("ASSIGN override SCN:%"PRIi64, h->scn);
 		}
 		break;
+	default:
+		assert(false);
 	}
+	if (tag == shard_alter && !first_time && our_shard(sop))
+		st->scn_mode = sop->type == 1 ? SCN_PASS : SCN_ASSIGN;
 }
 
 static void

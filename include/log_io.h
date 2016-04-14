@@ -296,7 +296,7 @@ bool our_shard(const struct shard_op *sop);
 
 
 @protocol Executor
-- (id) init_shard:(Shard<Shard> *)obj;
+- (id) init;
 - (void) set_shard:(Shard<Shard> *)obj;
 - (void) apply:(struct tbuf *)data tag:(u16)tag;
 - (void) wal_final_row;
@@ -453,6 +453,7 @@ enum feeder_filter_type {
 @public
 	Shard<Shard> *shard;
 }
+- (id)init_shard:(id<Shard>)shard;
 - (struct sockaddr_in) feeder_addr;
 - (bool) feeder_addr_configured;
 - (void) set_feeder:(struct feeder_param*)new;
@@ -497,7 +498,7 @@ enum feeder_filter_type {
 
 @interface Recovery: Object <RecoveryState, RecoverRow> {
 	XLogReader *reader;
-	bool initial_snap;
+	bool initial_snap, remote_loading;
 
 	SnapWriter *snap_writer;
 @public
@@ -562,7 +563,7 @@ struct octopus_cfg_peer *cfg_peer_by_name(const char *name);
 @public
 	Shard<Shard> *shard;
 }
-- (id) init_shard:(Shard<Shard> *)shard_;
+- (id) init;
 - (void) set_shard:(Shard<Shard> *)shard_;
 - (u32) snapshot_estimate;
 - (void) wal_final_row;

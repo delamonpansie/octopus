@@ -48,17 +48,6 @@ init_id:(int)shard_id
 	return self;
 }
 
-- (void)
-alter:(struct shard_op *)sop
-{
-	if (sop->type == SHARD_TYPE_PART)
-		partial_replica = true;
-	else
-		remote_scn = 0;
-	[super alter:sop];
-
-}
-
 - (const char *)
 name
 {
@@ -109,10 +98,6 @@ set_feeder:(struct feeder_param*)new
 - (bool)
 master
 {
-	if (dummy) {
-		enum feeder_cfg_e fid_err = feeder_param_fill_from_cfg(&feeder, NULL);
-		return fid_err || feeder.addr.sin_family == AF_UNSPEC;
-	}
 	return strcmp(cfg.hostname, peer[0]) == 0;
 }
 
