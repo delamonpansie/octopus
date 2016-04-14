@@ -52,12 +52,9 @@
 #endif
 
 
-enum scn_mode { SCN_NONE, SCN_PASS, SCN_ASSIGN };
-
 struct shard_state {
 	i64 scn, wet_scn;
 	u32 run_crc;
-	enum scn_mode scn_mode;
 };
 
 struct wal_disk_writer_conf {
@@ -215,17 +212,6 @@ static int flush(int fd, const struct request *requests, int count)
 	return 0;
 }
 
-static const char *
-mode2str(int mode)
-{
-	switch(mode) {
-	case SCN_PASS: return "PASS";
-	case SCN_ASSIGN : return "ASSIGN";
-	case SCN_NONE: return "NONE";
-	default: assert(false);
-	}
-}
-
 static int
 request_row_count(struct tbuf *rbuf)
 {
@@ -273,42 +259,29 @@ assign_scn(struct shard_state *st, struct row_v12 *h)
 	st += h->shard_id;
 	const struct shard_op *sop = NULL;
 
-	bool first_time = false;
 	int tag = h->tag & TAG_MASK;
 	if (unlikely(tag == shard_create || tag == shard_alter)) {
 		sop = (void *)h->data;
 		assert(sop->ver == 0);
 
-		/* shard first seen first time */
+		/* shard seen first time */
 		if (st->scn == 0 && our_shard(sop)) {
-			first_time = true;
-			st->scn_mode = sop->type == 1 ? SCN_PASS : SCN_ASSIGN;
 			st->run_crc = sop->run_crc_log;
-			if (st->scn_mode == SCN_PASS && h->scn == 0)
+			if (h->scn) {
+				st->scn = h->scn - 1;
+			} else {
 				h->scn = 1;
-
-			say_info("\tshard:%i SCN:%"PRIi64" %s", h->shard_id, st->scn, mode2str(st->scn_mode));
+				assert(tag == shard_create);
+			}
+			say_info("\tshard:%i SCN:%"PRIi64, h->shard_id, h->scn);
+			return;
 		}
 	}
 
-	switch (st->scn_mode) {
-	case SCN_PASS:
-		break;
-	case SCN_ASSIGN:
-		st->wet_scn++;
-		// either: a new row or replicated row with predefined scn
-		if (h->scn == 0 || h->scn == st->wet_scn) {
-			h->scn = st->wet_scn;
-			break;
-		} else {
-			say_warn("ASSIGN override SCN:%"PRIi64, h->scn);
-		}
-		break;
-	default:
-		assert(false);
-	}
-	if (tag == shard_alter && !first_time && our_shard(sop))
-		st->scn_mode = sop->type == 1 ? SCN_PASS : SCN_ASSIGN;
+	if (h->scn)
+		st->wet_scn = h->scn;
+	else
+		h->scn = ++st->wet_scn;
 }
 
 static void
@@ -361,10 +334,8 @@ wal_disk_writer(int fd, int cfd __attribute__((unused)), void *state, int len)
 	say_debug("%s: configured LSN:%"PRIi64, __func__, conf->lsn);
 	for (int i = 0; i < MAX_SHARD; i++)
 		if (st[i].scn)
-			say_debug("\tShard:%i SCN:%"PRIi64" %s run_crc:0x%x",
-				  i, st[i].scn,
-				  mode2str(st[i].scn_mode),
-				  st[i].run_crc);
+			say_debug("\tShard:%i SCN:%"PRIi64"run_crc:0x%x",
+				  i, st[i].scn, st[i].run_crc);
 	/* since wal_writer have bidirectional communiction to master
 	   and checks for errors on send/recv,
 	   there is no need in util.m:keepalive() */
@@ -410,9 +381,7 @@ wal_disk_writer(int fd, int cfd __attribute__((unused)), void *state, int len)
 				break;
 
 			request_parse(request, row_count, &rbuf);
-			say_debug("request[%i] shard:%i %s rows:%i",
-				  i, request->shard_id,
-				  mode2str(st[request->shard_id].scn_mode), row_count);
+			say_debug("request[%i] shard:%i rows:%i", i, request->shard_id, row_count);
 
 			int j = 0;
 			for (; j < row_count && !io_failure; j++) {
@@ -595,9 +564,8 @@ init_lsn:(i64)init_lsn
 			continue;
 		conf->st[i].scn = [shard scn];
 		conf->st[i].run_crc = [shard run_crc_log];
-		conf->st[i].scn_mode = [(id)shard isKindOf:[POR class]] ? SCN_ASSIGN : SCN_PASS;
 		if (conf->st[i].scn)
-			say_info("\tShard:%i SCN:%"PRIi64" %s", i, conf->st[i].scn, mode2str(conf->st[i].scn_mode));
+			say_info("\tShard:%i SCN:%"PRIi64, i, conf->st[i].scn);
 	}
 	wal_writer = spawn_child("wal_writer", wal_disk_writer, -1, conf, sizeof(*conf));
 	if (wal_writer.pid < 0)
