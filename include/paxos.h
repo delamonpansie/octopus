@@ -54,11 +54,16 @@ RB_HEAD(ptree, proposal);
 @class XLog;
 @protocol RecoveryClient;
 
+
+struct wal_msg { TAILQ_ENTRY(wal_msg) link; };
+
+
 @interface Paxos: Shard <Shard> {
 @public
 	struct iproto_egress_list paxos_remotes;
 	struct Fiber *proposer_fiber;
 	struct Fiber *output_flusher, *reply_reader, *follower, *wal_dumper;
+	MBOX(, wal_msg) wal_dumper_mbox;
 	i64 app_scn, max_scn, run_crc_scn;
 	bool wal_dumper_busy;
 	int leader_id, self_id;

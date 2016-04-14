@@ -946,10 +946,6 @@ decide:
 	return 1;
 }
 
-
-struct wal_msg { TAILQ_ENTRY(wal_msg) link; };
-static MBOX(, wal_msg) wal_dumper_mbox = MBOX_INITIALIZER(wal_dumper_mbox);
-
 static void
 maybe_wake_dumper(Paxos *paxos, struct proposal *p)
 {
@@ -960,7 +956,7 @@ maybe_wake_dumper(Paxos *paxos, struct proposal *p)
 		return;
 
 	struct wal_msg *m = palloc(paxos->wal_dumper->pool, sizeof(*m));
-	mbox_put(&wal_dumper_mbox, m, link);
+	mbox_put(&paxos->wal_dumper_mbox, m, link);
 }
 
 static void plog(const struct proposal *p)
@@ -999,8 +995,8 @@ wal_dumper_fib(va_list ap)
 	struct proposal *p = NULL;
 	fiber->ushard = paxos->id;
 loop:
-	mbox_timedwait(&wal_dumper_mbox, 1, 1);
-	while (mbox_get(&wal_dumper_mbox, link)); /* flush mbox */
+	mbox_timedwait(&paxos->wal_dumper_mbox, 1, 1);
+	while (mbox_get(&paxos->wal_dumper_mbox, link)); /* flush mbox */
 	fiber_gc(); /* NB: put comment */
 
 	p = RB_MIN(ptree, &paxos->proposals);
@@ -1406,6 +1402,7 @@ adjust_route
 			fiber_create("paxos/puller", learner_puller, self, i);
 
 		fiber_create("paxos/elect", paxos_elect, self);
+		mbox_init(&wal_dumper_mbox);
 		wal_dumper = fiber_create("paxos/wal_dump", wal_dumper_fib, self);
 		[executor wal_final_row];
 	}
