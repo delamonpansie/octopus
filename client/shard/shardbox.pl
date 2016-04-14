@@ -16,7 +16,16 @@ sub usage {
     print "$msg\n\n" if $msg;
     print <<EOD;
 Shard create/alter:
-$name -s=<HOST> shard <SID> alter <por|paxos|part> <MASTER> [REPLICA1] [REPLICA2] [REPLICA3] [REPLICA4]
+$name -s=<HOST> shard <SID> create por [REPLICA1] [REPLICA2] [REPLICA3] [REPLICA4]
+$name -s=<HOST> shard <SID> create paxos <MASTER2> <MASTER2>
+$name -s=<HOST> shard <SID> create part <MASTER>
+
+$name -s=<HOST> shard <SID> add_replica <NAME>
+$name -s=<HOST> shard <SID> del_replica <NAME>
+$name -s=<HOST> shard <SID> master <NAME>
+$name -s=<HOST> shard <SID> delete
+$name -s=<HOST> shard <SID> undummy
+$name -s=<HOST> shard <SID> type <por|paxos|part>
 
 Object space create/drop/truncate:
 $name -s=<HOST> shard <SID> obj_space <OID> create [no_snap] [no_wal] <INDEX CONF>
@@ -73,26 +82,43 @@ sub shift_int {
 
 sub msg_shard {
     my ($sid) = @_;
-    my $msg_code = shift_cast('alter' => 0xff02);
-    my $type = shift_cast(por => 0, paxos => 1, part => 2);
-    my ($master, $replica1, $replica2, $replica3, $replica4) = @ARGV;
+    my $msg_code = 0xff02;
+    my $version = 1;
+    my $msg_subcode = shift_cast(create => 0, delete => 1,
+				 undummy => 2, add_replica => 3,
+				 del_replica => 4, master => 5,
+				 type => 6);
 
-    my $version = 0;
-    my $tm = 0;
-    my $row_count = 0;
-    my $run_crc = 0;
-    my $mod_name = "Box";
+    my $head = pack("SSLL" . "CC",
+		    $msg_code, $sid, $iproto_len, $iproto_sync,
+		    $version, $msg_subcode);
 
-    usage "master not specified" unless $master;
-    $replica1 ||= "";
-    $replica2 ||= "";
-    $replica3 ||= "";
-    $replica4 ||= "";
+    if ($msg_subcode == 0) {
+	my $type = shift_cast(por => 0, paxos => 1, part => 2);
+	my ($peer1, $peer2, $peer3, $peer4) = @ARGV;
+	$peer1 ||= "";
+	$peer2 ||= "";
+	$peer3 ||= "";
+	$peer4 ||= "";
 
-    return pack("SSLL" . "CCQLL" . "a16" x 6,
-		$msg_code, $sid, $iproto_len, $iproto_sync,
-		$version, $type, $tm, $row_count, $run_crc,
-		$mod_name, $master, $replica1, $replica2, $replica3, $replica4);
+	$head .= pack("C", $type);
+	if ($type == 0) {
+	    return $head . pack("a16" x 4, $peer1, $peer2, $peer3, $peer4);
+	} elsif ($type == 1) {
+	    usage "master not specified" unless $peer1 && $peer2 && $peer3 ;
+	    return $head . pack("a16" x 3, $peer1, $peer2, $peer3);
+	} elsif ($type == 2) {
+	    usage "master not specified" unless $peer1;
+	    return $head . pack("a16", $peer1);
+	}
+    } elsif ($msg_subcode == 1 || $msg_subcode == 2) {
+	return $head;
+    } elsif ($msg_subcode == 3 || $msg_subcode == 4 || $msg_subcode == 5) {
+	return $head . pack("a16", ($ARGV[0] or ""));
+    } elsif ($msg_subcode == 6) {
+	my $type = shift_cast(por => 0, paxos => 1, part => 2);
+	return $head . pack("C", $type);
+    }
 }
 
 
@@ -168,7 +194,7 @@ usage() unless $s;
 my ($sid, $oid, $iid, $req, $resp);
 op('shard'); shift @ARGV;
 $sid = shift_int(65535);
-if (op(qr/alter|obj_space/) ne 'obj_space') {
+if (op(qr/create|(add|del)_replica|master|delete|undummy|type|obj_space/) ne 'obj_space') {
     $req = msg_shard($sid);
 } else {
     shift @ARGV;

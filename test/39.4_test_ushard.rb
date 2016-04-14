@@ -4,9 +4,9 @@
 $: << File.dirname($0)
 require '39_test_ushard'
 
-$one_env.meta 'shard 1 alter por one'
+$one_env.meta 'shard 1 create por'
 
 # create existing shard
-log_try { $two_env.meta 'shard 1 alter por two' }
+log_try { $two_env.meta 'shard 1 create por' }
 
 

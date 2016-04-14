@@ -300,20 +300,14 @@ class SilverBox < IProtoRetCode
   end
 
 
-  def create_shard(shard, type, master, replica1 = "", replica2 = "")
-    version = 0
-    tm = 0
-    row_count = 0
-    run_crc = 0
-    mod_name = "Box"
-    replica3 = ""
-    replica4 = ""
-    format = "CCQLL" + ("a16" * 6)
+  def create_shard(shard, type, *rep)
+    version = 1
+    subcode = 0 # create
     type = {:POR => 0, :PAXOS =>1}[type]
+    4.times do |i| rep[i] ||= "" end
 
     msg :code => 0xff02, :shard => shard,
-        :raw => [version, type, tm, row_count, run_crc,
-                 mod_name, master, replica1, replica2, replica3, replica4].pack(format)
+        :raw => [version, subcode, type, *rep].pack("CCC" + ("a16" * 4))
     :success
   end
 

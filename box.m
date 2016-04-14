@@ -186,26 +186,16 @@ build_object_space_trees(struct object_space *object_space)
 
 @implementation Box
 
-- (id)
-init_shard:(Shard<Shard> *)shard_
+- (void)
+set_shard:(Shard<Shard> *)shard_
 {
-	[super init];
 	shard = shard_;
-
 	if (cfg.object_space != NULL) {
 		if (shard->dummy)
 			configure(self);
 		else
 			say_warn("cfg.object_space ignored");
 	}
-
-	return self;
-}
-
-- (void)
-set_shard:(Shard<Shard> *)shard_
-{
-	shard = shard_;
 }
 
 - (void)

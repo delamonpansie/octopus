@@ -4,14 +4,23 @@
 # two.ping()
 :pong
 
-# one.create_shard(1, :POR, "one", "three")
-:success
+# one.meta(shard 1 create por)
+ok
 
-# one.create_shard(2, :POR, "one", "two")
-:success
+# one.meta(shard 1 add_replica three)
+ok
 
-# two.create_shard(3, :POR, "two", "three")
-:success
+# one.meta(shard 2 create por)
+ok
+
+# one.meta(shard 2 add_replica two)
+ok
+
+# two.meta(shard 3 create por)
+ok
+
+# two.meta(shard 3 add_replica three)
+ok
 
 # one.create_object_space(0, {:shard=>1, :index=>{:type=>:FASTTREE, :unique=>1, :field_0=>{:type=>:STRING, :index=>0, :sort_order=>:DESC}}})
 :success

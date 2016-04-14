@@ -96,19 +96,15 @@ slave_env.env_eval do
 
   master.select 0,1,2,3,4,5
 
-  slave_env.meta("shard 0 alter part one two")
-  slave_env.meta("shard 0 alter part two")
-  slave_env.meta("shard 0 alter part one")
-  slave_env.meta("shard 0 alter part one two two")
-  slave_env.meta("shard 0 alter part one two three")
-
   (0..3).each do |shard_id|
-    slave_env.meta("shard #{shard_id} alter por two")
+    slave_env.meta("shard #{shard_id} create por")
     slave_env.meta("shard #{shard_id} obj_space 0 create hash unique string 0")
   end
 
   (0..3).each do |shard_id|
-    slave_env.meta("shard #{shard_id} alter part one two")
+    slave_env.meta("shard #{shard_id} add_replica one")
+    slave_env.meta("shard #{shard_id} type part")
+    slave_env.meta("shard #{shard_id} master one")
   end
 
   sleep 0.2

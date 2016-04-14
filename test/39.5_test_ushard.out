@@ -4,9 +4,24 @@
 # two.ping()
 :pong
 
-# one.meta(shard 1 alter por one)
+# one.meta(shard 1 create por)
 ok
 
-# one.meta(shard 1 alter paxos one)
-error: 0x202 can't change shard type
+# one.meta(shard 1 type paxos)
+error: 0x202 bad peer count
+
+# one.meta(shard 1 add_replica two)
+ok
+
+# one.meta(shard 1 add_replica three)
+ok
+
+# one.meta(shard 1 type paxos)
+ok
+
+# one.meta(shard 1 obj_space 0 create tree unique string 0)
+ok
+
+# one.insert(["aaa"], {:shard=>1})
+1
 

@@ -1,4 +1,4 @@
-# box.create_shard(0, :POR, "one")
+# box.create_shard(0, :POR)
 :success
 
 # box.create_object_space(0, {:shard=>0, :index=>{:type=>:FASTTREE, :unique=>1, :field_0=>{:type=>:STRING, :index=>0, :sort_order=>:DESC}}})

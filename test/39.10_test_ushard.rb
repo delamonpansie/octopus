@@ -4,9 +4,14 @@
 $: << File.dirname($0)
 require '39_test_ushard'
 
-$one.create_shard 1, :POR, "one", "three"
-$one.create_shard 2, :POR, "one", "two"
-$two.create_shard 3, :POR, "two", "three"
+$one_env.meta 'shard 1 create por'
+$one_env.meta 'shard 1 add_replica three'
+
+$one_env.meta 'shard 2 create por'
+$one_env.meta 'shard 2 add_replica two'
+
+$two_env.meta 'shard 3 create por'
+$two_env.meta 'shard 3 add_replica three'
 
 $one.create_object_space 0, :shard => 1, :index => DEFIDX
 $one.insert [1,"one"], :shard => 1

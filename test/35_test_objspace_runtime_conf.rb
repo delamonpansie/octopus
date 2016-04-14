@@ -4,6 +4,16 @@ $: << File.dirname($0) + '/lib'
 require 'run_env'
 
 class Env < RunEnv
+  def initialize
+    @hostname = "one"
+    super
+  end
+
+  def meta(arg)
+    puts "# #@hostname.meta(#{arg})"
+    puts `perl ../../client/shard/shardbox.pl -s=localhost:#{33013 + (@port_offset || 0)} #{arg}`
+    puts
+  end
 end
 
 env = Env.new
@@ -55,13 +65,13 @@ env.cd do
 end
 
 env.connect_eval do
-  create_shard 0, :POR, "one"
+  env.meta 'shard 0 undummy'
   sleep 0.2
   # create_object_space 0, :shard => 0, :index => {:type => :FASTTREE, :unique => 1, :field_0 => { :type => :STRING, :index => 0 , :sort_order => :DESC }}
-  create_index 1, :type => :FASTTREE, :unique => 1, :field_0 => { :type => :STRING, :index => 0 , :sort_order => :DESC }
+  env.meta 'shard 0 obj_space 0 index 1 create fasttree unique  string 0 desc'
 
-  create_shard 1, :POR, "one"
-  create_object_space 0, :shard => 1, :index => {:type => :FASTTREE, :unique => 1, :field_0 => { :type => :STRING, :index => 0 , :sort_order => :DESC }}
+  env.meta 'shard 1 create por'
+  env.meta 'shard 1 obj_space 1 create fasttree unique string 0 desc'
 
   env.snapshot
   insert ["baf"]
@@ -74,5 +84,5 @@ env.connect_eval do
 end
 
 env.cd do
-  puts `./octopus --cat 00000000000000000008.snap | sed 's/tm:[0-9.]\\+ //g;'`
+  puts `./octopus --cat 00000000000000000007.snap | sed 's/tm:[0-9.]\\+ //g;'`
 end

@@ -31,55 +31,64 @@
 # legacy_master.select(0, 1, 2, 3, 4, 5)
 []
 
-# two.meta(shard 0 alter part one two)
-error: 0x202 not master
-
-# two.meta(shard 0 alter part two)
-error: 0x202 sop: partial shard, bad master
-
-# two.meta(shard 0 alter part one)
-error: 0x202 sop: partial shard, bad replica
-
-# two.meta(shard 0 alter part one two two)
-error: 0x202 sop: duplicate peer 'two'
-
-# two.meta(shard 0 alter part one two three)
-error: 0x202 sop: partial shard, bad replica
-
-# two.meta(shard 0 alter por two)
+# two.meta(shard 0 create por)
 ok
 
 # two.meta(shard 0 obj_space 0 create hash unique string 0)
 ok
 
-# two.meta(shard 1 alter por two)
+# two.meta(shard 1 create por)
 ok
 
 # two.meta(shard 1 obj_space 0 create hash unique string 0)
 ok
 
-# two.meta(shard 2 alter por two)
+# two.meta(shard 2 create por)
 ok
 
 # two.meta(shard 2 obj_space 0 create hash unique string 0)
 ok
 
-# two.meta(shard 3 alter por two)
+# two.meta(shard 3 create por)
 ok
 
 # two.meta(shard 3 obj_space 0 create hash unique string 0)
 ok
 
-# two.meta(shard 0 alter part one two)
+# two.meta(shard 0 add_replica one)
 ok
 
-# two.meta(shard 1 alter part one two)
+# two.meta(shard 0 type part)
 ok
 
-# two.meta(shard 2 alter part one two)
+# two.meta(shard 0 master one)
 ok
 
-# two.meta(shard 3 alter part one two)
+# two.meta(shard 1 add_replica one)
+ok
+
+# two.meta(shard 1 type part)
+ok
+
+# two.meta(shard 1 master one)
+ok
+
+# two.meta(shard 2 add_replica one)
+ok
+
+# two.meta(shard 2 type part)
+ok
+
+# two.meta(shard 2 master one)
+ok
+
+# two.meta(shard 3 add_replica one)
+ok
+
+# two.meta(shard 3 type part)
+ok
+
+# two.meta(shard 3 master one)
 ok
 
 # box.select("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", {:shard=>0})

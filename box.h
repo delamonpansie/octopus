@@ -164,10 +164,9 @@ void box_service_ro(struct iproto_service *s);
 enum messages ENUM_INITIALIZER(MESSAGES);
 extern char * const box_ops[];
 
-@interface Box : Object <Executor> {
+@interface Box : DefaultExecutor <Executor> {
 	bool built_seconday_indexes;
 @public
-	Shard<Shard> *shard;
 	struct object_space *object_space_registry[256];
 	const int object_space_max_idx;
 	int version;

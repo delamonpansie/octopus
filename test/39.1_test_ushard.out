@@ -4,7 +4,7 @@
 # two.ping()
 :pong
 
-# one.meta(shard 1 alter por one)
+# one.meta(shard 1 create por)
 ok
 
 # one.meta(shard 1 obj_space 0 create tree unique string 0)
