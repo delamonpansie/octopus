@@ -5,6 +5,8 @@ use warnings;
 use IO::Socket::INET;
 use vars qw/$s/;
 
+my $version = 0.99;
+
 $| = 1; # autoflush
 my $iproto_sync = 1;
 my $iproto_len = 0;
