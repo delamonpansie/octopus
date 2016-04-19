@@ -1,7 +1,6 @@
 local jit = require 'jit'
 local reload_files = {}
 local reload_modules = {}
-local reload_lock = {"it is reload loop lock"}
 
 local function print_warn(name, msg)
     say_warn("reloadfile(\"%s\"): %s", name, msg)
@@ -142,43 +141,22 @@ local function check_reload(name)
     end
 end
 
-local loop_unlocked = false
-local function unlock_reload_loop()
-    if #fiber._locks[reload_lock] == 1 then
-        fiber._unlock(reload_lock)
-    end
-    loop_unlocked = true
-end
-
 local function reload_loop()
     while true do
-        if not loop_unlocked then
-            fiber._lock(reload_lock)
-        end
-        loop_unlocked = false
+        fiber.sleep(1)
         for _, name in ipairs(reload_files) do
             check_reload(name)
         end
     end
 end
 
-local function reload_queue_pusher()
-    while true do
-        fiber.sleep(1)
-        unlock_reload_loop()
-    end
-end
-
-fiber._lock(reload_lock)
 fiber.loop("core:reload_loop", reload_loop)
-fiber.loop("core:reload_loop_pusher", reload_queue_pusher)
 
 function reloadfile(name)
     assertarg(name, 'string', 1)
     local stat = register_reload(name)
-    if stat.filename then
+    if stat and stat.filename then
         first_load(stat, name)
     end
-    unlock_reload_loop()
 end
 return reloadfile
