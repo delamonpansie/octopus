@@ -223,8 +223,3 @@ if ($ret_code != 0) {
     print "ok\n";
 }
 
-exit 0;
-use Data::Hexdumper qw(hexdump);
-print hexdump($req);
-print hexdump($resp);
-
