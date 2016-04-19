@@ -12,7 +12,6 @@ obj += src-lua/wal.o
 obj += src-lua/fiber_lock.o
 obj += src-lua/fiber_loop.o
 obj += src-lua/reloadfile.o
-obj += src-lua/shard.o
 obj += src-lua/repl.o
 obj += src-lua/jit/v.o
 obj += src-lua/jit/dump.o
