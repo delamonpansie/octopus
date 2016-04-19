@@ -945,10 +945,6 @@ init_storage:
 	/* run Lua pre_init before module init */
 	luaT_require_or_panic("pre_init", false, NULL);
 
-#ifdef FEEDER
-	cfg.wal_feeder_fork_before_init = 0;
-	assert(module("feeder"));
-#endif
 #if CFG_snap_dir
 	if (module("feeder") && fold_scn == 0) {
 		/* this either gets overriden it feeder don't fork
