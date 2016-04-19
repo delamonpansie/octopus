@@ -1,5 +1,3 @@
-binary_type ?= FEEDER
-
 obj += mod/feeder/feeder.o
 obj += mod/feeder/src-lua/feeder.o
 obj += src/log_io.o
