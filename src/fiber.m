@@ -486,8 +486,10 @@ fiber_init(const char *sched_name)
 	ev_async_init(&wake_async, (void *)unzero_io_collect_interval);
 	ev_async_start(&wake_async);
 
+#if CFG_lua_path
 	extern void luaO_init();
 	luaO_init();
+#endif
 	say_debug("fibers initialized");
 }
 

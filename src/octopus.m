@@ -771,8 +771,10 @@ init_storage:
 	octopus_ev_backgroud_tasks();
 	fiber_init(NULL);
 
+#if CFG_lua_path
 	/* run Lua pre_init before module init */
 	luaO_require_or_panic("pre_init", false, NULL);
+#endif
 
 #if CFG_snap_dir
 	if (module("feeder") && fold_scn == 0) {
@@ -819,8 +821,10 @@ init_storage:
 		@throw;
 	}
 
+#if CFG_lua_path
 	/* run Lua init _after_ module init */
 	luaO_require_or_panic("init", false, NULL);
+#endif
 #if CFG_snap_dir && CFG_wal_feeder_standalone
 run_loop:
 #endif
