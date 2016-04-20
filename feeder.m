@@ -42,6 +42,10 @@
 #include <sys/ioctl.h>
 #include <sys/types.h>
 
+#if CFG_lua_path
+#import <src-lua/octopus_lua.h>
+#endif
+
 #import <mod/feeder/feeder.h>
 #import <mod/feeder/feeder_version.h>
 
@@ -150,6 +154,7 @@ shard_filter(struct row_v12 *row, const char *arg, int arglen)
 	}
 }
 
+#if CFG_lua_path
 struct row_v12 *
 lua_filter(struct row_v12 *r, __attribute((unused)) const char *arg, __attribute__((unused)) int arglen)
 {
@@ -185,6 +190,7 @@ lua_filter(struct row_v12 *r, __attribute((unused)) const char *arg, __attribute
 
 	return r;
 }
+#endif
 
 - (void)
 send_row:(struct row_v12 *)row
@@ -220,7 +226,8 @@ setup_filter:(struct feeder_filter*)_filter
 		filter = id_filter;
 		break;
 	case FILTER_TYPE_LUA:
-		luaT_pushtraceback(fiber->L);
+#if CFG_lua_path
+		luaO_pushtraceback(fiber->L);
 		lua_getglobal(fiber->L, "__feederentrypoint");
 		lua_getglobal(fiber->L, "replication_filter");
 		lua_getfield(fiber->L, -1, _filter->name);
@@ -235,6 +242,10 @@ setup_filter:(struct feeder_filter*)_filter
 			lua_pushnil(fiber->L);
 		}
 		filter = lua_filter;
+#else
+		say_error("no lua support");
+		_exit(EXIT_FAILURE);
+#endif
 		break;
 	case FILTER_TYPE_C:
 		for(i = 0; i < registered.count; i++) {
@@ -407,10 +418,11 @@ recover_feed_slave(int sock, struct iproto *req)
 	say_info("connect peer:%s", peer_name);
 	title("feeder_handler/%s", peer_name);
 
-	luaT_require_or_panic("feeder", false, NULL);
-	luaT_require_or_panic("feeder_init", false, NULL);
-	luaT_require_or_panic("init", false, NULL);
-
+#if CFG_lua_path
+	luaO_require_or_panic("feeder", false, NULL);
+	luaO_require_or_panic("feeder_init", false, NULL);
+	luaO_require_or_panic("init", false, NULL);
+#endif
 	[Feeder register_filter:"shard" call:shard_filter];
 	feeder = [[Feeder alloc] init_fd:sock];
 
