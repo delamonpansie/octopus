@@ -816,6 +816,7 @@ box_rollback(struct box_txn *txn)
 	({ assert (arg && ((struct shard_route *)arg)->shard); \
 	   ((struct shard_route *)arg)->shard->executor; })
 
+#if CFG_lua_path
 static void
 box_lua_cb(struct netmsg_head *wbuf, struct iproto *request, void *arg)
 {
@@ -839,6 +840,7 @@ box_lua_cb(struct netmsg_head *wbuf, struct iproto *request, void *arg)
 		@throw;
 	}
 }
+#endif
 
 
 static struct rwlock lock;
@@ -993,7 +995,9 @@ box_service(struct iproto_service *s)
 		service_register_iproto(s, *op, box_cb, IPROTO_ON_MASTER);
 	foreach_op(CREATE_OBJECT_SPACE, CREATE_INDEX, DROP_OBJECT_SPACE, DROP_INDEX, TRUNCATE)
 		service_register_iproto(s, *op, box_meta_cb, IPROTO_ON_MASTER);
+#if CFG_lua_path
 	service_register_iproto(s, EXEC_LUA, box_lua_cb, 0);
+#endif
 }
 
 static void
@@ -1014,9 +1018,11 @@ box_service_ro(struct iproto_service *s)
 		   CREATE_OBJECT_SPACE, CREATE_INDEX, DROP_OBJECT_SPACE, DROP_INDEX, TRUNCATE)
 		service_register_iproto(s, *op, box_roerr, IPROTO_NONBLOCK);
 
+#if CFG_lua_path
 	/* allow select only lua procedures
 	   updates are blocked by luaT_box_dispatch() */
 	service_register_iproto(s, EXEC_LUA, box_lua_cb, 0);
+#endif
 }
 
 void __attribute__((constructor))

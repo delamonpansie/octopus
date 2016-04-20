@@ -216,6 +216,7 @@ static inline void * tuple_data(struct tnt_object *obj)
 void * tuple_field(struct tnt_object *obj, size_t i);
 int tuple_valid(struct tnt_object *obj);
 void tuple_free(struct tnt_object *obj);
+void net_tuple_add(struct netmsg_head *h, struct tnt_object *obj);
 
 int box_cat_scn(i64 stop_scn);
 int box_cat(const char *filename);

@@ -37,9 +37,7 @@
 #include <stdbool.h>
 #include <errno.h>
 
-#include <third_party/luajit/src/lua.h>
-#include <third_party/luajit/src/lualib.h>
-#include <third_party/luajit/src/lauxlib.h>
+#import <src-lua/octopus_lua.h>
 #include <third_party/luajit/src/lj_obj.h> /* for LJ_TCDATA */
 #import <mod/box/box.h>
 #import <mod/box/moonbox.h>
@@ -188,7 +186,7 @@ luaT_openbox(struct lua_State *L)
 	luaL_register(L, NULL, boxlib);
 	lua_pop(L, 1);
 
-	luaT_pushtraceback(L);
+	luaO_pushtraceback(L);
 	lua_getglobal(L, "require");
         lua_pushliteral(L, "box_prelude");
 	if (lua_pcall(L, 1, 0, -3) != 0)
@@ -198,6 +196,21 @@ luaT_openbox(struct lua_State *L)
 
 static void restore_top(int *top) {
 	lua_settop(fiber->L, *top-1);
+}
+
+static void
+read_push_field(lua_State *L, struct tbuf *buf)
+{
+	void *p = buf->ptr;
+	u32 data_len = read_varint32(buf);
+
+	if (unlikely(buf->ptr + data_len > buf->end)) {
+		buf->ptr = p;
+		tbuf_too_short();
+	} else {
+		lua_pushlstring(L, buf->ptr, data_len);
+		buf->ptr += data_len;
+	}
 }
 
 static int box_entry_i = 0;
@@ -214,7 +227,7 @@ box_dispach_lua(struct netmsg_head *wbuf, struct iproto *request, Box *box)
 	void *fname = read_bytes(&data, flen);
 	u32 nargs = read_u32(&data);
 
-	luaT_pushtraceback(L);
+	luaO_pushtraceback(L);
 	int __attribute__((cleanup(restore_top))) top = lua_gettop(L);
 
 	if (box_entry_i == 0) {

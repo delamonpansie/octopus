@@ -44,6 +44,10 @@
 #import <mod/box/box_version.h>
 #import <mod/feeder/feeder.h>
 
+#if CFG_lua_path
+#import <src-lua/octopus_lua.h>
+#endif
+
 #include <third_party/crc32.h>
 
 #include <stdarg.h>
@@ -522,9 +526,10 @@ initialize_service()
 static void
 init_second_stage(va_list ap __attribute__((unused)))
 {
+#if CFG_lua_path
 	luaT_openbox(root_L);
-	luaT_require_or_panic("box_init", false, NULL);
-
+	luaO_require_or_panic("box_init", false, NULL);
+#endif
 	[recovery simple:&box_primary];
 }
 
