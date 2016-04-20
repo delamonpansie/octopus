@@ -41,7 +41,7 @@
 #import <shard.h>
 
 #import <mod/box/box.h>
-#import <mod/box/moonbox.h>
+#import <mod/box/src-lua/moonbox.h>
 
 #include <stdint.h>
 

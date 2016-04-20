@@ -20,7 +20,7 @@ obj += third_party/qsort_arg.o
 mod/box/box.o: mod/box/box_version.h
 
 ifeq ($(LUA),1)
-obj += mod/box/moonbox.o
+obj += mod/box/src-lua/moonbox.o
 obj += mod/box/src-lua/box.o
 obj += mod/box/src-lua/box_prelude.o
 obj += mod/box/src-lua/box/object_space_info.o

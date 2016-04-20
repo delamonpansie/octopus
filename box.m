@@ -40,7 +40,7 @@
 #import <paxos.h>
 
 #import <mod/box/box.h>
-#import <mod/box/moonbox.h>
+#import <mod/box/src-lua/moonbox.h>
 #import <mod/box/box_version.h>
 #import <mod/feeder/feeder.h>
 

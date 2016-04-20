@@ -40,7 +40,7 @@
 #import <src-lua/octopus_lua.h>
 #include <third_party/luajit/src/lj_obj.h> /* for LJ_TCDATA */
 #import <mod/box/box.h>
-#import <mod/box/moonbox.h>
+#import <mod/box/src-lua/moonbox.h>
 
 #import <shard.h>
 
