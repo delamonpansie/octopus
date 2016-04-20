@@ -174,10 +174,3 @@ function cut_traceback(deep)
     end
     return deep:sub(1, last_line_match)
 end
-
-require('stat')
-pcall(require, 'graphite')
-require('fiber_lock')
-require('fiber_loop')
-require('reloadfile')
-print("Lua prelude initialized.")

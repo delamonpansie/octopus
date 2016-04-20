@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012 Mail.RU
- * Copyright (C) 2010, 2011, 2012 Yuriy Vostrikov
+ * Copyright (C) 2016 Mail.RU
+ * Copyright (C) 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -24,17 +24,21 @@
  * SUCH DAMAGE.
  */
 
-#ifndef STAT_H
-#define STAT_H
+#include <third_party/luajit/src/lua.h>
+#include <third_party/luajit/src/lualib.h>
+#include <third_party/luajit/src/lauxlib.h>
 
-#include <util.h>
-#include <tbuf.h>
+struct lua_State *root_L;
+struct lua_src {
+	const char *name;
+	const char *start;
+	size_t size;
+};
+struct lua_src *lua_src;
 
-void stat_init(void);
-int stat_register(char * const *name, size_t count);
-void stat_collect(int base, int name, i64 value);
-/* should be separate name from stat_collect */
-void stat_collect_double(int base, int name, double value);
-void stat_print(struct tbuf *buf);
-
-#endif
+void luaO_init(void);
+int luaO_require(const char *filename);
+void luaO_require_or_panic(const char *filename, bool panic_on_missing, const char *error_format);
+int luaO_find_proc(struct lua_State *L, const char *fname, i32 len);
+int luaO_traceback(struct lua_State* L);
+void luaO_pushtraceback(struct lua_State* L);

@@ -1,3 +1,46 @@
+# some lua files are generated with CPP, they also need XCPPFLAGS
+
+LUA=1
+
+cfg_tmpl += src-lua/octopus_lua_cfg.cfg_tmpl
+
+%.lua: XCPPFLAGS += -I. -Iinclude
+ifneq (.,$(srcdir))
+  %.o %.lua: XCPPFLAGS += -I$(srcdir) -I$(srcdir)/include
+  # ../../../ is because of 'make -C third_party/luajit/src'
+  LUAJIT_VPATH=$(if $(filter /%,$(srcdir)),$(srcdir)/third_party/luajit/src/,../../../$(srcdir)/third_party/luajit/src/)
+endif
+
+# prevent parallel building of this targets
+third_party/luajit/src/libluajit.a:|third_party/luajit/src/jit/vmdef.lua
+third_party/luajit/src/jit/vmdef.lua:|third_party/luajit/src/luajit
+
+third_party/luajit/src/luajit third_party/luajit/src/jit/vmdef.lua third_party/luajit/src/libluajit.a:
+	@mkdir -p third_party/luajit/src/host third_party/luajit/src/jit
+	$E "MAKE	$@"
+	$(Q)echo 'include $$(VPATH)Makefile' | $(MAKE) -C third_party/luajit/src -f - \
+		VPATH=$(LUAJIT_VPATH) \
+		CC="$(CC)" E="$(E)" Q="$(Q)" \
+		CCDEBUG="$(filter -g%,$(CFLAGS))" BUILDMODE=static \
+		TARGET_CFLAGS='-funwind-tables -DLUAJIT_UNWIND_EXTERNAL' \
+		$(subst third_party/luajit/src/,,$@)
+
+$(binary): third_party/luajit/src/libluajit.a
+define LUAJIT_B
+LUA_PATH='$(srcdir)/third_party/luajit/src/?.lua' \
+	./third_party/luajit/src/luajit -b \
+	$(if $(DCFLAGS),-g) \
+	-n $(subst /,.,$(basename $(lastword $(subst src-lua/, ,$<)))) \
+	$< $@
+endef
+
+%.o: %.lua third_party/luajit/src/luajit
+	@mkdir -p $(dir $@)
+	$(E) "LUAJIT	$@"
+	$(Q)$(LUAJIT_B)
+
+
+obj += src-lua/octopus_lua.o
 obj += src-lua/prelude.o
 obj += src-lua/packer.o
 obj += src-lua/pp.o

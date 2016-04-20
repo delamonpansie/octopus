@@ -49,8 +49,5 @@ input_buffer_size = 32768
 input_high_watermark = 26214
 input_low_watermark = 4096
 
-# path for search scripts
-lua_path = "src-lua/?.lua;?.lua", ro
-
 # custom proc title is appended after normal
 custom_proc_title=NULL, ro

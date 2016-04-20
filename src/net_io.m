@@ -57,6 +57,10 @@
 # define VALGRIND_FREELIKE_BLOCK(addr, rzB) (void)0
 #endif
 
+#if CFG_lua_path
+#import <src-lua/octopus_lua.h>
+#endif
+
 static struct slab_cache netmsg_cache;
 
 static struct netmsg *
@@ -118,11 +122,15 @@ netmsg_release(struct netmsg *m, int from, int count)
 	}
 
 	if (have_lua_refs) {
+#if CFG_lua_path
 		lua_State *L = fiber->L;
 		lua_getglobal(L, "__netmsg_unref");
 		lua_pushlightuserdata(L, m);
 		lua_pushinteger(L, from);
 		lua_call(L, 2, 0);
+#else
+		abort();
+#endif
 	}
 }
 

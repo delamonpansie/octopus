@@ -125,19 +125,4 @@ OBJECT_FUN_INLINE int object_type(const struct tnt_object *obj)
 void zero_io_collect_interval();
 void unzero_io_collect_interval();
 
-extern lua_State *root_L;
-struct lua_src {
-	const char *name;
-	const char *start;
-	size_t size;
-};
-extern struct lua_src *lua_src;
-
-void luaT_init(void);
-int luaT_require(const char *filename);
-void luaT_require_or_panic(const char *filename, bool panic_on_missing, const char *error_format);
-int luaT_find_proc(lua_State *L, const char *fname, i32 len);
-int luaT_traceback(lua_State* L);
-void luaT_pushtraceback(lua_State* L);
-
 #endif

@@ -31,6 +31,10 @@
 #import <say.h>
 #import <stat.h>
 
+#if CFG_lua_path
+#import <src-lua/octopus_lua.h>
+#endif
+
 #define SECS 5
 
 enum { STAT_COUNTER = 1, STAT_DOUBLE = 2 };
@@ -97,8 +101,10 @@ stat_collect_double(int base, int name, double value)
 }
 
 void
-stat_print(lua_State *L, struct tbuf *buf)
+stat_print(struct tbuf *buf)
 {
+#if CFG_lua_path
+	lua_State *L = fiber->L;
 	lua_getglobal(L, "stat");
 	lua_getfield(L, -1, "print");
 	lua_remove(L, -2);
@@ -110,8 +116,12 @@ stat_print(lua_State *L, struct tbuf *buf)
 		say_error("lua_pcall(stat.print): %s", lua_tostring(L, -1));
 	}
 	lua_pop(L, 1);
+#else
+	tbuf_printf(buf, "unimplemented");
+#endif
 }
 
+#if CFG_lua_path
 static int
 stat_record(lua_State *L)
 {
@@ -158,13 +168,17 @@ stat_record(lua_State *L)
 
 	return 1;
 }
+#endif
 
 void
 stat_init()
 {
+#if CFG_lua_path
 	lua_State *L = fiber->L;
+	luaO_require_or_panic("stat", true, NULL);
+	luaO_require_or_panic("graphite", false, NULL);
 	int top = lua_gettop(L);
-	lua_pushcfunction(L, luaT_traceback);
+	lua_pushcfunction(L, luaO_traceback);
 	lua_getglobal(L, "stat");
 	lua_getfield(L, -1, "new_with_graphite");
 	lua_pushstring(L, "stat");
@@ -173,6 +187,7 @@ stat_init()
 		panic("could not initialize statistic, lua error: %s", lua_tostring(L, -1));
 	}
 	lua_settop(L, top);
+#endif
 }
 
 register_source();

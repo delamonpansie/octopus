@@ -39,10 +39,11 @@
 #import <octopus_version.h>
 #import <cfg/defs.h>
 
+#if CFG_lua_path
+#import <src-lua/octopus_lua.h>
+#endif
+
 #include <third_party/gopt/gopt.h>
-#include <third_party/luajit/src/lua.h>
-#include <third_party/luajit/src/lualib.h>
-#include <third_party/luajit/src/lauxlib.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -72,8 +73,6 @@ char *cfg_filename_fullpath = NULL;
 char *binary_filename;
 bool init_storage, booting = true;
 static void *opt = NULL;
-
-lua_State *root_L;
 
 char cfg_err_buf[1024], *cfg_err;
 int cfg_err_len, cfg_err_offt;
@@ -410,174 +409,6 @@ remove_pid(void)
 		say_warn("%s: not a master", __func__);
 }
 
-static int
-luaT_print(struct lua_State *L)
-{
-	int n = lua_gettop(L);
-	for (int i = 1; i <= n; i++)
-		say_info("%s", lua_tostring(L, i));
-	return 0;
-}
-
-static int
-luaT_panic(struct lua_State *L)
-{
-	const char *err = "unknown error";
-	if (lua_isstring(L, -1))
-		err = lua_tostring(L, -1);
-	panic("lua failed with: %s", err);
-}
-
-
-static int
-luaT_error(struct lua_State *L)
-{
-	const char *err = "unknown lua error";
-	if (lua_isstring(L, -1))
-		err = lua_tostring(L, -1);
-
-	/* FIXME: use native exceptions ? */
-	@throw [Error with_reason:err];
-}
-
-
-static int /* FIXME: FFFI! */
-luaT_os_ctime(lua_State *L)
-{
-	const char *filename = luaL_checkstring(L, 1);
-	struct stat buf;
-
-	if (stat(filename, &buf) < 0)
-		luaL_error(L, "stat(`%s'): %s", filename, strerror_o(errno));
-	lua_pushnumber(L, buf.st_ctime + (lua_Number)buf.st_ctim.tv_nsec / 1.0e9);
-	return 1;
-}
-
-int
-luaT_traceback(lua_State *L)
-{
-	if (!lua_isstring(L, 1)) { /* Non-string error object? Try metamethod. */
-		if (lua_isnoneornil(L, 1) ||
-				!luaL_callmeta(L, 1, "__tostring") ||
-				!lua_isstring(L, -1)) {
-			lua_settop(L, 1);
-			lua_getglobal(L, "tostring");
-			lua_pushvalue(L, -2);
-			lua_call(L, 1, 0);
-		}
-		lua_remove(L, 1);  /* Replace object by result of __tostring metamethod. */
-	}
-	luaL_traceback(L, L, lua_tostring(L, 1), 1);
-	return 1;
-}
-
-static int luaT_traceback_i = 0;
-void
-luaT_pushtraceback(lua_State *L)
-{
-	lua_rawgeti(L, LUA_REGISTRYINDEX, luaT_traceback_i);
-}
-
-
-void
-luaT_init()
-{
-	struct lua_State *L;
-	L = sched->L = root_L = luaL_newstate();
-	assert(L != NULL);
-
-	/* any lua error during initial load is fatal */
-	lua_atpanic(L, luaT_panic);
-
-	luaL_openlibs(L);
-	lua_register(L, "print", luaT_print);
-
-	luaT_openfiber(L);
-
-        lua_getglobal(L, "package");
-        lua_pushstring(L, cfg.lua_path);
-        lua_setfield(L, -2, "path");
-        lua_pop(L, 1);
-
-	lua_getglobal(L, "os");
-	lua_pushcfunction(L, luaT_os_ctime);
-	lua_setfield(L, -2, "ctime");
-	lua_pop(L, 1);
-
-	lua_pushcfunction(L, luaT_traceback);
-	lua_getglobal(L, "require");
-	lua_pushliteral(L, "prelude");
-	if (lua_pcall(L, 1, 0, -3))
-		panic("lua_pcall() failed: %s", lua_tostring(L, -1));
-
-	luaT_traceback_i = luaL_ref(L, LUA_REGISTRYINDEX);
-
-	lua_atpanic(L, luaT_error);
-}
-
-int
-luaT_find_proc(lua_State *L, const char *fname, i32 len)
-{
-	lua_pushvalue(L, LUA_GLOBALSINDEX);
-	do {
-		const char *e = memchr(fname, '.', len);
-		if (e == NULL)
-			e = fname + len;
-
-		if (lua_isnil(L, -1))
-			return 0;
-		lua_pushlstring(L, fname, e - fname);
-		lua_gettable(L, -2);
-		lua_remove(L, -2);
-
-		len -= e - fname + 1;
-		fname = e + 1;
-	} while (len > 0);
-	if (lua_isnil(L, -1))
-		return 0;
-	return 1;
-}
-
-int
-luaT_require(const char *modname)
-{
-	struct lua_State *L = fiber->L;
-	luaT_pushtraceback(L);
-	lua_getglobal(L, "require");
-	lua_pushstring(L, modname);
-	if (!lua_pcall(L, 1, 0, -3)) {
-		say_info("Lua module '%s' loaded", modname);
-		lua_pop(L, 1);
-		return 1;
-	} else {
-		const char *err = lua_tostring(L, -1);
-		char buf[64];
-		int ret = 0;
-		snprintf(buf, sizeof(buf), "module '%s' not found", modname);
-		if (strstr(err, buf) == NULL) {
-			say_debug("luaT_require(%s): failed with `%s'", modname, err);
-			ret = -1;
-		}
-		lua_remove(L, -2);
-		return ret;
-	}
-}
-
-void
-luaT_require_or_panic(const char *modname, bool panic_on_missing, const char *error_format)
-{
-	int ret = luaT_require(modname);
-	if (ret == 1)
-		return;
-	if (ret == 0 && !panic_on_missing) {
-		lua_pop(fiber->L, 1);
-		return;
-	}
-	if (error_format == NULL) {
-		error_format = "unable to load `%s' lua module: %s";
-	}
-	panic(error_format, modname, lua_tostring(fiber->L, -1));
-}
 
 #if OCT_CHILDREN
 void
@@ -903,7 +734,6 @@ init_storage:
 		init_storage = true;
 		salloc_init(0, 0, 0);
 		fiber_init(NULL);
-		luaT_init();
 #if CFG_wal_feeder_addr
 		if (cfg.wal_feeder_addr) {
 			say_warn("--init-storage is no op in replica");
@@ -939,11 +769,10 @@ init_storage:
 #endif
 	octopus_ev_init();
 	octopus_ev_backgroud_tasks();
-	fiber_init(NULL); /* must be initialized before Lua */
-	luaT_init();
+	fiber_init(NULL);
 
 	/* run Lua pre_init before module init */
-	luaT_require_or_panic("pre_init", false, NULL);
+	luaO_require_or_panic("pre_init", false, NULL);
 
 #if CFG_snap_dir
 	if (module("feeder") && fold_scn == 0) {
@@ -991,7 +820,7 @@ init_storage:
 	}
 
 	/* run Lua init _after_ module init */
-	luaT_require_or_panic("init", false, NULL);
+	luaO_require_or_panic("init", false, NULL);
 #if CFG_snap_dir && CFG_wal_feeder_standalone
 run_loop:
 #endif

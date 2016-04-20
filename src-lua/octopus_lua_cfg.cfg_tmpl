@@ -1,0 +1,3 @@
+
+# path for search scripts
+lua_path = "src-lua/?.lua;?.lua", ro

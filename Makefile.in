@@ -53,13 +53,7 @@ endif
 
 MAKEFLAGS += --no-print-directory
 
-# some lua files are generated with CPP, they also need XCPPFLAGS
-%.o %.lua: XCPPFLAGS += -I. -Iinclude
-ifneq (.,$(srcdir))
-  %.o %.lua: XCPPFLAGS += -I$(srcdir) -I$(srcdir)/include
-  # ../../../ is because of 'make -C third_party/luajit/src'
-  LUAJIT_VPATH=$(if $(filter /%,$(srcdir)),$(srcdir)/third_party/luajit/src/,../../../$(srcdir)/third_party/luajit/src/)
-endif
+%.o: XCPPFLAGS += -I. -Iinclude
 
 primary_module=$(firstword $(modules))
 binary=octopus$(if $(WITH_MODNAME),_$(primary_module),)
@@ -83,35 +77,21 @@ depend = $(patsubst %.o,%.d,$(1))
 
 all: $(binary) $(foreach client,$(clients),$(client)_all)
 
+subdirs += third_party
+subdirs += src-lua
 subdirs += $(foreach dir,$(modules),mod/$(dir))
 subdirs += $(foreach dir,$(clients),client/$(dir))
 ifeq (,$(filter libiproto,$(clients)))
   subdirs += client/libiproto
 endif
-subdirs += third_party cfg src src-lua
+subdirs += src cfg
 
 sub-Makefile = $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
 -include $(sub-Makefile)
 
-$(binary): $(obj) third_party/luajit/src/libluajit.a
+$(binary): $(obj)
 	$E "CC	$@"
-	$Q$(CC) $^ $(LIBS) $(XLDFLAGS) $(LDFLAGS) $(CFLAGS) -o $@
-
-
-
-# prevent parallel building of this targets
-third_party/luajit/src/libluajit.a:|third_party/luajit/src/jit/vmdef.lua
-third_party/luajit/src/jit/vmdef.lua:|third_party/luajit/src/luajit
-
-third_party/luajit/src/luajit third_party/luajit/src/jit/vmdef.lua third_party/luajit/src/libluajit.a:
-	@mkdir -p third_party/luajit/src/host third_party/luajit/src/jit
-	$E "MAKE	$@"
-	$(Q)echo 'include $$(VPATH)Makefile' | $(MAKE) -C third_party/luajit/src -f - \
-		VPATH=$(LUAJIT_VPATH) \
-		CC="$(CC)" E="$(E)" Q="$(Q)" \
-		CCDEBUG="$(filter -g%,$(CFLAGS))" BUILDMODE=static \
-		TARGET_CFLAGS='-funwind-tables -DLUAJIT_UNWIND_EXTERNAL' \
-		$(subst third_party/luajit/src/,,$@)
+	$Q$(CC) $^ $(LIBS) $(XLIBS) $(XLDFLAGS) $(LDFLAGS) $(CFLAGS) -o $@
 
 $(obj): Makefile $(sub-Makefile)
 
@@ -129,19 +109,6 @@ $(filter-out $(no-extra-warns),$(obj)): XCFLAGS += $(WCFLAGS)
 	@mkdir -p $(dir $@)
 	$(E) "CC	$@"
 	$(Q)$(CC) $(XCPPFLAGS) $(XCFLAGS) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
-
-define LUAJIT_B
-LUA_PATH='$(srcdir)/third_party/luajit/src/?.lua' \
-	./third_party/luajit/src/luajit -b \
-	$(if $(DCFLAGS),-g) \
-	-n $(subst /,.,$(basename $(lastword $(subst src-lua/, ,$<)))) \
-	$< $@
-endef
-
-%.o: %.lua third_party/luajit/src/luajit
-	@mkdir -p $(dir $@)
-	$(E) "LUAJIT	$@"
-	$(Q)$(LUAJIT_B)
 
 ifeq (1,$(HAVE_RAGEL))
 %.m: %.rl

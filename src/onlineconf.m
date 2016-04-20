@@ -41,6 +41,9 @@
 #include <assoc.h>
 
 #import <octopus_ev.h>
+#if CFG_lua_path
+#import <src-lua/octopus_lua.h>
+#endif
 
 static ev_timer onlineconf_timer;
 static onlineconf_cb_f *onlineconf_callbacks = NULL;
@@ -253,6 +256,7 @@ onlineconf_watch(ev_timer *w _unused_, int event _unused_)
 	}
 }
 
+#if CFG_lua_path
 static void
 lua_onlineconf_callback(const char* name)
 {
@@ -263,6 +267,7 @@ lua_onlineconf_callback(const char* name)
 	lua_pushstring(L, name);
 	lua_call(L, 1, 0);
 }
+#endif
 
 static enum ckv_kind
 ckv_kind_by_path(const char *path)
@@ -447,12 +452,14 @@ init(void)
 {
 	ev_timer_init(&onlineconf_timer, onlineconf_watch, 2, 2);
 	load_config(&cfg);
-	switch (luaT_require("onlineconf")) {
+#if CFG_lua_path
+	switch (luaO_require("onlineconf")) {
 	case 1: register_onlineconf_callback(lua_onlineconf_callback);
 	case 0: break;
 	case -1:
 		panic("unable to load `ckv' lua module: %s", lua_tostring(fiber->L, -1));
 	}
+#endif
 }
 
 static struct tnt_module onlineconf_mod = {

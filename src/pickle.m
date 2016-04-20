@@ -156,22 +156,6 @@ read_field(struct tbuf *buf)
 	return p;
 }
 
-void
-read_push_field(lua_State *L, struct tbuf *buf)
-{
-	void *p = buf->ptr;
-	u32 data_len = safe_load_varint32(buf);
-
-	if (unlikely(buf->ptr + data_len > buf->end)) {
-		buf->ptr = p;
-		tbuf_too_short();
-	} else {
-		lua_pushlstring(L, buf->ptr, data_len);
-		buf->ptr += data_len;
-	}
-}
-
-
 void *
 read_bytes(struct tbuf *buf, u32 data_len)
 {

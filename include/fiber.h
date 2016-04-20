@@ -30,15 +30,15 @@
 #include <util.h>
 #include <coro.h>
 #include <objc.h>
+#include <cfg/defs.h>
 
-#include <third_party/luajit/src/lua.h>
-#include <third_party/luajit/src/lauxlib.h>
 #include <third_party/queue.h>
 
 #include <stdint.h>
 #include <stdbool.h>
 #include <unistd.h>
 #include <sys/uio.h>
+#include <stdarg.h>
 
 struct tbuf; /* forward declaration */
 
@@ -66,7 +66,9 @@ static inline bool not_sched(struct Fiber* fib) { return fib != sched; }
 	enum {WAKE_VALUE=1, WAKE_ERROR} wake_flag;
 	int   ushard;
 
+#if CFG_lua_path
 	struct lua_State *L;
+#endif
 	struct {
 		struct autorelease_chain *current;
 		struct autorelease_chain top;
@@ -130,8 +132,6 @@ ssize_t fiber_read(int fd, void *buf, size_t count);
 ssize_t fiber_write(int fd, const void *buf, size_t count);
 struct netmsg_head;
 ssize_t fiber_writev(int fd, struct netmsg_head *head);
-
-int luaT_openfiber(struct lua_State *L);
 
 struct rwlock {
 	bool locked;

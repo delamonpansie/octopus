@@ -39,10 +39,6 @@
 #include <sys/uio.h>
 #include <netinet/in.h>
 
-/* macro for generating laujit's cdefs*/
-#ifndef LUA_DEF
-# define LUA_DEF
-#endif
 @class Fiber;
 struct service;
 
@@ -93,19 +89,19 @@ struct netmsg_mark {
 	int offset;
 };
 
-void netmsg_head_init(struct netmsg_head *h, struct palloc_pool *pool) LUA_DEF;
-void netmsg_head_dealloc(struct netmsg_head *h) LUA_DEF;
+void netmsg_head_init(struct netmsg_head *h, struct palloc_pool *pool);
+void netmsg_head_dealloc(struct netmsg_head *h);
 
-struct netmsg *netmsg_concat(struct netmsg_head *dst, struct netmsg_head *src) LUA_DEF;
-void netmsg_rewind(struct netmsg_head *h, const struct netmsg_mark *mark) LUA_DEF;
-void netmsg_getmark(struct netmsg_head *h, struct netmsg_mark *mark) LUA_DEF;
+struct netmsg *netmsg_concat(struct netmsg_head *dst, struct netmsg_head *src);
+void netmsg_rewind(struct netmsg_head *h, const struct netmsg_mark *mark);
+void netmsg_getmark(struct netmsg_head *h, struct netmsg_mark *mark);
 void netmsg_reset(struct netmsg_head *h);
 
-void net_add_iov(struct netmsg_head *o, const void *buf, size_t len) LUA_DEF;
-void net_add_iov_dup(struct netmsg_head *o, const void *buf, size_t len) LUA_DEF;
+void net_add_iov(struct netmsg_head *o, const void *buf, size_t len);
+void net_add_iov_dup(struct netmsg_head *o, const void *buf, size_t len);
 #define net_add_dup(o, buf) net_add_iov_dup(o, (buf), sizeof(*(buf)))
-void net_add_ref_iov(struct netmsg_head *o, uintptr_t ref, const void *buf, size_t len) LUA_DEF;
-void net_add_obj_iov(struct netmsg_head *o, struct tnt_object *obj, const void *buf, size_t len) LUA_DEF;
+void net_add_ref_iov(struct netmsg_head *o, uintptr_t ref, const void *buf, size_t len);
+void net_add_obj_iov(struct netmsg_head *o, struct tnt_object *obj, const void *buf, size_t len);
 void netmsg_verify_ownership(struct netmsg_head *h); /* debug method */
 
 ssize_t netmsg_writev(int fd, struct netmsg_head *head);
@@ -168,12 +164,9 @@ void udp_server(va_list ap);
 int server_socket(int type, struct sockaddr_in *src, int nonblock,
 		  void (*on_bind)(int fd), void (*sleep)(ev_tstamp tm));
 
-int atosin(const char *orig, struct sockaddr_in *addr) LUA_DEF;
+int atosin(const char *orig, struct sockaddr_in *addr);
 const char *sintoa(const struct sockaddr_in *addr);
 const char *net_fd_name(int fd);
 const char *net_sin_name(const struct sockaddr_in *addr);
 int net_fixup_addr(char **addr, int port);
-
-void luaT_opennet(struct lua_State *L);
-int luaT_pushnetmsg(struct lua_State *L);
 #endif

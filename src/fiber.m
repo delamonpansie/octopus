@@ -197,6 +197,12 @@ fiber_alloc(struct Fiber *fiber)
 		fiber->autorelease.top.prev = &fiber->autorelease.top;
 	}
 
+#if CFG_lua_path
+	extern void lua_fiber_init(struct Fiber *);
+	if (fiber->L == NULL)
+		lua_fiber_init(fiber);
+#endif
+
 	prelease(fiber->pool);
 }
 
@@ -251,7 +257,6 @@ struct Fiber *
 fiber_create(const char *name, void (*f)(va_list va), ...)
 {
 	Fiber *new = NULL;
-	static int reg_cnt = 0;
 
 	if (!SLIST_EMPTY(&zombie_fibers)) {
 		new = SLIST_FIRST(&zombie_fibers);
@@ -260,11 +265,6 @@ fiber_create(const char *name, void (*f)(va_list va), ...)
 		new = [Fiber alloc];
 		if (octopus_coro_create(&new->coro, fiber_loop, NULL) == NULL)
 			panic_syserror("fiber_create");
-
-		char lua_reg_name[16];
-		sprintf(lua_reg_name, "_fiber:%i", reg_cnt++);
-		new->L = lua_newthread(root_L);
-		lua_setfield(root_L, LUA_REGISTRYINDEX, lua_reg_name);
 
 		fiber_alloc(new);
 
@@ -485,6 +485,9 @@ fiber_init(const char *sched_name)
 	ev_prepare_start(&wake_prep);
 	ev_async_init(&wake_async, (void *)unzero_io_collect_interval);
 	ev_async_start(&wake_async);
+
+	extern void luaO_init();
+	luaO_init();
 	say_debug("fibers initialized");
 }
 
@@ -498,72 +501,6 @@ int
 fiber_switch_cnt()
 {
 	return coro_switch_cnt;
-}
-
-static void
-luaT_fiber_trampoline(va_list ap)
-{
-	struct lua_State *pL = va_arg(ap, struct lua_State *),
-			  *L = fiber->L;
-
-	lua_pushcfunction(L, luaT_traceback);
-	lua_xmove(pL, L, 1);
-	if (lua_pcall(L, 0, 0, -2) != 0) {
-		say_error("lua_pcall(): %s", lua_tostring(L, -1));
-		lua_pop(L, 1);
-	}
-	lua_pop(L, 1);
-}
-
-static int
-luaT_fiber_create(struct lua_State *L)
-{
-	if (!lua_isfunction(L, 1)) {
-		lua_pushliteral(L, "fiber.create: arg is not a function");
-		lua_error(L);
-	}
-
-	fiber_create("lua", luaT_fiber_trampoline, L);
-	return 0;
-}
-
-static int
-luaT_fiber_sleep(struct lua_State *L)
-{
-	lua_Number delay = luaL_checknumber(L, 1);
-	fiber_sleep(delay);
-	return 0;
-}
-
-static int
-luaT_fiber_gc(struct lua_State *L _unused_)
-{
-	fiber_gc();
-	return 0;
-}
-
-static int
-luaT_fiber_yield(struct lua_State *L _unused_)
-{
-	yield();
-	return 0;
-}
-
-
-static const struct luaL_reg fiberlib [] = {
-	{"create", luaT_fiber_create},
-	{"sleep", luaT_fiber_sleep},
-	{"gc", luaT_fiber_gc},
-	{"yield", luaT_fiber_yield},
-	{NULL, NULL}
-};
-
-int
-luaT_openfiber(struct lua_State *L)
-{
-	luaL_register(L, "fiber", fiberlib);
-	lua_pop(L, 1);
-	return 0;
 }
 
 /* ObjectiveC autorelease functions */

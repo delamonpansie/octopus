@@ -104,9 +104,6 @@ void write_field_i32(struct tbuf *b, i32 i);
 void write_field_i64(struct tbuf *b, i64 i);
 void write_field_s(struct tbuf *b, const u8* s, u32 l);
 
-struct lua_State;
-void read_push_field(struct lua_State *L, struct tbuf *buf);
-
 u32 pick_u32(void *data, void **rest);
 
 size_t varint32_sizeof(u32);

@@ -228,8 +228,6 @@ fork_spawner()
 			close(fsock);
 			octopus_ev_init();
 			fiber_init(request.name);
-			luaT_init();
-			sched->name = request.name;
 			title("");
 			say_info("%s spawned", request.name);
 #ifdef HAVE_LIBELF

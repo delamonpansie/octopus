@@ -29,8 +29,6 @@
 
 #include <util.h>
 
-#include <third_party/luajit/src/lua.h>
-
 #include <stdarg.h>
 #include <string.h>
 

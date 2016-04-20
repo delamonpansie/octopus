@@ -106,14 +106,7 @@ fail(struct tbuf *out, const struct tbuf *err)
 	end(out);
 }
 
-static const char *
-tbuf_reader(lua_State *L __attribute__((unused)), void *data, size_t *size)
-{
-	struct tbuf *code = data;
-	*size = tbuf_len(code);
-	return read_bytes(code, tbuf_len(code));
-}
-
+#if CFG_lua_path
 static lua_State *
 luaT_make_repl_env(int fd)
 {
@@ -122,6 +115,14 @@ luaT_make_repl_env(int fd)
 	lua_pushinteger(L, fd);
 	lua_call(L, 1, 0);
 	return L;
+}
+
+static const char *
+tbuf_reader(lua_State *L __attribute__((unused)), void *data, size_t *size)
+{
+	struct tbuf *code = data;
+	*size = tbuf_len(code);
+	return read_bytes(code, tbuf_len(code));
 }
 
 static void
@@ -164,6 +165,7 @@ exec_lua(lua_State *L, const char *str, size_t len, struct tbuf *out)
 		tbuf_append(out, CRLF, 2);
 	lua_pop(L, 1);
 }
+#endif
 
 
 static void
@@ -263,7 +265,7 @@ admin_dispatch(int fd, struct tbuf *rbuf)
 
 		action show_stat {
 			start(out);
-			stat_print(fiber->L, out);
+			stat_print(out);
 			end(out);
 		}
 
@@ -272,14 +274,15 @@ admin_dispatch(int fd, struct tbuf *rbuf)
 			[recovery shard_info:out];
 			end(out);
 		}
-
 		action lua_exec {
+#if CFG_lua_path
 			start(out);
 			exec_lua(fiber->L, strstart, strend - strstart, out);
 			end(out);
+#endif
 		}
-
 		action lua_repl {
+#if CFG_lua_path
 			tbuf_ltrim(rbuf, pe - (char *)rbuf->ptr); // trim "exec lua"
 			start(out);
 			tbuf_append_lit(out, "-- lua repl, type ### to exit" CRLF "> ");
@@ -312,6 +315,7 @@ admin_dispatch(int fd, struct tbuf *rbuf)
 			if (pe == NULL)
 				return 0;
 			p = pe - 1;
+#endif
 		}
 
 		action mod_exec {
