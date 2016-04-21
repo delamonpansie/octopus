@@ -1128,7 +1128,7 @@ peer_idx(const struct shard_op *sop, const char *peer)
 }
 
 void
-iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req, void *arg __attribute__((unused)))
+iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req)
 {
 	struct tbuf data = TBUF(req->data, req->data_len, NULL);
 	int version = read_u8(&data);
@@ -1273,7 +1273,7 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req, void *arg __attrib
 }
 
 static void
-iproto_shard_rt_cb(struct netmsg_head *wbuf, struct iproto *req, void *arg __attribute__((unused)))
+iproto_shard_rt_cb(struct netmsg_head *wbuf, struct iproto *req)
 {
 	struct iproto_retcode *reply = iproto_reply(wbuf, req, 0);
 
@@ -1399,8 +1399,7 @@ recovery_iproto(void)
 
 static void
 iproto_ignore(struct netmsg_head *h __attribute__((unused)),
-	      struct iproto *r __attribute__((unused)),
-	      void *arg __attribute__((unused)))
+	      struct iproto *r __attribute__((unused)))
 {
 }
 

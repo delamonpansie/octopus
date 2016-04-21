@@ -106,13 +106,13 @@ LIST_HEAD(iproto_future_list, iproto_future);
 SLIST_HEAD(iproto_egress_list, iproto_egress);
 
 
-void iproto_ping(struct netmsg_head *h, struct iproto *r, void *arg __attribute__((unused)));
+void iproto_ping(struct netmsg_head *h, struct iproto *r);
 
 @class Shard;
 @protocol Shard;
 
 enum { IPROTO_NONBLOCK = 1, IPROTO_LOCAL = 2, IPROTO_ON_MASTER = 4, IPROTO_DROP_ERROR = 8 };
-typedef void (*iproto_cb)(struct netmsg_head *, struct iproto *, void *);
+typedef void (*iproto_cb)(struct netmsg_head *, struct iproto *);
 struct iproto_handler {
 	iproto_cb cb;
 	int flags;

@@ -60,7 +60,6 @@ struct worker_arg {
 	iproto_cb cb;
 	struct iproto *r;
 	struct iproto_ingress_svc *io;
-	void *arg;
 };
 
 static int
@@ -98,7 +97,7 @@ iproto_worker(va_list ap)
 		@try {
 			netmsg_io_retain(a.io);
 			fiber->ushard = a.r->shard_id;
-			a.cb(&a.io->wbuf, a.r, a.arg);
+			a.cb(&a.io->wbuf, a.r);
 		}
 		@catch (Error *e) {
 			/* FIXME: where is no way to rollback modifications of wbuf.
@@ -120,13 +119,13 @@ iproto_worker(va_list ap)
 
 
 static void
-err(struct netmsg_head *h __attribute__((unused)), struct iproto *r, void *arg __attribute__((unused)))
+err(struct netmsg_head *h __attribute__((unused)), struct iproto *r)
 {
 	iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "unknown iproto command %i", r->msg_code);
 }
 
 void
-iproto_ping(struct netmsg_head *h, struct iproto *r, void *arg __attribute__((unused)))
+iproto_ping(struct netmsg_head *h, struct iproto *r)
 {
 	net_add_iov_dup(h, r, sizeof(struct iproto));
 }
@@ -331,7 +330,7 @@ has_full_req(const struct tbuf *buf)
 
 
 static int
-local(struct iproto_ingress_svc *io, struct iproto *msg, struct shard_route *route, struct iproto_handler *ih)
+local(struct iproto_ingress_svc *io, struct iproto *msg, struct iproto_handler *ih)
 {
 	say_debug3("%s: peer:%s op:0x%x sync:%u%s%s", __func__,
 		   net_fd_name(io->fd), msg->msg_code, msg->sync,
@@ -343,7 +342,7 @@ local(struct iproto_ingress_svc *io, struct iproto *msg, struct shard_route *rou
 		netmsg_getmark(&io->wbuf, &header_mark);
 		@try {
 			fiber->ushard = msg->shard_id;
-			ih->cb(&io->wbuf, msg, route);
+			ih->cb(&io->wbuf, msg);
 		}
 		@catch (Error *e) {
 			netmsg_rewind(&io->wbuf, &header_mark);
@@ -364,7 +363,7 @@ local(struct iproto_ingress_svc *io, struct iproto *msg, struct shard_route *rou
 
 		stat_collect(stat_base, IPROTO_BLOCK_OP, 1);
 		SLIST_REMOVE_HEAD(&service->workers, worker_link);
-		resume(w, (&(struct worker_arg){ih->cb, msg, io, route}));
+		resume(w, (&(struct worker_arg){ih->cb, msg, io}));
 		io->batch--;
 	}
 	return 1;
@@ -410,7 +409,7 @@ classify(struct iproto_ingress_svc *io, struct iproto *msg)
 		if (ih->flags & IPROTO_ON_MASTER && recovery->writer == nil)
 			return error(io, msg, ERR_CODE_NONMASTER, "replica is readonly");
 	local:
-		return local(io, msg, route, ih);
+		return local(io, msg, ih);
 	}
 	@finally {
 		fiber->ushard = -1;

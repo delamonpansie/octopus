@@ -339,16 +339,22 @@ paxos_elect(va_list ap)
 	PAXOS_MSG_DROP(&(msg)->header);					\
 })
 
-#define RT_SHARD(arg) ({ if (!arg) iproto_raise(ERR_CODE_BAD_CONNECTION, "unkown shard"); \
-			 if ([(id)(((struct shard_route *)arg)->shard) class] != [Paxos class]) iproto_raise(ERR_CODE_BAD_CONNECTION, "not a paxos shard"); \
-			 (Paxos *)((struct shard_route *)arg)->shard; })
-static void
-leader(struct netmsg_head *wbuf, struct iproto *msg, void *arg)
+static Paxos *
+RT_SHARD(struct iproto *imsg)
 {
-	Paxos *paxos;
-	if (!arg || [(id)(((struct shard_route *)arg)->shard) class] != [Paxos class])
+	struct shard_route *route = shard_rt + imsg->shard_id;
+	if ([(id)route->shard class] != [Paxos class])
+		iproto_raise(ERR_CODE_BAD_CONNECTION, "not a paxos shard");
+	return (Paxos *)route->shard;
+}
+
+static void
+leader(struct netmsg_head *wbuf, struct iproto *msg)
+{
+	struct shard_route *route = shard_rt + msg->shard_id;
+	if ([(id)route->shard class] != [Paxos class])
 		return;
-	paxos = (Paxos *)((struct shard_route *)arg)->shard;
+	Paxos *paxos = (Paxos *)route->shard;
 
 	struct msg_leader *pmsg = (struct msg_leader *)msg;
 	const char *ret = "accept";
@@ -678,9 +684,9 @@ msg_dump(Paxos *paxos, const char *prefix, const struct msg_paxos *req)
 }
 
 static void
-learner(struct netmsg_head *wbuf, struct iproto *imsg, void *arg)
+learner(struct netmsg_head *wbuf, struct iproto *imsg)
 {
-	Paxos *paxos = RT_SHARD(arg);
+	Paxos *paxos = RT_SHARD(imsg);
 	int old_ushard = fiber->ushard;
 	fiber->ushard = paxos->id;
 	@try {
@@ -762,9 +768,9 @@ acceptor(Paxos *paxos, struct paxos_request *req)
 }
 
 static void
-iproto_acceptor(struct netmsg_head *wbuf, struct iproto *imsg, void *arg __attribute__((unused)))
+iproto_acceptor(struct netmsg_head *wbuf, struct iproto *imsg)
 {
-	struct Paxos *paxos = RT_SHARD(arg);
+	struct Paxos *paxos = RT_SHARD(imsg);
 	struct msg_paxos *msg = (struct msg_paxos *)imsg;
 	struct paxos_request req = { .msg = msg, .value = msg->value, .type = PAXOS_REQ_REMOTE, {.wbuf = wbuf} };
 	PAXOS_MSG_CHECK(paxos, wbuf, msg);
