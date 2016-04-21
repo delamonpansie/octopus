@@ -1,0 +1,42 @@
+# one.ping()
+:pong
+
+# two.ping()
+:pong
+
+# one.meta(shard 1 create por)
+ok
+
+# one.meta(shard 1 obj_space 0 create tree unique string 0)
+ok
+
+# one.insert([0, "one"], {:shard=>1})
+1
+
+# one.select([0], {:shard=>1})
+[["\x00\x00\x00\x00", "one"]]
+
+# one.lua("user_proc.test10", {:shard=>1})
+# one.meta(shard 1 delete)
+ok
+
+# one.meta(shard 1 create por)
+ok
+
+# one.meta(shard 1 obj_space 0 create tree unique string 0)
+ok
+
+# box.select([0], {:shard=>1})
+[]
+
+# box.insert([0, "one2"], {:shard=>1})
+1
+
+# box.select([0], {:shard=>1})
+[["\x00\x00\x00\x00", "one2"]]
+
+[["\x00\x00\x00\x00", "dead", "beef"]]
+
+# box.select([0], {:shard=>1})
+[["\x00\x00\x00\x00", "one2"]]
+

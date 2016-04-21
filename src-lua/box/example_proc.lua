@@ -370,9 +370,13 @@ local function test9(ushard)
     }
 end
 
-user_proc.test0 = box.wrap(test0)
-for i, f in ipairs({test1, test2, test3, test4, test5, test6, test7, test8, test9}) do
-   user_proc["test" .. tostring(i)] = box.wrap(f)
+local function test10(ushard)
+    fiber.sleep(1)
+    return 0, {ushard:replace(0, "\0\0\0\0", "dead", "beef")}
+end
+
+for i, f in ipairs({test0, test1, test2, test3, test4, test5, test6, test7, test8, test9, test10}) do
+   user_proc["test" .. tostring(i - 1)] = box.wrap(f)
 end
 
 user_proc.position = box.wrap(function(ushard, ind, i)
