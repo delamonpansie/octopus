@@ -94,8 +94,10 @@ iproto_worker(va_list ap)
 		size_t req_size = sizeof(struct iproto) + a.r->data_len;
 		a.r = memcpy(palloc(fiber->pool, req_size), a.r, req_size);
 
+		Shard *shard = (shard_rt + a.r->shard_id)->shard;
 		@try {
 			netmsg_io_retain(a.io);
+			[shard retain];
 			fiber->ushard = a.r->shard_id;
 			a.cb(&a.io->wbuf, a.r);
 		}
@@ -107,9 +109,10 @@ iproto_worker(va_list ap)
 			[e release];
 		}
 		@finally {
-			fiber->ushard = -1;
 			if (a.io->fd >= 0 && a.io->prepare_link.le_prev == NULL)
 				LIST_INSERT_HEAD(&service->prepare, a.io, prepare_link);
+			fiber->ushard = -1;
+			[shard release];
 			netmsg_io_release(a.io);
 		}
 

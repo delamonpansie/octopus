@@ -42,7 +42,7 @@
 	struct run_crc run_crc_state;
 	char status_buf[64];
 @public
-	int id;
+	int id, rc;
 	id<Executor> executor;
 	i64 scn;
 	bool dummy, loading, snap_loaded;
@@ -76,6 +76,9 @@
 - (void) load_from_remote;
 - (int) prepare_remote_row:(struct row_v12 *)row offt:(int)offt;
 - (void) update_run_crc:(const struct wal_reply *)reply;
+
+- (id) retain;
+- (void) release;
 @end
 
 enum shard_type { SHARD_TYPE_POR, SHARD_TYPE_PAXOS, SHARD_TYPE_PART } ;

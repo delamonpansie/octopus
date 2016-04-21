@@ -312,6 +312,8 @@ validate_sop(struct netmsg_head *wbuf, const struct iproto *req, void *data, int
 - (const char *) run_crc_status { return run_crc_status(&run_crc_state); }
 - (u32) run_crc_log { return run_crc_log; }
 
+- (id) retain { rc++; return self; }
+- (void) release { if (--rc == 0) [self free]; }
 
 static void
 shard_info(Shard *shard, struct tbuf *buf)
@@ -362,11 +364,15 @@ shard_log(const char *msg, int shard_id)
 }
 
 
-- (id) free
+- (id)
+free
 {
-	if (executor) {
-		[(id)executor free];
-		update_rt(self->id, nil, peer[0]);
+	[(id)executor free];
+	if (shard_rt[self->id].shard == self) {
+		const char *master = peer[0];
+		if (strcmp(master, cfg.hostname) == 0)
+			master = NULL;
+		update_rt(self->id, nil, master);
 		shard_log("removed", self->id);
 	}
 	return [super free];
@@ -385,6 +391,7 @@ set_executor:(id)executor_
 	   sop:(const struct shard_op *)sop
 {
 	[super init];
+	rc = 1;
 	loading = true;
 	self->id = shard_id;
 	scn = scn_;
@@ -508,7 +515,7 @@ wal_final_row
 	loading = false;
 
 	if (![self our_shard]) {
-		[self free];
+		[self release];
 		return;
 	}
 	[self adjust_route];
@@ -669,7 +676,7 @@ shard_create:(int)shard_id sop:(struct shard_op *)sop
 	reply = [writer submit:sop len:sizeof(*sop)
 			   tag:shard_create|TAG_SYS shard_id:shard_id];
 	if (reply->row_count != 1) {
-		[shard free];
+		[shard release];
 		iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
 	}
 	[shard wal_final_row];
@@ -700,7 +707,7 @@ shard_alter_type:(Shard<Shard> *)shard type:(int)type
 	[shard init_id:old_shard->id scn:old_shard->scn sop:sop];
 	shard->loading = false;
 	old_shard->executor = nil;
-	[old_shard free];
+	[old_shard release];
 	[shard set_executor:executor];
 
 	shard_log("shard_alter_type", shard->id);
@@ -770,7 +777,7 @@ recover_row:(struct row_v12 *)r
 					[shard init_id:old_shard->id scn:old_shard->scn sop:sop];
 					shard->loading = false;
 					old_shard->executor = nil;
-					[old_shard free];
+					[old_shard release];
 					[shard set_executor:executor];
 				}
 			}
@@ -965,7 +972,7 @@ enable_local_writes
 		if (shard && [shard our_shard])
 			[shard enable_local_writes];
 		else
-			[shard free];
+			[shard release];
 	}
 }
 
@@ -1223,7 +1230,8 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req)
 	case 1: /* delete */
 		if (peer_idx(sop, (char[16]){0}) != 1)
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't delete shard with replicas");
-		[shard free];
+		update_rt(shard->id, nil, NULL);
+		[shard release];
 		break;
 	case 2: /* upgrade dummy */
 		if (!shard->dummy)
