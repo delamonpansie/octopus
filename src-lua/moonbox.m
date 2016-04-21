@@ -215,7 +215,7 @@ read_push_field(lua_State *L, struct tbuf *buf)
 
 static int box_entry_i = 0;
 void
-box_dispach_lua(struct netmsg_head *wbuf, struct iproto *request, Box *box)
+box_dispach_lua(struct netmsg_head *wbuf, struct iproto *request)
 {
 	WITH_AUTORELEASE;
 
@@ -241,7 +241,7 @@ box_dispach_lua(struct netmsg_head *wbuf, struct iproto *request, Box *box)
 	lua_pushlstring(L, fname, flen);
 	lua_pushlightuserdata(L, wbuf);
 	lua_pushlightuserdata(L, request);
-	lua_pushinteger(L, box->shard->id);
+	lua_pushinteger(L, request->shard_id);
 
 	if (!lua_checkstack(L, nargs)) {
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "too many args to exec_lua");

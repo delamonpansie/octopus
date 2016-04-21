@@ -812,20 +812,22 @@ box_rollback(struct box_txn *txn)
 }
 
 
-#define RT_EXECUTOR(arg)					     \
-	({ assert (arg && ((struct shard_route *)arg)->shard); \
-	   ((struct shard_route *)arg)->shard->executor; })
+static Box *
+RT_EXECUTOR(struct iproto *msg)
+{
+	return (shard_rt + msg->shard_id)->shard->executor;
+}
 
 #if CFG_lua_path
 static void
-box_lua_cb(struct netmsg_head *wbuf, struct iproto *request, void *arg)
+box_lua_cb(struct netmsg_head *wbuf, struct iproto *request)
 {
 	say_debug("%s: op:0x%02x sync:%u", __func__, request->msg_code, request->sync);
 
 	@try {
 		ev_tstamp start = ev_now(), stop;
 
-		box_dispach_lua(wbuf, request, RT_EXECUTOR(arg));
+		box_dispach_lua(wbuf, request);
 		stat_collect(stat_base, EXEC_LUA, 1);
 
 		stop = ev_now();
@@ -846,9 +848,9 @@ box_lua_cb(struct netmsg_head *wbuf, struct iproto *request, void *arg)
 static struct rwlock lock;
 
 void
-box_meta_cb(struct netmsg_head *wbuf, struct iproto *request, void *arg)
+box_meta_cb(struct netmsg_head *wbuf, struct iproto *request)
 {
-	Box *box = RT_EXECUTOR(arg);
+	Box *box = RT_EXECUTOR(request);
 
 	say_debug2("%s: op:0x%02x sync:%u", __func__, request->msg_code, request->sync);
 	if ([box->shard is_replica])
@@ -893,9 +895,9 @@ box_meta_cb(struct netmsg_head *wbuf, struct iproto *request, void *arg)
 }
 
 static void
-box_cb(struct netmsg_head *wbuf, struct iproto *request, void *arg)
+box_cb(struct netmsg_head *wbuf, struct iproto *request)
 {
-	Box *box = RT_EXECUTOR(arg);
+	Box *box = RT_EXECUTOR(request);
 	say_debug2("%s: c:%p op:0x%02x sync:%u", __func__, NULL, request->msg_code, request->sync);
 	if ([box->shard is_replica])
 		iproto_raise(ERR_CODE_NONMASTER, "replica is readonly");
@@ -959,9 +961,9 @@ box_cb(struct netmsg_head *wbuf, struct iproto *request, void *arg)
 }
 
 static void
-box_select_cb(struct netmsg_head *wbuf, struct iproto *request, void *arg)
+box_select_cb(struct netmsg_head *wbuf, struct iproto *request)
 {
-	Box *box = RT_EXECUTOR(arg);
+	Box *box = RT_EXECUTOR(request);
 	struct tbuf data = TBUF(request->data, request->data_len, fiber->pool);
 	struct iproto_retcode *reply = iproto_reply(wbuf, request, ERR_CODE_OK);
 	struct object_space *obj_spc;
@@ -998,12 +1000,14 @@ box_service(struct iproto_service *s)
 #if CFG_lua_path
 	service_register_iproto(s, EXEC_LUA, box_lua_cb, 0);
 #endif
+#if CFG_ocaml_path
+	service_register_iproto(s, EXEC_OCAML, box_ocaml_cb, 0);
+#endif
 }
 
 static void
 box_roerr(struct netmsg_head *h __attribute__((unused)),
-	  struct iproto *request __attribute__((unused)),
-	  void *arg __attribute__((unused)))
+	  struct iproto *request __attribute__((unused)))
 {
 	iproto_raise(ERR_CODE_NONMASTER, "updates are forbidden");
 }
