@@ -456,7 +456,7 @@ octopus_ev_init()
 		 evb, ev_version_major(), ev_version_minor());
 }
 
-void
+static void
 octopus_ev_backgroud_tasks()
 {
 	if (cfg.coredump > 0) {
