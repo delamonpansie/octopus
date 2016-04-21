@@ -505,7 +505,7 @@ feeder_accept(int fd, void *data __attribute__((unused)))
 }
 
 static void
-iproto_feeder_cb(struct netmsg_head *wbuf, struct iproto *req, void *arg __attribute__((unused)))
+iproto_feeder_cb(struct netmsg_head *wbuf, struct iproto *req)
 {
 	struct netmsg_io *io = container_of(wbuf, struct netmsg_io, wbuf);
 	feeder_spawn_worker(io->fd, req, sizeof(*req) + req->data_len);
