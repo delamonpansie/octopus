@@ -1232,6 +1232,7 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req)
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't delete shard with replicas");
 		update_rt(shard->id, nil, NULL);
 		[shard release];
+		[recovery fork_and_snapshot]; // FIXME: do a proper WAL write
 		break;
 	case 2: /* upgrade dummy */
 		if (!shard->dummy)
