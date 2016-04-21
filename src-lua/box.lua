@@ -18,6 +18,7 @@ local netmsg_ptr = require("net").netmsg_ptr
 local object, varint32, packer = object, varint32, packer
 local safeptr, assertarg = safeptr, assertarg
 local lselect = select
+local pcall = pcall
 
 local dyn_tuple = require 'box.dyn_tuple'
 local box_op = require 'box.op'
@@ -141,8 +142,8 @@ local ushard_mt = {
             if self.__spaces[n] ~= nil then
                 return self.__spaces[n]
             end
-            local ptr = ffi.C.object_space(self.__ptr, n)
-            if ptr == nil or ptr.ignored then
+            local ptr, err = pcall(ffi.C.object_space, self.__ptr, n)
+            if err or ptr.ignored then
                 error("no such object space");
             end
 
