@@ -39,7 +39,6 @@
 #include <sys/uio.h>
 #include <netinet/in.h>
 
-@class Fiber;
 struct service;
 
 struct netmsg;
