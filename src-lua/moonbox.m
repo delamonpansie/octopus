@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -44,6 +44,8 @@
 
 #import <shard.h>
 
+const int object_space_max_idx = MAX_IDX;
+
 Box *
 shard_box(int n)
 {
@@ -52,6 +54,17 @@ shard_box(int n)
 	if (shard_rt[n].shard == NULL)
 		return NULL;
 	return shard_rt[n].shard->executor;
+}
+
+struct object_space *
+object_space_l(Box *box, int n)
+{
+	@try {
+		return object_space(box, n);
+	}
+	@catch (Error *e) {
+		return NULL;
+	}
 }
 
 int

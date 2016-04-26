@@ -67,7 +67,7 @@ struct object_space {
 struct Box;
 struct Box *shard_box(int n);
 int    box_version(struct Box* box);
-struct object_space *object_space(struct Box *box, int n);
+struct object_space *object_space_l(struct Box *box, int n);
 bool   box_is_primary(struct Box *box);
 int    shard_box_next_primary_n(int n);
 extern const int object_space_max_idx;
@@ -142,9 +142,9 @@ local ushard_mt = {
             if self.__spaces[n] ~= nil then
                 return self.__spaces[n]
             end
-            local ptr, err = pcall(ffi.C.object_space, self.__ptr, n)
-            if err or ptr.ignored then
-                error("no such object space");
+            local ptr = ffi.C.object_space_l(self.__ptr, n)
+            if not ptr or ptr.ignored then
+                error(string.format("no such object_space: %s", tostring(n)))
             end
 
             local space = setmetatable({__shard = self,
