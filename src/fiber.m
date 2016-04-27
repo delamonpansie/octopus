@@ -116,6 +116,7 @@ yield(void)
 int
 fiber_wake(struct Fiber *f, void *arg)
 {
+	assert(f != sched);
 	/* tqe_prev points to prev elem or tailq head => not null if member */
 	if (f->wake_link.tqe_prev)
 		return 0;
@@ -130,6 +131,7 @@ fiber_wake(struct Fiber *f, void *arg)
 int
 fiber_cancel_wake(struct Fiber *f)
 {
+	assert(f != sched);
 	/* see fiber_wake() comment */
 	if (f->wake_link.tqe_prev == NULL)
 		return 0;
@@ -355,10 +357,12 @@ fiber_wakeup_pending(void)
 	Fiber *f, *tvar;
 
 	for(int i=10; i && !TAILQ_EMPTY(&wake_list); i--) {
+		TAILQ_INSERT_TAIL(&wake_list, sched, wake_link);
 		TAILQ_FOREACH_SAFE(f, &wake_list, wake_link, tvar) {
 			void *arg = f->wake;
 			TAILQ_REMOVE(&wake_list, f, wake_link);
 			f->wake_link.tqe_prev = NULL;
+			if (f == sched) break;
 			resume(f, arg);
 		}
 	}
