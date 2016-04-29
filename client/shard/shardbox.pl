@@ -107,7 +107,7 @@ sub msg_shard {
 	if ($type == 0) {
 	    return $head . pack("a16" x 4, $peer1, $peer2, $peer3, $peer4);
 	} elsif ($type == 1) {
-	    usage "master not specified" unless $peer1 && $peer2 && $peer3 ;
+	    usage "master not specified" unless $peer1 && $peer2 ;
 	    return $head . pack("a16" x 3, $peer1, $peer2, $peer3);
 	} elsif ($type == 2) {
 	    usage "master not specified" unless $peer1;
