@@ -4,7 +4,7 @@
 #
 
 # never ever change hostname
-hostname = "<dummy>", ro
+hostname = NULL, ro
 peer = [
   {
      name = NULL, required

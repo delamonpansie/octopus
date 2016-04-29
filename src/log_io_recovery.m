@@ -403,7 +403,7 @@ set_executor:(id)executor_
 
 		strncpy(peer[i], sop->peer[i], 16); // FIXME: это данные из сети
 
-		assert(cfg.hostname); // cfg.hostname может быть пустым только при создании dummy шарда.
+		assert(self->dummy || cfg.hostname); // cfg.hostname может быть пустым только при создании dummy шарда.
 	}
 
 	if (objc_lookUpClass(sop->mod_name) == Nil)
@@ -657,7 +657,7 @@ shard_add_dummy:(const struct row_v12 *)row
 	struct feeder_param feeder;
 	enum feeder_cfg_e fid_err = feeder_param_fill_from_cfg(&feeder, NULL);
 	if (fid_err || feeder.addr.sin_family == AF_UNSPEC)
-		strcpy(op.peer[0], cfg.hostname); /* is master */
+		strcpy(op.peer[0], "<dummy>"); /* is master */
 	Shard<Shard> *shard = [self shard_alloc:op.type];
 	shard->dummy = true;
 	[shard init_id:0 scn:scn sop:&op];
@@ -870,7 +870,6 @@ validate_cfg()
 {
 	if (!cfg.peer)
 		return;
-	assert(cfg.hostname);
 }
 
 - (void)
@@ -1156,6 +1155,9 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req)
 		if (route->shard || route->proxy) // FIXME: race
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "shard already exists");
 
+		if (shard_rt[0].shard && shard_rt[0].shard->dummy)
+			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't create shards while dummy shard exists");
+
 		sop = &(struct shard_op){ .type = read_u8(&data) };
 		strncpy(sop->mod_name, [recovery->default_exec_class name], 16);
 
@@ -1202,7 +1204,7 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "no such shard");
 	if (shard->loading)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "shard is loading");
-	if (strcmp(shard->peer[0], cfg.hostname) != 0)
+	if (cmd !=2 && strcmp(shard->peer[0], cfg.hostname) != 0)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "not master");
 	sop = [shard snapshot_header];
 
@@ -1236,7 +1238,11 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req)
 	case 2: /* upgrade dummy */
 		if (!shard->dummy)
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "not dummy");
+		if (!cfg.hostname)
+			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "hostname is not configured");
+
 		shard->dummy = false;
+		strcpy(shard->peer[0], cfg.hostname);
 		char body[2] = {0};
 		[shard submit:body len:nelem(body) tag:nop|TAG_SYS];
 		[recovery fork_and_snapshot];

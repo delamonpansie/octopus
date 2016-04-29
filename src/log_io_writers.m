@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2012, 2013, 2014 Mail.RU
- * Copyright (C) 2012, 2013, 2014 Yuriy Vostrikov
+ * Copyright (C) 2012, 2013, 2014, 2016 Mail.RU
+ * Copyright (C) 2012, 2013, 2014, 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -334,7 +334,7 @@ wal_disk_writer(int fd, int cfd __attribute__((unused)), void *state, int len)
 	say_debug("%s: configured LSN:%"PRIi64, __func__, conf->lsn);
 	for (int i = 0; i < MAX_SHARD; i++)
 		if (st[i].scn)
-			say_debug("\tShard:%i SCN:%"PRIi64"run_crc:0x%x",
+			say_debug("\tShard:%i SCN:%"PRIi64" run_crc:0x%x",
 				  i, st[i].scn, st[i].run_crc);
 	/* since wal_writer have bidirectional communiction to master
 	   and checks for errors on send/recv,

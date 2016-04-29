@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -98,6 +98,10 @@ set_feeder:(struct feeder_param*)new
 - (bool)
 master
 {
+	if (dummy) {
+		enum feeder_cfg_e fid_err = feeder_param_fill_from_cfg(&feeder, NULL);
+		return fid_err || feeder.addr.sin_family == AF_UNSPEC;
+	}
 	return strcmp(cfg.hostname, peer[0]) == 0;
 }
 
