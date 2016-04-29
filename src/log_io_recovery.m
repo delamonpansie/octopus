@@ -865,20 +865,12 @@ wal_lock(va_list ap __attribute__((unused)))
 	[recovery enable_local_writes];
 }
 
-static void
-validate_cfg()
-{
-	if (!cfg.peer)
-		return;
-}
-
 - (void)
 simple:(struct iproto_service *)service
 {
 	recovery_service = service;
 	recovery_iproto_ignore();
 
-	validate_cfg();
 	i64 local_lsn = [self load_from_local];
 
 #if CFG_object_space
@@ -1404,10 +1396,10 @@ recovery_iproto(void)
 		fiber_create("route_recv", udp_server,
 			     recovery_service->addr, iproto_shard_udpcb, NULL, NULL);
 		fiber_create("udpate_rt_notify", update_rt_notify);
+		service_register_iproto(recovery_service, MSG_SHARD, iproto_shard_cb, IPROTO_LOCAL);
+		service_register_iproto(recovery_service, MSG_SHARD_RT, iproto_shard_rt_cb, IPROTO_LOCAL);
+		paxos_service(recovery_service);
 	}
-	service_register_iproto(recovery_service, MSG_SHARD, iproto_shard_cb, IPROTO_LOCAL);
-	service_register_iproto(recovery_service, MSG_SHARD_RT, iproto_shard_rt_cb, IPROTO_LOCAL);
-	paxos_service(recovery_service);
 }
 
 static void
@@ -1421,11 +1413,15 @@ recovery_iproto_ignore()
 {
 	if (recovery_service == NULL)
 		return;
-	service_register_iproto(recovery_service, MSG_SHARD, iproto_ignore, IPROTO_LOCAL|IPROTO_NONBLOCK);
-	service_register_iproto(recovery_service, LEADER_PROPOSE, iproto_ignore, IPROTO_LOCAL|IPROTO_NONBLOCK);
-	service_register_iproto(recovery_service, PREPARE, iproto_ignore, IPROTO_LOCAL|IPROTO_NONBLOCK);
-	service_register_iproto(recovery_service, ACCEPT, iproto_ignore, IPROTO_LOCAL|IPROTO_NONBLOCK);
-	service_register_iproto(recovery_service, DECIDE, iproto_ignore, IPROTO_LOCAL|IPROTO_NONBLOCK);
+	if (cfg.peer && *cfg.peer && cfg.hostname) {
+		service_register_iproto(recovery_service, MSG_SHARD, iproto_ignore, IPROTO_LOCAL|IPROTO_NONBLOCK);
+		service_register_iproto(recovery_service, LEADER_PROPOSE, iproto_ignore, IPROTO_LOCAL|IPROTO_NONBLOCK);
+		service_register_iproto(recovery_service, PREPARE, iproto_ignore, IPROTO_LOCAL|IPROTO_NONBLOCK);
+		service_register_iproto(recovery_service, ACCEPT, iproto_ignore, IPROTO_LOCAL|IPROTO_NONBLOCK);
+		service_register_iproto(recovery_service, DECIDE, iproto_ignore, IPROTO_LOCAL|IPROTO_NONBLOCK);
+	} else {
+		say_info("usharding disabled (cfg.peer of cfg.hostname missing)");
+	}
 }
 
 - (void)
