@@ -1256,12 +1256,10 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req)
 	case 4: /* remove peer */
 		peer = read_bytes(&data, 16);
 		i = peer_idx(sop, peer);
-		if (i) {
-			// assert(sop->run_crc_log != 0);
+		if (i != -1) {
 			for (; i < nelem(sop->peer) - 1; i++)
 				memcpy(sop->peer[i], sop->peer[i + 1], 16);
 			memset(sop->peer[nelem(sop->peer) - 1], 0, 16);
-			// assert(sop->run_crc_log != 0);
 			[recovery shard_alter_peer:shard sop:sop];
 		}
 		break;
