@@ -1413,14 +1413,14 @@ recovery_iproto_ignore()
 {
 	if (recovery_service == NULL)
 		return;
-	if (cfg.peer && *cfg.peer && cfg.hostname) {
+	if (cfg.peer && *cfg.peer && cfg.hostname && cfg_peer_by_name(cfg.hostname)) {
 		service_register_iproto(recovery_service, MSG_SHARD, iproto_ignore, IPROTO_LOCAL|IPROTO_NONBLOCK);
 		service_register_iproto(recovery_service, LEADER_PROPOSE, iproto_ignore, IPROTO_LOCAL|IPROTO_NONBLOCK);
 		service_register_iproto(recovery_service, PREPARE, iproto_ignore, IPROTO_LOCAL|IPROTO_NONBLOCK);
 		service_register_iproto(recovery_service, ACCEPT, iproto_ignore, IPROTO_LOCAL|IPROTO_NONBLOCK);
 		service_register_iproto(recovery_service, DECIDE, iproto_ignore, IPROTO_LOCAL|IPROTO_NONBLOCK);
 	} else {
-		say_info("usharding disabled (cfg.peer of cfg.hostname missing)");
+		say_info("usharding disabled (cfg.peer of cfg.hostname is bad or missing)");
 	}
 }
 
