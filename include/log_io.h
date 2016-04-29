@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -284,7 +284,6 @@ struct shard_op_aux {
 struct shard_op {
 	u8 ver;
 	u8 type;
-	i64 tm;
 	u32 row_count;
 	u32 run_crc_log;
 	char mod_name[16];

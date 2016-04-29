@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -432,7 +432,6 @@ snapshot_header
 	static struct shard_op op;
 	op = (struct shard_op){ .ver = 0,
 				.type = strcmp("POR", [[self class] name]) != 0,
-				.tm = ev_now(),
 				.row_count = [executor snapshot_estimate],
 				.run_crc_log = run_crc_log };
 	strncpy(op.mod_name, [[(id)executor class] name], 16);
@@ -1238,6 +1237,8 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req)
 		if (!shard->dummy)
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "not dummy");
 		shard->dummy = false;
+		char body[2] = {0};
+		[shard submit:body len:nelem(body) tag:nop|TAG_SYS];
 		[recovery fork_and_snapshot];
 		break;
 	case 3: /* add peer */
@@ -1256,11 +1257,11 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req)
 		peer = read_bytes(&data, 16);
 		i = peer_idx(sop, peer);
 		if (i) {
-			assert(sop->run_crc_log != 0);
+			// assert(sop->run_crc_log != 0);
 			for (; i < nelem(sop->peer) - 1; i++)
 				memcpy(sop->peer[i], sop->peer[i + 1], 16);
 			memset(sop->peer[nelem(sop->peer) - 1], 0, 16);
-			assert(sop->run_crc_log != 0);
+			// assert(sop->run_crc_log != 0);
 			[recovery shard_alter_peer:shard sop:sop];
 		}
 		break;
@@ -1381,8 +1382,7 @@ iproto_shard_udpcb(const char *buf, ssize_t len, void *data __attribute__((unuse
 			 peer_name, shard_id, sop->peer[0]);
 		return;
 	}
-	if (ev_now() - sop->tm > 4 && scn > [shard scn] &&
-	    strcmp(shard->peer[0], sop->peer[0]) != 0)
+	if (scn > [shard scn] && strcmp(shard->peer[0], sop->peer[0]) != 0)
 	{
 		say_warn("route update from %s: shard %i master %s, FIXME ignoring alter request",
 			 peer_name, shard_id, sop->peer[0]);
@@ -1515,7 +1515,6 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 		}
 
 		int type = read_u8(&row_data);
-		i64 tm = read_u64(&row_data);
 		u32 estimated_row_count = read_u32(&row_data);
 		u32 run_crc = read_u32(&row_data);
 		const char *mod_name = read_bytes(&row_data, 16);
@@ -1525,8 +1524,8 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 		case shard_alter: tbuf_printf(buf, "SHARD_ALTER"); break;
 		default: assert(false);
 		}
-		tbuf_printf(buf, " shard_id:%i  tm:%"PRIi64" %s %s",
-			    row->shard_id, tm, type == 0 ? "POR" : "PAXOS", mod_name);
+		tbuf_printf(buf, " shard_id:%i %s %s",
+			    row->shard_id, type == 0 ? "POR" : "PAXOS", mod_name);
 		tbuf_printf(buf, " count:%i run_crc:0x%08x", estimated_row_count, run_crc);
 		tbuf_printf(buf, " master:%s", (const char *)read_bytes(&row_data, 16));
 		while (tbuf_len(&row_data) > 0) {

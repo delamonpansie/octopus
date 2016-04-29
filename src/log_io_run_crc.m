@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2014 Mail.RU
- * Copyright (C) 2014 Yuriy Vostrikov
+ * Copyright (C) 2014, 2016 Mail.RU
+ * Copyright (C) 2014, 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -37,7 +37,8 @@ run_crc_calc(u32 *crc, u16 row_tag, const void *data, int len)
 	int tag_type = row_tag & ~TAG_MASK;
 	int tag = row_tag & TAG_MASK;
 
-	if (tag_type == TAG_WAL && (tag == wal_data || tag >= user_tag))
+	if ((tag_type == TAG_WAL && (tag == wal_data || tag >= user_tag)) ||
+	    tag == shard_alter)
 		*crc = crc32c(*crc, data, len);
 }
 
