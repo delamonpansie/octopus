@@ -386,9 +386,8 @@ set_executor:(id)executor_
 	update_rt(self->id, self, NULL);
 }
 
-- (id) init_id:(int)shard_id
-	   scn:(i64)scn_
-	   sop:(const struct shard_op *)sop
+- (id)
+init_id:(int)shard_id scn:(i64)scn_ sop:(const struct shard_op *)sop
 {
 	[super init];
 	rc = 1;
@@ -396,6 +395,7 @@ set_executor:(id)executor_
 	self->id = shard_id;
 	scn = scn_;
 	run_crc_log = sop->run_crc_log;
+	type = sop->type;
 
 	for (int i = 0; i < nelem(sop->peer); i++) {
 		if (strlen(sop->peer[i]) == 0)
@@ -431,7 +431,7 @@ snapshot_header
 {
 	static struct shard_op op;
 	op = (struct shard_op){ .ver = 0,
-				.type = strcmp("POR", [[self class] name]) != 0,
+				.type = type,
 				.row_count = [executor snapshot_estimate],
 				.run_crc_log = run_crc_log };
 	strncpy(op.mod_name, [[(id)executor class] name], 16);
@@ -606,7 +606,7 @@ init
 - (id<XLogWriter>) writer { return writer; }
 
 - (Shard<Shard> *)
-shard_alloc:(int)type
+shard_alloc:(char)type
 {
 	switch (type) {
 	case SHARD_TYPE_PAXOS:
@@ -693,7 +693,7 @@ shard_alter_peer:(Shard<Shard> *)shard sop:(struct shard_op *)sop
 }
 
 - (void)
-shard_alter_type:(Shard<Shard> *)shard type:(int)type
+shard_alter_type:(Shard<Shard> *)shard type:(char)type
 {
 	struct shard_op *sop = [shard snapshot_header];
 	sop->type = type;
@@ -1216,7 +1216,7 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req)
 		return;
 	}
 
-	if (sop->type != SHARD_TYPE_POR)
+	if (sop->type != SHARD_TYPE_POR && !(sop->type == SHARD_TYPE_PART && cmd == 5))
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "unsupported");
 
 	switch (cmd) {
@@ -1524,8 +1524,15 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 		case shard_alter: tbuf_printf(buf, "SHARD_ALTER"); break;
 		default: assert(false);
 		}
-		tbuf_printf(buf, " shard_id:%i %s %s",
-			    row->shard_id, type == 0 ? "POR" : "PAXOS", mod_name);
+		tbuf_printf(buf, " shard_id:%i", row->shard_id);
+
+		switch (type) {
+		case SHARD_TYPE_PAXOS: tbuf_printf(buf, " PAXOS"); break;
+		case SHARD_TYPE_POR: tbuf_printf(buf, " POR"); break;
+		case SHARD_TYPE_PART: tbuf_printf(buf, " PART"); break;
+		default: assert(false);
+		}
+		tbuf_printf(buf, " %s", mod_name);
 		tbuf_printf(buf, " count:%i run_crc:0x%08x", estimated_row_count, run_crc);
 		tbuf_printf(buf, " master:%s", (const char *)read_bytes(&row_data, 16));
 		while (tbuf_len(&row_data) > 0) {

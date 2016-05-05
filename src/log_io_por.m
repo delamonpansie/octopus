@@ -43,7 +43,7 @@ init_id:(int)shard_id
 {
 	[super init_id:shard_id scn:scn_ sop:sop];
 	feeder.filter.arg = feeder_param_arg;
-	if (sop->type == SHARD_TYPE_PART)
+	if (type == SHARD_TYPE_PART)
 		partial_replica = true;
 	return self;
 }
@@ -73,8 +73,10 @@ snapshot_write_header:(XLog *)snap
 				.tag = shard_create|TAG_SYS,
 				.shard_id = self->id,
 			       .len = sizeof(*sop) };
-	if (partial_replica)
+	if (partial_replica) {
+		sop->type = SHARD_TYPE_PART;
 		memcpy(row.remote_scn, &remote_scn, 6);
+	}
 	return [snap append_row:&row data:sop];
 }
 

@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2015 Mail.RU
- * Copyright (C) 2015 Yuriy Vostrikov
+ * Copyright (C) 2015, 2016 Mail.RU
+ * Copyright (C) 2015, 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -41,6 +41,7 @@
 	u32 run_crc_log;
 	struct run_crc run_crc_state;
 	char status_buf[64];
+	char type;
 @public
 	int id, rc;
 	id<Executor> executor;
