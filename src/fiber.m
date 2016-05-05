@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -91,13 +91,14 @@ fiber_resume(struct Fiber *callee, void *w)
 resume(struct Fiber *callee, void *w)
 #endif
 {
-	assert(callee != sched);
+#ifdef FIBER_DEBUG
+	assert(callee != sched && callee->caller == NULL);
+#endif
 	Fiber *caller = fiber;
 	callee->caller = caller;
 	fiber = callee;
 	callee->coro.w = w;
 	oc_coro_transfer(&caller->coro.ctx, &callee->coro.ctx);
-	callee->caller = sched;
 }
 
 void *
@@ -108,8 +109,12 @@ yield(void)
 #endif
 {
 	Fiber *callee = fiber;
+#ifdef FIBER_DEBUG
+	assert(callee->caller != NULL);
+#endif
 	fiber = callee->caller;
-	oc_coro_transfer(&callee->coro.ctx, &callee->caller->coro.ctx);
+	callee->caller = NULL;
+	oc_coro_transfer(&callee->coro.ctx, &fiber->coro.ctx);
 	return fiber->coro.w;
 }
 

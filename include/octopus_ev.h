@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012 Mail.RU
- * Copyright (C) 2010, 2011, 2012 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2016 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -50,10 +50,11 @@ extern void fiber_ev_cb(void *);
 
 #define EV_CB_INVOKE(watcher, revents) ({			\
 if ((watcher)->coro) {						\
-	fiber = (Fiber *)(watcher)->cb;			\
-	fiber->coro.w = (watcher);		\
+	fiber = (Fiber *)(watcher)->cb;				\
+	fiber->coro.w = (watcher);				\
+	fiber->caller = sched;					\
 	EV_CB_LOG((watcher));					\
-	oc_coro_transfer(sched_ctx, &fiber->coro.ctx);	\
+	oc_coro_transfer(sched_ctx, &fiber->coro.ctx);		\
 } else								\
 	(watcher)->cb((watcher), (revents));			\
 })
