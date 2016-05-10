@@ -632,8 +632,8 @@ reload_config(struct octopus_cfg *old __attribute__((unused)),
 		return;
 	}
 
-	if ([(id)shard respondsTo:@selector(remote_hot_standby)])
-		[(id)shard perform:@selector(remote_hot_standby)];
+	if ([(id)shard respondsTo:@selector(adjust_route)])
+		[(id)shard perform:@selector(adjust_route)];
 	else
 		say_error("ignoring unsupported configuration request");
 }
