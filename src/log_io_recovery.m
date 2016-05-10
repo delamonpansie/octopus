@@ -333,6 +333,8 @@ route_info(const struct shard_route *route, struct tbuf *buf)
 		tbuf_printf(buf, "NONE");
 	} else if (route->shard && route->shard->loading) {
 		tbuf_printf(buf, "LOADING");
+	} else if (route->shard && route->shard->dummy) {
+		tbuf_printf(buf, "LEGACY");
 	} else if (route->shard && route->proxy) {
 		tbuf_printf(buf, "PARTIAL_PROXY");
 	} else if (route->proxy) {
