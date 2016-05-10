@@ -151,11 +151,11 @@ ifeq (1,$(HAVE_GIT))
 BUNDLE=NONE
 octopus_version.h: FORCE
 	@echo -n 'const char octopus_version_string[] = "' > $@_
-	@cd $(srcdir); $(GIT) describe --always HEAD | tr -d \\n >> $@_
-	@cd $(srcdir); $(GIT) branch | grep  '\*' | cut -f2 -d' ' | sed 's/^master$$//' | tr -d \\n >> $@_
+	@(cd $(srcdir) && $(GIT) describe --always HEAD) | tr -d \\n >> $@_
+	@(cd $(srcdir) && $(GIT) branch) | grep  '\*' | cut -f2 -d' ' | sed 's/^master$$//' | tr -d \\n >> $@_
 	@echo '";' >> $@_
 	@echo 'const char octopus_bundle_string[] = "$(BUNDLE)";' >> $@_;
-	@diff -q $@ $@_ 2>/dev/null >/dev/null || (echo "GEN	$(notdir $@)"; cp $@_ $@)
+	@diff -q $@ $@_ 2>/dev/null >/dev/null || (echo "GEN	$@"; cp $@_ $@)
 	@rm $@_
 
 all_modules = $(sort $(modules) $(foreach path,$(wildcard mod/*),$(notdir $(path))))
@@ -163,7 +163,7 @@ all_modules = $(sort $(modules) $(foreach path,$(wildcard mod/*),$(notdir $(path
 $(foreach mod,$(all_modules),mod/$(mod)/$(mod)_version.h): FORCE
 	@mkdir -p $(dir $@)
 	@echo -n 'const char $(subst -,_,$(subst .h,,$(notdir $@)))_string[] = "' > $@_
-	@cd $(srcdir)/$(dir $@); $(GIT) describe --always HEAD | sed 's/.*-g/g/' | tr -d \\n >> $(notdir $@_)
+	@(cd $(srcdir)/$(dir $@) && $(GIT) describe --always HEAD) | sed 's/.*-g/g/' | tr -d \\n >> $@_
 	@echo '";' >> $@_
 	@diff -q $@ $@_ 2>/dev/null >/dev/null || (echo "GEN	$@"; cp $@_ $@)
 	@rm $@_
