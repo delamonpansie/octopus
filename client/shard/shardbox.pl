@@ -214,7 +214,9 @@ if (op(qr/create|(add|del)_replica|master|delete|undummy|type|obj_space/) ne 'ob
 my $sock = new IO::Socket::INET(PeerHost => $s, Proto => 'tcp')or die "connect: $!";
 substr($req, 4, 4) = pack('L', length($req) - 12);
 $sock->send($req);
-$sock->recv($resp, 1024);
+my $ret = $sock->recv($resp, 1024);
+die "recv: $!" if not defined $ret;
+die "recv: unexpected EOF" if length $resp < 16;
 
 my ($msg, $len, $sync, $ret_code) = unpack("LLLL", $resp);
 if ($ret_code != 0) {
