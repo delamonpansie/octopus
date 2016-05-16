@@ -73,11 +73,11 @@ sub shift_cast {
 }
 
 sub shift_int {
-    my ($max) = @_;
+    my ($what, $max) = @_;
     my $value = $ARGV[0];
     if (not defined $value or $value !~ /^\d+$/ or $value < 0 or $value > $max) {
 	$value = 'nothing' if not defined $value;
-	usage "expect 0-$max, got $value";
+	usage "expect $what: 0-$max, got $value";
     }
     return shift @ARGV;
 }
@@ -142,7 +142,7 @@ sub index_conf {
 			       unum32 => 3, snum32 => 4,
 			       unum64 => 5, snum64 => 6,
 			       string => 7);
-	my $fid = shift_int(255);
+	my $fid = shift_int('FID', 255);
 	my $order = shift_opt(asc => 1, desc => 0xff) || 1;
 	push @fields, $fid, $order, $ftype;
     } while (scalar @ARGV > 0);
@@ -195,17 +195,17 @@ usage() unless $s;
 
 my ($sid, $oid, $iid, $req, $resp);
 op('shard'); shift @ARGV;
-$sid = shift_int(65535);
+$sid = shift_int('SID', 65535);
 if (op(qr/create|(add|del)_replica|master|delete|undummy|type|obj_space/) ne 'obj_space') {
     $req = msg_shard($sid);
 } else {
     shift @ARGV;
-    $oid = shift_int(255);
+    $oid = shift_int('OID', 255);
     if (op(qr/create|drop|truncate|index/) ne 'index') {
 	$req = msg_obj_space($sid, $oid);
     } else {
 	shift @ARGV;
-	$iid = shift_int(9);
+	$iid = shift_int('IID', 9);
 	$req = msg_index($sid, $oid, $iid);
     }
 }
