@@ -549,6 +549,7 @@ handshake_scn
 {
 	return scn + 1;
 }
+
 - (void)
 load_from_remote
 {
