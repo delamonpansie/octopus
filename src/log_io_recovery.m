@@ -777,7 +777,7 @@ recover_row:(struct row_v12 *)r
 					shard = [self shard_alloc:sop->type];
 					id executor = old_shard->executor;
 					[shard init_id:old_shard->id scn:old_shard->scn sop:sop];
-					shard->loading = false;
+					shard->loading = old_shard->loading;
 					old_shard->executor = nil;
 					[old_shard release];
 					[shard set_executor:executor];
