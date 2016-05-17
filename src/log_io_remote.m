@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -46,6 +46,8 @@
 recover_row_stream:(id<XLogPullerAsync>)puller
 {
 	int count = 0;
+	int has_prepare = [(id)recovery respondsTo:@selector(prepare_remote_row:offt:)];
+
 	for (;;) {
 		struct row_v12 *row;
 		[puller recv_row];
@@ -55,6 +57,9 @@ recover_row_stream:(id<XLogPullerAsync>)puller
 					[(id)recovery wal_final_row];
 				return count;
 			}
+
+			if (has_prepare && [(id)recovery prepare_remote_row:row offt:0] != 1)
+				continue;
 
 			[recovery recover_row:row];
 			count++;

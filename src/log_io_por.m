@@ -172,6 +172,11 @@ adjust_route
 	if (loading)
 		return;
 
+	if (type == SHARD_TYPE_PART && remote_scn == 0) {
+		[self load_from_remote];
+		assert(remote_scn > 0);
+	}
+
 	if ([self master]) {
 		update_rt(self->id, self, NULL);
 		[self status_update:"primary"];
@@ -191,8 +196,11 @@ enable_local_writes
 {
 	if ([self master])
 		[self wal_final_row];
-	else
+	else {
+		if (type == SHARD_TYPE_PART && remote_scn == 0)
+			[self load_from_remote];
 		[self remote_hot_standby];
+	}
 }
 
 - (void)
@@ -269,8 +277,9 @@ prepare_remote_row:(struct row_v12 *)row offt:(int)offt
 		memcpy(&row->remote_scn, &row->scn, 6);
 		row->scn = scn + 1 + offt;
 	}
-	if (row->scn <= scn)
+	if (row->scn <= scn && (row->tag & ~TAG_MASK) == TAG_WAL)
 		return 0;
+
 	return 1;
 }
 
