@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -1365,39 +1365,36 @@ open_for_write:(i64)lsn scn:(i64 *)shard_scn_map
 static i64
 find(int count, const char *type, i64 needle, i64 *haystack, i64 *lsn)
 {
-	if (needle < *haystack) {
-		say_warn("%s: requested %s:%"PRIi64" is missing", __func__, type, needle);
-		return -1;
-	}
+	haystack += count - 1;
+	lsn += count - 1;
 
-	/* shard scn may appear in the middle of WALs */
-	for (; count > 1; count--, lsn++, haystack++)
-		if (*haystack != 0)
-			break;
-
-	int err = 0;
-	for (; count > 1; count--, lsn++, haystack++) {
-		if (*haystack <= 0) {
-			err = 1;
-			continue;
-		}
-
-		if (*haystack <= needle && needle < *(haystack + 1)) {
+	while (count) {
+		if (*haystack < 0) /* error */
+			return -1;
+		/* if *haystack == 0 то вернуть последний файл, потому что мы не знаем заранее ,
+		 есть ли в этом файле нужная запись или нет */
+		if (*haystack <= needle) {
 			say_debug2("%s: %s:%"PRIi64 " file_lsn:%"PRIi64, __func__, type, needle, *lsn);
 			return *lsn;
 		}
+
+		haystack--;
+		lsn--;
+		count --;
 	}
 
-	if (err)
-		return -1;
-	say_debug2("%s: %s:%"PRIi64 " file_lsn:%"PRIi64, __func__, type, needle, *lsn);
-	return *lsn;
+	say_warn("%s: requested %s:%"PRIi64" is missing", __func__, type, needle);
+	return -1;
 }
 
 - (i64 *)
 scan_scn_shard:(int)target_shard_id lsn:(i64 *)lsn count:(int)count
 {
 	i64 *scn = p0alloc(fiber->pool, sizeof(i64) * count);
+
+	/* scn[i] == -1 if error,
+	              0 if not present
+		      b otherwise */
 
 	for (int i = 0; i < count; i++) {
 		const char *filename = [self format_filename:lsn[i]];
