@@ -142,7 +142,9 @@ slave_env.env_eval do
   slave.select *keys, :shard => 2
   slave.select *keys, :shard => 3
 
-  slave_env.snapshot
+  slave_env.env_eval do
+    snapshot
+  end
 
   slave_env.stop
   4.times do |i|

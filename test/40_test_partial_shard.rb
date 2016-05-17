@@ -35,6 +35,7 @@ local shard
 replication_filter.partial = function (row, arg)
   if row == nil then
      shard = tonumber(arg)
+     say_info("partial filter for shard:" .. tostring(shard))
      return nil
   end
   if row.scn == 0 or row.scn == -1 then
