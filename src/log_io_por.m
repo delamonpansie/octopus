@@ -83,9 +83,11 @@ snapshot_write_header:(XLog *)snap
 - (i64)
 handshake_scn
 {
-	if (partial_replica)
+	if (partial_replica) {
+		assert(remote_scn > 0);
 		return remote_scn + 1;
-	return scn + 1;
+	}
+	return [super handshake_scn];
 }
 
 
@@ -95,6 +97,17 @@ set_feeder:(struct feeder_param*)new
 	/* legacy */
 	if (shard_rt[self->id].shard && shard_rt[self->id].proxy)
 		[remote set_feeder:new];
+}
+
+- (void)
+fill_feeder_param:(struct feeder_param *)param peer:(int)i
+{
+
+	[super fill_feeder_param:param peer:i];
+	if (partial_replica) {
+		param->filter.type = FILTER_TYPE_LUA;
+		param->filter.name = "partial";
+	}
 }
 
 - (bool)
@@ -116,10 +129,6 @@ remote_hot_standby
 		if (fid_err) panic("wrong feeder conf");
 	} else {
 		[self fill_feeder_param:&feeder peer:0];
-		if (partial_replica) {
-			feeder.filter.type = FILTER_TYPE_LUA;
-			feeder.filter.name = "partial";
-		}
 	}
 	if (remote == nil) {
 		[self status_update:"hot_standby/%s/init", net_sin_name(&feeder.addr)];
