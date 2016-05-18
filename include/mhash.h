@@ -341,7 +341,12 @@ MH_DECL void _mh(dump)(struct mhash_t *h);
 
 
 #ifndef mh_def_hash
-static inline unsigned mh_u64_hash(uint64_t kk) { return  (kk >> 34) ^ ((kk  >> 17) & 0xffff8000) ^ kk; }
+static inline unsigned mh_u64_hash(uint64_t kk) {
+	/* from super fast hash :-) */
+	kk ^= kk >> 23;
+	kk *= 0x2127599bf4325c37ULL;
+	return kk ^ (kk >> 47);
+}
 //-----------------------------------------------------------------------------
 // MurmurHash2, by Austin Appleby
 
