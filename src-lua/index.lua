@@ -45,7 +45,10 @@ local iterator_next = objc.msg_lookup("iterator_next")
 local iterator_next_n = objc.msg_lookup("iterator_next:")
 local position_with_node = objc.msg_lookup("position_with_node:")
 local position_with_object = objc.msg_lookup("position_with_object:")
+-- hash index methods
 local get = objc.msg_lookup('get:')
+local cur_iter = objc.msg_lookup('cur_iter')
+local iterator_init_pos = objc.msg_lookup('iterator_init_pos:')
 
 local maxnodesize = ffi.sizeof('struct index_node') + 8 * ffi.sizeof('union index_field')
 local node = ffi.cast('struct index_node *', ffi.C.malloc(maxnodesize))
@@ -230,18 +233,6 @@ local basic_mt = {
         slots = function(self)
             return tonumber(ffi.cast(uint32_t, objc.msg_send(self.__ptr, "slots")))
         end,
-        get = function(self, i)
-            assert(self.__ptr.conf.type == ffi.C.HASH)
-            local ptr = get(self.__ptr, ffi.cast(int32_t, i))
-            if ptr == nil then
-                return nil
-            end
-            local obj = ffi.cast('struct tnt_object *', ptr)
-            if ffi.C.object_ghost(obj) then
-               return nil
-            end
-            return object(ptr)
-        end,
         type = function(self)
             local tpe = self.__ptr.conf.type
             if tpe == ffi.C.HASH or tpe == ffi.C.NUMHASH then
@@ -272,6 +263,35 @@ local basic_mt = {
     end
 }
 
+local hash_mt = {
+    __index = {
+        get = function(self, i)
+            local ptr = get(self.__ptr, ffi.cast(int32_t, i))
+            if ptr == nil then
+                return nil
+            end
+            local obj = ffi.cast('struct tnt_object *', ptr)
+            if ffi.C.object_ghost(obj) then
+               return nil
+            end
+            return object(ptr)
+        end,
+        cur_iter = function(self)
+            return tonumber(ffi.cast(uint32_t, cur_iter(self.__ptr)))
+        end,
+        iter_from_pos = function(self, pos)
+            self.__switchcnt = fiber.switch_cnt
+            iterator_init_pos(self.__ptr, ffi.cast(uint32_t, pos or 0))
+            return iter_next, self
+        end,
+        type = function(self)
+            return "HASH"
+        end,
+    },
+    __tostring = basic_mt.__tostring
+}
+setmetatable(hash_mt.__index, basic_mt)
+
 local tree_mt = {
     __index = {
         diter = function (self, direction, ...)
@@ -296,7 +316,11 @@ local tree_mt = {
         first = function(self, ...)
             return self:iter(...)(self)
         end,
-   }
+        type = function(self)
+            return "TREE"
+        end,
+    },
+    __tostring = basic_mt.__tostring
 }
 setmetatable(tree_mt.__index, basic_mt)
 
@@ -316,7 +340,8 @@ local postree_mt = {
                 error('bad call to index:position')
             end
         end
-    }
+    },
+    __tostring = basic_mt.__tostring
 }
 setmetatable(postree_mt.__index, tree_mt)
 
@@ -325,8 +350,8 @@ local index_mt = {
     [tonumber(ffi.C.FASTTREE)] = tree_mt,
     [tonumber(ffi.C.COMPACTTREE)] = tree_mt,
     [tonumber(ffi.C.POSTREE)] = postree_mt,
-    [tonumber(ffi.C.HASH)] = basic_mt,
-    [tonumber(ffi.C.NUMHASH)] = basic_mt,
+    [tonumber(ffi.C.HASH)] = hash_mt,
+    [tonumber(ffi.C.NUMHASH)] = hash_mt,
 }
 setmetatable(index_mt, { __index = function() assert(false) end })
 
