@@ -167,6 +167,7 @@ typedef struct tnt_object* tnt_ptr;
 - (u32)cardinality;
 /* common method */
 - (struct tnt_object *)iterator_next: (int)n;
+- (int)eq:(struct tnt_object *)a :(struct tnt_object*)b;
 @end
 
 @interface DummyIndex: Index <BasicIndex> {

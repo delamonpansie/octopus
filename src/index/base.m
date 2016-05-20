@@ -196,7 +196,7 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 	struct index_node node_b[8];
 	dtor(obj_a, &node_a, dtor_arg);
 	dtor(obj_b, node_b, dtor_arg);
-	return memcmp(&node_a.key, &node_b[0].key, node_size - sizeof(struct tnt_object *)) == 0;
+	return eq(&node_a, node_b, self->dtor_arg);
 }
 
 - (struct tnt_object *) iterator_next: (int)n
