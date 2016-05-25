@@ -392,7 +392,6 @@ typedef struct gen_slot gen_slot_t;
 #define mh_setdirty(h, i)     mh_slot(h, i)->collision = 1
 #define mh_slot_copy(h, a, b) (a)->ptr = (b)->ptr
 #define mh_arg_t GenHash*
-#define MH_QUADRATIC_PROBING 1
 
 static const struct index_node* gen_hash_slot_key(struct mh_gen_t const * h, gen_slot_t const * slot);
 #define mh_slot_key(h, slot) gen_hash_slot_key(h, slot)
