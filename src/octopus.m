@@ -238,7 +238,7 @@ module_init(struct tnt_module *mod)
 	}
 
 	if (mod->depend_on) {
-		for (i = 0; (*mod->depend_on)[i]; i++) {
+		for (i = 0; mod->depend_on[i]; i++) {
 			struct tnt_module *dep = NULL;
 			/* if dependency is "?module_name"
 			 * then "module_name" is not critical dependency */
