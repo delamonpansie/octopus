@@ -150,6 +150,9 @@ struct cstr_slot {
 /* incremental resize interacts badly with slot mutation and should be enabled explicitly */
 #endif
 
+#ifdef MH_INCREMENTAL_CONST
+# undef MH_INCREMENTAL_CONST
+#endif
 #if MH_INCREMENTAL_RESIZE
 # define MH_INCREMENTAL_CONST const
 #else
