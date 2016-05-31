@@ -495,10 +495,12 @@ struct _mh(find_loop) {
 static inline void _mh(find_loop_init)(struct _mh(find_loop) *l, unsigned k, unsigned mask) {
 	l->step = mh_neighbors;
 	l->i = k & mask;
-#if MH_QUADRATIC_PROBING
-	l->dlt = 0;
-#else
+#if !MH_QUADRATIC_PROBING
+#if mh_neighbors > 1
 	l->dlt = (k % (mask / (2 * mh_neighbors))) * 2 * mh_neighbors;
+#else
+	l->dlt = (k % (mask / 2)) * 2 + 1;
+#endif
 #endif
 	l->inc = 0;
 }
@@ -506,20 +508,30 @@ static inline void _mh(find_loop_step)(struct _mh(find_loop) *l, unsigned mask) 
 #ifdef mh_count_collisions
 	mh_count_collisions;
 #endif
+#if mh_neighbors == 1
+#  if MH_QUADRATIC_PROBING
+	l->i += ++l->inc;
+#  else
+	uint32_t d = l->inc * 4 + l->dlt;
+	l->i += d;
+	l->inc += d;
+#  endif
+#else
 	l->step--;
 	l->i++;
 	if (!l->step) {
-#if MH_QUADRATIC_PROBING
+#  if MH_QUADRATIC_PROBING
 		l->step = mh_neighbors;
 		l->i += l->inc;
 		l->inc += mh_neighbors;
-#else
+#  else
 		uint32_t d = l->inc * 4 + l->dlt;
 		l->step = mh_neighbors;
 		l->i += d;
 		l->inc += d + mh_neighbors;
-#endif
+#  endif
 	}
+#endif
 	l->i &= mask;
 }
 
