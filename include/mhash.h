@@ -188,9 +188,11 @@ struct _mh(slot) {
 # ifndef mh_slot_key
 #  error mh_slot_key must be defined if mh_slot_t defined
 # endif
-# define mh_key_t typeof(mh_slot_key(NULL, (mh_slot_t *)0))
+typedef typeof(mh_slot_key(NULL, (mh_slot_t *)0)) _mh(key_t);
+# define mh_key_t _mh(key_t)
 # ifdef mh_slot_val
-#  define mh_val_t typeof(mh_slot_val((mh_slot_t *)0))
+typedef typeof(mh_slot_val((mh_slot_t *)0)) _mh(val_t);
+#  define mh_val_t _mh(val_t)
 # endif
 #endif
 
