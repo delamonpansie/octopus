@@ -225,7 +225,7 @@ function wal_parse(tag, data, len)
     local cmd = { }
 
     local tag_name = wal.tag.name(tag)
-    if tag_name == "snap_tag" then
+    if tag_name == "snap_data" then
         cmd.op = -1
     elseif wal.tag.type(tag) ~= "wal" then
         return nil
@@ -361,12 +361,12 @@ local function wal_pack(r)
     end
 
     if wal.tag.type(r.row.tag) ~= "wal" then
-        assert(wal.tag.name(r.row.tag) == "snap_tag")
+        assert(wal.tag.name(r.row.tag) == "snap_data")
         if cmd == op.NOP then
             return nil
         end
         assert(cmd.op == op.INSERT)
-        row.tag = bit.bor(wal.tag.code.snap_tag, wal.tag.SNAP)
+        row.tag = bit.bor(wal.tag.code.snap_data, wal.tag.SNAP)
         local len = snap_insert(cmd.n, cmd.tuple, p)
         row = ffi.cast("struct row_v12*", p.ptr)
         row.len = len
