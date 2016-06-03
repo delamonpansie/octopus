@@ -231,7 +231,7 @@ function wal_parse(tag, data, len)
         return nil
     elseif wal.tag.value(tag) > wal.tag.code.paxos_nop then
         cmd.op = bit.rshift(wal.tag.value(tag), 5)
-    elseif tag_name == "wal_tag" then
+    elseif tag_name == "wal_data" then
         cmd.op = u:u16()
     else
         return nil
