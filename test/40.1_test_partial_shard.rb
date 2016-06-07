@@ -105,7 +105,10 @@ master_env.env_eval do
   rm "00000000000000000002.xlog"
   p Dir["*"]
 end
-master.select 0,1,2,3,4,5
+
+keys = (0..16).map{|a| a.to_s}.to_a
+
+master.select *keys
 
 slave_env = SlaveEnv.new
 slave_env.env_eval do
@@ -125,7 +128,6 @@ slave_env.env_eval do
 
   sleep 0.2
 
-  keys = (0..16).map{|a| a.to_s}.to_a
   slave.select *keys, :shard => 0
   slave.select *keys, :shard => 1
   slave.select *keys, :shard => 2
