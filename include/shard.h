@@ -72,6 +72,8 @@
 - (void) enable_local_writes;
 - (bool) our_shard;
 
+- (void) set_executor:(id)executor_;
+
 - (void) fill_feeder_param:(struct feeder_param *)feeder peer:(int)i;
 - (i64) handshake_scn;
 - (void) load_from_remote;
@@ -102,5 +104,8 @@ void update_rt(int shard_id, Shard<Shard> *shard, const char *peer_name);
 
 enum port_type { PORT_PRIMARY, PORT_REPLICATION };
 const struct sockaddr_in *peer_addr(const char *name, enum port_type port_type);
+
+void shard_log(const char *msg, int shard_id);
+void route_info(const struct shard_route *route, struct tbuf *buf);
 
 #endif

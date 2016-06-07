@@ -22,6 +22,7 @@ obj-log-io += src/log_io_reader.o
 obj-log-io += src/log_io_remote.o
 obj-log-io += src/log_io_writers.o
 obj-log-io += src/log_io_recovery.o
+obj-log-io += src/log_io_shard.o
 obj-log-io += src/log_io_por.o
 obj-log-io += src/log_io_puller.o
 obj-log-io += src/log_io_run_crc.o
