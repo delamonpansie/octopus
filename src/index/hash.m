@@ -373,6 +373,7 @@ iterator_init_with_key:(struct tbuf *)key_data cardinalty:(u32)cardinality
 
 #define mh_byte_map 1
 #define mh_may_skip 1
+#define MH_QUADRATIC_PROBING 1
 #define mh_name _gen
 struct gen_slot {
 	tnt_ptr ptr;
