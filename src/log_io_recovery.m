@@ -366,7 +366,7 @@ shard_add_dummy:(const struct row_v12 *)row
 	if (row) {
 		scn = row->scn;
 		if (row->len > sizeof(u32) * 2) {
-			// when loadding from v11 snapshow row has no row_count & row_crc
+			// when loadding from v11 snapshot row has no row_count & row_crc
 			struct tbuf buf = TBUF(row->data, row->len, NULL);
 			row_count = read_u32(&buf);
 			run_crc = read_u32(&buf);
