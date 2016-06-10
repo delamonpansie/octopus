@@ -15,10 +15,11 @@ class RunEnvX < RunEnv
 	  return 0, {pk:find('0')}
         end)
 
-        user_proc.update = box.wrap(function (shard, n)
+        user_proc.update = box.wrap(function (shard, n, i)
+          i = tonumber(i)
 	  local object_space = shard:object_space(n)
 	  local pk = object_space:index(0)
-	  object_space:update('0', { 2, 'delete' } )
+	  object_space:update('0', { i, 'delete' } )
 	  return 0, {pk:find('0')}
         end)
 
@@ -60,11 +61,13 @@ EOD
 end
 
 master = MasterEnv.new.connect_eval do
+  self.connect_name = "master"
   ping
   self
 end
 
 SlaveEnv.connect_eval do
+  self.connect_name = "slave"
   master.insert ['0', 'a', 'b', 'c', 'd']
   wait_for { select_nolog(['0']).length > 0 }
 
@@ -74,8 +77,8 @@ SlaveEnv.connect_eval do
   master.lua 'user_proc.select', '0'
   lua 'user_proc.select', '0'
 
-  master.lua 'user_proc.update', '0'
-  log_try { lua 'user_proc.update', '0' }
+  master.lua 'user_proc.update', '0', '2'
+  log_try { lua 'user_proc.update', '0', '3' }
 
   log_try { lua 'user_proc.error', '0' }
 end

@@ -168,6 +168,7 @@ EOD
       return pid
     else
       Process.setpgid($$, 0)
+      ENV["OCTOPUS_TEST"] = "true"
       argv = ['./octopus', '-c', ConfigFile, *args]
       if $options[:valgrind]
         $timefactor = 40

@@ -13,7 +13,11 @@ sleep 0.1
 
 # switch master
 $two_env.meta 'shard 1 master two'
-sleep 0.1
+$two_env.env_eval do
+  wait_for "readable 00000000000000000002.snap" do
+    FileTest.readable? '00000000000000000002.snap'
+  end
+end
 
 $two_env.meta 'shard 1 add_replica three'
 sleep 0.1
@@ -23,6 +27,7 @@ $two_env.meta 'shard 1 del_replica one'
 sleep 0.1
 
 $two_env.env_eval do
+
   stop
   puts `./octopus --cat 00000000000000000002.snap`.gsub(/ tm:\d+(\.\d+)? /, ' ')
   puts `./octopus --cat 00000000000000000002.xlog`.gsub(/ tm:\d+(\.\d+)? /, ' ')

@@ -84,5 +84,5 @@ env.connect_eval do
 end
 
 env.cd do
-  puts `./octopus --cat 00000000000000000008.snap | sed 's/tm:[0-9.]\\+ //g;'`
+  puts `./octopus --cat 00000000000000000007.snap | sed 's/tm:[0-9.]\\+ //g;'`
 end

@@ -12,9 +12,11 @@ sleep 0.1
 
 # switch master
 $two_env.meta 'shard 1 master two'
-
-sleep 0.1
-
+$two_env.env_eval do
+  wait_for "readable 00000000000000000002.snap" do
+    FileTest.readable?("00000000000000000002.snap")
+  end
+end
 
 $one.insert [1,"one2"], :shard => 1
 $one.select 1, :shard => 1
@@ -27,7 +29,9 @@ $two.select 1, :shard => 1
 $two_env.env_eval do
   stop
   puts `./octopus --cat 00000000000000000002.snap`.gsub(/ tm:\d+(\.\d+)? /, ' ')
+  puts
   puts `./octopus --cat 00000000000000000002.xlog`.gsub(/ tm:\d+(\.\d+)? /, ' ')
+  puts
   puts `grep META octopus.log`.gsub(/^\d+\.\d+ \d+ /, '')
 end
 

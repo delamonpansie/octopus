@@ -16,8 +16,10 @@ ok
 # one.select([0], {:shard=>1})
 [["\x00\x00\x00\x00", "one"]]
 
-# one.lua("user_proc.test10", {:shard=>1})
 # one.meta(shard 1 delete)
+# thread.lua("user_proc.test10", {:shard=>1})
+[["\x00\x00\x00\x00", "dead", "beef"]]
+
 ok
 
 # one.meta(shard 1 create por)
@@ -35,8 +37,6 @@ ok
 # box.select([0], {:shard=>1})
 [["\x00\x00\x00\x00", "one2"]]
 
-[["\x00\x00\x00\x00", "dead", "beef"]]
-
-# box.select([0], {:shard=>1})
+# thread.select([0], {:shard=>1})
 [["\x00\x00\x00\x00", "one2"]]
 

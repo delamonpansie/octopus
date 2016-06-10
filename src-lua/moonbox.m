@@ -77,7 +77,7 @@ shard_box_next_primary_n(int n)
 		if (n >= MAX_SHARD)
 			n = 0;
 		if (shard_rt[n].shard &&
-		    !shard_rt[n].shard->loading &&
+		    shard_rt[n].shard->executor &&
 		    shard_rt[n].proxy == NULL)
 			return n;
 	}

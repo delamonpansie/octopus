@@ -12,13 +12,14 @@ $one.insert [0,"one"], :shard => 1
 $one.select [0], :shard => 1
 
 t = Thread.new {
-  $one.lua 'user_proc.test10', :shard => 1
-  $one.select [0], :shard => 1
+  connect = $one
+  connect.connect_name = "thread"
+  connect.lua 'user_proc.test10', :shard => 1
+  sleep 1
+  log_try { connect.select [0], :shard => 1 }
 }
 
-sleep 0.1
 $one_env.meta 'shard 1 delete'
-
 $one_env.meta 'shard 1 create por'
 $one_env.meta 'shard 1 obj_space 0 create tree unique string 0'
 

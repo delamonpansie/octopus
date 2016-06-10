@@ -26,22 +26,19 @@ ok
 ok
 
 lsn:2 scn:-1 t:sys/snap_initial ver:0 count:1 flags:0x00000000
-lsn:2 shard:1 scn:4 t:sys/shard_create SHARD_CREATE shard_id:1 POR Box count:1 run_crc:0xc50dacae master:one repl:two
-lsn:2 shard:1 scn:4 t:snap/usr240 CREATE_OBJECT_SPACE n:0 flags:00000003 cardinalty:0 PK: i:0 min_tuple_cardinality:0 cardinality:1 type:5 unique:1 field0:{index:0 type:7 sort:1}
-lsn:2 shard:1 scn:4 t:snap/snap_data n:0 <1:"\x01\x00\x00\x00", "one">
-lsn:2 shard:1 scn:4 t:sys/shard_final 
+lsn:2 shard:1 scn:5 t:sys/shard_create SHARD_CREATE shard_id:1 POR Box count:1 run_crc:0x88549ae3 master:two repl:one
+lsn:2 shard:1 scn:5 t:snap/usr240 CREATE_OBJECT_SPACE n:0 flags:00000003 cardinalty:0 PK: i:0 min_tuple_cardinality:0 cardinality:1 type:5 unique:1 field0:{index:0 type:7 sort:1}
+lsn:2 shard:1 scn:5 t:snap/snap_data n:0 <1:"\x01\x00\x00\x00", "one">
+lsn:2 shard:1 scn:5 t:sys/shard_final 
 lsn:2 scn:-1 t:sys/snap_final 
-lsn:2 shard:1 scn:4 t:sys/shard_alter SHARD_ALTER shard_id:1 POR Box count:1 run_crc:0xb4c41ab4 master:one repl:two
-lsn:3 shard:1 scn:5 t:sys/shard_alter SHARD_ALTER shard_id:1 POR Box count:1 run_crc:0xb4c41ab4 master:two repl:one
-lsn:4 shard:1 scn:6 t:sys/shard_alter SHARD_ALTER shard_id:1 POR Box count:1 run_crc:0x88549ae3 master:two repl:one repl:three
-lsn:5 shard:1 scn:7 t:sys/shard_alter SHARD_ALTER shard_id:1 POR Box count:1 run_crc:0x3af1009a master:two repl:three
-238/load shard {1} I> META mode: LOADING => shard_add
+lsn:2 shard:1 scn:5 t:sys/shard_alter SHARD_ALTER shard_id:1 POR Box count:1 run_crc:0xb4c41ab4 master:two repl:one
+lsn:3 shard:1 scn:6 t:sys/shard_alter SHARD_ALTER shard_id:1 POR Box count:1 run_crc:0x88549ae3 master:two repl:one repl:three
+lsn:4 shard:1 scn:7 t:sys/shard_alter SHARD_ALTER shard_id:1 POR Box count:1 run_crc:0xdc605ad4 master:two repl:three
+238/load shard {1} I> META mode: LOADING => shard_create
 238/load shard {1} I> META mode: PARTIAL_PROXY, SCN: 4, type: POR, peer: [one, two], proxy_addr: 'one/127.0.0.1:33013' => hot_standby/one/127.0.0.1:33013/init
 239/remote_hot_standby {1} I> META mode: PARTIAL_PROXY, SCN: 4, type: POR, peer: [one, two], proxy_addr: 'one/127.0.0.1:33013' => hot_standby/127.0.0.1:33013/connect
 238/load shard {1} I> META mode: PARTIAL_PROXY, SCN: 4, type: POR, peer: [one, two], proxy_addr: 'one/127.0.0.1:33013' => wal_final_row
-238/load shard {1} I> META mode: PARTIAL_PROXY, SCN: 4, type: POR, peer: [one, two], proxy_addr: 'one/127.0.0.1:33013' => wal_final_row
 239/remote_hot_standby {1} I> META mode: PARTIAL_PROXY, SCN: 4, type: POR, peer: [one, two], proxy_addr: 'one/127.0.0.1:33013' => hot_standby/127.0.0.1:33013/ok
-239/remote_hot_standby {1} I> META mode: PARTIAL_PROXY, SCN: 4, type: POR, peer: [one, two], proxy_addr: 'one/127.0.0.1:33013' => wal_final_row
 239/remote_hot_standby {1} I> META mode: LOCAL, SCN: 4, type: POR, peer: [two, one] => route update, force notify
 239/remote_hot_standby {1} I> META mode: LOCAL, SCN: 4, type: POR, peer: [two, one] => primary
 230/box_worker {1} I> META mode: LOCAL, SCN: 6, type: POR, peer: [two, one, three] => route update, force notify

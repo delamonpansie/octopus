@@ -29,6 +29,10 @@ sleep 0.1
 $one.insert [42, "One"], :shard => 1
 
 $two_env.env_eval do
+  wait_for "readable 00000000000000000002.snap" do
+    FileTest.readable? '00000000000000000002.snap'
+  end
+
   stop
   puts `./octopus --cat 00000000000000000002.snap`.gsub(/ tm:\d+(\.\d+)? /, ' ')
   puts `./octopus --cat 00000000000000000002.xlog`.gsub(/ tm:\d+(\.\d+)? /, ' ')
