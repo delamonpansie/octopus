@@ -78,7 +78,7 @@ shard_box_next_primary_n(int n)
 			n = 0;
 		if (shard_rt[n].shard &&
 		    shard_rt[n].shard->executor &&
-		    shard_rt[n].proxy == NULL)
+		    ![shard_rt[n].shard is_replica])
 			return n;
 	}
 	return -1;
