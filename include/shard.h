@@ -80,8 +80,6 @@
 - (int) prepare_remote_row:(struct row_v12 *)row offt:(int)offt;
 - (void) update_run_crc:(const struct wal_reply *)reply;
 
-- (id) retain;
-- (void) release;
 @end
 
 enum shard_type { SHARD_TYPE_POR, SHARD_TYPE_PAXOS, SHARD_TYPE_PART } ;
@@ -89,6 +87,7 @@ enum shard_type { SHARD_TYPE_POR, SHARD_TYPE_PAXOS, SHARD_TYPE_PART } ;
 struct shard_route {
 	Shard<Shard> *shard;
 	struct iproto_egress *proxy;
+	struct rwlock lock;
 };
 
 struct shard_conf {

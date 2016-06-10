@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -57,7 +57,7 @@ static char * const stat_ops[] = ENUM_STR_INITIALIZER(STAT);
 static int stat_base;
 
 struct worker_arg {
-	iproto_cb cb;
+	struct iproto_handler *ih;
 	struct iproto *r;
 	struct iproto_ingress_svc *io;
 };
@@ -94,12 +94,15 @@ iproto_worker(va_list ap)
 		size_t req_size = sizeof(struct iproto) + a.r->data_len;
 		a.r = memcpy(palloc(fiber->pool, req_size), a.r, req_size);
 
-		Shard *shard = (shard_rt + a.r->shard_id)->shard;
+		struct rwlock *lock = &(shard_rt + a.r->shard_id)->lock;
 		@try {
 			netmsg_io_retain(a.io);
-			[shard retain];
+			if ((a.ih->flags & IPROTO_WLOCK) == 0)
+				rlock(lock);
+			else
+				wlock(lock);
 			fiber->ushard = a.r->shard_id;
-			a.cb(&a.io->wbuf, a.r);
+			a.ih->cb(&a.io->wbuf, a.r);
 		}
 		@catch (Error *e) {
 			/* FIXME: where is no way to rollback modifications of wbuf.
@@ -112,7 +115,10 @@ iproto_worker(va_list ap)
 			if (a.io->fd >= 0 && a.io->prepare_link.le_prev == NULL)
 				LIST_INSERT_HEAD(&service->prepare, a.io, prepare_link);
 			fiber->ushard = -1;
-			[shard release];
+			if ((a.ih->flags & IPROTO_WLOCK) == 0)
+				runlock(lock);
+			else
+				wunlock(lock);
 			netmsg_io_release(a.io);
 		}
 
@@ -366,7 +372,7 @@ local(struct iproto_ingress_svc *io, struct iproto *msg, struct iproto_handler *
 
 		stat_collect(stat_base, IPROTO_BLOCK_OP, 1);
 		SLIST_REMOVE_HEAD(&service->workers, worker_link);
-		resume(w, (&(struct worker_arg){ih->cb, msg, io}));
+		resume(w, (&(struct worker_arg){ih, msg, io}));
 		io->batch--;
 	}
 	return 1;

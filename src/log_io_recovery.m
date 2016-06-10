@@ -188,7 +188,8 @@ update_rt_notify(va_list ap __attribute__((unused)))
 			continue;
 
 		for (int i = 0; i < nelem(shard_rt); i++) {
-			if (shard_rt[i].shard == nil)
+			if (shard_rt[i].shard == nil ||
+			    shard_rt[i].lock.locked)
 				continue;
 
 			id<Shard> shard = shard_rt[i].shard;
@@ -1030,7 +1031,9 @@ iproto_shard_load_aux(va_list ap)
 	int shard_id = va_arg(ap, int);
 	struct shard_op sop = *va_arg(ap, struct shard_op *);
 
+	struct shard_route *route = shard_rt + shard_id;
 	@try {
+		wlock(&route->lock);
 		Shard<Shard> *shard;
 		assert(shard_rt[shard_id].shard == nil);
 		shard = [recovery shard_add:shard_id scn:-1 sop:&sop];
@@ -1056,10 +1059,8 @@ iproto_shard_load_aux(va_list ap)
 		if ([recovery fork_and_snapshot] != 0)
 			say_error("Can't save snapshot"); // FIXME
 	}
-	@catch (Error *e) {
-		say_error("Failed to load shard, [%s reason:\"%s\"] at %s:%d",
-			 [[e class] name], e->reason, e->file, e->line);
-		[e release];
+	@finally {
+		wunlock(&route->lock);
 	}
 }
 
@@ -1083,7 +1084,7 @@ iproto_shard_udpcb(const char *buf, ssize_t len, void *data __attribute__((unuse
 	if (sop == NULL)
 		return;
 
-	if (shard && shard->loading) {
+	if (route->lock.locked) {
 		say_debug("ignore route update, shard %i loading", shard_id);
 		return;
 	}
@@ -1120,7 +1121,7 @@ recovery_iproto(void)
 		fiber_create("route_recv", udp_server,
 			     recovery_service->addr, iproto_shard_udpcb, NULL, NULL);
 		fiber_create("udpate_rt_notify", update_rt_notify);
-		service_register_iproto(recovery_service, MSG_SHARD, iproto_shard_cb, IPROTO_LOCAL);
+		service_register_iproto(recovery_service, MSG_SHARD, iproto_shard_cb, IPROTO_LOCAL|IPROTO_WLOCK);
 		service_register_iproto(recovery_service, MSG_SHARD_RT, iproto_shard_rt_cb, IPROTO_LOCAL);
 		paxos_service(recovery_service);
 	}
