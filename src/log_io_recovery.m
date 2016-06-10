@@ -618,10 +618,9 @@ simple:(struct iproto_service *)service
 
 	if (cfg.local_hot_standby) {
 		[reader hot_standby];
-		fiber_create("wal_lock", wal_lock, self);
-
 		for (int i = 0; i < MAX_SHARD; i++)
 			[[self shard:i] wal_final_row];
+		fiber_create("wal_lock", wal_lock, self);
 	} else {
 		[self enable_local_writes];
 	}
