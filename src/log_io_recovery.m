@@ -348,20 +348,21 @@ shard_alloc:(char)type
 }
 
 - (Shard<Shard> *)
-shard_add:(int)shard_id scn:(i64)scn sop:(const struct shard_op *)sop
+shard_create:(int)shard_id scn:(i64)scn sop:(const struct shard_op *)sop
 {
 	assert(sop->ver == 0);
 	assert(shard_rt[shard_id].shard == nil);
 	Shard<Shard> *shard = [self shard_alloc:sop->type];
 	[shard init_id:shard_id scn:scn sop:sop];
 	[shard set_executor:[[objc_lookUpClass(sop->mod_name) alloc] init]];
-	shard_log("shard_add", shard->id);
+	update_rt(shard->id, shard, NULL);
+	shard_log("shard_create", shard->id);
 
 	return shard;
 }
 
 - (Shard<Shard> *)
-shard_add_dummy:(const struct row_v12 *)row
+shard_create_dummy:(const struct row_v12 *)row
 {
 	i64 scn = 1;
 	u32 row_count = 0;
@@ -384,22 +385,37 @@ shard_add_dummy:(const struct row_v12 *)row
 
 	struct feeder_param feeder;
 	enum feeder_cfg_e fid_err = feeder_param_fill_from_cfg(&feeder, NULL);
-	if (fid_err || feeder.addr.sin_family == AF_UNSPEC)
-		strcpy(op.peer[0], "<dummy>"); /* is master */
+	bool is_master = !fid_err && feeder.addr.sin_family == AF_UNSPEC;
 	Shard<Shard> *shard = [self shard_alloc:op.type];
 	shard->dummy = true;
 	[shard init_id:0 scn:scn sop:&op];
 	[shard set_executor:[[default_exec_class alloc] init]];
-	shard_log("shard_add_dummy", shard->id);
+	update_rt(shard->id, shard, is_master ? NULL : "<dummy_addr>");
+	shard_log("shard_create_dummy", shard->id);
 	return shard;
 }
 
 - (void)
-shard_create:(int)shard_id sop:(struct shard_op *)sop
+shard_alter_type:(Shard<Shard> **)shard sop:(struct shard_op *)sop
+{
+	Shard *old_shard = *shard,
+	      *new_shard = [self shard_alloc:sop->type];
+	id executor = old_shard->executor;
+	[new_shard init_id:old_shard->id scn:old_shard->scn sop:sop];
+	new_shard->loading = old_shard->loading;
+	[new_shard set_executor:executor];
+	*shard = new_shard;
+	[*shard alter:sop];
+	old_shard->executor = nil;
+	[old_shard release];
+}
+
+- (void)
+shard_op_create:(int)shard_id sop:(struct shard_op *)sop
 {
 	Shard<Shard> *shard;
 	struct wal_reply *reply;
-	shard = [self shard_add:shard_id scn:1 sop:sop];
+	shard = [self shard_create:shard_id scn:1 sop:sop];
 	reply = [writer submit:sop len:sizeof(*sop)
 			   tag:shard_create|TAG_SYS shard_id:shard_id];
 	if (reply->row_count != 1) {
@@ -410,9 +426,8 @@ shard_create:(int)shard_id sop:(struct shard_op *)sop
 	assert(shard_rt[shard->id].shard == shard);
 }
 
-
 - (void)
-shard_alter_peer:(Shard<Shard> *)shard sop:(struct shard_op *)sop
+shard_op_alter_peer:(Shard<Shard> *)shard sop:(struct shard_op *)sop
 {
 	if ([shard submit:sop len:sizeof(*sop) tag:shard_alter|TAG_SYS] != 1)
 		iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
@@ -421,25 +436,17 @@ shard_alter_peer:(Shard<Shard> *)shard sop:(struct shard_op *)sop
 }
 
 - (void)
-shard_alter_type:(Shard<Shard> *)shard type:(char)type
+shard_op_alter_type:(Shard<Shard> *)shard type:(char)type
 {
 	struct shard_op *sop = [shard snapshot_header];
 	sop->type = type;
 	if ([shard submit:sop len:sizeof(*sop) tag:shard_alter|TAG_SYS] != 1)
 		iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
 
-	Shard *old_shard = shard;
-	shard = [self shard_alloc:sop->type];
-	id executor = old_shard->executor;
-	[shard init_id:old_shard->id scn:old_shard->scn sop:sop];
-	shard->loading = false;
-	old_shard->executor = nil;
-	[old_shard release];
-	[shard set_executor:executor];
-
+	[self shard_alter_type:&shard sop:sop];
 	shard_log("shard_alter_type", shard->id);
-	[shard adjust_route];
 }
+
 
 - (void)
 recover_row:(struct row_v12 *)r
@@ -472,7 +479,7 @@ recover_row:(struct row_v12 *)r
 		switch (tag) {
 		case snap_initial:
 			if (r->scn != -1) /* no sharding */
-				shard = [self shard_add_dummy:r];
+				shard = [self shard_create_dummy:r];
 			state = snap_initial;
 			break;
 		case snap_final:
@@ -484,7 +491,7 @@ recover_row:(struct row_v12 *)r
 			assert(shard == nil);
 			struct shard_op *sop = (struct shard_op *)r->data;
 			if (our_shard(sop) || remote_loading) {
-				shard = [self shard_add:r->shard_id scn:r->scn sop:sop];
+				shard = [self shard_create:r->shard_id scn:r->scn sop:sop];
 				if (state == snap_final)
 					shard->snap_loaded = true;
 			} else {
@@ -493,20 +500,11 @@ recover_row:(struct row_v12 *)r
 			return;
 		case shard_alter: {
 			struct shard_op *sop = (struct shard_op *)r->data;
-			if (our_shard(sop)) {
-				assert(shard != nil);
+			if (our_shard(sop) && shard) {
 				struct shard_op *old = [shard snapshot_header];
 
-				if (sop->type != old->type) {
-					Shard *old_shard = shard;
-					shard = [self shard_alloc:sop->type];
-					id executor = old_shard->executor;
-					[shard init_id:old_shard->id scn:old_shard->scn sop:sop];
-					shard->loading = old_shard->loading;
-					old_shard->executor = nil;
-					[old_shard release];
-					[shard set_executor:executor];
-				}
+				if (sop->type != old->type)
+					[self shard_alter_type:&shard sop:sop];
 			}
 		}
 		default:
@@ -776,7 +774,7 @@ write_initial_state
 	initial_snap = true;
 #if CFG_object_space
 	if (cfg.object_space)
-		[self shard_add_dummy:NULL];
+		[self shard_create_dummy:NULL];
 #endif
 	return [snap_writer snapshot_write];
 }
@@ -937,7 +935,7 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req)
 		}
 
 		if (validate_sop(wbuf, req, sop, sizeof(*sop))) {
-			[recovery shard_create:shard_id sop:sop];
+			[recovery shard_op_create:shard_id sop:sop];
 			iproto_reply_small(wbuf, req, ERR_CODE_OK);
 		}
 		return;
@@ -970,7 +968,7 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req)
 				iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "bad peer count");
 		} else
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "unsuported type change");
-		[recovery shard_alter_type:shard type:type];
+		[recovery shard_op_alter_type:shard type:type];
 		iproto_reply_small(wbuf, req, ERR_CODE_OK);
 		return;
 	}
@@ -984,7 +982,7 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req)
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't delete shard with replicas");
 		update_rt(shard->id, nil, NULL);
 		[shard release];
-		[recovery fork_and_snapshot]; // FIXME: do a proper WAL write
+		[recovery request_snapshot]; // FIXME: do a proper WAL write
 		break;
 	case 2: /* upgrade dummy */
 		if (!shard->dummy)
@@ -994,9 +992,7 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req)
 
 		shard->dummy = false;
 		strcpy(shard->peer[0], cfg.hostname);
-		char body[2] = {0};
-		[shard submit:body len:nelem(body) tag:nop|TAG_SYS];
-		[recovery fork_and_snapshot];
+		[recovery request_snapshot];
 		break;
 	case 3: /* add peer */
 		peer = read_bytes(&data, 16);
@@ -1007,7 +1003,7 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req)
 			if (i == -1)
 				iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "too many peers for shard");
 			memcpy(sop->peer[i], peer, 16);
-			[recovery shard_alter_peer:shard sop:sop];
+			[recovery shard_op_alter_peer:shard sop:sop];
 		}
 		break;
 	case 4: /* remove peer */
@@ -1017,7 +1013,7 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req)
 			for (; i < nelem(sop->peer) - 1; i++)
 				memcpy(sop->peer[i], sop->peer[i + 1], 16);
 			memset(sop->peer[nelem(sop->peer) - 1], 0, 16);
-			[recovery shard_alter_peer:shard sop:sop];
+			[recovery shard_op_alter_peer:shard sop:sop];
 		}
 		break;
 	case 5: /* set master */
@@ -1029,7 +1025,7 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req)
 		memcpy(tmp, sop->peer[0], 16);
 		memcpy(sop->peer[0], sop->peer[i], 16);
 		memcpy(sop->peer[i], tmp, 16);
-		[recovery shard_alter_peer:shard sop:sop];
+		[recovery shard_op_alter_peer:shard sop:sop];
 		break;
 	default:
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "unknown cmd");
@@ -1065,33 +1061,17 @@ iproto_shard_load_aux(va_list ap)
 	int shard_id = va_arg(ap, int);
 	struct shard_op sop = *va_arg(ap, struct shard_op *);
 
+	Shard<Shard> *shard = nil;
 	struct shard_route *route = shard_rt + shard_id;
 	@try {
 		wlock(&route->lock);
-		Shard<Shard> *shard;
-		assert(shard_rt[shard_id].shard == nil);
-		shard = [recovery shard_add:shard_id scn:-1 sop:&sop];
+		assert(route->shard == nil);
+		shard = [recovery shard_create:shard_id scn:-1 sop:&sop];
 		[shard load_from_remote];
-		[shard wal_final_row];
-		if ([recovery shard:shard_id] == nil)
-			return;
-
-		// recovering this row without snapshot will triger assertion
-		// this row will configure wal_writer
-		struct row_v12 row = { .scn = shard->scn,
-				       .tag = shard_alter|TAG_SYS,
-				       .shard_id = shard_id };
-		struct wal_pack pack;
-		wal_pack_prepare(recovery->writer, &pack);
-		wal_pack_append_row(&pack, &row);
-		wal_pack_append_data(&pack, &sop, sizeof(sop));
-		struct wal_reply *reply = [recovery->writer wal_pack_submit];
-
-		if (reply->row_count != 1)
-			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
-
-		if ([recovery fork_and_snapshot] != 0)
-			say_error("Can't save snapshot"); // FIXME
+		if (shard->executor)
+			[recovery request_snapshot];
+		else
+			[shard release];
 	}
 	@finally {
 		wunlock(&route->lock);
