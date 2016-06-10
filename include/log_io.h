@@ -500,6 +500,9 @@ enum feeder_filter_type {
 	bool initial_snap, remote_loading;
 
 	SnapWriter *snap_writer;
+	ev_timer snapshot_timer;
+	bool snapshot_running;
+	i64 last_snapshot_lsn;
 @public
 	id<XLogWriter> writer;
 	struct rwlock snapshot_lock;

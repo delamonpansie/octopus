@@ -301,6 +301,8 @@ validate_sop(struct netmsg_head *wbuf, const struct iproto *req, void *data, int
 
 /// Recovery
 
+static void pending_snapshot(ev_timer *w, int events __attribute__((unused)));
+
 @implementation Recovery
 - (id)
 init
@@ -312,6 +314,7 @@ init
 	reader = [[XLogReader alloc] init_recovery:self];
 	snap_writer = [[SnapWriter alloc] init_state:self];
 
+	ev_init(&snapshot_timer, pending_snapshot);
 	return self;
 }
 
@@ -779,16 +782,23 @@ write_initial_state
 	return [snap_writer snapshot_write];
 }
 
-void
-fork_and_snapshot(va_list ap __attribute__((unused)))
+- (void)
+request_snapshot
 {
-	[recovery fork_and_snapshot];
+	static ev_tstamp delay;
+	if (delay == 0)
+		delay = getenv("OCTOPUS_TEST") ? 0.1 : 60;
+	ev_timer_stop(&snapshot_timer);
+	ev_timer_set(&snapshot_timer, delay, 0.);
+	ev_timer_start(&snapshot_timer);
 }
 
 - (int)
 fork_and_snapshot
 {
 	pid_t p;
+	int status;
+	i64 lsn;
 
 	assert(fiber != sched);
 
@@ -798,6 +808,7 @@ fork_and_snapshot
 	}
 
 	wlock(&snapshot_lock);
+	lsn = [self lsn];
 	p = oct_fork();
 	wunlock(&snapshot_lock);
 	switch (p) {
@@ -826,7 +837,31 @@ fork_and_snapshot
 		_exit(r != 0 ? errno : 0);
 
 	default: /* parent, wait for child */
-		return wait_for_child(p);
+		snapshot_running = true;
+		status = wait_for_child(p);
+		snapshot_running = false;
+		if (status == 0)
+			last_snapshot_lsn = lsn;
+		return status;
+	}
+}
+
+void
+fork_and_snapshot(va_list ap __attribute__((unused)))
+{
+	if ([recovery fork_and_snapshot] != 0)
+		[recovery request_snapshot];
+}
+
+static void
+pending_snapshot(ev_timer *w, int events __attribute__((unused)))
+{
+	if (recovery->snapshot_running || [recovery lsn] == recovery->last_snapshot_lsn ||
+	    [recovery lsn] == 1) {
+		ev_timer_set(w, 1, 0.);
+		ev_timer_start(w);
+	} else {
+		fiber_create("snapshot/deadline", fork_and_snapshot);
 	}
 }
 
