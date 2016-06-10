@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -845,8 +845,6 @@ box_lua_cb(struct netmsg_head *wbuf, struct iproto *request)
 #endif
 
 
-static struct rwlock lock;
-
 void
 box_meta_cb(struct netmsg_head *wbuf, struct iproto *request)
 {
@@ -860,37 +858,31 @@ box_meta_cb(struct netmsg_head *wbuf, struct iproto *request)
 		)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "metadata updates are forbidden because cfg.object_space is configured");
 
-	wlock(&lock);
 	if (cfg.object_space)
 		say_warn("metadata updates with configured cfg.object_space");
 
 	struct box_meta_txn txn = { .op = request->msg_code,
 				    .box = box };
 	@try {
-		@try {
-			box_prepare_meta(&txn, &TBUF(request->data, request->data_len, NULL));
-			if ([box->shard submit:request->data
-					   len:request->data_len
-					   tag:request->msg_code<<5|TAG_WAL] != 1)
-				iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
-		}
-		@catch (id e) {
-			box_rollback_meta(&txn);
-			@throw;
-		}
-		@try {
-			box_commit_meta(&txn);
-			iproto_reply_small(wbuf, request, ERR_CODE_OK);
-		}
-		@catch (Error *e) {
-			panic_exc_fmt(e, "can't handle exception after WAL write: %s", e->reason);
-		}
-		@catch (id e) {
-			panic_exc_fmt(e, "can't handle unknown exception after WAL write");
-		}
+		box_prepare_meta(&txn, &TBUF(request->data, request->data_len, NULL));
+		if ([box->shard submit:request->data
+				   len:request->data_len
+				   tag:request->msg_code<<5|TAG_WAL] != 1)
+			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
 	}
-	@finally {
-		wunlock(&lock);
+	@catch (id e) {
+		box_rollback_meta(&txn);
+		@throw;
+	}
+	@try {
+		box_commit_meta(&txn);
+		iproto_reply_small(wbuf, request, ERR_CODE_OK);
+	}
+	@catch (Error *e) {
+		panic_exc_fmt(e, "can't handle exception after WAL write: %s", e->reason);
+	}
+	@catch (id e) {
+		panic_exc_fmt(e, "can't handle unknown exception after WAL write");
 	}
 }
 
@@ -904,7 +896,6 @@ box_cb(struct netmsg_head *wbuf, struct iproto *request)
 
 	struct box_txn txn = { .op = request->msg_code & 0xffff,
 			       .box = box };
-	rlock(&lock);
 	@try {
 		ev_tstamp start = ev_now(), stop;
 		@try {
@@ -955,7 +946,6 @@ box_cb(struct netmsg_head *wbuf, struct iproto *request)
 		}
 	}
 	@finally {
-		runlock(&lock);
 		box_cleanup(&txn);
 	}
 }
@@ -996,7 +986,7 @@ box_service(struct iproto_service *s)
 	foreach_op(INSERT, UPDATE_FIELDS, DELETE, DELETE_1_3)
 		service_register_iproto(s, *op, box_cb, IPROTO_ON_MASTER);
 	foreach_op(CREATE_OBJECT_SPACE, CREATE_INDEX, DROP_OBJECT_SPACE, DROP_INDEX, TRUNCATE)
-		service_register_iproto(s, *op, box_meta_cb, IPROTO_ON_MASTER);
+		service_register_iproto(s, *op, box_meta_cb, IPROTO_ON_MASTER|IPROTO_WLOCK);
 #if CFG_lua_path
 	service_register_iproto(s, EXEC_LUA, box_lua_cb, 0);
 #endif
