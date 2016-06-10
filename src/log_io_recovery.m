@@ -189,6 +189,7 @@ update_rt_notify(va_list ap __attribute__((unused)))
 
 		for (int i = 0; i < nelem(shard_rt); i++) {
 			if (shard_rt[i].shard == nil ||
+			    shard_rt[i].shard->executor == nil ||
 			    shard_rt[i].lock.locked)
 				continue;
 

@@ -74,7 +74,7 @@ snapshot_write_header:(XLog *)snap
 				.shard_id = self->id,
 			       .len = sizeof(*sop) };
 	if (partial_replica) {
-		sop->type = SHARD_TYPE_PART;
+		assert(sop->type == SHARD_TYPE_PART);
 		memcpy(row.remote_scn, &remote_scn, 6);
 	}
 	return [snap append_row:&row data:sop];
@@ -105,6 +105,7 @@ fill_feeder_param:(struct feeder_param *)param peer:(int)i
 
 	[super fill_feeder_param:param peer:i];
 	if (partial_replica) {
+		assert(i == 0); /* only master has valid SCN */
 		param->filter.type = FILTER_TYPE_LUA;
 		param->filter.name = "partial";
 	}
@@ -120,10 +121,18 @@ master
 	return strcmp(cfg.hostname, peer[0]) == 0;
 }
 
+static void partial_replica_load(va_list ap);
+
 - (void)
 remote_hot_standby
 {
 	assert(![self master]);
+
+	if (partial_replica && remote_scn == 0) {
+		fiber_create("replica_load", partial_replica_load, self);
+		return;
+	}
+
 	if (dummy) {
 		enum feeder_cfg_e fid_err = feeder_param_fill_from_cfg(&feeder, NULL);
 		if (fid_err) panic("wrong feeder conf");
@@ -136,6 +145,21 @@ remote_hot_standby
 		[remote hot_standby:&feeder];
 	} else {
 		[remote set_feeder:&feeder];
+	}
+}
+
+static void
+partial_replica_load(va_list ap)
+{
+	POR *shard = va_arg(ap, POR *);
+	[shard load_from_remote];
+	if (shard->remote_scn == 0) {
+		[(id)shard->executor free];
+		shard->executor = nil;
+	}
+	if (shard->executor != nil) {
+		[recovery fork_and_snapshot];
+		[shard remote_hot_standby];
 	}
 }
 
@@ -166,17 +190,10 @@ submit:(const void *)data len:(u32)len tag:(u16)tag
 	return reply->row_count;
 }
 
+
 - (void)
 adjust_route
 {
-	if (loading)
-		return;
-
-	if (type == SHARD_TYPE_PART && remote_scn == 0) {
-		[self load_from_remote];
-		assert(remote_scn > 0);
-	}
-
 	if ([self master]) {
 		update_rt(self->id, self, NULL);
 		[self status_update:"primary"];
@@ -196,11 +213,8 @@ enable_local_writes
 {
 	if ([self master])
 		[self wal_final_row];
-	else {
-		if (type == SHARD_TYPE_PART && remote_scn == 0)
-			[self load_from_remote];
+	else
 		[self remote_hot_standby];
-	}
 }
 
 - (void)

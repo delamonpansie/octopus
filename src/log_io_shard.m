@@ -69,6 +69,8 @@ route_info(const struct shard_route *route, struct tbuf *buf)
 		tbuf_printf(buf, "LOADING");
 	} else if (route->shard && route->shard->dummy) {
 		tbuf_printf(buf, "LEGACY");
+	} else if (route->shard && route->shard->executor == nil) {
+		tbuf_printf(buf, "INVALID");
 	} else if (route->shard && route->proxy) {
 		tbuf_printf(buf, "PARTIAL_PROXY");
 	} else if (route->proxy) {
@@ -118,7 +120,6 @@ set_executor:(id)executor_
 {
 	executor = executor_;
 	[executor set_shard:self];
-	update_rt(self->id, self, NULL);
 }
 
 - (id)
@@ -158,7 +159,8 @@ alter:(struct shard_op *)sop
 {
 	for (int i = 0; i < nelem(sop->peer); i++)
 		strncpy(peer[i], sop->peer[i], 16);
-	[self adjust_route];
+	if (!loading)
+		[self adjust_route];
 }
 
 - (struct shard_op *)
@@ -245,15 +247,17 @@ our_shard
 - (void)
 wal_final_row
 {
-	loading = false;
+	if (loading) {
+		loading = false;
 
-	if (![self our_shard]) {
-		[self release];
-		return;
+		if (![self our_shard]) {
+			[self release];
+			return;
+		}
+		[self adjust_route];
+		[executor wal_final_row];
+		shard_log("wal_final_row", self->id);
 	}
-	[self adjust_route];
-	[executor wal_final_row];
-	shard_log("wal_final_row", self->id);
 }
 
 - (void)
@@ -288,16 +292,13 @@ load_from_remote
 	char feeder_param_arg[16];
 	struct feeder_param feeder = { .filter = { .arg = feeder_param_arg } };
 	XLogRemoteReader *reader = [[XLogRemoteReader alloc] init_recovery:(id)self];
-
-	for (int i = 0; i < nelem(peer) && *peer[i]; i++) {
-		if (strcmp(peer[i], cfg.hostname) == 0)
-			continue;
-
-		[self fill_feeder_param:&feeder peer:i];
-		if ([reader load_from_remote:&feeder] >= 0)
-			break;
-	}
+	[self fill_feeder_param:&feeder peer:0];
+	int ret = [reader load_from_remote:&feeder];
 	[reader free];
+	if (ret < 0) {
+		[(id)executor free];
+		executor = nil;
+	}
 }
 
 - (int)

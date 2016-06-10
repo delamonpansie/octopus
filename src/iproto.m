@@ -397,7 +397,7 @@ classify(struct iproto_ingress_svc *io, struct iproto *msg)
 		route = shard_rt + msg->shard_id;
 		proxy = route->proxy;
 		shard = route->shard;
-		if (unlikely(shard && shard->loading))
+		if (unlikely(shard && (shard->loading || !shard->executor)))
 			shard = nil;
 
 		ih = service_find_code(io->service, msg->msg_code);
