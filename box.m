@@ -541,8 +541,11 @@ init(void)
 	recovery = [[Recovery alloc] init];
 	recovery->default_exec_class = [Box class];
 
-	if (init_storage)
+	if (init_storage) {
+		if (cfg.object_space)
+			[recovery shard_create_dummy:NULL];
 		return;
+	}
 
 	initialize_service();
 
