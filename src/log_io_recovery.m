@@ -773,10 +773,6 @@ configure_wal_writer:(i64)lsn
 write_initial_state
 {
 	initial_snap = true;
-#if CFG_object_space
-	if (cfg.object_space)
-		[self shard_create_dummy:NULL];
-#endif
 	return [snap_writer snapshot_write];
 }
 
