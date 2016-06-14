@@ -1087,7 +1087,7 @@ read_row
 		return NULL;
 	}
 
-	if (tbuf_len(m) < sizeof(struct row_v12) + sizeof(u16)) {
+	if (tbuf_len(m) < sizeof(struct row_v12)) {
 		say_error("row is too short");
 		return NULL;
 	}
