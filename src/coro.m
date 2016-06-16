@@ -62,14 +62,14 @@ octopus_coro_create(struct octopus_coro *coro, void (*f) (void *), void *data)
 	assert(coro != NULL);
 	memset(coro, 0, sizeof(*coro));
 
-	coro->mmap_size = page * 16;
+	coro->mmap_size = page * 64;
 	coro->mmap = mmap(MMAP_HINT_ADDR, coro->mmap_size, PROT_READ | PROT_WRITE | PROT_EXEC,
 			  MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
 
 	if (coro->mmap == MAP_FAILED)
 		goto fail;
 
-	if (mprotect(coro->mmap, page, PROT_NONE) < 0)
+	if (mprotect(coro->mmap, page * 16, PROT_NONE) < 0)
 		goto fail;
 
 	(void)VALGRIND_MAKE_MEM_NOACCESS(coro->mmap, page);

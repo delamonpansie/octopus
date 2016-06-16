@@ -1,3 +1,10 @@
+*.cmo
+*.cmx
+*.cmxs
+*.cmi
+*.annot
+*#
+
 .gitignore
 
 .gdb_history

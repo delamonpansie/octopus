@@ -470,9 +470,11 @@ octopus_ev_backgroud_tasks()
 #endif
 }
 
+char **octopus_argv;
 static int
 octopus(int argc, char **argv)
 {
+	octopus_argv = argv;
 #if CFG_snap_dir
 	const char *cat_filename = NULL;
 #endif

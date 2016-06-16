@@ -209,6 +209,10 @@ fiber_alloc(struct Fiber *fiber)
 	if (fiber->L == NULL)
 		lua_fiber_init(fiber);
 #endif
+#if CFG_caml_path
+	if (fiber->ML.last_retaddr == 0)
+		fiber->ML.last_retaddr = 1;
+#endif
 
 	prelease(fiber->pool);
 }
@@ -498,6 +502,10 @@ fiber_init(const char *sched_name)
 #if CFG_lua_path
 	extern void luaO_init();
 	luaO_init();
+#endif
+#if CFG_caml_path
+	extern void fiber_caml_init();
+	fiber_caml_init();
 #endif
 	say_debug("fibers initialized");
 }

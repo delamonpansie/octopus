@@ -62,6 +62,9 @@ AC_CHECK_PROG([NM], [nm], [nm])
 AC_CHECK_PROG([OBJCOPY], [objcopy], [objcopy])
 AS_IF([test -n $DOT], [AC_SUBST(HAVE_DOT, 1)])
 
+AC_CHECK_PROGS([OCAMLOPT], [ocamlopt.opt ocamlopt])
+AC_CHECK_PROGS([OCAMLC], [ocamlc.opt ocamlc])
+AC_CHECK_PROGS([OCAMLDEP], [ocamldep.opt ocamldep])
 
 # Checks for libraries.
 AC_SEARCH_LIBS([dlopen], [dl dld], [], [AC_MSG_ERROR([unable to find the dlopen() function])])

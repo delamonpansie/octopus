@@ -69,6 +69,19 @@ static inline bool not_sched(struct Fiber* fib) { return fib != sched; }
 #if CFG_lua_path
 	struct lua_State *L;
 #endif
+	struct caml_state {
+		char * top_of_stack;          /* Top of stack for this thread (approx.) */
+		char * bottom_of_stack;       /* Saved value of caml_bottom_of_stack */
+		uintptr_t last_retaddr;         /* Saved value of caml_last_return_address */
+		intptr_t * gc_regs;              /* Saved value of caml_gc_regs */
+		char * exception_pointer;     /* Saved value of caml_exception_pointer */
+		struct caml__roots_block * local_roots; /* Saved value of local_roots */
+
+		int backtrace_pos;            /* Saved backtrace_pos */
+		void ** backtrace_buffer;    /* Saved backtrace_buffer */
+		intptr_t backtrace_last_exn;     /* Saved backtrace_last_exn (root) */
+	} ML;
+
 	struct {
 		struct autorelease_chain *current;
 		struct autorelease_chain top;
