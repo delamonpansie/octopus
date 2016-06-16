@@ -72,12 +72,6 @@ object_space(Box *box, int n)
 	return box->object_space_registry[n];
 }
 
-int
-box_version(Box* box)
-{
-	return box->version;
-}
-
 static void
 configure(Box *box)
 {

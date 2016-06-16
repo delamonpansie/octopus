@@ -170,7 +170,7 @@ box_commit_meta(struct box_meta_txn *txn)
 		say_info("DROP index n:%i %i", txn->object_space->n, txn->index->conf.n);
 		txn->object_space->index[(int)txn->index->conf.n] = NULL;
 		[txn->index free];
-		return;
+		break;
 	case DROP_OBJECT_SPACE:
 		say_info("DROP object_space n:%i", txn->object_space->n);
 		[pk iterator_init];
@@ -182,7 +182,7 @@ box_commit_meta(struct box_meta_txn *txn)
 			[txn->index free];
 		txn->box->object_space_registry[txn->object_space->n] = NULL;
 		free(txn->object_space);
-		return;
+		break;
 	case TRUNCATE:
 		pk = txn->object_space->index[0];
 		[pk iterator_init];
@@ -192,6 +192,9 @@ box_commit_meta(struct box_meta_txn *txn)
 		}
 		foreach_index(index, txn->object_space)
 			[index clear];
+		break;
+	default:
+		assert(0);
 	}
 	txn->box->version++;
 }

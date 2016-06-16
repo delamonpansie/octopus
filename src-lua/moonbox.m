@@ -56,6 +56,12 @@ shard_box(int n)
 	return shard_rt[n].shard->executor;
 }
 
+int
+box_version(Box* box)
+{
+	return box->version;
+}
+
 struct object_space *
 object_space_l(Box *box, int n)
 {
