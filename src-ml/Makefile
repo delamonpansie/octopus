@@ -25,7 +25,6 @@ obj += src-ml/index_stubs.o
 cmx += src-ml/say.cmx
 cmx += src-ml/fiber.cmx
 cmx += src-ml/net_io.cmx
-cmx += src-ml/pickle.cmx
 cmx += src-ml/packer.cmx
 cmx += src-ml/octopus.cmx
 cmx += src-ml/load_plugins.cmx
