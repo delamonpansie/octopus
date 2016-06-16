@@ -523,6 +523,10 @@ init_second_stage(va_list ap __attribute__((unused)))
 	luaT_openbox(root_L);
 	luaO_require_or_panic("box_init", false, NULL);
 #endif
+#if CFG_caml_path
+	extern void oct_caml_plugins();
+	oct_caml_plugins();
+#endif
 	[recovery simple:&box_primary];
 }
 

@@ -32,6 +32,19 @@ obj += mod/box/src-lua/box/string_ext.o
 obj += mod/box/src-lua/box/cast.o
 endif
 
+ifeq ($(OCAML),1)
+OCAMLINC += -I mod/box/src-ml
+cmx += mod/box/src-ml/box.cmx
+cmx += mod/box/src-ml/box_space.cmx
+cmx += mod/box/src-ml/box_tuple.cmx
+cmx += mod/box/src-ml/box_index.cmx
+cmx += mod/box/src-ml/box_op.cmx
+cmx += mod/box/src-ml/box1.cmx
+obj += mod/box/src-ml/box_tuple_stubs.o
+obj += mod/box/src-ml/camlbox.o
+
+mod/box/src-ml/box1.cmx : OCAMLIFLAGS += -opaque
+endif
 
 cfg_tmpl += cfg/admin.cfg_tmpl
 cfg_tmpl += cfg/iproto.cfg_tmpl

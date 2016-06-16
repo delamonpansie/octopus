@@ -41,7 +41,12 @@
 #import <shard.h>
 
 #import <mod/box/box.h>
+#if CFG_lua_path
 #import <mod/box/src-lua/moonbox.h>
+#endif
+#if CFG_caml_path
+#import <mod/box/src-ml/camlbox.h>
+#endif
 
 #include <stdint.h>
 
@@ -818,16 +823,31 @@ RT_EXECUTOR(struct iproto *msg)
 	return (shard_rt + msg->shard_id)->shard->executor;
 }
 
-#if CFG_lua_path
+#if CFG_lua_path || CFG_caml_path
 static void
-box_lua_cb(struct netmsg_head *wbuf, struct iproto *request)
+box_proc_cb(struct netmsg_head *wbuf, struct iproto *request)
 {
 	say_debug("%s: op:0x%02x sync:%u", __func__, request->msg_code, request->sync);
 
 	@try {
 		ev_tstamp start = ev_now(), stop;
 
+#if CFG_caml_path
+		int ret = box_dispach_ocaml(wbuf, request);
+		if (ret == 1) /* ocaml cb not found */
+  #if !CFG_lua_path
+		{
+			struct tbuf req = TBUF(request->data, request->data_len, NULL);
+			(void)read_u32(&req); /* ignore flags */
+			int len = read_varint32(&req);
+			char *proc = req.ptr;
+			iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "no such proc '%.*s'", len, proc);
+		}
+  #endif
+#endif
+#if CFG_lua_path
 		box_dispach_lua(wbuf, request);
+#endif
 		stat_collect(stat_base, EXEC_LUA, 1);
 
 		stop = ev_now();
@@ -835,7 +855,7 @@ box_lua_cb(struct netmsg_head *wbuf, struct iproto *request)
 			say_warn("too long %s: %.3f sec", box_ops[request->msg_code], stop - start);
 	}
 	@catch (Error *e) {
-		say_warn("aborting lua request, [%s reason:\"%s\"] at %s:%d",
+		say_warn("aborting proc request, [%s reason:\"%s\"] at %s:%d",
 			 [[e class] name], e->reason, e->file, e->line);
 		if (e->backtrace)
 			say_debug("backtrace:\n%s", e->backtrace);
@@ -987,11 +1007,11 @@ box_service(struct iproto_service *s)
 		service_register_iproto(s, *op, box_cb, IPROTO_ON_MASTER);
 	foreach_op(CREATE_OBJECT_SPACE, CREATE_INDEX, DROP_OBJECT_SPACE, DROP_INDEX, TRUNCATE)
 		service_register_iproto(s, *op, box_meta_cb, IPROTO_ON_MASTER|IPROTO_WLOCK);
-#if CFG_lua_path
-	service_register_iproto(s, EXEC_LUA, box_lua_cb, 0);
-#endif
-#if CFG_ocaml_path
-	service_register_iproto(s, EXEC_OCAML, box_ocaml_cb, 0);
+
+#if CFG_lua_path || CFG_caml_path
+	/* allow select only lua procedures
+	   updates are blocked by luaT_box_dispatch() */
+	service_register_iproto(s, EXEC_LUA, box_proc_cb, 0);
 #endif
 }
 
@@ -1012,10 +1032,10 @@ box_service_ro(struct iproto_service *s)
 		   CREATE_OBJECT_SPACE, CREATE_INDEX, DROP_OBJECT_SPACE, DROP_INDEX, TRUNCATE)
 		service_register_iproto(s, *op, box_roerr, IPROTO_NONBLOCK);
 
-#if CFG_lua_path
+#if CFG_lua_path || CFG_caml_path
 	/* allow select only lua procedures
 	   updates are blocked by luaT_box_dispatch() */
-	service_register_iproto(s, EXEC_LUA, box_lua_cb, 0);
+	service_register_iproto(s, EXEC_LUA, box_proc_cb, 0);
 #endif
 }
 
