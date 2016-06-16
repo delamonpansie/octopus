@@ -489,7 +489,7 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 			if (arg_size != 0)
 				iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "delete must have empty arg");
 			if (field_no == 0)
-				iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "unabled to delete PK");
+				iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "unable to delete PK");
 
 			if (field->pool == NULL) {
 				bsize -= tbuf_len(field) + tbuf_free(field);
