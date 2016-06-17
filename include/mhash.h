@@ -719,13 +719,14 @@ static inline int
 _mh(sremove_by_key)(struct mhash_t *h, mh_key_t key, mh_slot_t *prev_slot)
 {
 	uint32_t x = _mh(get)(h, key);
-	if (x != mh_end(h)) {
+	int exist = x != mh_end(h);
+	if (exist) {
 		if (prev_slot)
 			mh_slot_copy(d, prev_slot, mh_slot(h, x));
 
 		_mh(del)(h, x);
 	}
-	return x != mh_end(h);
+	return exist;
 }
 static inline int
 _mh(sremove)(struct mhash_t *h, mh_slot_t const *slot, mh_slot_t *prev_slot)
