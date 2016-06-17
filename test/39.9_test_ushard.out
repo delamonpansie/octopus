@@ -34,12 +34,12 @@ lsn:2 scn:-1 t:sys/snap_final
 lsn:2 shard:1 scn:5 t:sys/shard_alter SHARD_ALTER shard_id:1 POR Box count:1 run_crc:0xb4c41ab4 master:two repl:one
 lsn:3 shard:1 scn:6 t:sys/shard_alter SHARD_ALTER shard_id:1 POR Box count:1 run_crc:0x88549ae3 master:two repl:one repl:three
 lsn:4 shard:1 scn:7 t:sys/shard_alter SHARD_ALTER shard_id:1 POR Box count:1 run_crc:0xdc605ad4 master:two repl:three
-238/load shard {1} I> META mode: LOADING => shard_create
-238/load shard {1} I> META mode: PARTIAL_PROXY, SCN: 4, type: POR, peer: [one, two], proxy_addr: 'one/127.0.0.1:33013' => hot_standby/one/127.0.0.1:33013/init
-239/remote_hot_standby {1} I> META mode: PARTIAL_PROXY, SCN: 4, type: POR, peer: [one, two], proxy_addr: 'one/127.0.0.1:33013' => hot_standby/127.0.0.1:33013/connect
-238/load shard {1} I> META mode: PARTIAL_PROXY, SCN: 4, type: POR, peer: [one, two], proxy_addr: 'one/127.0.0.1:33013' => wal_final_row
-239/remote_hot_standby {1} I> META mode: PARTIAL_PROXY, SCN: 4, type: POR, peer: [one, two], proxy_addr: 'one/127.0.0.1:33013' => hot_standby/127.0.0.1:33013/ok
-239/remote_hot_standby {1} I> META mode: LOCAL, SCN: 4, type: POR, peer: [two, one] => route update, force notify
-239/remote_hot_standby {1} I> META mode: LOCAL, SCN: 4, type: POR, peer: [two, one] => primary
+239/load shard {1} I> META mode: LOADING => shard_create
+239/load shard {1} I> META mode: PARTIAL_PROXY, SCN: 4, type: POR, peer: [one, two], proxy_addr: 'one/127.0.0.1:33013' => hot_standby/one/127.0.0.1:33013/init
+240/remote_hot_standby {1} I> META mode: PARTIAL_PROXY, SCN: 4, type: POR, peer: [one, two], proxy_addr: 'one/127.0.0.1:33013' => hot_standby/127.0.0.1:33013/connect
+239/load shard {1} I> META mode: PARTIAL_PROXY, SCN: 4, type: POR, peer: [one, two], proxy_addr: 'one/127.0.0.1:33013' => wal_final_row
+240/remote_hot_standby {1} I> META mode: PARTIAL_PROXY, SCN: 4, type: POR, peer: [one, two], proxy_addr: 'one/127.0.0.1:33013' => hot_standby/127.0.0.1:33013/ok
+240/remote_hot_standby {1} I> META mode: LOCAL, SCN: 4, type: POR, peer: [two, one] => route update, force notify
+240/remote_hot_standby {1} I> META mode: LOCAL, SCN: 4, type: POR, peer: [two, one] => primary
 230/box_worker {1} I> META mode: LOCAL, SCN: 6, type: POR, peer: [two, one, three] => route update, force notify
 230/box_worker {1} I> META mode: LOCAL, SCN: 7, type: POR, peer: [two, three] => route update, force notify
