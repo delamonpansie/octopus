@@ -489,6 +489,8 @@ recover_row:(struct row_v12 *)r
 		case wal_final:
 			assert(false);
 		case shard_create:
+			if (cfg.hostname == NULL)
+				panic("cfg.hostname is missing");
 			assert(shard == nil);
 			struct shard_op *sop = (struct shard_op *)r->data;
 			if (our_shard(sop) || remote_loading) {
@@ -500,6 +502,8 @@ recover_row:(struct row_v12 *)r
 			}
 			return;
 		case shard_alter: {
+			if (cfg.hostname == NULL)
+				panic("cfg.hostname is missing");
 			struct shard_op *sop = (struct shard_op *)r->data;
 			if (our_shard(sop) && shard) {
 				struct shard_op *old = [shard snapshot_header];

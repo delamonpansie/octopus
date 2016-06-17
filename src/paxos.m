@@ -1145,9 +1145,10 @@ learner_puller(va_list ap)
 	XLogPuller *puller = [[XLogPuller alloc] init];
 	char feeder_param_arg[16];
 	struct feeder_param feeder = { .filter = { .arg = feeder_param_arg } };
+	ev_tstamp reconnect_delay = 0.5;
 again:
 	fiber_gc();
-	fiber_sleep(0.5);
+	fiber_sleep(reconnect_delay);
 
 	@try {
 		[paxos fill_feeder_param:&feeder peer:i];
@@ -1155,6 +1156,7 @@ again:
 		if ([puller handshake:paxos->scn + 1] < 0)
 			goto again;
 
+		reconnect_delay = 0.5;
 		for (;;)
 			learn_wal(paxos, puller);
 	}
@@ -1162,6 +1164,10 @@ again:
 		say_warn("puller failed, [%s reason:\"%s\"] at %s:%d",
 			 [[e class] name], e->reason, e->file, e->line);
 		[e release];
+		if (reconnect_delay < 1)
+			reconnect_delay = 7.5;
+		else if (reconnect_delay < 60)
+			reconnect_delay *= 2;
 	}
 	@finally {
 		[puller close];
