@@ -1,3 +1,4 @@
+ifneq ($(OCAMLC),)
 OCAML = 1
 
 OCAMLLIB := $(dir $(shell $(OCAMLC) -where))
@@ -61,3 +62,4 @@ mlclean:
 src-ml/caml.o: $$(cmx)
 	$E "CAML	$@"
 	$Q$(OCAMLOPT) -g $(OCAMLINC) $(OCAMLFLAGS) $(OCAMLLIBS) $(DERIVE) $(sorted-cmx) -output-obj -o $@
+endif
