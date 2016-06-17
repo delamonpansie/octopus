@@ -740,8 +740,8 @@ nop_hb_writer(va_list ap)
 		fiber_sleep(delay);
 
 		for (int i = 0; i < MAX_SHARD; i++) {
-			id<Shard> shard = [recovery shard:i];
-			if (shard == nil)
+			Shard<Shard> *shard = [recovery shard:i];
+			if (shard == nil || shard->loading)
 				continue;
 			if ([shard is_replica])
 				continue;
