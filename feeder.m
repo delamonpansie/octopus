@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013, 2014  Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016  Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -133,16 +133,14 @@ id_filter(struct row_v12 *r, __attribute((unused)) const char *arg, __attribute_
 struct row_v12 *
 shard_filter(struct row_v12 *row, const char *arg, int arglen)
 {
-	static int shard_id = -1;
 	if (row == NULL) {
 		if (arglen)
-			shard_id = atoi(arg);
-		feeder->shard_id = shard_id;
+			feeder->shard_id = atoi(arg);
 		return NULL;
 	}
 	if (row->scn == -1 || (row->lsn == 0 && row->scn == 0))
 		return row;
-	if (shard_id != -1 && row->shard_id != shard_id)
+	if (feeder->shard_id != -1 && row->shard_id != feeder->shard_id)
 		return NULL;
 	switch (row->tag & TAG_MASK) {
 	case paxos_promise:
@@ -261,14 +259,18 @@ setup_filter:(struct feeder_filter*)_filter
 		break;
 	}
 
-	if (_filter->type == FILTER_TYPE_ID)
-		say_info("%s filter: type=ID", __func__);
-	else
-		say_info("%s shard:%i filter: type=%s name='%s'", __func__,
-			 shard_id, filter_type_names[_filter->type], _filter->name);
-
+	/* setup filter, set shard_id */
 	if (_filter->arg)
 		filter(NULL, _filter->arg, _filter->arglen);
+
+	if (_filter->type == FILTER_TYPE_ID)
+		say_info("%s filter: type=ID", __func__);
+	else if (_filter->type == FILTER_TYPE_C && filter == shard_filter)
+		say_info("%s shard:%i filter: type=%s name='%s'", __func__,
+			 shard_id, filter_type_names[_filter->type], _filter->name);
+	else
+		say_info("%s filter: type=%s name='%s'", __func__,
+			 filter_type_names[_filter->type], _filter->name);
 }
 
 - (void)
@@ -346,7 +348,6 @@ handshake(int sock, struct iproto *req, struct feeder_filter *filter)
 			say_error("bad handshake filter type %d", hshake2->filter_type);
 			_exit(EXIT_FAILURE);
 		}
-		feeder->shard_id = 0;
 		if (strnlen(hshake2->filter, sizeof(hshake2->filter)) > 0) {
 			filter->type = hshake2->filter_type;
 			filter->name = hshake->filter;
