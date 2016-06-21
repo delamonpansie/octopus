@@ -733,6 +733,25 @@ box_cleanup(struct box_txn *txn)
 	}
 }
 
+static void
+bytes_usage(struct object_space *object_space, struct tnt_object *obj, int sign)
+{
+#define small_tuple_overhead (sizeof(struct tnt_object) + sizeof(struct box_small_tuple))
+#define tuple_overhead (sizeof(struct gc_oct_object) + sizeof(struct box_tuple))
+
+	switch (obj->type) {
+	case BOX_TUPLE:
+		object_space->obj_bytes += sign * (tuple_bsize(obj) + tuple_overhead);
+		break;
+	case BOX_SMALL_TUPLE:
+		object_space->obj_bytes += sign * (tuple_bsize(obj) + small_tuple_overhead);
+		break;
+	default:
+		assert(false);
+	}
+	object_space->slab_bytes += sign * salloc_usable_size(obj);
+}
+
 void
 box_commit(struct box_txn *txn)
 {
@@ -741,9 +760,6 @@ box_commit(struct box_txn *txn)
 
 	say_debug2("%s: old_obj:%p obj:%p", __func__, txn->old_obj, txn->obj);
 
-#define small_tuple_overhead (sizeof(struct tnt_object) + sizeof(struct box_small_tuple))
-#define tuple_overhead (sizeof(struct gc_oct_object) + sizeof(struct box_tuple))
-
 	txn->state = COMMIT;
 	if (txn->obj) {
 		foreach_index(index, txn->object_space) {
@@ -751,17 +767,7 @@ box_commit(struct box_txn *txn)
 			    txn->index_eqmask & 1 << index->conf.n)
 				[index replace:txn->obj];
 		}
-		switch (txn->obj->type) {
-		case BOX_TUPLE:
-			txn->object_space->obj_bytes += tuple_bsize(txn->obj) + tuple_overhead;
-			break;
-		case BOX_SMALL_TUPLE:
-			txn->object_space->obj_bytes += tuple_bsize(txn->obj) + small_tuple_overhead;
-			break;
-		default:
-			assert(false);
-		}
-		txn->object_space->slab_bytes += salloc_usable_size(txn->obj);
+		bytes_usage(txn->object_space, txn->obj, +1);
 		txn->obj->flags &= ~GHOST;
 	}
 
@@ -771,18 +777,7 @@ box_commit(struct box_txn *txn)
 			    (txn->index_eqmask & 1 << index->conf.n) == 0)
 				[index remove:txn->old_obj];
 		}
-		switch (txn->old_obj->type) {
-		case BOX_TUPLE:
-			txn->object_space->obj_bytes -= tuple_bsize(txn->old_obj) + tuple_overhead;
-			break;
-		case BOX_SMALL_TUPLE:
-			txn->object_space->obj_bytes -= tuple_bsize(txn->old_obj) + small_tuple_overhead;
-			break;
-		default:
-			assert(false);
-		}
-
-		txn->object_space->slab_bytes -= salloc_usable_size(txn->old_obj);
+		bytes_usage(txn->object_space, txn->old_obj, -1);
 	}
 
 	stat_collect(stat_base, txn->op, 1);
