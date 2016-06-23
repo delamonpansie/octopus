@@ -713,6 +713,10 @@ void
 box_cleanup(struct box_txn *txn)
 {
 	say_debug3("%s: old_obj:%p obj:%p", __func__, txn->old_obj, txn->obj);
+	if (txn->old_obj)
+		object_unlock(txn->old_obj);
+	if (txn->obj)
+		object_unlock(txn->obj);
 	switch (txn->state) {
 	case COMMIT:
 		if (txn->old_obj)
@@ -758,7 +762,6 @@ box_commit(struct box_txn *txn)
 			assert(false);
 		}
 		txn->object_space->slab_bytes += salloc_usable_size(txn->obj);
-		object_unlock(txn->obj);
 		txn->obj->flags &= ~GHOST;
 	}
 
@@ -793,8 +796,6 @@ box_rollback(struct box_txn *txn)
 
 	say_debug2("%s: old_obj:%p obj:%p", __func__, txn->old_obj, txn->obj);
 	txn->state = ROLLBACK;
-	if (txn->old_obj)
-		object_unlock(txn->old_obj);
 
 	if (txn->obj == NULL)
 		return;
