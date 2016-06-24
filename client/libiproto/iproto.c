@@ -674,7 +674,7 @@ li_n_requests_in_progress(struct iproto_connection_t *c) {
 }
 
 struct iproto_request_t*
-li_req_mshard_init(struct iproto_connection_t* c, u_int16_t msg_code, u_int16_t mshard_id, void *data, size_t size) {
+li_req_ushard_init(struct iproto_connection_t* c, u_int16_t msg_code, u_int16_t ushard_id, void *data, size_t size) {
 	struct iproto_request_t*	r;
 
 	if (c->reqap) {
@@ -704,7 +704,7 @@ li_req_mshard_init(struct iproto_connection_t* c, u_int16_t msg_code, u_int16_t 
 	r->headerSend.data_len = size;
 	r->headerSend.sync = ++c->mirrorCnt;
 	r->headerSend.msg_code = msg_code;
-	r->headerSend.shard_id = mshard_id;
+	r->headerSend.shard_id = ushard_id;
 	r->dataSend = data;
 	r->assocData = NULL;
 
@@ -722,7 +722,7 @@ li_req_mshard_init(struct iproto_connection_t* c, u_int16_t msg_code, u_int16_t 
 }
 
 struct iproto_request_t*
-li_req_mshard_init_copy(struct iproto_connection_t* c, u_int16_t msg_code, u_int16_t mshard_id, void *data, size_t size) {
+li_req_ushard_init_copy(struct iproto_connection_t* c, u_int16_t msg_code, u_int16_t ushard_id, void *data, size_t size) {
 	void 				*cdata;
 	struct memory_arena_t		*arena = NULL;
 	struct iproto_request_t		*request;
@@ -750,7 +750,7 @@ li_req_mshard_init_copy(struct iproto_connection_t* c, u_int16_t msg_code, u_int
 	}
 
 	memcpy(cdata, data, size);
-	request = li_req_mshard_init(c, msg_code, mshard_id, cdata, size);
+	request = li_req_ushard_init(c, msg_code, ushard_id, cdata, size);
 
 	if (!request) {
 		if (arena)
@@ -767,12 +767,12 @@ li_req_mshard_init_copy(struct iproto_connection_t* c, u_int16_t msg_code, u_int
 
 struct iproto_request_t*
 li_req_init(struct iproto_connection_t* c, u_int32_t msg_code, void *data, size_t size) {
-	return li_req_mshard_init(c, (u_int16_t)msg_code, (u_int16_t)(msg_code>>16), data, size);
+	return li_req_ushard_init(c, (u_int16_t)msg_code, (u_int16_t)(msg_code>>16), data, size);
 }
 
 struct iproto_request_t*
 li_req_init_copy(struct iproto_connection_t* c, u_int32_t msg_code, void *data, size_t size) {
-	return li_req_mshard_init_copy(c, (u_int16_t)msg_code, (u_int16_t)(msg_code>>16), data, size);
+	return li_req_ushard_init_copy(c, (u_int16_t)msg_code, (u_int16_t)(msg_code>>16), data, size);
 }
 
 void

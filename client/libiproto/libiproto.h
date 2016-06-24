@@ -194,10 +194,10 @@ u_int32_t			li_read_timeout(struct iproto_connection_t *c, u_int32_t timeout);
 
 struct iproto_request_t*	li_get_ready_reqs(struct iproto_connection_t *c);
 
-struct iproto_request_t*	li_req_mshard_init(struct iproto_connection_t* c,
-					    u_int16_t msg_code, u_int16_t mshard_id, void *data, size_t size);
-struct iproto_request_t*	li_req_mshard_init_copy(struct iproto_connection_t* c,
-					    u_int16_t msg_code, u_int16_t mshard_id, void *data, size_t size);
+struct iproto_request_t*	li_req_ushard_init(struct iproto_connection_t* c,
+					    u_int16_t msg_code, u_int16_t ushard_id, void *data, size_t size);
+struct iproto_request_t*	li_req_ushard_init_copy(struct iproto_connection_t* c,
+					    u_int16_t msg_code, u_int16_t ushard_id, void *data, size_t size);
 struct iproto_request_t*	li_req_init(struct iproto_connection_t* c,
 					    u_int32_t msg_code, void *data, size_t size);
 struct iproto_request_t*	li_req_init_copy(struct iproto_connection_t* c,
