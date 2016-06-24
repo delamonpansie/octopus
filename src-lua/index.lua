@@ -41,8 +41,8 @@ local iterator_init_with_object = objc.msg_lookup("iterator_init_with_object:")
 local iterator_init_with_direction = objc.msg_lookup("iterator_init_with_direction:")
 local iterator_init_with_node_direction = objc.msg_lookup("iterator_init_with_node:direction:")
 local iterator_init_with_object_direction = objc.msg_lookup("iterator_init_with_object:direction:")
-local iterator_next = objc.msg_lookup("iterator_next")
-local iterator_next_n = objc.msg_lookup("iterator_next:")
+local iterator_next = function (ix) return ffi.C.iterator_next(ix) end
+local iterator_next_n = function (ix,n) return ffi.C.iterator_next_n(ix, n) end
 local position_with_node = objc.msg_lookup("position_with_node:")
 local position_with_object = objc.msg_lookup("position_with_object:")
 -- hash index methods

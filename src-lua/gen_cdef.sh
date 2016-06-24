@@ -23,6 +23,7 @@ $CPP $srcdir/include/index.h | $SED -n '/struct field_desc \+{/,/^}/p'
 $CPP $srcdir/include/index.h | $SED -n '/^\(struct\|union\|enum\) index_[a-z_]\+ \+{/,/^}/p'
 $CPP $srcdir/include/index.h | $SED -n '/^enum iterator_direction\+ \+{/,/^}/p'
 $CPP $srcdir/include/index.h | $SED -n '/set_lstr_field_noninline/p'
+$CPP $srcdir/include/index.h | $SED -n '/^struct tnt_object\* iterator_next/p' | $SED 's/Index\*/const void*/'
 echo "typedef void* id;"
 $CPP $srcdir/include/objc.h | $SED -n '/^struct autorelease_[a-z]\+ \+{/,/^}/p'
 $CPP $srcdir/include/objc.h | $SED -n '/^\(struct autorelease.*\|void\|id\) autorelease[_a-z]*(.*);\s*$/p'

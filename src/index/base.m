@@ -31,6 +31,7 @@
 #import <fiber.h>
 #import <pickle.h>
 #import <index.h>
+#import <say.h>
 
 @implementation IndexError
 @end
@@ -190,6 +191,13 @@ cardinality
 	return conf.cardinality;
 }
 
+- (struct tnt_object*)
+iterator_next
+{
+	raise_fmt("Subclass responsibility");
+	return NULL;
+}
+
 - (int)
 eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 {
@@ -197,19 +205,6 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 	dtor(obj_a, &node_a, dtor_arg);
 	dtor(obj_b, node_b, dtor_arg);
 	return eq(&node_a, node_b, self->dtor_arg);
-}
-
-- (struct tnt_object *) iterator_next: (int)n
-{
-	SEL s = @selector(iterator_next);
-	IMP m = [self methodFor: s];
-	struct tnt_object *r = NULL;
-	for (;n>0; n--) {
-		r = (struct tnt_object*)m(self, s);
-		if (r == NULL)
-			break;
-	}
-	return r;
 }
 @end
 
@@ -219,3 +214,29 @@ index_raise_(const char *file, int line, const char *msg)
 	@throw [[IndexError with_reason: msg] init_line:line file:file];
 }
 
+struct tnt_object* iterator_next(Index* ix)
+{
+	struct tnt_object* obj;
+	while ((obj = [ix iterator_next]) != NULL) {
+		if (!object_ghost(obj))
+			break;
+	}
+	return obj;
+}
+
+struct tnt_object* iterator_next_n(Index* ix, int n)
+{
+	SEL s = @selector(iterator_next);
+	IMP m = [ix methodFor: s];
+	struct tnt_object *r = NULL;
+	for (;n>0; n--) {
+		do {
+			r = (struct tnt_object*)m(ix, s);
+		} while (r != NULL && object_ghost(r));
+		if (r == NULL)
+			break;
+	}
+	return r;
+}
+
+register_source();
