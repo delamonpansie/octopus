@@ -642,6 +642,7 @@ reload_config(struct octopus_cfg *old __attribute__((unused)),
 static struct tnt_module box_mod = {
 	.name = "box",
 	.version = box_version_string,
+	.depend_on = (const char*[]){"onlineconf", NULL},
 	.init = init,
 	.check_config = check_config,
 	.reload_config = reload_config,
