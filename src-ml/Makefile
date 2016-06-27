@@ -35,22 +35,26 @@ sorted-cmx = $(sorted-ml:.ml=.cmx)
 
 %.cmx: %.ml %.mli
 	$(E) "CAML	$@"
-	$(Q)$(OCAMLOPT) -g $(OCAMLINC) $(OCAMLFLAGS) $(OCAMLIFLAGS) -c $(<:.ml=.mli)
-	$(Q)$(OCAMLOPT) -g $(OCAMLINC) $(OCAMLFLAGS) -c $<
+	$(Q)$(OCAMLOPT) -g $(OCAMLINC) $(OCAMLFLAGS) $(OCAMLIFLAGS) -o $(@:.cmx=.cmi) -c $(<:.ml=.mli)
+	$(Q)$(OCAMLOPT) -g $(OCAMLINC) $(OCAMLFLAGS) -o $@ -c $<
 
 %.cmx: %.ml
 	$(E) "CAML	$@"
-	$(Q)$(OCAMLOPT) -g $(OCAMLINC) $(OCAMLFLAGS) -c $<
+	$(Q)$(OCAMLOPT) -g $(OCAMLINC) $(OCAMLFLAGS) -o $@ -c $<
 
-%.i.d: %.mli	
-	@$(OCAMLDEP) -native -one-line $(OCAMLINC) $< | \
-	$(SED) '/^[^ ]\+\.cmx : /{s/\.cmi\>/.cmx/g; p; s/.*\.cmx : //; s/ \|$$/:\n/g}' | \
-	$(SED) 's/^\([^ ]\+\.cmx\) : \(.*\)\1\(.*\)/\1 : \2\3/' > $(<:.mli=.i.d)
+%.i.d: %.mli
+	@mkdir -p $(dir $@)
+	$(Q)(cd $(srcdir); $(OCAMLDEP) -native -one-line $(OCAMLINC) $(subst $(srcdir)/,,$<)) | \
+	$(SED) 's/\.cmi\>/.cmx/g' | \
+	$(SED) 's/^\([^ ]\+\.cmx\) : \(.*\)\1\(.*\)/\1 : \2\3/' | \
+	$(SED) '/^[^ ]\+\.cmx : .\+/{ p; s/.*\.cmx : //; s/ \|$$/:\=n/g }' > $@
 
 %.d: %.ml
-	@$(OCAMLDEP) -native -one-line $(OCAMLINC) $< | \
-	$(SED) '/^[^ ]\+\.cmx : /{s/\.cmi\>/.cmx/g; p; s/.*\.cmx : //; s/ \|$$/:\n/g}' | \
-	$(SED) 's/^\([^ ]\+\.cmx\) : \(.*\)\1\(.*\)/\1 : \2\3/'> $(<:.ml=.d)
+	@mkdir -p $(dir $@)
+	$(Q)(cd $(srcdir); $(OCAMLDEP) -native -one-line $(OCAMLINC) $(subst $(srcdir)/,,$<)) | \
+	$(SED) 's/\.cmi\>/.cmx/g' | \
+	$(SED) 's/^\([^ ]\+\.cmx\) : \(.*\)\1\(.*\)/\1 : \2\3/' | \
+	$(SED) '/^[^ ]\+\.cmx : .\+/{ p; s/.*\.cmx : //; s/ \|$$/:\n/g }' > $@
 
 clean: mlclean
 mlclean:
