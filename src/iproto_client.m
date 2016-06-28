@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012 2014 Mail.RU
- * Copyright (C) 2010, 2011, 2012 2014 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012 2014, 2016 Mail.RU
+ * Copyright (C) 2010, 2011, 2012 2014, 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -77,6 +77,8 @@ mbox_future(struct iproto_egress *dst, struct iproto_mbox *mbox, u32 sync)
 	mbox->sent++;
 }
 
+struct iproto_ingress *drop_reply = (void *)(uintptr_t)1;
+
 static void
 proxy_future(struct iproto_egress *dst, struct iproto_ingress *src, const struct iproto *msg, u32 sync)
 {
@@ -87,7 +89,7 @@ proxy_future(struct iproto_egress *dst, struct iproto_ingress *src, const struct
 	future->proxy_request = (struct iproto){ .shard_id = msg->shard_id,
 						 .msg_code = msg->msg_code,
 						 .sync = msg->sync };
-	if (src && src->fd != -1) {
+	if (src != drop_reply && src->fd != -1) {
 		future->type = IPROTO_FUTURE_PROXY;
 		future->ingress = src;
 		LIST_INSERT_HEAD(&src->waiting, future, waiting_link);
@@ -259,7 +261,7 @@ iproto_proxy_send(struct iproto_egress *to, struct iproto_ingress *from, u32 wra
 	u32 sync = wrap_code ?
 		   msg_send_wrap(to, wrap_code, msg, iov, iovcnt) :
 		   msg_send(to, msg, iov, iovcnt);
-	if (sync)
+	if (sync && from)
 		proxy_future(to, from, msg, sync);
 	return sync;
 }
@@ -343,7 +345,7 @@ iproto_future_resolve(struct iproto_egress *peer, struct iproto *msg)
 
 	u32 k = mh_i32_get(sync2future, msg->sync);
 	if (k == mh_end(sync2future)) {
-		say_debug("martian reply from peer:%s op:0x%x sync:%u", net_fd_name(peer->fd), msg->msg_code, msg->sync);
+		say_warn("martian reply from peer:%s op:0x%x sync:%u", net_fd_name(peer->fd), msg->msg_code, msg->sync);
 		return;
 	}
 
