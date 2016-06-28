@@ -34,6 +34,9 @@ obj += mod/box/src-lua/box/cast.o
 endif
 
 ifeq ($(OCAML),1)
+obj += $(obj-caml)
+cfg_tmpl += src-ml/ocaml.cfg_tmpl
+
 OCAMLINC += -I mod/box/src-ml
 cmx += mod/box/src-ml/box.cmx
 cmx += mod/box/src-ml/box_space.cmx
