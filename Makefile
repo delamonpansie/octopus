@@ -2,6 +2,7 @@ XCFLAGS += -DOCT_CHILDREN=1
 
 obj += src/admin.o
 obj += $(obj-log-io)
+obj += $(obj-index)
 obj += src/tnt_obj.o
 obj += src/iproto.o
 obj += src/iproto_client.o
