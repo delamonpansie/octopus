@@ -61,6 +61,10 @@ ifneq ($(findstring src/onlineconf.o,$(obj)),)
   obj += third_party/ckv/ckv.o
 endif
 
+ifneq ($(findstring src/index/base.o,$(obj)),)
+  src/iproto.o: XCFLAGS += -DOCT_INDEX=1
+endif
+
 ifneq (,$(TRACE))
 	obj += src/trace.o
 	$(TRACE): XCFLAGS += -finstrument-functions

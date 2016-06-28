@@ -67,8 +67,10 @@ exc_rc(Error *e)
 {
 	if ([e respondsTo:@selector(code)])
 		return [(id)e code];
+#if OCT_INDEX
 	if ([e isMemberOf:[IndexError class]])
 		return ERR_CODE_ILLEGAL_PARAMS;
+#endif
 	return ERR_CODE_UNKNOWN_ERROR;
 }
 
