@@ -11,17 +11,15 @@ OCAMLLIBS += dynlink.cmxa str.cmxa unix.cmxa bigarray.cmxa nums.cmxa batteries.c
 
 OCAMLFLAGS += -annot
 
-cfg_tmpl += src-ml/ocaml.cfg_tmpl
+obj-caml += src-ml/caml.o
+obj-caml += src-ml/plugin.o
 
-obj += src-ml/caml.o
-obj += src-ml/plugin.o
-
-obj += src-ml/exc_stubs.o
-obj += src-ml/say_stubs.o
-obj += src-ml/fiber_stubs.o
-obj += src-ml/net_io_stubs.o
-obj += src-ml/packer_stubs.o
-obj += src-ml/index_stubs.o
+obj-caml += src-ml/exc_stubs.o
+obj-caml += src-ml/say_stubs.o
+obj-caml += src-ml/fiber_stubs.o
+obj-caml += src-ml/net_io_stubs.o
+obj-caml += src-ml/packer_stubs.o
+obj-caml += src-ml/index_stubs.o
 
 cmx += src-ml/say.cmx
 cmx += src-ml/fiber.cmx
