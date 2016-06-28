@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2011, 2012, 2013, 2014 Mail.RU
- * Copyright (C) 2011, 2012, 2013, 2014 Yuriy Vostrikov
+ * Copyright (C) 2011, 2012, 2013, 2014, 2016 Mail.RU
+ * Copyright (C) 2011, 2012, 2013, 2014, 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -992,6 +992,7 @@ sintoa(const struct sockaddr_in *addr)
 	return buf;
 }
 
+#if CFG_peer
 static const char *
 sintoname(const struct sockaddr_in *addr)
 {
@@ -1011,16 +1012,19 @@ sintoname(const struct sockaddr_in *addr)
 	}
 	return NULL;
 }
+#endif
 
 const char *
 net_sin_name(const struct sockaddr_in *addr)
 {
+#if CFG_peer
 	static char buf[16+22];
 	const char *name = sintoname(addr);
 	if (name) {
 		snprintf(buf, sizeof(buf), "%s/%s", sintoname(addr), sintoa(addr));
 		return buf;
 	}
+#endif
 	return sintoa(addr);
 }
 
