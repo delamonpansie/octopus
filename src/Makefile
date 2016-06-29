@@ -10,6 +10,7 @@ obj += src/pickle.o
 obj += src/salloc.o
 obj += src/say.o
 obj += src/stat.o
+obj += src/graphite.o
 obj += src/octopus_ev.o
 obj += src/tbuf.o
 obj += src/util.o
@@ -69,4 +70,8 @@ ifneq (,$(TRACE))
 	obj += src/trace.o
 	$(TRACE): XCFLAGS += -finstrument-functions
 	XLDFLAGS += -Wl,-Map=octopus.map
+endif
+
+ifneq (,$(GRAPHITE_ADDR))
+  src/graphite.o: XCFLAGS += -DGRAPHITE_ADDR=$(GRAPHITE_ADDR)
 endif

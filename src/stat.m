@@ -29,165 +29,635 @@
 #import <octopus_ev.h>
 #import <tbuf.h>
 #import <say.h>
+#include <cfg/defs.h>
 #import <stat.h>
+#include <assoc.h>
 
 #if CFG_lua_path
 #import <src-lua/octopus_lua.h>
 #endif
 
+#if CFG_graphite_addr
+#import <graphite.h>
+#endif
+
 #define SECS 5
 
-enum { STAT_COUNTER = 1, STAT_DOUBLE = 2 };
+enum stat_base_type { SBASE_STATIC = 1, SBASE_DYNAMIC = 2, SBASE_CALLBACK = 3 };
+enum stat_accum_type { SACC_ACCUM = 1, SACC_DOUBLE = 2, SACC_EXACT = 3 };
+int stat_current_base = -1;
 
-struct {
-	const char *name;
-	int type;
+struct name {
+	int len;
+	char str[];
+};
+
+static u64 hash_name(const char* str, int len);
+static struct name* malloc_name(const char* str, int len);
+
+struct accum {
+	u64 hsh;
+	struct name const * name;
+	enum stat_accum_type type;
 	i64 cnt;
 	double sum;
 	double min;
 	double max;
-} *stats = NULL;
-static int stats_size = 0;
-static int stats_max = 0;
-static int base = 0;
+};
 
-int
-stat_register(char * const * name, size_t count)
+#define MH_STATIC 1
+#undef load_factor
+#define load_factor 0.55
+
+#define mh_name _accum
+#define mh_neighbors 1
+#define mh_byte_map 0
+#define MH_QUADRATIC_PROBING 1
+#define mh_slot_t struct accum
+#define mh_slot_key(h, s) ((s)->hsh)
+#define mh_hash(h, hsh) ( (hsh) )
+#define mh_eq(h, a, b) ( (a) == (b) )
+#include <mhash.h>
+
+#define mh_name _strdbl
+#define mh_byte_map 1
+#define mh_neighbors 1
+#define MH_QUADRATIC_PROBING 1
+#define mh_key_t char *
+#define mh_val_t double
+#include <mhash.h>
+
+struct palloc_config stat_pool_cfg = {.name = "stat_names_pool"};
+struct stat_accum {
+	struct mh_accum_t values;
+	struct palloc_pool* name_pool;
+};
+
+static void
+stat_accum_init(struct stat_accum* sa) {
+	mh_accum_initialize(&sa->values);
+	sa->name_pool = palloc_create_pool(stat_pool_cfg);
+}
+
+static void
+stat_accum_reset(struct stat_accum* sa) {
+	mh_accum_clear(&sa->values);
+	prelease(sa->name_pool);
+}
+
+static void
+stat_accum_destruct(struct stat_accum* sa)
 {
-	int initial_base = base;
+	palloc_destroy_pool(sa->name_pool);
+	sa->name_pool = NULL;
+	mh_accum_destruct(&sa->values);
+	memset(&sa->values, 0, sizeof(sa->values));
+}
 
-	for (int i = 0; i < count; i++, name++, base++) {
-		if (stats_size <= base) {
-			stats_size += 1024;
-			stats = xrealloc(stats, sizeof(*stats) * stats_size);
-			if (stats == NULL)
-				abort();
+static struct name*
+stat_accum_alloc_name(struct stat_accum* sa, char const * name, int len)
+{
+	struct name* nm = palloc(sa->name_pool, sizeof(struct name) + len + 1);
+	nm->len = len;
+	memcpy(nm->str, name, len);
+	nm->str[len] = 0;
+	return nm;
+}
+
+static struct accum*
+stat_accum_get_accum(struct stat_accum* sa, u64 hsh, char const * name, int len)
+{
+	u32 k = mh_accum_get(&sa->values, hsh);
+	if (k == mh_end(&sa->values)) {
+		struct accum tmp = {.hsh = hsh};
+		tmp.name = stat_accum_alloc_name(sa, name, len);
+		tmp.type = 0;
+		tmp.cnt = 0;
+		tmp.sum = 0;
+		tmp.min = 1e300;
+		tmp.max = -1e300;
+		mh_accum_sput(&sa->values, &tmp, NULL);
+		k = mh_accum_get(&sa->values, hsh);
+		assert(k != mh_end(&sa->values));
+	}
+	/* rely on MH_INCREMENTAL_RESIZE == 0 */
+	return mh_accum_slot(&sa->values, k);
+}
+
+static void
+stat_accum_dup_accum(struct stat_accum* sa, struct accum const *old)
+{
+	struct accum cpy = *old;
+	cpy.name = stat_accum_alloc_name(sa, cpy.name->str, cpy.name->len);
+	mh_accum_sput(&sa->values, &cpy, NULL);
+}
+
+struct stat_base {
+	const char *name;
+	enum stat_base_type type;
+	stat_get_current_callback cb;
+	struct {
+		struct {
+			struct accum *v;
+			int n;
+		} static_names;
+		struct stat_accum dynamic_names;
+	} current;
+	struct stat_accum records[5];
+	int recordsn;
+#ifdef CFG_graphite_addr
+	struct stat_accum periodic;
+#endif
+	ev_tstamp period_start;
+	ev_tstamp period_stop;
+};
+
+static struct stat_base *stat_bases = NULL;
+static int stat_basen = 0;
+static int stat_base = 0;
+
+static int
+stat_register_any(char const *base_name, enum stat_base_type type, 
+		stat_get_current_callback cb, char const * const * opnames, size_t count)
+{
+	int i, bn;
+	struct stat_base *bs;
+	if (stat_basen == stat_base) {
+		int oldbasen = stat_basen;
+		stat_basen = stat_basen*2 ?: 8;
+		stat_bases = xrealloc(stat_bases, sizeof(*stat_bases)*stat_basen);
+		memset(stat_bases + sizeof(*stat_bases)*oldbasen, 0,
+				sizeof(*stat_bases) * (stat_basen - oldbasen));
+	}
+	bn = stat_base;
+	stat_base++;
+	bs = stat_bases + bn;
+	bs->type = type;
+	bs->cb = cb;
+	bs->name = xstrdup(base_name);
+	stat_accum_init(&bs->current.dynamic_names);
+	if (type == SBASE_STATIC) {
+		struct accum *v = xcalloc(count, sizeof(struct accum));
+		bs->current.static_names.v = v;
+		bs->current.static_names.n = count;
+		for (i = 0; i < count; i++) {
+			if (opnames[i] == NULL)
+				continue;
+			v[i].name = malloc_name(opnames[i], strlen(opnames[i]));
+			v[i].hsh = hash_name(opnames[i], strlen(opnames[i]));
+			v[i].type = 0;
+			v[i].cnt = 0;
+			v[i].sum = 0;
+			v[i].max = -1e300;
+			v[i].min = 1e300;
+		}
+	} else if (type == SBASE_CALLBACK) {
+		assert(cb != NULL);
+	}
+#ifdef CFG_graphite_addr
+	stat_accum_init(&bs->periodic);
+#endif
+	for (i = 0; i < nelem(bs->records); i++) {
+		stat_accum_init(&bs->records[i]);
+	}
+	bs->recordsn = 0;
+	bs->period_start = ev_now();
+	bs->period_stop = ev_now();
+	return bn;
+}
+
+static void
+merge_stat(const char *basename, struct stat_accum *small, struct stat_accum *big) {
+	mh_foreach(_accum, &small->values, k) {
+		struct accum *ac = mh_accum_slot(&small->values, k);
+		uint32_t ix = mh_accum_get(&big->values, ac->hsh);
+		if (ix == mh_end(&big->values)) {
+			stat_accum_dup_accum(big, ac);
+		} else {
+			/* we rely on MH_INCREMENTAL_RESIZE == 0 here */
+			struct accum *bc = mh_accum_slot(&big->values, k);
+			if (bc->type != ac->type) {
+				say_warn("stat types doesn't match for %s.%.*s : %d != %d",
+						basename, ac->name->len, ac->name->str,
+						ac->type, bc->type);
+				continue;
+			}
+			if (ac->type == SACC_ACCUM) {
+				bc->sum += ac->sum;
+			} else if (ac->type == SACC_DOUBLE) {
+				bc->cnt += ac->cnt;
+				bc->sum += ac->sum;
+				if (bc->max < ac->max)
+					bc->max = ac->max;
+				if (bc->min > ac->min)
+					bc->min = ac->min;
+			} else if (ac->type == SACC_EXACT) {
+				bc->sum = ac->sum;
+			} else {
+				say_warn("unknown stat type for %s.%.*s: %d",
+						basename, ac->name->len, ac->name->str,
+						ac->type);
+			}
+		}
+	}
+}
+
+/* fiber for shifting seconds */
+static void
+stat_shift_all(ev_periodic *w _unused_, int revents _unused_) {
+	int i;
+	for (stat_current_base=0; stat_current_base<stat_base; stat_current_base++) {
+		struct stat_base *bs = stat_bases + stat_current_base;
+		struct stat_accum cur;
+		if (bs->type == SBASE_CALLBACK) {
+			bs->cb(stat_current_base);
+		}
+		if (bs->type == SBASE_CALLBACK || bs->type == SBASE_DYNAMIC) {
+			cur = bs->current.dynamic_names;
+			memset(&bs->current.dynamic_names, 0,
+					sizeof(bs->current.dynamic_names));
+			stat_accum_init(&bs->current.dynamic_names);
+		} else if (bs->type == SBASE_STATIC) {
+			struct accum *v = bs->current.static_names.v;
+			memset(&cur, 0, sizeof(cur));
+			stat_accum_init(&cur);
+			for (i = 0; i < bs->current.static_names.n; i++) {
+				if (v[i].name == NULL || v[i].type == 0) continue;
+				stat_accum_dup_accum(&cur, &v[i]);
+				v[i].type = 0;
+				v[i].cnt = 0;
+				v[i].sum = 0;
+				v[i].max = -1e300;
+				v[i].min = 1e300;
+			}
+		} else {
+			panic("unknown stat type");
 		}
 
-		stats[base].name = *name;
+		stat_accum_destruct(&bs->records[nelem(bs->records)-1]);
+		for (i = nelem(bs->records) - 1; i > 0; i--) {
+			bs->records[i] = bs->records[i-1];
+		}
+		bs->records[0] = cur;
+		bs->recordsn = MIN(bs->recordsn+1, nelem(bs->records));
+#ifdef CFG_graphite_addr
+		merge_stat(bs->name, &cur, &bs->periodic);
+#endif
+		bs->period_stop = ev_now();
+	}
+	stat_current_base = -1;
+}
 
-		if (*name == NULL)
-			continue;
+static int
+stat_compare_accums(void const* a, void const* b)
+{
+	struct accum const *aa = (struct accum const* )a;
+	struct accum const *ba = (struct accum const* )b;
+	return strcmp(aa->name->str, ba->name->str);
+}
 
-		stats[base].type = 0;
-		stats[base].cnt = 0;
-		stats[base].sum = 0;
-		stats[base].max = -1e300;
-		stats[base].min = 1e300;
+static void
+stat_admin_out(struct stat_accum *cur, struct tbuf *b)
+{
+	int i;
+	struct tbuf key = TBUF(NULL, 0, fiber->pool);
+	struct accum *accums = p0alloc(fiber->pool, mh_size(&cur->values) * sizeof(struct accum));
+	struct accum *p = accums;
+	mh_foreach(_accum, &cur->values, k) {
+		*p = *mh_accum_slot(&cur->values, k);
+		p++;
+	}
+	qsort(accums, mh_size(&cur->values), sizeof(*accums), stat_compare_accums);
+	p = accums;
+	for (i = 0; i<mh_size(&cur->values); i++, p++) {
+		tbuf_printf(&key, "%.*s:", p->name->len, p->name->str);
+		if (p->type == SACC_ACCUM) {
+			double rps = p->sum / nelem(stat_bases[0].records);
+			tbuf_printf(b, "  %-25.*s { rps: %-8.3f }\r\n",
+					  (int)tbuf_len(&key), (char*)key.ptr, rps);
+		} else if (p->type == SACC_DOUBLE) {
+			double avg = p->sum / p->cnt;
+			i64 cnt_rps = p->cnt / nelem(stat_bases[0].records);
+			double sum_rps = p->sum / nelem(stat_bases[0].records);
+			tbuf_printf(b, "  %-25.*s { avg: %-8.3f, min: %-8.3f, max: %-8.3f, "
+					"cnt: %-8"PRIi64", sum: %-8.3f, "
+					"cnt_rps: %-8"PRIi64", sum_rps: %-8.3f }\r\n",
+					(int)tbuf_len(&key), (char*)key.ptr,
+					avg, p->min, p->max, p->cnt,
+					p->sum, cnt_rps, sum_rps);
+		} else if (p->type == SACC_EXACT) {
+			tbuf_printf(b, "  %-25.*s %-8.3f\r\n",
+					  (int)tbuf_len(&key), (char*)key.ptr, p->sum);
+		}
+		tbuf_reset(&key);
+	}
+}
 
-		stats_max = base;
+static void*
+tmp_realloc(void* ptr, size_t newsz)
+{
+	size_t oldsz = 0;
+	void* newptr;
+	if (newsz == 0)
+		return NULL;
+	newptr = palloc(fiber->pool, newsz+sizeof(size_t));
+	*(size_t*)newptr = newsz;
+	newptr += sizeof(size_t);
+	if (ptr != NULL) {
+		oldsz = *(((size_t*)ptr)-1);
+		memcpy(newptr, ptr, MIN(oldsz, newsz));
+	}
+	return newptr;
+}
+
+void
+stat_print(struct tbuf *out)
+{
+	int i, j;
+	struct mh_cstr_t stats = {.realloc = tmp_realloc};
+	mh_cstr_initialize(&stats);
+
+	for (i=0; i<stat_basen; i++) {
+		struct stat_base *bs = stat_bases + i;
+		struct stat_accum *cur;
+		if (bs->recordsn == 0) continue;
+		u32 k = mh_cstr_get(&stats, bs->name);
+		if (k == mh_end(&stats)) {
+			cur = p0alloc(fiber->pool, sizeof(struct stat_accum));
+			cur->values.realloc = tmp_realloc;
+			mh_accum_initialize(&cur->values);
+			cur->name_pool = fiber->pool;
+			mh_cstr_put(&stats, bs->name, cur, NULL);
+		} else {
+			cur = (struct stat_accum*)mh_cstr_value(&stats, k);
+		}
+		for (j = 0; j<bs->recordsn; j++) {
+			merge_stat(bs->name, &bs->records[j], cur);
+		}
 	}
 
-	return initial_base;
+	mh_foreach(_cstr, &stats, k) {
+		char const *name = mh_cstr_key(&stats, k);
+		struct stat_accum* cur = (struct stat_accum*)mh_cstr_value(&stats, k);
+		if (strcmp(name, "stat") == 0) {
+			tbuf_printf(out, "statistics:\r\n");
+		} else {
+			tbuf_printf(out, "statistics@%s:\r\n", name);
+		}
+		stat_admin_out(cur, out);
+	}
+}
+
+int
+stat_register_callback(char const *base_name, stat_get_current_callback cb)
+{
+	return stat_register_any(base_name, SBASE_CALLBACK, cb, NULL, 0);
+}
+
+int
+stat_register_named(char const *base_name)
+{
+	return stat_register_any(base_name, SBASE_DYNAMIC, NULL, NULL, 0);
+}
+
+int
+stat_register_static(char const *base_name, char const * const * opnames, size_t count)
+{
+	return stat_register_any(base_name, SBASE_STATIC, 0, opnames, count);
+}
+
+int
+stat_register(char const * const * opnames, size_t count)
+{
+	return stat_register_static("stat", opnames, count);
+}
+
+static void
+acc_collect(struct accum *acc, double value)
+{
+	acc->type = SACC_ACCUM;
+	acc->sum += value;
+}
+
+static void
+acc_collect_double(struct accum *acc, double value)
+{
+	acc->type = SACC_DOUBLE;
+	acc->cnt++;
+	acc->sum += value;
+	if ( acc->max < value )
+		acc->max = value;
+	if ( acc->min > value )
+		acc->min = value;
+}
+
+void
+stat_collect_named(int base, char const * name, int len, double value)
+{
+	assert(base < stat_base);
+	struct stat_base *bs = &stat_bases[base];
+	u64 hsh = hash_name(name, len);
+	struct accum *acc = stat_accum_get_accum(&bs->current.dynamic_names, hsh, name, len);
+	acc_collect(acc, value);
+}
+
+void
+stat_collect_named_double(int base, char const * name, int len, double value)
+{
+	assert(base < stat_base);
+	struct stat_base *bs = &stat_bases[base];
+	u64 hsh = hash_name(name, len);
+	struct accum *acc = stat_accum_get_accum(&bs->current.dynamic_names, hsh, name, len);
+	acc_collect_double(acc, value);
+}
+
+void
+stat_collect_static(int base, int name, double value)
+{
+	acc_collect(&stat_bases[base].current.static_names.v[name], value);
+}
+
+void
+stat_collect_static_double(int base, int name, double value)
+{
+	acc_collect_double(&stat_bases[base].current.static_names.v[name], value);
 }
 
 void
 stat_collect(int base, int name, i64 value)
 {
-	stats[base + name].type = STAT_COUNTER;
-	stats[base + name].cnt += value;
+	acc_collect(&stat_bases[base].current.static_names.v[name], value);
 }
 
 void
 stat_collect_double(int base, int name, double value)
 {
-	stats[base + name].type = STAT_DOUBLE;
-	stats[base + name].cnt++;
-	stats[base + name].sum += value;
-	if ( stats[base + name].max < value )
-		stats[base + name].max = value;
-	if ( stats[base + name].min > value )
-		stats[base + name].min = value;
+	acc_collect_double(&stat_bases[base].current.static_names.v[name], value);
 }
 
 void
-stat_print(struct tbuf *buf)
+stat_report_accum(char const * name, int len, double value)
 {
-#if CFG_lua_path
-	lua_State *L = fiber->L;
-	lua_getglobal(L, "stat");
-	lua_getfield(L, -1, "print");
-	lua_remove(L, -2);
-	if (lua_pcall(L, 0, 1, 0) == 0) {
-		size_t len;
-		const char *str = lua_tolstring(L, -1, &len);
-		tbuf_append(buf, str, len);
-	} else {
-		say_error("lua_pcall(stat.print): %s", lua_tostring(L, -1));
-	}
-	lua_pop(L, 1);
-#else
-	tbuf_printf(buf, "unimplemented");
-#endif
+	assert(stat_current_base != -1);
+	struct stat_base *bs = &stat_bases[stat_current_base];
+	u64 hsh = hash_name(name, len);
+	struct accum *acc = stat_accum_get_accum(&bs->current.dynamic_names, hsh, name, len);
+	acc->type = SACC_ACCUM;
+	acc->sum = value;
 }
 
-#if CFG_lua_path
-static int
-stat_record(lua_State *L)
+void
+stat_report_exact(char const * name, int len, double value)
 {
-	if (stats == NULL)
-		return 0;
+	assert(stat_current_base != -1);
+	struct stat_base *bs = &stat_bases[stat_current_base];
+	u64 hsh = hash_name(name, len);
+	struct accum *acc = stat_accum_get_accum(&bs->current.dynamic_names, hsh, name, len);
+	acc->type = SACC_EXACT;
+	acc->sum = value;
+}
 
-	lua_newtable(L); /* table with stats */
-	for (int i = 0; i <= stats_max; i++) {
-		if (stats[i].name == NULL)
-			continue;
+void
+stat_report_double(char const * name, int len, double sum, i64 cnt, double min, double max)
+{
+	assert(stat_current_base != -1);
+	struct stat_base *bs = &stat_bases[stat_current_base];
+	u64 hsh = hash_name(name, len);
+	struct accum *acc = stat_accum_get_accum(&bs->current.dynamic_names, hsh, name, len);
+	acc->type = SACC_DOUBLE;
+	acc->sum = sum;
+	acc->cnt = cnt;
+	acc->min = min;
+	acc->max = max;
+}
 
-		switch (stats[i].type) {
-		case STAT_COUNTER:
-			lua_pushstring(L, stats[i].name);
-			lua_pushnumber(L, stats[i].cnt);
-			lua_settable(L, -3);
-			break;
-		case STAT_DOUBLE:
-			if (stats[i].cnt > 0) {
-				lua_pushstring(L, stats[i].name);
-				lua_createtable(L, 3, 0);
-				lua_pushnumber(L, stats[i].sum);
-				lua_rawseti(L, -2, 0);
-				lua_pushnumber(L, stats[i].cnt);
-				lua_rawseti(L, -2, 1);
-				lua_pushnumber(L, stats[i].min);
-				lua_rawseti(L, -2, 2);
-				lua_pushnumber(L, stats[i].max);
-				lua_rawseti(L, -2, 3);
-				lua_settable(L, -3);
-			}
-			break;
+#ifdef CFG_graphite_addr
+static void
+stat_base_print_to_graphite(struct stat_base *bs)
+{
+	double diff_time = bs->period_stop - bs->period_start;
+	if (diff_time < 0.8)
+		return;
+	if (graphite_sock == -1)
+		goto end;
+	mh_foreach(_accum, &bs->periodic.values, k) {
+		struct accum *acc = mh_accum_slot(&bs->periodic.values, k);
+		if (acc->type == SACC_ACCUM) {
+			double rps = acc->sum / diff_time;
+			graphite_send2(bs->name, acc->name->str, rps);
+		} else if (acc->type == SACC_DOUBLE) {
+			double cnt_rps = (double)acc->cnt / diff_time;
+			double sum_rps = (double)acc->sum / diff_time;
+			double avg = acc->sum / acc->cnt;
+			graphite_send3(bs->name, acc->name->str, "avg", avg);
+			graphite_send3(bs->name, acc->name->str, "cnt", acc->cnt);
+			graphite_send3(bs->name, acc->name->str, "min", acc->min);
+			graphite_send3(bs->name, acc->name->str, "max", acc->max);
+			graphite_send3(bs->name, acc->name->str, "cnt_rps", cnt_rps);
+			graphite_send3(bs->name, acc->name->str, "sum_rps", sum_rps);
+		} else if (acc->type == SACC_EXACT) {
+			graphite_send2(bs->name, acc->name->str, acc->sum);
 		}
 	}
+end:
+	stat_accum_reset(&bs->periodic);
+	bs->period_start = bs->period_stop;
+}
 
-	for (int i = 0; i <= stats_max; i++) {
-			if (stats[i].name == NULL)
-				continue;
-			stats[i].cnt = 0;
-			stats[i].sum = 0;
-			stats[i].max = -1e300;
-			stats[i].min = 1e300;
+static void
+stat_send_to_graphite(ev_periodic* w _unused_, int revents _unused_)
+{
+	int i;
+	for (i = 0; i < stat_basen; i++) {
+		stat_base_print_to_graphite(&stat_bases[i]);
 	}
+}
+static ev_periodic stat_send_to_graphite_periodic;
+#endif
 
-	return 1;
+#if CFG_lua_path
+void
+stat_lua_callback(int base)
+{
+	lua_State *L = fiber->L;
+	int top = lua_gettop(L);
+	luaO_pushtraceback(L);
+	lua_getglobal(L, "stat");
+	lua_getfield(L, -1, "_report");
+	lua_pushinteger(L, base);
+	/* try to call callback to make a report */
+	if (lua_pcall(L, 1, 0, top+1)) {
+		const char *reason = lua_tostring(L, -1);
+		say_error("lua stat callback error ([%d:%s]): %s",
+				base, stat_bases[base].name, reason);
+	}
+	lua_settop(L, top);
 }
 #endif
 
+static ev_periodic stat_shift_all_periodic;
 void
 stat_init()
 {
-#if CFG_lua_path
-	lua_State *L = fiber->L;
-	luaO_require_or_panic("stat", true, NULL);
-	luaO_require_or_panic("graphite", false, NULL);
-	int top = lua_gettop(L);
-	lua_pushcfunction(L, luaO_traceback);
-	lua_getglobal(L, "stat");
-	lua_getfield(L, -1, "new_with_graphite");
-	lua_pushstring(L, "stat");
-	lua_pushcfunction(L, stat_record);
-	if (lua_pcall(L, 2, 0, top+1)) {
-		panic("could not initialize statistic, lua error: %s", lua_tostring(L, -1));
-	}
-	lua_settop(L, top);
+	ev_periodic_init(&stat_shift_all_periodic, stat_shift_all, 0.999, 1, 0);
+	ev_periodic_start(&stat_shift_all_periodic);
+#ifdef CFG_graphite_addr
+	ev_periodic_init(&stat_send_to_graphite_periodic, stat_send_to_graphite, 59.999, 60, 0);
+	ev_periodic_start(&stat_send_to_graphite_periodic);
 #endif
+#if CFG_lua_path
+	luaO_require_or_panic("stat", true, NULL);
+#endif
+}
+
+static u64 hash_name(const char* str, int len) {
+typedef u64 au64 __attribute__((__aligned__(1)));
+typedef u32 au32 __attribute__((__aligned__(1)));
+#define MULT1 0x6956abd6ed268a3bULL
+#define MULT2 0xacd5ad43274593b1ULL
+	u64 a = len * MULT1;
+	u64 b = (0xdeadbeef - len) * MULT2;
+	if (len == 0) {
+	} else if (len < 4) {
+		u8 const * bs = (u8 const*)str;
+		u64 v = bs[0] | (bs[len/2]<<8) | (bs[len-1]<<24);
+		a ^= v;
+		b ^= v;
+	} else if (len <= 8) {
+		u64 v1 = *(au32*)str;
+		u64 v2 = *(au32*)(str+len-4);
+		a ^= (v1<<32)|v2;
+		b ^= (v2<<32)|v1;
+	} else {
+		u64 v;
+		while (len > 8) {
+			v = *(au64*)str;
+			a ^= v; a=(a<<32)|(a>>32); a *= MULT1;
+			b = (b<<32)|(b>>32); b^=v; b *= MULT2;
+			str += 8;
+			len -= 8;
+		}
+		v = *(au64*)(str+len-8);
+		a ^= v; a=(a<<32)|(a>>32);
+		b = (b<<32)|(b>>32); b ^= v;
+	}
+	a ^= a >> 33;
+	b ^= b >> 33;
+	a *= MULT1;
+	b *= MULT2;
+	a ^= a >> 32;
+	b ^= b >> 32;
+	a *= MULT1;
+	b *= MULT2;
+	return a ^ b ^ (a >> 32) ^ (b >> 33);
+}
+
+struct name* malloc_name(const char* str, int len) {
+	struct name* nm = malloc(sizeof(struct name)+len+1);
+	nm->len = len;
+	memcpy(nm->str, str, len);
+	nm->str[len] = 0;
+	return nm;
 }
 
 register_source();

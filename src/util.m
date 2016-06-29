@@ -426,6 +426,16 @@ xrealloc(void *ptr, size_t size)
 	return ptr;
 }
 
+const char*
+xstrdup(const char* str)
+{
+	if (str == NULL)
+		return NULL;
+	const char *cpy = strdup(str);
+	if (str != NULL && cpy == NULL)
+		panic("Out of memory");
+	return cpy;
+}
 
 static void
 cat(char *dst, size_t n, const char *prefix, const char *src)

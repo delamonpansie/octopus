@@ -53,7 +53,7 @@
 	_(IPROTO_BLOCK_OP, 3)
 
 enum iproto_stat ENUM_INITIALIZER(STAT);
-static char * const stat_ops[] = ENUM_STR_INITIALIZER(STAT);
+static char const * const stat_ops[] = ENUM_STR_INITIALIZER(STAT);
 static int stat_base;
 
 struct worker_arg {

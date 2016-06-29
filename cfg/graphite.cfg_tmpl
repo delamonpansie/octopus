@@ -1,0 +1,5 @@
+#######################
+# GRAPHITE
+#
+# where to send graphite stat
+graphite_addr = NULL, rw

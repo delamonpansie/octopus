@@ -33,11 +33,12 @@
 #import <salloc.h>
 #import <say.h>
 #import <net_io.h>
-#import <stat.h>
 #import <octopus.h>
 #import <index.h>
 #import <octopus_version.h>
 #import <cfg/defs.h>
+#import <stat.h>
+#import <graphite.h>
 
 #if CFG_lua_path
 #import <src-lua/octopus_lua.h>
@@ -808,6 +809,9 @@ init_storage:
 	salloc_init(fixed_arena, cfg.slab_alloc_minimal, cfg.slab_alloc_factor);
 
 	stat_init();
+#ifdef CFG_graphite_addr
+	graphite_init();
+#endif
 
 	@try {
 		current_module = module(NULL); /* primary */

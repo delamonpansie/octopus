@@ -54,6 +54,7 @@ void *alloca (size_t);
 void *xcalloc(size_t nmemb, size_t size);
 void *xmalloc(size_t size);
 void *xrealloc(void *ptr, size_t size);
+const char* xstrdup(const char* str);
 
 #ifndef MAX
 # define MAX(_a, _b) ({ __typeof__(_a) a_ = (_a), b_ = (_b); a_ >= b_ ? a_ : b_; })

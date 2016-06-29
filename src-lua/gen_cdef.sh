@@ -45,6 +45,8 @@ $CPP $srcdir/include/say.h | $SED -n '/^extern int.*max_level/p; /^enum say_leve
 $CPP $srcdir/include/palloc.h | $SED -n '/palloc(/p'
 $CPP $srcdir/include/log_io.h | $SED -n '/^struct row_v12 {/,/^}/p; /^enum row_tag {/,/^}/p;'
 $CPP cfg/octopus.h | $SED -n 's/u_int32_t/uint32_t/; /^typedef struct octopus_.* {/,/^}/p'
+$CPP -DCFG_lua_path=1 $srcdir/include/stat.h | $SED -n '/stat_init/,$ { /^[[:alpha:]_]/p }'
+$CPP $srcdir/include/graphite.h | $SED -n '/graphite_init/,$ {/\([[:alpha:]_] \)\+graphite_s/p}'
 echo "]]"
 echo "autoconf = {}"
 cat include/config.h  | $SED '/^#define [^ ]* ["0-9]/!d; s/#define \([^ ]*\) \(.*\)/autoconf.\1 = \2/;'

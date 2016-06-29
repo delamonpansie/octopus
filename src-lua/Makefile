@@ -48,6 +48,7 @@ obj += src-lua/ddump.o
 obj += src-lua/objc.o
 obj += src-lua/index.o
 obj += src-lua/stat.o
+obj += src-lua/graphite.o
 obj += src-lua/net.o
 obj += src-lua/cdef.o
 obj += src-lua/cdef_base.o
@@ -75,15 +76,8 @@ include/net_io.h: cfg/octopus.h
 src-lua/cdef.lua: CPPFLAGS += -Wno-deprecated
 dist-clean += src-lua/cdef.lua
 
-src-lua/cdef.lua: cfg/octopus.h include/config.h include/fiber.h include/index.h include/iproto_def.h include/log_io.h include/net_io.h include/octopus.h include/octopus_ev.h include/palloc.h include/pickle.h include/say.h include/tbuf.h src-lua/gen_cdef.sh
+src-lua/cdef.lua: cfg/octopus.h include/config.h include/fiber.h include/index.h include/iproto_def.h include/log_io.h include/net_io.h include/octopus.h include/octopus_ev.h include/palloc.h include/pickle.h include/say.h include/tbuf.h include/stat.h include/graphite.h cfg/defs.h src-lua/gen_cdef.sh
 	@mkdir -p $(dir $@)
 	$(E) "GEN	$@"
 	$(Q)CPP="$(CPP) -P $(XCPPFLAGS) $(CPPFLAGS)" SED="$(SED)" srcdir="$(srcdir)" sh $(srcdir)/src-lua/gen_cdef.sh > $@
 
-ifneq (,$(GRAPHITE_ADDR))
-obj += src-lua/graphite.o
-src-lua/graphite.lua: extra/graphite.lua
-	$(E) "GEN	$@"
-	$(Q)echo "local graphite_addr = '$(GRAPHITE_ADDR)'" > $@
-	$(Q)$(CAT) $^ >> $@
-endif

@@ -31,10 +31,56 @@
 #include <tbuf.h>
 
 void stat_init(void);
-int stat_register(char * const *name, size_t count);
+
+typedef void (*stat_get_current_callback)(int base);
+
+/* registers callback based stat, and returns it's position for fast access */
+int stat_register_callback(char const *base_name, stat_get_current_callback cb);
+
+/* registers name based stat, returns position for fast access */
+int stat_register_named(char const * base_name);
+
+/* registers static-offset based stat, returns position for fast access */
+int stat_register_static(char const * base_name, char const * const * opnames, size_t count);
+
+/* api for named stat */
+void stat_collect_named(int base, char const * name, int len, double value);
+void stat_collect_named_double(int base, char const * name, int len, double value);
+
+/* api for static-offset based stat */
+void stat_collect_static(int base, int name, double value);
+void stat_collect_static_double(int base, int name, double value);
+
+/* api for callback based stat */
+/* stat_report_total should be called by callback, registered with stat_register_callback.
+ * base is then current base.
+ * value should be accumulated value, and it will be divided by length of period */
+void stat_report_accum(char const * name, int len, double value);
+/* stat_report_exact should be called by callback, registered with stat_register_callback.
+ * base is then current base.
+ * value should be exact value that doesn't depend on period length */
+void stat_report_exact(char const * name, int len, double value);
+/* stat_report_double should be called by callback, registered with stat_register_callback.
+ * base is then current base.
+ * it should report sum, count, min and max */
+void stat_report_double(char const * name, int len, double sum, i64 cnt, double min, double max);
+/* stat_current_base is a base for stat_report_* functions */
+extern int stat_current_base;
+char const* stat_name_of_base(int base);
+
+/* you can use STAT_STR like: stat_collect_named(base, STAT_STR("myparam"), value) */
+#define STAT_STR(str) (str), strlen(str)
+
+/* backward compatible api */
+/* mostly equivalent to stat_register_static("stat", opnames, count) */
+int stat_register(char const * const *opnames, size_t count);
 void stat_collect(int base, int name, i64 value);
 /* should be separate name from stat_collect */
 void stat_collect_double(int base, int name, double value);
 void stat_print(struct tbuf *buf);
+
+#if CFG_lua_path
+void stat_lua_callback(int base);
+#endif
 
 #endif
