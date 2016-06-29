@@ -540,7 +540,7 @@ tree_node_eq_with_addr(struct index_node *na, struct index_node *nb, struct inde
 }
 
 #define MULT1 0x6956abd6ed268a3bULL
-#define MULT2 0xacd5ad43274593b1ULL;
+#define MULT2 0xacd5ad43274593b1ULL
 #define ROTL32(h) (((h) << 32) | ((h) >> 32))
 
 static void
