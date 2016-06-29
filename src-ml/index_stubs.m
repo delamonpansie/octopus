@@ -121,7 +121,7 @@ value stub_index_iterator_next(value index, value n)
 	CAMLparam2(index, n);
 	CAMLlocal1(obj);
 	@try {
-		obj = (uintptr_t)iterator_next_n((Index*)index, Int_val(n));
+		obj = (uintptr_t)[(id<BasicIndex>)index iterator_next:Int_val(n)];
 	}
 	@catch (Error *e) {
 		release_and_failwith(e);
