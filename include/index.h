@@ -133,6 +133,7 @@ typedef struct tnt_object* tnt_ptr;
 - (void)iterator_init_with_object:(struct tnt_object *)obj;
 - (void)iterator_init_with_node:(const struct index_node *)node;
 - (struct tnt_object *)iterator_next;
+- (struct tnt_object *)iterator_next: (int)n;
 - (u32)size;
 - (u32)slots;
 - (size_t) bytes;
@@ -165,12 +166,9 @@ typedef struct tnt_object* tnt_ptr;
 - (void) valid_object:(struct tnt_object*)obj;
 - (u32)cardinality;
 /* common method */
-- (struct tnt_object *)iterator_next;
+- (struct tnt_object *)iterator_next: (int)n;
 - (int)eq:(struct tnt_object *)a :(struct tnt_object*)b;
 @end
-
-struct tnt_object* iterator_next(Index* m);
-struct tnt_object* iterator_next_n(Index* m, int n);
 
 @interface DummyIndex: Index <BasicIndex> {
 @public
