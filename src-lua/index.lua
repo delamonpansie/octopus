@@ -42,7 +42,6 @@ local iterator_init_with_direction = objc.msg_lookup("iterator_init_with_directi
 local iterator_init_with_node_direction = objc.msg_lookup("iterator_init_with_node:direction:")
 local iterator_init_with_object_direction = objc.msg_lookup("iterator_init_with_object:direction:")
 local iterator_next = objc.msg_lookup("iterator_next")
-local iterator_next_n = objc.msg_lookup("iterator_next:")
 local position_with_node = objc.msg_lookup("position_with_node:")
 local position_with_object = objc.msg_lookup("position_with_object:")
 -- hash index methods
@@ -197,7 +196,12 @@ local function iter_next(index)
     if index.__switchcnt ~= fiber.switch_cnt then
         error("context switch during index iteration", 2)
     end
-    return object(iterator_next(index.__ptr))
+    local ptr, obj
+    repeat
+       ptr = iterator_next(index.__ptr)
+       obj = object(ptr)
+    until obj ~= nil or ptr == nil
+    return obj
 end
 
 local function offset(off, itnxt, index)
@@ -205,7 +209,12 @@ local function offset(off, itnxt, index)
         error("context switch during index iteration", 2)
     end
     assert(itnxt == iter_next)
-    iterator_next_n(index.__ptr, int(off))
+    local ptr, obj
+    while off > 0 do
+        local obj = iterator_next(index.__ptr)
+        if obj == nil then break end
+        if not ffi.C.object_ghost(obj) then off = off - 1 end
+    end
     return itnxt, index
 end
 
@@ -271,9 +280,6 @@ local hash_mt = {
                 return nil
             end
             local obj = ffi.cast('struct tnt_object *', ptr)
-            if ffi.C.object_ghost(obj) then
-               return nil
-            end
             return object(ptr)
         end,
         cur_iter = function(self)

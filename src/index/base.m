@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -197,19 +197,6 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 	dtor(obj_a, &node_a, dtor_arg);
 	dtor(obj_b, node_b, dtor_arg);
 	return eq(&node_a, node_b, self->dtor_arg);
-}
-
-- (struct tnt_object *) iterator_next: (int)n
-{
-	SEL s = @selector(iterator_next);
-	IMP m = [self methodFor: s];
-	struct tnt_object *r = NULL;
-	for (;n>0; n--) {
-		r = (struct tnt_object*)m(self, s);
-		if (r == NULL)
-			break;
-	}
-	return r;
 }
 @end
 

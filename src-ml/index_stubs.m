@@ -116,12 +116,12 @@ value stub_index_iterator_init_with_object_direction(value index, value oct_obje
 	CAMLreturn(Val_unit);
 }
 
-value stub_index_iterator_next(value index, value n)
+value stub_index_iterator_next(value index)
 {
-	CAMLparam2(index, n);
+	CAMLparam1(index);
 	CAMLlocal1(obj);
 	@try {
-		obj = (uintptr_t)[(id<BasicIndex>)index iterator_next:Int_val(n)];
+		obj = (uintptr_t)[(id<BasicIndex>)index iterator_next];
 	}
 	@catch (Error *e) {
 		release_and_failwith(e);
