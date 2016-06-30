@@ -162,7 +162,7 @@ void box_service_ro(struct iproto_service *s);
 	_(TRUNCATE, 244)
 
 enum messages ENUM_INITIALIZER(MESSAGES);
-extern char * const box_ops[];
+extern char const * const box_ops[];
 
 @interface Box : DefaultExecutor <Executor> {
 	bool built_seconday_indexes;
