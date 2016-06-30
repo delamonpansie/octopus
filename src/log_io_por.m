@@ -121,6 +121,12 @@ master
 	return strcmp(cfg.hostname, peer[0]) == 0;
 }
 
+- (void)
+set_remote_scn:(const struct row_v12 *)row
+{
+	memcpy(&remote_scn, row->remote_scn, 6);
+}
+
 static void partial_replica_load(va_list ap);
 
 - (void)

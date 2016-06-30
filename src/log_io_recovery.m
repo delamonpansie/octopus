@@ -495,6 +495,8 @@ recover_row:(struct row_v12 *)r
 			struct shard_op *sop = (struct shard_op *)r->data;
 			if (our_shard(sop) || remote_loading) {
 				shard = [self shard_create:r->shard_id scn:r->scn sop:sop];
+				if (sop->type == SHARD_TYPE_PART)
+					[(POR *)shard set_remote_scn:r];
 				if (state == snap_final)
 					shard->snap_loaded = true;
 			} else {

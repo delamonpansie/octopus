@@ -493,6 +493,7 @@ enum feeder_filter_type {
 	struct feeder_param feeder;
 	char feeder_param_arg[32];
 }
+- (void) set_remote_scn:(const struct row_v12 *)row;
 @end
 
 @interface Recovery: Object <RecoveryState, RecoverRow> {
