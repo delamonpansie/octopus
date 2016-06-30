@@ -28,7 +28,7 @@
 # legacy_master.insert(["9", "val"])
 1
 
-["octopus.log.0", "octopus.pid", "octopus", "00000000000000000007.xlog", "feeder_init.lua", "octopus.log.init", "00000000000000000006.snap", "octopus.cfg", "octopus.log"]
+["00000000000000000006.snap", "00000000000000000007.xlog", "feeder_init.lua", "octopus", "octopus.cfg", "octopus.log", "octopus.log.0", "octopus.log.init", "octopus.pid"]
 # legacy_master.select("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16")
 [["0", "val"], ["1", "val"], ["2", "val"], ["3", "val"], ["4", "val"], ["5", "val"], ["6", "val"], ["7", "val"], ["8", "val"], ["9", "val"]]
 

@@ -103,7 +103,7 @@ end
 master_env.env_eval do
   rm "00000000000000000001.snap"
   rm "00000000000000000002.xlog"
-  p Dir["*"]
+  p Dir["*"].sort
 end
 
 keys = (0..16).map{|a| a.to_s}.to_a
@@ -156,6 +156,8 @@ slave_env.env_eval do
   slave_env.start
   slave.reconnect
   slave.ping
+
+  sleep 0.2
 
   slave.select *keys, :shard => 0
   slave.select *keys, :shard => 1

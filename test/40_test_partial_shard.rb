@@ -138,6 +138,8 @@ slave_env.env_eval do
   slave.reconnect
   slave.ping
 
+  sleep 0.2
+
   slave.select *keys, :shard => 0
   slave.select *keys, :shard => 1
   slave.select *keys, :shard => 2
