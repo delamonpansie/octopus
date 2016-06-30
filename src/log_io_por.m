@@ -291,10 +291,9 @@ prepare_remote_row:(struct row_v12 *)row offt:(int)offt
 		memcpy(&row->remote_scn, &row->scn, 6);
 		row->scn = scn + 1 + offt;
 	}
-	if (row->scn <= scn && (row->tag & ~TAG_MASK) == TAG_WAL)
-		return 0;
 
-	return 1;
+
+	return !(snap_loaded && row->scn <= scn);
 }
 
 - (bool)
