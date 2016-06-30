@@ -176,6 +176,7 @@ confirm_write
 struct request {
 	u32 row_count;
 	int shard_id;
+	i64 epoch;
 	struct wal_reply *reply;
 	struct row_v12 **rows;
 };
@@ -240,6 +241,7 @@ request_parse(struct request *request, int row_count, struct tbuf *rbuf)
 				 row_count * sizeof(request->reply->row_crc[0]));
 	request->reply->sender = read_ptr(rbuf);
 	request->reply->fid = read_u32(rbuf);
+	request->epoch = read_u64(rbuf);
 	request->reply->scn = -1;
 	request->reply->lsn = -1;
 	request->shard_id = -1;
@@ -322,9 +324,9 @@ wal_disk_writer(int fd, int cfd __attribute__((unused)), void *state, int len)
 	struct tbuf rbuf = TBUF(NULL, 0, fiber->pool);
 	int result = EXIT_FAILURE;
 	i64 start_lsn;
-	bool io_failure = false;
 	ssize_t r;
 	int request_count;
+	i64 epoch = 0;
 
 	assert(sizeof(*conf) == len);
 
@@ -365,7 +367,8 @@ wal_disk_writer(int fd, int cfd __attribute__((unused)), void *state, int len)
 
 		request_count = 0;
 		start_lsn = writer->lsn;
-		io_failure = [writer prepare_write:st] == -1;
+		if ([writer prepare_write:st] == -1)
+			epoch++;
 		for (int i = 0; i < MAX_SHARD; i++)
 			st[i].wet_scn = st[i].scn;
 
@@ -373,6 +376,7 @@ wal_disk_writer(int fd, int cfd __attribute__((unused)), void *state, int len)
 		ev_now_update();
 
 
+		u32 rows_appended = 0;
 		for (int i = 0; i < nelem(requests); i++) {
 			struct request *request = &requests[i];
 			int row_count = request_row_count(&rbuf);
@@ -384,20 +388,21 @@ wal_disk_writer(int fd, int cfd __attribute__((unused)), void *state, int len)
 			say_debug("request[%i] shard:%i rows:%i", i, request->shard_id, row_count);
 
 			int j = 0;
-			for (; j < row_count && !io_failure; j++) {
+			for (; j < row_count && request->epoch == epoch; j++) {
 				struct row_v12 *row = request->rows[j];
 				assign_scn(st, row);
 
 				if ([writer append_row:row data:row->data] == NULL) {
 					say_error("append_row failed");
-					io_failure = true;
+					epoch++;
 					break;
 				}
 
+				rows_appended++;
 				say_debug("|	shard:%i SCN:%"PRIi64" tag:%s data_len:%u",
 					  row->shard_id, row->scn, xlog_tag_to_a(row->tag), row->len);
 			}
-			for (; j < row_count && io_failure; j++)
+			for (; j < row_count && request->epoch != epoch; j++)
 				request->rows[j] = NULL;
 
 			request_count++;
@@ -407,6 +412,10 @@ wal_disk_writer(int fd, int cfd __attribute__((unused)), void *state, int len)
 
 		assert(start_lsn > 0);
 		u32 rows_confirmed = [writer confirm_write] - start_lsn;
+		assert(rows_appended >= rows_confirmed);
+
+		if (rows_appended != rows_confirmed) /* some rows failed to flush */
+			epoch++;
 
 		for (int i = 0; i < request_count; i++) {
 			struct request *request = &requests[i];
@@ -415,7 +424,7 @@ wal_disk_writer(int fd, int cfd __attribute__((unused)), void *state, int len)
 			reply->row_count = MIN(rows_confirmed, request->row_count); /* real number rows written to disk */
 			reply->packet_len = sizeof(struct wal_reply) +
 					    reply->row_count * sizeof(reply->row_crc[0]);
-
+			reply->epoch = epoch;
 			if (reply->row_count > 0)
 				reply->lsn = request->rows[reply->row_count - 1]->lsn;
 
@@ -605,6 +614,7 @@ wal_pack_prepare(XLogWriter *w, struct wal_pack *pack)
 	pack->request->magic = 0xba0babed;
 	pack->request->fid = fiber->fid;
 	pack->request->sender = fiber;
+	pack->request->epoch = w->epoch;
 	pack->request->row_count = 0;
 	net_add_iov(pack->netmsg, pack->request, pack->request->packet_len);
 }
@@ -644,6 +654,7 @@ wal_pack_append_data(struct wal_pack *pack, const void *data, size_t len)
 wal_pack_submit
 {
 	struct wal_reply *reply = yield();
+	epoch = reply->epoch;
 	if (reply->row_count == 0)
 		say_warn("wal writer returned error status");
 	else

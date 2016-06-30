@@ -260,6 +260,7 @@ struct wal_request {
 	u32 magic;
 	struct Fiber *sender;
 	u32 fid;
+	i64 epoch;
 } __attribute__((packed));
 
 struct wal_reply {
@@ -267,7 +268,7 @@ struct wal_reply {
 	u32 row_count, crc_count;
 	struct Fiber *sender;
 	u32 fid;
-	i64 lsn, scn;
+	i64 epoch, lsn, scn;
 
 	struct run_crc_hist row_crc[];
 } __attribute__((packed));
@@ -347,7 +348,7 @@ bool our_shard(const struct shard_op *sop);
 @end
 
 @interface XLogWriter: Object <XLogWriter> {
-	i64 lsn;
+	i64 lsn, epoch;
 	id<RecoveryState> state;
 	struct child wal_writer;
 	struct netmsg_io *io;
