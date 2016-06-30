@@ -28,9 +28,6 @@ cmx += src-ml/packer.cmx
 cmx += src-ml/octopus.cmx
 cmx += src-ml/load_plugins.cmx
 
-sorted-ml = $(shell $(OCAMLDEP) $(OCAMLINC) -sort $(cmx:.cmx=.ml))
-sorted-cmx = $(sorted-ml:.ml=.cmx)
-
 %.cmx: %.ml %.mli
 	$(E) "CAML	$@"
 	$(Q)$(OCAMLOPT) -g $(OCAMLINC) $(OCAMLFLAGS) $(OCAMLIFLAGS) -o $(@:.cmx=.cmi) -c $(<:.ml=.mli)
@@ -63,5 +60,7 @@ mlclean:
 .SECONDEXPANSION:
 src-ml/caml.o: $$(cmx)
 	$E "CAML	$@"
-	$Q$(OCAMLOPT) -g $(OCAMLINC) $(OCAMLFLAGS) $(OCAMLLIBS) $(DERIVE) $(sorted-cmx) -output-obj -o $@
+	$Q$(OCAMLOPT) -g $(OCAMLINC) $(OCAMLFLAGS) $(OCAMLLIBS) $(DERIVE) \
+		$(patsubst %.ml,%.cmx,$(shell cd $(srcdir) && $(OCAMLDEP) $(OCAMLINC) -sort $(patsubst %.cmx,%.ml,$(filter %.cmx,$^)))) \
+		-output-obj -o $@
 endif
