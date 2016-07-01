@@ -199,7 +199,7 @@ local function iter_next(index)
     local ptr, obj
     repeat
        ptr = iterator_next(index.__ptr)
-       obj = object(ptr)
+       obj = object(index.__visible(ptr))
     until obj ~= nil or ptr == nil
     return obj
 end
@@ -209,11 +209,11 @@ local function offset(off, itnxt, index)
         error("context switch during index iteration", 2)
     end
     assert(itnxt == iter_next)
-    local ptr, obj
+    local obj
     while off > 0 do
         local obj = iterator_next(index.__ptr)
         if obj == nil then break end
-        if not ffi.C.object_ghost(obj) then off = off - 1 end
+        if index.__visible(obj) then off = off - 1 end
     end
     return itnxt, index
 end
@@ -234,7 +234,7 @@ local basic_mt = {
         end,
         find = function(self, ...)
             local node = self:packnode(...)
-            return object(find_node(self.__ptr, node))
+            return object(self.__visible(find_node(self.__ptr, node)))
         end,
         size = function(self)
             return tonumber(ffi.cast(uint32_t, objc.msg_send(self.__ptr, "size")))
@@ -280,7 +280,7 @@ local hash_mt = {
                 return nil
             end
             local obj = ffi.cast('struct tnt_object *', ptr)
-            return object(ptr)
+            return object(self.__visible(ptr))
         end,
         cur_iter = function(self)
             return tonumber(ffi.cast(uint32_t, cur_iter(self.__ptr)))
@@ -362,11 +362,19 @@ local index_mt = {
 }
 setmetatable(index_mt, { __index = function() assert(false) end })
 
+local function visible(ptr)
+    if ptr ~= nil and ffi.C.object_ghost(ptr)
+    then return nil
+    else return ptr
+    end
+end
+
 local function proxy(index)
     local p = { __ptr = index,
                 __packnode = gen_packnode(index),
                 __switchcnt = 0,
                 __field_indexes = {},
+                __visible = visible
               }
     for i=1,index.conf.cardinality do
         p.__field_indexes[i] = tonumber(index.conf.field[i-1].index)

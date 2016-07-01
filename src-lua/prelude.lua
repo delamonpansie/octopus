@@ -112,10 +112,6 @@ function object(ptr)
       return nil
    end
    local obj = ffi.cast(object_t, ptr)
-   if ffi.C.object_ghost(obj) then
-      return nil
-   end
-
    local ct = object_cast[ffi.C.object_type(obj)]
    if ct then
       return ct(obj)
