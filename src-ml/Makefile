@@ -19,7 +19,6 @@ obj-caml += src-ml/say_stubs.o
 obj-caml += src-ml/fiber_stubs.o
 obj-caml += src-ml/net_io_stubs.o
 obj-caml += src-ml/packer_stubs.o
-obj-caml += src-ml/index_stubs.o
 
 cmx += src-ml/say.cmx
 cmx += src-ml/fiber.cmx
