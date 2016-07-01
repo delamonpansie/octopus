@@ -244,6 +244,8 @@ recover_row:(struct row_v12 *)row
 	switch (row->tag & TAG_MASK) {
 	case snap_initial:
 	case snap_final:
+		if (dummy)
+			snap_loaded = true;
 		break;
 	case run_crc:
 		if (cfg.ignore_run_crc)
@@ -297,7 +299,6 @@ prepare_remote_row:(struct row_v12 *)row offt:(int)offt
 		memcpy(&row->remote_scn, &row->scn, 6);
 		row->scn = scn + 1 + offt;
 	}
-
 
 	return !(snap_loaded && row->scn <= scn);
 }

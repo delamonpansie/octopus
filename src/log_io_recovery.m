@@ -485,6 +485,8 @@ recover_row:(struct row_v12 *)r
 			break;
 		case snap_final:
 			state = snap_final;
+			if ([self shard:0] && [self shard:0]->dummy)
+				[[self shard:0] recover_row:r];
 			return;
 		case wal_final:
 			assert(false);
