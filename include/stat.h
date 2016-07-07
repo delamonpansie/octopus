@@ -44,26 +44,28 @@ int stat_register_named(char const * base_name);
 int stat_register_static(char const * base_name, char const * const * opnames, size_t count);
 
 /* api for named stat */
-void stat_collect_named(int base, char const * name, int len, double value);
-void stat_collect_named_double(int base, char const * name, int len, double value);
+void stat_sum_named(int base, char const * name, int len, double value);
+void stat_gauge_named(int base, char const * name, int len, double value);
+void stat_aggregate_named(int base, char const * name, int len, double value);
 
 /* api for static-offset based stat */
-void stat_collect_static(int base, int name, double value);
-void stat_collect_static_double(int base, int name, double value);
+void stat_sum_static(int base, int name, double value);
+void stat_gauge_static(int base, int name, double value);
+void stat_aggregate_static(int base, int name, double value);
 
 /* api for callback based stat */
-/* stat_report_total should be called by callback, registered with stat_register_callback.
+/* stat_report_sum should be called by callback, registered with stat_register_callback.
  * base is then current base.
  * value should be accumulated value, and it will be divided by length of period */
-void stat_report_accum(char const * name, int len, double value);
-/* stat_report_exact should be called by callback, registered with stat_register_callback.
+void stat_report_sum(char const * name, int len, double value);
+/* stat_report_gauge should be called by callback, registered with stat_register_callback.
  * base is then current base.
  * value should be exact value that doesn't depend on period length */
-void stat_report_exact(char const * name, int len, double value);
-/* stat_report_double should be called by callback, registered with stat_register_callback.
+void stat_report_gauge(char const * name, int len, double value);
+/* stat_report_aggregate should be called by callback, registered with stat_register_callback.
  * base is then current base.
  * it should report sum, count, min and max */
-void stat_report_double(char const * name, int len, double sum, i64 cnt, double min, double max);
+void stat_report_aggregate(char const * name, int len, double sum, i64 cnt, double min, double max);
 /* stat_current_base is a base for stat_report_* functions */
 extern int stat_current_base;
 char const* stat_name_of_base(int base);

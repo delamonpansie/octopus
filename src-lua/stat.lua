@@ -8,14 +8,15 @@ function stat._report(base)
     for k,v in pairs(cur) do
         k = tostring(k)
         if type(v) == 'number' then
-            ffi.C.stat_report_accum(k, #k, v)
+            ffi.C.stat_report_sum(k, #k, v)
         elseif type(v) == 'table' then
-            if v.exact then
-                ffi.C.stat_report_exact(k, #k, v.exact)
+            if v.gauge then
+                ffi.C.stat_report_gauge(k, #k, v.exact)
             elseif v[0] and v[1] and v[2] and v[2] then
-                ffi.C.stat_report_double(k, #k, v[0], v[1], v[2], v[3])
-            elseif v.sum and v.cnt and v.min and v.max then
-                ffi.C.stat_report_double(k, #k, v.sum, v.cnt, v.min, v.max)
+                ffi.C.stat_report_aggregate(k, #k, v[0], v[1], v[2], v[3])
+            elseif v.sum or v.cnt or v.min or v.max then
+                ffi.C.stat_report_aggregate(k, #k,
+                    v.sum or 0, v.cnt or 0, v.min or 1e300, v.max or -1e300)
             end
         end
     end

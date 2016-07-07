@@ -44,7 +44,7 @@
 #define SECS 5
 
 enum stat_base_type { SBASE_STATIC = 1, SBASE_DYNAMIC = 2, SBASE_CALLBACK = 3 };
-enum stat_accum_type { SACC_ACCUM = 1, SACC_DOUBLE = 2, SACC_EXACT = 3 };
+enum stat_accum_type { SACC_ACCUM = 1, SACC_DOUBLE = 2, SACC_GAUGE = 3 };
 int stat_current_base = -1;
 
 struct name {
@@ -251,7 +251,7 @@ merge_stat(const char *basename, struct stat_accum *small, struct stat_accum *bi
 					bc->max = ac->max;
 				if (bc->min > ac->min)
 					bc->min = ac->min;
-			} else if (ac->type == SACC_EXACT) {
+			} else if (ac->type == SACC_GAUGE) {
 				bc->sum = ac->sum;
 			} else {
 				say_warn("unknown stat type for %s.%.*s: %d",
@@ -336,16 +336,32 @@ stat_admin_out(struct stat_accum *cur, struct tbuf *b)
 			tbuf_printf(b, "  %-25.*s { rps: %-8.3f }\r\n",
 					  (int)tbuf_len(&key), (char*)key.ptr, rps);
 		} else if (p->type == SACC_DOUBLE) {
-			double avg = p->sum / p->cnt;
-			i64 cnt_rps = p->cnt / nelem(stat_bases[0].records);
-			double sum_rps = p->sum / nelem(stat_bases[0].records);
-			tbuf_printf(b, "  %-25.*s { avg: %-8.3f, min: %-8.3f, max: %-8.3f, "
-					"cnt: %-8"PRIi64", sum: %-8.3f, "
-					"cnt_rps: %-8"PRIi64", sum_rps: %-8.3f }\r\n",
-					(int)tbuf_len(&key), (char*)key.ptr,
-					avg, p->min, p->max, p->cnt,
-					p->sum, cnt_rps, sum_rps);
-		} else if (p->type == SACC_EXACT) {
+			double avg, sum_rps;
+			i64 cnt_rps;
+			bool first = true;
+#define COMMA (({bool f = first; first = false; f;}) ? " " : ", ")
+			tbuf_printf(b, "  %-25.*s {", (int)tbuf_len(&key), (char*)key.ptr);
+			if (p->cnt != 0) {
+				avg = p->sum / p->cnt;
+				tbuf_printf(b, "%savg: %-8.3f", COMMA, avg);
+			}
+			if (p->min != 1e300)
+				tbuf_printf(b, "%smin: %-8.3f", COMMA, p->min);
+			if (p->max != -1e300)
+				tbuf_printf(b, "%smax: %-8.3f", COMMA, p->max);
+			sum_rps = p->sum / nelem(stat_bases[0].records);
+			if (p->cnt != 0)
+				tbuf_printf(b, "%scnt: %-8"PRIi64, COMMA, p->cnt);
+			if (p->cnt != 0 || p->sum != 0)
+				tbuf_printf(b, "%ssum: %-8.3f, ", COMMA, p->sum);
+			if (p->cnt != 0) {
+				cnt_rps = p->cnt / nelem(stat_bases[0].records);
+				tbuf_printf(b, "%scnt_rps: %-8"PRIi64, COMMA, cnt_rps);
+			}
+			if (p->sum != 0)
+				tbuf_printf(b, "%ssum_rps: %-8.3f", COMMA, sum_rps);
+			tbuf_printf(b, " }\r\n");
+		} else if (p->type == SACC_GAUGE) {
 			tbuf_printf(b, "  %-25.*s %-8.3f\r\n",
 					  (int)tbuf_len(&key), (char*)key.ptr, p->sum);
 		}
@@ -433,14 +449,21 @@ stat_register(char const * const * opnames, size_t count)
 }
 
 static void
-acc_collect(struct accum *acc, double value)
+acc_sum(struct accum *acc, double value)
 {
 	acc->type = SACC_ACCUM;
 	acc->sum += value;
 }
 
 static void
-acc_collect_double(struct accum *acc, double value)
+acc_gauge(struct accum *acc, double value)
+{
+	acc->type = SACC_GAUGE;
+	acc->sum = value;
+}
+
+static void
+acc_aggregate(struct accum *acc, double value)
 {
 	acc->type = SACC_DOUBLE;
 	acc->cnt++;
@@ -452,51 +475,67 @@ acc_collect_double(struct accum *acc, double value)
 }
 
 void
-stat_collect_named(int base, char const * name, int len, double value)
+stat_sum_named(int base, char const * name, int len, double value)
 {
 	assert(base < stat_base);
 	struct stat_base *bs = &stat_bases[base];
 	u64 hsh = hash_name(name, len);
 	struct accum *acc = stat_accum_get_accum(&bs->current.dynamic_names, hsh, name, len);
-	acc_collect(acc, value);
+	acc_sum(acc, value);
 }
 
 void
-stat_collect_named_double(int base, char const * name, int len, double value)
+stat_gauge_named(int base, char const * name, int len, double value)
 {
 	assert(base < stat_base);
 	struct stat_base *bs = &stat_bases[base];
 	u64 hsh = hash_name(name, len);
 	struct accum *acc = stat_accum_get_accum(&bs->current.dynamic_names, hsh, name, len);
-	acc_collect_double(acc, value);
+	acc_gauge(acc, value);
 }
 
 void
-stat_collect_static(int base, int name, double value)
+stat_aggregate_named(int base, char const * name, int len, double value)
 {
-	acc_collect(&stat_bases[base].current.static_names.v[name], value);
+	assert(base < stat_base);
+	struct stat_base *bs = &stat_bases[base];
+	u64 hsh = hash_name(name, len);
+	struct accum *acc = stat_accum_get_accum(&bs->current.dynamic_names, hsh, name, len);
+	acc_aggregate(acc, value);
 }
 
 void
-stat_collect_static_double(int base, int name, double value)
+stat_sum_static(int base, int name, double value)
 {
-	acc_collect_double(&stat_bases[base].current.static_names.v[name], value);
+	acc_sum(&stat_bases[base].current.static_names.v[name], value);
+}
+
+void
+stat_gauge_static(int base, int name, double value)
+{
+	acc_gauge(&stat_bases[base].current.static_names.v[name], value);
+}
+
+void
+stat_aggregate_static(int base, int name, double value)
+{
+	acc_aggregate(&stat_bases[base].current.static_names.v[name], value);
 }
 
 void
 stat_collect(int base, int name, i64 value)
 {
-	acc_collect(&stat_bases[base].current.static_names.v[name], value);
+	acc_sum(&stat_bases[base].current.static_names.v[name], value);
 }
 
 void
 stat_collect_double(int base, int name, double value)
 {
-	acc_collect_double(&stat_bases[base].current.static_names.v[name], value);
+	acc_aggregate(&stat_bases[base].current.static_names.v[name], value);
 }
 
 void
-stat_report_accum(char const * name, int len, double value)
+stat_report_sum(char const * name, int len, double value)
 {
 	assert(stat_current_base != -1);
 	struct stat_base *bs = &stat_bases[stat_current_base];
@@ -507,13 +546,13 @@ stat_report_accum(char const * name, int len, double value)
 }
 
 void
-stat_report_exact(char const * name, int len, double value)
+stat_report_gauge(char const * name, int len, double value)
 {
 	assert(stat_current_base != -1);
 	struct stat_base *bs = &stat_bases[stat_current_base];
 	u64 hsh = hash_name(name, len);
 	struct accum *acc = stat_accum_get_accum(&bs->current.dynamic_names, hsh, name, len);
-	acc->type = SACC_EXACT;
+	acc->type = SACC_GAUGE;
 	acc->sum = value;
 }
 
@@ -546,16 +585,22 @@ stat_base_print_to_graphite(struct stat_base *bs)
 			double rps = acc->sum / diff_time;
 			graphite_send2(bs->name, acc->name->str, rps);
 		} else if (acc->type == SACC_DOUBLE) {
-			double cnt_rps = (double)acc->cnt / diff_time;
-			double sum_rps = (double)acc->sum / diff_time;
-			double avg = acc->sum / acc->cnt;
-			graphite_send3(bs->name, acc->name->str, "avg", avg);
-			graphite_send3(bs->name, acc->name->str, "cnt", acc->cnt);
-			graphite_send3(bs->name, acc->name->str, "min", acc->min);
-			graphite_send3(bs->name, acc->name->str, "max", acc->max);
-			graphite_send3(bs->name, acc->name->str, "cnt_rps", cnt_rps);
-			graphite_send3(bs->name, acc->name->str, "sum_rps", sum_rps);
-		} else if (acc->type == SACC_EXACT) {
+			if (acc->cnt != 0) {
+				double avg = acc->sum / acc->cnt;
+				double cnt_rps = (double)acc->cnt / diff_time;
+				graphite_send3(bs->name, acc->name->str, "avg", avg);
+				graphite_send3(bs->name, acc->name->str, "cnt_rps", cnt_rps);
+				graphite_send3(bs->name, acc->name->str, "cnt", acc->cnt);
+			}
+			if (acc->min != 1e300)
+				graphite_send3(bs->name, acc->name->str, "min", acc->min);
+			if (acc->max != -1e300)
+				graphite_send3(bs->name, acc->name->str, "max", acc->max);
+			if (acc->sum != 0 || acc->cnt != 0) {
+				double sum_rps = (double)acc->sum / diff_time;
+				graphite_send3(bs->name, acc->name->str, "sum_rps", sum_rps);
+			}
+		} else if (acc->type == SACC_GAUGE) {
 			graphite_send2(bs->name, acc->name->str, acc->sum);
 		}
 	}
