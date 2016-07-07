@@ -56,7 +56,6 @@ and gc_tuple_raw_field_size = function
       !sum
     end
 
-
 let rec tuple_cardinal_and_bsize = function
     Heap o -> heap_tuple_cardinal o, heap_tuple_bsize o
   | Gc o -> begin

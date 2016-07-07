@@ -22,9 +22,7 @@ external stub_find_node : objc_ptr -> Octopus.oct_obj = "stub_index_find_node"
 external stub_iterator_init_with_direction : objc_ptr -> int -> unit = "stub_index_iterator_init_with_direction"
 external stub_iterator_init_with_node_direction : objc_ptr -> int -> unit = "stub_index_iterator_init_with_node_direction"
 external stub_iterator_init_with_object_direction : objc_ptr -> Octopus.oct_obj -> int -> unit = "stub_index_iterator_init_with_object_direction"
-external stub_iterator_next : objc_ptr -> int -> Octopus.oct_obj = "stub_index_iterator_next"
-(* external stub_position_with_node : objc_ptr -> unit = "stub_index_position_with_node" *)
-(* external stub_position_with_object : objc_ptr -> Octopus.oct_obj -> unit = "stub_index_position_with_object" *)
+external stub_iterator_next : objc_ptr -> Octopus.oct_obj = "stub_index_iterator_next"
 
 external stub_index_get : objc_ptr -> int -> Octopus.oct_obj = "stub_index_get"
 external stub_index_slots : objc_ptr -> int = "stub_index_slots"
@@ -48,22 +46,23 @@ let iterator_init { ptr; node_pack } init dir =
   | Iter_tuple t ->
     stub_iterator_init_with_object_direction ptr (Box_tuple.to_oct_obj t) dir
 
-let iterator_next index n =
-  Box_tuple.of_oct_obj (stub_iterator_next index.ptr n)
+let iterator_next index =
+  Box_tuple.of_oct_obj (stub_iterator_next index.ptr)
+
+let iterator_skip index =
+  ignore(stub_iterator_next index.ptr)
 
 let iterator_take index init dir lim =
-  let rec fold accu index lim =
-    if lim = 0
-    then accu
-    else
-      match iterator_next index 1 with
-        a -> fold (a :: accu) index (lim - 1)
-      | exception Not_found -> accu in
+  let rec loop index = function
+      0 -> []
+    | n -> match iterator_next index with
+        a -> a :: loop index (n - 1)
+      | exception Not_found -> [] in
   iterator_init index init dir;
-  fold [] index lim
+  loop index lim
 
 let index_find { ptr; node_pack } key =
-  node_pack ptr key ;
+  node_pack ptr key;
   Box_tuple.of_oct_obj (stub_find_node ptr)
 
 let index_get { ptr } slot =

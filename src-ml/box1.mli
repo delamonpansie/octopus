@@ -238,10 +238,13 @@ module Index : sig
       как направление. Если индекс это хеш, то [dir] должен быть
       Iter_forward *)
 
-  val iterator_next : 'a t -> int -> tuple
-  (** [iterator_next index steps] делает [step] шагов по индексу и
-      возвращает текущий кортеж. [iterator_next index 1] вернет
-      следующий кортеж за текущим *)
+  val iterator_next : 'a t -> tuple
+  (** [iterator_next index] возвращает текущий кортеж; перемещает
+      итератор на следующий *)
+
+  val iterator_skip : 'a t -> unit
+  (** [iterator_skip index] пропускает текущий кортеж; перемещает
+      итератор на следующий *)
 
   val iterator_take : 'a t -> 'a iter_init -> iter_dir -> int -> tuple list
   (** [iterator_take index init dir count] возвращает список из

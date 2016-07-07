@@ -45,6 +45,7 @@ cmx += mod/box/src-ml/box_index.cmx
 cmx += mod/box/src-ml/box_op.cmx
 cmx += mod/box/src-ml/box1.cmx
 obj += mod/box/src-ml/box_tuple_stubs.o
+obj += mod/box/src-ml/box_index_stubs.o
 obj += mod/box/src-ml/camlbox.o
 
 mod/box/src-ml/box1.cmx : OCAMLIFLAGS += -opaque
