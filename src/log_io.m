@@ -1113,6 +1113,18 @@ append_row:(struct row_v12 *)row data:(const void *)data
 	row->header_crc32c = crc32c(0, (unsigned char *)row + sizeof(row->header_crc32c),
 				   sizeof(*row) - sizeof(row->header_crc32c));
 
+#if LOG_IO_ERROR_INJECT
+	const void *ptr = data;
+	int len = row->len;
+	while ((ptr = memmem(ptr, len, "sleep", 5))) {
+		sleep(3);
+		ptr += 5;
+		len = row->len - (ptr - data);
+	}
+	if (memmem(data, row->len, "error", 5))
+		return NULL;
+#endif
+
 	if (fwrite(&marker, sizeof(marker), 1, fd) != 1 ||
 	    fwrite(row, sizeof(*row), 1, fd) != 1 ||
 	    fwrite(data, row->len, 1, fd) != 1)
