@@ -63,17 +63,17 @@ stat.new_with_graphite = stat.new
 
 function meths:add1(name)
     name = tostring(name)
-    ffi.C.stat_collect_named(self.base, name, #name, 1)
+    ffi.C.stat_sum_named(self.base, name, #name, 1)
 end
 
 function meths:add(name, val)
     name = tostring(name)
-    ffi.C.stat_collect_named(self.base, name, #name, val)
+    ffi.C.stat_sum_named(self.base, name, #name, val)
 end
 
 function meths:avg(name, val)
     name = tostring(name)
-    ffi.C.stat_collect_named_double(self.base, name, #name, val)
+    ffi.C.stat_aggregate_named(self.base, name, #name, val)
 end
 
 do
