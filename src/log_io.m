@@ -1484,8 +1484,9 @@ append_row:(struct row_v12 *)row12 data:(const void *)data
 	if (ret == NULL)
 		return NULL;
 
-	if (wet_rows >= 10000)
-		[self confirm_write];
+	if ((rows & 0xffff) == 0)
+		if ([self flush] < 0)
+			return NULL;
 
 	const int io_rate_limit = cfg.snap_io_rate_limit * 1024 * 1024;
 	if (io_rate_limit <= 0)
