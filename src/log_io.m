@@ -598,6 +598,9 @@ confirm_write
 
 	off_t tail;
 
+	if (wet_rows == 0)
+		goto exit;
+
 	if (fflush(fd) < 0) {
 		say_syserror("fflush");
 
@@ -638,7 +641,7 @@ confirm_write
 	bytes_written += tail - offset;
 	offset = tail;
 	wet_rows = 0;
-
+exit:
 	return next_lsn - 1;
 }
 
