@@ -140,8 +140,8 @@ luaT_box_dispatch(struct lua_State *L)
 {
 	size_t len;
 	const char *req;
-	struct box_txn txn = { .box = *(void * const *)lua_topointer(L, 1),
-			       .op = luaL_checkinteger(L, 2) };
+	struct box_txn *txn = box_txn_alloc((*(Box * const *)lua_topointer(L, 1))->shard->id,
+					    luaL_checkinteger(L, 2));
 
 
 	if (lua_type(L, 3) == ~LJ_TCDATA) {
@@ -152,26 +152,26 @@ luaT_box_dispatch(struct lua_State *L)
 		req = luaL_checklstring(L, 3, &len);
 	}
 	@try {
-		if ([txn.box->shard is_replica])
+		if ([txn->box->shard is_replica])
 			iproto_raise(ERR_CODE_NONMASTER, "replica is readonly");
 
-		box_prepare(&txn, &TBUF(req, len, NULL));
-		if (txn.obj_affected > 0 && txn.object_space->wal) {
-			if ([txn.box->shard submit:req len:len tag:txn.op<<5|TAG_WAL] != 1)
+		box_prepare(txn, &TBUF(req, len, NULL));
+		if (txn->obj_affected > 0 && txn->object_space->wal) {
+			if ([txn->box->shard submit:req len:len tag:txn->op<<5|TAG_WAL] != 1)
 				iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write row");
 		}
-		box_commit(&txn);
+		box_commit(txn);
 
-		if ((txn.flags & BOX_RETURN_TUPLE) == 0)
+		if ((txn->flags & BOX_RETURN_TUPLE) == 0)
 			return 0;
 
-		if (txn.obj != NULL)
-			return push_obj(L, txn.obj);
-		else if (txn.op == DELETE && txn.old_obj != NULL)
-			return push_obj(L, txn.old_obj);
+		if (txn->obj != NULL)
+			return push_obj(L, txn->obj);
+		else if (txn->op == DELETE && txn->old_obj != NULL)
+			return push_obj(L, txn->old_obj);
 	}
 	@catch (Error *e) {
-		box_rollback(&txn);
+		box_rollback(txn);
 		if ([e respondsTo:@selector(code)])
 			lua_pushfstring(L, "code:%d reason:%s", [(id)e code], e->reason);
 		else
@@ -180,7 +180,7 @@ luaT_box_dispatch(struct lua_State *L)
 		lua_error(L);
 	}
 	@finally {
-		box_cleanup(&txn);
+		box_cleanup(txn);
 	}
 	return 0;
 }

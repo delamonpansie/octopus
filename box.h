@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -49,8 +49,12 @@ struct object_space {
 
 enum object_type {
 	BOX_TUPLE = 1,
-	BOX_SMALL_TUPLE = 2
+	BOX_SMALL_TUPLE = 2,
+	BOX_PHI = 3
 };
+
+#define UPDATE_INVISIBLE GHOST
+#define SELECT_INVISIBLE WAL_WAIT
 
 struct box_tuple {
 	u32 bsize; /* byte size of data[] */
@@ -63,6 +67,20 @@ struct box_small_tuple {
 	uint8_t cardinality;
 	uint8_t data[0];
 };
+
+struct box_phi {
+	struct tnt_object *left, *right;
+	TAILQ_ENTRY(box_phi) link;
+	Index<BasicIndex> *index;
+	bool must_rollback;
+};
+TAILQ_HEAD(phi_tailq, box_phi);
+struct tnt_object *phi_left(struct tnt_object *obj);
+struct tnt_object *phi_right(struct tnt_object *obj);
+
+struct tnt_object *tuple_visible_left(struct tnt_object *obj);
+struct tnt_object *tuple_visible_right(struct tnt_object *obj);
+
 
 struct box_snap_row {
 	u32 object_space;
@@ -86,16 +104,17 @@ struct box_txn {
 
 	Box *box;
 	struct object_space *object_space;
-	Index<BasicIndex> *index;
 
 	struct tnt_object *old_obj, *obj;
-	struct tnt_object *ref[2];
-	u16 index_eqmask;
-	bool pk_affected;
+	struct phi_tailq phi;
 	u32 obj_affected;
+	int id;
 
 	enum { UNDECIDED, COMMIT, ROLLBACK } state;
+	TAILQ_ENTRY(box_txn) link;
 };
+
+struct box_txn *box_txn_alloc(int shard_id, int msg_code);
 
 struct box_meta_txn {
 	u16 op;
@@ -180,6 +199,7 @@ ssize_t fields_bsize(u32 cardinality, const void *data, u32 max_len);
 void __attribute__((noreturn)) bad_object_type(void);
 #define box_tuple(obj) ((struct box_tuple *)((obj) + 1))
 #define box_small_tuple(obj) ((struct box_small_tuple *)((obj) + 1))
+#define box_phi(obj) ((struct box_phi *)((obj) + 1))
 static inline int tuple_bsize(const struct tnt_object *obj)
 {
 	switch (obj->type) {
@@ -198,6 +218,11 @@ static inline int tuple_cardinality(const struct tnt_object *obj)
 		return box_tuple(obj)->cardinality;
 	case BOX_SMALL_TUPLE:
 		return box_small_tuple(obj)->cardinality;
+	case BOX_PHI:
+		if (box_phi(obj)->left)
+			return tuple_cardinality(box_phi(obj)->left);
+		else
+			return tuple_cardinality(box_phi(obj)->right);
 	default:
 		bad_object_type();
 	}
@@ -209,6 +234,11 @@ static inline void * tuple_data(struct tnt_object *obj)
 		return box_tuple(obj)->data;
 	case BOX_SMALL_TUPLE:
 		return box_small_tuple(obj)->data;
+	case BOX_PHI:
+		if (box_phi(obj)->left)
+			return tuple_data(box_phi(obj)->left);
+		else
+			return tuple_data(box_phi(obj)->right);
 	default:
 		bad_object_type();
 	}

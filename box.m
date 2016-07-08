@@ -216,7 +216,8 @@ apply:(struct tbuf *)data tag:(u16)tag
 			@throw;
 		}
 	} else {
-		struct box_txn txn = { .box = self };
+		struct box_txn txn = { .box = self,
+				       .phi = TAILQ_HEAD_INITIALIZER(txn.phi) };
 		@try {
 			switch (tag_type) {
 			case TAG_WAL:
@@ -243,8 +244,7 @@ apply:(struct tbuf *)data tag:(u16)tag
 				}
 
 				txn.op = INSERT;
-				txn.index = txn.object_space->index[0];
-				assert(txn.index != nil);
+				assert(txn.object_space->index[0] != nil);
 
 				prepare_replace(&txn, snap->tuple_size, snap->data, snap->data_size);
 				break;
@@ -372,7 +372,8 @@ static int verify_indexes(struct object_space *o, size_t pk_rows)
 		size_t index_rows = 0;
 		[index iterator_init];
 		while ((obj = [index iterator_next])) {
-			if (unlikely(object_ghost(obj)))
+			obj = tuple_visible_left(obj);
+			if (obj == NULL)
 				continue;
 			index_rows++;
 		}
@@ -422,7 +423,8 @@ snapshot_write_rows:(XLog *)l
 		pk_rows = 0;
 		[pk iterator_init];
 		while ((obj = [pk iterator_next])) {
-			if (unlikely(object_ghost(obj)))
+			obj = tuple_visible_left(obj);
+			if (obj == NULL)
 				continue;
 
 			if (obj->type == BOX_TUPLE && container_of(obj, struct gc_oct_object, obj)->refs <= 0) {

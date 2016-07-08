@@ -50,6 +50,7 @@
 
 #include <stdint.h>
 
+static TAILQ_HEAD(box_txn_tailq, box_txn) txn_tailq = TAILQ_HEAD_INITIALIZER(txn_tailq);
 
 static int stat_base;
 char const * const box_ops[] = ENUM_STR_INITIALIZER(MESSAGES);
@@ -154,60 +155,216 @@ net_tuple_add(struct netmsg_head *h, struct tnt_object *obj)
 		net_add_iov(h, (void *)reply, sizeof(*reply) + tuple->bsize);
 		break;
 	}
+	case BOX_PHI:
+		assert(false);
 	default:
 		bad_object_type();
 	}
 }
 
-static void
-box_replace(struct box_txn *txn)
+static struct tnt_object *
+phi_alloc(struct phi_tailq *tailq, Index<BasicIndex> *index,
+	  struct tnt_object *old_obj, struct tnt_object *obj)
 {
-	if (!txn->obj)
+	assert(old_obj == NULL || old_obj->type != BOX_PHI);
+	int size = sizeof(struct tnt_object) + sizeof(struct box_phi);
+	struct tnt_object *phi_obj = palloc(fiber->pool, size);
+	struct box_phi *phi = box_phi(phi_obj);
+	say_debug3("%s: %p index:%i left:%p right:%p", __func__, phi_obj,
+		   index->conf.n, old_obj, obj);
+	phi_obj->type = BOX_PHI;
+	phi_obj->flags = 0;
+	*phi = (struct box_phi) { .index = index,
+				  .left = old_obj,
+				  .right = obj };
+	TAILQ_INSERT_TAIL(tailq, phi, link);
+	return phi_obj;
+}
+
+struct tnt_object *
+phi_left(struct tnt_object *obj)
+{
+	if (obj && obj->type == BOX_PHI) {
+		struct box_phi *phi = box_phi(obj);
+		obj = phi->left;
+	}
+	assert(obj == NULL || obj->type != BOX_PHI);
+	return obj;
+}
+
+struct tnt_object *
+phi_right(struct tnt_object *obj)
+{
+	while (obj && obj->type == BOX_PHI) {
+		struct box_phi *phi = box_phi(obj);
+		obj = phi->right;
+	}
+	assert(obj == NULL || obj->type != BOX_PHI);
+	return obj;
+}
+
+
+static void
+phi_insert(struct phi_tailq *tailq, id<BasicIndex> index,
+	   struct tnt_object *old_obj, struct tnt_object *obj)
+{
+	assert(old_obj != NULL || obj != NULL);
+	assert(obj == NULL || obj->type != BOX_PHI);
+	if (old_obj && old_obj->type == BOX_PHI) {
+		struct box_phi *phi = box_phi(old_obj);
+		while (phi->right && phi->right->type == BOX_PHI)
+			phi = box_phi(phi->right);
+		phi->right = phi_alloc(tailq, index, phi->right, obj);
+	} else {
+		[index replace:phi_alloc(tailq, index, old_obj, obj)];
+	}
+}
+
+static void
+phi_commit(struct box_phi *phi)
+{
+	assert(phi->left != NULL || phi->right != NULL);
+	assert(!phi->must_rollback);
+	say_debug3("%s: %p left:%p right:%p", __func__,
+		   (char *)phi - sizeof(struct tnt_object), phi->left, phi->right);
+
+	if (phi->index->conf.unique) {
+		if (phi->right == NULL)
+			[phi->index remove:phi->left];
+		else {
+			[phi->index replace:phi->right];
+		}
+	} else {
+		if (phi->left)
+			[phi->index remove:phi->left];
+	}
+}
+
+static void
+phi_rollback(struct box_phi *phi)
+{
+	assert(phi->left != NULL || phi->right != NULL);
+	say_debug3("%s: %p left:%p right:%p", __func__,
+		   (char *)phi - sizeof(struct tnt_object), phi->left, phi->right);
+	if (phi->index->conf.unique) {
+		if (phi->must_rollback) /* parent record already detached from index */
+			return;
+		if (phi->left == NULL)
+			[phi->index remove:phi->right];
+		else
+			[phi->index replace:phi->left];
+	} else {
+		if (phi->right)
+			[phi->index remove:phi->right];
+	}
+
+	while (phi->right && phi->right->type == BOX_PHI ) {
+		phi = box_phi(phi->right);
+		phi->must_rollback = true;
+	}
+}
+
+struct tnt_object *
+tuple_visible_left(struct tnt_object *obj)
+{
+	obj = phi_left(obj);
+	if (obj && !(obj->flags & SELECT_INVISIBLE))
+		return obj;
+	else
+		return NULL;
+}
+
+struct tnt_object *
+tuple_visible_right(struct tnt_object *obj)
+{
+	obj = phi_right(obj);
+	if (obj && !(obj->flags & UPDATE_INVISIBLE))
+		return obj;
+	else
+		return NULL;
+}
+
+static void
+object_space_delete(struct object_space *object_space, struct phi_tailq *phi_tailq,
+		   struct tnt_object *index_obj, struct tnt_object *tuple)
+{
+	if (tuple == NULL)
 		return;
 
-	foreach_index(index, txn->object_space) {
-		if (index->conf.n == 0 && !txn->pk_affected) {
-			if (txn->old_obj == NULL)
-				[index replace:txn->obj];
-			else
-				txn->index_eqmask |= 1 << index->conf.n;
-			continue;
-		}
+	tuple->flags |= UPDATE_INVISIBLE;
+
+	id<BasicIndex> pk = object_space->index[0];
+	phi_insert(phi_tailq, pk, index_obj , NULL);
+
+	foreach_indexi(1, index, object_space) {
+		if (index->conf.unique)
+			phi_insert(phi_tailq, index, [index find_obj:tuple] , NULL);
+		else
+			phi_alloc(phi_tailq, index, tuple, NULL);
+	}
+}
+
+static void
+object_space_insert(struct object_space *object_space, struct phi_tailq *phi_tailq,
+		    struct tnt_object *index_obj, struct tnt_object *tuple)
+{
+	tuple->flags |= SELECT_INVISIBLE;
+
+	id<BasicIndex> pk = object_space->index[0];
+	assert(phi_right(index_obj) == NULL);
+	phi_insert(phi_tailq, pk, index_obj, tuple);
+
+	foreach_indexi(1, index, object_space) {
 		if (index->conf.unique) {
-			struct tnt_object *obj = [index find_obj:txn->obj];
-			if (obj == NULL) {
-				[index replace:txn->obj];
-			} else if (obj == txn->old_obj) {
-				[index valid_object:txn->obj];
-				txn->index_eqmask |= 1 << index->conf.n;
+			index_obj = [index find_obj:tuple];
+			if (phi_right(index_obj) == NULL)
+				phi_insert(phi_tailq, index, index_obj, tuple);
+			else
+				iproto_raise_fmt(ERR_CODE_INDEX_VIOLATION,
+						 "duplicate key value violates unique index %i:%s",
+						 index->conf.n, [[index class] name]);
+		} else {
+			[index replace:tuple];
+			phi_alloc(phi_tailq, index, NULL, tuple);
+		}
+	}
+}
+
+static void
+object_space_replace(struct object_space *object_space, struct phi_tailq *phi_tailq,
+		     int pk_affected, struct tnt_object *index_obj,
+		     struct tnt_object *old_tuple, struct tnt_object *tuple)
+{
+	old_tuple->flags |= UPDATE_INVISIBLE;
+	tuple->flags |= SELECT_INVISIBLE;
+
+	id<BasicIndex> pk = object_space->index[0];
+	uintptr_t i = 0;
+	if (!pk_affected) {
+		phi_insert(phi_tailq, pk, index_obj, tuple);
+		i = 1;
+	}
+
+	foreach_indexi(i, index, object_space) {
+		if (index->conf.unique) {
+			index_obj = [index find_obj:tuple];
+
+			if (phi_right(index_obj) == NULL) {
+				phi_insert(phi_tailq, index, [index find_obj:old_tuple], NULL);
+				phi_insert(phi_tailq, index, index_obj, tuple);
+			} else  if (phi_right(index_obj) == old_tuple) {
+				phi_insert(phi_tailq, index, index_obj, tuple);
 			} else {
 				iproto_raise_fmt(ERR_CODE_INDEX_VIOLATION,
 						 "duplicate key value violates unique index %i:%s",
 						 index->conf.n, [[index class] name]);
 			}
 		} else {
-			[index replace:txn->obj];
+			[index replace:tuple];
+			phi_alloc(phi_tailq, index, old_tuple, NULL);
+			phi_alloc(phi_tailq, index, NULL, tuple);
 		}
 	}
-}
-
-enum obj_age {OLD, YOUNG};
-static struct tnt_object *
-txn_acquire(struct box_txn *txn, struct tnt_object *obj, enum obj_age age)
-{
-	say_debug2("%s: obj:%p age:%s", __func__, obj, age == YOUNG ? "young" : "old");
-
-	if (obj == NULL)
-		return NULL;
-
-	object_lock(obj); /* throws exception on lock failure */
-	if (age == YOUNG) {
-		txn->obj = obj;
-		obj->flags |= GHOST;
-	} else {
-		txn->old_obj = obj;
-	}
-	return obj;
 }
 
 void
@@ -218,22 +375,12 @@ prepare_replace(struct box_txn *txn, size_t cardinality, const void *data, u32 d
 	if (data_len == 0 || fields_bsize(cardinality, data, data_len) != data_len)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "tuple encoding error");
 
-	txn_acquire(txn, tuple_alloc(cardinality, data_len), YOUNG);
+	txn->obj = tuple_alloc(cardinality, data_len);
 	memcpy(tuple_data(txn->obj), data, data_len);
 
-	struct tnt_object *obj;
-	ev_tstamp wait_st = ev_now();
-	int wait_cnt = 0;
-	while ((obj = [txn->index find_obj:txn->obj]) && obj->flags & WAL_WAIT) {
-		object_yield(obj);
-		wait_cnt++;
-	}
-	if (ev_now() > wait_st+1) {
-		say_warn("%s: object_yield cycle %4.3fsec %d times", __func__,
-				ev_now() - wait_st, wait_cnt);
-	}
-
-	txn_acquire(txn, obj, OLD);
+	Index<BasicIndex> *pk = txn->object_space->index[0];
+	struct tnt_object *old_root = [pk find_obj:txn->obj];
+	txn->old_obj = phi_right(old_root);
 	txn->obj_affected = txn->old_obj != NULL ? 2 : 1;
 
 	if (txn->flags & BOX_ADD && txn->old_obj != NULL)
@@ -242,7 +389,10 @@ prepare_replace(struct box_txn *txn, size_t cardinality, const void *data, u32 d
 		iproto_raise(ERR_CODE_NODE_NOT_FOUND, "tuple not found");
 
 	say_debug("%s: old_obj:%p obj:%p", __func__, txn->old_obj, txn->obj);
-	box_replace(txn);
+	if (txn->old_obj == NULL)
+		object_space_insert(txn->object_space, &txn->phi, old_root, txn->obj);
+	else
+		object_space_replace(txn->object_space, &txn->phi, 0, old_root, txn->old_obj, txn->obj);
 }
 
 static void
@@ -378,21 +528,9 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 	if (key_cardinality != txn->object_space->index[0]->conf.cardinality)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "key fields count doesn't match");
 
-	struct tnt_object *obj;
-	void *ptr = data->ptr;
-	ev_tstamp wait_st = ev_now();
-	int wait_cnt = 0;
-	while ((obj = [txn->index find_key:data cardinalty:key_cardinality]) && obj->flags & WAL_WAIT) {
-		data->ptr = ptr;
-		object_yield(obj);
-		wait_cnt++;
-	}
-	if (ev_now() > wait_st+1) {
-		say_warn("%s: object_yield cycle %4.3fsec %d times", __func__,
-				ev_now() - wait_st, wait_cnt);
-	}
-
-	txn_acquire(txn, obj, OLD);
+	Index<BasicIndex> *pk = txn->object_space->index[0];
+	struct tnt_object *old_root = [pk find_key:data cardinalty:key_cardinality];
+	txn->old_obj = phi_right(old_root);
 
 	op_cnt = read_u32(data);
 	if (op_cnt > 128)
@@ -424,6 +562,7 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 		field += len;
 	}
 
+	int pk_affected = 0;
 	while (op_cnt-- > 0) {
 		u8 op;
 		u32 field_no, arg_size;
@@ -435,9 +574,10 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 		arg = read_field(data);
 		arg_size = LOAD_VARINT32(arg);
 
-		for (int i = 0; i < txn->index->conf.cardinality; i++) {
-			if (txn->index->conf.field[i].index == field_no) {
-				txn->pk_affected = 1;
+		Index<BasicIndex> *pk = txn->object_space->index[0];
+		for (int i = 0; i < pk->conf.cardinality; i++) {
+			if (pk->conf.field[i].index == field_no) {
+				pk_affected = 1;
 				break;
 			}
 		}
@@ -517,7 +657,7 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 	if (tbuf_len(data) != 0)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
 
-	txn_acquire(txn, tuple_alloc(cardinality, bsize), YOUNG);
+	txn->obj = tuple_alloc(cardinality, bsize);
 
 	u8 *p = tuple_data(txn->obj);
 	i = 0;
@@ -542,11 +682,10 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 		}
 	} while (i < cardinality);
 
-	Index<BasicIndex> *pk = txn->object_space->index[0];
 	if (![pk eq:txn->old_obj :txn->obj])
 		txn->obj_affected++;
 
-	box_replace(txn);
+	object_space_replace(txn->object_space, &txn->phi, pk_affected, old_root, txn->old_obj, txn->obj);
 }
 
 static void __attribute__((noinline))
@@ -567,10 +706,8 @@ process_select(struct netmsg_head *h, Index<BasicIndex> *index,
 		u32 c = read_u32(data);
 		if (index->conf.unique && index->conf.cardinality == c) {
 			obj = [index find_key:data cardinalty:c];
-
+			obj = tuple_visible_left(obj);
 			if (obj == NULL)
-				continue;
-			if (unlikely(object_ghost(obj)))
 				continue;
 			if (unlikely(limit == 0))
 				continue;
@@ -592,7 +729,8 @@ process_select(struct netmsg_head *h, Index<BasicIndex> *index,
 				continue;
 
 			while ((obj = [tree iterator_next_check:cmp]) != NULL) {
-				if (unlikely(object_ghost(obj)))
+				obj = tuple_visible_left(obj);
+				if (unlikely(obj == NULL))
 					continue;
 				if (unlikely(offset > 0)) {
 					offset--;
@@ -619,22 +757,11 @@ prepare_delete(struct box_txn *txn, struct tbuf *key_data)
 {
 	u32 c = read_u32(key_data);
 
-	struct tnt_object *obj;
-	void *ptr = key_data->ptr;
-	ev_tstamp wait_st = ev_now();
-	int wait_cnt = 0;
-	while ((obj = [txn->index find_key:key_data cardinalty:c]) && obj->flags & WAL_WAIT) {
-		key_data->ptr = ptr;
-		object_yield(obj);
-		wait_cnt++;
-	}
-	if (ev_now() > wait_st+1) {
-		say_warn("%s: object_yield cycle %4.3fsec %d times", __func__,
-				ev_now() - wait_st, wait_cnt);
-	}
-
-	txn_acquire(txn, obj, OLD);
+	Index<BasicIndex> *pk = txn->object_space->index[0];
+	struct tnt_object *old_root = [pk find_key:key_data cardinalty:c];
+	txn->old_obj = phi_right(old_root);
 	txn->obj_affected = txn->old_obj != NULL;
+	object_space_delete(txn->object_space, &txn->phi, old_root, txn->old_obj);
 }
 
 void
@@ -649,7 +776,6 @@ box_prepare(struct box_txn *txn, struct tbuf *data)
 		txn->object_space = NULL;
 		return;
 	}
-	txn->index = txn->object_space->index[0];
 
 	switch (txn->op) {
 	case INSERT:
@@ -697,10 +823,9 @@ void
 box_cleanup(struct box_txn *txn)
 {
 	say_debug3("%s: old_obj:%p obj:%p", __func__, txn->old_obj, txn->obj);
-	if (txn->old_obj)
-		object_unlock(txn->old_obj);
-	if (txn->obj)
-		object_unlock(txn->obj);
+
+	if (txn->link.tqe_prev)
+		TAILQ_REMOVE(&txn_tailq, txn, link);
 	switch (txn->state) {
 	case COMMIT:
 		if (txn->old_obj)
@@ -744,58 +869,57 @@ box_commit(struct box_txn *txn)
 
 	say_debug2("%s: old_obj:%p obj:%p", __func__, txn->old_obj, txn->obj);
 
+	assert(txn->state == UNDECIDED);
 	txn->state = COMMIT;
 	if (txn->obj) {
-		foreach_index(index, txn->object_space) {
-			if (index->conf.unique &&
-			    txn->index_eqmask & 1 << index->conf.n)
-				[index replace:txn->obj];
-		}
 		bytes_usage(txn->object_space, txn->obj, +1);
-		txn->obj->flags &= ~GHOST;
+		txn->obj->flags &= ~SELECT_INVISIBLE;
 	}
-
-	if (txn->old_obj) {
-		foreach_index(index, txn->object_space) {
-			if (!index->conf.unique ||
-			    (txn->index_eqmask & 1 << index->conf.n) == 0)
-				[index remove:txn->old_obj];
-		}
+	if (txn->old_obj)
 		bytes_usage(txn->object_space, txn->old_obj, -1);
-	}
 
+	struct box_phi *phi;
+	TAILQ_FOREACH(phi, &txn->phi, link) {
+		assert(phi->must_rollback == false);
+		phi_commit(phi);
+	}
 	stat_collect(stat_base, txn->op, 1);
 }
 
 void
 box_rollback(struct box_txn *txn)
 {
-	if (!txn->object_space)
+	if (txn->state == ROLLBACK)
 		return;
+	say_debug2("%s:", __func__);
+	if (txn->object_space) {
+		assert(txn->state == UNDECIDED);
+		txn->state = ROLLBACK;
 
-	say_debug2("%s: old_obj:%p obj:%p", __func__, txn->old_obj, txn->obj);
-	txn->state = ROLLBACK;
-
-	if (txn->obj == NULL)
-		return;
-
-	foreach_index(index, txn->object_space) {
-		if (index->conf.unique && [index find_obj:txn->obj] != txn->obj)
-			continue;
-
-		@try {
-			[index remove:txn->obj];
-		}
-		@catch (IndexError *e) {
-			/* obj with invalid shape will cause exception on txn_prepare.
-			   since index traversing order is same for prepare and rollback
-			   there is no references to obj in following indexes */
-			[e release];
-			break;
-		}
+		struct box_phi *phi;
+		TAILQ_FOREACH(phi, &txn->phi, link)
+			phi_rollback(phi);
+		if (txn->old_obj)
+			txn->old_obj->flags &= ~UPDATE_INVISIBLE;
 	}
+	txn = TAILQ_NEXT(txn, link);
+	if (txn)
+		box_rollback(txn);
 }
 
+struct box_txn *
+box_txn_alloc(int shard_id, int msg_code)
+{
+	static int cnt;
+	struct box_txn *txn = p0alloc(fiber->pool, sizeof(*txn));
+	txn->op = msg_code & 0xffff;
+	txn->box = (shard_rt + shard_id)->shard->executor;
+	txn->id = cnt++;
+	TAILQ_INIT(&txn->phi);
+	TAILQ_INSERT_TAIL(&txn_tailq, txn, link);
+	say_debug2("%s: txn:%i/%p", __func__, txn->id, txn);
+	return txn;
+}
 
 static Box *
 RT_EXECUTOR(struct iproto *msg)
@@ -883,24 +1007,22 @@ box_meta_cb(struct netmsg_head *wbuf, struct iproto *request)
 static void
 box_cb(struct netmsg_head *wbuf, struct iproto *request)
 {
-	Box *box = RT_EXECUTOR(request);
+	struct box_txn *txn = box_txn_alloc(request->shard_id, request->msg_code);
 	say_debug2("%s: c:%p op:0x%02x sync:%u", __func__, NULL, request->msg_code, request->sync);
-	if ([box->shard is_replica])
+	if ([txn->box->shard is_replica])
 		iproto_raise(ERR_CODE_NONMASTER, "replica is readonly");
 
-	struct box_txn txn = { .op = request->msg_code & 0xffff,
-			       .box = box };
 	@try {
 		@try {
-			box_prepare(&txn, &TBUF(request->data, request->data_len, NULL));
+			box_prepare(txn, &TBUF(request->data, request->data_len, NULL));
 
-			if (!txn.object_space)
+			if (!txn->object_space)
 				iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "ignored object space");
 
-			if (txn.obj_affected > 0 && txn.object_space->wal) {
-				if ([box->shard submit:request->data
-						   len:request->data_len
-						   tag:request->msg_code<<5|TAG_WAL] != 1)
+			if (txn->obj_affected > 0 && txn->object_space->wal) {
+				if ([txn->box->shard submit:request->data
+							len:request->data_len
+							tag:request->msg_code<<5|TAG_WAL] != 1)
 					iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
 			}
 		}
@@ -912,18 +1034,18 @@ box_cb(struct netmsg_head *wbuf, struct iproto *request)
 				if (e->backtrace)
 					say_debug("backtrace:\n%s", e->backtrace);
 			}
-			box_rollback(&txn);
+			box_rollback(txn);
 			@throw;
 		}
 		@try {
-			box_commit(&txn);
+			box_commit(txn);
 			struct iproto_retcode *reply = iproto_reply(wbuf, request, ERR_CODE_OK);
-			net_add_iov_dup(wbuf, &txn.obj_affected, sizeof(u32));
-			if (txn.flags & BOX_RETURN_TUPLE) {
-				if (txn.obj)
-					net_tuple_add(wbuf, txn.obj);
-				else if (request->msg_code == DELETE && txn.old_obj)
-					net_tuple_add(wbuf, txn.old_obj);
+			net_add_iov_dup(wbuf, &txn->obj_affected, sizeof(u32));
+			if (txn->flags & BOX_RETURN_TUPLE) {
+				if (txn->obj)
+					net_tuple_add(wbuf, txn->obj);
+				else if (request->msg_code == DELETE && txn->old_obj)
+					net_tuple_add(wbuf, txn->old_obj);
 			}
 			iproto_reply_fixup(wbuf, reply);
 		}
@@ -935,7 +1057,7 @@ box_cb(struct netmsg_head *wbuf, struct iproto *request)
 		}
 	}
 	@finally {
-		box_cleanup(&txn);
+		box_cleanup(txn);
 	}
 }
 

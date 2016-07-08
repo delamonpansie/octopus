@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2015 Mail.RU
- * Copyright (C) 2015 Yuriy Vostrikov
+ * Copyright (C) 2015, 2016 Mail.RU
+ * Copyright (C) 2015, 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -175,7 +175,7 @@ box_commit_meta(struct box_meta_txn *txn)
 		say_info("DROP object_space n:%i", txn->object_space->n);
 		[pk iterator_init];
 		while ((obj = [pk iterator_next]) != NULL) {
-			assert(!(object_ghost(obj)));
+			assert(tuple_visible_left(obj) == obj);
 			object_decr_ref(obj);
 		}
 		foreach_index(index, txn->object_space)
@@ -187,7 +187,7 @@ box_commit_meta(struct box_meta_txn *txn)
 		pk = txn->object_space->index[0];
 		[pk iterator_init];
 		while ((obj = [pk iterator_next]) != NULL) {
-			assert(!(object_ghost(obj)));
+			assert(tuple_visible_left(obj) == obj);
 			tuple_free(obj);
 		}
 		foreach_index(index, txn->object_space)

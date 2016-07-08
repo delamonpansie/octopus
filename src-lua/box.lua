@@ -71,6 +71,7 @@ struct object_space *object_space_l(struct Box *box, int n);
 bool   box_is_primary(struct Box *box);
 int    shard_box_next_primary_n(int n);
 extern const int object_space_max_idx;
+struct tnt_object *tuple_visible_left(struct tnt_object *);
 ]]
 
 local _dispatch = _dispatch
@@ -93,6 +94,7 @@ local object_space_mt = {
                 error("no such index")
             end
             local ind = index.cast(self.__ptr.index[i])
+            ind.__visible = ffi.C.tuple_visible_left
             self.__indexes[i] = ind
             return ind
         end,

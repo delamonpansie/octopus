@@ -114,35 +114,34 @@ stub_box_dispatch(Box *box, value op, value packer)
 	len = Field(packer, 1);
 
 	Error *error = nil;
-	struct box_txn txn = { .box = box,
-			       .op = Int_val(op) };
+	struct box_txn *txn = box_txn_alloc(box->shard->id, Int_val(op));
 	@try {
-		if ([txn.box->shard is_replica])
+		if ([txn->box->shard is_replica])
 			iproto_raise(ERR_CODE_NONMASTER, "replica is readonly");
 
 		char *req_data = String_val(req);
 		int req_len = Int_val(len);
-		box_prepare(&txn, &TBUF(req_data, req_len, NULL));
+		box_prepare(txn, &TBUF(req_data, req_len, NULL));
 
-		if (txn.obj_affected > 0 && txn.object_space->wal) {
-			if ([txn.box->shard submit:req_data len:req_len tag:txn.op<<5|TAG_WAL] != 1)
+		if (txn->obj_affected > 0 && txn->object_space->wal) {
+			if ([txn->box->shard submit:req_data len:req_len tag:txn->op<<5|TAG_WAL] != 1)
 				iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write row");
 		}
-		box_commit(&txn);
+		box_commit(txn);
 
-		if (txn.obj != NULL)
-			affected_obj = txn.obj;
-		else if (txn.op == DELETE && txn.old_obj != NULL)
-			affected_obj = txn.old_obj;
+		if (txn->obj != NULL)
+			affected_obj = txn->obj;
+		else if (txn->op == DELETE && txn->old_obj != NULL)
+			affected_obj = txn->old_obj;
 		else
 			affected_obj = NULL;
 	}
 	@catch (Error *e) {
-		box_rollback(&txn);
+		box_rollback(txn);
 		error = e;
 	}
 	@finally {
-		box_cleanup(&txn);
+		box_cleanup(txn);
 	}
 	if (error)
 		release_and_failwith(error);
