@@ -337,6 +337,7 @@ write_eof_marker
 flush
 {
 	if (fflush(fd) < 0) {
+		say_syserror("fflush");
 		/* prevent silent drop of wet rows.
 		   it's required to call [confirm_write] in case of wet file */
 		assert(wet_rows == 0);
@@ -1498,10 +1499,8 @@ append_row:(struct row_v12 *)row12 data:(const void *)data
 	bytes += sizeof(*row12) + row12->len;
 
 	while (bytes >= io_rate_limit) {
-		if ([self flush] < 0) {
-			say_syserror("unable to flush");
+		if ([self flush] < 0)
 			return NULL;
-		}
 
 		ev_now_update();
 		elapsed = ev_now() - last;
