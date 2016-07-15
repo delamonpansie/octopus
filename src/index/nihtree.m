@@ -178,11 +178,25 @@ set_nodes:(void *)nodes count:(size_t)count allocated:(size_t)allocated
 		qsort_arg(nodes, count, node_size, compare, dtor_arg);
 		/* compress index nodes to pointers */
 		@try {
-			int i;
+			int i, j;
+			tnt_ptr tuples[1024];
+			j = 0;
 			for (i=0; r == NIH_OK && i < count; i++) {
 				struct index_node *node = nodes + i * node_size;
-				tnt_ptr tuple = tnt_obj2ptr(node->obj);
-				r = nihtree_insert_key_buf(&tree, &tconf, &tuple, false, node, &node_a);
+				tuples[j] = tnt_obj2ptr(node->obj);
+				j++;
+				if (j == nelem(tuples)) {
+					r = nihtree_append_buf(&tree, &tconf, tuples, j, &node_a);
+					j = 0;
+				}
+			}
+			if (r == NIH_OK && j > 0) {
+				/* rely here on search pattern after node_a */
+				struct {
+					struct index_node node_a;
+					union index_field  __padding_a[7];
+				} buf[2];
+				r = nihtree_append_buf(&tree, &tconf, tuples, j, (void*)buf);
 			}
 			if (r != NIH_OK) {
 				nihtree_release(&tree, &tconf);

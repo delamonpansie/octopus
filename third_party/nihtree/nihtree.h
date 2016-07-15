@@ -89,8 +89,11 @@ typedef enum niherrcode {
 	NIH_SUPPORT,
 	NIH_DUPLICATE,
 	NIH_NOTFOUND,
+#ifdef NIH_TREE_INTERNAL
 /* internal states */
-	NIH_MODIFIED = 1
+	NIH_MODIFIED = -1,
+	NIH_ROOT_FULL = -2
+#endif
 } niherrcode_t;
 
 typedef enum nihscan_direction {
@@ -161,7 +164,6 @@ nihtree_iter_max_height(size_t bytes) {
  * nihtree_iter_t* iter = NULL;
  * nihtree_iter_realloc(&iter, nihtree_height(tree));
  */
-
 static inline void
 nihtree_iter_realloc(nihtree_iter_t** tt, int height, void* (*realloc)(void*, size_t)) {
 	if (*tt == NULL) {
@@ -188,10 +190,11 @@ size_t nihtree_leaf_header_size();
 
 
 /* FOLLOWING INTERFACE IF YOU DON'T WANT TO ALLOW ALLOCA OR WANT MORE PERFORMANCE
- * buf is for makeing keys for tuples
- * except nihtree_insert_buf, buf should be at least conf->sizeof_key
- * for nihtree_insert_buf, buf should be at least 2*conf->sizeof_key */
+ * buf is for making keys for tuples
+ * except nihtree_(insert|append)_buf, buf should be at least conf->sizeof_key
+ * for nihtree_(insert|append)_buf, buf should be at least 2*conf->sizeof_key */
 niherrcode_t nihtree_insert_buf(nihtree_t *tt, nihtree_conf_t* conf, void *tuple, bool replace, void *buf);
+niherrcode_t nihtree_append_buf(nihtree_t *tt, nihtree_conf_t* conf, void *tuples, uint32_t count, void *buf);
 /* key should be already built using conf->tuple_2_key */
 niherrcode_t nihtree_insert_key_buf(nihtree_t *tt, nihtree_conf_t* conf, void *tuple, bool replace, void *key, void *buf);
 niherrcode_t nihtree_delete_buf(nihtree_t *tt, nihtree_conf_t* conf, void *key, void *buf);

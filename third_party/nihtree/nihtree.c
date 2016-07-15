@@ -31,6 +31,7 @@
 #include <malloc.h>
 
 #include "../bsearch.h"
+#define NIH_TREE_INTERNAL
 #include "nihtree.h"
 
 #if NIH_TREE_DEBUG
@@ -41,6 +42,12 @@
 #ifndef NIH_TREE_NO_SPREAD
 #define NIH_TREE_NO_SPREAD 0
 #endif
+#if NIH_TREE_NO_COUNTS
+#define no_counts 1
+#else
+#define no_counts 0
+#endif
+
 
 #define VOIDMOVE(ptr, cnt, at, oldlen, newlen, elsize) do {\
 	void* _p = (ptr); \
@@ -125,7 +132,8 @@ nihnode_counts(nihnode_t *node) {
 static inline void*
 nihnode_keys(nihnode_t* node) {
 	return ((uint8_t*)node->children) +
-		node->capa*(sizeof(nihpage_t*)+sizeof(uint32_t));
+		node->capa*(sizeof(nihpage_t*) +
+				(no_counts?0:sizeof(uint32_t)));
 }
 
 /* counts: using well known counting approach */
@@ -285,7 +293,8 @@ nihleaf_release(nihtree_conf_t* conf, nihleaf_t* leaf) {
 
 static nihnode_t*
 nihnode_alloc(nihtree_conf_t* conf, uint32_t capa) {
-	size_t elem_sz = conf->sizeof_key + sizeof(nihpage_t*) + sizeof(uint32_t);
+	size_t elem_sz = conf->sizeof_key + sizeof(nihpage_t*) +
+		(no_counts?0:sizeof(uint32_t));
 	size_t sz = sizeof(nihnode_t) + capa * elem_sz;
 	nihnode_t* a = nih_alloc(conf, sz);
 	if (a != NULL) {
@@ -302,7 +311,8 @@ nihnode_willmodify(nihtree_conf_t* conf, nihnode_t* node) {
 	nihnode_t* copy = nihnode_alloc(conf, node->capa);
 	if (copy == NULL)
 		return NULL;
-	size_t elem_sz = conf->sizeof_key + sizeof(nihpage_t*) + sizeof(uint32_t);
+	size_t elem_sz = conf->sizeof_key + sizeof(nihpage_t*) +
+		(no_counts?0:sizeof(uint32_t));
 	memcpy(copy, node, sizeof(node) + node->capa * elem_sz);
 	copy->rc = 0;
 	for (int i=0; i<copy->cnt; i++) {
@@ -321,9 +331,11 @@ nihnode_realloc(nihtree_conf_t* conf, nihnode_t* node, uint32_t capa) {
 	t->capa = capa;
 	t->rc = 0;
 	memcpy(t->children, node->children, sizeof(nihpage_t*)*node->cnt);
-	uint32_t* ncnt = nihnode_counts(node);
-	uint32_t* tcnt = nihnode_counts(t);
-	memcpy(tcnt, ncnt, sizeof(uint32_t*)*node->cnt);
+	if (!no_counts) {
+		uint32_t* ncnt = nihnode_counts(node);
+		uint32_t* tcnt = nihnode_counts(t);
+		memcpy(tcnt, ncnt, sizeof(uint32_t*)*node->cnt);
+	}
 	void* nkeys = nihnode_keys(node);
 	void* tkeys = nihnode_keys(t);
 	memcpy(tkeys, nkeys, conf->sizeof_key*node->cnt);
@@ -337,6 +349,19 @@ nihnode_realloc(nihtree_conf_t* conf, nihnode_t* node, uint32_t capa) {
 		nih_free(conf, node);
 	}
 	return t;
+}
+
+static void
+nihnode_moved(nihtree_conf_t* conf, nihnode_t* node) {
+	if (node->rc > 0) {
+		int i;
+		for (i=0; i<node->cnt; i++) {
+			node->children[i]->common.rc++;
+		}
+		node->rc--;
+	} else {
+		nih_free(conf, node);
+	}
 }
 
 static inline void
@@ -362,13 +387,32 @@ nihnode_counts_optimize(nihnode_t* node) {
 	uint32_t* cnts = nihnode_counts(node);
 	nihnode_counts_check(node, cnts);
 	counts_optimize(cnts, node->cnt);
-	node->total = counts_sumfirst(cnts, node->cnt);
+}
+
+static uint32_t
+nihnode_counts_sumfirst(nihnode_t* node, int cnt) {
+	int i;
+	uint32_t sum = 0;
+	if (!no_counts) {
+		sum = counts_sumfirst(nihnode_counts(node), cnt);
+	} else if (node->height > 1) {
+		for (i = 0; i < cnt; i++) {
+			sum += node->children[i]->common.root_total;
+		}
+	} else {
+		for (i = 0; i < cnt; i++) {
+			sum += node->children[i]->common.cnt;
+		}
+	}
+	return sum;
 }
 
 static void
 nihnode_counts_add(nihnode_t* node, int pos, int diff) {
-	uint32_t* cnts = nihnode_counts(node);
-	counts_add(cnts, node->cnt, pos, diff);
+	if (!no_counts) {
+		uint32_t* cnts = nihnode_counts(node);
+		counts_add(cnts, node->cnt, pos, diff);
+	}
 	node->total += diff;
 }
 
@@ -562,7 +606,7 @@ nihtree_key_position_i(nihpage_t *page, nihtree_conf_t* conf, void const *key, n
 			*r = NIH_NOTFOUND;
 			return 0;
 		}
-		res += counts_sumfirst(nihnode_counts(node), pos);
+		res += nihnode_counts_sumfirst(node, pos);
 		page = node->children[pos];
 	}
 	search_res_t s = nihleaf_pos_search(&page->leaf, conf, key, buf);
@@ -600,22 +644,25 @@ nihtree_key_position_buf(nihtree_t *tt, nihtree_conf_t* conf, void const *key, n
 typedef struct modify_ctx {
 	nihtree_conf_t* conf;
 	void	*tuple, *key, *buf;
-	bool	replace;
-	bool    added;
+	uint16_t added : 15;
+	bool	 replace : 1;
 	uint16_t child_pos;
+	uint32_t cnt;
 } modify_ctx_t;
 
 static void
 nihnode_insert_at(nihtree_conf_t* conf, nihnode_t* n, int at, nihpage_t* child, void* key) {
 	nihpage_t** ch = n->children;
-	uint32_t* cnts = nihnode_counts(n);
 	void* keys = nihnode_keys(n);
 	assert(n->capa >= n->cnt + 1);
 	ARRMOVE(ch, n->cnt, at, 0, 1);
-	ARRMOVE(cnts, n->cnt, at, 0, 1);
 	VOIDMOVE(keys, n->cnt, at, 0, 1, conf->sizeof_key);
 	ch[at] = child;
-	cnts[at] = nihpage_total(child);
+	if (!no_counts) {
+		uint32_t* cnts = nihnode_counts(n);
+		ARRMOVE(cnts, n->cnt, at, 0, 1);
+		cnts[at] = nihpage_total(child);
+	}
 	memcpy(keys + at*conf->sizeof_key, key, conf->sizeof_key);
 	n->cnt++;
 }
@@ -624,11 +671,13 @@ static void
 nihnode_delete_at(nihtree_conf_t* conf, nihnode_t* n, int at, int k) {
 	if (k == 0) return;
 	nihpage_t** ch = n->children;
-	uint32_t* cnts = nihnode_counts(n);
 	void* keys = nihnode_keys(n);
 	ARRMOVE(ch, n->cnt, at, k, 0);
-	ARRMOVE(cnts, n->cnt, at, k, 0);
 	VOIDMOVE(keys, n->cnt, at, k, 0, conf->sizeof_key);
+	if (!no_counts) {
+		uint32_t* cnts = nihnode_counts(n);
+		ARRMOVE(cnts, n->cnt, at, k, 0);
+	}
 	n->cnt -= k;
 }
 
@@ -656,7 +705,10 @@ simulate(nihnode_t* node, int pos, int size_max, struct reorg_action acts[1]) {
 	uint32_t sum = 0;
 	uint32_t sizes[5];
 	int opos = pos - offset;
-	int j, l, r;
+	int j;
+#if !NIH_TREE_NO_SPREAD
+	int l, r;
+#endif
 	for (j = 0; j < n; j++) {
 		sizes[j] = node->children[offset+j]->common.cnt;
 		sum += sizes[j];
@@ -678,7 +730,7 @@ simulate(nihnode_t* node, int pos, int size_max, struct reorg_action acts[1]) {
 	} else {
 		return 0;
 	}
-#endif
+#else
 	if (opos > 0 && sizes[opos-1] + child_cnt <= size_max - 2) {
 		acts[0].act = RA_JOIN;
 		acts[0].pos = pos-1;
@@ -715,6 +767,7 @@ simulate(nihnode_t* node, int pos, int size_max, struct reorg_action acts[1]) {
 	acts[0].len = r-l;
 	acts[0].newlen = RUP(sum, size_max-2);
 	return 1;
+#endif
 }
 
 static niherrcode_t nihnode_compact_first_level_spread(nihtree_conf_t* conf, nihnode_t* node, struct reorg_action* act);
@@ -730,7 +783,8 @@ nihnode_compact(nihtree_conf_t* conf, nihnode_t* node, int pos, void* buf) {
 	if (!simulate(node, pos, node->height == 1 ? conf->leaf_max : conf->inner_max, acts))
 		return NIH_OK;
 
-	nihnode_counts_deoptimize(node);
+	if (!no_counts)
+		nihnode_counts_deoptimize(node);
 	niherrcode_t r = NIH_OK;
 	if (node->height == 1) {
 		switch (acts[0].act) {
@@ -763,14 +817,17 @@ nihnode_compact(nihtree_conf_t* conf, nihnode_t* node, int pos, void* buf) {
 			abort();
 		}
 	}
-	nihnode_counts_optimize(node);
+	if (!no_counts)
+		nihnode_counts_optimize(node);
+#if NIH_TREE_DEBUG
+	assert(node->total == nihnode_counts_sumfirst(node, node->cnt));
+#endif
 	return r;
 }
 
 static niherrcode_t
 nihnode_compact_first_level_split(nihtree_conf_t* conf, nihnode_t* node, void* buf, int pos)
 {
-	uint32_t *cnts = nihnode_counts(node);
 	nihleaf_t *chld, *rchld;
 
 	chld = &node->children[pos]->leaf;
@@ -792,7 +849,10 @@ nihnode_compact_first_level_split(nihtree_conf_t* conf, nihnode_t* node, void* b
 			abort();
 		key = buf;
 	}
-	cnts[pos] = chld->cnt;
+	if (!no_counts) {
+		uint32_t *cnts = nihnode_counts(node);
+		cnts[pos] = chld->cnt;
+	}
 	if (chld->capa > conf->leaf_max) {
 		chld = nihleaf_realloc(conf, chld, conf->leaf_max);
 		if (chld != NULL)
@@ -806,7 +866,6 @@ nihnode_compact_first_level_split(nihtree_conf_t* conf, nihnode_t* node, void* b
 static niherrcode_t
 nihnode_compact_first_level_join(nihtree_conf_t* conf, nihnode_t* node, int pos) {
 	assert(pos >= 0 && pos < node->cnt-1);
-	uint32_t *cnts = nihnode_counts(node);
 	nihleaf_t *chld, *rchld;
 
 	chld = &node->children[pos]->leaf;
@@ -820,7 +879,10 @@ nihnode_compact_first_level_join(nihtree_conf_t* conf, nihnode_t* node, int pos)
 			rchld->cnt, conf->sizeof_tuple);
 	chld->cnt += rchld->cnt;
 	assert(chld->cnt <= conf->leaf_max);
-	cnts[pos] = chld->cnt;
+	if (!no_counts) {
+		uint32_t *cnts = nihnode_counts(node);
+		cnts[pos] = chld->cnt;
+	}
 	nihnode_delete_at(conf, node, pos+1, 1);
 	nihleaf_moved(conf, rchld);
 	node->last_op_join = 1;
@@ -873,7 +935,8 @@ nihnode_compact_first_level_spread(nihtree_conf_t* conf, nihnode_t* node, struct
 	assert(conf->tuple_2_key != NULL || conf->sizeof_tuple == conf->sizeof_key);
 	for (j=0; j<act->newlen; j++) {
 		node->children[act->pos+j] = (nihpage_t*)nchlds[j];
-		cnts[act->pos+j] = nchlds[j]->cnt;
+		if (!no_counts)
+			cnts[act->pos+j] = nchlds[j]->cnt;
 		if (conf->tuple_2_key) {
 			if (!conf->tuple_2_key(nchlds[j]->data, key, conf->arg))
 				abort();
@@ -889,7 +952,7 @@ nihnode_compact_first_level_spread(nihtree_conf_t* conf, nihnode_t* node, struct
 	}
 	node->last_op_join = act->newlen < act->len;
 #if NIH_TREE_DEBUG
-	for (int j=0; j<node->cnt-1; j++) {
+	for (j=0; j<node->cnt-1; j++) {
 		void* akey = nihnode_keys(node) + conf->sizeof_key * j;
 		void* bkey = nihnode_keys(node) + conf->sizeof_key * (j+1);
 		assert(conf->key_cmp(akey, bkey, conf->arg) < 0);
@@ -901,7 +964,6 @@ nihnode_compact_first_level_spread(nihtree_conf_t* conf, nihnode_t* node, struct
 static niherrcode_t
 nihnode_compact_high_level_split(nihtree_conf_t* conf, nihnode_t* node, int pos)
 {
-	uint32_t *cnts = nihnode_counts(node);
 	nihnode_t *chld, *rchld;
 
 	chld = &node->children[pos]->node;
@@ -913,24 +975,32 @@ nihnode_compact_high_level_split(nihtree_conf_t* conf, nihnode_t* node, int pos)
 	if (rchld == NULL) return NIH_NOMEMORY;
 	rchld->height = chld->height;
 
-	uint32_t *lcnts = nihnode_counts(chld);
-	uint32_t *rcnts = nihnode_counts(rchld);
-	nihnode_counts_deoptimize(chld);
-
 	int lsize = chld->cnt / 2;
 	int rsize = chld->cnt - lsize;
 	void *lkeys = nihnode_keys(chld);
 	void *rkeys = nihnode_keys(rchld);
 	VOIDCPY(rkeys, 0, lkeys, lsize, rsize, conf->sizeof_key);
-	ARRCPY(rcnts, 0, lcnts, lsize, rsize);
 	ARRCPY(rchld->children, 0, chld->children, lsize, rsize);
+	if (!no_counts) {
+		uint32_t *lcnts = nihnode_counts(chld);
+		uint32_t *rcnts = nihnode_counts(rchld);
+		nihnode_counts_deoptimize(chld);
+		ARRCPY(rcnts, 0, lcnts, lsize, rsize);
+	}
 
 	chld->cnt = lsize;
 	rchld->cnt = rsize;
 
-	nihnode_counts_optimize(chld);
-	nihnode_counts_optimize(rchld);
-	cnts[pos] = chld->total;
+	if (!no_counts) {
+		nihnode_counts_optimize(chld);
+		nihnode_counts_optimize(rchld);
+	}
+	chld->total = nihnode_counts_sumfirst(chld, chld->cnt);
+	rchld->total = nihnode_counts_sumfirst(rchld, rchld->cnt);
+	if (!no_counts) {
+		uint32_t *cnts = nihnode_counts(node);
+		cnts[pos] = chld->total;
+	}
 	nihnode_insert_at(conf, node, pos+1, (nihpage_t*)rchld, rkeys);
 	node->last_op_join = 0;
 	return NIH_MODIFIED;
@@ -939,7 +1009,6 @@ nihnode_compact_high_level_split(nihtree_conf_t* conf, nihnode_t* node, int pos)
 static niherrcode_t
 nihnode_compact_high_level_join(nihtree_conf_t* conf, nihnode_t* node, int pos) {
 	assert(pos >= 0 && pos < node->cnt-1);
-	uint32_t *cnts = nihnode_counts(node);
 	nihnode_t *chld, *rchld;
 
 	chld = &node->children[pos]->node;
@@ -948,28 +1017,35 @@ nihnode_compact_high_level_join(nihtree_conf_t* conf, nihnode_t* node, int pos) 
 	node->children[pos] = (nihpage_t*)chld;
 
 	rchld = &node->children[pos+1]->node;
-	uint32_t *lcnts = nihnode_counts(chld);
-	uint32_t *rcnts = nihnode_counts(rchld);
-	nihnode_counts_deoptimize(chld);
 	void *lkeys = nihnode_keys(chld);
 	void *rkeys = nihnode_keys(rchld);
 	VOIDCPY(lkeys, chld->cnt, rkeys, 0, rchld->cnt, conf->sizeof_key);
-	ARRCPY(lcnts, chld->cnt, rcnts, 0, rchld->cnt);
 	ARRCPY(chld->children, chld->cnt, rchld->children, 0, rchld->cnt);
-	counts_deoptimize(lcnts + chld->cnt, rchld->cnt);
-	nihnode_counts_check(rchld, lcnts + chld->cnt);
-	chld->cnt += rchld->cnt;
+	if (!no_counts) {
+		uint32_t *lcnts = nihnode_counts(chld);
+		uint32_t *rcnts = nihnode_counts(rchld);
+		nihnode_counts_deoptimize(chld);
+		ARRCPY(lcnts, chld->cnt, rcnts, 0, rchld->cnt);
+		counts_deoptimize(lcnts + chld->cnt, rchld->cnt);
+		nihnode_counts_check(rchld, lcnts + chld->cnt);
+	}
 #if NIH_TREE_DEBUG
 	uint32_t old_total = chld->total;
 #endif
-	nihnode_counts_optimize(chld);
+	chld->cnt += rchld->cnt;
+	if (!no_counts) {
+		uint32_t *cnts = nihnode_counts(node);
+		nihnode_counts_optimize(chld);
+		chld->total = nihnode_counts_sumfirst(chld, chld->cnt);
+		cnts[pos] = chld->total;
+	} else {
+		chld->total = nihnode_counts_sumfirst(chld, chld->cnt);
+	}
 #if NIH_TREE_DEBUG
 	assert(old_total + rchld->total == chld->total);
 #endif
-	cnts[pos] = chld->total;
 	nihnode_delete_at(conf, node, pos+1, 1);
-	//nihnode_release(conf, rchld);
-	nih_free(conf, rchld);
+	nihnode_moved(conf, rchld);
 	node->last_op_join = 1;
 	return NIH_MODIFIED;
 }
@@ -1009,8 +1085,10 @@ nihnode_compact_high_level_spread(nihtree_conf_t* conf, nihnode_t* node, struct 
 		}
 		nchlds[j]->height = height;
 	}
-	for (j=0; j<act->len; j++) {
-		nihnode_counts_deoptimize(ochlds[j]);
+	if (!no_counts) {
+		for (j=0; j<act->len; j++) {
+			nihnode_counts_deoptimize(ochlds[j]);
+		}
 	}
 	int oi = 0, ni = 0, oti = 0, tn = sz;
 	while (sum > 0) {
@@ -1021,7 +1099,8 @@ nihnode_compact_high_level_spread(nihtree_conf_t* conf, nihnode_t* node, struct 
 		uint32_t* ocnts = nihnode_counts(ochlds[oi]);
 		uint32_t* ncnts = nihnode_counts(nchlds[ni]);
 		VOIDCPY(nkey, nchlds[ni]->cnt, okey, oti, now, conf->sizeof_key);
-		ARRCPY(ncnts, nchlds[ni]->cnt, ocnts, oti, now);
+		if (!no_counts)
+			ARRCPY(ncnts, nchlds[ni]->cnt, ocnts, oti, now);
 		ARRCPY(nchlds[ni]->children, nchlds[ni]->cnt, ochlds[oi]->children, oti, now);
 		oti += now;
 		if (oti == ochlds[oi]->cnt) {
@@ -1036,19 +1115,21 @@ nihnode_compact_high_level_spread(nihtree_conf_t* conf, nihnode_t* node, struct 
 	}
 	nihnode_delete_at(conf, node, act->pos + act->newlen, act->len - act->newlen);
 	for (j=0; j<act->newlen; j++) {
-		nihnode_counts_optimize(nchlds[j]);
+		if (!no_counts)
+			nihnode_counts_optimize(nchlds[j]);
+		nchlds[j]->total = nihnode_counts_sumfirst(nchlds[j], nchlds[j]->cnt);
 	}
 	uint32_t *cnts = nihnode_counts(node);
 	void* key = nihnode_keys(node) + act->pos*conf->sizeof_key;
 	for (j=0; j<act->newlen; j++) {
 		node->children[act->pos+j] = (nihpage_t*)nchlds[j];
-		cnts[act->pos+j] = nchlds[j]->total;
+		if (!no_counts)
+			cnts[act->pos+j] = nchlds[j]->total;
 		void* nkey = nihnode_keys(nchlds[j]);
 		memcpy(key, nkey, conf->sizeof_key);
 		key += conf->sizeof_key;
 	}
 	for (j=0; j<act->len; j++) {
-		//nihnode_release(conf, ochlds[j]);
 		nih_free(conf, ochlds[j]);
 	}
 #if NIH_TREE_DEBUG
@@ -1185,13 +1266,44 @@ nihtree_insert_leaf(modify_ctx_t *ctx, nihleaf_t *leaf, bool root) {
 	}
 	assert(root || leaf->cnt != leaf->capa);
 	if (root && leaf->cnt == leaf->capa)
-		return NIH_NOTFOUND;
+		return NIH_ROOT_FULL;
 	if (leaf->cnt != s.pos)
 		VOIDMOVE(leaf->data, leaf->cnt, s.pos, 0, 1, conf->sizeof_tuple);
 	memcpy(leaf->data + s.pos*conf->sizeof_tuple, ctx->tuple,conf->sizeof_tuple);
 	leaf->cnt++;
 	leaf->last_op_delete = 0;
-	ctx->added = true;
+	ctx->added = 1;
+	return NIH_OK;
+}
+
+static niherrcode_t
+nihtree_append_leaf(modify_ctx_t *ctx, nihleaf_t *leaf, bool root) {
+	nihtree_conf_t *conf = ctx->conf;
+	void *tuple;
+	int diff;
+	uint32_t cnt = leaf->capa - leaf->cnt;
+	if (ctx->cnt < cnt)
+		cnt = ctx->cnt;
+	tuple = leaf->data + (leaf->cnt-1)*conf->sizeof_tuple;
+	if (conf->key_tuple_cmp != NULL) {
+		diff = conf->key_tuple_cmp(ctx->key, tuple, conf->arg);
+	} else {
+		if (!conf->tuple_2_key(tuple, ctx->buf, conf->arg))
+			abort();
+		diff = conf->key_cmp(ctx->key, ctx->buf, conf->arg);
+	}
+	if (diff <= 0) {
+		assert(diff > 0);
+		abort();
+	}
+	ctx->child_pos = leaf->cnt;
+	assert(root || leaf->cnt != leaf->capa);
+	if (root && leaf->cnt == leaf->capa)
+		return NIH_ROOT_FULL;
+	memcpy(tuple + conf->sizeof_tuple, ctx->tuple, conf->sizeof_tuple * cnt);
+	leaf->cnt += cnt;
+	leaf->last_op_delete = 0;
+	ctx->added = cnt;
 	return NIH_OK;
 }
 
@@ -1202,8 +1314,10 @@ nihtree_insert_node(modify_ctx_t *ctx, nihnode_t *node) {
 	int pos = nihnode_pos_search(node, conf, ctx->key);
 	if (pos == -1) pos = 0;
 #if NIH_TREE_DEBUG
-	nihnode_counts_deoptimize(node);
-	nihnode_counts_optimize(node);
+	if (!no_counts) {
+		nihnode_counts_deoptimize(node);
+		nihnode_counts_optimize(node);
+	}
 #endif
 	r = nihnode_compact(conf, node, pos, ctx->buf);
 	if (r == NIH_MODIFIED) {
@@ -1211,9 +1325,15 @@ nihtree_insert_node(modify_ctx_t *ctx, nihnode_t *node) {
 		if (pos == -1) pos = 0;
 	} else if (r != NIH_OK)
 		return r;
+	if (ctx->cnt > 1 && pos != node->cnt-1) {
+		assert(pos == node->cnt-1);
+		abort();
+	}
 #if NIH_TREE_DEBUG
-	nihnode_counts_deoptimize(node);
-	nihnode_counts_optimize(node);
+	if (!no_counts) {
+		nihnode_counts_deoptimize(node);
+		nihnode_counts_optimize(node);
+	}
 #endif
 	nihpage_t** pp = &node->children[pos];
 	if (node->height == 1) {
@@ -1222,7 +1342,10 @@ nihtree_insert_node(modify_ctx_t *ctx, nihnode_t *node) {
 		if (child == NULL)
 			return NIH_NOMEMORY;
 		*pp = (nihpage_t*)child;
-		r = nihtree_insert_leaf(ctx, child, false);
+		if (ctx->cnt == 1)
+			r = nihtree_insert_leaf(ctx, child, false);
+		else
+			r = nihtree_append_leaf(ctx, child, false);
 		if (r != NIH_OK)
 			return r;
 	} else {
@@ -1236,7 +1359,7 @@ nihtree_insert_node(modify_ctx_t *ctx, nihnode_t *node) {
 			return r;
 	}
 	if (ctx->added)
-		nihnode_counts_add(node, pos, 1);
+		nihnode_counts_add(node, pos, ctx->added);
 	if (ctx->child_pos == 0) {
 		void* ch_key = nihnode_keys(node) + conf->sizeof_key * pos;
 		memcpy(ch_key, ctx->key, conf->sizeof_key);
@@ -1252,8 +1375,10 @@ nihtree_insert_node(modify_ctx_t *ctx, nihnode_t *node) {
 	}
 #endif
 #if NIH_TREE_DEBUG
-	nihnode_counts_deoptimize(node);
-	nihnode_counts_optimize(node);
+	if (!no_counts) {
+		nihnode_counts_deoptimize(node);
+		nihnode_counts_optimize(node);
+	}
 #endif
 	return NIH_OK;
 }
@@ -1263,14 +1388,14 @@ nihtree_insert_root(modify_ctx_t *ctx, nihpage_t **pp) {
 	niherrcode_t r;
 	nihtree_conf_t *conf = ctx->conf;
 	nihpage_t *p;
-	p = nihpage_willmodify(ctx->conf, *pp);
+	p = nihpage_willmodify(conf, *pp);
 	if (p == NULL) return NIH_NOMEMORY;
 	*pp = p;
 	if (p->common.height == 0) {
 		/* root is leaf */
 		nihleaf_t *leaf = &p->leaf;
 		r = nihtree_insert_leaf(ctx, leaf, true);
-		if (r != NIH_NOTFOUND) {
+		if (r != NIH_ROOT_FULL) {
 			return r;
 		}
 		p = nihtree_expand_root_leaf(conf, leaf, ctx->buf);
@@ -1279,6 +1404,40 @@ nihtree_insert_root(modify_ctx_t *ctx, nihpage_t **pp) {
 		*pp = p;
 		if (p->common.height == 0) {
 			return nihtree_insert_leaf(ctx, &p->leaf, false);
+		}
+		/* else insert into node */
+	}
+	nihnode_t* node = nihtree_expand_root_node(conf, &p->node);
+	if (node == NULL)
+		return NIH_NOMEMORY;
+	*pp = (nihpage_t*)node;
+	r = nihtree_insert_node(ctx, node);
+	if (r != NIH_OK)
+		return r;
+	return NIH_OK;
+}
+
+static niherrcode_t
+nihtree_append_root(modify_ctx_t *ctx, nihpage_t **pp) {
+	niherrcode_t r;
+	nihtree_conf_t *conf = ctx->conf;
+	nihpage_t *p;
+	p = nihpage_willmodify(conf, *pp);
+	if (p == NULL) return NIH_NOMEMORY;
+	*pp = p;
+	if (p->common.height == 0) {
+		/* root is leaf */
+		nihleaf_t *leaf = &p->leaf;
+		r = nihtree_append_leaf(ctx, leaf, true);
+		if (r != NIH_ROOT_FULL) {
+			return r;
+		}
+		p = nihtree_expand_root_leaf(conf, leaf, ctx->buf);
+		if (p == NULL)
+			return NIH_NOMEMORY;
+		*pp = p;
+		if (p->common.height == 0) {
+			return nihtree_append_leaf(ctx, &p->leaf, false);
 		}
 		/* else insert into node */
 	}
@@ -1312,7 +1471,8 @@ nihtree_insert_key_buf(nihtree_t *tt, nihtree_conf_t* conf, void *tuple, bool re
 	ctx.key = key;
 	ctx.buf = buf;
 	ctx.replace = replace;
-	ctx.added = false;
+	ctx.added = 0;
+	ctx.cnt = 1;
 	return nihtree_insert_root(&ctx, &tt->root);
 }
 
@@ -1342,6 +1502,51 @@ nihtree_insert_buf(nihtree_t *tt, nihtree_conf_t* conf, void *tuple, bool replac
 	return nihtree_insert_key_buf(tt, conf, tuple, replace, key, buf);
 }
 
+niherrcode_t
+nihtree_append_buf(nihtree_t *tt, nihtree_conf_t* conf, void *tuples, uint32_t count, void *buf) {
+	niherrcode_t r;
+	modify_ctx_t ctx;
+	ctx.conf = conf;
+	ctx.tuple = tuples;
+	ctx.cnt = count;
+	assert(conf->tuple_2_key == NULL || buf != NULL);
+	if (conf->tuple_2_key != NULL) {
+		ctx.key = buf;
+		ctx.buf = buf + conf->sizeof_key;
+	}
+	ctx.replace = false;
+	ctx.added = 0;
+	if (tt->root == NULL) {
+		uint32_t max_capa = conf->leaf_max * 3 / 2;
+		uint32_t cnt  = !conf->flexi_size ?  conf->leaf_max :
+			(ctx.cnt > max_capa ?  max_capa :
+			 nih_flexi_capa(ctx.cnt, max_capa));
+		nihleaf_t* leaf = nihleaf_alloc(conf, cnt);
+		if (leaf == NULL) return NIH_NOMEMORY;
+		cnt = cnt < ctx.cnt ? cnt : ctx.cnt;
+		memcpy(leaf->data, ctx.tuple, conf->sizeof_tuple*cnt);
+		leaf->cnt = cnt;
+		tt->root = (nihpage_t*)leaf;
+		ctx.added = cnt;
+	}
+	while (ctx.cnt > ctx.added) {
+		ctx.tuple += conf->sizeof_tuple*ctx.added;
+		ctx.cnt -= ctx.added;
+		ctx.added = 0;
+		if (conf->tuple_2_key != NULL) {
+			if (!conf->tuple_2_key(ctx.tuple, ctx.key, conf->arg))
+				abort();
+		} else {
+			ctx.key = ctx.tuple;
+		}
+		r = nihtree_append_root(&ctx, &tt->root);
+		if (r != NIH_OK)
+			return r;
+	}
+	assert(ctx.cnt == ctx.added);
+	return NIH_OK;
+}
+
 static niherrcode_t
 nihtree_delete_leaf(modify_ctx_t* ctx, nihleaf_t* leaf) {
 	nihtree_conf_t *conf = ctx->conf;
@@ -1364,8 +1569,10 @@ nihtree_delete_node(modify_ctx_t* ctx, nihnode_t *node) {
 	if (pos == -1)
 		return NIH_NOTFOUND;
 #if NIH_TREE_DEBUG
-	nihnode_counts_deoptimize(node);
-	nihnode_counts_optimize(node);
+	if (!no_counts) {
+		nihnode_counts_deoptimize(node);
+		nihnode_counts_optimize(node);
+	}
 #endif
 	r = nihnode_compact(conf, node, pos, ctx->buf);
 	if (r == NIH_MODIFIED) {
@@ -1375,8 +1582,10 @@ nihtree_delete_node(modify_ctx_t* ctx, nihnode_t *node) {
 	nihpage_t** pp = &node->children[pos];
 	void* ch_key = nihnode_keys(node) + conf->sizeof_key * pos;
 #if NIH_TREE_DEBUG
-	nihnode_counts_deoptimize(node);
-	nihnode_counts_optimize(node);
+	if (!no_counts) {
+		nihnode_counts_deoptimize(node);
+		nihnode_counts_optimize(node);
+	}
 #endif
 	if (node->height == 1) {
 		nihleaf_t* child = &(*pp)->leaf;
@@ -1418,8 +1627,10 @@ nihtree_delete_node(modify_ctx_t* ctx, nihnode_t *node) {
 	}
 #endif
 #if NIH_TREE_DEBUG
-	nihnode_counts_deoptimize(node);
-	nihnode_counts_optimize(node);
+	if (!no_counts) {
+		nihnode_counts_deoptimize(node);
+		nihnode_counts_optimize(node);
+	}
 #endif
 	ctx->child_pos = ctx->child_pos == 0 ? pos : 1;
 	return NIH_OK;
@@ -1430,7 +1641,7 @@ nihtree_delete_root(modify_ctx_t* ctx, nihpage_t** pp) {
 	niherrcode_t r;
 	nihtree_conf_t *conf = ctx->conf;
 	nihpage_t *p;
-	p = nihpage_willmodify(ctx->conf, *pp);
+	p = nihpage_willmodify(conf, *pp);
 	if (p == NULL) return NIH_NOMEMORY;
 	*pp = p;
 	if (p->common.height == 0) {
@@ -1654,7 +1865,7 @@ nihtree_iter_next(nihtree_iter_t *it) {
 static size_t
 nihtree_node_bytes(nihnode_t* node, nihtree_conf_t* conf) {
 	size_t sum = sizeof(*node);
-	sum += (sizeof(void*)+sizeof(uint32_t)+conf->sizeof_key) * node->capa;
+	sum += (sizeof(void*)+(no_counts?0:sizeof(uint32_t))+conf->sizeof_key) * node->capa;
 	if (node->height == 1) {
 		sum += node->cnt * (sizeof(nihleaf_t) + conf->sizeof_tuple*conf->leaf_max);
 	} else {
@@ -1706,3 +1917,4 @@ size_t
 nihtree_leaf_header_size() {
 	return sizeof(nihleaf_t);
 }
+#undef no_counts
