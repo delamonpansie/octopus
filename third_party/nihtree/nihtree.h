@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2015 Mail.RU
- * Copyright (C) 2015 Sokolov Yuriy <funny.falcon@gmail.com>
+ * Copyright (C) 2015,2016 Mail.RU
+ * Copyright (C) 2015,2016 Sokolov Yuriy <funny.falcon@gmail.com>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,6 +23,9 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
+
+#ifndef NIHTREE_H
+#define NIHTREE_H
 
 #include <sys/types.h>
 #include <inttypes.h>
@@ -137,6 +140,10 @@ static inline uint32_t nihtree_height(nihtree_t* tree) {
 /* nihtree_insert uses alloca if conf->tuple_2_key != NULL */
 niherrcode_t nihtree_insert(nihtree_t *tt, nihtree_conf_t* conf, void *tuple, bool replace);
 niherrcode_t nihtree_delete(nihtree_t *tt, nihtree_conf_t* conf, void *key);
+/* this should be used for initialization only with already sorted unique data.
+ * you ought to append only to the end of a tree and only sorted unique data.
+ * nihtree will not catch your errors. */
+niherrcode_t nihtree_append(nihtree_t *tt, nihtree_conf_t* conf, void *tuples, uint32_t cnt);
 
 /* returns pointer to tuple, copies result code */
 /* returns result code could != NIH_OK if tuple_2_key fails for stored key */
@@ -183,6 +190,8 @@ void nihtree_iter_init(nihtree_t *tt, nihtree_conf_t *conf,
 void nihtree_iter_init_set(nihtree_t *tt, nihtree_conf_t* conf,
 		nihtree_iter_t *it, void *key, nihscan_direction_t direction);
 void* nihtree_iter_next(nihtree_iter_t *it);
+/* moves iterator to skip n tuples */
+void  nihtree_iter_skip(nihtree_iter_t *it, uint32_t n);
 
 size_t nihtree_bytes(nihtree_t *tt, nihtree_conf_t* conf);
 uint32_t nihtree_tuple_space(nihtree_t *tt);
@@ -204,3 +213,5 @@ uint32_t nihtree_key_position_buf(nihtree_t *tt, nihtree_conf_t* conf, void cons
 		niherrcode_t *r, void *buf);
 void nihtree_iter_init_set_buf(nihtree_t *tt, nihtree_conf_t* conf,
 		nihtree_iter_t* it, void *key, nihscan_direction_t direction, void* buf);
+
+#endif

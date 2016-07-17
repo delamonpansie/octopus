@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2015 Mail.RU
- * Copyright (C) 2015 Sokolov Yuriy <funny.falcon@gmail.com>
+ * Copyright (C) 2015,2016 Mail.RU
+ * Copyright (C) 2015,2016 Sokolov Yuriy <funny.falcon@gmail.com>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -1547,6 +1547,15 @@ nihtree_append_buf(nihtree_t *tt, nihtree_conf_t* conf, void *tuples, uint32_t c
 	return NIH_OK;
 }
 
+niherrcode_t
+nihtree_append(nihtree_t *tt, nihtree_conf_t* conf, void *tuples, uint32_t cnt) {
+	char *buf = NULL;
+	if (conf->tuple_2_key != NULL) {
+		buf = alloca(conf->sizeof_key * 2);
+	}
+	return nihtree_append_buf(tt, conf, tuples, cnt, buf);
+}
+
 static niherrcode_t
 nihtree_delete_leaf(modify_ctx_t* ctx, nihleaf_t* leaf) {
 	nihtree_conf_t *conf = ctx->conf;
@@ -1716,19 +1725,20 @@ nihtree_iter_init(nihtree_t *tt, nihtree_conf_t *conf,
 	} else if (direction == nihscan_backward) {
 		while (page->common.height > 0) {
 			nihnode_t* node = &page->node;
-			it->cursor[node->height-1].page = node->children + node->cnt;
-			it->cursor[node->height-1].end = node->children;
+			it->cursor[node->height-1].page = node->children + (node->cnt-1);
+			it->cursor[node->height-1].end = node->children - 1;
 			page = node->children[node->cnt-1];
 		}
 		nihleaf_t* leaf = &page->leaf;
-		it->ptr = leaf->data + leaf->cnt * conf->sizeof_tuple;
-		it->end = leaf->data;
+		it->ptr = leaf->data + (leaf->cnt-1) * conf->sizeof_tuple;
+		it->end = leaf->data - conf->sizeof_tuple;
 	} else {
 		abort();
 	}
 }
 
-static void nihtree_iter_fix_forward(nihtree_iter_t *it);
+static uint32_t nihtree_iter_fix_forward(nihtree_iter_t *it, uint32_t n);
+static uint32_t nihtree_iter_fix_backward(nihtree_iter_t *it, uint32_t n);
 void
 nihtree_iter_init_set_buf(nihtree_t *tt, nihtree_conf_t* conf,
 		nihtree_iter_t* it, void *key, nihscan_direction_t direction, void* buf) {
@@ -1757,20 +1767,24 @@ nihtree_iter_init_set_buf(nihtree_t *tt, nihtree_conf_t* conf,
 		it->ptr = leaf->data + s.pos * conf->sizeof_tuple;
 		it->end = leaf->data + leaf->cnt * conf->sizeof_tuple;
 		if (!s.equal && it->ptr == it->end) {
-			nihtree_iter_fix_forward(it);
+			nihtree_iter_fix_forward(it, 0);
 		}
 	} else if (direction == nihscan_backward) {
 		while (page->common.height > 0) {
 			nihnode_t* node = &page->node;
 			int pos = nihnode_pos_backward(node, conf, key);
-			it->cursor[node->height-1].page = node->children + (pos+1);
-			it->cursor[node->height-1].end = node->children;
+			it->cursor[node->height-1].page = node->children + pos;
+			it->cursor[node->height-1].end = node->children - 1;
 			page = node->children[pos];
 		}
 		nihleaf_t* leaf = &page->leaf;
 		search_res_t s = nihleaf_pos_backward(leaf, conf, key, buf);
-		it->ptr = leaf->data + s.pos * conf->sizeof_tuple;
-		it->end = leaf->data;
+		if (s.pos > 0) {
+			it->ptr = leaf->data + (s.pos-1) * conf->sizeof_tuple;
+			it->end = leaf->data - conf->sizeof_tuple;
+		} else {
+			nihtree_iter_fix_backward(it, 0);
+		}
 	} else {
 		abort();
 	}
@@ -1786,18 +1800,23 @@ nihtree_iter_init_set(nihtree_t *tt, nihtree_conf_t* conf,
 	nihtree_iter_init_set_buf(tt, conf, it, key, direction, buf);
 }
 
-static void
-nihtree_iter_fix_forward(nihtree_iter_t *it) {
+static uint32_t
+nihtree_iter_fix_forward(nihtree_iter_t *it, uint32_t n) {
 	int h = 0;
 	for(;;h++) {
 		assert(h <= it->max_height);
 		if (it->cursor[h].page == NULL) {
 			it->ptr = NULL;
-			return;
+			return n;
 		}
 		assert(it->cursor[h].page < it->cursor[h].end);
+repeat:
 		it->cursor[h].page++;
 		if (it->cursor[h].page != it->cursor[h].end) {
+			if (n > 0 && nihpage_total(*it->cursor[h].page) <= n) {
+				n -= nihpage_total(*it->cursor[h].page);
+				goto repeat;
+			}
 			break;
 		}
 	}
@@ -1807,37 +1826,53 @@ nihtree_iter_fix_forward(nihtree_iter_t *it) {
 		it->cursor[h].page = node->children;
 		it->cursor[h].end = node->children + node->cnt;
 		page = node->children[0];
+		while (n > 0 && nihpage_total(page) <= n) {
+			n -= nihpage_total(page);
+			it->cursor[h].page++;
+			page = *(nihpage_t**)it->cursor[h].page;
+		}
 	}
 	nihleaf_t* leaf = &page->leaf;
 	it->ptr = leaf->data;
 	it->end = leaf->data + leaf->cnt * it->sizeof_tuple;
+	return n;
 }
 
-void*
-nihtree_iter_leaf_backward(nihtree_iter_t *it) {
+static uint32_t
+nihtree_iter_fix_backward(nihtree_iter_t *it, uint32_t n) {
 	int h = 0;
 	for(;;h++) {
 		assert(h <= it->max_height+1);
 		if (it->cursor[h].page == NULL) {
 			it->ptr = NULL;
-			return NULL;
+			return n;
 		}
+repeat:
 		it->cursor[h].page--;
 		if (it->cursor[h].page != it->cursor[h].end) {
+			if (n > 0 && nihpage_total(*it->cursor[h].page) <= n) {
+				n -= nihpage_total(*it->cursor[h].page);
+				goto repeat;
+			}
 			break;
 		}
 	}
-	nihpage_t* page = *(it->cursor[h].page-1);
+	nihpage_t* page = *it->cursor[h].page;
 	for(h--;h>=0;h--) {
 		nihnode_t* node = &page->node;
-		it->cursor[h].page = node->children + node->cnt;
-		it->cursor[h].end = node->children;
+		it->cursor[h].page = node->children + node->cnt-1;
+		it->cursor[h].end = node->children - 1;
 		page = node->children[node->cnt-1];
+		while (n > 0 && nihpage_total(page) <= n) {
+			n -= nihpage_total(page);
+			it->cursor[h].page--;
+			page = *it->cursor[h].page;
+		}
 	}
 	nihleaf_t* leaf = &page->leaf;
 	it->ptr = leaf->data + (leaf->cnt-1) * it->sizeof_tuple;
-	it->end = leaf->data;
-	return it->ptr;
+	it->end = leaf->data - it->sizeof_tuple;
+	return n;
 }
 
 void*
@@ -1845,20 +1880,49 @@ nihtree_iter_next(nihtree_iter_t *it) {
 	if (it->ptr == NULL) {
 		return NULL;
 	}
+	void *res = it->ptr;
+	assert(it->ptr != it->end);
 	if (it->direction == nihscan_forward) {
-		void *res = it->ptr;
-		assert(it->ptr != it->end);
 		it->ptr += it->sizeof_tuple;
 		if (it->ptr == it->end) {
-			nihtree_iter_fix_forward(it);
+			nihtree_iter_fix_forward(it, 0);
 		}
-		return res;
 	} else {
-		if (it->ptr > it->end) {
-			it->ptr -= it->sizeof_tuple;
-			return it->ptr;
+		it->ptr -= it->sizeof_tuple;
+		if (it->ptr == it->end) {
+			nihtree_iter_fix_backward(it, 0);
 		}
-		return nihtree_iter_leaf_backward(it);
+	}
+	return res;
+}
+
+void
+nihtree_iter_skip(nihtree_iter_t *it, uint32_t n) {
+	if (it->ptr == NULL || n == 0) {
+		return;
+	}
+	if (it->direction == nihscan_forward) {
+		uint32_t k;
+		while (it->ptr != NULL && (k = (it->end - it->ptr) / it->sizeof_tuple) < n) {
+			n -= k;
+			n = nihtree_iter_fix_forward(it, n);
+		}
+		if (it->ptr == NULL)
+			return;
+		it->ptr += it->sizeof_tuple * n;
+		if (it->ptr == it->end)
+			nihtree_iter_fix_forward(it, 0);
+	} else {
+		uint32_t k;
+		while (it->ptr != NULL && (k = (it->ptr - it->end) / it->sizeof_tuple) < n) {
+			n -= k;
+			n = nihtree_iter_fix_backward(it, n);
+		}
+		if (it->ptr == NULL)
+			return;
+		it->ptr -= it->sizeof_tuple * n;
+		if (it->ptr == it->end)
+			nihtree_iter_fix_backward(it, 0);
 	}
 }
 
