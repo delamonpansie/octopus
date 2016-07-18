@@ -274,6 +274,13 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 	     (ivar = (id)(obj_space)->index[(uintptr_t)__foreach_idx]);	\
 	     __foreach_idx = (void *)((uintptr_t)__foreach_idx + 1))
 
+#define foreach_indexi(i, ivar, obj_space)				\
+	for (Index<BasicIndex>						\
+		     *__foreach_idx = (void *)i,			\
+		     *ivar = (id)(obj_space)->index[(uintptr_t)__foreach_idx]; \
+	     (ivar = (id)(obj_space)->index[(uintptr_t)__foreach_idx]);	\
+	     __foreach_idx = (void *)((uintptr_t)__foreach_idx + 1))
+
 @interface IndexError: Error
 @end
 
