@@ -94,8 +94,9 @@ reload_graphite_addr(struct octopus_cfg *old _unused_, struct octopus_cfg *new)
 {
 	const char *ga = new->graphite_addr;
 	bool valid = false;
-#if GRAPHITE_ADDR
-#define graddr #GRAPHITE_ADDR
+#ifdef GRAPHITE_ADDR
+#define str(x) #x
+#define graddr str(GRAPHITE_ADDR)
 	if (!ga || ga[0] == 0) {
 		ga = graddr;
 	}
