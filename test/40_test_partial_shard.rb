@@ -97,12 +97,15 @@ slave_env.env_eval do
 
   master.select 0,1,2,3,4,5
 
-  (0..3).each do |shard_id|
+  keys = (0..16).map{|a| a.to_s}.to_a
+  shards = (0..3)
+
+  shards.each do |shard_id|
     slave_env.meta("shard #{shard_id} create por")
     slave_env.meta("shard #{shard_id} obj_space 0 create hash unique string 0")
   end
 
-  (0..3).each do |shard_id|
+  shards.each do |shard_id|
     slave_env.meta("shard #{shard_id} add_replica one")
     slave_env.meta("shard #{shard_id} type part")
     slave_env.meta("shard #{shard_id} master one")
@@ -110,11 +113,13 @@ slave_env.env_eval do
 
   sleep 0.2
 
-  keys = (0..16).map{|a| a.to_s}.to_a
-  slave.select *keys, :shard => 0
-  slave.select *keys, :shard => 1
-  slave.select *keys, :shard => 2
-  slave.select *keys, :shard => 3
+  shards.each do |shard_id|
+    slave.select *keys, :shard => shard_id
+  end
+
+  4.times do |i|
+    master.insert [(i + 100).to_s, "@"]
+  end
 
   slave_env.restart
   slave.reconnect
@@ -122,10 +127,9 @@ slave_env.env_eval do
 
   sleep 0.2
 
-  slave.select *keys, :shard => 0
-  slave.select *keys, :shard => 1
-  slave.select *keys, :shard => 2
-  slave.select *keys, :shard => 3
+  shards.each do |shard_id|
+    slave.select *keys, :shard => shard_id
+  end
 
   slave_env.snapshot
 
@@ -140,10 +144,8 @@ slave_env.env_eval do
 
   sleep 0.2
 
-  slave.select *keys, :shard => 0
-  slave.select *keys, :shard => 1
-  slave.select *keys, :shard => 2
-  slave.select *keys, :shard => 3
-
+  shards.each do |shard_id|
+    slave.select *keys, :shard => shard_id
+  end
 end
 

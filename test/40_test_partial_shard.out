@@ -103,6 +103,18 @@ ok
 # box.select("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", {:shard=>3})
 [["3", "val"], ["7", "val"]]
 
+# legacy_master.insert(["100", "@"])
+1
+
+# legacy_master.insert(["101", "@"])
+1
+
+# legacy_master.insert(["102", "@"])
+1
+
+# legacy_master.insert(["103", "@"])
+1
+
 # box.ping()
 :pong
 
