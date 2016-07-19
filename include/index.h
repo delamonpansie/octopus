@@ -74,7 +74,7 @@ struct index_field_desc {
 	char sort_order, type;
 };
 
-enum index_type { HASH, NUMHASH, SPTREE, FASTTREE, COMPACTTREE, POSTREE, MAX_INDEX_TYPE };
+enum index_type { HASH, NUMHASH, SPTREE, FASTTREE, COMPACTTREE, POSTREE, PHASH, MAX_INDEX_TYPE };
 struct index_conf {
 	char min_tuple_cardinality /* minimum required tuple cardinality */,
 	     cardinality;
@@ -188,6 +188,9 @@ typedef struct tnt_object* tnt_ptr;
 @interface Hash: Index {
 	size_t iter;
 }
+@end
+
+@interface PHash: Index
 @end
 
 @interface CStringHash: Hash <HashIndex> {

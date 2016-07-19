@@ -60,13 +60,13 @@ new_conf:(const struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 		default:
 			abort();
 		}
-	} else if (ic->type == HASH) {
+	} else if (ic->type == HASH || ic->type == PHASH) {
 		if (ic->unique == false)
 			return nil;
 		if (ic->cardinality == 1 &&
 				(ic->field[0].type == SNUM16 || ic->field[0].type == UNUM16))
 			index_raise("NUM16 single column indexes unsupported");
-		i = [GenHash alloc];
+		i = ic->type == HASH ? [GenHash alloc] : [PHash alloc];
 	} else if (ic->type == SPTREE) {
 		i = [SPTree alloc];
 	} else if (ic->type == FASTTREE) {

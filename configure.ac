@@ -73,7 +73,7 @@ AC_SEARCH_LIBS(setproctitle, util)
 # Checks for header files.
 AC_HEADER_ASSERT
 AC_HEADER_STDBOOL
-AC_CHECK_HEADERS([ucontext.h sys/prctl.h sys/pstat.h sys/param.h valgrind/valgrind.h linux/falloc.h sys/syscall.h syscall.h])
+AC_CHECK_HEADERS([ucontext.h sys/prctl.h sys/pstat.h sys/param.h valgrind/valgrind.h linux/falloc.h sys/syscall.h syscall.h immintrin.h])
 AC_DEFINE(HAVE_THIRD_PARTY_QUEUE_H, 1, [x])
 
 OBJCFLAGS=$CFLAGS
@@ -174,6 +174,8 @@ AC_FUNC_ALLOCA
 AC_CHECK_FUNCS([setproctitle sigaltstack prctl fdatasync posix_fadvise sync_file_range madvise sysconf memrchr recvmmsg])
 # mod_try_xdata
 AC_CHECK_FUNCS([fallocate posix_fallocate])
+# for ptr_hash
+AC_CHECK_FUNCS([mremap])
 AC_CHECK_DECL(PAGE_SIZE, [AC_DEFINE(HAVE_PAGE_SIZE, 1, [Define to 1 if PAGE_SIZE provided])], [], [[#include <sys/param.h>]])
 AC_CHECK_DECL(strdupa, [AC_DEFINE(HAVE_STRDUPA, 1, [Define to 1 if strdupa provided])], [])
 AC_CHECK_DECL(TCP_KEEPIDLE, AC_DEFINE(HAVE_TCP_KEEPIDLE, 1, [Define to 1 if setsockopt(fd, SOL_TCP, TCP_KEEPIDLE) available]),
