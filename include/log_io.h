@@ -488,7 +488,7 @@ enum feeder_filter_type {
 
 @interface POR: Shard <Shard,RecoverRow> {
 	XLogReplica *remote;
-	bool partial_replica;
+	bool partial_replica, partial_replica_loading;
 	i64 remote_scn;
 	struct feeder_param feeder;
 	char feeder_param_arg[32];

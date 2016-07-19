@@ -158,7 +158,9 @@ static void
 partial_replica_load(va_list ap)
 {
 	POR *shard = va_arg(ap, POR *);
+	shard->partial_replica_loading = true;
 	[shard load_from_remote];
+	shard->partial_replica_loading = false;
 	if (shard->remote_scn == 0) {
 		[(id)shard->executor free];
 		shard->executor = nil;
@@ -226,29 +228,35 @@ enable_local_writes
 - (void)
 recover_row:(struct row_v12 *)row
 {
-	if (unlikely(cfg.sync_scn_with_lsn && dummy && row->lsn != row->scn))
-		panic("LSN != SCN : %"PRIi64 " != %"PRIi64, row->lsn, row->scn);
-
-	if (unlikely(row->scn - scn != 1 && (row->tag & ~TAG_MASK) == TAG_WAL &&
-		     cfg.panic_on_scn_gap))
-		panic("SCN sequence has gap after %"PRIi64 " -> %"PRIi64, scn, row->scn);
-
-	assert(row->scn <= 0 || row->shard_id == self->id);
+	assert(row->scn <= 0 ||
+	       (row->tag & TAG_MASK) == snap_initial ||
+	       (row->tag & TAG_MASK) == snap_final ||
+	       row->shard_id == self->id);
 	int old_ushard = fiber->ushard;
 	fiber->ushard = self->id;
 
-	// calculate run_crc _before_ calling executor: it may change row
-	if (scn_changer(row->tag))
-		run_crc_calc(&run_crc_log, row->tag, row->data, row->len);
+	if (!partial_replica_loading) {
+		if (unlikely(cfg.sync_scn_with_lsn && dummy && row->lsn != row->scn))
+			panic("LSN != SCN : %"PRIi64 " != %"PRIi64, row->lsn, row->scn);
+
+		if (unlikely(row->scn - scn != 1 && (row->tag & ~TAG_MASK) == TAG_WAL &&
+			     cfg.panic_on_scn_gap))
+			panic("SCN sequence has gap after %"PRIi64 " -> %"PRIi64, scn, row->scn);
+
+
+		// calculate run_crc _before_ calling executor: it may change row
+		if (scn_changer(row->tag))
+			run_crc_calc(&run_crc_log, row->tag, row->data, row->len);
+	}
 
 	switch (row->tag & TAG_MASK) {
 	case snap_initial:
 	case snap_final:
-		if (dummy)
+		if (dummy || partial_replica)
 			snap_loaded = true;
 		break;
 	case run_crc:
-		if (cfg.ignore_run_crc)
+		if (cfg.ignore_run_crc || partial_replica)
 			break;
 
 		if (row->len != sizeof(i64) + sizeof(u32) * 2)
@@ -278,13 +286,18 @@ recover_row:(struct row_v12 *)row
 		break;
 	}
 
-	last_update_tstamp = ev_now();
-	lag = last_update_tstamp - row->tm;
+	if (!partial_replica_loading) {
+		last_update_tstamp = ev_now();
+		lag = last_update_tstamp - row->tm;
 
-	if (scn_changer(row->tag)) {
-		run_crc_record(&run_crc_state, (struct run_crc_hist){ .scn = row->scn, .value = run_crc_log });
-		scn = row->scn;
-		if (partial_replica)
+		if (scn_changer(row->tag)) {
+			run_crc_record(&run_crc_state, (struct run_crc_hist){ .scn = row->scn, .value = run_crc_log });
+			scn = row->scn;
+			if (partial_replica)
+				memcpy(&remote_scn, row->remote_scn, 6);
+		}
+	} else {
+		if (scn_changer(row->tag))
 			memcpy(&remote_scn, row->remote_scn, 6);
 	}
 	fiber->ushard = old_ushard;
