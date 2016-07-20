@@ -329,45 +329,48 @@ end
 
 local function test5(ushard)
     local os = ushard:object_space(1)
-    local a = os:index(0):find(0)
-    local b = os:index(1):find(0)
-    local c = os:index(2):find(0)
-    local d = os:index(3):find(0)
-    return 0, {a,b,c,d}
+    local ret = {}
+    table.insert(ret, os:index(0):find(0))
+    table.insert(ret, os:index(1):find(0))
+    table.insert(ret, os:index(2):find(0))
+    table.insert(ret, os:index(3):find(0))
+
+    return 0, ret
 end
 
 local function test6(ushard)
-    print("ushard", ushard)
     return 0, {ushard:replace(0, "\0\0\0\0", "\0\0\0\0", "\0\0\0\0")}
 end
 
 local function test7(ushard)
-    return 0, {
-        ushard:object_space(0):index(0):find("99"),
-        ushard:update(0, "99", {2,"set","9999"}),
-        ushard:delete(0, "99"),
-        box.tuple{ tostring(ushard:object_space(0):index(0):find("99")) },
-    }
+    local ret = {}
+    table.insert(ret, ushard:object_space(0):index(0):find("99"))
+    table.insert(ret, ushard:update(0, "99", {2,"set","9999"}))
+    table.insert(ret, ushard:delete(0, "99"))
+    table.insert(ret, box.tuple{ tostring(ushard:object_space(0):index(0):find("99")) })
+
+    return 0, ret
 end
 
 local function test8(ushard)
-    return 0, {
-        ushard:object_space(2):index(0):find(0, 0),
-        ushard:update(2, {"\0\0\0\0","\0\0\0\0"}, {2,"set","9999"}),
-        ushard:delete(2, {"\0\0\0\0","\0\0\0\0"}),
-        box.tuple{ tostring(ushard:object_space(2):index(0):find(0, 0)) },
-    }
+    local ret = {}
+    table.insert(ret, ushard:object_space(2):index(0):find(0, 0))
+    table.insert(ret, ushard:update(2, {"\0\0\0\0","\0\0\0\0"}, {2,"set","9999"}))
+    table.insert(ret, ushard:delete(2, {"\0\0\0\0","\0\0\0\0"}))
+    table.insert(ret, box.tuple{ tostring(ushard:object_space(2):index(0):find(0, 0)) })
+    return 0, ret
 end
 
 local function test9(ushard)
     local os = ushard:object_space(2)
-    return 0, {
-        os:replace("\0\0\0\0", "\0\0\0\0", "","",""),
-        os:index(0):find(0, 0),
-        os:update({"\0\0\0\0","\0\0\0\0"}, {2,"set16",0}, {3,"set32", 0}, {4,"set64", 0}),
-        os:update({"\0\0\0\0","\0\0\0\0"}, {2,"add16", 0}, {3, "or32", 14}, {4, "xor64", 99}),
-        os:index(0):find(0, 0)
-    }
+    local ret = {}
+    table.insert(ret, os:replace("\0\0\0\0", "\0\0\0\0", "","",""))
+    table.insert(ret, os:index(0):find(0, 0))
+    table.insert(ret, os:update({"\0\0\0\0","\0\0\0\0"}, {2,"set16",0}, {3,"set32", 0}, {4,"set64", 0}))
+    table.insert(ret, os:update({"\0\0\0\0","\0\0\0\0"}, {2,"add16", 0}, {3, "or32", 14}, {4, "xor64", 99}))
+    table.insert(ret, os:index(0):find(0, 0))
+
+    return 0, ret
 end
 
 local function test10(ushard)
