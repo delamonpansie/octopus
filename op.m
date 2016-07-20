@@ -810,8 +810,6 @@ box_proc_cb(struct netmsg_head *wbuf, struct iproto *request)
 	say_debug("%s: op:0x%02x sync:%u", __func__, request->msg_code, request->sync);
 
 	@try {
-		ev_tstamp start = ev_now(), stop;
-
 #if CFG_caml_path
 		int ret = box_dispach_ocaml(wbuf, request);
 		if (ret == 1) /* ocaml cb not found */
@@ -829,10 +827,6 @@ box_proc_cb(struct netmsg_head *wbuf, struct iproto *request)
 		box_dispach_lua(wbuf, request);
 #endif
 		stat_collect(stat_base, EXEC_LUA, 1);
-
-		stop = ev_now();
-		if (stop - start > cfg.too_long_threshold)
-			say_warn("too long %s: %.3f sec", box_ops[request->msg_code], stop - start);
 	}
 	@catch (Error *e) {
 		say_warn("aborting proc request, [%s reason:\"%s\"] at %s:%d",
@@ -897,7 +891,6 @@ box_cb(struct netmsg_head *wbuf, struct iproto *request)
 	struct box_txn txn = { .op = request->msg_code & 0xffff,
 			       .box = box };
 	@try {
-		ev_tstamp start = ev_now(), stop;
 		@try {
 			box_prepare(&txn, &TBUF(request->data, request->data_len, NULL));
 
@@ -933,10 +926,6 @@ box_cb(struct netmsg_head *wbuf, struct iproto *request)
 					net_tuple_add(wbuf, txn.old_obj);
 			}
 			iproto_reply_fixup(wbuf, reply);
-
-			stop = ev_now();
-			if (stop - start > cfg.too_long_threshold)
-				say_warn("too long %s: %.3f sec", box_ops[txn.op], stop - start);
 		}
 		@catch (Error *e) {
 			panic_exc_fmt(e, "can't handle exception after WAL write: %s", e->reason);
