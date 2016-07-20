@@ -95,15 +95,16 @@ iproto_worker(va_list ap)
 		memcpy(&a, yield(), sizeof(a));
 		size_t req_size = sizeof(struct iproto) + a.r->data_len;
 		a.r = memcpy(palloc(fiber->pool, req_size), a.r, req_size);
+		fiber->ushard = a.r->shard_id;
+		netmsg_io_retain(a.io);
 
 		struct rwlock *lock = &(shard_rt + a.r->shard_id)->lock;
+		if ((a.ih->flags & IPROTO_WLOCK) == 0)
+			rlock(lock);
+		else
+			wlock(lock);
+
 		@try {
-			netmsg_io_retain(a.io);
-			if ((a.ih->flags & IPROTO_WLOCK) == 0)
-				rlock(lock);
-			else
-				wlock(lock);
-			fiber->ushard = a.r->shard_id;
 			a.ih->cb(&a.io->wbuf, a.r);
 		}
 		@catch (Error *e) {
@@ -113,16 +114,15 @@ iproto_worker(va_list ap)
 			iproto_error(&a.io->wbuf, a.r, exc_rc(e), e->reason);
 			[e release];
 		}
-		@finally {
-			if (a.io->fd >= 0 && a.io->prepare_link.le_prev == NULL)
-				LIST_INSERT_HEAD(&service->prepare, a.io, prepare_link);
-			fiber->ushard = -1;
-			if ((a.ih->flags & IPROTO_WLOCK) == 0)
-				runlock(lock);
-			else
-				wunlock(lock);
-			netmsg_io_release(a.io);
-		}
+		if (a.io->fd >= 0 && a.io->prepare_link.le_prev == NULL)
+			LIST_INSERT_HEAD(&service->prepare, a.io, prepare_link);
+
+		if ((a.ih->flags & IPROTO_WLOCK) == 0)
+			runlock(lock);
+		else
+			wunlock(lock);
+		netmsg_io_release(a.io);
+		fiber->ushard = -1;
 
 		fiber_gc();
 	}
