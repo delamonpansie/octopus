@@ -103,6 +103,7 @@ iproto_worker(va_list ap)
 			rlock(lock);
 		else
 			wlock(lock);
+		ev_tstamp start = ev_now(), stop;
 
 		@try {
 			a.ih->cb(&a.io->wbuf, a.r);
@@ -114,6 +115,10 @@ iproto_worker(va_list ap)
 			iproto_error(&a.io->wbuf, a.r, exc_rc(e), e->reason);
 			[e release];
 		}
+		stop = ev_now();
+		if (stop - start > cfg.too_long_threshold)
+			say_warn("too long IPROTO:%i %.3f sec", a.r->msg_code, stop - start);
+
 		if (a.io->fd >= 0 && a.io->prepare_link.le_prev == NULL)
 			LIST_INSERT_HEAD(&service->prepare, a.io, prepare_link);
 
