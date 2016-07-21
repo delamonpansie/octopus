@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2016 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -69,6 +69,7 @@ static inline bool not_sched(struct Fiber* fib) { return fib != sched; }
 #if CFG_lua_path
 	struct lua_State *L;
 #endif
+#if CFG_caml_path
 	struct caml_state {
 		char * top_of_stack;          /* Top of stack for this thread (approx.) */
 		char * bottom_of_stack;       /* Saved value of caml_bottom_of_stack */
@@ -81,7 +82,7 @@ static inline bool not_sched(struct Fiber* fib) { return fib != sched; }
 		void ** backtrace_buffer;    /* Saved backtrace_buffer */
 		intptr_t backtrace_last_exn;     /* Saved backtrace_last_exn (root) */
 	} ML;
-
+#endif
 	struct {
 		struct autorelease_chain *current;
 		struct autorelease_chain top;

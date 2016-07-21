@@ -294,7 +294,6 @@ struct shard_op {
 
 bool our_shard(const struct shard_op *sop);
 
-
 @protocol Executor
 - (id) init;
 - (void) set_shard:(Shard<Shard> *)obj;
