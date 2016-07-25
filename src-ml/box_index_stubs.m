@@ -12,7 +12,8 @@ struct {
 	union index_field  padding_a[7];
 } node_buf;
 
-struct index_node *node = &node_buf.node;
+static struct index_node *node = &node_buf.node;
+static int node_i;
 
 extern void __attribute__((__noreturn__))release_and_failwith(Error *e);
 
@@ -25,40 +26,63 @@ value stub_index_node_set_cardinality(value arg)
 	return(Val_unit);
 }
 
-value stub_index_node_pack_field(Index *index, value i, value ty, value arg)
+value stub_index_node_pack_begin(Index *index)
 {
-	CAMLparam3(i, ty, arg);
+	(void)index;
+	node_i = 0;
+	return Val_unit;
+}
 
+value stub_index_node_pack_u16(Index *index, value arg)
+{
 	struct index_conf *ic = &index->conf;
-	const struct index_field_desc *fd = &ic->field[Int_val(i)];
+	if (node_i > ic->cardinality)
+		caml_invalid_argument("Index.node_pack_u16");
+	const struct index_field_desc *fd = &ic->field[node_i];
 	union index_field *f = (void *)&node->key + fd->offset;
+	f->u16 = Int_val(arg);
+	node->obj = (void *)(uintptr_t)(++node_i);
+	return Val_unit;
+}
 
-	switch (fd->type) {
-	case UNUM16:
-	case SNUM16:
-		if (Int_val(ty) != 0) caml_invalid_argument("Index.index_pack_node: field is NUM16");
-		f->u16 = Int_val(arg);
-		break;
-	case UNUM32:
-	case SNUM32:
-		if (Int_val(ty) != 1) caml_invalid_argument("Index.index_pack_node: field is NUM32");
-		f->u32 = Int_val(arg);
-		break;
-	case UNUM64:
-	case SNUM64:
-		if (Int_val(ty) != 2) caml_invalid_argument("Index.index_pack_node: field is NUM64");
-		f->u64 = Int64_val(arg);
-		break;
-	case STRING:
-		if (Int_val(ty) != 3) caml_invalid_argument("Index.index_pack_node: field is STRING");
-		if (caml_string_length(arg) > 0xffff)
-			caml_invalid_argument("Index.index_pack_node: string key too long");
-		set_lstr_field(f, caml_string_length(arg), (u8 *)String_val(arg));
-		break;
-	case UNDEF:
-		abort();
-	}
-	node->obj = (void *)(uintptr_t)(Int_val(i) + 1); /* cardinality */
+value stub_index_node_pack_u32(Index *index, value arg)
+{
+	struct index_conf *ic = &index->conf;
+	if (node_i > ic->cardinality)
+		caml_invalid_argument("Index.node_pack_u32");
+	const struct index_field_desc *fd = &ic->field[node_i];
+	union index_field *f = (void *)&node->key + fd->offset;
+	f->u32 = Int_val(arg);
+	node->obj = (void *)(uintptr_t)(++node_i);
+	return Val_unit;
+}
+
+value stub_index_node_pack_u64(Index *index, value arg)
+{
+	CAMLparam1(arg);
+	struct index_conf *ic = &index->conf;
+	if (node_i > ic->cardinality)
+		caml_invalid_argument("Index.node_pack_u64");
+	const struct index_field_desc *fd = &ic->field[node_i];
+	union index_field *f = (void *)&node->key + fd->offset;
+	f->u64 = Int64_val(arg);
+	node->obj = (void *)(uintptr_t)(++node_i);
+	CAMLreturn(Val_unit);
+}
+
+value stub_index_node_pack_string(Index *index, value arg)
+{
+	CAMLparam1(arg);
+	struct index_conf *ic = &index->conf;
+	if (node_i > ic->cardinality)
+		caml_invalid_argument("Index.node_pack_string");
+	const struct index_field_desc *fd = &ic->field[node_i];
+	union index_field *f = (void *)&node->key + fd->offset;
+	if (caml_string_length(arg) > 0xffff)
+		caml_invalid_argument("Index.index_pack_node: string key too long");
+	set_lstr_field(f, caml_string_length(arg), (u8 *)String_val(arg));
+
+	node->obj = (void *)(uintptr_t)(++node_i);
 	CAMLreturn(Val_unit);
 }
 

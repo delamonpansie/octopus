@@ -1,95 +1,129 @@
-type objc_ptr
-type _ field = NUM16 : int field
-	     | NUM32 : int field
-	     | NUM64 : Int64.t field
-	     | STRING : string field
-
-type 'a t = { ptr : objc_ptr;
-              node_pack : objc_ptr -> 'a -> unit; }
-
-type index_type = HASH | NUMHASH | SPTREE | FASTTREE | COMPACTTREE | POSTREE
-type 'a iter_init = Iter_empty
-                  | Iter_key of 'a
-                  | Iter_partkey of (int * 'a)
-                  | Iter_tuple of Box_tuple.t
-
+type index
+type index_type = HASH
+                | NUMHASH
+                | SPTREE
+                | FASTTREE
+                | COMPACTTREE
+                | POSTREE
 type iter_dir = Iter_forward | Iter_backward
 
-external node_pack_field : objc_ptr -> int -> 'a field -> 'a -> unit = "stub_index_node_pack_field"
-external node_set_cardinality : int -> unit = "stub_index_node_set_cardinality"
+external node_pack_u16 : index -> int -> unit = "stub_index_node_pack_u16"
+external node_pack_u32 : index -> int -> unit = "stub_index_node_pack_u32"
+external node_pack_u64 : index -> Int64.t -> unit = "stub_index_node_pack_u64"
+external node_pack_string : index -> string -> unit = "stub_index_node_pack_string"
 
-external stub_find_node : objc_ptr -> Octopus.oct_obj = "stub_index_find_node"
-external stub_iterator_init_with_direction : objc_ptr -> int -> unit = "stub_index_iterator_init_with_direction"
-external stub_iterator_init_with_node_direction : objc_ptr -> int -> unit = "stub_index_iterator_init_with_node_direction"
-external stub_iterator_init_with_object_direction : objc_ptr -> Octopus.oct_obj -> int -> unit = "stub_index_iterator_init_with_object_direction"
-external stub_iterator_next : objc_ptr -> Octopus.oct_obj = "stub_index_iterator_next"
+module type Descr = sig
+  type key
+  val obj_space_no : int
+  val index_no: int
+  val node_pack : index -> key -> unit
+end
 
-external stub_index_get : objc_ptr -> int -> Octopus.oct_obj = "stub_index_get"
-external stub_index_slots : objc_ptr -> int = "stub_index_slots"
-external stub_index_type : objc_ptr -> index_type = "stub_index_type"
+module MakeInternal (Descr : Descr) = struct
+  type iter_init = Iter_empty
+                 | Iter_key of Descr.key
+                 | Iter_partkey of (int * Descr.key)
+                 | Iter_tuple of Box_tuple.t
 
-let iterator_init { ptr; node_pack } init dir =
-  let dir = match dir with
-      Iter_forward -> 1
-    | Iter_backward -> -1 in
-  match init with
-    Iter_empty -> stub_iterator_init_with_direction ptr dir
-  | Iter_key key -> begin
-      node_pack ptr key;
-      stub_iterator_init_with_node_direction ptr dir;
-    end
-  | Iter_partkey (n, key) -> begin
-      node_pack ptr key;
-      node_set_cardinality n;
-      stub_iterator_init_with_node_direction ptr dir
-    end
-  | Iter_tuple t ->
-    stub_iterator_init_with_object_direction ptr (Box_tuple.to_oct_obj t) dir
 
-let iterator_next index =
-  Box_tuple.of_oct_obj (stub_iterator_next index.ptr)
+  external node_pack_begin : index -> unit = "stub_index_node_pack_begin"
 
-let iterator_skip index =
-  ignore(stub_iterator_next index.ptr)
+  external node_set_cardinality : int -> unit = "stub_index_node_set_cardinality"
 
-let iterator_take index init dir lim =
-  let rec loop index = function
-      0 -> []
-    | n -> match iterator_next index with
-        a -> a :: loop index (n - 1)
-      | exception Not_found -> [] in
-  iterator_init index init dir;
-  loop index lim
+  external stub_find_node : index -> Octopus.oct_obj = "stub_index_find_node"
+  external stub_iterator_init_with_direction : index -> int -> unit = "stub_index_iterator_init_with_direction"
+  external stub_iterator_init_with_node_direction : index -> int -> unit = "stub_index_iterator_init_with_node_direction"
+  external stub_iterator_init_with_object_direction : index -> Octopus.oct_obj -> int -> unit = "stub_index_iterator_init_with_object_direction"
+  external stub_iterator_next : index -> Octopus.oct_obj = "stub_index_iterator_next"
 
-let index_find { ptr; node_pack } key =
-  node_pack ptr key;
-  Box_tuple.of_oct_obj (stub_find_node ptr)
+  external stub_index_get : index -> int -> Octopus.oct_obj = "stub_index_get"
+  external stub_index_slots : index -> int = "stub_index_slots"
+  external stub_index_type : index -> index_type = "stub_index_type"
 
-let index_get { ptr } slot =
-  Box_tuple.of_oct_obj (stub_index_get ptr slot)
+  let iterator_init ptr init dir =
+    let dir = match dir with
+        Iter_forward -> 1
+      | Iter_backward -> -1 in
+    match init with
+      Iter_empty -> stub_iterator_init_with_direction ptr dir
+    | Iter_key key -> begin
+        node_pack_begin ptr;
+        Descr.node_pack ptr key;
+        stub_iterator_init_with_node_direction ptr dir;
+      end
+    | Iter_partkey (n, key) -> begin
+        node_pack_begin ptr;
+        Descr.node_pack ptr key;
+        node_set_cardinality n;
+        stub_iterator_init_with_node_direction ptr dir
+      end
+    | Iter_tuple t ->
+      stub_iterator_init_with_object_direction ptr (Box_tuple.to_oct_obj t) dir
 
-let index_slots { ptr } =
-  stub_index_slots ptr
+  let iterator_next ptr =
+    Box_tuple.of_oct_obj (stub_iterator_next ptr)
 
-let index_type { ptr } =
-  stub_index_type ptr
+  let iterator_skip ptr =
+    ignore(stub_iterator_next ptr)
 
-let pack1 t0 ptr v0 =
-  node_pack_field ptr 0 t0 v0
+  let iterator_take index init dir lim =
+    let rec loop index = function
+        0 -> []
+      | n -> match iterator_next index with
+          a -> a :: loop index (n - 1)
+        | exception Not_found -> [] in
+    iterator_init index init dir;
+    loop index lim
 
-let pack2 (t0, t1) ptr (v0, v1) =
-  node_pack_field ptr 0 t0 v0;
-  node_pack_field ptr 1 t1 v1
+  let find ptr key =
+    node_pack_begin ptr;
+    Descr.node_pack ptr key;
+    Box_tuple.of_oct_obj (stub_find_node ptr)
 
-let pack3 (t0, t1, t2) ptr (v0, v1, v2) =
-  node_pack_field ptr 0 t0 v0;
-  node_pack_field ptr 1 t1 v1;
-  node_pack_field ptr 2 t2 v2
+  let find_dyn ptr tuple =
+    let rec pack ptr = function
+        Box_tuple.I8 _ -> raise (Invalid_argument "find_by_tuple")
+      | Box_tuple.I16 v -> node_pack_u16 ptr v
+      | Box_tuple.I32 v -> node_pack_u32 ptr v
+      | Box_tuple.I64 v -> node_pack_u64 ptr v
+      | Box_tuple.Bytes v -> node_pack_string ptr v
+      | Box_tuple.Field (t, n) -> node_pack_string ptr (Box_tuple.strfield n t)
+      | Box_tuple.FieldRange (t, n, count) -> begin
+          for i = n to n + count - 1 do
+            node_pack_string ptr (Box_tuple.strfield (n + i) t)
+          done
+        end in
+    node_pack_begin ptr;
+    List.iter (pack ptr) tuple;
+    Box_tuple.of_oct_obj (stub_find_node ptr)
 
-let pack4 (t0, t1, t2, t3) ptr (v0, v1, v2, v3) =
-  node_pack_field ptr 0 t0 v0;
-  node_pack_field ptr 1 t1 v1;
-  node_pack_field ptr 2 t2 v2;
-  node_pack_field ptr 3 t3 v3
+  let get ptr slot =
+    Box_tuple.of_oct_obj (stub_index_get ptr slot)
 
-let mk ptr node_pack = { ptr; node_pack }
+  let slots ptr =
+    stub_index_slots ptr
+
+  let typ ptr =
+    stub_index_type ptr
+end
+
+module Make (Descr : Descr) = struct
+  module Index = MakeInternal(Descr)
+
+  type iter_init = Index.iter_init = Iter_empty
+                                   | Iter_key of Descr.key
+                                   | Iter_partkey of (int * Descr.key)
+                                   | Iter_tuple of Box_tuple.t
+
+  external index : int -> int -> index = "stub_obj_space_index"
+
+  let iterator_init init dir = Index.iterator_init (index Descr.obj_space_no Descr.index_no) init dir
+  and iterator_next () = Index.iterator_next (index Descr.obj_space_no Descr.index_no)
+  and iterator_skip () = Index.iterator_skip (index Descr.obj_space_no Descr.index_no)
+  and iterator_take init dir n = Index.iterator_take (index Descr.obj_space_no Descr.index_no) init dir n
+  and find key = Index.find (index Descr.obj_space_no Descr.index_no) key
+  and find_dyn list = Index.find_dyn (index Descr.obj_space_no Descr.index_no) list
+  and get n = Index.get (index Descr.obj_space_no Descr.index_no) n
+  and slots () = Index.slots (index Descr.obj_space_no Descr.index_no)
+  and typ () = Index.typ (index Descr.obj_space_no Descr.index_no)
+end

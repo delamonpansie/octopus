@@ -87,6 +87,7 @@ let bytes_of_gc_tuple a =
   unsafe_blit_i32 buf 0 bsize;
   unsafe_blit_i32 buf 4 cardinal;
   List.iter (blit_field buf) a;
+  assert(!pos = 8 + bsize);
   buf
 
 let net_add wbuf = function

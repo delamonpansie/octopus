@@ -7,7 +7,7 @@ module Packer = Packer
 exception IProto_Failure = Octopus.IProto_Failure
 
 include Box
-include Box_space
+module ObjSpace = Box_space
 module Tuple = Box_tuple
 module Index = Box_index
 type tuple = Tuple.t

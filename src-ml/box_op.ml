@@ -47,13 +47,13 @@ let upsert box ?(flags=0) n tuple =
   dispatch box msg_insert pa
 
 let insert box n tuple =
-  upsert box ~flags:5 n tuple
-
-let replace box n tuple =
   upsert box ~flags:1 n tuple
 
 let add box n tuple =
   upsert box ~flags:3 n tuple
+
+let replace box n tuple =
+  upsert box ~flags:5 n tuple
 
 let delete box n key =
   let pa = create 32 in
@@ -101,7 +101,3 @@ let update box n key mops =
   List.iter (fun mop -> pack_mop pa mop) mops;
   dispatch box msg_update_fields pa
 
-external stub_get_affected_obj : unit -> Octopus.oct_obj = "stub_get_affected_obj" [@@noalloc]
-let get_affected_tuple () =
-  try Some (Box_tuple.of_oct_obj (stub_get_affected_obj ()))
-  with Not_found -> None

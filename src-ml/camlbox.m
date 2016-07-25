@@ -58,7 +58,7 @@ box_dispach_ocaml(struct netmsg_head *wbuf, struct iproto *request)
 {
 	Shard *shard = (shard_rt + request->shard_id)->shard;
 	static value *dispatch = NULL;
-	int err = 0;
+	int cb_not_found = 0;
 	caml_leave_blocking_section();
 	value state = Val_unit, cbname = Val_unit, cbarg = Val_unit, cbret = Val_unit;
 	Begin_roots4(state, cbname, cbarg, cbret);
@@ -78,10 +78,10 @@ box_dispach_ocaml(struct netmsg_head *wbuf, struct iproto *request)
 	Field(state, 1) = (value)request;
 	Field(state, 2) = (value)shard->executor;
 	cbret = caml_callback3_exn(*dispatch, state, cbname, cbarg);
-	err = Is_exception_result(cbret);
+	cb_not_found = Is_exception_result(cbret);
 	End_roots();
 	caml_enter_blocking_section();
-	return err;
+	return cb_not_found;
 }
 
 // #define Val_none Val_int(0)
@@ -104,6 +104,21 @@ stub_get_affected_obj()
 }
 
 extern void __attribute__((__noreturn__)) release_and_failwith(Error *e);
+
+
+static struct tnt_object *
+tuple_clone(struct tnt_object *obj)
+{
+	int smsize = sizeof(struct tnt_object) + sizeof(struct box_small_tuple) + tuple_bsize(obj);
+	switch(obj->type) {
+	case BOX_TUPLE:
+		object_incr_ref(obj);
+		return obj;
+	case BOX_SMALL_TUPLE:
+		return memcpy(object_alloc(BOX_SMALL_TUPLE, 0, smsize), obj, smsize);
+	default: assert(false);
+	}
+}
 
 value
 stub_box_dispatch(Box *box, value op, value packer)
@@ -129,12 +144,17 @@ stub_box_dispatch(Box *box, value op, value packer)
 		}
 		box_commit(txn);
 
+		if (affected_obj) {
+			tuple_free(affected_obj);
+			affected_obj = NULL;
+		}
 		if (txn->obj != NULL)
 			affected_obj = txn->obj;
 		else if (txn->op == DELETE && txn->old_obj != NULL)
 			affected_obj = txn->old_obj;
-		else
-			affected_obj = NULL;
+
+		if (affected_obj)
+			affected_obj = tuple_clone(affected_obj);
 	}
 	@catch (Error *e) {
 		box_rollback(txn);
@@ -148,31 +168,10 @@ stub_box_dispatch(Box *box, value op, value packer)
 	CAMLreturn(Val_unit);
 }
 
-value
-stub_obj_space_index(Box *box, value val_oid, value val_iid)
-{
-	CAMLparam2(val_oid, val_iid);
-	int oid = Int_val(val_oid),
-	    iid = Int_val(val_iid);
-
-	if (oid < 0 || oid > nelem(box->object_space_registry) - 1)
-		caml_invalid_argument("obj_space_index");
-
-	if (!box->object_space_registry[oid])
-		caml_failwith("object_space is not enabled");
-
-	struct object_space *obj_spc = box->object_space_registry[oid];
-
-	if (iid < 0 || iid > MAX_IDX)
-		caml_invalid_argument("obj_space_index");
-
-	CAMLreturn((value)obj_spc->index[iid]);
-}
-
 Box *
 stub_box_shard(value val)
 {
-	int n = Int_val(val);
+	int n = Int_val(val) >= 0 ? Int_val(val) : fiber->ushard;
 	if (n >= MAX_SHARD)
 		caml_invalid_argument("stub_box_shard");
 
@@ -185,5 +184,29 @@ stub_box_shard(value val)
 	caml_raise_not_found();
 }
 
+value
+stub_obj_space_index(value val_oid, value val_iid)
+{
+	CAMLparam2(val_oid, val_iid);
+	int oid = Int_val(val_oid),
+	    iid = Int_val(val_iid);
+	Box *box = stub_box_shard(Val_int(-1));
+
+	if (oid < 0 || oid > nelem(box->object_space_registry) - 1)
+		caml_invalid_argument("obj_space_index");
+
+	if (!box->object_space_registry[oid])
+		caml_failwith("object_space is not enabled");
+
+	struct object_space *obj_spc = box->object_space_registry[oid];
+
+	if (iid < 0 || iid > MAX_IDX)
+		caml_invalid_argument("obj_space_index");
+
+	if (obj_spc->index[iid] == nil)
+		caml_invalid_argument("obj_space_index");
+
+	CAMLreturn((value)obj_spc->index[iid]);
+}
 
 register_source();

@@ -3,6 +3,12 @@ open Printf
 type box
 external box_shard : int -> box = "stub_box_shard"
 
+module Hashtbl = Hashtbl.Make (struct
+    type t = string
+    let equal (a:string) (b:string) = a = b
+    let hash = Hashtbl.hash
+  end)
+
 let registry = Hashtbl.create 10
 
 let assert_count proc_name args n =
@@ -11,31 +17,31 @@ let assert_count proc_name args n =
     raise (Octopus.IProto_Failure (0x2702, "Invalid argument count"))
   end
 
-let register_cb0 name ctx cb =
-  Hashtbl.replace registry name (fun box args -> assert_count name args 0;
-                                  cb (ctx box))
-let register_cb1 name ctx cb =
-  Hashtbl.replace registry name (fun box args -> assert_count name args 1;
-                                  cb (ctx box) args.(0))
-let register_cb2 name ctx cb =
-  Hashtbl.replace registry name (fun box args -> assert_count name args 2;
-                                  cb (ctx box) args.(0) args.(1))
-let register_cb3 name ctx cb =
-  Hashtbl.replace registry name (fun box args -> assert_count name args 3;
-                                  cb (ctx box) args.(0) args.(1) args.(2))
-let register_cb4 name ctx cb =
-  Hashtbl.replace registry name (fun box args -> assert_count name args 4;
-                                  cb (ctx box) args.(0) args.(1) args.(2) args.(3))
-let register_cb5 name ctx cb =
-  Hashtbl.replace registry name (fun box args -> assert_count name args 5;
-                                  cb (ctx box) args.(0) args.(1) args.(2) args.(3) args.(4))
-let register_cbN name ctx cb = Hashtbl.replace registry name
-    (fun box args -> cb (ctx box) args)
+let register_cb0 name cb =
+  Hashtbl.replace registry name (fun args -> assert_count name args 0;
+                                  cb ())
+let register_cb1 name cb =
+  Hashtbl.replace registry name (fun args -> assert_count name args 1;
+                                  cb args.(0))
+let register_cb2 name cb =
+  Hashtbl.replace registry name (fun args -> assert_count name args 2;
+                                  cb args.(0) args.(1))
+let register_cb3 name cb =
+  Hashtbl.replace registry name (fun args -> assert_count name args 3;
+                                  cb args.(0) args.(1) args.(2))
+let register_cb4 name cb =
+  Hashtbl.replace registry name (fun args -> assert_count name args 4;
+                                  cb args.(0) args.(1) args.(2) args.(3))
+let register_cb5 name cb =
+  Hashtbl.replace registry name (fun args -> assert_count name args 5;
+                                  cb args.(0) args.(1) args.(2) args.(3) args.(4))
+let register_cbN name cb =
+  Hashtbl.replace registry name cb
 
-let box_dispatch (wbuf, request, (box:box)) (name:string) (args:string array) =
+let dispatch (wbuf, request) (name:string) (args:string array) =
   let cb = Hashtbl.find registry name in
   try
-    let out = cb box args in
+    let out = cb args in
     let iproto = Net_io.reply wbuf request in
     Net_io.add_i32 wbuf (List.length out);
     List.iter (fun tup -> Box_tuple.net_add wbuf tup) out;
@@ -48,5 +54,10 @@ let box_dispatch (wbuf, request, (box:box)) (name:string) (args:string array) =
       Net_io.error wbuf request 0x2702 (sprintf "Exception: %s" (to_string e))
     end
 
+external stub_get_affected_obj : unit -> Octopus.oct_obj = "stub_get_affected_obj" [@@noalloc]
+let get_affected_tuple () =
+  try Some (Box_tuple.of_oct_obj (stub_get_affected_obj ()))
+  with Not_found -> None
+
 let _ =
-  Callback.register "box_dispatch" box_dispatch
+  Callback.register "box_dispatch" dispatch

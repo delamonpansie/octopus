@@ -17,8 +17,8 @@ module Fiber : sig
       секунд. Другие фиберы продолжат испольнятся *)
 
   val loop : string -> (unit -> unit) -> unit
-  (** [loop name cb] создает фибер и вызывает в бесконечном цикле cb
-      (), при повторном вызове с тем же [name] заменяет [cb] в
+  (** [loop name cb] создает фибер и вызывает в бесконечном цикле
+      cb (), при повторном вызове с тем же [name] заменяет [cb] в
       существующем фибере. Замена произходит после того, как [cb]
       вернет управление. Поэтому не стоит застревать в нем очень
       надолго. *)
@@ -147,12 +147,6 @@ type tuple
     полям надо использовать соответствующие аккцесоры из module
     Tuple *)
 
-type 'a obj_space
-(** абстрактный тип obj_space, параметризированный типом первичного
-    индекса.  Может использоваться только внутри коллбека, попытка
-    сохранить его где-нибудь и использовать вне коллбека приведет к
-    SEGV.  *)
-
 exception IProto_Failure of int * string
 (** [IProto_Failure of code * reason] в это исключение преобразуются
     ObjC исключение IProtoError *)
@@ -207,52 +201,76 @@ module Tuple : sig
 end
 
 module Index : sig
-  type 'a t
-  (** абстрактный тип индекса, параметризированный типом ключа 'a
-      Единственным конструктором таких объектов является
-      [obj_space_index] *)
-
-  type 'a iter_init = Iter_empty
-                    | Iter_key of 'a
-                    | Iter_partkey of (int * 'a)
-                    | Iter_tuple of tuple
-  (** алгебраический тип для инициализации итератора:
-      Iter_empty для итерации с самого начала индекса,
-      Iter_key 'a для произвольного ключа,
-      Iter_partkey (int * 'a) для частичного ключа и
-      Iter_tuple tuple для старта с [tuple] *)
+  type index
+  type index_type = HASH
+                  | NUMHASH
+                  | SPTREE
+                  | FASTTREE
+                  | COMPACTTREE
+                  | POSTREE
 
   type iter_dir = Iter_forward | Iter_backward
   (** направление итератора. Iter_backward поддерживается только для
       деревьев. *)
 
-  type _ field = NUM16 : int field
-               | NUM32 : int field
-               | NUM64 : Int64.t field
-               | STRING : string field
-  (** GADT тип, используемый для описания полей индекса *)
+  external node_pack_u16 : index -> int -> unit = "stub_index_node_pack_u16"
+  external node_pack_u32 : index -> int -> unit = "stub_index_node_pack_u32"
+  external node_pack_u64 : index -> Int64.t -> unit = "stub_index_node_pack_u64"
+  external node_pack_string : index -> string -> unit = "stub_index_node_pack_string"
 
-  val iterator_init : 'a t -> 'a iter_init -> iter_dir -> unit
-  (** [iterator_init index init dir] инициализирует итератор по
-      [index] используя [init] в качестве начального значения и [dir]
-      как направление. Если индекс это хеш, то [dir] должен быть
-      Iter_forward *)
+  module type Descr = sig
+    type key
+    val obj_space_no : int
+    val index_no : int
+    val node_pack : index -> key -> unit
+  end
 
-  val iterator_next : 'a t -> tuple
-  (** [iterator_next index] возвращает текущий кортеж; перемещает
-      итератор на следующий *)
 
-  val iterator_skip : 'a t -> unit
-  (** [iterator_skip index] пропускает текущий кортеж; перемещает
-      итератор на следующий *)
+  module Make : functor (Descr : Descr) -> sig
+    type iter_init = Iter_empty
+                   | Iter_key of Descr.key
+                   | Iter_partkey of (int * Descr.key)
+                   | Iter_tuple of tuple
+    (** алгебраический тип для инициализации итератора:
+        Iter_empty для итерации с самого начала индекса,
+        Iter_key 'key для произвольного ключа,
+        Iter_partkey (int * 'key) для частичного ключа и
+        Iter_tuple tuple для старта с [tuple] *)
 
-  val iterator_take : 'a t -> 'a iter_init -> iter_dir -> int -> tuple list
-  (** [iterator_take index init dir count] возвращает список из
-      [count] кортежей начания с [init] *)
+    val iterator_init : iter_init -> iter_dir -> unit
+    (** [iterator_init init dir] инициализирует итератор используя
+        [init] в качестве начального значения и [dir] как
+        направление. Если индекс это хеш, то [dir] должен быть
+        Iter_forward *)
 
-  val index_find : 'a t -> 'a -> tuple
-  (** [index_find index key] находит кортеж в [index] по ключу
-      [key]. Кидает исключение Not_found если не находит *)
+    val iterator_next : unit -> tuple
+    (** [iterator_next ()] возвращает текущий кортеж; перемещает
+        итератор на следующий *)
+
+    val iterator_skip : unit -> unit
+    (** [iterator_skip ()] пропускает текущий кортеж; перемещает
+        итератор на следующий *)
+
+    val iterator_take : iter_init -> iter_dir -> int -> tuple list
+    (** [iterator_take init dir count] возвращает список из [count]
+        кортежей начания с [init] *)
+
+    val find : Descr.key -> tuple
+    (** [find key] находит кортеж в [index] по ключу
+        [key]. Кидает исключение Not_found если не находит *)
+
+    val find_dyn : Tuple.field list -> tuple
+    (** [find_by_tuple key_part_list] находит кортеж в [index] по
+        полному или частичному ключу [key_part_list]. Функция чуть
+        менее эффективна чем [find] т.к. требуется промежуточная
+        структура, описывающая ключ. В сулчае если тип ключа не
+        совпадет с типом индекса кинет исключение Invalid_argument.
+        Кидает исключение Not_found если не находит *)
+
+    val get : int -> tuple
+    val slots : unit -> int
+    val typ : unit -> index_type
+  end
 end
 
 type mop =
@@ -277,94 +295,81 @@ type mop =
   | Insert of (int * bytes)
   (** алгебраический тип, описывающий микрооперации в [box_update] *)
 
-val obj_space_pk : 'a obj_space -> 'a Index.t
-(** возвращает pk *)
+module ObjSpace : sig
+  module type Descr = sig
+    type key
+    val obj_space_no : int
+    val index_no : int
+    val node_pack : Index.index -> key -> unit
+    val tuple_of_key : key -> tuple
+  end
 
-val box_find : 'a obj_space -> 'a -> tuple
-(** [box_find obj_space key] находит кортеж в [obj_space] по
-    первичному ключу [key] *)
+  module Make : functor (Descr : Descr) -> sig
+    module PK : sig
+      type iter_init = Iter_empty
+                     | Iter_key of Descr.key
+                     | Iter_partkey of (int * Descr.key)
+                     | Iter_tuple of tuple
+      val iterator_init : iter_init -> Index.iter_dir -> unit
+      val iterator_next : unit -> tuple
+      val iterator_skip : unit -> unit
+      val iterator_take : iter_init -> Index.iter_dir -> int -> tuple list
+      val find : Descr.key -> tuple
+      val get : int -> tuple
+      val slots : unit -> int
+      val typ : unit -> Index.index_type
+    end
+    (** См. описание Index.Make *)
 
-val box_insert : 'a obj_space -> tuple -> unit
-(** [box_index obj_space yuple] вставляет [tuple] в [obj_space]. Если
-    кортеж с таким же первичным ключом уже существует, то он
-    заменяется.  *)
+    val find : Descr.key -> tuple
+    (** [find key] находит кортеж в PK по ключу [key]. Кидает
+        исключение Not_found если не находит *)
 
-val box_replace : 'a obj_space -> tuple -> unit
-(** [box_replace obj_space tuple] заменяет [tuple] в [obj_space]. Если
-    кортежа с совпадающем ключом не существует, то кидает IProto_Failure *)
+    val insert : tuple -> unit
+    (** [insert tuple] вставляет [tuple]. Если кортеж с таким же
+        первичным ключом уже существует, то он заменяется.  *)
 
-val box_add : 'a obj_space -> tuple -> unit
-(** [box_replace obj_space tuple] заменяет [tuple] в [obj_space]. Если
-    кортеж с совпадающим ключом существует, то кидает IProto_Failure *)
+    val replace : tuple -> unit
+    (** [replace tuple] заменяет [tuple]. Если кортежа с совпадающем
+        ключом не существует, то кидает IProto_Failure *)
 
-val box_delete : 'a obj_space -> 'a -> unit
-(** [box_delete obj_space key] удаляет [key] из [obj_space]. *)
+    val add : tuple -> unit
+    (** [add obj_space tuple] добавляет [tuple]. Если кортеж с
+        совпадающим ключом существует, то кидает IProto_Failure *)
 
-val box_update : 'a obj_space -> 'a -> mop list -> unit
-(** [box_update obj_space key mops] последовательно выполняет [mops]
-    над кортжем с первичным ключом [key] в [obj_space] *)
+    val delete : Descr.key -> unit
+    (** [delete key] удаляет кортеж, соответсвующий [key] *)
 
-val box_get_affected_tuple : unit -> tuple option
-(** возвращает affected кортеж после [box_replace], [box_update],
-    [box_delete]. Должна вызываться непосредственно после
-    соотвествующей операции *)
+    val update : Descr.key -> mop list -> unit
+    (** [update key mops] последовательно выполняет [mops] над кортжем
+        с первичным ключом [key] в [obj_space] *)
+  end
+end
 
-type 'a key_info
-(** описание типа ключа индекса. Значение этого типа можно и нужно
-    кешировать *)
+val get_affected_tuple : unit -> tuple option
+(** возвращает affected кортеж после [replace], [update],
+    [delete]. Должна вызываться непосредственно после соотвествующей
+    операции *)
 
-val key_info1 : 'a Index.field -> 'a key_info
-(** конструктор описания для 1-колоночного индекса *)
-
-val key_info2 : 'a Index.field * 'b Index.field -> ('a * 'b) key_info
-(** конструктор описания для 2-колоночного индекса *)
-
-val key_info3 : 'a Index.field * 'b Index.field * 'c Index.field -> ('a * 'b * 'c) key_info
-(** конструктор описания для 3-колоночного индекса *)
-
-val key_info4 : 'a Index.field * 'b Index.field * 'c Index.field * 'd Index.field ->
-                ('a * 'b * 'c * 'd) key_info
-(** конструктор описания для 4-колоночного индекса *)
-
-val obj_space : box -> int -> 'a key_info -> 'a obj_space
-(** obj_space box no key_info] возвращает хендл обж_спейса? с номером
-    [no] и описание типа первичного ключа [key_info].  Это значение
-    нельзя кэшировать в глобальной переменной: оно валидно только в
-    течении вызова коллбека *)
-
-val obj_space_index : _ obj_space -> int -> 'a key_info -> 'a Index.t
-(** [obj_space_index obj_space index_no key_info] возвращает хэндл
-    индекса [index_no] в [obj_space] с описанием ключа [key_info]. Это
-    значение нельзя кэшировать в глобальной переменной: оно валидно
-    только в течении вызова коллбека *)
-
-val register_cb0 : string -> (box -> 'a) -> ('a -> tuple list) -> unit
-(** [register_cb1 name ctx cb] регистрирует коллбек без аргументов [cb] под именем [name].
+val register_cb0 : string -> (unit -> tuple list) -> unit
+(** [register_cb1 name cb] регистрирует коллбек без аргументов [cb] под именем [name].
     Если фактическое количество аргументов не совпадает, то вернет клиенту ошибку. *)
 
-val register_cb1 : string -> (box -> 'a) -> ('a -> string -> tuple list) -> unit
-(** [register_cb1 name ctx cb] регистрирует 1-аргументный коллбек [cb] под именем [name].
-    Если фактическое количество аргументов не совпадает, то вернет клиенту ошибку.
+val register_cb1 : string -> (string -> tuple list) -> unit
+(** [register_cb1 name cb] регистрирует 1-аргументный коллбек [cb] под именем [name].
+    Если фактическое количество аргументов не совпадает, то вернет клиенту ошибку.  *)
 
-    Конструктор контекста [ctx] предназначен для преобразования [box]
-    в контекст.  Результат вызова [ctx box] будет передан как первый
-    аргумент коллбека.  Данный механизм задуман для уменьшения
-    количества boilerplate кода в коллбеках. Т.к. кешировать
-    [obj_space] в глобальных переменных запрещено, то их приходится
-    создавать при вызове любого коллбека. Вынос этого в конструктор
-    контекста решает эту проблему. *)
-
-val register_cb2 : string -> (box -> 'a) -> ('a -> string -> string -> tuple list) -> unit
+val register_cb2 : string -> (string -> string -> tuple list) -> unit
 (** см. [register_cb1] *)
 
-val register_cb3 : string -> (box -> 'a) -> ('a -> string -> string -> string -> tuple list) -> unit
+val register_cb3 : string -> (string -> string -> string -> tuple list) -> unit
 (** см. [register_cb1] *)
 
-val register_cb4 : string -> (box -> 'a) -> ('a -> string -> string -> string -> string -> tuple list) -> unit
+val register_cb4 : string -> (string -> string -> string -> string -> tuple list) -> unit
 (** см. [register_cb1] *)
 
-val register_cb5 : string -> (box -> 'a) -> ('a -> string -> string -> string -> string -> string -> tuple list) -> unit
+val register_cb5 : string -> (string -> string -> string -> string -> string -> tuple list) -> unit
 (** см. [register_cb1] *)
 
-val register_cbN : string -> (box -> 'a) -> ('a -> string array -> tuple list) -> unit
+val register_cbN : string -> (string array -> tuple list) -> unit
 (** тоже что и [register_cb1], но все аргументы коллбека будет переданы в виде массива. *)
