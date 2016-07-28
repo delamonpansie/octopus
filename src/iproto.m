@@ -545,6 +545,10 @@ iproto_wakeup_workers(ev_prepare *ev)
 struct iproto_retcode *
 iproto_reply(struct netmsg_head *h, const struct iproto *request, u32 ret_code)
 {
+	say_debug3("%s: peer:%s op:0x%x sync:%u ret_code:%i", __func__,
+		   net_fd_name(container_of(h, struct netmsg_io, wbuf)->fd),
+		   request->msg_code, request->sync, ret_code);
+
 	struct iproto_retcode *header = palloc(h->pool, sizeof(*header));
 	net_add_iov(h, header, sizeof(*header));
 	*header = (struct iproto_retcode){ .shard_id = request->shard_id,
@@ -558,6 +562,10 @@ iproto_reply(struct netmsg_head *h, const struct iproto *request, u32 ret_code)
 struct iproto_retcode *
 iproto_reply_small(struct netmsg_head *h, const struct iproto *request, u32 ret_code)
 {
+	say_debug3("%s: peer:%s op:0x%x sync:%u ret_code:%i", __func__,
+		   net_fd_name(container_of(h, struct netmsg_io, wbuf)->fd),
+		   request->msg_code, request->sync, ret_code);
+
 	struct iproto_retcode *header = palloc(h->pool, sizeof(*header));
 	net_add_iov(h, header, sizeof(*header));
 	*header = (struct iproto_retcode){ .shard_id = request->shard_id,
