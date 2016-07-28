@@ -87,6 +87,7 @@ admin_port = #@admin_port
 wal_fsync_delay = 0.1
 rows_per_wal = 5000
 coredump = 0.00017
+seed = "0b"
 EOD
 
     if @secondary_port then
