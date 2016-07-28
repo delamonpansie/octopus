@@ -858,7 +858,9 @@ tcp_server(va_list ap)
 			continue;
 
 		say_syserror("accept");
+		ev_io_stop(&state.io);
 		fiber_sleep(1);
+		ev_io_start(&state.io);
 	}
 }
 
