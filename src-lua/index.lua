@@ -244,12 +244,12 @@ local basic_mt = {
         end,
         type = function(self)
             local tpe = self.__ptr.conf.type
-            if tpe == ffi.C.HASH or tpe == ffi.C.NUMHASH then
+            if tpe == ffi.C.HASH or tpe == ffi.C.NUMHASH or tpe == ffi.C.PHASH then
                 return "HASH"
             elseif tpe == ffi.C.COMPACTTREE or tpe == ffi.C.FASTTREE or tpe == ffi.C.SPTREE or tpe == ffi.C.POSTREE then
                 return "TREE"
             else
-                error("bad index type", 2)
+                error("bad index type: "..tpe, 2)
             end
         end,
         iter = function (self, ...)
@@ -358,6 +358,7 @@ local index_mt = {
     [tonumber(ffi.C.POSTREE)] = postree_mt,
     [tonumber(ffi.C.HASH)] = hash_mt,
     [tonumber(ffi.C.NUMHASH)] = hash_mt,
+    [tonumber(ffi.C.PHASH)] = hash_mt,
 }
 setmetatable(index_mt, { __index = function() assert(false) end })
 

@@ -9,3 +9,5 @@ obj-index += src/index/common.o
 obj-index += third_party/qsort_arg.o
 obj-index += third_party/twltree/twltree.o
 obj-index += third_party/nihtree/nihtree.o
+obj-index += src/index/phash.o
+obj-index += src/ptr_hash.o

@@ -63,6 +63,7 @@
 #include <getopt.h>
 #include <libgen.h>
 #include <sysexits.h>
+#include <time.h>
 #if HAVE_SYS_PRCTL_H
 # include <sys/prctl.h>
 #endif
@@ -102,6 +103,52 @@ unzero_io_collect_interval()
 {
 	if (--io_collect_zeroers == 0)
 		ev_set_io_collect_interval(cfg.io_collect_interval);
+}
+
+u64 seed[2] = {0, 0};
+
+static void
+fill_seed() {
+#define ROTL(h,k) (((h) << (k)) | ((h) >> (64-(k))))
+	if (cfg.seed == NULL) {
+		int fd = open("/dev/urandom", O_RDONLY);
+		int r = read(fd, seed, sizeof(seed)); (void)r;
+		close(fd);
+		struct timespec ts = {0,0};
+		clock_gettime(CLOCK_REALTIME, &ts);
+		seed[0] ^= ts.tv_sec;
+		seed[1] ^= ts.tv_nsec;
+		for (r=0;r<5;r++) {
+			seed[1] ^= seed[0]; seed[1] -= ROTL(seed[0], 41);
+			seed[0] ^= seed[1]; seed[0] -= ROTL(seed[1], 18);
+			seed[1] ^= seed[0]; seed[1] -= ROTL(seed[0], 53);
+			seed[0] ^= seed[1]; seed[0] -= ROTL(seed[1], 39);
+		}
+	} else {
+		int len = strlen(cfg.seed);
+		int i;
+		if (len == 0 || (len & 1) != 0) {
+			raise_fast("seed should be non-empty hex string");
+		}
+		if (len > 32) len = 32;
+		for (i=0; i<len; i+=2) {
+			bool good = (cfg.seed[i] >= '0' && cfg.seed[i] <= '9') ||
+				((cfg.seed[i]&0xdf) >= 'A' && (cfg.seed[i]&0xdf) <= 'F');
+			good = good && ((cfg.seed[i+1] >= '0' && cfg.seed[i+1] <= '9') ||
+				((cfg.seed[i+1]&0xdf) >= 'A' && (cfg.seed[i+1]&0xdf) <= 'F'));
+			if (!good)
+				raise_fast("seed should be hex string");
+			uint64_t c = (cfg.seed[i] & 0xf) + (cfg.seed[i]  <='9'?0:9);
+			c = (c*16) + (cfg.seed[i+1]&0xf) + (cfg.seed[i+1]<='9'?0:9);
+			if (i < 16)
+				seed[0] |= c << (i*4);
+			else
+				seed[1] |= c << ((i-16)*4);
+		}
+		if (seed[0] == 0 && seed[1] == 0) {
+			raise_fast("seed should be hex string for non-zero binary");
+		}
+	}
 }
 
 static void
@@ -627,6 +674,8 @@ octopus(int argc, char **argv)
 		if (gopt(opt, 'k'))
 			return 0;
 	}
+
+	fill_seed();
 
 	if (gopt(opt, 'e'))
 		dup_to_stderr = gopt(opt, 'e') + INFO - 1;

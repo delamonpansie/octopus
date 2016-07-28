@@ -125,4 +125,7 @@ OBJECT_FUN_INLINE int object_type(const struct tnt_object *obj)
 void zero_io_collect_interval();
 void unzero_io_collect_interval();
 
+/* global seed for randoms and hashes */
+u64 seed[2];
+
 #endif

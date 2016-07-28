@@ -597,8 +597,7 @@ lstr_hash(const union index_field *f, u64 *a, u64 *b) {
 u64
 gen_hash_node(const struct index_node *n, struct index_conf *ic)
 {
-	u64 a = 0xbada5515bad;
-	u64 b = 0x1addbadfee1;
+	u64 a = seed[0], b = seed[1];
 	int c = ic->cardinality;
 
 	if (c == 1) {
@@ -608,7 +607,8 @@ gen_hash_node(const struct index_node *n, struct index_conf *ic)
 			a ^= n->key.u32;
 			a ^= a >> 11; a ^= a >> 13;
 			a *= MULT1;
-			return a;
+			a -= b;
+			return a ^ (a>>32);
 		case SNUM64:
 		case UNUM64:
 			mix_u64(n->key.u64, &a, &b);

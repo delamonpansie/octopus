@@ -51,3 +51,6 @@ input_low_watermark = 4096
 
 # custom proc title is appended after normal
 custom_proc_title=NULL, ro
+
+# explicit seed for testing purposes. Should be hex string for at most 16 bytes non-zero binary.
+seed = NULL, ro
