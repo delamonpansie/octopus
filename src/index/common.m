@@ -203,7 +203,7 @@ int
 lstr_compare_with_addr(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
 {
 
-	int r = lstr_field_compare(&nb->key, &na->key);
+	int r = lstr_field_compare(&na->key, &nb->key);
 	if (r != 0)
 		return r;
 
