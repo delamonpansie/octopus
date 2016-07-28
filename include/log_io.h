@@ -58,6 +58,7 @@ enum row_tag {
 	shard_create,
 	shard_alter,
 	shard_final,
+	tlv,
 
 	user_tag = 32
 };

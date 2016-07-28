@@ -113,6 +113,7 @@ xlog_tag_to_a(u16 tag)
 	case nop:		strcat(p, "nop"); break;
 	case paxos_promise:	strcat(p, "paxos_promise"); break;
 	case paxos_accept:	strcat(p, "paxos_accept"); break;
+	case tlv:		strcat(p, "tlv"); break;
 	default:
 		if (tag < user_tag)
 			sprintf(p, "sys%i", tag);
@@ -1046,7 +1047,7 @@ fixup_row_v12(struct row_v12 *row)
 
 	/* compat: fix tags in old style row */
 	if (tag_type == 0 ||
-	    (tag_type == TAG_WAL && tag != wal_data && tag < user_tag) ||
+	    (tag_type == TAG_WAL && tag != wal_data && tag != tlv && tag < user_tag) ||
 	    (tag_type == TAG_SNAP && tag == snap_initial))
 		row->tag = fix_tag_v3(tag);
 }
