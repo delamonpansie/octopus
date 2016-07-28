@@ -235,7 +235,7 @@ merge_stat(const char *basename, struct stat_accum *small, struct stat_accum *bi
 			stat_accum_dup_accum(big, ac);
 		} else {
 			/* we rely on MH_INCREMENTAL_RESIZE == 0 here */
-			struct accum *bc = mh_accum_slot(&big->values, k);
+			struct accum *bc = mh_accum_slot(&big->values, ix);
 			if (bc->type != ac->type) {
 				say_warn("stat types doesn't match for %s.%.*s : %d != %d",
 						basename, ac->name->len, ac->name->str,
