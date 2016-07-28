@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -242,6 +242,34 @@ snap_print(struct tbuf *out, struct tbuf *row)
 	tuple_print(out, snap->tuple_size, snap->data);
 }
 
+static void
+tlv_print(struct tbuf *out, struct tlv *tlv)
+{
+	switch (tlv->tag) {
+	case BOX_MULTI_OP: {
+		void *ptr = tlv->val;
+		int len = tlv->len;
+		tbuf_printf(out, "BOX_MULTY { ");
+		while (len) {
+			struct tlv *nested = ptr;
+			ptr += sizeof(*nested) + nested->len;
+			len -= sizeof(*nested) + nested->len;
+			tlv_print(out, nested);
+			tbuf_printf(out, "; ");
+		}
+		tbuf_printf(out, " }");
+		break;
+	}
+	case BOX_OP:
+		xlog_print(out, *(u16 *)tlv->val,
+			   &TBUF(tlv->val + 2, tlv->len - 2, NULL));
+		break;
+	default:
+		tbuf_printf(out, "unknown tlv %i", tlv->tag);
+		break;
+	}
+}
+
 
 void
 box_print_row(struct tbuf *out, u16 tag, struct tbuf *r)
@@ -251,6 +279,16 @@ box_print_row(struct tbuf *out, u16 tag, struct tbuf *r)
 	if (tag == wal_data) {
 		u16 op = read_u16(r);
 		xlog_print(out, op, r);
+		return;
+	}
+	if (tag == tlv) {
+		while (tbuf_len(r)) {
+			struct tlv *tlv = read_bytes(r, sizeof(*tlv));
+			tbuf_ltrim(r, tlv->len);
+
+			assert(tbuf_len(r) >= 0);
+			tlv_print(out, tlv);
+		}
 		return;
 	}
 	if (tag_type == TAG_WAL) {

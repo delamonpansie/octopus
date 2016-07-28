@@ -47,19 +47,21 @@
 const int object_space_max_idx = MAX_IDX;
 
 Box *
-shard_box(int n)
+shard_box()
 {
-	if (n < 0 || n > MAX_SHARD)
-		return NULL;
-	if (shard_rt[n].shard == NULL)
-		return NULL;
-	return shard_rt[n].shard->executor;
+	return ((struct box_txn *)fiber->txn)->box;
 }
 
 int
-box_version(Box* box)
+shard_box_id()
 {
-	return box->version;
+	return shard_box()->shard->id;
+}
+
+int
+box_version()
+{
+	return shard_box()->version;
 }
 
 struct object_space *
@@ -140,47 +142,30 @@ luaT_box_dispatch(struct lua_State *L)
 {
 	size_t len;
 	const char *req;
-	struct box_txn *txn = box_txn_alloc((*(Box * const *)lua_topointer(L, 1))->shard->id,
-					    luaL_checkinteger(L, 2));
+	int op = luaL_checkinteger(L, 1);
 
-
-	if (lua_type(L, 3) == ~LJ_TCDATA) {
-		char * const *p = lua_topointer(L, 3);
+	if (lua_type(L, 2) == ~LJ_TCDATA) {
+		char * const *p = lua_topointer(L, 2);
 		req = *p;
-		len = luaL_checkinteger(L, 4);
+		len = luaL_checkinteger(L, 3);
 	} else {
-		req = luaL_checklstring(L, 3, &len);
+		req = luaL_checklstring(L, 2, &len);
 	}
 	@try {
-		if ([txn->box->shard is_replica])
-			iproto_raise(ERR_CODE_NONMASTER, "replica is readonly");
-
-		box_prepare(txn, &TBUF(req, len, NULL));
-		if (txn->obj_affected > 0 && txn->object_space->wal) {
-			if ([txn->box->shard submit:req len:len tag:txn->op<<5|TAG_WAL] != 1)
-				iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write row");
-		}
-		box_commit(txn);
-
-		if ((txn->flags & BOX_RETURN_TUPLE) == 0)
+		struct box_op *bop = box_prepare(fiber->txn, op, req, len);
+		if ((bop->flags & BOX_RETURN_TUPLE) == 0)
 			return 0;
 
-		if (txn->obj != NULL)
-			return push_obj(L, txn->obj);
-		else if (txn->op == DELETE && txn->old_obj != NULL)
-			return push_obj(L, txn->old_obj);
+		if (bop->ret_obj != NULL)
+			return push_obj(L, bop->ret_obj);
 	}
 	@catch (Error *e) {
-		box_rollback(txn);
 		if ([e respondsTo:@selector(code)])
 			lua_pushfstring(L, "code:%d reason:%s", [(id)e code], e->reason);
 		else
 			lua_pushstring(L, e->reason);
 		[e release];
 		lua_error(L);
-	}
-	@finally {
-		box_cleanup(txn);
 	}
 	return 0;
 }
@@ -260,7 +245,6 @@ box_dispach_lua(struct netmsg_head *wbuf, struct iproto *request)
 	lua_pushlstring(L, fname, flen);
 	lua_pushlightuserdata(L, wbuf);
 	lua_pushlightuserdata(L, request);
-	lua_pushinteger(L, request->shard_id);
 
 	if (!lua_checkstack(L, nargs)) {
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "too many args to exec_lua");
@@ -270,7 +254,7 @@ box_dispach_lua(struct netmsg_head *wbuf, struct iproto *request)
 		read_push_field(L, &data);
 
 	/* FIXME: switch to native exceptions ? */
-	if (lua_pcall(L, 4 + nargs, LUA_MULTRET, top)) {
+	if (lua_pcall(L, 3 + nargs, LUA_MULTRET, top)) {
 		const char *reason = lua_tostring(L, -1);
 		int code = ERR_CODE_ILLEGAL_PARAMS;
 
@@ -284,6 +268,9 @@ box_dispach_lua(struct netmsg_head *wbuf, struct iproto *request)
 
 		iproto_raise(code, reason);
 	}
+
+	if (box_submit(fiber->txn) == -1)
+		iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
 
 	int newtop = lua_gettop(L);
 	if (newtop != top) {

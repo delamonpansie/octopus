@@ -98,23 +98,33 @@ box_snap_row(const struct tbuf *t)
 extern struct dtor_conf box_tuple_dtor;
 struct index_conf * cfg_box2index_conf(struct octopus_cfg_object_space_index *c);
 
-struct box_txn {
+struct box_op {
 	u16 op;
 	u32 flags;
-
-	Box *box;
 	struct object_space *object_space;
-
-	struct tnt_object *old_obj, *obj;
+	struct tnt_object *old_obj, *obj, *ret_obj;
 	struct phi_tailq phi;
 	u32 obj_affected;
-	int id;
-
-	enum { UNDECIDED, COMMIT, ROLLBACK } state;
-	TAILQ_ENTRY(box_txn) link;
+	TAILQ_ENTRY(box_op) link;
+	int data_len;
+	char data[];
 };
 
-struct box_txn *box_txn_alloc(int shard_id, int msg_code);
+enum txn_mode { RO, RW } mode;
+enum txn_state { UNDECIDED, COMMIT, ROLLBACK };
+struct box_txn {
+	Box *box;
+	enum txn_mode mode;
+	enum txn_state state;
+	u32 obj_affected;
+	int id;
+	bool empty;
+
+	TAILQ_ENTRY(box_txn) link;
+	TAILQ_HEAD(box_op_tailq, box_op) ops;
+};
+
+struct box_txn *box_txn_alloc(int shard_id, enum txn_mode mode);
 
 struct box_meta_txn {
 	u16 op;
@@ -125,11 +135,23 @@ struct box_meta_txn {
 	Index<BasicIndex> *index;
 };
 
-void box_prepare(struct box_txn *txn, struct tbuf *data);
+struct tlv {
+	u16 tag;
+	u32 len;
+	char val[];
+} __attribute((packed));
+
+enum tlv_tag {
+	BOX_OP = 127,
+	BOX_MULTI_OP
+};
+
+
+struct box_op *box_prepare(struct box_txn *txn, int op, const void *data, u32 data_len);
+int  box_submit(struct box_txn *txn) __attribute__ ((warn_unused_result));
 void box_commit(struct box_txn *txn);
 void box_rollback(struct box_txn *txn);
-void box_cleanup(struct box_txn *txn);
-void prepare_replace(struct box_txn *txn, size_t cardinality, const void *data, u32 data_len);
+void prepare_replace(struct box_op *bop, size_t cardinality, const void *data, u32 data_len);
 
 void box_prepare_meta(struct box_meta_txn *txn, struct tbuf *data);
 void box_commit_meta(struct box_meta_txn *txn);
@@ -192,7 +214,7 @@ extern char const * const box_ops[];
 }
 @end
 struct object_space *object_space(Box *box, int n);
-int box_version(Box* box);
+int box_version();
 
 void *next_field(void *f);
 ssize_t fields_bsize(u32 cardinality, const void *data, u32 max_len);

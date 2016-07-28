@@ -4,4 +4,4 @@ stack traceback:
 	[C]: in function 'error'
 	src-lua/index.lua:197: in function '(for generator)'
 	mod/box/src-lua/box/example_proc.lua:254: in function 'proc'
-	mod/box/src-lua/box.lua:366: in function <mod/box/src-lua/box.lua:358>'}
+	mod/box/src-lua/box.lua:381: in function <mod/box/src-lua/box.lua:373>'}

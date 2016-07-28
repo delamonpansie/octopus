@@ -18,7 +18,7 @@ local netmsg_ptr = require("net").netmsg_ptr
 local object, varint32, packer = object, varint32, packer
 local safeptr, assertarg = safeptr, assertarg
 local lselect = select
-local pcall = pcall
+local pcall, xpcall, error, traceback = pcall, xpcall, error, debug.traceback
 
 local dyn_tuple = require 'box.dyn_tuple'
 local box_op = require 'box.op'
@@ -65,18 +65,26 @@ struct object_space {
 	const struct BasicIndex *index[10];
 };
 struct Box;
-struct Box *shard_box(int n);
-int    box_version(struct Box* box);
+struct Box *shard_box();
+int    shard_box_id();
+int    box_version();
 struct object_space *object_space_l(struct Box *box, int n);
 bool   box_is_primary(struct Box *box);
 int    shard_box_next_primary_n(int n);
+
+struct box_txn *box_txn_alloc(int, int);
+int    box_submit(struct box_txn *);
+void   box_commit(struct box_txn *);
+void   box_rolback(struct box_txn *);
+
 extern const int object_space_max_idx;
 struct tnt_object *tuple_visible_left(struct tnt_object *);
+struct tnt_object *tuple_visible_right(struct tnt_object *);
 ]]
 
 local _dispatch = _dispatch
-local function dispatch(box, op, body, len)
-    return object(_dispatch(box, op, body, len))
+local function dispatch(op, body, len)
+    return object(_dispatch(op, body, len))
 end
 
 --- jit.off(_dispatch) not needed, because C API calls are NYI
@@ -94,7 +102,7 @@ local object_space_mt = {
                 error("no such index")
             end
             local ind = index.cast(self.__ptr.index[i])
-            ind.__visible = ffi.C.tuple_visible_left
+            ind.__visible = ffi.C.tuple_visible_right
             self.__indexes[i] = ind
             return ind
         end,
@@ -116,10 +124,10 @@ local object_space_mt = {
 for _, v in pairs{'add', 'replace', 'delete', 'update'} do
     local pack = box_op.pack[v]
     object_space_mt.__index[v .. '_ret'] = function (object_space, ...)
-        return dispatch(object_space.__shard.__ptr, pack(1, object_space.n, ...))
+        return dispatch(pack(1, object_space.n, ...))
     end
     object_space_mt.__index[v .. '_noret'] = function (object_space, ...)
-        _dispatch(object_space.__shard.__ptr, pack(0, object_space.n, ...))
+        _dispatch(pack(0, object_space.n, ...))
     end
 end
 object_space_mt.__index.add     =     object_space_mt.__index.add_ret
@@ -170,10 +178,10 @@ local ushard_mt = {
 for _, v in pairs{'add', 'replace', 'delete', 'update'} do
     local pack = box_op.pack[v]
     ushard_mt.__index[v..'_ret'] = function (shard, n, ...)
-        return dispatch(shard.__ptr, pack(1, n, ...))
+        return dispatch(pack(1, n, ...))
     end
     ushard_mt.__index[v..'_noret'] = function (shard, n, ...)
-        _dispatch(shard.__ptr, pack(0, n, ...))
+        _dispatch(pack(0, n, ...))
     end
 end
 
@@ -183,17 +191,13 @@ ushard_mt.__index.update  = ushard_mt.__index.update_ret
 ushard_mt.__index.delete  = ushard_mt.__index.delete_ret
 
 local ushards = {}
-local ushard = function(i)
-    i = tonumber(i)
-    local ptr = ffi.C.shard_box(i)
-    if ptr == nil then
-        error("shard "..i.." is not defined")
-    end
-    local version = ffi.C.box_version(ptr)
+local function ushard()
+    local i = ffi.C.shard_box_id()
+    local version = ffi.C.box_version()
     local cached = ushards[i]
     if cached == nil or cached.__version ~= version then
         ushards[i] = setmetatable({
-            __ptr = ffi.C.shard_box(i),
+            __ptr = ffi.C.shard_box(),
             __spaces = {},
             __version = version
         }, ushard_mt)
@@ -206,6 +210,25 @@ function _M.next_primary_ushard_n(n)
     return ffi.C.shard_box_next_primary_n(n)
 end
 
+function with_txn(shard_id, cb, ...)
+    local txn = ffi.C.box_txn_alloc(shard_id, 1)
+    if txn == nil then
+        return nil, "no such shard"
+    end
+    local ok, ret_or_err = xpcall(cb, traceback, ushard(), ...)
+    if ok then
+        if ffi.C.box_submit(txn) == -1 then
+            ffi.C.box_rollback(txn)
+            return nil, "txn commit failed"
+        else
+            ffi.C.box_commit(txn)
+        end
+    else
+        ffi.C.box_rollback(txn)
+    end
+    return ok, ret_or_err
+end
+
 do
     local ts = os.ev_now()
     local function deprecate(name)
@@ -214,32 +237,24 @@ do
             ts = os.ev_now()
         end
     end
-    local function cur_ushard()
-        return ushard(ffi.C.current_fiber().ushard)
-    end
-
     local deprecated = {'select', 'add', 'replace', 'delete', 'update',
                         'add_ret', 'replace_ret', 'delete_ret', 'update_ret',
                         'add_noret', 'replace_noret', 'delete_noret', 'update_noret'}
     for _, name in ipairs(deprecated) do
         _M[name] = function (...)
             deprecate(name)
-            local sh = cur_ushard()
+            local sh = ushard()
             return sh[name](sh, ...)
         end
     end
     local object_space = setmetatable({},
         { __index = function (t, i)
             deprecate("object_space")
-            local sh = cur_ushard()
-            return sh:object_space(i)
+            return ushard():object_space(i)
         end}
     )
     for _, name in ipairs{'object_space_registry', 'space', 'object_space'} do
         _M[name] = object_space
-    end
-    function _M.set_ushard(nom)
-        ffi.C.current_fiber().ushard = nom
     end
 end
 
@@ -355,7 +370,7 @@ local function clear_cache()
 end
 fiber.create(clear_cache)
 
-function entry(name, wbuf, request, shard_id, ...)
+function entry(name, wbuf, request, ...)
     add_stat_exec_lua(name)
 
     local proc = fn_cache[name]
@@ -363,7 +378,7 @@ function entry(name, wbuf, request, shard_id, ...)
     if w then
         local rcode, res
         if w == true then
-            rcode, res = proc(ushard(shard_id), ...)
+            rcode, res = proc(ushard(), ...)
         else
             rcode, res = proc(...)
         end

@@ -1,7 +1,10 @@
 open Printf
 
 type box
-external box_shard : int -> box = "stub_box_shard"
+type txn
+
+external submit : unit -> int = "stub_box_submit"
+external txn : unit -> txn = "stub_txn" [@@noalloc]
 
 module Hashtbl = Hashtbl.Make (struct
     type t = string
@@ -41,7 +44,9 @@ let register_cbN name cb =
 let dispatch (wbuf, request) (name:string) (args:string array) =
   let cb = Hashtbl.find registry name in
   try
-    let out = cb args in
+  let out = cb args in
+    if submit () == -1 then
+      raise (Octopus.IProto_Failure (0x2702, "wal write failed"));
     let iproto = Net_io.reply wbuf request in
     Net_io.add_i32 wbuf (List.length out);
     List.iter (fun tup -> Box_tuple.net_add wbuf tup) out;

@@ -14,7 +14,7 @@ let msg_insert = 13
 let msg_update_fields = 19
 let msg_delete = 21
 
-external dispatch : Box.box -> int -> Packer.t -> unit = "stub_box_dispatch"
+external dispatch : Box.txn -> int -> Packer.t -> unit = "stub_box_dispatch"
 
 let pack_tuple pa tuple =
   let open Box_tuple in
@@ -39,28 +39,28 @@ let pack_tuple pa tuple =
       | FieldRange _ -> failwith "not implemented" in
     List.iter (pack pa) o
 
-let upsert box ?(flags=0) n tuple =
+let upsert txn ?(flags=0) n tuple =
   let pa = create 128 in
   add_i32 pa n;
   add_i32 pa flags;
   pack_tuple pa tuple;
-  dispatch box msg_insert pa
+  dispatch txn msg_insert pa
 
-let insert box n tuple =
-  upsert box ~flags:1 n tuple
+let insert txn n tuple =
+  upsert txn ~flags:1 n tuple
 
-let add box n tuple =
-  upsert box ~flags:3 n tuple
+let add txn n tuple =
+  upsert txn ~flags:3 n tuple
 
-let replace box n tuple =
-  upsert box ~flags:5 n tuple
+let replace txn n tuple =
+  upsert txn ~flags:5 n tuple
 
-let delete box n key =
+let delete txn n key =
   let pa = create 32 in
   add_i32 pa n;
   add_i32 pa 1; (* flags *)
   pack_tuple pa key;
-  dispatch box msg_delete pa
+  dispatch txn msg_delete pa
 
 let pack_mop pa mop =
   match mop with
@@ -91,7 +91,7 @@ let pack_mop pa mop =
   | Delete idx      -> add_i32 pa idx; add_i8 pa 6; add_i8 pa 0
   | Insert (idx, v) -> add_i32 pa idx; add_i8 pa 7; add_field_bytes pa v
 
-let update box n key mops =
+let update txn n key mops =
   let count = List.length mops in
   let pa = create (32 + count * 8) in
   add_i32 pa n;
@@ -99,5 +99,5 @@ let update box n key mops =
   pack_tuple pa key;
   add_i32 pa count;
   List.iter (fun mop -> pack_mop pa mop) mops;
-  dispatch box msg_update_fields pa
+  dispatch txn msg_update_fields pa
 

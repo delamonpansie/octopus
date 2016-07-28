@@ -195,6 +195,29 @@ set_shard:(Shard<Shard> *)shard_
 	}
 }
 
+static void
+prepare_tlv(struct box_txn *txn, struct tlv *tlv)
+{
+	switch (tlv->tag) {
+	case BOX_MULTI_OP: {
+		void *ptr = tlv->val;
+		int len = tlv->len;
+		while (len) {
+			struct tlv *nested = ptr;
+			ptr += sizeof(*nested) + nested->len;
+			len -= sizeof(*nested) + nested->len;
+			prepare_tlv(txn, nested);
+		}
+		break;
+	}
+	case BOX_OP:
+		box_prepare(txn, *(u16 *)tlv->val, tlv->val + 2, tlv->len - 2);
+		break;
+	default:
+		break;
+	}
+}
+
 - (void)
 apply:(struct tbuf *)data tag:(u16)tag
 {
@@ -217,36 +240,48 @@ apply:(struct tbuf *)data tag:(u16)tag
 		}
 	} else {
 		struct box_txn txn = { .box = self,
-				       .phi = TAILQ_HEAD_INITIALIZER(txn.phi) };
+				       .mode = RW,
+				       .ops = TAILQ_HEAD_INITIALIZER(txn.ops) };
+		struct box_op bop = { .op = 0 };
+		fiber->txn = &txn;
 		@try {
 			switch (tag_type) {
 			case TAG_WAL:
-				if (tag == wal_data)
-					txn.op = read_u16(data);
-				else if(tag >= user_tag)
-					txn.op = tag >> 5;
-				else
+				if (tag == wal_data) {
+					int op = read_u16(data);
+					box_prepare(&txn, op, data->ptr, tbuf_len(data));
+				} else if (tag == tlv) {
+					while (tbuf_len(data)) {
+						struct tlv *tlv = read_bytes(data, sizeof(*tlv));
+						tbuf_ltrim(data, tlv->len);
+						prepare_tlv(&txn, tlv);
+					}
+				} else if (tag >= user_tag) {
+					box_prepare(&txn, tag >> 5, data->ptr, tbuf_len(data));
+				} else {
 					return;
+				}
 
-				box_prepare(&txn, data);
 				break;
 			case TAG_SNAP:
 				if (tag != snap_data)
 					return;
 
 				const struct box_snap_row *snap = box_snap_row(data);
-				txn.object_space = object_space_registry[snap->object_space];
-				if (txn.object_space == NULL)
+				bop.object_space = object_space_registry[snap->object_space];
+				if (bop.object_space == NULL)
 					raise_fmt("object_space %i is not configured", snap->object_space);
-				if (txn.object_space->ignored) {
-					txn.object_space = NULL;
-					return;
+				if (bop.object_space->ignored) {
+					bop.object_space = NULL;
+					break;
 				}
 
-				txn.op = INSERT;
-				assert(txn.object_space->index[0] != nil);
+				bop.op = INSERT;
+				TAILQ_INIT(&bop.phi);
+				assert(bop.object_space->index[0] != nil);
 
-				prepare_replace(&txn, snap->tuple_size, snap->data, snap->data_size);
+				prepare_replace(&bop, snap->tuple_size, snap->data, snap->data_size);
+				TAILQ_INSERT_TAIL(&txn.ops, &bop, link);
 				break;
 			case TAG_SYS:
 				abort();
@@ -257,9 +292,6 @@ apply:(struct tbuf *)data tag:(u16)tag
 		@catch (id e) {
 			box_rollback(&txn);
 			@throw;
-		}
-		@finally {
-			box_cleanup(&txn);
 		}
 	}
 }

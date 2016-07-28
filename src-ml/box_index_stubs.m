@@ -89,7 +89,11 @@ value stub_index_node_pack_string(Index *index, value arg)
 typedef struct tnt_object *(*obj_visible)(struct tnt_object *obj);
 static obj_visible txn_visibility()
 {
-	return tuple_visible_left;
+	switch (((struct box_txn *)fiber->txn)->mode) {
+	case RO: return tuple_visible_left;
+	case RW: return tuple_visible_right;
+	default: abort();
+	}
 }
 
 value stub_index_find_node(id<BasicIndex> index)

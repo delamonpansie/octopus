@@ -152,9 +152,6 @@ exception IProto_Failure of int * string
     ObjC исключение IProtoError *)
 
 
-external box_shard : int -> box = "stub_box_shard"
-(** [box_shard n] возвращает ushard [n]. *)
-
 module Tuple : sig
   type field = I8 of int | I16 of int | I32 of int | I64 of Int64.t
              | Bytes of bytes | Field of tuple * int | FieldRange of tuple * int * int

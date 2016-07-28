@@ -42,8 +42,8 @@ local function delete_batch(space, pk, batch)
     end
 end
 
-local function loop_inner(n, func, state)
-    local space = box.ushard(state.ushardn):object_space(n)
+local function loop_inner(ushard, n, func, state)
+    local space = ushard:object_space(n)
     local pk = space:index(0)
     local key = state.key
     state.key = nil
@@ -100,7 +100,8 @@ local function loop(n, func, state)
         end
         state.ushardn = next_ushardn
     end
-    local ok, sleep = xpcall(loop_inner, traceback, n, func, state)
+
+    local ok, sleep = box.with_txn(state.ushardn, loop_inner, n, func, state)
     if not ok then
         say_error('%s', sleep)
         return state -- state.key == nil, so we are moving to next ushard

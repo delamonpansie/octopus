@@ -368,31 +368,31 @@ object_space_replace(struct object_space *object_space, struct phi_tailq *phi_ta
 }
 
 void
-prepare_replace(struct box_txn *txn, size_t cardinality, const void *data, u32 data_len)
+prepare_replace(struct box_op *bop, size_t cardinality, const void *data, u32 data_len)
 {
 	if (cardinality == 0)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "cardinality can't be equal to 0");
 	if (data_len == 0 || fields_bsize(cardinality, data, data_len) != data_len)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "tuple encoding error");
 
-	txn->obj = tuple_alloc(cardinality, data_len);
-	memcpy(tuple_data(txn->obj), data, data_len);
+	bop->obj = tuple_alloc(cardinality, data_len);
+	memcpy(tuple_data(bop->obj), data, data_len);
 
-	Index<BasicIndex> *pk = txn->object_space->index[0];
-	struct tnt_object *old_root = [pk find_obj:txn->obj];
-	txn->old_obj = phi_right(old_root);
-	txn->obj_affected = txn->old_obj != NULL ? 2 : 1;
+	Index<BasicIndex> *pk = bop->object_space->index[0];
+	struct tnt_object *old_root = [pk find_obj:bop->obj];
+	bop->old_obj = phi_right(old_root);
+	bop->obj_affected = bop->old_obj != NULL ? 2 : 1;
 
-	if (txn->flags & BOX_ADD && txn->old_obj != NULL)
+	if (bop->flags & BOX_ADD && bop->old_obj != NULL)
 		iproto_raise(ERR_CODE_NODE_FOUND, "tuple found");
-	if (txn->flags & BOX_REPLACE && txn->old_obj == NULL)
+	if (bop->flags & BOX_REPLACE && bop->old_obj == NULL)
 		iproto_raise(ERR_CODE_NODE_NOT_FOUND, "tuple not found");
 
-	say_debug("%s: old_obj:%p obj:%p", __func__, txn->old_obj, txn->obj);
-	if (txn->old_obj == NULL)
-		object_space_insert(txn->object_space, &txn->phi, old_root, txn->obj);
+	say_debug("%s: old_obj:%p obj:%p", __func__, bop->old_obj, bop->obj);
+	if (bop->old_obj == NULL)
+		object_space_insert(bop->object_space, &bop->phi, old_root, bop->obj);
 	else
-		object_space_replace(txn->object_space, &txn->phi, 0, old_root, txn->old_obj, txn->obj);
+		object_space_replace(bop->object_space, &bop->phi, 0, old_root, bop->old_obj, bop->obj);
 }
 
 static void
@@ -517,7 +517,7 @@ do_field_splice(struct tbuf *field, const void *args_data, u32 args_data_size)
 }
 
 static void __attribute__((noinline))
-prepare_update_fields(struct box_txn *txn, struct tbuf *data)
+prepare_update_fields(struct box_op *bop, struct tbuf *data)
 {
 	struct tbuf *fields;
 	const u8 *field;
@@ -525,12 +525,12 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 	u32 op_cnt;
 
 	u32 key_cardinality = read_u32(data);
-	if (key_cardinality != txn->object_space->index[0]->conf.cardinality)
+	if (key_cardinality != bop->object_space->index[0]->conf.cardinality)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "key fields count doesn't match");
 
-	Index<BasicIndex> *pk = txn->object_space->index[0];
+	Index<BasicIndex> *pk = bop->object_space->index[0];
 	struct tnt_object *old_root = [pk find_key:data cardinalty:key_cardinality];
-	txn->old_obj = phi_right(old_root);
+	bop->old_obj = phi_right(old_root);
 
 	op_cnt = read_u32(data);
 	if (op_cnt > 128)
@@ -538,16 +538,16 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 	if (op_cnt == 0)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "no ops");
 
-	if (txn->old_obj == NULL) {
+	if (bop->old_obj == NULL) {
 		/* pretend we parsed all data */
 		tbuf_ltrim(data, tbuf_len(data));
 		return;
 	}
-	txn->obj_affected = 1;
+	bop->obj_affected = 1;
 
-	size_t bsize = tuple_bsize(txn->old_obj);
-	int cardinality = tuple_cardinality(txn->old_obj);
-	void *tdata = tuple_data(txn->old_obj);
+	size_t bsize = tuple_bsize(bop->old_obj);
+	int cardinality = tuple_cardinality(bop->old_obj);
+	void *tdata = tuple_data(bop->old_obj);
 	int field_count = cardinality * 1.2;
 	fields = palloc(fiber->pool, field_count * sizeof(struct tbuf));
 
@@ -574,7 +574,7 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 		arg = read_field(data);
 		arg_size = LOAD_VARINT32(arg);
 
-		Index<BasicIndex> *pk = txn->object_space->index[0];
+		Index<BasicIndex> *pk = bop->object_space->index[0];
 		for (int i = 0; i < pk->conf.cardinality; i++) {
 			if (pk->conf.field[i].index == field_no) {
 				pk_affected = 1;
@@ -657,9 +657,9 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 	if (tbuf_len(data) != 0)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
 
-	txn->obj = tuple_alloc(cardinality, bsize);
+	bop->obj = tuple_alloc(cardinality, bsize);
 
-	u8 *p = tuple_data(txn->obj);
+	u8 *p = tuple_data(bop->obj);
 	i = 0;
 	do {
 		if (fields[i].pool == NULL) {
@@ -682,10 +682,10 @@ prepare_update_fields(struct box_txn *txn, struct tbuf *data)
 		}
 	} while (i < cardinality);
 
-	if (![pk eq:txn->old_obj :txn->obj])
-		txn->obj_affected++;
+	if (![pk eq:bop->old_obj :bop->obj])
+		bop->obj_affected++;
 
-	object_space_replace(txn->object_space, &txn->phi, pk_affected, old_root, txn->old_obj, txn->obj);
+	object_space_replace(bop->object_space, &bop->phi, pk_affected, old_root, bop->old_obj, bop->obj);
 }
 
 static void __attribute__((noinline))
@@ -753,93 +753,129 @@ process_select(struct netmsg_head *h, Index<BasicIndex> *index,
 }
 
 static void __attribute__((noinline))
-prepare_delete(struct box_txn *txn, struct tbuf *key_data)
+prepare_delete(struct box_op *bop, struct tbuf *key_data)
 {
 	u32 c = read_u32(key_data);
 
-	Index<BasicIndex> *pk = txn->object_space->index[0];
+	Index<BasicIndex> *pk = bop->object_space->index[0];
 	struct tnt_object *old_root = [pk find_key:key_data cardinalty:c];
-	txn->old_obj = phi_right(old_root);
-	txn->obj_affected = txn->old_obj != NULL;
-	object_space_delete(txn->object_space, &txn->phi, old_root, txn->old_obj);
+	bop->old_obj = phi_right(old_root);
+	bop->obj_affected = bop->old_obj != NULL;
+	object_space_delete(bop->object_space, &bop->phi, old_root, bop->old_obj);
 }
 
-void
-box_prepare(struct box_txn *txn, struct tbuf *data)
+struct box_op *
+box_op_alloc(struct box_txn *txn, int msg_code, const void *data, int data_len)
 {
-	say_debug("%s op:%i", __func__, txn->op);
+	struct box_op *bop = palloc(fiber->pool, sizeof(*bop) + data_len);
+	*bop = (struct box_op) { .op = msg_code & 0xffff,
+				 .data_len = data_len,
+				 .phi = TAILQ_HEAD_INITIALIZER(bop->phi) };
+	memcpy(bop->data, data, data_len);
+	TAILQ_INSERT_TAIL(&txn->ops, bop, link);
+	return bop;
+}
 
-	i32 n = read_u32(data);
-	txn->object_space = object_space(txn->box, n);
-	if (txn->object_space->ignored) {
-		/* txn->object_space == NULL means this txn will be ignored */
-		txn->object_space = NULL;
-		return;
+struct box_op *
+box_prepare(struct box_txn *txn, int op, const void *data, u32 data_len)
+{
+	say_debug("%s op:%i/%s", __func__, op, box_ops[op]);
+	if (txn->mode == RO)
+		iproto_raise(ERR_CODE_NONMASTER, "txn is readonly");
+
+	struct box_op *bop = box_op_alloc(txn, op, data, data_len);
+	struct tbuf buf = TBUF(data, data_len, NULL);
+
+	i32 n = read_u32(&buf);
+	bop->object_space = object_space(txn->box, n);
+	if (bop->object_space->ignored) {
+		/* bop->object_space == NULL means this txn will be ignored */
+		bop->object_space = NULL;
+		return bop;
 	}
 
-	switch (txn->op) {
+	switch (op) {
 	case INSERT:
-		txn->flags = read_u32(data);
-		u32 cardinality = read_u32(data);
-		u32 data_len = tbuf_len(data);
-		void *tuple_bytes = read_bytes(data, data_len);
-		prepare_replace(txn, cardinality, tuple_bytes, data_len);
+		bop->flags = read_u32(&buf);
+		u32 cardinality = read_u32(&buf);
+		u32 tuple_blen = tbuf_len(&buf);
+		void *tuple_bytes = read_bytes(&buf, tuple_blen);
+		prepare_replace(bop, cardinality, tuple_bytes, tuple_blen);
+		bop->ret_obj = bop->obj;
 		break;
 
 	case DELETE:
-		txn->flags = read_u32(data); /* RETURN_TUPLE */
+		bop->flags = read_u32(&buf); /* RETURN_TUPLE */
 	case DELETE_1_3:
-		prepare_delete(txn, data);
+		prepare_delete(bop, &buf);
+		bop->ret_obj = bop->old_obj;
 		break;
 
 	case UPDATE_FIELDS:
-		txn->flags = read_u32(data);
-		prepare_update_fields(txn, data);
+		bop->flags = read_u32(&buf);
+		prepare_update_fields(bop, &buf);
+		bop->ret_obj = bop->obj;
 		break;
 
 	case NOP:
 		break;
 
 	default:
-		iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "unknown opcode:%"PRIi32, txn->op);
+		iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "unknown opcode:%"PRIi32, op);
 	}
 
-	if (txn->obj) {
-		if (txn->object_space->cardinality > 0 &&
-		    txn->object_space->cardinality != tuple_cardinality(txn->obj))
+
+	if (bop->obj) {
+		if (bop->object_space->cardinality > 0 &&
+		    bop->object_space->cardinality != tuple_cardinality(bop->obj))
 		{
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS,
 				     "tuple cardinality must match object_space cardinality");
 		}
 
-		if (!tuple_valid(txn->obj))
+		if (!tuple_valid(bop->obj))
 			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "internal error");
 	}
-	if (tbuf_len(data) != 0)
+	if (tbuf_len(&buf) != 0)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
+
+	return bop;
 }
 
-void
-box_cleanup(struct box_txn *txn)
+static void
+box_op_cleanup(enum txn_state state, struct box_op *bop)
 {
-	say_debug3("%s: old_obj:%p obj:%p", __func__, txn->old_obj, txn->obj);
-
-	if (txn->link.tqe_prev)
-		TAILQ_REMOVE(&txn_tailq, txn, link);
-	switch (txn->state) {
+	say_debug3("%s: old_obj:%p obj:%p", __func__, bop->old_obj, bop->obj);
+	switch (state) {
 	case COMMIT:
-		if (txn->old_obj)
-			tuple_free(txn->old_obj);
+		if (bop->old_obj)
+			tuple_free(bop->old_obj);
 		break;
 	case ROLLBACK:
-		if (txn->obj)
-			tuple_free(txn->obj);
+		if (bop->obj)
+			tuple_free(bop->obj);
 		break;
 	default:
-		if (!txn->object_space)
+		if (!bop->object_space)
 			return;
 		assert(false);
 	}
+}
+
+static void
+txn_cleanup(struct box_txn *txn)
+{
+	say_debug3("%s: txn:%i/%p", __func__, txn->id, txn);
+	assert(fiber->txn == txn);
+	fiber->txn = NULL;
+	if (txn->link.tqe_prev) {
+		assert(TAILQ_FIRST(&txn_tailq) == txn || txn->empty);
+		TAILQ_REMOVE(&txn_tailq, txn, link);
+	}
+
+	struct box_op *bop;
+	TAILQ_FOREACH(bop, &txn->ops, link)
+		box_op_cleanup(txn->state, bop);
 }
 
 static void
@@ -861,70 +897,163 @@ bytes_usage(struct object_space *object_space, struct tnt_object *obj, int sign)
 	object_space->slab_bytes += sign * salloc_usable_size(obj);
 }
 
-void
-box_commit(struct box_txn *txn)
+static void
+box_op_commit(struct box_op *bop)
 {
-	if (!txn->object_space)
+	if (!bop->object_space)
 		return;
 
-	say_debug2("%s: old_obj:%p obj:%p", __func__, txn->old_obj, txn->obj);
-
-	assert(txn->state == UNDECIDED);
-	txn->state = COMMIT;
-	if (txn->obj) {
-		bytes_usage(txn->object_space, txn->obj, +1);
-		txn->obj->flags &= ~SELECT_INVISIBLE;
+	say_debug2("%s: old_obj:%p obj:%p", __func__, bop->old_obj, bop->obj);
+	if (bop->obj) {
+		bytes_usage(bop->object_space, bop->obj, +1);
+		bop->obj->flags &= ~SELECT_INVISIBLE;
 	}
-	if (txn->old_obj)
-		bytes_usage(txn->object_space, txn->old_obj, -1);
+	if (bop->old_obj)
+		bytes_usage(bop->object_space, bop->old_obj, -1);
 
 	struct box_phi *phi;
-	TAILQ_FOREACH(phi, &txn->phi, link) {
+	TAILQ_FOREACH(phi, &bop->phi, link) {
 		assert(phi->must_rollback == false);
 		phi_commit(phi);
 	}
-	stat_collect(stat_base, txn->op, 1);
+	stat_collect(stat_base, bop->op, 1);
+
+}
+
+void
+box_commit(struct box_txn *txn)
+{
+	@try {
+		assert(txn->state == UNDECIDED);
+		txn->state = COMMIT;
+		struct box_op *bop;
+		TAILQ_FOREACH(bop, &txn->ops, link)
+			box_op_commit(bop);
+		txn_cleanup(txn);
+	}
+	@catch (Error *e) {
+		panic_exc_fmt(e, "can't handle exception after WAL write: %s", e->reason);
+	}
+	@catch (id e) {
+		panic_exc_fmt(e, "can't handle unknown exception after WAL write");
+	}
+}
+
+static void
+box_op_rollback(struct box_op *bop)
+{
+	say_debug3("%s:", __func__);
+	if (!bop->object_space)
+		return;
+
+	struct box_phi *phi;
+	TAILQ_FOREACH(phi, &bop->phi, link)
+		phi_rollback(phi);
+	if (bop->old_obj)
+		bop->old_obj->flags &= ~UPDATE_INVISIBLE;
 }
 
 void
 box_rollback(struct box_txn *txn)
 {
+	say_debug2("%s: txn:%i/%p state:%i", __func__, txn->id, txn, txn->state);
 	if (txn->state == ROLLBACK)
 		return;
-	say_debug2("%s:", __func__);
-	if (txn->object_space) {
-		assert(txn->state == UNDECIDED);
-		txn->state = ROLLBACK;
+	assert(txn->state == UNDECIDED);
+	txn->state = ROLLBACK;
 
-		struct box_phi *phi;
-		TAILQ_FOREACH(phi, &txn->phi, link)
-			phi_rollback(phi);
-		if (txn->old_obj)
-			txn->old_obj->flags &= ~UPDATE_INVISIBLE;
-	}
+	struct box_op *bop;
+	TAILQ_FOREACH(bop, &txn->ops, link)
+		box_op_rollback(bop);
+	txn_cleanup(txn);
 	txn = TAILQ_NEXT(txn, link);
 	if (txn)
 		box_rollback(txn);
 }
 
+
+static int
+tlv_add(struct tbuf *buf, int tag)
+{
+	struct tlv tlv = { .tag = tag };
+	int offt = buf->end - buf->ptr;
+	tbuf_append(buf, &tlv, sizeof(tlv));
+	return offt;
+}
+
+static void
+tlv_end(struct tbuf *buf, int offt)
+{
+	struct tlv *tlv = buf->ptr + offt;
+	tlv->len = buf->end - buf->ptr - offt - sizeof(struct tlv);
+}
+
+int
+box_submit(struct box_txn *txn)
+{
+	say_debug2("%s: txn:%i/%p state:%i", __func__, txn->id, txn, txn->state);
+	int len = 0, count = 0;
+	struct box_op *bop, *single;
+
+	if (txn->mode == RO) {
+		assert(TAILQ_FIRST(&txn->ops) == NULL);
+		return 0;
+	}
+
+	TAILQ_FOREACH(bop, &txn->ops, link) {
+		assert(bop->object_space);
+		if (bop->data_len > 0) {
+			single = bop;
+			len += bop->data_len;
+			count++;
+		} else {
+			struct box_phi *phi;
+			TAILQ_FOREACH(phi, &bop->phi, link)
+				assert(phi->right == NULL);
+		}
+		txn->obj_affected += bop->obj_affected;
+	}
+
+	if (len == 0) {
+		txn->empty = true;
+		return 0;
+	}
+
+	if (count == 1) {
+		return [txn->box->shard submit:single->data
+					   len:single->data_len
+					   tag:single->op<<5|TAG_WAL] ?: -1;
+	} else {
+		struct tbuf *buf = tbuf_alloc(fiber->pool);
+		int multi = tlv_add(buf, BOX_MULTI_OP);
+		TAILQ_FOREACH(bop, &txn->ops, link) {
+			int offt = tlv_add(buf, BOX_OP);
+			tbuf_append(buf, &bop->op, 2);
+			tbuf_append(buf, bop->data, bop->data_len);
+			tlv_end(buf, offt);
+		}
+		tlv_end(buf, multi);
+
+		return [txn->box->shard submit:buf->ptr
+					   len:tbuf_len(buf)
+					   tag:tlv|TAG_WAL] ?: -1;
+	}
+}
+
 struct box_txn *
-box_txn_alloc(int shard_id, int msg_code)
+box_txn_alloc(int shard_id, enum txn_mode mode)
 {
 	static int cnt;
 	struct box_txn *txn = p0alloc(fiber->pool, sizeof(*txn));
-	txn->op = msg_code & 0xffff;
 	txn->box = (shard_rt + shard_id)->shard->executor;
 	txn->id = cnt++;
-	TAILQ_INIT(&txn->phi);
+	txn->mode = mode;
+	TAILQ_INIT(&txn->ops);
 	TAILQ_INSERT_TAIL(&txn_tailq, txn, link);
+	assert(fiber->txn == NULL);
+	fiber->txn = txn;
 	say_debug2("%s: txn:%i/%p", __func__, txn->id, txn);
 	return txn;
-}
-
-static Box *
-RT_EXECUTOR(struct iproto *msg)
-{
-	return (shard_rt + msg->shard_id)->shard->executor;
 }
 
 #if CFG_lua_path || CFG_caml_path
@@ -932,32 +1061,41 @@ static void
 box_proc_cb(struct netmsg_head *wbuf, struct iproto *request)
 {
 	say_debug("%s: op:0x%02x sync:%u", __func__, request->msg_code, request->sync);
+	struct box_txn *txn = box_txn_alloc(request->shard_id, RO);
+	if (![txn->box->shard is_replica])
+		txn->mode = RW;
 
 	@try {
 #if CFG_caml_path
 		int ret = box_dispach_ocaml(wbuf, request);
-		if (ret == 1) /* ocaml cb not found */
-  #if !CFG_lua_path
-		{
-			struct tbuf req = TBUF(request->data, request->data_len, NULL);
-			(void)read_u32(&req); /* ignore flags */
-			int len = read_varint32(&req);
-			char *proc = req.ptr;
-			iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "no such proc '%.*s'", len, proc);
+		if (ret == 0) {
+			box_commit(txn);
+			return;
 		}
+  #if !CFG_lua_path
+		struct tbuf req = TBUF(request->data, request->data_len, NULL);
+		tbuf_ltrim(&req, sizeof(u32)); /* ignore flags */
+		int len = read_varint32(&req);
+		char *proc = req.ptr;
+		iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "no such proc '%.*s'", len, proc);
   #endif
 #endif
+
 #if CFG_lua_path
 		box_dispach_lua(wbuf, request);
+		box_commit(txn);
 #endif
-		stat_collect(stat_base, EXEC_LUA, 1);
 	}
 	@catch (Error *e) {
+		box_rollback(txn);
 		say_warn("aborting proc request, [%s reason:\"%s\"] at %s:%d",
 			 [[e class] name], e->reason, e->file, e->line);
 		if (e->backtrace)
 			say_debug("backtrace:\n%s", e->backtrace);
 		@throw;
+	}
+	@finally {
+		stat_collect(stat_base, EXEC_LUA, 1);
 	}
 }
 #endif
@@ -966,7 +1104,7 @@ box_proc_cb(struct netmsg_head *wbuf, struct iproto *request)
 void
 box_meta_cb(struct netmsg_head *wbuf, struct iproto *request)
 {
-	Box *box = RT_EXECUTOR(request);
+	Box *box = (shard_rt + request->shard_id)->shard->executor;
 
 	say_debug2("%s: op:0x%02x sync:%u", __func__, request->msg_code, request->sync);
 	if ([box->shard is_replica])
@@ -1007,64 +1145,45 @@ box_meta_cb(struct netmsg_head *wbuf, struct iproto *request)
 static void
 box_cb(struct netmsg_head *wbuf, struct iproto *request)
 {
-	struct box_txn *txn = box_txn_alloc(request->shard_id, request->msg_code);
+	struct box_txn *txn = box_txn_alloc(request->shard_id, RW);
 	say_debug2("%s: c:%p op:0x%02x sync:%u", __func__, NULL, request->msg_code, request->sync);
 	if ([txn->box->shard is_replica])
 		iproto_raise(ERR_CODE_NONMASTER, "replica is readonly");
 
+	struct box_op *bop = NULL;
 	@try {
-		@try {
-			box_prepare(txn, &TBUF(request->data, request->data_len, NULL));
+		bop = box_prepare(txn, request->msg_code, request->data, request->data_len);
+		if (!bop->object_space)
+			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "ignored object space");
 
-			if (!txn->object_space)
-				iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "ignored object space");
+		if (box_submit(txn) == -1)
+			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
 
-			if (txn->obj_affected > 0 && txn->object_space->wal) {
-				if ([txn->box->shard submit:request->data
-							len:request->data_len
-							tag:request->msg_code<<5|TAG_WAL] != 1)
-					iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
-			}
-		}
-		@catch (Error *e) {
-			if (e->file && strcmp(e->file, "src/paxos.m") != 0) {
-				say_warn("aborting txn, [%s reason:\"%s\"] at %s:%d peer:%s",
-					 [[e class] name], e->reason, e->file, e->line,
-					 net_fd_name(container_of(wbuf, struct netmsg_io, wbuf)->fd));
-				if (e->backtrace)
-					say_debug("backtrace:\n%s", e->backtrace);
-			}
-			box_rollback(txn);
-			@throw;
-		}
-		@try {
-			box_commit(txn);
-			struct iproto_retcode *reply = iproto_reply(wbuf, request, ERR_CODE_OK);
-			net_add_iov_dup(wbuf, &txn->obj_affected, sizeof(u32));
-			if (txn->flags & BOX_RETURN_TUPLE) {
-				if (txn->obj)
-					net_tuple_add(wbuf, txn->obj);
-				else if (request->msg_code == DELETE && txn->old_obj)
-					net_tuple_add(wbuf, txn->old_obj);
-			}
-			iproto_reply_fixup(wbuf, reply);
-		}
-		@catch (Error *e) {
-			panic_exc_fmt(e, "can't handle exception after WAL write: %s", e->reason);
-		}
-		@catch (id e) {
-			panic_exc_fmt(e, "can't handle unknown exception after WAL write");
-		}
+		struct iproto_retcode *reply = iproto_reply(wbuf, request, ERR_CODE_OK);
+		net_add_iov_dup(wbuf, &txn->obj_affected, sizeof(u32));
+		if (bop->flags & BOX_RETURN_TUPLE && bop->ret_obj)
+			net_tuple_add(wbuf, bop->ret_obj);
+		iproto_reply_fixup(wbuf, reply);
+
+		box_commit(txn);
 	}
-	@finally {
-		box_cleanup(txn);
+	@catch (Error *e) {
+		if (e->file && strcmp(e->file, "src/paxos.m") != 0) {
+			say_warn("aborting txn, [%s reason:\"%s\"] at %s:%d peer:%s",
+				 [[e class] name], e->reason, e->file, e->line,
+				 net_fd_name(container_of(wbuf, struct netmsg_io, wbuf)->fd));
+			if (e->backtrace)
+				say_debug("backtrace:\n%s", e->backtrace);
+		}
+		box_rollback(txn);
+		@throw;
 	}
 }
 
 static void
 box_select_cb(struct netmsg_head *wbuf, struct iproto *request)
 {
-	Box *box = RT_EXECUTOR(request);
+	Box *box = (shard_rt + request->shard_id)->shard->executor;
 	struct tbuf data = TBUF(request->data, request->data_len, fiber->pool);
 	struct iproto_retcode *reply = iproto_reply(wbuf, request, ERR_CODE_OK);
 	struct object_space *obj_spc;
