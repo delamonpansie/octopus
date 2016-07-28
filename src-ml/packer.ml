@@ -1,4 +1,3 @@
-
 module Bytes = struct
   include Bytes
   external unsafe_int_of_bits : bytes -> int -> int -> int = "stub_int_of_bits" [@@noalloc]
@@ -56,7 +55,7 @@ module Bytes = struct
     if Bytes.length str < pos + 5 then invalid_arg "blit_ber";
     unsafe_blit_varint str pos n
 
-  external varint32_size : (int [@untag]) -> (int [@untag]) = "varint32_sizeof" [@@noalloc]
+  external varint32_size : (int [@untagged]) -> (int [@untagged]) = "abort" "varint32_sizeof" [@@noalloc]
 end
 
 
@@ -81,14 +80,14 @@ let contents pa =
   end
 
 let need pa n =
-  if Bytes.length pa.buf - pa.used < n then (
+  if Bytes.length pa.buf - pa.used < n then begin
     let size = ref (max 16 (Bytes.length pa.buf)) in
     while !size - pa.used < n do
       size := !size * 2
     done;
     let buf' = Bytes.extend pa.buf 0 (!size - Bytes.length pa.buf) in
     pa.buf <- buf'
-  );
+  end;
   let ret = pa.used in
   pa.used <- pa.used + n;
   ret
