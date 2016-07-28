@@ -15,16 +15,25 @@ let load {name; path; version} =
       end
   with
     Dynlink.Error e -> Say.error "Error while loading plugin '%s': %s" path (Dynlink.error_message e)
-  | e -> Say.error "Error while loading plugin '%s': %s" path (Printexc.to_string e)
+  (* | e -> Say.error "Error while loading plugin '%s': %s" path (Printexc.to_string e); assert false *)
 
-let cmxs = Str.regexp "\\(.*\\)\\.\\([0-9]+\\)\\.cmxs$"
+let re = Str.regexp "\\(.*\\)[_.-]\\([0-9]+\\)\\.cmxs$"
+let cmxs = Str.regexp "\\.cmxs$"
 let is_plugin dir_name file_name =
-  try
-    ignore(Str.search_forward cmxs file_name 0);
+  let str_match re str =
+    try ignore(Str.search_forward re file_name 0); true
+    with Not_found -> false in
+  if str_match re file_name then
     Some { name = Str.matched_group 1 file_name;
            version = int_of_string (Str.matched_group 2 file_name);
            path = dir_name ^ "/" ^ file_name }
-  with Not_found -> None
+  else begin
+    if str_match cmxs file_name then (
+      Say.warn "Can't parse `%s'. Plugin must be named as plugin_123.cmxs" file_name;
+      assert false;
+    );
+    None
+  end
 
 let readdir dir_name =
   Sys.readdir dir_name
