@@ -869,7 +869,8 @@ txn_cleanup(struct box_txn *txn)
 	assert(fiber->txn == txn);
 	fiber->txn = NULL;
 	if (txn->link.tqe_prev) {
-		assert(TAILQ_FIRST(&txn_tailq) == txn || txn->empty);
+		assert(TAILQ_FIRST(&txn_tailq) == txn ||
+		       (txn->submit == 0 && TAILQ_NEXT(txn, link) == NULL));
 		TAILQ_REMOVE(&txn_tailq, txn, link);
 	}
 
@@ -1015,14 +1016,14 @@ box_submit(struct box_txn *txn)
 	}
 
 	if (len == 0) {
-		txn->empty = true;
+		txn->submit = 0;
 		return 0;
 	}
 
 	if (count == 1) {
-		return [txn->box->shard submit:single->data
-					   len:single->data_len
-					   tag:single->op<<5|TAG_WAL] ?: -1;
+		txn->submit = [txn->box->shard submit:single->data
+						  len:single->data_len
+						  tag:single->op<<5|TAG_WAL];
 	} else {
 		struct tbuf *buf = tbuf_alloc(fiber->pool);
 		int multi = tlv_add(buf, BOX_MULTI_OP);
@@ -1034,10 +1035,12 @@ box_submit(struct box_txn *txn)
 		}
 		tlv_end(buf, multi);
 
-		return [txn->box->shard submit:buf->ptr
-					   len:tbuf_len(buf)
-					   tag:tlv|TAG_WAL] ?: -1;
+		txn->submit = [txn->box->shard submit:buf->ptr
+						  len:tbuf_len(buf)
+						  tag:tlv|TAG_WAL];
 	}
+
+	return txn->submit ?: -1;
 }
 
 struct box_txn *

@@ -374,8 +374,8 @@ local function test9(ushard)
 end
 
 local function test10(ushard)
-    fiber.sleep(1)
-    return 0, {ushard:replace(0, "\0\0\0\0", "dead", "beef")}
+    ushard:replace(0, "\0\0\0\0", "dead", "beef")
+    error("oops")
 end
 
 for i, f in ipairs({test0, test1, test2, test3, test4, test5, test6, test7, test8, test9, test10}) do

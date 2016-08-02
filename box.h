@@ -116,9 +116,8 @@ struct box_txn {
 	Box *box;
 	enum txn_mode mode;
 	enum txn_state state;
-	u32 obj_affected;
+	u32 obj_affected, submit;
 	int id;
-	bool empty;
 
 	TAILQ_ENTRY(box_txn) link;
 	TAILQ_HEAD(box_op_tailq, box_op) ops;
