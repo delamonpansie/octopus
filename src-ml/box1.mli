@@ -322,8 +322,8 @@ module ObjSpace : sig
     (** [find key] находит кортеж в PK по ключу [key]. Кидает
         исключение Not_found если не находит *)
 
-    val insert : tuple -> unit
-    (** [insert tuple] вставляет [tuple]. Если кортеж с таким же
+    val upsert : tuple -> unit
+    (** [upsert tuple] вставляет [tuple]. Если кортеж с таким же
         первичным ключом уже существует, то он заменяется.  *)
 
     val replace : tuple -> unit

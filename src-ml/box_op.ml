@@ -39,21 +39,21 @@ let pack_tuple pa tuple =
       | FieldRange _ -> failwith "not implemented" in
     List.iter (pack pa) o
 
-let upsert txn ?(flags=0) n tuple =
+let insert txn ?(flags=0) n tuple =
   let pa = create 128 in
   add_i32 pa n;
   add_i32 pa flags;
   pack_tuple pa tuple;
   dispatch txn msg_insert pa
 
-let insert txn n tuple =
-  upsert txn ~flags:1 n tuple
+let upsert txn n tuple =
+  insert txn ~flags:1 n tuple
 
 let add txn n tuple =
-  upsert txn ~flags:3 n tuple
+  insert txn ~flags:3 n tuple
 
 let replace txn n tuple =
-  upsert txn ~flags:5 n tuple
+  insert txn ~flags:5 n tuple
 
 let delete txn n key =
   let pa = create 32 in

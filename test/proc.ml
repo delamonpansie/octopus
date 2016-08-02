@@ -122,7 +122,7 @@ let test5 () =
 
 
 let test6 () =
-  S0.replace Tuple.(of_list [I32 0; I32 0; I32 0]);
+  S0.upsert Tuple.(of_list [I32 0; I32 0; I32 0]);
   match get_affected_tuple () with
     Some t -> [t]
   | None -> []
@@ -157,7 +157,7 @@ let test8 () =
 
 let test9 () =
   let q = Queue.create () in
-  S2.replace Tuple.(of_list [I32 0; I32 0; Bytes ""; Bytes ""; Bytes ""]);
+  S2.upsert Tuple.(of_list [I32 0; I32 0; Bytes ""; Bytes ""; Bytes ""]);
   push_affected q;
   Queue.push (S2.find (0, 0)) q;
   S2.update (0,0) [Set16 (2, 0); Set32 (3, 0); Set64 (4, 0L)];
