@@ -75,7 +75,7 @@ int    shard_box_next_primary_n(int n);
 struct box_txn *box_txn_alloc(int, int);
 int    box_submit(struct box_txn *);
 void   box_commit(struct box_txn *);
-void   box_rolback(struct box_txn *);
+void   box_rollback(struct box_txn *);
 
 extern const int object_space_max_idx;
 struct tnt_object *tuple_visible_left(struct tnt_object *);
