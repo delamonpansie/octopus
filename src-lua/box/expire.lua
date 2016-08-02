@@ -1,11 +1,10 @@
 local box = require 'box'
 local fiber = require 'fiber'
-local xpcall, error, traceback = xpcall, error, debug.traceback
+local xpcall, error, assert, traceback = xpcall, error, assert, debug.traceback
 local say_warn, say_error = say_warn, say_error
-local ipairs = ipairs
-local insert = table.insert
-local tostring = tostring
-local unpack = unpack
+local ipairs, type = ipairs, type
+local insert, unpack = table.insert, unpack
+local tostring, format = tostring, string.format
 
 -- example usage
 
@@ -29,8 +28,9 @@ expires_per_second = 1000
 batch_size = 100
 
 -- every space modification must be done _outside_ of iterator running
-local function delete_batch(space, pk, batch)
+local function delete_batch(space, batch, ops_unused)
     local key = {}
+    local pk = space:index(0)
     for _, tuple in ipairs(batch) do
         for i,pos in ipairs(pk.__field_indexes) do
             key[i] = tuple:strfield(pos)
@@ -42,20 +42,23 @@ local function delete_batch(space, pk, batch)
     end
 end
 
-local function loop_inner(ushard, n, func, state)
-    local space = ushard:object_space(n)
-    local pk = space:index(0)
+local function loop_inner(ushard, ops, state)
+    local space = ushard:object_space(ops.space)
+    local indx = space:index(ops.index)
     local key = state.key
     state.key = nil
     local batch = {}
 
-    if pk:type() == "HASH" then
+    if indx:type() == "HASH" then
+        if not ops.whole then
+            error(format("iterate non-whole hash index %d of space %d", ops.index, ops.space))
+        end
         local nxt = nil
-        for tuple in pk:iter_from_pos(key or 0) do
-            if tuple ~= nil and func(tuple) then
+        for tuple in indx:iter_from_pos(key or 0) do
+            if tuple ~= nil and ops.filter(tuple) then
                 insert(batch, tuple)
                 if #batch == batch_size then
-                    nxt = pk:cur_iter()
+                    nxt = indx:cur_iter()
                     break
                 end
             end
@@ -64,9 +67,11 @@ local function loop_inner(ushard, n, func, state)
         state.key = nxt
     else
         local count = 0
-        for tuple in pk:iter(key) do
-            if func(tuple) then
+        for tuple in indx:iter(key) do
+            if ops.filter(tuple) then
                 insert(batch, tuple)
+            elseif not ops.whole or (ops.whole == 'auto' and ops.index ~= 0) then
+                break
             end
             count = count + 1
             if count == batch_size then
@@ -78,13 +83,13 @@ local function loop_inner(ushard, n, func, state)
     end
 
     if #batch > 0 then
-        delete_batch(space, pk, batch)
+        delete_batch(space, batch)
     end
 
     return (#batch + 1) * batch_size / ((batch_size+1) * expires_per_second)
 end
 
-local function loop(n, func, state)
+local function loop(state, ops)
     if state == nil then
         state = {ushardn = -1}
     end
@@ -101,7 +106,7 @@ local function loop(n, func, state)
         state.ushardn = next_ushardn
     end
 
-    local ok, sleep = box.with_txn(state.ushardn, loop_inner, n, func, state)
+    local ok, sleep = box.with_txn(state.ushardn, loop_inner, ops, state)
     if not ok then
         say_error('%s', sleep)
         return state -- state.key == nil, so we are moving to next ushard
@@ -109,11 +114,32 @@ local function loop(n, func, state)
     return state, sleep
 end
 
-function start(n, func)
-    local name = 'box_expire('..n..')'
-    fiber.loop(name, function (state)
-        return loop(n, func, state)
-    end)
+function start(n, ops)
+    if type(n) == 'table' then
+        assert(ops == nil)
+        ops = n
+    elseif type(ops) == 'function' then
+        ops = {space = n, filter = ops}
+    else
+        ops.space = n
+    end
+    if not ops.index then
+        ops.index = 0
+    end
+    if not ops.action then
+        ops.action = delete_batch
+    end
+    if ops.whole == nil then
+        ops.whole = 'auto'
+    end
+    if not ops.expires_per_second then
+        ops.expires_per_second = expires_per_second
+    end
+    if not ops.batch_size then
+        ops.batch_size = batch_size
+    end
+    local name = 'box_expire('..ops.space..')'
+    fiber.loop(name, loop, ops)
 end
 
 

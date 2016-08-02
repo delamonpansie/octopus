@@ -8,6 +8,7 @@ local require = require
 
 local assert, pcall, error, print, ipairs, pairs, type = assert, pcall, error, print, ipairs, pairs, type
 local string, tonumber, tostring, table, box, fiber = string, tonumber, tostring, table, box, fiber
+local say_error = say_error
 
 user_proc = user_proc or {}
 local user_proc = user_proc
@@ -392,12 +393,18 @@ user_proc.position = box.wrap(function(ushard, ind, i)
     return 0, {box.tuple{tostring(pos)}}
 end)
 
-user_proc.start_expire = box.wrap(function(ushard, n)
+user_proc.start_expire = box.wrap(function(ushard, n, ind)
     local expire = require 'box.expire'
-    expire.batch_size = 4
     expire.testing = true
-    expire.start(tonumber(n), function(tuple)
-        return tuple:strfield(1) > '0'
-    end)
+    ind = tonumber(ind) or 0
+    expire.start{
+        space = tonumber(n),
+        filter = function(tuple)
+            return tuple:strfield(1) > '0'
+        end,
+        index = ind,
+        batch_size = 4,
+    }
     return 0, {}
 end)
+
