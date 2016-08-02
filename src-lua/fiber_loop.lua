@@ -47,7 +47,7 @@ local function loop_run(self)
             loop_say_error(self, "Not resolved error")
         else
             loops_stat:add1(name_cnt)
-            local ok, state_or_err, sleep = xpcall(self.func, traceback, self.state)
+            local ok, state_or_err, sleep = xpcall(self.func, traceback, self.state, self.conf)
             if not ok then
                 self.error = cut_traceback(state_or_err)
                 loop_say_error(self, "Error")
@@ -94,18 +94,19 @@ function Loop:paused()
     return self._paused
 end
 
-function fiber.loop(name, func)
+function fiber.loop(name, func, conf)
     local loop = fiber.loops[name]
     if loop == nil then
         if func == nil then
             return nil
         end
-        loop = setmetatable({name=name, func=func}, loop_mt)
+        loop = setmetatable({name=name, func=func, conf=conf}, loop_mt)
         fiber.loops[name] = loop
         loop:run()
     else
         if func ~= nil then
             loop.func = func
+            loop.conf = conf
             if loop.error then
                 loop.error = nil
             end
