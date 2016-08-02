@@ -25,7 +25,7 @@ Env.env_eval do |env|
 
   sleep 0.2
   conn = env.connect
-  log_try { conn.lua "user_proc.test10" }
+  log_try { conn.lua "user_proc.test11" }
   t.join
   conn.select "\0\0\0\0", "2"
 end
