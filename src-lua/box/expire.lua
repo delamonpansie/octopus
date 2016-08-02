@@ -49,6 +49,7 @@ local function loop_inner(ushard, ops, state)
     state.key = nil
     local batch = {}
 
+    local count = 0
     if indx:type() == "HASH" then
         if not ops.whole then
             error(format("iterate non-whole hash index %d of space %d", ops.index, ops.space))
@@ -57,16 +58,14 @@ local function loop_inner(ushard, ops, state)
         for tuple in indx:iter_from_pos(key or 0) do
             if tuple ~= nil and ops.filter(tuple) then
                 insert(batch, tuple)
-                if #batch == batch_size then
-                    nxt = indx:cur_iter()
-                    break
-                end
+            end
+            count = count + 1
+            if count == batch_size then
+                state.key = indx:cur_iter()
+                break
             end
         end
-
-        state.key = nxt
     else
-        local count = 0
         for tuple in indx:iter(key) do
             if ops.filter(tuple) then
                 insert(batch, tuple)
