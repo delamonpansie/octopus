@@ -1,3 +1,36 @@
+-- Periodically execute function
+--
+--     local fiber = require 'fiber'
+--
+--     local function loop_body(state, conf)
+--         if state == nil then
+--             state = initial_state(conf)
+--         end
+--         local new_state, time_to_sleep = do_some_action(state, conf)
+--         return new_state, time_to_sleep
+--     end
+--
+--     local loop_conf = {some = 1, args = 2}
+--
+--     fiber.loop('my_loop', loop_body, loop_conf)
+--
+--     -- is loop running?
+--     fiber.loops.my_loop.running
+--     -- is loop paused?
+--     fiber.loops.my_loop:paused()
+--     -- pause loop (state remains)
+--     fiber.loops.my_loop:pause()
+--     -- unpause loop
+--     fiber.loops.my_loop:unpause()
+--     -- stop loop
+--     fiber.loops.my_loop:stop()
+--     -- run loop again (is it were stopped) (clears state)
+--     fiber.loops.my_loop:run()
+--     -- error that stucks loop
+--     fiber.loops.my_loop.error
+--     -- change function and config
+--     fiber.loop('my_loop', other_body, other_conf)
+
 local xpcall, type, setmetatable = xpcall, type, setmetatable
 local traceback, cut_traceback = debug.traceback, cut_traceback
 local ffi = require 'ffi'
@@ -72,6 +105,7 @@ end
 function Loop:run()
     if self.running == nil then
         self.running = true
+        self.state = nil
         fiber.create(function()
             loop_run(self)
         end)
