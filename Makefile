@@ -26,6 +26,7 @@ obj += mod/box/src-lua/box.o
 obj += mod/box/src-lua/box_prelude.o
 obj += mod/box/src-lua/box/object_space_info.o
 obj += mod/box/src-lua/box/example_proc.o
+obj += mod/box/src-lua/box/loop.o
 obj += mod/box/src-lua/box/expire.o
 obj += mod/box/src-lua/box/dyn_tuple.o
 obj += mod/box/src-lua/box/op.o
