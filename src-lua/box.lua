@@ -43,6 +43,8 @@ local _G = _G
 
 module(...)
 
+VERSION = 2.01
+
 local function cache_call(table, k)
     local v = table[k]
     if v then return v end
