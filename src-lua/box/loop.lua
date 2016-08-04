@@ -3,6 +3,8 @@ local fiber = require 'fiber'
 local assert = assert
 local say_error = say_error
 local pairs, type = pairs, type
+local ev_now = os.ev_now
+local tostring = tostring
 
 -- exmaple
 --
@@ -30,30 +32,50 @@ local pairs, type = pairs, type
 module(...)
 
 local function loop(state, conf)
+    local end_sleep = _M.testing and 0.03 or 1
+    local first = box.next_primary_ushard_n(-1)
+    if first == -1 then
+        return nil, end_sleep
+    end
     if state == nil then
-        state = {ushardn = -1}
+        state = {states={}, sleeps={}}
     end
-    if state.user == nil then
-        local next_ushardn = box.next_primary_ushard_n(state.ushardn)
-        if next_ushardn == -1 or next_ushardn == state.ushardn then
-            state.ushardn = -1
-            if _M.testing then
-                return nil, 0.03
-            else
-                return -- sleep for 1 second
+    local ushardn = first
+    local now = ev_now()
+    local min_sleep_till = now + end_sleep
+    local states, sleeps = {}, {}
+    repeat
+        local sleep_till = state.sleeps[ushardn] or 0
+        local ustate = state.states[ushardn]
+        if sleep_till <= now then
+            local ok, state_or_err, sleep = box.with_txn(ushardn, conf.exec, ustate, conf.user)
+            fiber.gc()
+            if not ok then
+                say_error('box.loop "%s"@%d: %s', conf.name, ushardn, state_or_err)
+                state_or_err = nil
+                sleep = end_sleep
+            elseif state_or_err == nil and (sleep or 0) < end_sleep then
+                sleep = end_sleep
             end
+            now = ev_now()
+            sleep_till = now + (sleep or end_sleep)
+            ustate = state_or_err
         end
-        state.ushardn = next_ushardn
-    end
+        states[ushardn] = ustate
+        sleeps[ushardn] = sleep_till
+        if sleep_till < min_sleep_till then
+            min_sleep_till = sleep_till
+        end
+        ushardn = box.next_primary_ushard_n(ushardn)
+    until ushardn == -1 or sleeps[ushardn]
 
-    local ok, state_or_err, sleep = box.with_txn(state.ushardn, conf.exec, state.user, conf.user)
-    if not ok then
-        say_error('box.loop "%s": %s', conf.name, state_or_err)
-        state.user = nil -- so we are moving to next ushard
-    else
-        state.user = state_or_err
+    if ushardn == -1 then
+        return nil, end_sleep
     end
-    return state, sleep
+    state.states = states
+    state.sleeps = sleeps
+
+    return state, (min_sleep_till <= now and 0.001 or (min_sleep_till - now))
 end
 
 function start(conf)

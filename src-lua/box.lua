@@ -19,6 +19,7 @@ local object, varint32, packer = object, varint32, packer
 local safeptr, assertarg = safeptr, assertarg
 local lselect = select
 local pcall, xpcall, error, traceback = pcall, xpcall, error, debug.traceback
+local unpack = unpack
 
 local dyn_tuple = require 'box.dyn_tuple'
 local box_op = require 'box.op'
@@ -215,7 +216,8 @@ function with_txn(shard_id, cb, ...)
     if txn == nil then
         return nil, "no such shard"
     end
-    local ok, ret_or_err = xpcall(cb, traceback, ushard(), ...)
+    local ret = {xpcall(cb, traceback, ushard(), ...)}
+    local ok = ret[1]
     if ok then
         if ffi.C.box_submit(txn) == -1 then
             ffi.C.box_rollback(txn)
@@ -226,7 +228,7 @@ function with_txn(shard_id, cb, ...)
     else
         ffi.C.box_rollback(txn)
     end
-    return ok, ret_or_err
+    return unpack(ret)
 end
 
 do
