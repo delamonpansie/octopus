@@ -11,7 +11,7 @@ let loop name cb =
         Hashtbl.add loops name cb;
         (try
            while true do
-             cb ();
+             (Hashtbl.find loops name)();
            done
          with e -> Say.error "loop exception %s" (Printexc.to_string e));
         Hashtbl.remove loops name;
