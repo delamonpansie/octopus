@@ -32,13 +32,6 @@
 #include <stdbool.h>
 
 /*
- * Declaration of sptree. We don't want to include sptree.h
- * here to prevent interference with apllication's usage of sptree
- */
-struct sptree_t;
-struct sptree_iterator;
-
-/*
  * forward declarations
  */
 struct twlpage_t;

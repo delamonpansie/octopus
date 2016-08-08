@@ -275,7 +275,7 @@ twltree_free_page(twltree_t *tt, index_key_t *key) {
 	int rd;
 
 	if (tt->conf->index_key_free != NULL)
-		memcpy(tt->stored_index_key->key, key->key, tt->sizeof_tuple_key);
+		memcpy(tt->stored_index_key->key, key->key, tt->sizeof_index_key);
 	page = key->page;
 	tt->n_tuple_space -= page->page_n;
 	rd = twltree_delete(tt->page_index, key);
@@ -290,6 +290,8 @@ twltree_free_page(twltree_t *tt, index_key_t *key) {
 		tt->firstpage->page = page->right;
 		if (page->right->right == NULL) {
 			assert(tt->page_index->page_index == NULL);
+			assert(FIRST_INNER_INDEX_KEY(tt)->page == tt->firstpage->page);
+			memcpy(tt->firstpage->key, FIRST_INNER_INDEX_KEY(tt)->key, tt->sizeof_index_key);
 			twltree_free(tt->page_index);
 			tt->tlrealloc(tt->page_index, 0);
 			tt->page_index = NULL;
@@ -556,7 +558,7 @@ split_page(twltree_t *tt, index_key_t *key) {
 		}
 		twltree_insert(tt->page_index, tt->firstpage, false);
 		tt->n_index_keys++;
-		key = (index_key_t*)tt->page_index->firstpage->page->data;
+		key = FIRST_INNER_INDEX_KEY(tt);
 		assert(key->page == page);
 	}
 
