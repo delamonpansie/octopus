@@ -149,6 +149,21 @@ box_prepare_meta(struct box_meta_txn *txn, struct tbuf *data)
 	}
 }
 
+static void
+link_index(struct object_space *object_space)
+{
+	Index *index = object_space->index[0];
+
+	for (int i = 1; i < nelem(object_space->index); i++) {
+		Index *next = object_space->index[i];
+		if (next) {
+			index->next = next;
+			index = next;
+		}
+	}
+	index->next = nil;
+}
+
 void
 box_commit_meta(struct box_meta_txn *txn)
 {
@@ -165,11 +180,13 @@ box_commit_meta(struct box_meta_txn *txn)
 		say_info("CREATE index n:%i %i:%s",
 			 txn->object_space->n, txn->index->conf.n, [[txn->index class] name]);
 		txn->object_space->index[(int)txn->index->conf.n] = txn->index;
+		link_index(txn->object_space);
 		break;
 	case DROP_INDEX:
 		say_info("DROP index n:%i %i", txn->object_space->n, txn->index->conf.n);
 		txn->object_space->index[(int)txn->index->conf.n] = NULL;
 		[txn->index free];
+		link_index(txn->object_space);
 		break;
 	case DROP_OBJECT_SPACE:
 		say_info("DROP object_space n:%i", txn->object_space->n);

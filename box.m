@@ -94,6 +94,7 @@ configure(Box *box)
 		if (cfg.object_space[i]->index == NULL)
 			panic("(object_space = %" PRIu32 ") at least one index must be defined", i);
 
+		Index *prev = 0;
 		for (int j = 0; j < nelem(obj_spc->index); j++) {
 
 			if (cfg.object_space[i]->index[j] == NULL)
@@ -115,10 +116,10 @@ configure(Box *box)
 			if ([index respondsTo:@selector(resize:)])
 				[(id)index resize:cfg.object_space[i]->estimated_rows];
 
-			if ([index isKindOf: [Tree class]] && j > 0)
-				index = [[DummyIndex alloc] init_with_index:index];
-
 			obj_spc->index[j] = (Index<BasicIndex> *)index;
+			if (prev)
+				prev->next = index;
+			prev = index;
 		}
 
 		Index *pk = obj_spc->index[0];
@@ -131,55 +132,6 @@ configure(Box *box)
 	}
 }
 
-static void
-build_object_space_trees(struct object_space *object_space)
-{
-	Index<BasicIndex> *pk = object_space->index[0];
-	size_t n_tuples = [pk size];
-        size_t estimated_tuples = n_tuples * 1.2;
-
-	Tree *ts[MAX_IDX] = { nil, };
-	void *nodes[MAX_IDX] = { NULL, };
-	int i = 0, tree_count = 0;
-
-	for (int j = 0; object_space->index[j]; j++)
-		if ([object_space->index[j] isKindOf:[DummyIndex class]]) {
-			DummyIndex *dummy = (id)object_space->index[j];
-			if ([dummy is_wrapper_of:[Tree class]]) {
-				object_space->index[j] = [dummy unwrap];
-				ts[i++] = (id)object_space->index[j];
-			}
-		}
-	tree_count = i;
-	if (tree_count == 0)
-		return;
-
-	say_info("Building tree indexes of object space %i", object_space->n);
-
-        if (n_tuples > 0) {
-		title("building_indexes/object_space:%i ", object_space->n);
-		for (int i = 0; i < tree_count; i++)
-                        nodes[i] = xmalloc(estimated_tuples * ts[i]->node_size);
-		struct tnt_object *obj;
-		u32 t = 0;
-		[pk iterator_init];
-		while ((obj = [pk iterator_next])) {
-			for (int i = 0; i < tree_count; i++) {
-                                struct index_node *node = nodes[i] + t * ts[i]->node_size;
-                                ts[i]->dtor(obj, node, ts[i]->dtor_arg);
-                        }
-                        t++;
-		}
-	}
-
-	for (int i = 0; i < tree_count; i++) {
-		say_info("  %i:%s", ts[i]->conf.n, [[ts[i] class] name]);
-		[ts[i] set_nodes:nodes[i]
-			   count:n_tuples
-		       allocated:estimated_tuples];
-	}
-	title(NULL);
-}
 
 @implementation Box
 
@@ -297,22 +249,8 @@ apply:(struct tbuf *)data tag:(u16)tag
 }
 
 - (void)
-build_secondary_indexes
+wal_final_row
 {
-	if (built_seconday_indexes)
-		return;
-	built_seconday_indexes = true;
-
-	@try {
-		for (u32 n = 0; n < nelem(object_space_registry); n++) {
-			if (object_space_registry[n])
-				build_object_space_trees(object_space_registry[n]);
-		}
-	}
-	@catch (Error *e) {
-		raise_fmt("unable to built tree indexes: %s", e->reason);
-	}
-
 	for (u32 n = 0; n < nelem(object_space_registry); n++) {
 		struct object_space *obj_spc = object_space_registry[n];
 		if (obj_spc == NULL)
@@ -322,13 +260,6 @@ build_secondary_indexes
 		foreach_index(index, obj_spc)
 			say_info("\tindex[%i]: %s", index->conf.n, [[index class] name]);
 	}
-}
-
-
-- (void)
-wal_final_row
-{
-	[self build_secondary_indexes];
 }
 
 - (void)
@@ -393,10 +324,6 @@ static int verify_indexes(struct object_space *o, size_t pk_rows)
 	struct tnt_object *obj;
 	foreach_index(index, o) {
 		if (index->conf.n == 0)
-			continue;
-
-		/* during initial load of replica secondary indexes isn't configured yet */
-		if ([index isKindOf:[DummyIndex class]])
 			continue;
 
 		title("snap_dump/check index:%i", index->conf.n);
