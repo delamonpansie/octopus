@@ -73,13 +73,11 @@ external stub_next_primary_box : unit -> Box.box = "stub_box_next_primary_shard"
 let expire no key_info pred info =
   (try
      while !state <> Empty do
-       Say.warn "Doint replace";
-      if !state = Running then
-        state := Stop;
-      Fiber.sleep 1.0
-    done
+       if !state = Running then
+         state := Stop;
+       Fiber.sleep 1.0
+     done
    with Not_found -> ());
-  info "whoa";
   Fiber.create (fun (no, key_info, pred) ->
       state := Running;
       while !state = Running do
@@ -91,6 +89,5 @@ let expire no key_info pred info =
         Fiber.sleep 1.0
       done;
       state := Empty;
-      Say.warn "EXIT";
     ) (no, key_info, pred)
 
