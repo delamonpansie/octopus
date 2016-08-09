@@ -1,5 +1,4 @@
 obj-index += src/index/base.o
-obj-index += src/index/dummy.o
 obj-index += src/index/hash.o
 obj-index += src/index/tree.o
 obj-index += src/index/sptree.o

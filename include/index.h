@@ -144,6 +144,7 @@ typedef struct tnt_object* tnt_ptr;
 @interface Index: Object {
 @public
 	struct index_conf conf;
+	Index *next;
 
 	size_t node_size;
 	index_dtor *dtor;
@@ -166,15 +167,6 @@ typedef struct tnt_object* tnt_ptr;
 - (u32)cardinality;
 /* common method */
 - (int)eq:(struct tnt_object *)a :(struct tnt_object*)b;
-@end
-
-@interface DummyIndex: Index <BasicIndex> {
-@public
-	Index *index;
-}
-- (id) init_with_index:(Index *)_index;
-- (bool) is_wrapper_of:(Class)some_class;
-- (id) unwrap;
 @end
 
 @protocol HashIndex <BasicIndex>
@@ -268,18 +260,10 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 @end
 
 #define foreach_index(ivar, obj_space)					\
-	for (Index<BasicIndex>						\
-		     *__foreach_idx = (void *)0,			\
-		     *ivar = (id)(obj_space)->index[(uintptr_t)__foreach_idx]; \
-	     (ivar = (id)(obj_space)->index[(uintptr_t)__foreach_idx]);	\
-	     __foreach_idx = (void *)((uintptr_t)__foreach_idx + 1))
+	for (Index<BasicIndex> *ivar = (obj_space)->index[0]; ivar; ivar = ivar->next)
 
 #define foreach_indexi(i, ivar, obj_space)				\
-	for (Index<BasicIndex>						\
-		     *__foreach_idx = (void *)i,			\
-		     *ivar = (id)(obj_space)->index[(uintptr_t)__foreach_idx]; \
-	     (ivar = (id)(obj_space)->index[(uintptr_t)__foreach_idx]);	\
-	     __foreach_idx = (void *)((uintptr_t)__foreach_idx + 1))
+	for (Index<BasicIndex> *ivar = (obj_space)->index[i]; ivar; ivar = ivar->next)
 
 @interface IndexError: Error
 @end
