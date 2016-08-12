@@ -86,6 +86,8 @@ struct index_conf {
 	struct index_field_desc field[8]; /* key fields ordered as they appear in index */
 };
 void index_conf_validate(struct index_conf *d);
+void index_conf_sort_fields(struct index_conf *d);
+void index_conf_merge_unique(struct index_conf *to, struct index_conf *from);
 void index_conf_write(struct tbuf *data, struct index_conf *c);
 void index_conf_read(struct tbuf *data, struct index_conf *c);
 void index_conf_print(struct tbuf *out, const struct index_conf *c);

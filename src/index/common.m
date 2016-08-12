@@ -700,6 +700,23 @@ gen_init_pattern(struct tbuf *key_data, int cardinality, struct index_node *patt
 }
 
 void
+index_conf_sort_fields(struct index_conf *d)
+{
+	for (int i = d->cardinality-1; i > 0; i--)
+		for (int j = 0; j < i; j++) {
+			int inda = d->fill_order[j];
+			int indb = d->fill_order[j+1];
+
+			if (d->field[inda].index > d->field[indb].index) {
+				d->fill_order[j+1] = inda;
+				d->fill_order[j] = indb;
+			} else if (d->field[inda].index == d->field[indb].index) {
+				index_raise("index_conf.field[_].index is duplicate");
+			}
+		}
+}
+
+void
 index_conf_validate(struct index_conf *d)
 {
 	if (d->n > 8)
@@ -723,18 +740,32 @@ index_conf_validate(struct index_conf *d)
 			d->min_tuple_cardinality = d->field[k].index + 1;
 	}
 
-	for (int i = d->cardinality-1; i > 0; i--)
-		for (int j = 0; j < i; j++) {
-			int inda = d->fill_order[j];
-			int indb = d->fill_order[j+1];
+	index_conf_sort_fields(d);
+}
 
-			if (d->field[inda].index > d->field[indb].index) {
-				d->fill_order[j+1] = inda;
-				d->fill_order[j] = indb;
-			} else if (d->field[inda].index == d->field[indb].index) {
-				index_raise("index_conf.field[_].index is duplicate");
-			}
+void
+index_conf_merge_unique(struct index_conf *to, struct index_conf *from)
+{
+	assert(!to->unique && from->unique);
+	int i, j, old_cardinality = to->cardinality;
+	for (i = 0; i < from->cardinality; i++) {
+		for (j = 0; j < to->cardinality; j++) {
+			if (to->field[j].index == from->field[i].index)
+				break;
 		}
+		if (j < to->cardinality)
+			continue;
+		if (to->cardinality == nelem(to->field))
+			index_raise("index_conf.cardinality is too big during merge");
+		to->fill_order[j] = j;
+		to->field[j] = from->field[i];
+		to->cardinality++;
+	}
+
+	if (old_cardinality != to->cardinality) {
+		index_conf_sort_fields(to);
+	}
+	to->unique = true;
 }
 
 void
