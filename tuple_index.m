@@ -88,14 +88,14 @@ box_tuple_gen_dtor(struct tnt_object *obj, struct index_node *node, void *arg)
 	if (desc->cardinality == 1) {
 		const u8 *f = tuple_field(obj, desc->field[0].index);
 		if (f == NULL)
-			index_raise("tuple cardinality too small");
+			index_raise("cardinality too small");
 		u32 len = LOAD_VARINT32(f);
 		gen_set_field(&node->key, desc->field[0].type, len, f);
 		return node;
 	}
 
 	if (tuple_cardinality(obj) < desc->min_tuple_cardinality)
-		index_raise("tuple cardinality too small");
+		index_raise("cardinality too small");
 
 	int i = 0, j = 0;
 	int indi = desc->fill_order[i];
@@ -180,6 +180,9 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 	else
 		panic("unknown index type");
 
+	if (d->unique == false && (d->type == HASH || d->type == NUMHASH || d->type == PHASH))
+		panic("hash index should be unique");
+
 	__typeof__(c->key_field[0]) key_field;
 	for (d->cardinality = 0; c->key_field[(int)d->cardinality] != NULL; d->cardinality++) {
 		key_field = c->key_field[(int)d->cardinality];
@@ -222,18 +225,7 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 			d->min_tuple_cardinality = key_field->fieldno + 1;
 	}
 
-	for (int i = d->cardinality-1; i > 0; i--)
-		for (int j = 0; j < i; j++) {
-			int inda = d->fill_order[j];
-			int indb = d->fill_order[j+1];
-
-			if (d->field[inda].index > d->field[indb].index) {
-				d->fill_order[j+1] = inda;
-				d->fill_order[j] = indb;
-			} else if (d->field[inda].index == d->field[indb].index) {
-				panic("field indices should not repeat");
-			}
-		}
+	index_conf_sort_fields(d);
 
 	return d;
 }

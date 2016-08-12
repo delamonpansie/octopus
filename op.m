@@ -228,15 +228,10 @@ phi_commit(struct box_phi *phi)
 	say_debug3("%s: %p left:%p right:%p", __func__,
 		   (char *)phi - sizeof(struct tnt_object), phi->left, phi->right);
 
-	if (phi->index->conf.unique) {
-		if (phi->right == NULL)
-			[phi->index remove:phi->left];
-		else {
-			[phi->index replace:phi->right];
-		}
-	} else {
-		if (phi->left)
-			[phi->index remove:phi->left];
+	if (phi->right == NULL)
+		[phi->index remove:phi->left];
+	else {
+		[phi->index replace:phi->right];
 	}
 }
 
@@ -246,17 +241,12 @@ phi_rollback(struct box_phi *phi)
 	assert(phi->left != NULL || phi->right != NULL);
 	say_debug3("%s: %p left:%p right:%p", __func__,
 		   (char *)phi - sizeof(struct tnt_object), phi->left, phi->right);
-	if (phi->index->conf.unique) {
-		if (phi->must_rollback) /* parent record already detached from index */
-			return;
-		if (phi->left == NULL)
-			[phi->index remove:phi->right];
-		else
-			[phi->index replace:phi->left];
-	} else {
-		if (phi->right)
-			[phi->index remove:phi->right];
-	}
+	if (phi->must_rollback) /* parent record already detached from index */
+		return;
+	if (phi->left == NULL)
+		[phi->index remove:phi->right];
+	else
+		[phi->index replace:phi->left];
 
 	while (phi->right && phi->right->type == BOX_PHI ) {
 		phi = box_phi(phi->right);
@@ -297,10 +287,7 @@ object_space_delete(struct object_space *object_space, struct phi_tailq *phi_tai
 	phi_insert(phi_tailq, pk, index_obj , NULL);
 
 	foreach_indexi(1, index, object_space) {
-		if (index->conf.unique)
-			phi_insert(phi_tailq, index, [index find_obj:tuple] , NULL);
-		else
-			phi_alloc(phi_tailq, index, tuple, NULL);
+		phi_insert(phi_tailq, index, [index find_obj:tuple] , NULL);
 	}
 }
 
@@ -315,18 +302,13 @@ object_space_insert(struct object_space *object_space, struct phi_tailq *phi_tai
 	phi_insert(phi_tailq, pk, index_obj, tuple);
 
 	foreach_indexi(1, index, object_space) {
-		if (index->conf.unique) {
-			index_obj = [index find_obj:tuple];
-			if (phi_right(index_obj) == NULL)
-				phi_insert(phi_tailq, index, index_obj, tuple);
-			else
-				iproto_raise_fmt(ERR_CODE_INDEX_VIOLATION,
-						 "duplicate key value violates unique index %i:%s",
-						 index->conf.n, [[index class] name]);
-		} else {
-			[index replace:tuple];
-			phi_alloc(phi_tailq, index, NULL, tuple);
-		}
+		index_obj = [index find_obj:tuple];
+		if (phi_right(index_obj) == NULL)
+			phi_insert(phi_tailq, index, index_obj, tuple);
+		else
+			iproto_raise_fmt(ERR_CODE_INDEX_VIOLATION,
+					 "duplicate key value violates unique index %i:%s",
+					 index->conf.n, [[index class] name]);
 	}
 }
 
@@ -346,23 +328,17 @@ object_space_replace(struct object_space *object_space, struct phi_tailq *phi_ta
 	}
 
 	foreach_indexi(i, index, object_space) {
-		if (index->conf.unique) {
-			index_obj = [index find_obj:tuple];
+		index_obj = [index find_obj:tuple];
 
-			if (phi_right(index_obj) == NULL) {
-				phi_insert(phi_tailq, index, [index find_obj:old_tuple], NULL);
-				phi_insert(phi_tailq, index, index_obj, tuple);
-			} else  if (phi_right(index_obj) == old_tuple) {
-				phi_insert(phi_tailq, index, index_obj, tuple);
-			} else {
-				iproto_raise_fmt(ERR_CODE_INDEX_VIOLATION,
-						 "duplicate key value violates unique index %i:%s",
-						 index->conf.n, [[index class] name]);
-			}
+		if (phi_right(index_obj) == NULL) {
+			phi_insert(phi_tailq, index, [index find_obj:old_tuple], NULL);
+			phi_insert(phi_tailq, index, index_obj, tuple);
+		} else  if (phi_right(index_obj) == old_tuple) {
+			phi_insert(phi_tailq, index, index_obj, tuple);
 		} else {
-			[index replace:tuple];
-			phi_alloc(phi_tailq, index, old_tuple, NULL);
-			phi_alloc(phi_tailq, index, NULL, tuple);
+			iproto_raise_fmt(ERR_CODE_INDEX_VIOLATION,
+					 "duplicate key value violates unique index %i:%s",
+					 index->conf.n, [[index class] name]);
 		}
 	}
 }
@@ -704,7 +680,7 @@ process_select(struct netmsg_head *h, Index<BasicIndex> *index,
 
 	for (u32 i = 0; i < count; i++) {
 		u32 c = read_u32(data);
-		if (index->conf.unique && index->conf.cardinality == c) {
+		if (index->conf.cardinality == c) {
 			obj = [index find_key:data cardinalty:c];
 			obj = tuple_visible_left(obj);
 			if (obj == NULL)
