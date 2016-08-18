@@ -74,6 +74,9 @@ prepare_create_index(struct box_meta_txn *txn, struct tbuf *data)
 	if (txn->object_space->index[(int)ic.n])
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index already exists");
 
+	if (ic.n > 0 && ic.unique == false)
+		index_conf_merge_unique(&ic, &txn->object_space->index[0]->conf);
+
 	txn->index = [Index new_conf:&ic dtor:&box_tuple_dtor];
 	if (txn->index == nil)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't create index");

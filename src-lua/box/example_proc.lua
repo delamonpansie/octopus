@@ -394,8 +394,9 @@ user_proc.position = box.wrap(function(ushard, ind, i)
 end)
 
 user_proc.start_expire = box.wrap(function(ushard, n, ind)
+    local loop = require 'box.loop'
     local expire = require 'box.expire'
-    expire.testing = true
+    loop.testing = true
     ind = tonumber(ind) or 0
     expire.start{
         space = tonumber(n),

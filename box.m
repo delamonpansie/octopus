@@ -106,6 +106,13 @@ configure(Box *box)
 				      "unknown index type `%s'", i, j, cfg.object_space[i]->index[j]->type);
 
 			ic->n = j;
+
+			if (j == 0 && ic->unique == false)
+				panic("(object_space = %" PRIu32 ") object_space PK index must be unique", i);
+
+			if (j > 0 && ic->unique == false)
+				index_conf_merge_unique(ic, &obj_spc->index[0]->conf);
+
 			Index *index = [Index new_conf:ic dtor:&box_tuple_dtor];
 
 			if (index == nil)
@@ -123,9 +130,6 @@ configure(Box *box)
 		}
 
 		Index *pk = obj_spc->index[0];
-
-		if (pk->conf.unique == false)
-			panic("(object_space = %" PRIu32 ") object_space PK index must be unique", i);
 
 		say_info("object space %i successfully configured", i);
 		say_info("  PK %i:%s", pk->conf.n, [[pk class] name]);
