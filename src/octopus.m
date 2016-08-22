@@ -114,10 +114,17 @@ fill_seed() {
 		int fd = open("/dev/urandom", O_RDONLY);
 		int r = read(fd, seed, sizeof(seed)); (void)r;
 		close(fd);
+#if HAVE_CLOCK_GETTIME
 		struct timespec ts = {0,0};
 		clock_gettime(CLOCK_REALTIME, &ts);
 		seed[0] ^= ts.tv_sec;
 		seed[1] ^= ts.tv_nsec;
+#else
+		struct timeval tv = {0, 0};
+		gettimeofday (&tv, NULL);
+		seed[0] ^= ts.tv_sec;
+		seed[1] ^= ts.tv_usec;
+#endif
 		for (r=0;r<5;r++) {
 			seed[1] ^= seed[0]; seed[1] -= ROTL(seed[0], 41);
 			seed[0] ^= seed[1]; seed[0] -= ROTL(seed[1], 18);
