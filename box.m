@@ -37,7 +37,6 @@
 #import <index.h>
 #import <spawn_child.h>
 #import <shard.h>
-#import <paxos.h>
 
 #import <mod/box/box.h>
 #import <mod/box/src-lua/moonbox.h>

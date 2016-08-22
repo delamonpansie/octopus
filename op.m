@@ -37,7 +37,6 @@
 #import <tbuf.h>
 #import <objc.h>
 #import <index.h>
-#import <paxos.h>
 #import <shard.h>
 
 #import <mod/box/box.h>
