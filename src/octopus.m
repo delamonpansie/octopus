@@ -63,7 +63,11 @@
 #include <getopt.h>
 #include <libgen.h>
 #include <sysexits.h>
+#if HAVE_CLOCK_GETTIME
 #include <time.h>
+#else
+#include <sys/time.h>
+#endif
 #if HAVE_SYS_PRCTL_H
 # include <sys/prctl.h>
 #endif
@@ -122,8 +126,8 @@ fill_seed() {
 #else
 		struct timeval tv = {0, 0};
 		gettimeofday (&tv, NULL);
-		seed[0] ^= ts.tv_sec;
-		seed[1] ^= ts.tv_usec;
+		seed[0] ^= tv.tv_sec;
+		seed[1] ^= tv.tv_usec;
 #endif
 		for (r=0;r<5;r++) {
 			seed[1] ^= seed[0]; seed[1] -= ROTL(seed[0], 41);
