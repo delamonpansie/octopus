@@ -223,7 +223,6 @@ static void
 phi_commit(struct box_phi *phi)
 {
 	assert(phi->left != NULL || phi->right != NULL);
-	assert(!phi->must_rollback);
 	say_debug3("%s: %p left:%p right:%p", __func__,
 		   (char *)phi - sizeof(struct tnt_object), phi->left, phi->right);
 
@@ -238,19 +237,14 @@ static void
 phi_rollback(struct box_phi *phi)
 {
 	assert(phi->left != NULL || phi->right != NULL);
+	assert(phi->right == NULL || phi->right->type != BOX_PHI);
 	say_debug3("%s: %p left:%p right:%p", __func__,
 		   (char *)phi - sizeof(struct tnt_object), phi->left, phi->right);
-	if (phi->must_rollback) /* parent record already detached from index */
-		return;
+
 	if (phi->left == NULL)
 		[phi->index remove:phi->right];
 	else
 		[phi->index replace:phi->left];
-
-	while (phi->right && phi->right->type == BOX_PHI ) {
-		phi = box_phi(phi->right);
-		phi->must_rollback = true;
-	}
 }
 
 struct tnt_object *
@@ -285,9 +279,8 @@ object_space_delete(struct object_space *object_space, struct phi_tailq *phi_tai
 	id<BasicIndex> pk = object_space->index[0];
 	phi_insert(phi_tailq, pk, index_obj , NULL);
 
-	foreach_indexi(1, index, object_space) {
+	foreach_indexi(1, index, object_space)
 		phi_insert(phi_tailq, index, [index find_obj:tuple] , NULL);
-	}
 }
 
 static void
@@ -845,7 +838,7 @@ txn_cleanup(struct box_txn *txn)
 	fiber->txn = NULL;
 	if (txn->link.tqe_prev) {
 		assert(TAILQ_FIRST(&txn_tailq) == txn ||
-		       (txn->submit == 0 && TAILQ_NEXT(txn, link) == NULL));
+		       (txn->submit == 0 && TAILQ_LAST(&txn_tailq, box_txn_tailq) == txn));
 		TAILQ_REMOVE(&txn_tailq, txn, link);
 	}
 
@@ -888,12 +881,9 @@ box_op_commit(struct box_op *bop)
 		bytes_usage(bop->object_space, bop->old_obj, -1);
 
 	struct box_phi *phi;
-	TAILQ_FOREACH(phi, &bop->phi, link) {
-		assert(phi->must_rollback == false);
+	TAILQ_FOREACH(phi, &bop->phi, link)
 		phi_commit(phi);
-	}
 	stat_collect(stat_base, bop->op, 1);
-
 }
 
 void
@@ -923,28 +913,34 @@ box_op_rollback(struct box_op *bop)
 		return;
 
 	struct box_phi *phi;
-	TAILQ_FOREACH(phi, &bop->phi, link)
+	TAILQ_FOREACH_REVERSE(phi, &bop->phi, phi_tailq, link)
 		phi_rollback(phi);
 	if (bop->old_obj)
 		bop->old_obj->flags &= ~UPDATE_INVISIBLE;
 }
 
 void
-box_rollback(struct box_txn *txn)
+box_rollback(struct box_txn *current_txn)
 {
-	say_debug2("%s: txn:%i/%p state:%i", __func__, txn->id, txn, txn->state);
-	if (txn->state == ROLLBACK)
-		return;
-	assert(txn->state == UNDECIDED);
-	txn->state = ROLLBACK;
+	struct box_txn *txn;
+	say_debug2("%s: txn:%i/%p state:%i", __func__,
+		   current_txn->id, current_txn, current_txn->state);
+	if (current_txn->state == ROLLBACK)
+		goto cleanup;
 
-	struct box_op *bop;
-	TAILQ_FOREACH(bop, &txn->ops, link)
-		box_op_rollback(bop);
-	txn_cleanup(txn);
-	txn = TAILQ_NEXT(txn, link);
-	if (txn)
-		box_rollback(txn);
+	TAILQ_FOREACH_REVERSE(txn, &txn_tailq, box_txn_tailq, link) {
+		assert(txn->state == UNDECIDED);
+		txn->state = ROLLBACK;
+
+		struct box_op *bop;
+		TAILQ_FOREACH_REVERSE(bop, &txn->ops, box_op_tailq, link)
+			box_op_rollback(bop);
+
+		if (txn == current_txn)
+			break;
+	}
+cleanup:
+	txn_cleanup(current_txn);
 }
 
 

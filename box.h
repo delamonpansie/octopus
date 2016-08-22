@@ -72,7 +72,6 @@ struct box_phi {
 	struct tnt_object *left, *right;
 	TAILQ_ENTRY(box_phi) link;
 	Index<BasicIndex> *index;
-	bool must_rollback;
 };
 TAILQ_HEAD(phi_tailq, box_phi);
 struct tnt_object *phi_left(struct tnt_object *obj);

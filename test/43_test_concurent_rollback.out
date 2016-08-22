@@ -1,10 +1,10 @@
 # box.insert(["2", "sleep"])
 # box.lua("user_proc.test11")
-Failed with: {code: 0x202, message: 'mod/box/src-lua/box/example_proc.lua:383: oops
+Failed with: {code: 0x202, message: 'mod/box/src-lua/box/example_proc.lua:384: oops
 stack traceback:
 	[C]: in function 'error'
-	mod/box/src-lua/box/example_proc.lua:383: in function 'proc'
-	mod/box/src-lua/box.lua:381: in function <mod/box/src-lua/box.lua:373>'}
+	mod/box/src-lua/box/example_proc.lua:384: in function 'proc'
+	mod/box/src-lua/box.lua:385: in function <mod/box/src-lua/box.lua:377>'}
 1
 
 # box.select("\x00\x00\x00\x00", "2")
