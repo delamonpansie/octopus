@@ -201,6 +201,9 @@ void iproto_mbox_put(struct iproto_mbox *mbox, struct iproto *msg);
 
 void iproto_pinger(va_list ap);
 
+struct iproto_ingress *blackhole_ingress;
+struct iproto_mbox *blackhole_mbox;
+
 
 u32 iproto_mbox_send(struct iproto_mbox *mbox, struct iproto_egress *peer,
 		     const struct iproto *msg, const struct iovec *iov, int iovcnt);
@@ -211,7 +214,6 @@ void iproto_mbox_wait_all(struct iproto_mbox *mbox, ev_tstamp timeout);
 struct iproto *iproto_sync_send(struct iproto_egress *peer,
 				const struct iproto *msg, const struct iovec *iov, int iovcnt);
 
-struct iproto_ingress *drop_reply;
 u32 iproto_proxy_send(struct iproto_egress *to, struct iproto_ingress *from,
 		      u32 wrap_code, const struct iproto *msg, const struct iovec *iov, int iovcnt);
 
