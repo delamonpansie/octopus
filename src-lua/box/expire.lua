@@ -6,6 +6,7 @@ local ipairs, type = ipairs, type
 local insert = table.insert
 local format = string.format
 local ev_now = os.ev_now
+local setmetatable = setmetatable
 
 -- simple usage
 
