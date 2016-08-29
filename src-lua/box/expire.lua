@@ -155,7 +155,7 @@ local function loop_inner(ushard, key, conf)
         end
         local nxt = nil
         for tuple in indx:iter_from_pos(key or 0) do
-            if tuple ~= nil and conf.filter(tuple, ushard) then
+            if tuple ~= nil and conf.filter(tuple, ctx) then
                 insert(batch, tuple)
             end
             count = count + 1
@@ -182,7 +182,7 @@ local function loop_inner(ushard, key, conf)
             error(format("unknown direction %s", direction))
         end
         for tuple in nxt, ix do
-            if conf.filter(tuple, ushard) then
+            if conf.filter(tuple, ctx) then
                 insert(batch, tuple)
             elseif direction == 'head' or direction == 'tail' then
                 break
