@@ -61,6 +61,16 @@ local datacast_type_cache = setmetatable({}, {
    end
 })
 
+local __tuple_inext = function (tuple, i)
+    if i == nil then
+        return 0, tuple[0]
+    elseif i < tuple.cardinality-1 then
+        return i+1, tuple[i+1]
+    else
+        return nil
+    end
+end
+
 local __tuple_index = {
    field = function(self, i, level)
       assertarg(i, 'number', 1, level or 0)
@@ -169,6 +179,16 @@ local __tuple_index = {
            self._long_living = nil
        end
    end,
+   to_string_array = function (self)
+       local arr = {}
+       for i=0, self.cardinality-1 do
+           arr[i+1] = self[i]
+       end
+       return arr
+   end,
+   ipairs = function (self)
+       return __tuple_inext, self
+   end,
 }
 
 local tuple_mt = {
@@ -181,6 +201,9 @@ local tuple_mt = {
    end,
    __len = function(self) -- won't work until -DLUAJIT_ENABLE_LUA52COMPAT enabled
       return self.cardinality
+   end,
+   __ipairs = function(self)
+       return __tuple_inext, self
    end,
    __tostring = function(self)
       return tostring(self.__tuple or self.data)

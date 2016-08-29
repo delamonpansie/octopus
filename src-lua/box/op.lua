@@ -16,7 +16,10 @@ local op = { NOP = 1,
              INSERT = 13,
              UPDATE_FIELDS = 19,
              DELETE_1_3 = 20,
-             DELETE = 21 }
+             DELETE = 21,
+             BOX_OP = 127,
+             BOX_MULTI_OP = 128,
+         }
 _M.op = op
 
 pack = {}
@@ -229,10 +232,26 @@ function wal_parse(tag, data, len)
         cmd.op = -1
     elseif wal.tag.type(tag) ~= "wal" then
         return nil
-    elseif wal.tag.value(tag) > wal.tag.code.paxos_nop then
+    elseif wal.tag.value(tag) >= wal.tag.code.user_tag then
         cmd.op = bit.rshift(wal.tag.value(tag), 5)
     elseif tag_name == "wal_data" then
         cmd.op = u:u16()
+    elseif tag_name == "tlv" then
+        -- parse tlv
+        assert(u:u16() == op.BOX_MULTI_OP)
+        local sz = u:u32()
+        assert(sz == u.len)
+        cmd.op = op.BOX_MULTI_OP
+        cmd.op_name = 'multi'
+        cmd.multi = {}
+        while u.len > 0 do
+            assert(u:u16() == op.BOX_OP)
+            sz = u:u32()
+            local nested = u:unpacker(sz)
+            local tag = bit.bor(bit.lshift(nested:u16(), 5), wal.tag.WAL)
+            table.insert(cmd.multi, wal_parse(tag, nested.ptr, nested.len))
+        end
+        return cmd
     else
         return nil
     end
@@ -351,6 +370,7 @@ local function wal_pack(r)
     row.scn = r.scn
     row.shard_id = r.shard_id
     row.tm = r.tm
+    local rowsz = p:len()
 
     local cmd = r.cmd
     if cmd == nil then
@@ -380,65 +400,122 @@ local function wal_pack(r)
         return ffi.cast("struct row_v12*", p.ptr)
     end
 
-    row.tag = bit.bor(bit.lshift(cmd.op, 5), wal.tag.WAL)
-
-    local _, ptr, len
-    if cmd.op == op.INSERT then
-        _, ptr, len = insert(cmd.flags, cmd.n, cmd.tuple)
-    elseif cmd.op == op.DELETE then
-        _, ptr, len = pack.delete(cmd.flags, cmd.n, cmd.key)
-    elseif cmd.op == op.UPDATE_FIELDS then
-        _, ptr, len = pack.update(cmd.flags, cmd.n, cmd.key, cmd.update_mops)
+    if cmd.op ~= op.BOX_MULTI_OP then
+        row.tag = bit.bor(bit.lshift(cmd.op, 5), wal.tag.WAL)
+        local _, ptr, len
+        if cmd.op == op.INSERT then
+            _, ptr, len = insert(cmd.flags, cmd.n, cmd.tuple)
+        elseif cmd.op == op.DELETE then
+            _, ptr, len = pack.delete(cmd.flags, cmd.n, cmd.key)
+        elseif cmd.op == op.UPDATE_FIELDS then
+            _, ptr, len = pack.update(cmd.flags, cmd.n, cmd.key, cmd.update_mops)
+        else
+            error("unknown cmd.op = "..cmd.op)
+        end
+        p:raw(ptr, len)
     else
-        error("unknown cmd.op = "..cmd.op)
+        row.tag = bit.bor(wal.tag.code.tlv, wal.tag.WAL)
+        p:u16(op.BOX_MULTI_OP)
+        local offset = p:len()
+        p:u32(0)
+        for _, ncmd in ipairs(cmd.multi) do
+            local _, ptr, len
+            if ncmd.op == op.INSERT then
+                _, ptr, len = insert(ncmd.flags, ncmd.n, ncmd.tuple)
+            elseif ncmd.op == op.DELETE then
+                _, ptr, len = pack.delete(ncmd.flags, ncmd.n, ncmd.key)
+            elseif ncmd.op == op.UPDATE_FIELDS then
+                _, ptr, len = pack.update(ncmd.flags, ncmd.n, ncmd.key, ncmd.update_mops)
+            else
+                error("unknown ncmd.op = "..ncmd.op)
+            end
+            p:u16(op.BOX_OP)
+            p:u32(len+2)
+            p:u16(ncmd.op)
+            p:raw(ptr, len)
+        end
+        ffi.cast("uint32_t*", p.ptr+offset)[0] = p:len() - offset - 4
     end
-    row.len = len
-    p:raw(ptr, len)
-    return ffi.cast("struct row_v12*", p.ptr)
+
+    row = ffi.cast("struct row_v12*", p.ptr)
+    row.len = p:len() - ffi.sizeof("struct row_v12")
+    return row
 end
+
+function cmd_replace(n, tuple)
+    return {
+        op = op.INSERT,
+        flags = 0,
+        n = n, namespace = n,
+        tuple = tuple
+    }
+end
+
+function cmd_add(n, tuple)
+    return {
+        op = op.INSERT,
+        flags = 2,
+        n = n, namespace = n,
+        tuple = tuple
+    }
+end
+
+function cmd_delete(n, key)
+    return {
+        op = op.DELETE,
+        flags = 0,
+        n = n, namespace = n,
+        key = key
+    }
+end
+
+function cmd_update(n, key, ops)
+    return {
+        op = op.UPDATE_FIELDS,
+        flags = 0,
+        n = n, namespace = n,
+        key = key,
+        update_mops = ops
+    }
+end
+local cmd_replace, cmd_add, cmd_delete, cmd_update = cmd_replace, cmd_add, cmd_delete, cmd_update
 
 local rmethods = {
     replace = function (self, n, tuple)
         assert(self.cmd ~= nil)
-        local cmd = {flags = 0}
-        cmd.op = op.INSERT
-        cmd.n, cmd.namespace = n, n
-        cmd.tuple = tuple
-        self.cmd = cmd
+        self.cmd = cmd_insert(n, tuple)
         return self
     end,
     add = function (self, n, tuple)
         assert(self.cmd ~= nil)
-        local cmd = {flags = 2}
-        cmd.op = op.INSERT
-        cmd.n, cmd.namespace = n, n
-        cmd.tuple = tuple
-        self.cmd = cmd
+        self.cmd = cmd_add(n, tuple)
         return self
     end,
-    delete = function (self, n, tuple)
+    delete = function (self, n, key)
         assert(self.cmd ~= nil)
-        local cmd = {flags = 0}
-        cmd.op = op.DELETE
-        cmd.n, cmd.namespace = n, n
-        cmd.key = key
-        self.cmd = cmd
+        self.cmd = cmd_delete(n, key)
         return self
     end,
     update = function (self, n, key, ops)
         assert(self.cmd ~= nil)
-        local cmd = {flags = 0}
-        cmd.op = op.UPDATE_FIELDS
-        cmd.n, cmd.namespace = n, n
-        cmd.key = key
-        cmd.update_mops = ops
-        self.cmd = cmd
+        self.cmd = cmd_update(n, key, ops)
         return self
     end,
-    nop = function (self, n, key, ops)
+    nop = function (self)
         assert(self.cmd ~= nil)
         self.cmd = op.NOP
         return self
+    end,
+    multi = function (self, nested)
+        assert(self.cmd ~= nil)
+        if #nested > 0 then
+            local cmd = {op = op.BOX_MULTI_OP}
+            cmd.multi = nested
+            self.cmd = cmd
+            return self
+        else
+            return self:nop()
+        end
     end,
     copy = function (self)
         local r = {}

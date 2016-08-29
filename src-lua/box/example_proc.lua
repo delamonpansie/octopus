@@ -409,3 +409,10 @@ user_proc.start_expire = box.wrap(function(ushard, n, ind)
     return 0, {}
 end)
 
+user_proc.multi_insert_for_partial_shard = box.wrap(function(ushard, from, to, second)
+    local space = ushard:object_space(0)
+    for i = tonumber(from), tonumber(to) do
+        space:replace{tostring(i), second}
+    end
+    return 0, {}
+end)
