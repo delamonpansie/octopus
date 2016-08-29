@@ -1,5 +1,5 @@
 local ffi, bit = require('ffi'), require('bit')
-local setmetatable, ipairs, error = setmetatable, ipairs, error
+local setmetatable, pairs, error = setmetatable, pairs, error
 local assertarg, type = assertarg, type
 local palloc = palloc
 module(...)
@@ -19,10 +19,14 @@ local tag_code = setmetatable({
         [ffi.C.shard_create] = "shard_create",
         [ffi.C.shard_alter] = "shard_alter",
         [ffi.C.shard_final] = "shard_final",
+        [ffi.C.tlv] = "tlv",
+        [ffi.C.user_tag] = "user_tag",
 }, {__index = function(t, k) return "usr" .. bit.rshift(k, 5) end})
 
-for id, name in ipairs(tag_code) do
-    tag_code[name] = id
+for id, name in pairs(tag_code) do
+    if type(id) == 'number' then
+        tag_code[name] = id
+    end
 end
 
 local function tag_value(tag) assertarg(tag, 'number', 1); return bit.band(tag, tag_mask) end
