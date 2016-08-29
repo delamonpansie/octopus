@@ -121,7 +121,7 @@ end
 
 local function iter_batch(batch, ctx)
     for _, tuple in ipairs(batch) do
-        ops.action(tuple, ctx)
+        ctx.conf.action(tuple, ctx)
     end
 end
 
