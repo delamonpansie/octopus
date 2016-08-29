@@ -501,8 +501,6 @@ prepare_update_fields(struct box_op *bop, struct tbuf *data)
 	bop->old_obj = phi_right(old_root);
 
 	op_cnt = read_u32(data);
-	if (op_cnt > 128)
-		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "too many ops");
 	if (op_cnt == 0)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "no ops");
 
