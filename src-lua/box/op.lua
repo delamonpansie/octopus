@@ -483,7 +483,7 @@ local cmd_replace, cmd_add, cmd_delete, cmd_update = cmd_replace, cmd_add, cmd_d
 local rmethods = {
     replace = function (self, n, tuple)
         assert(self.cmd ~= nil)
-        self.cmd = cmd_insert(n, tuple)
+        self.cmd = cmd_replace(n, tuple)
         return self
     end,
     add = function (self, n, tuple)
