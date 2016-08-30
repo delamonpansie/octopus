@@ -71,8 +71,36 @@ object_space(Box *box, int n)
 	return box->object_space_registry[n];
 }
 
+static Index *
+configure_index(int i, int j, struct index_conf *pk_conf)
+{
+	struct index_conf *ic = cfg_box2index_conf(cfg.object_space[i]->index[j]);
+	if (ic == NULL)
+		panic("(object_space = %" PRIu32 " index = %" PRIu32 ") "
+		      "unknown index type `%s'", i, j, cfg.object_space[i]->index[j]->type);
+	ic->n = j;
+
+	if (j == 0 && ic->unique == false)
+		panic("(object_space = %" PRIu32 ") object_space PK index must be unique", i);
+
+	if (j > 0 && ic->unique == false)
+		index_conf_merge_unique(ic, pk_conf);
+
+	Index *index = [Index new_conf:ic dtor:&box_tuple_dtor];
+
+	if (index == nil)
+		panic("(object_space = %" PRIu32 " index = %" PRIu32 ") "
+		      "XXX unknown index type `%s'", i, j, cfg.object_space[i]->index[j]->type);
+
+	/* FIXME: only reasonable for HASH indexes */
+	if ([index respondsTo:@selector(resize:)])
+		[(id)index resize:cfg.object_space[i]->estimated_rows];
+
+	return index;
+}
+
 static void
-configure(Box *box)
+configure_pk(Box *box)
 {
 	for (int i = 0; i < nelem(box->object_space_registry); i++) {
 		if (cfg.object_space[i] == NULL)
@@ -93,48 +121,89 @@ configure(Box *box)
 		if (cfg.object_space[i]->index == NULL)
 			panic("(object_space = %" PRIu32 ") at least one index must be defined", i);
 
-		Index *prev = 0;
-		for (int j = 0; j < nelem(obj_spc->index); j++) {
-
-			if (cfg.object_space[i]->index[j] == NULL)
-				break;
-
-			struct index_conf *ic = cfg_box2index_conf(cfg.object_space[i]->index[j]);
-			if (ic == NULL)
-				panic("(object_space = %" PRIu32 " index = %" PRIu32 ") "
-				      "unknown index type `%s'", i, j, cfg.object_space[i]->index[j]->type);
-
-			ic->n = j;
-
-			if (j == 0 && ic->unique == false)
-				panic("(object_space = %" PRIu32 ") object_space PK index must be unique", i);
-
-			if (j > 0 && ic->unique == false)
-				index_conf_merge_unique(ic, &obj_spc->index[0]->conf);
-
-			Index *index = [Index new_conf:ic dtor:&box_tuple_dtor];
-
-			if (index == nil)
-				panic("(object_space = %" PRIu32 " index = %" PRIu32 ") "
-				      "XXX unknown index type `%s'", i, j, cfg.object_space[i]->index[j]->type);
-
-			/* FIXME: only reasonable for HASH indexes */
-			if ([index respondsTo:@selector(resize:)])
-				[(id)index resize:cfg.object_space[i]->estimated_rows];
-
-			obj_spc->index[j] = (Index<BasicIndex> *)index;
-			if (prev)
-				prev->next = index;
-			prev = index;
-		}
-
+		obj_spc->index[0] = configure_index(i, 0, NULL);
 		Index *pk = obj_spc->index[0];
+		say_info("object space %i PK %i:%s ", i, pk->conf.n, [[pk class] name]);
 
-		say_info("object space %i successfully configured", i);
-		say_info("  PK %i:%s", pk->conf.n, [[pk class] name]);
 	}
 }
 
+static void
+build_secondary(struct object_space *object_space)
+{
+	Index<BasicIndex> *pk = object_space->index[0];
+	size_t n_tuples = [pk size];
+        size_t estimated_tuples = n_tuples * 1.2;
+
+	Tree *tree[MAX_IDX] = { nil, };
+	id<HashIndex> hash[MAX_IDX] = { nil, };
+	void *nodes[MAX_IDX] = { NULL, };
+	int tree_count = 0, hash_count = 0;
+
+	for (int j = 1; object_space->index[j]; j++) {
+		if ([object_space->index[j] isKindOf:[Tree class]])
+			tree[tree_count++] = (id)object_space->index[j];
+		else
+			hash[hash_count++] = (id)object_space->index[j];
+	}
+
+	if (tree_count == 0 && hash_count == 0)
+		return;
+
+	say_info("Building secondary indexes of object space %i", object_space->n);
+
+        if (n_tuples > 0) {
+		title("building_indexes/object_space:%i ", object_space->n);
+		for (int i = 0; i < tree_count; i++)
+                        nodes[i] = xmalloc(estimated_tuples * tree[i]->node_size);
+		struct tnt_object *obj;
+		u32 t = 0;
+		[pk iterator_init];
+		while ((obj = [pk iterator_next])) {
+			for (int i = 0; i < tree_count; i++) {
+                                struct index_node *node = nodes[i] + t * tree[i]->node_size;
+                                tree[i]->dtor(obj, node, tree[i]->dtor_arg);
+                        }
+			for (int i = 0; i < hash_count; i++)
+				[hash[i] replace:obj];
+                        t++;
+		}
+	}
+
+	for (int i = 0; i < tree_count; i++) {
+		say_info("  %i:%s", tree[i]->conf.n, [[tree[i] class] name]);
+		[tree[i] set_nodes:nodes[i]
+			     count:n_tuples
+			 allocated:estimated_tuples];
+	}
+	title(NULL);
+}
+
+static void
+configure_secondary(Box *box)
+{
+
+	for (int i = 0; i < nelem(box->object_space_registry); i++) {
+		struct object_space *obj_spc = box->object_space_registry[i];
+		if (obj_spc == NULL)
+			continue;
+
+		Index *prev = obj_spc->index[0];
+		struct index_conf *pk_conf = &obj_spc->index[0]->conf;
+		say_info("object space %i", i);
+		for (int j = 1; j < nelem(obj_spc->index); j++) {
+			if (cfg.object_space[i]->index[j] == NULL)
+				break;
+
+			obj_spc->index[j] = configure_index(i, j, pk_conf);
+			prev->next = obj_spc->index[j];
+			prev = obj_spc->index[j];
+			say_info("\tindex %i:%s", j, [[obj_spc->index[j] class] name]);
+		}
+
+		build_secondary(obj_spc);
+	}
+}
 
 @implementation Box
 
@@ -144,7 +213,7 @@ set_shard:(Shard<Shard> *)shard_
 	shard = shard_;
 	if (cfg.object_space != NULL) {
 		if (shard->dummy)
-			configure(self);
+			configure_pk(self);
 		else
 			say_warn("cfg.object_space ignored");
 	}
@@ -249,6 +318,13 @@ apply:(struct tbuf *)data tag:(u16)tag
 			@throw;
 		}
 	}
+}
+
+- (void)
+snap_final_row
+{
+	/* this called only when shard is dummy (legace mode) */
+	configure_secondary(self);
 }
 
 - (void)

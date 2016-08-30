@@ -204,7 +204,6 @@ enum messages ENUM_INITIALIZER(MESSAGES);
 extern char const * const box_ops[];
 
 @interface Box : DefaultExecutor <Executor> {
-	bool built_seconday_indexes;
 @public
 	struct object_space *object_space_registry[256];
 	const int object_space_max_idx;
