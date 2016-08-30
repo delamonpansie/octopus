@@ -139,11 +139,9 @@ build_secondary(struct object_space *object_space)
 {
 	Index<BasicIndex> *pk = object_space->index[0];
 	size_t n_tuples = [pk size];
-        size_t estimated_tuples = n_tuples * 1.2;
 
 	Tree *tree[MAX_IDX] = { nil, };
 	id<HashIndex> hash[MAX_IDX] = { nil, };
-	void *nodes[MAX_IDX] = { NULL, };
 	int tree_count = 0, hash_count = 0;
 
 	for (int j = 1; object_space->index[j]; j++) {
@@ -160,27 +158,26 @@ build_secondary(struct object_space *object_space)
 
         if (n_tuples > 0) {
 		title("building_indexes/object_space:%i ", object_space->n);
-		for (int i = 0; i < tree_count; i++)
-                        nodes[i] = xmalloc(estimated_tuples * tree[i]->node_size);
 		struct tnt_object *obj;
-		u32 t = 0;
 		[pk iterator_init];
 		while ((obj = [pk iterator_next])) {
-			for (int i = 0; i < tree_count; i++) {
-                                struct index_node *node = nodes[i] + t * tree[i]->node_size;
-                                tree[i]->dtor(obj, node, tree[i]->dtor_arg);
-                        }
 			for (int i = 0; i < hash_count; i++)
 				[hash[i] replace:obj];
-                        t++;
 		}
-	}
-
-	for (int i = 0; i < tree_count; i++) {
-		say_info("  %i:%s", tree[i]->conf.n, [[tree[i] class] name]);
-		[tree[i] set_nodes:nodes[i]
-			     count:n_tuples
-			 allocated:estimated_tuples];
+		for (int i = 0; i < tree_count; i++) {
+			say_info("  %i:%s", tree[i]->conf.n, [[tree[i] class] name]);
+			bool sptree = [tree[i] isKindOf: [SPTree class]];
+			size_t sz = (size_t)(n_tuples * (sptree ? 1.2 : 1));
+			void *nodes = xmalloc(sz * tree[i]->node_size);
+			u32 t = 0;
+			[pk iterator_init];
+			while ((obj = [pk iterator_next])) {
+				struct index_node *node = nodes + t * tree[i]->node_size;
+				tree[i]->dtor(obj, node, tree[i]->dtor_arg);
+				t++;
+			}
+			[tree[i] set_nodes:nodes count:n_tuples allocated:sz];
+		}
 	}
 	title(NULL);
 }
