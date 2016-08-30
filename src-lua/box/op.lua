@@ -370,6 +370,7 @@ local function wal_pack(r)
     row.scn = r.scn
     row.shard_id = r.shard_id
     row.tm = r.tm
+    row.remote_scn = r.remote_scn
     local rowsz = p:len()
 
     local cmd = r.cmd
@@ -544,6 +545,7 @@ function wal_filter(f)
         r.lsn = row.lsn
         r.scn = row.scn
         r.shard_id = row.shard_id
+        r.remote_scn = row.remote_scn
         r.tag = row.tag
         r.tm = row.tm
         r.data = row.data
