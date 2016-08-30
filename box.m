@@ -72,7 +72,7 @@ object_space(Box *box, int n)
 }
 
 static Index *
-configure_index(int i, int j, struct index_conf *pk_conf)
+configure_index(int i, int j, Index* pk)
 {
 	struct index_conf *ic = cfg_box2index_conf(cfg.object_space[i]->index[j]);
 	if (ic == NULL)
@@ -83,8 +83,10 @@ configure_index(int i, int j, struct index_conf *pk_conf)
 	if (j == 0 && ic->unique == false)
 		panic("(object_space = %" PRIu32 ") object_space PK index must be unique", i);
 
-	if (j > 0 && ic->unique == false)
-		index_conf_merge_unique(ic, pk_conf);
+	if (j > 0 && ic->unique == false) {
+		assert(pk != NULL);
+		index_conf_merge_unique(ic, &pk->conf);
+	}
 
 	Index *index = [Index new_conf:ic dtor:&box_tuple_dtor];
 
@@ -93,8 +95,12 @@ configure_index(int i, int j, struct index_conf *pk_conf)
 		      "XXX unknown index type `%s'", i, j, cfg.object_space[i]->index[j]->type);
 
 	/* FIXME: only reasonable for HASH indexes */
-	if ([index respondsTo:@selector(resize:)])
-		[(id)index resize:cfg.object_space[i]->estimated_rows];
+	if ([index respondsTo:@selector(resize:)]) {
+		if (pk == NULL)
+			[(id)index resize:cfg.object_space[i]->estimated_rows];
+		else
+			[(id)index resize:[pk size]];
+	}
 
 	return index;
 }
@@ -189,13 +195,13 @@ configure_secondary(Box *box)
 			continue;
 
 		Index *prev = obj_spc->index[0];
-		struct index_conf *pk_conf = &obj_spc->index[0]->conf;
+		Index *pk = obj_spc->index[0];
 		say_info("object space %i", i);
 		for (int j = 1; j < nelem(obj_spc->index); j++) {
 			if (cfg.object_space[i]->index[j] == NULL)
 				break;
 
-			obj_spc->index[j] = configure_index(i, j, pk_conf);
+			obj_spc->index[j] = configure_index(i, j, pk);
 			prev->next = obj_spc->index[j];
 			prev = obj_spc->index[j];
 			say_info("\tindex %i:%s", j, [[obj_spc->index[j] class] name]);
