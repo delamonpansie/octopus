@@ -251,9 +251,12 @@ recover_row:(struct row_v12 *)row
 
 	switch (row->tag & TAG_MASK) {
 	case snap_initial:
+		break;
 	case snap_final:
 		if (dummy || partial_replica)
 			snap_loaded = true;
+		if (dummy && [(id)executor respondsTo:@selector(snap_final_row)])
+			[(id)executor snap_final_row];
 		break;
 	case run_crc:
 		if (cfg.ignore_run_crc || partial_replica)

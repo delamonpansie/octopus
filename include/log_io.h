@@ -575,4 +575,8 @@ struct octopus_cfg_peer *cfg_peer_by_name(const char *name);
 - (void) print:(const struct row_v12 *)row into:(struct tbuf *)buf;
 @end
 
+@interface DefaultExecutor (SnapFinal)
+- (void)snap_final_row;
+@end
+
 #endif
