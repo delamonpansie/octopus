@@ -95,7 +95,8 @@ reload_graphite_addr(struct octopus_cfg *old _unused_, struct octopus_cfg *new)
 	const char *ga = new->graphite_addr;
 	bool valid = false;
 #ifdef GRAPHITE_ADDR
-#define str(x) #x
+#define _str(x) #x
+#define str(x) _str(x)
 #define graddr str(GRAPHITE_ADDR)
 	if (!ga || ga[0] == 0) {
 		ga = graddr;
@@ -104,6 +105,11 @@ reload_graphite_addr(struct octopus_cfg *old _unused_, struct octopus_cfg *new)
 	if (ga && ga[0] != 0) {
 		int rc = atosin(ga, &graphite_addr);
 		valid = !rc;
+		if (!valid) {
+			say_warn("graphite_addr: %s invalid: %s", ga);
+		}
+	} else {
+		say_warn("graphite_addr not given");
 	}
 	if (valid && graphite_sock == -1) {
 		graphite_sock = socket(PF_INET, SOCK_DGRAM, 0);
