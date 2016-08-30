@@ -169,6 +169,7 @@ typedef struct tnt_object* tnt_ptr;
 - (u32)cardinality;
 /* common method */
 - (int)eq:(struct tnt_object *)a :(struct tnt_object*)b;
+- (u32)size;
 @end
 
 @protocol HashIndex <BasicIndex>

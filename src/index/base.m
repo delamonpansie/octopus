@@ -31,6 +31,7 @@
 #import <fiber.h>
 #import <pickle.h>
 #import <index.h>
+#import <say.h>
 
 @implementation IndexError
 @end
@@ -198,6 +199,13 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 	dtor(obj_b, node_b, dtor_arg);
 	return eq(&node_a, node_b, self->dtor_arg);
 }
+
+- (u32)
+size
+{
+	raise_fmt("Subclass responsibility");
+	return 0;
+}
 @end
 
 void __attribute__((noreturn)) oct_cold
@@ -206,3 +214,4 @@ index_raise_(const char *file, int line, const char *msg)
 	@throw [[IndexError with_reason: msg] init_line:line file:file];
 }
 
+register_source()
