@@ -52,9 +52,9 @@ static int graphite_buflen;
 
 static void reload_graphite_addr(struct octopus_cfg *old _unused_, struct octopus_cfg *new);
 
-static ev_periodic graphite_flush_now_periodic;
+static ev_prepare graphite_flush_prepare;
 static ev_periodic graphite_send_version_periodic;
-static void graphite_flush_now(ev_periodic *w _unused_, int revents _unused_);
+static void graphite_flush_cb(ev_prepare *w _unused_, int revents _unused_);
 static void graphite_send_version(ev_periodic *w _unused_, int revents _unused_);
 
 void
@@ -80,8 +80,7 @@ graphite_init()
 	graphite_head[graphite_head_len] = 0;
 
 	reload_graphite_addr(NULL, &cfg);
-	ev_periodic_init(&graphite_flush_now_periodic, graphite_flush_now, 0.999, 1, 0);
-	ev_periodic_start(&graphite_flush_now_periodic);
+	ev_prepare_init(&graphite_flush_prepare, graphite_flush_cb);
 	ev_periodic_init(&graphite_send_version_periodic, graphite_send_version, 59.999, 60, 0);
 	ev_periodic_start(&graphite_send_version_periodic);
 #if CFG_lua_path
@@ -128,6 +127,7 @@ graphite_flush(int addlen)
 		return;
 	if (addlen > 0 && graphite_buflen + addlen < mtu) {
 		graphite_buflen += addlen;
+		ev_prepare_start(&graphite_flush_prepare);
 		return;
 	}
 	int r = sendto(graphite_sock, graphite_buffer, graphite_buflen, MSG_DONTWAIT,
@@ -138,11 +138,18 @@ graphite_flush(int addlen)
 		graphite_buflen = addlen;
 	} else {
 		graphite_buflen = 0;
+		ev_prepare_stop(&graphite_flush_prepare);
 	}
 }
 
 static void
-graphite_flush_now(ev_periodic *w _unused_, int revents _unused_)
+graphite_flush_cb(ev_prepare *w _unused_, int revents _unused_)
+{
+	graphite_flush(0);
+}
+
+void
+graphite_flush_now()
 {
 	graphite_flush(0);
 }

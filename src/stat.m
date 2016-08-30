@@ -616,6 +616,7 @@ stat_send_to_graphite(ev_periodic* w _unused_, int revents _unused_)
 	for (i = 0; i < stat_basen; i++) {
 		stat_base_print_to_graphite(&stat_bases[i]);
 	}
+	graphite_flush_now();
 }
 static ev_periodic stat_send_to_graphite_periodic;
 #endif

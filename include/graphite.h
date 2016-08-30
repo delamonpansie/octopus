@@ -35,4 +35,5 @@ void graphite_send2(char const *base, char const *name, double value);
 /* will send key "${base}.${name}.${suffix}" */
 void graphite_send3(char const *base, char const *name, char const *suffix, double value);
 
+void graphite_flush_now();
 #endif
