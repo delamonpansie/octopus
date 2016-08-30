@@ -106,7 +106,7 @@ reload_graphite_addr(struct octopus_cfg *old _unused_, struct octopus_cfg *new)
 		int rc = atosin(ga, &graphite_addr);
 		valid = !rc;
 		if (!valid) {
-			say_warn("graphite_addr: %s invalid: %s", ga);
+			say_warn("graphite_addr: %s invalid", ga);
 		}
 	} else {
 		say_warn("graphite_addr not given");
