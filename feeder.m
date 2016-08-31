@@ -193,7 +193,15 @@ lua_filter(struct row_v12 *r, __attribute((unused)) const char *arg, __attribute
 - (void)
 send_row:(struct row_v12 *)row
 {
+	static struct tbuf buf;
 	/* FIXME: we should buffer writes */
+	if (will_say(DEBUG)) {
+		if (buf.pool == NULL)
+			buf.pool = fiber->pool;
+		print_row(&buf, row, NULL);
+		say_debug("send_row %*s", tbuf_len(&buf), (char *)buf.ptr);
+		tbuf_reset(&buf);
+	}
 	writef(fd, (const char *)row, sizeof(*row) + row->len);
 }
 
