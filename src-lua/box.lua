@@ -43,7 +43,7 @@ local _G = _G
 
 module(...)
 
-VERSION = 2.01
+VERSION = 2.02
 
 local function cache_call(table, k)
     local v = table[k]
