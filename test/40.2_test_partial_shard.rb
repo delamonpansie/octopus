@@ -62,7 +62,6 @@ replication_filter.partial = box_op.wal_filter(function (row, arg)
         end
       end
       row.shard_id = shard
-      --return row:add(cmd.multi[1])
       return row:multi(multi)
   else
       return false
