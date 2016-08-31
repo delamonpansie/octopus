@@ -88,7 +88,7 @@ local setmetatable = setmetatable
 --      --   'batch'  - encount batch sizes
 --    encount = 'filter',
 --      -- name of fiber loop
---      -- default is format('box_expire(%d)', space)
+--      -- default is format('box_expire_%d', space)
 --    name = 'expire_space_1',
 --      -- `precondition` is called in start of each iteration,
 --      -- may analize and add values to ctx
@@ -277,7 +277,7 @@ function start(n, conf)
         assert(conf.encount == 'filter' or conf.encount == 'batch')
     end
     if not conf.name then
-        conf.name = 'box_expire('..conf.space..')'
+        conf.name = 'box_expire_'..conf.space
     end
     conf.exec = loop_inner
     loop.start(conf)
