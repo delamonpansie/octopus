@@ -37,7 +37,7 @@ replication_filter.partial = box_op.wal_filter(function (row, arg)
      shard = tonumber(arg)
      return nil
   end
-  if row.scn == 0 or row.scn == -1 then
+  if row.scn == 0 or row.scn == -1 or row:tag_name() == "snap_final" then
      return true
   end
   local cmd = row.cmd
@@ -45,7 +45,7 @@ replication_filter.partial = box_op.wal_filter(function (row, arg)
       local key = cmd.tuple:strfield(0)
       local mod = tonumber(key) % 4
       if mod ~= shard then
-          return row:nop()
+          row = row:nop()
       end
       row.shard_id = shard
       return row

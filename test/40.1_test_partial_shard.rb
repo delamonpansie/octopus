@@ -37,7 +37,7 @@ replication_filter.partial = function (row, arg)
      shard = tonumber(arg)
      return nil
   end
-  if row.scn == 0 or row.scn == -1 then
+  if row.scn == 0 or row.scn == -1 or row:tag_name() == "snap_final" then
      return true
   end
   local cmd = box_op.wal_parse(row.tag, row.data, row.len)
