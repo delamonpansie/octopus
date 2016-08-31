@@ -80,7 +80,9 @@ static inline bool scn_changer(int tag)
 {
 	int tag_type = tag & ~TAG_MASK;
 	tag &= TAG_MASK;
-	return tag_type == TAG_WAL || tag == nop || tag == run_crc || tag == shard_create || tag == shard_alter;
+	return tag_type == TAG_WAL || tag == nop || tag == run_crc ||
+		tag == shard_create || tag == shard_alter ||
+		tag == snap_final;
 }
 
 static inline bool dummy_tag(int tag) /* dummy row tag */
