@@ -559,9 +559,6 @@ tcp_async_connect(struct tac_state *s, ev_watcher *w /* result of yield() */,
 {
 	int fd = s->ev.fd;
 	if (fd < 0) {
-		if (ev_now() - s->error_tstamp <= 1.0) /* no more then one reconnect in second */
-			goto error;
-
 		/* init */
 		int	optval = 1;
 
@@ -597,6 +594,7 @@ tcp_async_connect(struct tac_state *s, ev_watcher *w /* result of yield() */,
 			}
 		}
 
+		s->error_tstamp = 0;
 		ev_io_init(&s->ev, (void *)fiber, fd, EV_WRITE);
 		ev_timer_init(&s->timer, (void *)fiber, timeout, 0.);
 		s->ev.coro = s->timer.coro = 1;
@@ -646,15 +644,14 @@ rendevouz(va_list ap)
 	ev_watcher		*w = NULL;
 	ev_timer		timer = { .coro=1 };
 
-	ev_timer_init(&timer, (void *)fiber, 0, 1.);
+	ev_timer_init(&timer, (void *)fiber, 0, 0.1);
 	ev_timer_start(&timer);
 loop:
 	w = yield();
 
 	SLIST_FOREACH_SAFE(ts, list, link, tmp) {
-		if (ts->io->fd >= 0)
+		if (ts->io->fd >= 0 || ev_now() - ts->error_tstamp < 0.1)
 			continue;
-
 		int r = tcp_async_connect(ts, w, self_addr, 5);
 		switch (r) {
 		case tac_wait:
