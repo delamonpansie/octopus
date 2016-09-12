@@ -588,6 +588,8 @@ init(void)
 		return;
 	}
 
+	box_init_phi_cache();
+
 	initialize_service();
 
 	/* fiber is required to successfully pull from remote */

@@ -69,6 +69,7 @@ struct box_small_tuple {
 };
 
 struct box_phi {
+	struct tnt_object tnt_obj;
 	struct tnt_object *left, *right;
 	TAILQ_ENTRY(box_phi) link;
 	Index<BasicIndex> *index;
@@ -218,7 +219,7 @@ ssize_t fields_bsize(u32 cardinality, const void *data, u32 max_len);
 void __attribute__((noreturn)) bad_object_type(void);
 #define box_tuple(obj) ((struct box_tuple *)((obj) + 1))
 #define box_small_tuple(obj) ((struct box_small_tuple *)((obj) + 1))
-#define box_phi(obj) ((struct box_phi *)((obj) + 1))
+#define box_phi(obj) ((struct box_phi *)(obj))
 static inline int tuple_bsize(const struct tnt_object *obj)
 {
 	switch (obj->type) {
@@ -272,4 +273,5 @@ int box_cat(const char *filename);
 void box_print_row(struct tbuf *out, u16 tag, struct tbuf *r);
 const char *box_row_to_a(u16 tag, struct tbuf *r);
 
+void box_init_phi_cache(void);
 #endif

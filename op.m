@@ -54,6 +54,8 @@ static TAILQ_HEAD(box_txn_tailq, box_txn) txn_tailq = TAILQ_HEAD_INITIALIZER(txn
 static int stat_base;
 char const * const box_ops[] = ENUM_STR_INITIALIZER(MESSAGES);
 
+static struct slab_cache phi_cache;
+
 void __attribute__((noreturn))
 bad_object_type()
 {
@@ -166,16 +168,17 @@ phi_alloc(struct phi_tailq *tailq, Index<BasicIndex> *index,
 	  struct tnt_object *old_obj, struct tnt_object *obj)
 {
 	assert(old_obj == NULL || old_obj->type != BOX_PHI);
-	int size = sizeof(struct tnt_object) + sizeof(struct box_phi);
-	struct tnt_object *phi_obj = palloc(fiber->pool, size);
+	struct tnt_object *phi_obj = slab_cache_alloc(&phi_cache);
 	struct box_phi *phi = box_phi(phi_obj);
 	say_debug3("%s: %p index:%i left:%p right:%p", __func__, phi_obj,
 		   index->conf.n, old_obj, obj);
-	phi_obj->type = BOX_PHI;
-	phi_obj->flags = 0;
-	*phi = (struct box_phi) { .index = index,
-				  .left = old_obj,
-				  .right = obj };
+	*phi = (struct box_phi) {
+		.tnt_obj = {
+			.type = BOX_PHI,
+			.flags = 0},
+		.index = index,
+		.left = old_obj,
+		.right = obj};
 	TAILQ_INSERT_TAIL(tailq, phi, link);
 	return phi_obj;
 }
@@ -878,9 +881,11 @@ box_op_commit(struct box_op *bop)
 	if (bop->old_obj)
 		bytes_usage(bop->object_space, bop->old_obj, -1);
 
-	struct box_phi *phi;
-	TAILQ_FOREACH(phi, &bop->phi, link)
+	struct box_phi *phi, *tmp;
+	TAILQ_FOREACH_SAFE(phi, &bop->phi, link, tmp) {
 		phi_commit(phi);
+		sfree(phi);
+	}
 	stat_collect(stat_base, bop->op, 1);
 }
 
@@ -910,9 +915,11 @@ box_op_rollback(struct box_op *bop)
 	if (!bop->object_space)
 		return;
 
-	struct box_phi *phi;
-	TAILQ_FOREACH_REVERSE(phi, &bop->phi, phi_tailq, link)
+	struct box_phi *phi, *tmp;
+	TAILQ_FOREACH_REVERSE_SAFE(phi, &bop->phi, phi_tailq, link, tmp) {
 		phi_rollback(phi);
+		sfree(phi);
+	}
 	if (bop->old_obj)
 		bop->old_obj->flags &= ~UPDATE_INVISIBLE;
 }
@@ -1219,6 +1226,12 @@ box_service_ro(struct iproto_service *s)
 	   updates are blocked by luaT_box_dispatch() */
 	service_register_iproto(s, EXEC_LUA, box_proc_cb, 0);
 #endif
+}
+
+void
+box_init_phi_cache(void)
+{
+	slab_cache_init(&phi_cache, sizeof(struct box_phi), SLAB_FIXED, "phi_cache");
 }
 
 void __attribute__((constructor))
