@@ -400,7 +400,6 @@ data_ready
 {
 	while (has_full_req(&rbuf)) {
 		struct iproto *req = iproto(&rbuf);
-		assert((i32)req->data_len > 0 || req->msg_code == MSG_PING);
 		int req_size = sizeof(struct iproto) + req->data_len;
 		tbuf_ltrim(&rbuf, req_size);
 		iproto_future_resolve(self, req);
