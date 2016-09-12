@@ -66,8 +66,8 @@ test: box_test
 test_relative_srcdir = $(realpath $(srcdir)/mod/box)
 
 box_test: $(binary)
-	@test ! -e mod/box/test && ln -s ${test_relative_srcdir}/test mod/box/test
-	@test ! -e mod/box/client && ln -s ${test_relative_srcdir}/client mod/box/client
+	@test ! -e mod/box/test && ln -s ${test_relative_srcdir}/test mod/box/test || true
+	@test ! -e mod/box/client && ln -s ${test_relative_srcdir}/client mod/box/client || true
 	@cd mod/box && ./test/run.rb
 
 -include ../../jumproot.mk
