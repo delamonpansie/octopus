@@ -55,7 +55,7 @@ You can find Confetti at http://github.com/mailru/confetti/dnl
 
 AC_ARG_VAR([GIT], [GIT version control])
 AC_CHECK_PROG([GIT], [git], [git])
-AS_IF([test -n "$GIT" -a -d "${srcdir}/.git" ], [AC_SUBST(HAVE_GIT, 1)])
+AS_IF([test -n "$GIT" -a -e "${srcdir}/.git" ], [AC_SUBST(HAVE_GIT, 1)])
 AC_CHECK_PROG([ECHO], [echo], [echo])
 AC_CHECK_PROG([DOT], [dot], [dot])
 AC_CHECK_PROG([NM], [nm], [nm])
