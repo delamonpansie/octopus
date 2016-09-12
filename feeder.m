@@ -193,11 +193,15 @@ lua_filter(struct row_v12 *r, __attribute((unused)) const char *arg, __attribute
 - (void)
 send_row:(struct row_v12 *)row
 {
-	static struct tbuf buf;
 	/* FIXME: we should buffer writes */
 	if (will_say(DEBUG)) {
-		if (buf.pool == NULL)
-			buf.pool = fiber->pool;
+		static struct palloc_pool *debug_pool = NULL;
+		static struct tbuf buf;
+		if (debug_pool == NULL) {
+			debug_pool = palloc_create_pool((struct palloc_config){
+					.name="feeder_debug_pool"});
+			buf = TBUF(NULL, 0, debug_pool);
+		}
 		print_row(&buf, row, NULL);
 		say_debug("send_row %*s", tbuf_len(&buf), (char *)buf.ptr);
 		tbuf_reset(&buf);
