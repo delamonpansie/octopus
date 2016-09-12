@@ -2,6 +2,7 @@
 # encoding: ASCII
 
 $: << File.dirname($0) + '/lib'
+boxpath = File.realpath(File.dirname(File.dirname($0)))
 require 'run_env'
 
 class Env < RunEnv
@@ -58,7 +59,7 @@ end
 env = Env.new
 env.cd do
   ln_s '../proc.ml', '.'
-  ln_s '../../src-ml/box1.cmi', 'box1.cmi'
+  ln_s File.join(boxpath, 'src-ml/box1.cmi'), 'box1.cmi'
   `ocamlopt.opt -O3 -g -annot -I . -I +../batteries -shared -ccopt "-Wl,-Bsymbolic -Wl,-z,now -Wl,-z,combreloc" proc.ml -o proc_1.cmxs`
 end
 
