@@ -282,8 +282,11 @@ object_space_delete(struct object_space *object_space, struct phi_tailq *phi_tai
 	id<BasicIndex> pk = object_space->index[0];
 	phi_insert(phi_tailq, pk, index_obj , NULL);
 
-	foreach_indexi(1, index, object_space)
-		phi_insert(phi_tailq, index, [index find_obj:tuple] , NULL);
+	foreach_indexi(1, index, object_space) {
+		struct tnt_object* old_obj = [index find_obj:tuple];
+		assert(phi_right(old_obj) == tuple);
+		phi_insert(phi_tailq, index, old_obj, NULL);
+	}
 }
 
 static void
@@ -326,7 +329,9 @@ object_space_replace(struct object_space *object_space, struct phi_tailq *phi_ta
 		index_obj = [index find_obj:tuple];
 
 		if (phi_right(index_obj) == NULL) {
-			phi_insert(phi_tailq, index, [index find_obj:old_tuple], NULL);
+			struct tnt_object *old_obj = [index find_obj:old_tuple];
+			assert(phi_right(old_obj) == old_tuple);
+			phi_insert(phi_tailq, index, old_obj, NULL);
 			phi_insert(phi_tailq, index, index_obj, tuple);
 		} else  if (phi_right(index_obj) == old_tuple) {
 			phi_insert(phi_tailq, index, index_obj, tuple);
