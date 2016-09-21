@@ -273,5 +273,7 @@ int box_cat(const char *filename);
 void box_print_row(struct tbuf *out, u16 tag, struct tbuf *r);
 const char *box_row_to_a(u16 tag, struct tbuf *r);
 
+void box_idx_print_dups(int space, int index, struct tnt_object* a, struct tnt_object* b);
+
 void box_init_phi_cache(void);
 #endif

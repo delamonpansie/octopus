@@ -58,6 +58,7 @@
 #include <sysexits.h>
 
 static struct iproto_service box_primary, box_secondary;
+extern void tuple_print(struct tbuf *buf, u32 cardinality, void *f);
 
 struct object_space *
 object_space(Box *box, int n)
@@ -134,6 +135,17 @@ configure_pk(Box *box)
 	}
 }
 
+void
+box_idx_print_dups(int space, int index, struct tnt_object* a, struct tnt_object* b)
+{
+	struct tbuf out = TBUF(NULL, 0, fiber->pool);
+	tbuf_printf(&out, "Duplicate values space %d index %d : ", space, index);
+	tuple_print(&out, tuple_cardinality(a), tuple_data(a));
+	tbuf_printf(&out, " ");
+	tuple_print(&out, tuple_cardinality(b), tuple_data(b));
+	say_error("%.*s", (int)tbuf_len(&out), (char*)out.ptr);
+}
+
 static void
 build_secondary(struct object_space *object_space)
 {
@@ -166,9 +178,7 @@ build_secondary(struct object_space *object_space)
 		}
 		for (int i = 0; i < tree_count; i++) {
 			say_info("  %i:%s", tree[i]->conf.n, [[tree[i] class] name]);
-			bool sptree = [tree[i] isKindOf: [SPTree class]];
-			size_t sz = (size_t)(n_tuples * (sptree ? 1.2 : 1));
-			void *nodes = xmalloc(sz * tree[i]->node_size);
+			void *nodes = xmalloc(n_tuples * tree[i]->node_size);
 			u32 t = 0;
 			[pk iterator_init];
 			while ((obj = [pk iterator_next])) {
@@ -176,7 +186,13 @@ build_secondary(struct object_space *object_space)
 				tree[i]->dtor(obj, node, tree[i]->dtor_arg);
 				t++;
 			}
-			[tree[i] set_nodes:nodes count:n_tuples allocated:sz];
+			struct index_node* dups[2] = {NULL, NULL};
+			if (![tree[i] sort_nodes:nodes count:n_tuples duplicates:dups]) {
+				box_idx_print_dups(object_space->n, tree[i]->conf.n,
+						dups[0]->obj, dups[1]->obj);
+				panic("duplicate tuples");
+			}
+			[tree[i] set_sorted_nodes:nodes count:n_tuples];
 		}
 	}
 	title(NULL);
@@ -378,7 +394,6 @@ snapshot_fold
 		while ((obj = [pk iterator_next])) {
 #ifdef FOLD_DEBUG
 			struct tbuf *b = tbuf_alloc(fiber->pool);
-			extern void tuple_print(struct tbuf *buf, u32 cardinality, void *f);
 			tuple_print(b, tuple->cardinality, tuple->data);
 			say_info("row %i: %.*s", count++, tbuf_len(b), (char *)b->ptr);
 #endif

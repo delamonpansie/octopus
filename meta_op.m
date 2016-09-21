@@ -87,12 +87,11 @@ prepare_create_index(struct box_meta_txn *txn, struct tbuf *data)
 	if ([pk size] == 0)
 		return;
 
-	if ([txn->index respondsTo:@selector(set_nodes:count:allocated:)]) {
+	if ([txn->index respondsTo:@selector(set_sorted_nodes:count:)]) {
 
 		size_t n_tuples = [pk size];
-		size_t estimated_tuples = n_tuples * 1.2 + 30;
 
-		void *nodes = xmalloc(estimated_tuples * txn->index->node_size);
+		void *nodes = xmalloc(n_tuples * txn->index->node_size);
 		int node_size = txn->index->node_size;
 		int i = 0;
 		[pk iterator_init];
@@ -101,10 +100,14 @@ prepare_create_index(struct box_meta_txn *txn, struct tbuf *data)
 			txn->index->dtor(obj, node, txn->index->dtor_arg);
 			i++;
 		}
-		say_debug("n_tuples:%i allocated:%i", (int)n_tuples, (int)estimated_tuples);
-		[(id)txn->index set_nodes:nodes
-				    count:n_tuples
-				allocated:estimated_tuples];
+		say_debug("n_tuples:%i", (int)n_tuples);
+		struct index_node* dups[2] = {NULL, NULL};
+		if(![(Tree*)txn->index sort_nodes:nodes count:n_tuples duplicates:dups]) {
+			box_idx_print_dups(txn->object_space->n, ic.n, dups[0]->obj, dups[1]->obj);
+			free(nodes);
+			iproto_raise(ERR_CODE_INDEX_VIOLATION, "duplicate values for unique index");
+		}
+		[(Tree*)txn->index set_sorted_nodes:nodes count:n_tuples];
 	} else {
 		[pk iterator_init];
 		while ((obj = [pk iterator_next]))
