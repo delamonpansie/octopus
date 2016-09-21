@@ -29,6 +29,7 @@
 #import <assoc.h>
 #import <index.h>
 #import <say.h>
+#import <third_party/qsort_arg.h>
 
 @implementation Tree
 
@@ -202,12 +203,32 @@ iterator_next_check:(index_cmp)check
 }
 
 - (void)
-set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated
+set_sorted_nodes:(void *)nodes_ count:(size_t)count
 {
 	raise_fmt("Subclass responsibility");
-	(void)nodes_; (void)count; (void)allocated;
+	(void)nodes_; (void)count;
 }
 
+- (bool)
+sort_nodes:(void *)nodes_ count:(size_t)count duplicates:(struct index_node*[2])dups
+{
+	int i;
+	qsort_arg(nodes_, count, node_size, compare, dtor_arg);
+	for (i = 1; i < count; i++) {
+		struct index_node *node = nodes_ + i * node_size;
+		struct index_node *prev = nodes_ + (i-1) * node_size;
+		int cmp = compare(node, prev, dtor_arg);
+		assert(cmp >= 0);
+		if (conf.unique && cmp == 0) {
+			if(dups != NULL) {
+				dups[0] = prev;
+				dups[1] = node;
+			}
+			return false;
+		}
+	}
+	return true;
+}
 @end
 
 register_source()

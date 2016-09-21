@@ -30,7 +30,6 @@
 #import <index.h>
 #import <salloc.h>
 #import <say.h>
-#import <third_party/qsort_arg.h>
 
 static bool
 nih_tuple_2_index_key(const void *tuple_key, void *index_key, void *arg)
@@ -168,17 +167,19 @@ free
 
 @implementation NIHCompactTree
 - (void)
-set_nodes:(void *)nodes count:(size_t)count allocated:(size_t)allocated
+set_sorted_nodes:(void *)nodes count:(size_t)count
 {
 	assert(node_size > 0);
-	(void)allocated;
 	nihtree_release(&tree, &tconf);
 	if (nodes != NULL && count > 0) {
 		niherrcode_t r = NIH_OK;
-		qsort_arg(nodes, count, node_size, compare, dtor_arg);
 		/* compress index nodes to pointers */
 		@try {
 			int i, j;
+			struct {
+				struct index_node node_a;
+				union index_field  __padding_a[7];
+			} buf[2];
 			tnt_ptr tuples[1024];
 			j = 0;
 			for (i=0; r == NIH_OK && i < count; i++) {
@@ -186,16 +187,11 @@ set_nodes:(void *)nodes count:(size_t)count allocated:(size_t)allocated
 				tuples[j] = tnt_obj2ptr(node->obj);
 				j++;
 				if (j == nelem(tuples)) {
-					r = nihtree_append_buf(&tree, &tconf, tuples, j, &node_a);
+					r = nihtree_append_buf(&tree, &tconf, tuples, j, (void*)buf);
 					j = 0;
 				}
 			}
 			if (r == NIH_OK && j > 0) {
-				/* rely here on search pattern after node_a */
-				struct {
-					struct index_node node_a;
-					union index_field  __padding_a[7];
-				} buf[2];
 				r = nihtree_append_buf(&tree, &tconf, tuples, j, (void*)buf);
 			}
 			if (r != NIH_OK) {

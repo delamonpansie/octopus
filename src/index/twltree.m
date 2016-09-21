@@ -30,7 +30,6 @@
 #import <index.h>
 #import <salloc.h>
 #import <say.h>
-#import <third_party/qsort_arg.h>
 
 static bool
 twl_tuple_2_index_key(void *index_key, const void *tuple_key, void *arg)
@@ -213,16 +212,14 @@ free
 
 @implementation TWLFastTree
 - (void)
-set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated
+set_sorted_nodes:(void *)nodes_ count:(size_t)count
 {
 	assert(node_size > 0);
-	(void)allocated;
 	twltree_free(&tree);
 	if (nodes_ == NULL) {
 		twltree_init(&tree);
 	} else {
 		if (count > 0) {
-			qsort_arg(nodes_, count, node_size, compare, dtor_arg);
 			enum twlerrcode_t r = twltree_bulk_load(&tree, nodes_, count);
 			if (r != TWL_OK) {
 				@try {
@@ -310,16 +307,14 @@ find_node:(const struct index_node *)node
 
 @implementation TWLCompactTree
 - (void)
-set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated
+set_sorted_nodes:(void *)nodes_ count:(size_t)count
 {
 	assert(node_size > 0);
-	(void)allocated;
 	twltree_free(&tree);
 	if (nodes_ == NULL) {
 		twltree_init(&tree);
 	} else {
 		if (count > 0) {
-			qsort_arg(nodes_, count, node_size, compare, dtor_arg);
 			/* compress index nodes to pointers */
 			tnt_ptr* nodes = (tnt_ptr*)nodes_;
 			size_t i;

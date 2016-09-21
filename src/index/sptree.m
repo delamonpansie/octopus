@@ -33,14 +33,17 @@
 @implementation SPTree
 
 - (void)
-set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated
+set_sorted_nodes:(void *)nodes_ count:(size_t)count
 {
+	size_t allocated = 0;
 	assert(node_size > 0);
 	sptree_destroy(tree);
 	if (nodes_ == NULL) {
-		if (allocated == 0)
-			allocated = 64;
+		allocated = 64;
 		nodes_ = xmalloc(allocated * node_size);
+	} else {
+		allocated = count * 1.2;
+		nodes_ = xrealloc(nodes_, allocated * node_size);
 	}
 
 	sptree_init(tree, node_size, nodes_, count, allocated,

@@ -223,7 +223,8 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 @end
 
 @interface Tree: Index <BasicIndex, IterIndex>
-- (void)set_nodes:(void *)nodes_ count:(size_t)count allocated:(size_t)allocated;
+- (void)set_sorted_nodes:(void *)nodes_ count:(size_t)count;
+- (bool)sort_nodes:(void *)nodes_ count:(size_t)count duplicates:(struct index_node*[2])dups;
 @end
 
 @interface SPTree: Tree {

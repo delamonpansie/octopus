@@ -267,4 +267,11 @@ init:(struct index_conf*)ic dtor:(const struct dtor_conf*)dc
 	}
 	return self;
 }
+
+- (void)
+free
+{
+	ph_destroy(&h, self);
+	[super free];
+}
 @end
