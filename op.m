@@ -164,7 +164,7 @@ net_tuple_add(struct netmsg_head *h, struct tnt_object *obj)
 }
 
 static struct box_phi *
-phi_alloc(Index<BasicIndex> *index, struct box_phi *prev, struct tnt_object *obj)
+phi_alloc(struct phi_tailq *tailq, Index<BasicIndex> *index, struct box_phi *prev, struct tnt_object *obj)
 {
 	struct box_phi *phi = slab_cache_alloc(&phi_cache);
 	say_debug3("%s: %p index:%i prev:%p obj:%p", __func__, phi,
@@ -173,9 +173,12 @@ phi_alloc(Index<BasicIndex> *index, struct box_phi *prev, struct tnt_object *obj
 		.tnt_obj = {
 			.type = BOX_PHI,
 			.flags = 0},
-		.index = index,
+		/* use index as indicator of successful insertion of first phi */
+		.index = tailq ? index : NULL,
 		.prev = prev,
 		.obj = obj};
+	if (tailq != NULL)
+		TAILQ_INSERT_TAIL(tailq, phi, link);
 	return phi;
 }
 
@@ -213,16 +216,17 @@ phi_insert(struct phi_tailq *tailq, id<BasicIndex> index,
 	if (old_obj && old_obj->type == BOX_PHI) {
 		phi = box_phi(old_obj);
 		while (phi->next) phi = phi->next;
-		phi->next = phi_alloc(index, phi, obj);
+		phi->next = phi_alloc(tailq, index, phi, obj);
 	} else {
 		/* it is first phi in index node.
 		 * it is not owned by box_op, but rather by index itself.
 		 * so no need to insert it to a tailq */
-		phi = phi_alloc(index, NULL, old_obj);
-		phi->next = phi_alloc(index, phi, obj);
+		phi = phi_alloc(NULL, index, NULL, old_obj);
+		phi->next = phi_alloc(tailq, index, phi, obj);
 		[index replace: (struct tnt_object*)phi];
+		/* we successully inserted first phi! lets mark it */
+		phi->index = index;
 	}
-	TAILQ_INSERT_TAIL(tailq, phi->next, link);
 }
 
 static void
@@ -230,6 +234,7 @@ phi_commit(struct box_phi *phi)
 {
 	/* phi points to second phi in index node */
 	assert(phi->prev != NULL && phi->prev->prev == NULL);
+	assert(phi->index != NULL && phi->prev->index == phi->index);
 	assert(phi->prev->obj != NULL || phi->obj != NULL);
 	say_debug3("%s: %p prev:%p obj:%p", __func__, phi, phi->prev, phi->obj);
 
@@ -260,19 +265,22 @@ phi_rollback(struct box_phi *phi)
 	assert(phi->prev->obj != NULL || phi->obj != NULL);
 	say_debug3("%s: %p prev:%p obj:%p", __func__, phi, phi->prev, phi->obj);
 
-	if (phi->prev->prev == NULL) {
-		/* previous phi is a first in index node,
-		 * so put back original obj into index, or do delete */
+	if (phi->prev->prev != NULL) {
+		/* unlink self from chain */
+		phi->prev->next = NULL;
+		return;
+	}
+	/* previous phi is a first in index node,
+	 * (but if phi->index == NULL, then it is not inserted) */
+	if (phi->index != NULL) {
+		/* so put back original obj into index, or do delete */
 		if (phi->prev->obj == NULL)
 			[phi->index remove: (struct tnt_object*)phi->prev];
 		else
 			[phi->index replace: phi->prev->obj];
-		/* and first node is not need any more */
-		sfree(phi->prev);
-	} else {
-		/* unlink self from chain */
-		phi->prev->next = NULL;
 	}
+	/* and first node is not need any more */
+	sfree(phi->prev);
 }
 
 struct tnt_object *
