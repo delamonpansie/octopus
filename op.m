@@ -234,6 +234,8 @@ phi_commit(struct box_phi *phi)
 	say_debug3("%s: %p prev:%p obj:%p", __func__, phi, phi->prev, phi->obj);
 
 	if (phi->next == NULL) {
+		/* we are last in a node,
+		 * so replace phi with committed obj, or do delete it */
 		if (phi->obj == NULL) {
 			[phi->index remove: (struct tnt_object*)phi->prev];
 		} else {
@@ -243,6 +245,7 @@ phi_commit(struct box_phi *phi)
 	} else {
 		assert(phi->prev->next == phi && phi->next->prev == phi);
 		assert(phi->obj != NULL || phi->next->obj != NULL);
+		/* remove self from chain, and copy committed obj to first phi */
 		phi->prev->next = phi->next;
 		phi->next->prev = phi->prev;
 		phi->prev->obj = phi->obj;
@@ -258,13 +261,16 @@ phi_rollback(struct box_phi *phi)
 	say_debug3("%s: %p prev:%p obj:%p", __func__, phi, phi->prev, phi->obj);
 
 	if (phi->prev->prev == NULL) {
-		/* previos is a first in index node */
+		/* previous phi is a first in index node,
+		 * so put back original obj into index, or do delete */
 		if (phi->prev->obj == NULL)
 			[phi->index remove: (struct tnt_object*)phi->prev];
 		else
 			[phi->index replace: phi->prev->obj];
+		/* and first node is not need any more */
 		sfree(phi->prev);
 	} else {
+		/* unlink self from chain */
 		phi->prev->next = NULL;
 	}
 }
