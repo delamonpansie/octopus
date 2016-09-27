@@ -53,9 +53,6 @@ enum object_type {
 	BOX_PHI = 3
 };
 
-#define UPDATE_INVISIBLE GHOST
-#define SELECT_INVISIBLE WAL_WAIT
-
 struct box_tuple {
 	u32 bsize; /* byte size of data[] */
 	u32 cardinality;

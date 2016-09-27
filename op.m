@@ -272,21 +272,13 @@ phi_rollback(struct box_phi *phi)
 struct tnt_object *
 tuple_visible_left(struct tnt_object *obj)
 {
-	obj = phi_left(obj);
-	if (obj && !(obj->flags & SELECT_INVISIBLE))
-		return obj;
-	else
-		return NULL;
+	return phi_left(obj);
 }
 
 struct tnt_object *
 tuple_visible_right(struct tnt_object *obj)
 {
-	obj = phi_right(obj);
-	if (obj && !(obj->flags & UPDATE_INVISIBLE))
-		return obj;
-	else
-		return NULL;
+	return phi_right(obj);
 }
 
 static void
@@ -295,8 +287,6 @@ object_space_delete(struct object_space *object_space, struct phi_tailq *phi_tai
 {
 	if (tuple == NULL)
 		return;
-
-	tuple->flags |= UPDATE_INVISIBLE;
 
 	id<BasicIndex> pk = object_space->index[0];
 	phi_insert(phi_tailq, pk, index_obj , NULL);
@@ -312,8 +302,6 @@ static void
 object_space_insert(struct object_space *object_space, struct phi_tailq *phi_tailq,
 		    struct tnt_object *index_obj, struct tnt_object *tuple)
 {
-	tuple->flags |= SELECT_INVISIBLE;
-
 	id<BasicIndex> pk = object_space->index[0];
 	assert(phi_right(index_obj) == NULL);
 	phi_insert(phi_tailq, pk, index_obj, tuple);
@@ -334,9 +322,6 @@ object_space_replace(struct object_space *object_space, struct phi_tailq *phi_ta
 		     int pk_affected, struct tnt_object *index_obj,
 		     struct tnt_object *old_tuple, struct tnt_object *tuple)
 {
-	old_tuple->flags |= UPDATE_INVISIBLE;
-	tuple->flags |= SELECT_INVISIBLE;
-
 	id<BasicIndex> pk = object_space->index[0];
 	uintptr_t i = 0;
 	if (!pk_affected) {
@@ -900,7 +885,6 @@ box_op_commit(struct box_op *bop)
 	say_debug2("%s: old_obj:%p obj:%p", __func__, bop->old_obj, bop->obj);
 	if (bop->obj) {
 		bytes_usage(bop->object_space, bop->obj, +1);
-		bop->obj->flags &= ~SELECT_INVISIBLE;
 	}
 	if (bop->old_obj)
 		bytes_usage(bop->object_space, bop->old_obj, -1);
@@ -944,8 +928,6 @@ box_op_rollback(struct box_op *bop)
 		phi_rollback(phi);
 		sfree(phi);
 	}
-	if (bop->old_obj)
-		bop->old_obj->flags &= ~UPDATE_INVISIBLE;
 }
 
 void
