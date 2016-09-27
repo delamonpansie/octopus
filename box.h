@@ -70,7 +70,8 @@ struct box_small_tuple {
 
 struct box_phi {
 	struct tnt_object tnt_obj;
-	struct tnt_object *left, *right;
+	struct tnt_object *obj;
+	struct box_phi *prev, *next;
 	TAILQ_ENTRY(box_phi) link;
 	Index<BasicIndex> *index;
 };
@@ -238,11 +239,10 @@ static inline int tuple_cardinality(const struct tnt_object *obj)
 		return box_tuple(obj)->cardinality;
 	case BOX_SMALL_TUPLE:
 		return box_small_tuple(obj)->cardinality;
-	case BOX_PHI:
-		if (box_phi(obj)->left)
-			return tuple_cardinality(box_phi(obj)->left);
-		else
-			return tuple_cardinality(box_phi(obj)->right);
+	case BOX_PHI: {
+			struct box_phi* phi = box_phi(obj);
+			return tuple_cardinality(phi->obj ?: phi->next->obj);
+		}
 	default:
 		bad_object_type();
 	}
@@ -254,11 +254,10 @@ static inline void * tuple_data(struct tnt_object *obj)
 		return box_tuple(obj)->data;
 	case BOX_SMALL_TUPLE:
 		return box_small_tuple(obj)->data;
-	case BOX_PHI:
-		if (box_phi(obj)->left)
-			return tuple_data(box_phi(obj)->left);
-		else
-			return tuple_data(box_phi(obj)->right);
+	case BOX_PHI: {
+			struct box_phi* phi = box_phi(obj);
+			return tuple_data(phi->obj ?: phi->next->obj);
+		}
 	default:
 		bad_object_type();
 	}
