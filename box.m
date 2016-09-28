@@ -136,13 +136,14 @@ configure_pk(Box *box)
 }
 
 void
-box_idx_print_dups(int space, int index, struct tnt_object* a, struct tnt_object* b)
+box_idx_print_dups(void *varg, struct index_node* a, struct index_node* b)
 {
+	struct print_dups_arg* arg = varg;
 	struct tbuf out = TBUF(NULL, 0, fiber->pool);
-	tbuf_printf(&out, "Duplicate values space %d index %d : ", space, index);
-	tuple_print(&out, tuple_cardinality(a), tuple_data(a));
+	tbuf_printf(&out, "Duplicate values space %d index %d : ", arg->space, arg->index);
+	tuple_print(&out, tuple_cardinality(a->obj), tuple_data(a->obj));
 	tbuf_printf(&out, " ");
-	tuple_print(&out, tuple_cardinality(b), tuple_data(b));
+	tuple_print(&out, tuple_cardinality(b->obj), tuple_data(b->obj));
 	say_error("%.*s", (int)tbuf_len(&out), (char*)out.ptr);
 }
 
@@ -186,10 +187,14 @@ build_secondary(struct object_space *object_space)
 				tree[i]->dtor(obj, node, tree[i]->dtor_arg);
 				t++;
 			}
-			struct index_node* dups[2] = {NULL, NULL};
-			if (![tree[i] sort_nodes:nodes count:n_tuples duplicates:dups]) {
-				box_idx_print_dups(object_space->n, tree[i]->conf.n,
-						dups[0]->obj, dups[1]->obj);
+			struct print_dups_arg arg = {
+				.space = object_space->n,
+				.index = tree[i]->conf.n,
+			};
+			if (![tree[i] sort_nodes:nodes
+				      count:n_tuples
+				onduplicate:box_idx_print_dups
+					arg:(void*)&arg]) {
 				if (!cfg.no_panic_on_snapshot_duplicates) {
 					panic("duplicate tuples");
 				}

@@ -101,9 +101,14 @@ prepare_create_index(struct box_meta_txn *txn, struct tbuf *data)
 			i++;
 		}
 		say_debug("n_tuples:%i", (int)n_tuples);
-		struct index_node* dups[2] = {NULL, NULL};
-		if(![(Tree*)txn->index sort_nodes:nodes count:n_tuples duplicates:dups]) {
-			box_idx_print_dups(txn->object_space->n, ic.n, dups[0]->obj, dups[1]->obj);
+		struct print_dups_arg arg = {
+			.space = txn->object_space->n,
+			.index = ic.n,
+		};
+		if (![(Tree*)txn->index sort_nodes:nodes
+					count:n_tuples
+				  onduplicate:box_idx_print_dups
+					  arg:(void*)&arg]) {
 			free(nodes);
 			iproto_raise(ERR_CODE_INDEX_VIOLATION, "duplicate values for unique index");
 		}
