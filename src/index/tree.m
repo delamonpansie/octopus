@@ -210,9 +210,10 @@ set_sorted_nodes:(void *)nodes_ count:(size_t)count
 }
 
 - (bool)
-sort_nodes:(void *)nodes_ count:(size_t)count duplicates:(struct index_node*[2])dups
+sort_nodes:(void *)nodes_ count:(size_t)count onduplicate:(ixsort_on_duplicate)ondup arg:(void*)arg
 {
 	int i;
+	bool no_dups = true;
 	qsort_arg(nodes_, count, node_size, compare, dtor_arg);
 	for (i = 1; i < count; i++) {
 		struct index_node *node = nodes_ + i * node_size;
@@ -220,14 +221,13 @@ sort_nodes:(void *)nodes_ count:(size_t)count duplicates:(struct index_node*[2])
 		int cmp = compare(node, prev, dtor_arg);
 		assert(cmp >= 0);
 		if (conf.unique && cmp == 0) {
-			if(dups != NULL) {
-				dups[0] = prev;
-				dups[1] = node;
+			no_dups = false;
+			if(ondup != NULL) {
+				ondup(arg, prev, node);
 			}
-			return false;
 		}
 	}
-	return true;
+	return no_dups;
 }
 @end
 
