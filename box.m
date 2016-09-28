@@ -190,7 +190,9 @@ build_secondary(struct object_space *object_space)
 			if (![tree[i] sort_nodes:nodes count:n_tuples duplicates:dups]) {
 				box_idx_print_dups(object_space->n, tree[i]->conf.n,
 						dups[0]->obj, dups[1]->obj);
-				panic("duplicate tuples");
+				if (!cfg.no_panic_on_snapshot_duplicates) {
+					panic("duplicate tuples");
+				}
 			}
 			[tree[i] set_sorted_nodes:nodes count:n_tuples];
 		}

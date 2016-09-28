@@ -2,6 +2,8 @@
 # BOX
 #
 
+no_panic_on_snapshot_duplicates = 0
+
 object_space = [
   {
     enabled = -1, required
