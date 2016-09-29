@@ -264,12 +264,6 @@ typedef void (*ixsort_on_duplicate)(void* arg, struct index_node* a, struct inde
 @interface NIHCompactTree : NIHTree
 @end
 
-#define foreach_index(ivar, obj_space)					\
-	for (Index<BasicIndex> *ivar = (obj_space)->index[0]; ivar; ivar = ivar->next)
-
-#define foreach_indexi(i, ivar, obj_space)				\
-	for (Index<BasicIndex> *ivar = (obj_space)->index[i]; ivar; ivar = ivar->next)
-
 @interface IndexError: Error
 @end
 
