@@ -137,7 +137,7 @@ configure_pk(Box *box)
 }
 
 void
-box_idx_print_dups(void *varg, struct index_node* a, struct index_node* b)
+box_idx_print_dups(void *varg, struct index_node* a, struct index_node* b, uint32_t position)
 {
 	struct print_dups_arg* arg = varg;
 	struct tbuf out = TBUF(NULL, 0, fiber->pool);
@@ -146,6 +146,53 @@ box_idx_print_dups(void *varg, struct index_node* a, struct index_node* b)
 	tbuf_printf(&out, " ");
 	tuple_print(&out, tuple_cardinality(b->obj), tuple_data(b->obj));
 	say_error("%.*s", (int)tbuf_len(&out), (char*)out.ptr);
+	if (arg->positions) {
+		write_i32(arg->positions, position);
+	}
+}
+
+enum dup_action { DUP_PANIC, DUP_IGNORE, DUP_DELETE };
+struct dup_conf {
+	int spaceno, indexno;
+	enum dup_action action;
+} *dup_conf = NULL;
+static enum dup_action
+on_duplicate_action(int spaceno, int indexno)
+{
+	if (dup_conf != NULL) {
+		for (int i = 0; dup_conf[i].spaceno >= 0; i++) {
+			if (dup_conf[i].spaceno == spaceno && dup_conf[i].indexno == indexno)
+				return dup_conf[i].action;
+		}
+	}
+	return cfg.no_panic_on_snapshot_duplicates ? DUP_IGNORE : DUP_PANIC;
+}
+
+static void
+delete_duplicates(struct object_space* object_space, size_t node_size, uint32_t *indexes, uint32_t icount, void* nodes)
+{
+	/* attention: indexes[icount] should be equal to number of nodes */
+	struct index_node* node;
+	int i;
+	uint32_t olda, oldb, newa;
+	struct tbuf out = TBUF(NULL, 0, fiber->pool);
+	for (i = 0; i < icount; i++) {
+		node = nodes + node_size * indexes[i];
+		tuple_print(&out, tuple_cardinality(node->obj), tuple_data(node->obj));
+		say_warn("space %d delete duplicate %.*s",
+				object_space->n, (int)tbuf_len(&out), (char*)out.ptr);
+		tbuf_reset(&out);
+		foreach_index(index, object_space)
+			[index remove: node->obj];
+	}
+	for (i = 0; i < icount; i++) {
+		olda = indexes[i] + 1;
+		oldb = indexes[i+1]; /* here is why indexes[icount] should == number of nodes */
+		newa = indexes[i] - i;
+		memmove(nodes + newa * node_size,
+			nodes + olda * node_size,
+			(oldb - olda) * node_size);
+	}
 }
 
 static void
@@ -172,6 +219,36 @@ build_secondary(struct object_space *object_space)
 
 	say_info("Building secondary indexes of object space %i", object_space->n);
 
+	if (n_tuples > 0 && cfg.on_snapshot_duplicates) {
+		int cnt = 0, k = 0;
+		for (int i = 0; cfg.on_snapshot_duplicates[i]; i++)
+			if (CNF_STRUCT_DEFINED(cfg.on_snapshot_duplicates[i]))
+				cnt++;
+		dup_conf = xcalloc(cnt+1, sizeof(struct dup_conf));
+		dup_conf[cnt].spaceno = -1;
+		for (int i = 0; cfg.on_snapshot_duplicates[i]; i++) {
+			if (!CNF_STRUCT_DEFINED(cfg.on_snapshot_duplicates[i]))
+				continue;
+			typeof(cfg.on_snapshot_duplicates[i]->index) indexes =
+					cfg.on_snapshot_duplicates[i]->index;
+			for (int j = 0; indexes[j]; j++) {
+				if (!CNF_STRUCT_DEFINED(indexes[j]))
+					continue;
+				const char* action = indexes[j]->action;
+				dup_conf[k].spaceno = i;
+				dup_conf[k].indexno = j;
+				if (strcmp(action, "IGNORE") == 0)
+					dup_conf[k].action = DUP_IGNORE;
+				else if (strcmp(action, "DELETE") == 0)
+					dup_conf[k].action = DUP_DELETE;
+				else
+					abort();
+				say_debug2("dup_conf[%d]={.spaceno=%d, .indexno=%d, .action=%d}", k, i, j, dup_conf[k].action);
+				k++;
+			}
+		}
+	}
+
         if (n_tuples > 0) {
 		title("building_indexes/object_space:%i ", object_space->n);
 		struct tnt_object *obj;
@@ -194,17 +271,47 @@ build_secondary(struct object_space *object_space)
 				.space = object_space->n,
 				.index = tree[i]->conf.n,
 			};
+			enum dup_action action = on_duplicate_action(arg.space, arg.index);
+			if (action == DUP_DELETE) {
+				arg.positions = tbuf_alloc(fiber->pool);
+			}
 			if (![tree[i] sort_nodes:nodes
 				      count:n_tuples
 				onduplicate:box_idx_print_dups
 					arg:(void*)&arg]) {
-				if (!cfg.no_panic_on_snapshot_duplicates) {
+				say_debug("space %d index %d FOUND DUPS!!! action is %s",
+						arg.space, arg.index,
+						(action == DUP_PANIC ? "PANIC" :
+					         action == DUP_IGNORE ? "IGNORE" : "DELETE"));
+				if (action != DUP_IGNORE) {
+					say_error("if you want to ignore this duplicates, add " \
+						"on_snapshot_duplicates[%d].index[%d].action=\"IGNORE\"",
+					       arg.space, arg.index);
+				}
+				if (action != DUP_DELETE) {
+					say_error("if you want to delete duplicates rows, add " \
+						"on_snapshot_duplicates[%d].index[%d].action=\"DELETE\"",
+					       arg.space, arg.index);
+				}
+				if (action == DUP_PANIC) {
 					panic("duplicate tuples");
+				}
+				if (action == DUP_DELETE) {
+					uint32_t npos = tbuf_len(arg.positions)/sizeof(uint32_t);
+					write_i32(arg.positions, n_tuples);
+					delete_duplicates(object_space,
+							tree[i]->node_size,
+							arg.positions->ptr,
+							npos, nodes);
+					n_tuples -= npos;
+					say_error("DON'T FORGET TO SAVE SNAPSHOT AS SOON AS POSSIBLE!!!!!!!!");
 				}
 			}
 			[tree[i] set_sorted_nodes:nodes count:n_tuples];
 		}
 	}
+	if (dup_conf != NULL)
+		free(dup_conf);
 	title(NULL);
 }
 
@@ -717,6 +824,30 @@ check_config(struct octopus_cfg *new)
 					errors = true;
 				} else {
 					free(ic);
+				}
+			}
+		}
+	}
+
+	if (new->on_snapshot_duplicates) {
+		for (int i = 0; new->on_snapshot_duplicates[i]; i++) {
+			if (!CNF_STRUCT_DEFINED(new->on_snapshot_duplicates[i]))
+				continue;
+			typeof(new->on_snapshot_duplicates[i]->index) indexes =
+				new->on_snapshot_duplicates[i]->index;
+			if (indexes == NULL) {
+				out_warning(0, "no indexes for on_snapshot_duplicates[%d]", i);
+				errors = true;
+			} else {
+				for (int j = 0; indexes[j]; j++) {
+					if (!CNF_STRUCT_DEFINED(indexes[j]))
+						continue;
+#define eq(t, s) (strcmp((t),(s)) == 0)
+					const char* action = indexes[j]->action;
+					if (!action || !(eq(action, "DELETE") || !eq(action, "IGNORE")))
+						out_warning(0, "on_snapshot_duplicates[%d].index[%d].action unknown (=\"%s\")",
+								i, j, action ?: "<null>");
+#undef eq
 				}
 			}
 		}

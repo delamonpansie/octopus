@@ -276,8 +276,11 @@ int box_cat(const char *filename);
 void box_print_row(struct tbuf *out, u16 tag, struct tbuf *r);
 const char *box_row_to_a(u16 tag, struct tbuf *r);
 
-struct print_dups_arg { int space, index; };
-void box_idx_print_dups(void *arg, struct index_node* a, struct index_node* b);
+struct print_dups_arg {
+	int space, index;
+	struct tbuf *positions;
+};
+void box_idx_print_dups(void *arg, struct index_node* a, struct index_node* b, uint32_t position);
 
 void box_init_phi_cache(void);
 #endif
