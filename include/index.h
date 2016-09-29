@@ -222,7 +222,7 @@ typedef int (*index_cmp)(const void *, const void *, void *);
 - (index_cmp) compare;
 @end
 
-typedef void (*ixsort_on_duplicate)(void* arg, struct index_node* a, struct index_node* b);
+typedef void (*ixsort_on_duplicate)(void* arg, struct index_node* a, struct index_node* b, uint32_t position);
 @interface Tree: Index <BasicIndex, IterIndex>
 - (void)set_sorted_nodes:(void *)nodes_ count:(size_t)count;
 - (bool)sort_nodes:(void *)nodes_ count:(size_t)count onduplicate:(ixsort_on_duplicate)ondup arg:(void*)arg;

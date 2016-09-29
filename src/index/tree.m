@@ -223,7 +223,7 @@ sort_nodes:(void *)nodes_ count:(size_t)count onduplicate:(ixsort_on_duplicate)o
 		if (conf.unique && cmp == 0) {
 			no_dups = false;
 			if(ondup != NULL) {
-				ondup(arg, prev, node);
+				ondup(arg, prev, node, i);
 			}
 		}
 	}
