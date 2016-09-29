@@ -23,7 +23,7 @@ object_space = [
 	    sort_order = "ASC"
           }, ro,  required
         ], required
-      }, ro, required
+      }, ro
     ], required
   }, ro
 ], rw

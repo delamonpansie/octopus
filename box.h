@@ -47,6 +47,12 @@ struct object_space {
 	Index<BasicIndex> *index[MAX_IDX];
 };
 
+#define foreach_index(ivar, obj_space)					\
+	for (Index<BasicIndex> *ivar = (obj_space)->index[0]; ivar; ivar = ivar->next)
+
+#define foreach_indexi(i, ivar, obj_space)				\
+	for (Index<BasicIndex> *ivar = (i == 0 ? (obj_space)->index[0] : (obj_space)->index[0]->next); ivar; ivar = ivar->next)
+
 enum object_type {
 	BOX_TUPLE = 1,
 	BOX_SMALL_TUPLE = 2,

@@ -158,7 +158,9 @@ build_secondary(struct object_space *object_space)
 	id<HashIndex> hash[MAX_IDX] = { nil, };
 	int tree_count = 0, hash_count = 0;
 
-	for (int j = 1; object_space->index[j]; j++) {
+	for (int j = 1; j < MAX_IDX; j++) {
+		if (object_space->index[j] == nil)
+			continue;
 		if ([object_space->index[j] isKindOf:[Tree class]])
 			tree[tree_count++] = (id)object_space->index[j];
 		else
@@ -221,6 +223,9 @@ configure_secondary(Box *box)
 		for (int j = 1; j < nelem(obj_spc->index); j++) {
 			if (cfg.object_space[i]->index[j] == NULL)
 				break;
+
+			if (!CNF_STRUCT_DEFINED(cfg.object_space[i]->index[j]))
+				continue;
 
 			obj_spc->index[j] = configure_index(i, j, pk);
 			prev->next = obj_spc->index[j];
@@ -702,6 +707,8 @@ check_config(struct octopus_cfg *new)
 			for (int j = 0; j < MAX_IDX; j++) {
 				if (new->object_space[i]->index[j] == NULL)
 					break;
+				if (!CNF_STRUCT_DEFINED(new->object_space[i]->index[j]))
+					continue;
 
 				struct index_conf* ic = cfg_box2index_conf(new->object_space[i]->index[j], i, j, 0);
 				if (ic == NULL) {
