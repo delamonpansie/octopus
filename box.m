@@ -75,7 +75,7 @@ object_space(Box *box, int n)
 static Index *
 configure_index(int i, int j, Index* pk)
 {
-	struct index_conf *ic = cfg_box2index_conf(cfg.object_space[i]->index[j]);
+	struct index_conf *ic = cfg_box2index_conf(cfg.object_space[i]->index[j], i, j, 1);
 	if (ic == NULL)
 		panic("(object_space = %" PRIu32 " index = %" PRIu32 ") "
 		      "unknown index type `%s'", i, j, cfg.object_space[i]->index[j]->type);
@@ -90,6 +90,7 @@ configure_index(int i, int j, Index* pk)
 	}
 
 	Index *index = [Index new_conf:ic dtor:&box_tuple_dtor];
+	free(ic);
 
 	if (index == nil)
 		panic("(object_space = %" PRIu32 " index = %" PRIu32 ") "
@@ -682,12 +683,37 @@ check_config(struct octopus_cfg *new)
 	extern void out_warning(int v, char *format, ...);
 	struct feeder_param feeder;
 	enum feeder_cfg_e e = feeder_param_fill_from_cfg(&feeder, new);
+	bool errors = false;
 	if (e) {
 		out_warning(0, "wal_feeder config is wrong");
-		return -1;
+		errors = true;
 	}
 
-	return 0;
+	if (new->object_space != NULL) {
+		for (int i = 0; i < OBJECT_SPACE_MAX; i++) {
+			if (new->object_space[i] == NULL)
+				break;
+			if (!CNF_STRUCT_DEFINED(new->object_space[i]))
+				continue;
+			if (new->object_space[i]->index == NULL) {
+				out_warning(0, "(object_space = %" PRIu32 ") at least one index must be defined", i);
+				errors = true;
+			}
+			for (int j = 0; j < MAX_IDX; j++) {
+				if (new->object_space[i]->index[j] == NULL)
+					break;
+
+				struct index_conf* ic = cfg_box2index_conf(new->object_space[i]->index[j], i, j, 0);
+				if (ic == NULL) {
+					errors = true;
+				} else {
+					free(ic);
+				}
+			}
+		}
+	}
+
+	return errors ? -1 : 0;
 }
 
 static void

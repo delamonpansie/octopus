@@ -155,9 +155,13 @@ static typenames *many_column_types = (typenames[]){
 
 
 struct index_conf *
-cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
+cfg_box2index_conf(struct octopus_cfg_object_space_index *c, int sno, int ino, int do_panic)
 {
-	struct index_conf *d = xcalloc(1, sizeof(*d));
+	extern void out_warning(int v, char *format, ...);
+	struct index_conf *d = calloc(1, sizeof(*d));
+#define exception(fmt, ...) \
+	do { if (do_panic) { panic("space %d index %d " fmt, sno, ino, ##__VA_ARGS__); } \
+	     else { out_warning(0, "space %d index %d " fmt, sno, ino, ##__VA_ARGS__); return NULL; } } while(0)
 
 	for (int i = 0; i < nelem(d->field); i++)
 		d->field[i].index = d->fill_order[i] = d->field[i].offset = -1;
@@ -178,26 +182,26 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 	else if (strcmp(c->type, "HUGEHASH") == 0)
 		d->type = PHASH;
 	else
-		panic("unknown index type");
+		exception("unknown index type");
 
 	if (d->unique == false && (d->type == HASH || d->type == NUMHASH || d->type == PHASH))
-		panic("hash index should be unique");
+		exception("hash index should be unique");
 
 	__typeof__(c->key_field[0]) key_field;
 	for (d->cardinality = 0; c->key_field[(int)d->cardinality] != NULL; d->cardinality++) {
 		key_field = c->key_field[(int)d->cardinality];
 		if (key_field->fieldno == -1)
-			panic("fieldno should be set");
+			exception("key %d fieldno should be set", d->cardinality);
 		if (key_field->fieldno > 255)
-			panic("fieldno must be between 0 and 255");
+			exception("key %d fieldno must be between 0 and 255", d->cardinality);
 		if (!eq(key_field->sort_order, "ASC") && !eq(key_field->sort_order, "DESC"))
-			panic("unknown sort order");
+			exception("key %d unknown sort order", d->cardinality);
 		if (d->cardinality > nelem(d->field))
-			panic("index cardinality is too big");
+			exception("key %d index cardinality is too big", d->cardinality);
 	}
 
 	if (d->cardinality == 0)
-		panic("index cardinality is 0");
+		exception("index cardinality is 0");
 
 	for (int k = 0; k < d->cardinality; k++) {
 		key_field = c->key_field[k];
@@ -218,7 +222,7 @@ cfg_box2index_conf(struct octopus_cfg_object_space_index *c)
 			}
 		}
 		if (type == UNDEF) {
-			panic("unknown field data type: `%s'", typename);
+			exception("key %d unknown field data type: `%s'", k, typename);
 		}
 		d->field[k].type = type;
 		if (key_field->fieldno + 1 > d->min_tuple_cardinality)

@@ -94,7 +94,7 @@ box_snap_row(const struct tbuf *t)
 }
 
 extern struct dtor_conf box_tuple_dtor;
-struct index_conf * cfg_box2index_conf(struct octopus_cfg_object_space_index *c);
+struct index_conf * cfg_box2index_conf(struct octopus_cfg_object_space_index *c, int sno, int ino, int panic);
 
 struct box_op {
 	u16 op;
@@ -202,9 +202,10 @@ void box_service_ro(struct iproto_service *s);
 enum messages ENUM_INITIALIZER(MESSAGES);
 extern char const * const box_ops[];
 
+#define OBJECT_SPACE_MAX (256)
 @interface Box : DefaultExecutor <Executor> {
 @public
-	struct object_space *object_space_registry[256];
+	struct object_space *object_space_registry[OBJECT_SPACE_MAX];
 	const int object_space_max_idx;
 	int version;
 }
