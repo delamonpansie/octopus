@@ -346,6 +346,8 @@ apply:(struct tbuf *)data tag:(u16)tag
 			box_commit(&txn);
 		}
 		@catch (id e) {
+			assert(txn.state == UNDECIDED);
+			txn.state = ROLLBACK;
 			box_rollback(&txn);
 			@throw;
 		}
