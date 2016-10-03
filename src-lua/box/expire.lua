@@ -135,10 +135,10 @@ local function loop_inner(ushard, key, conf)
         local sleep = conf.precondition(ctx)
         key, ctx.key = ctx.key, nil
         if sleep ~= nil then
-            assert(sleep == nil or type(sleep) == 'boolean' or type(sleep) == 'number')
+            assert(type(sleep) == 'boolean' or type(sleep) == 'number')
             if sleep == false then
-                return nil, sleep
-            else
+                return nil, false
+            elseif type(sleep) == 'number' then
                 return key, sleep
             end
         end
