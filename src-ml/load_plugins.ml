@@ -14,8 +14,7 @@ let load {name; path; version} =
         Dynlink.loadfile path
       end
   with
-    Dynlink.Error e -> Say.error "Error while loading plugin '%s': %s" path (Dynlink.error_message e)
-  (* | e -> Say.error "Error while loading plugin '%s': %s" path (Printexc.to_string e); assert false *)
+    Dynlink.Error e -> Say.error "%s" (Dynlink.error_message e)
 
 let re = Str.regexp "\\(.*\\)[_.-]\\([0-9]+\\)\\.cmxs$"
 let cmxs = Str.regexp "\\.cmxs$"
@@ -37,22 +36,26 @@ let is_plugin dir_name file_name =
 
 let readdir dir_name =
   Sys.readdir dir_name
-  |> Array.to_list
-  |> List.filter_map (is_plugin dir_name)
+  |> Array.filter_map (is_plugin dir_name)
+
+let new_plugins pathlist =
+  let max hash a =
+    try
+      if (Hashtbl.find hash a.name).version < a.version then
+        Hashtbl.replace hash a.name a
+    with
+      Not_found -> Hashtbl.add hash a.name a in
+  let hash = Hashtbl.create 5 in
+  List.iter (Array.iter (max hash) % readdir) pathlist;
+  Hashtbl.values hash
 
 let plugin_loader path =
   let loader pathlist =
-    let hash = Hashtbl.create 5 in
-    let max a =
-      try
-        if (Hashtbl.find hash a.name).version < a.version then
-          Hashtbl.replace hash a.name a
-      with
-        Not_found -> Hashtbl.add hash a.name a in
     while true do
-      Hashtbl.clear hash;
-      List.iter (List.iter max % readdir) pathlist;
-      Hashtbl.iter (fun _ v -> load v) hash;
+      (try
+         Enum.iter load (new_plugins pathlist)
+       with
+         exc -> Say.warn "caml exception: %s" (Printexc.to_string exc));
       Fiber.sleep 1.0
     done in
   Fiber.create loader (Str.split (Str.regexp ":") path)
