@@ -163,32 +163,39 @@ net_tuple_add(struct netmsg_head *h, struct tnt_object *obj)
 	}
 }
 
-static struct box_phi *
-phi_alloc(struct phi_tailq *tailq, Index<BasicIndex> *index, struct box_phi *prev, struct tnt_object *obj)
+static struct box_phi_cell *
+phi_cell_alloc(struct box_phi *phi, struct tnt_object *obj)
 {
-	struct box_phi *phi = slab_cache_alloc(&phi_cache);
-	say_debug3("%s: %p index:%i prev:%p obj:%p", __func__, phi,
-		   index->conf.n, prev, obj);
-	*phi = (struct box_phi) {
-		.tnt_obj = {
-			.type = BOX_PHI,
-			.flags = 0},
-		/* use index as indicator of successful insertion of first phi */
-		.index = tailq ? index : NULL,
-		.prev = prev,
-		.obj = obj};
-	if (tailq != NULL)
-		TAILQ_INSERT_TAIL(tailq, phi, link);
-	return phi;
+	struct box_phi_cell *cell = slab_cache_alloc(&phi_cache);
+	say_debug3("%s: %p phi:%p obj:%p", __func__, cell, phi, obj);
+	*cell = (struct box_phi_cell) {
+		.head = phi,
+		.obj = obj };
+	TAILQ_INSERT_TAIL(&phi->tailq, cell, link);
+	return cell;
 }
+
+static struct box_phi *
+phi_alloc(Index<BasicIndex> *index, struct tnt_object *obj)
+{
+	struct box_phi *head = slab_cache_alloc(&phi_cache);
+	say_debug3("%s: %p index:%i obj:%p", __func__, head, index->conf.n, obj);
+	*head = (struct box_phi) {
+		.header = { .type = BOX_PHI },
+		.index = index,
+		.obj = obj,
+		.tailq = TAILQ_HEAD_INITIALIZER(head->tailq) };
+	return head;
+}
+
+#define box_phi(obj) container_of(obj, struct box_phi, header)
 
 struct tnt_object *
 phi_left(struct tnt_object *obj)
 {
-	if (obj && obj->type == BOX_PHI) {
-		struct box_phi *phi = box_phi(obj);
-		obj = phi->obj;
-	}
+	if (obj && obj->type == BOX_PHI)
+		obj = box_phi(obj)->obj;
+
 	assert(obj == NULL || obj->type != BOX_PHI);
 	return obj;
 }
@@ -196,91 +203,96 @@ phi_left(struct tnt_object *obj)
 struct tnt_object *
 phi_right(struct tnt_object *obj)
 {
-	if (obj && obj->type == BOX_PHI) {
-		struct box_phi *phi = box_phi(obj);
-		while (phi->next) phi = phi->next;
-		obj = phi->obj;
-	}
+	if (obj && obj->type == BOX_PHI)
+		obj = TAILQ_LAST(&box_phi(obj)->tailq, phi_tailq)->obj;
+
 	assert(obj == NULL || obj->type != BOX_PHI);
 	return obj;
 }
 
+struct tnt_object *
+phi_obj(const struct tnt_object *obj)
+{
+	assert(obj->type == BOX_PHI);
+	struct box_phi *phi = box_phi(obj);
+	return phi->obj ?: TAILQ_FIRST(&phi->tailq)->obj;
+}
 
 static void
-phi_insert(struct phi_tailq *tailq, id<BasicIndex> index,
+phi_insert(struct phi_tailq *bop_tailq, id<BasicIndex> index,
 	   struct tnt_object *old_obj, struct tnt_object *obj)
 {
 	struct box_phi *phi;
+	struct box_phi_cell *cell;
 	assert(old_obj != NULL || obj != NULL);
 	assert(obj == NULL || obj->type != BOX_PHI);
+
 	if (old_obj && old_obj->type == BOX_PHI) {
 		phi = box_phi(old_obj);
-		while (phi->next) phi = phi->next;
-		phi->next = phi_alloc(tailq, index, phi, obj);
+		assert(phi->index == index);
+		cell = phi_cell_alloc(phi, obj);
 	} else {
-		/* it is first phi in index node.
-		 * it is not owned by box_op, but rather by index itself.
-		 * so no need to insert it to a tailq */
-		phi = phi_alloc(NULL, index, NULL, old_obj);
-		phi->next = phi_alloc(tailq, index, phi, obj);
-		[index replace: (struct tnt_object*)phi];
-		/* we successully inserted first phi! lets mark it */
-		phi->index = index;
+		/* phi is not owned by box_op, but rather by index itself.
+		   phi_cell is owned by box_op */
+		phi = phi_alloc(index, old_obj);
+		cell = phi_cell_alloc(phi, obj);
+		@try {
+			[index replace: &phi->header];
+		}
+		@catch (id e) {
+			sfree(phi);
+			sfree(cell);
+			@throw;
+		}
 	}
+
+	TAILQ_INSERT_TAIL(bop_tailq, cell, bop_link);
 }
 
 static void
-phi_commit(struct box_phi *phi)
+phi_commit(struct box_phi_cell *cell)
 {
-	/* phi points to second phi in index node */
-	assert(phi->prev != NULL && phi->prev->prev == NULL);
-	assert(phi->index != NULL && phi->prev->index == phi->index);
-	assert(phi->prev->obj != NULL || phi->obj != NULL);
-	say_debug3("%s: %p prev:%p obj:%p", __func__, phi, phi->prev, phi->obj);
+	struct box_phi *phi = cell->head;
+	assert(TAILQ_FIRST(&phi->tailq) == cell);
+	assert(phi->obj != NULL || cell->obj != NULL);
+	say_debug3("%s: cell:%p phi:%p obj:%p", __func__, cell, phi, cell->obj);
 
-	if (phi->next == NULL) {
+	if (cell == TAILQ_LAST(&phi->tailq, phi_tailq)) {
 		/* we are last in a node,
 		 * so replace phi with committed obj, or do delete it */
-		if (phi->obj == NULL) {
-			[phi->index remove: (struct tnt_object*)phi->prev];
-		} else {
-			[phi->index replace:phi->obj];
-		}
-		sfree(phi->prev);
+		if (cell->obj == NULL)
+			[phi->index remove:&phi->header];
+		else
+			[phi->index replace:cell->obj];
+		sfree(phi);
 	} else {
-		assert(phi->prev->next == phi && phi->next->prev == phi);
-		assert(phi->obj != NULL || phi->next->obj != NULL);
-		/* remove self from chain, and copy committed obj to first phi */
-		phi->prev->next = phi->next;
-		phi->next->prev = phi->prev;
-		phi->prev->obj = phi->obj;
+		assert(cell->obj != NULL || TAILQ_NEXT(cell, link)->obj != NULL);
+		/* remove self from chain, and copy committed obj to the head */
+		phi->obj = cell->obj;
+		TAILQ_REMOVE(&phi->tailq, cell, link);
 	}
 }
 
 static void
-phi_rollback(struct box_phi *phi)
+phi_rollback(struct box_phi_cell *cell)
 {
-	/* phi points to last phi in index node */
-	assert(phi->prev != NULL && phi->next == NULL);
-	assert(phi->prev->obj != NULL || phi->obj != NULL);
-	say_debug3("%s: %p prev:%p obj:%p", __func__, phi, phi->prev, phi->obj);
+	struct box_phi *phi = cell->head;
+	assert(cell == TAILQ_LAST(&phi->tailq, phi_tailq));
+	say_debug3("%s: cell:%p phi:%p obj:%p", __func__, cell, phi, cell->obj);
 
-	if (phi->prev->prev != NULL) {
+	if (cell != TAILQ_FIRST(&phi->tailq)) {
+		assert(TAILQ_PREV(cell, phi_tailq, link)->obj != NULL || cell->obj != NULL);
 		/* unlink self from chain */
-		phi->prev->next = NULL;
-		return;
-	}
-	/* previous phi is a first in index node,
-	 * (but if phi->index == NULL, then it is not inserted) */
-	if (phi->index != NULL) {
+		TAILQ_REMOVE(&phi->tailq, cell, link);
+	} else {
+		assert(phi->obj != NULL || cell->obj != NULL);
 		/* so put back original obj into index, or do delete */
-		if (phi->prev->obj == NULL)
-			[phi->index remove: (struct tnt_object*)phi->prev];
+		if (phi->obj == NULL)
+			[phi->index remove:&phi->header];
 		else
-			[phi->index replace: phi->prev->obj];
+			[phi->index replace:phi->obj];
+		sfree(phi);
 	}
-	/* and first node is not need any more */
-	sfree(phi->prev);
 }
 
 struct tnt_object *
@@ -903,10 +915,10 @@ box_op_commit(struct box_op *bop)
 	if (bop->old_obj)
 		bytes_usage(bop->object_space, bop->old_obj, -1);
 
-	struct box_phi *phi, *tmp;
-	TAILQ_FOREACH_SAFE(phi, &bop->phi, link, tmp) {
-		phi_commit(phi);
-		sfree(phi);
+	struct box_phi_cell *cell, *tmp;
+	TAILQ_FOREACH_SAFE(cell, &bop->phi, bop_link, tmp) {
+		phi_commit(cell);
+		sfree(cell);
 	}
 	stat_collect(stat_base, bop->op, 1);
 }
@@ -937,10 +949,10 @@ box_op_rollback(struct box_op *bop)
 	if (!bop->object_space)
 		return;
 
-	struct box_phi *phi, *tmp;
-	TAILQ_FOREACH_REVERSE_SAFE(phi, &bop->phi, phi_tailq, link, tmp) {
-		phi_rollback(phi);
-		sfree(phi);
+	struct box_phi_cell *cell, *tmp;
+	TAILQ_FOREACH_REVERSE_SAFE(cell, &bop->phi, phi_tailq, bop_link, tmp) {
+		phi_rollback(cell);
+		sfree(cell);
 	}
 }
 
@@ -1004,9 +1016,9 @@ box_submit(struct box_txn *txn)
 			len += bop->data_len;
 			count++;
 		} else {
-			struct box_phi *phi;
-			TAILQ_FOREACH(phi, &bop->phi, link)
-				assert(phi->obj == NULL);
+			struct box_phi_cell *cell;
+			TAILQ_FOREACH(cell, &bop->phi, bop_link)
+				assert(cell->obj == NULL);
 		}
 		txn->obj_affected += bop->obj_affected;
 	}
@@ -1251,7 +1263,7 @@ box_service_ro(struct iproto_service *s)
 void
 box_init_phi_cache(void)
 {
-	slab_cache_init(&phi_cache, sizeof(struct box_phi), SLAB_FIXED, "phi_cache");
+	slab_cache_init(&phi_cache, sizeof(union box_phi_union), SLAB_FIXED, "phi_cache");
 }
 
 void __attribute__((constructor))

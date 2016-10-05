@@ -71,16 +71,28 @@ struct box_small_tuple {
 	uint8_t data[0];
 };
 
+TAILQ_HEAD(phi_tailq, box_phi_cell);
 struct box_phi {
-	struct tnt_object tnt_obj;
-	struct tnt_object *obj;
-	struct box_phi *prev, *next;
-	TAILQ_ENTRY(box_phi) link;
+	struct tnt_object header;
+	struct tnt_object *obj; /* commited object */
+	struct phi_tailq tailq;
 	Index<BasicIndex> *index;
 };
-TAILQ_HEAD(phi_tailq, box_phi);
+
+struct box_phi_cell {
+	struct tnt_object *obj; /* to be commited */
+	struct box_phi *head;
+	TAILQ_ENTRY(box_phi_cell) link, bop_link;
+};
+
+union box_phi_union {
+	struct box_phi phi;
+	struct box_phi_cell cell;
+};
+
 struct tnt_object *phi_left(struct tnt_object *obj);
 struct tnt_object *phi_right(struct tnt_object *obj);
+struct tnt_object *phi_obj(const struct tnt_object *obj);
 
 struct tnt_object *tuple_visible_left(struct tnt_object *obj);
 struct tnt_object *tuple_visible_right(struct tnt_object *obj);
@@ -224,7 +236,6 @@ ssize_t fields_bsize(u32 cardinality, const void *data, u32 max_len);
 void __attribute__((noreturn)) bad_object_type(void);
 #define box_tuple(obj) ((struct box_tuple *)((obj) + 1))
 #define box_small_tuple(obj) ((struct box_small_tuple *)((obj) + 1))
-#define box_phi(obj) ((struct box_phi *)(obj))
 static inline int tuple_bsize(const struct tnt_object *obj)
 {
 	switch (obj->type) {
@@ -243,10 +254,8 @@ static inline int tuple_cardinality(const struct tnt_object *obj)
 		return box_tuple(obj)->cardinality;
 	case BOX_SMALL_TUPLE:
 		return box_small_tuple(obj)->cardinality;
-	case BOX_PHI: {
-			struct box_phi* phi = box_phi(obj);
-			return tuple_cardinality(phi->obj ?: phi->next->obj);
-		}
+	case BOX_PHI:
+		return tuple_cardinality(phi_obj(obj));
 	default:
 		bad_object_type();
 	}
@@ -258,10 +267,8 @@ static inline void * tuple_data(struct tnt_object *obj)
 		return box_tuple(obj)->data;
 	case BOX_SMALL_TUPLE:
 		return box_small_tuple(obj)->data;
-	case BOX_PHI: {
-			struct box_phi* phi = box_phi(obj);
-			return tuple_data(phi->obj ?: phi->next->obj);
-		}
+	case BOX_PHI:
+		return tuple_data(phi_obj(obj));
 	default:
 		bad_object_type();
 	}
