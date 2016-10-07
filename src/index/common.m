@@ -450,7 +450,7 @@ tree_node_compare(struct index_node *na, struct index_node *nb, struct index_con
 	   it is guaranteed that pattern is a first arg.
 	*/
 
-	int n = (uintptr_t)na->obj < nelem(ic->field) ? (uintptr_t)na->obj : ic->cardinality;
+	int n = (uintptr_t)na->obj < ic->cardinality ? (uintptr_t)na->obj : ic->cardinality;
 
 	if (n > 0) {
 		int r = field_compare(&na->key, &nb->key, ic->field[0].type) * ic->field[0].sort_order;
