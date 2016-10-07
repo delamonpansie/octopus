@@ -42,23 +42,6 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 	return eq(na, nb, self->dtor_arg);
 }
 
-- (struct tnt_object *)
-find:(const char *)key
-{
-	switch (conf.field[0].type) {
-	case SNUM16:
-	case UNUM16: node_a.key.u16 = *(u16 *)key; break;
-	case SNUM32:
-	case UNUM32: node_a.key.u32 = *(u32 *)key; break;
-	case SNUM64:
-	case UNUM64: node_a.key.u64 = *(u64 *)key; break;
-	case STRING: node_a.key.ptr = key; break;
-	default: abort();
-	}
-	node_a.obj = (void *)(uintptr_t)1; /* cardinality */
-	return [self find_node: &node_a];
-}
-
 - (index_cmp)
 compare
 {

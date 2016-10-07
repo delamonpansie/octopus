@@ -421,12 +421,12 @@ static int
 field_compare(union index_field *f1, union index_field *f2, enum index_field_type type)
 {
 	switch (type) {
+	case SNUM8:
 	case SNUM16:
-		return f1->i16 > f2->i16 ? 1 : f1->i16 == f2->i16 ? 0 : -1;
-	case UNUM16:
-		return f1->u16 > f2->u16 ? 1 : f1->u16 == f2->u16 ? 0 : -1;
 	case SNUM32:
 		return f1->i32 > f2->i32 ? 1 : f1->i32 == f2->i32 ? 0 : -1;
+	case UNUM8:
+	case UNUM16:
 	case UNUM32:
 		return f1->u32 > f2->u32 ? 1 : f1->u32 == f2->u32 ? 0 : -1;
 	case SNUM64:
@@ -490,9 +490,10 @@ static int
 field_eq(union index_field *f1, union index_field *f2, enum index_field_type type)
 {
 	switch (type) {
+	case SNUM8:
+	case UNUM8:
 	case SNUM16:
 	case UNUM16:
-		return f1->u16 == f2->u16;
 	case SNUM32:
 	case UNUM32:
 		return f1->u32 == f2->u32;
@@ -602,6 +603,10 @@ gen_hash_node(const struct index_node *n, struct index_conf *ic)
 
 	if (c == 1) {
 		switch (ic->field[0].type) {
+		case SNUM8:
+		case UNUM8:
+		case SNUM16:
+		case UNUM16:
 		case SNUM32:
 		case UNUM32:
 			a ^= n->key.u32;
@@ -624,10 +629,10 @@ gen_hash_node(const struct index_node *n, struct index_conf *ic)
 	for (int i = 0; i < c; ++i) {
 		union index_field *key = (void *)&n->key + ic->field[i].offset;
 		switch(ic->field[i].type) {
+		case SNUM8:
+		case UNUM8:
 		case SNUM16:
 		case UNUM16:
-			mix_u32(key->u16, &a, &b);
-			break;
 		case SNUM32:
 		case UNUM32:
 			mix_u32(key->u32, &a, &b);
@@ -650,11 +655,25 @@ void
 gen_set_field(union index_field *f, enum index_field_type type, int len, const void *data)
 {
 	switch (type) {
+	case UNUM8:
+		if (len != sizeof(u8))
+			index_raise("key size mismatch, expected u8");
+		f->u32 = (u32)*(u8 *)data;
+		return;
+	case SNUM8:
+		if (len != sizeof(u8))
+			index_raise("key size mismatch, expected u8");
+		f->i32 = (i32)*(i8 *)data;
+		return;
 	case UNUM16:
+		if (len != sizeof(u16))
+			index_raise("key size mismatch, expected u16");
+		f->u32 = (u32)*(u16 *)data;
+		return;
 	case SNUM16:
 		if (len != sizeof(u16))
 			index_raise("key size mismatch, expected u16");
-		f->u16 = *(u16 *)data;
+		f->i32 = (i32)*(i16 *)data;
 		return;
 	case UNUM32:
 	case SNUM32:
@@ -736,7 +755,7 @@ index_conf_validate(struct index_conf *d)
 		d->fill_order[k] = k;
 		if (d->field[k].sort_order != ASC && d->field[k].sort_order != DESC)
 			index_raise("index_conf.field[_].sort_order is invalid");
-		if (d->field[k].type < UNUM16 || d->field[k].type > STRING)
+		if (d->field[k].type < UNUM16 || d->field[k].type > SNUM8)
 			index_raise("index_conf.field[_].type is invalid");
 		if (d->field[k].index + 1 > d->min_tuple_cardinality)
 			d->min_tuple_cardinality = d->field[k].index + 1;

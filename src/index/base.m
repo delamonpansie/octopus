@@ -47,6 +47,10 @@ new_conf:(const struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 			index_raise("NUMHASH index must be unique");
 
 		switch (ic->field[0].type) {
+		case SNUM8:
+		case UNUM8:
+		case SNUM16:
+		case UNUM16:
 		case SNUM32:
 		case UNUM32:
 			i = [Int32Hash alloc];
@@ -55,18 +59,12 @@ new_conf:(const struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 		case UNUM64:
 			i = [Int64Hash alloc];
 			break;
-		case SNUM16:
-		case UNUM16:
-			index_raise("NUM16 single column indexes unsupported");
 		default:
 			abort();
 		}
 	} else if (ic->type == HASH || ic->type == PHASH) {
 		if (ic->unique == false)
 			return nil;
-		if (ic->cardinality == 1 &&
-				(ic->field[0].type == SNUM16 || ic->field[0].type == UNUM16))
-			index_raise("NUM16 single column indexes unsupported");
 		i = ic->type == HASH ? [GenHash alloc] : [PHash alloc];
 	} else if (ic->type == SPTREE) {
 		i = [SPTree alloc];
@@ -154,9 +152,10 @@ init:(const struct index_conf *)ic dtor:(const struct dtor_conf *)dc
 		for (int i = 0; i < ic->cardinality; i++) {
 			conf.field[i].offset = offset;
 			switch (ic->field[i].type) {
+			case SNUM8:
+			case UNUM8:
 			case SNUM16:
 			case UNUM16:
-				offset += field_sizeof(union index_field, u16); break;
 			case SNUM32:
 			case UNUM32:
 				offset += field_sizeof(union index_field, u32); break;
@@ -198,6 +197,25 @@ eq:(struct tnt_object *)obj_a :(struct tnt_object *)obj_b
 	dtor(obj_a, &node_a, dtor_arg);
 	dtor(obj_b, node_b, dtor_arg);
 	return eq(&node_a, node_b, self->dtor_arg);
+}
+
+- (struct tnt_object *)
+find:(const char *)key
+{
+	switch (conf.field[0].type) {
+	case SNUM8:  node_a.key.i32 = (i32)*(i8 *)key; break;
+	case UNUM8:  node_a.key.u32 = (u32)*(u8 *)key; break;
+	case SNUM16: node_a.key.i32 = (i32)*(i16 *)key; break;
+	case UNUM16: node_a.key.u32 = (u32)*(u16 *)key; break;
+	case SNUM32:
+	case UNUM32: node_a.key.u32 = *(u32 *)key; break;
+	case SNUM64:
+	case UNUM64: node_a.key.u64 = *(u64 *)key; break;
+	case STRING: set_lstr_field(&node_a.key, strlen(key), (const u8*)key); break;
+	default: abort();
+	}
+	node_a.obj = (void *)(uintptr_t)1; /* cardinality */
+	return [(id<BasicIndex>)self find_node: &node_a];
 }
 
 - (u32)

@@ -38,8 +38,6 @@
 
 
 union index_field {
-	i16 i16;
-	u16 u16;
 	i32 i32;
 	u32 u32;
 	i64 i64;
@@ -64,9 +62,12 @@ struct index_node {
 				  Unused tail part of union used by next key */
 };
 
-enum index_sort_order { ASC = 1, DESC = -1 } sort_order;
-enum index_field_type { UNDEF, UNUM16, SNUM16, UNUM32, SNUM32, UNUM64, SNUM64, STRING } type;
-
+enum index_sort_order {
+	ASC = 1, DESC = -1
+};
+enum index_field_type {
+	UNDEF, UNUM16, SNUM16, UNUM32, SNUM32, UNUM64, SNUM64, STRING, UNUM8, SNUM8
+};
 struct index_field_desc {
 	u8 offset /* offset of key part in index_node,
 		     union index_field *key = &node->key + index_conf->field[i].offset */,
@@ -169,6 +170,7 @@ typedef struct tnt_object* tnt_ptr;
 - (u32)cardinality;
 /* common method */
 - (int)eq:(struct tnt_object *)a :(struct tnt_object*)b;
+- (struct tnt_object *)find:(const char *)key;
 - (u32)size;
 @end
 

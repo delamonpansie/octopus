@@ -90,8 +90,10 @@ local field_code = nil
 local function gen_packfield(e, index, i, key)
     if field_code == nil then
         field_code = {
-            [ffi.C.UNUM16] = "    field.u16 = $key",
-            [ffi.C.SNUM16] = "    field.u16 = $key",
+            [ffi.C.UNUM8]  = "    field.u32 = $key",
+            [ffi.C.SNUM8]  = "    field.u32 = $key",
+            [ffi.C.UNUM16] = "    field.u32 = $key",
+            [ffi.C.SNUM16] = "    field.u32 = $key",
             [ffi.C.UNUM32] = "    field.u32 = $key",
             [ffi.C.SNUM32] = "    field.u32 = $key",
             [ffi.C.UNUM64] = "    field.u64 = $key",
@@ -156,7 +158,11 @@ local function packerr(err, fname, index, ...)
     for i = 0, index.conf.cardinality - 1 do
 	local t = "UNKNOWN"
         local ftype = tonumber(index.conf.field[i].type)
-	if ftype == ffi.C.UNUM16 then
+	if ftype == ffi.C.UNUM8 then
+	    t = "UNUM8"
+	elseif ftype == ffi.C.SNUM8 then
+	    t = "SNUM8"
+	elseif ftype == ffi.C.UNUM16 then
 	    t = "UNUM16"
 	elseif ftype == ffi.C.SNUM16 then
 	    t = "SNUM16"

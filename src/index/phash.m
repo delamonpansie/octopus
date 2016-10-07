@@ -57,23 +57,6 @@ PHashImp *phash_debug;
 
 @implementation PHashImp
 - (struct tnt_object *)
-find:(const char *)key
-{
-	switch (conf.field[0].type) {
-	case SNUM16:
-	case UNUM16: node_a.key.u16 = *(u16 *)key; break;
-	case SNUM32:
-	case UNUM32: node_a.key.u32 = *(u32 *)key; break;
-	case SNUM64:
-	case UNUM64: node_a.key.u64 = *(u64 *)key; break;
-	case STRING: node_a.key.ptr = key; break;
-	default: abort();
-	}
-	node_a.obj = (void *)(uintptr_t)1; /* cardinality */
-	return ph_get_key(&h, (uintptr_t)&node_a, self);
-}
-
-- (struct tnt_object *)
 find_key:(struct tbuf *)key_data cardinalty:(u32)cardinality
 {
 	init_pattern(key_data, cardinality, &node_a, dtor_arg);
@@ -260,7 +243,8 @@ init:(struct index_conf*)ic dtor:(const struct dtor_conf*)dc
 {
 	[super init:ic dtor:dc];
 	memset(&h, 0, sizeof(h));
-	if (ic->cardinality == 1 && (ic->field[0].type == UNUM32 || ic->field[0].type == SNUM32)) {
+	int type = ic->field[0].type;
+	if (ic->cardinality == 1 && (type == UNUM32 || type == SNUM32 || type == UNUM8 || type == SNUM8 || type == UNUM16 || type == SNUM16)) {
 		h.desc = &num32;
 	} else {
 		h.desc = &generic;
