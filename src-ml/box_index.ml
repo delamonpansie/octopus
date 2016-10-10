@@ -7,8 +7,7 @@ type index_type = HASH
                 | POSTREE
 type iter_dir = Iter_forward | Iter_backward
 
-external node_pack_u16 : index -> int -> unit = "stub_index_node_pack_u16"
-external node_pack_u32 : index -> int -> unit = "stub_index_node_pack_u32"
+external node_pack_int : index -> int -> unit = "stub_index_node_pack_int"
 external node_pack_u64 : index -> Int64.t -> unit = "stub_index_node_pack_u64"
 external node_pack_string : index -> string -> unit = "stub_index_node_pack_string"
 
@@ -82,9 +81,9 @@ module MakeInternal (Descr : Descr) = struct
 
   let find_dyn ptr tuple =
     let rec pack ptr = function
-        Box_tuple.I8 _ -> raise (Invalid_argument "find_by_tuple")
-      | Box_tuple.I16 v -> node_pack_u16 ptr v
-      | Box_tuple.I32 v -> node_pack_u32 ptr v
+        Box_tuple.I8 v  -> node_pack_int ptr v
+      | Box_tuple.I16 v -> node_pack_int ptr v
+      | Box_tuple.I32 v -> node_pack_int ptr v
       | Box_tuple.I64 v -> node_pack_u64 ptr v
       | Box_tuple.Bytes v -> node_pack_string ptr v
       | Box_tuple.Field (t, n) -> node_pack_string ptr (Box_tuple.strfield n t)

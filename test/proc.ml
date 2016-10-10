@@ -19,7 +19,7 @@ module S0I1Descr = struct
   let index_no = 1
   let node_pack index (a, b, c) =
     Index.node_pack_string index a;
-    Index.node_pack_u32 index  b;
+    Index.node_pack_int index  b;
     Index.node_pack_string index  c
 end
 
@@ -27,7 +27,7 @@ module S1Descr = struct
   type key = int
   let obj_space_no = 1
   let index_no = 0
-  let node_pack = Index.node_pack_u32
+  let node_pack = Index.node_pack_int
   let tuple_of_key a = Tuple.(of_list [I32 a])
 end
 
@@ -35,7 +35,7 @@ module S1I1Descr = struct
   type key = int
   let obj_space_no = 1
   let index_no = 1
-  let node_pack = Index.node_pack_u32
+  let node_pack = Index.node_pack_int
 end
 
 module S1I2Descr = struct
@@ -49,14 +49,14 @@ module S1I3Descr = struct
   type key = int
   let obj_space_no = 1
   let index_no = 3
-  let node_pack = Index.node_pack_u32
+  let node_pack = Index.node_pack_int
 end
 
 module S2Descr = struct
     type key  = int * int
     let obj_space_no = 2	(* Space for user sessions *)
     let index_no = 0
-    let node_pack index (a,b) = Index.node_pack_u32 index a; Index.node_pack_u32 index b
+    let node_pack index (a,b) = Index.node_pack_int index a; Index.node_pack_int index b
     let tuple_of_key (a,b) = Tuple.(of_list [I32 a; I32 b])
 end
 

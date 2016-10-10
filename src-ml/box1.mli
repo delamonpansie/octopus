@@ -210,8 +210,7 @@ module Index : sig
   (** направление итератора. Iter_backward поддерживается только для
       деревьев. *)
 
-  external node_pack_u16 : index -> int -> unit = "stub_index_node_pack_u16"
-  external node_pack_u32 : index -> int -> unit = "stub_index_node_pack_u32"
+  external node_pack_int : index -> int -> unit = "stub_index_node_pack_int"
   external node_pack_u64 : index -> Int64.t -> unit = "stub_index_node_pack_u64"
   external node_pack_string : index -> string -> unit = "stub_index_node_pack_string"
 

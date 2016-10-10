@@ -33,23 +33,11 @@ value stub_index_node_pack_begin(Index *index)
 	return Val_unit;
 }
 
-value stub_index_node_pack_u16(Index *index, value arg)
+value stub_index_node_pack_int(Index *index, value arg)
 {
 	struct index_conf *ic = &index->conf;
 	if (node_i > ic->cardinality)
-		caml_invalid_argument("Index.node_pack_u16");
-	const struct index_field_desc *fd = &ic->field[node_i];
-	union index_field *f = (void *)&node->key + fd->offset;
-	f->u16 = Int_val(arg);
-	node->obj = (void *)(uintptr_t)(++node_i);
-	return Val_unit;
-}
-
-value stub_index_node_pack_u32(Index *index, value arg)
-{
-	struct index_conf *ic = &index->conf;
-	if (node_i > ic->cardinality)
-		caml_invalid_argument("Index.node_pack_u32");
+		caml_invalid_argument("Index.node_pack_int");
 	const struct index_field_desc *fd = &ic->field[node_i];
 	union index_field *f = (void *)&node->key + fd->offset;
 	f->u32 = Int_val(arg);

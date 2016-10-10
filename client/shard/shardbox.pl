@@ -141,6 +141,7 @@ sub index_conf {
 	my $ftype = shift_cast(unum16 => 1, snum16 => 2,
 			       unum32 => 3, snum32 => 4,
 			       unum64 => 5, snum64 => 6,
+			       unum8  => 8, snum8  => 9,
 			       string => 7);
 	my $fid = shift_int('FID', 255);
 	my $order = shift_opt(asc => 1, desc => 0xff) || 1;

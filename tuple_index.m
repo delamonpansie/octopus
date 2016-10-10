@@ -139,6 +139,8 @@ static typenames *one_column_types = (typenames[]){
 	{UNUM64, (char *[]){"UNUM64", NULL}},
 	{SNUM16, (char *[]){"NUM16", "SNUM16", NULL}},
 	{UNUM16, (char *[]){"UNUM16", NULL}},
+	{SNUM8,  (char *[]){"NUM8", "SNUM8", NULL}},
+	{UNUM8,  (char *[]){"UNUM8", NULL}},
 	{UNDEF, (char *[]){NULL}}
 };
 
@@ -150,6 +152,8 @@ static typenames *many_column_types = (typenames[]){
 	{SNUM64, (char *[]){"SNUM64", NULL}},
 	{UNUM16, (char *[]){"NUM16", "UNUM16", NULL}},
 	{SNUM16, (char *[]){"SNUM16", NULL}},
+	{UNUM16, (char *[]){"NUM8", "UNUM8", NULL}},
+	{SNUM16, (char *[]){"SNUM8", NULL}},
 	{UNDEF, (char *[]){NULL}},
 };
 

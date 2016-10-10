@@ -237,6 +237,8 @@ class SilverBox < IProtoRetCode
                      when :UNUM64 then 5
                      when :SNUM64 then 6
                      when :STRING then 7
+                     when :UNUM8 then 8
+                     when :SNUM8 then 9
                      else fail "invalid field :type (#{key})"
                      end
     end

@@ -9,7 +9,7 @@ module Descr = struct
     type key = int
     let obj_space_no = 0
     let index_no = 0
-    let node_pack = Index.node_pack_u32
+    let node_pack = Index.node_pack_int
     let tuple_of_key key = Tuple.(of_list [I32 key])
 end
 

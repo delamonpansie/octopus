@@ -2,6 +2,6 @@
 Failed with: {code: 0x202, message: 'mod/box/src-lua/box/example_proc.lua:255: context switch during index iteration
 stack traceback:
 	[C]: in function 'error'
-	src-lua/index.lua:197: in function '(for generator)'
+	src-lua/index.lua:203: in function '(for generator)'
 	mod/box/src-lua/box/example_proc.lua:255: in function 'proc'
 	mod/box/src-lua/box.lua:385: in function <mod/box/src-lua/box.lua:377>'}
