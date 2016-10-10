@@ -75,7 +75,16 @@ struct index_field_desc {
 	char sort_order, type;
 };
 
-enum index_type { HASH, NUMHASH, SPTREE, FASTTREE, COMPACTTREE, POSTREE, PHASH, MAX_INDEX_TYPE };
+enum index_type {
+	HASH, NUMHASH, SPTREE, FASTTREE, COMPACTTREE, POSTREE, PHASH, MAX_INDEX_TYPE
+};
+static inline bool index_type_is_hash(enum index_type tp) {
+	return tp == HASH || tp == NUMHASH || tp == PHASH;
+}
+static inline bool index_type_is_tree(enum index_type tp) {
+	return tp == SPTREE || tp == FASTTREE || tp == COMPACTTREE || tp == POSTREE;
+}
+
 struct index_conf {
 	char min_tuple_cardinality /* minimum required tuple cardinality */,
 	     cardinality;
@@ -173,6 +182,13 @@ typedef struct tnt_object* tnt_ptr;
 - (struct tnt_object *)find:(const char *)key;
 - (u32)size;
 @end
+static inline bool index_is_hash(const Index* index) {
+	return index_type_is_hash(index->conf.type);
+}
+static inline bool index_is_tree(const Index* index) {
+	return index_type_is_tree(index->conf.type);
+}
+
 
 @protocol HashIndex <BasicIndex>
 - (void) resize:(u32)buckets;
