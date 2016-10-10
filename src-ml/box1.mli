@@ -199,12 +199,7 @@ end
 
 module Index : sig
   type index
-  type index_type = HASH
-                  | NUMHASH
-                  | SPTREE
-                  | FASTTREE
-                  | COMPACTTREE
-                  | POSTREE
+  type index_type = HASH | TREE
 
   type iter_dir = Iter_forward | Iter_backward
   (** направление итератора. Iter_backward поддерживается только для
@@ -227,6 +222,7 @@ module Index : sig
                    | Iter_key of Descr.key
                    | Iter_partkey of (int * Descr.key)
                    | Iter_tuple of tuple
+                   | Iter_position of int
     (** алгебраический тип для инициализации итератора:
         Iter_empty для итерации с самого начала индекса,
         Iter_key 'key для произвольного ключа,
@@ -306,6 +302,7 @@ module ObjSpace : sig
                      | Iter_key of Descr.key
                      | Iter_partkey of (int * Descr.key)
                      | Iter_tuple of tuple
+                     | Iter_position of int
       val iterator_init : iter_init -> Index.iter_dir -> unit
       val iterator_next : unit -> tuple
       val iterator_skip : unit -> unit

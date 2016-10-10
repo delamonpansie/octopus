@@ -96,16 +96,27 @@ value stub_index_iterator_init_with_direction(Index<BasicIndex> *index, value di
 	if (Int_val(direction) == 1)
 		[index iterator_init];
 	else {
-		if (index->conf.type < SPTREE)
+		if (!index_is_tree(index))
 			caml_invalid_argument("iterator_init");
 		[(Tree *)index iterator_init_with_direction:-1];
 	}
 	return Val_unit;
 }
 
+value stub_index_iterator_init_with_position(Index<BasicIndex> *index, value direction)
+{
+	i64 pos = Int_val(direction);
+	if (pos < 0 || pos > UINT32_MAX)
+		caml_invalid_argument("negative position");
+	if (!index_is_hash(index))
+		caml_invalid_argument("iterator_init");
+	[(id<HashIndex>)index iterator_init_pos: (u32)pos];
+	return Val_unit;
+}
+
 value stub_index_iterator_init_with_node_direction(Tree *index, value direction)
 {
-	if (index->conf.type < SPTREE)
+	if (!index_is_tree(index))
 		caml_invalid_argument("iterator_init");
 	[index iterator_init_with_node:node direction:Int_val(direction)];
 	return Val_unit;
@@ -113,7 +124,7 @@ value stub_index_iterator_init_with_node_direction(Tree *index, value direction)
 
 value stub_index_iterator_init_with_object_direction(Tree *index, value oct_object, value direction)
 {
-	if (index->conf.type < SPTREE)
+	if (!index_is_tree(index))
 		caml_invalid_argument("iterator_init");
 
 	CAMLparam1(oct_object);
@@ -147,7 +158,7 @@ value stub_index_slots(id<BasicIndex> index)
 
 value stub_index_get(Index<HashIndex> *index, value n)
 {
-	if (index->conf.type > NUMHASH)
+	if (index_is_tree(index))
 		caml_invalid_argument("iterator_init");
 
 	obj_visible visible = txn_visibility();
@@ -157,5 +168,5 @@ value stub_index_get(Index<HashIndex> *index, value n)
 
 value stub_index_type(const Index *index)
 {
-	return Val_int(index->conf.type);
+	return Val_int(index_is_hash(index) ? 0 : 1);
 }

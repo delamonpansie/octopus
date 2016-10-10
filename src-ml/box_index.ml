@@ -1,10 +1,5 @@
 type index
-type index_type = HASH
-                | NUMHASH
-                | SPTREE
-                | FASTTREE
-                | COMPACTTREE
-                | POSTREE
+type index_type = HASH | TREE
 type iter_dir = Iter_forward | Iter_backward
 
 external node_pack_int : index -> int -> unit = "stub_index_node_pack_int"
@@ -23,6 +18,7 @@ module MakeInternal (Descr : Descr) = struct
                  | Iter_key of Descr.key
                  | Iter_partkey of (int * Descr.key)
                  | Iter_tuple of Box_tuple.t
+                 | Iter_position of int
 
 
   external node_pack_begin : index -> unit = "stub_index_node_pack_begin"
@@ -33,6 +29,7 @@ module MakeInternal (Descr : Descr) = struct
   external stub_iterator_init_with_direction : index -> int -> unit = "stub_index_iterator_init_with_direction"
   external stub_iterator_init_with_node_direction : index -> int -> unit = "stub_index_iterator_init_with_node_direction"
   external stub_iterator_init_with_object_direction : index -> Octopus.oct_obj -> int -> unit = "stub_index_iterator_init_with_object_direction"
+  external stub_iterator_init_with_position : index -> int -> unit = "stub_index_iterator_init_with_position"
   external stub_iterator_next : index -> Octopus.oct_obj = "stub_index_iterator_next"
 
   external stub_index_get : index -> int -> Octopus.oct_obj = "stub_index_get"
@@ -58,6 +55,8 @@ module MakeInternal (Descr : Descr) = struct
       end
     | Iter_tuple t ->
       stub_iterator_init_with_object_direction ptr (Box_tuple.to_oct_obj t) dir
+    | Iter_position pos ->
+      stub_iterator_init_with_position ptr pos
 
   let iterator_next ptr =
     Box_tuple.of_oct_obj (stub_iterator_next ptr)
@@ -113,6 +112,7 @@ module Make (Descr : Descr) = struct
                                    | Iter_key of Descr.key
                                    | Iter_partkey of (int * Descr.key)
                                    | Iter_tuple of Box_tuple.t
+                                   | Iter_position of int
 
   external index : int -> int -> index = "stub_obj_space_index"
 
