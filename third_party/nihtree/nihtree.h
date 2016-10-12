@@ -76,7 +76,7 @@ struct nihpage_common {
 	unsigned rc : 28;
 	uint16_t cnt;
 	uint16_t capa : 15;
-	unsigned last_op_delete: 1;
+	unsigned flag: 1;
 	uint32_t root_total;
 };
 typedef union nihpage nihpage_t;
