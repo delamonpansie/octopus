@@ -90,6 +90,7 @@ subdirs += src cfg
 
 sub-Makefile = $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
 -include $(sub-Makefile)
+-include cfg/defs.mk
 
 $(binary): $(obj)
 	$E "CC	$@"

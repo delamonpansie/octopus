@@ -59,3 +59,8 @@ defered_depend += cfg/defs.h
 cfg/defs.h: cfg/octopus.cfg
 	$(E) "GEN	$@"
 	$(Q)$(SED) '/^[a-z]/!d; /^[ 	]*$$/d; s/^\([a-z_]\+\).*/#define CFG_\1 1/'< $< > $@
+
+dist-clean += cfg/defs.mk
+cfg/defs.mk: cfg/octopus.cfg
+	$(E) "GEN	$@"
+	$(Q)$(SED) '/^[a-z]/!d; /^[ 	]*$$/d; s/^\([a-z_]\+\).*/CFG_\1 := 1/'< $< > $@
