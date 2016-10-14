@@ -10,7 +10,11 @@ obj += src/pickle.o
 obj += src/salloc.o
 obj += src/say.o
 obj += src/stat.o
-obj += src/graphite.o
+
+ifeq ($(CFG_graphite_addr),1)
+ obj += src/graphite.o
+endif
+
 obj += src/octopus_ev.o
 obj += src/tbuf.o
 obj += src/util.o
