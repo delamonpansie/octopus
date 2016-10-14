@@ -99,11 +99,13 @@ stat_accum_init(struct stat_accum* sa) {
 	sa->name_pool = palloc_create_pool(stat_pool_cfg);
 }
 
+#ifdef CFG_graphite_addr
 static void
 stat_accum_reset(struct stat_accum* sa) {
 	mh_accum_clear(&sa->values);
 	prelease(sa->name_pool);
 }
+#endif
 
 static void
 stat_accum_destruct(struct stat_accum* sa)

@@ -103,8 +103,9 @@ iproto_worker(va_list ap)
 			rlock(lock);
 		else
 			wlock(lock);
+#if CFG_too_long_threshold
 		ev_tstamp start = ev_now(), stop;
-
+#endif
 		@try {
 			a.ih->cb(&a.io->wbuf, a.r);
 		}
@@ -115,10 +116,11 @@ iproto_worker(va_list ap)
 			iproto_error(&a.io->wbuf, a.r, exc_rc(e), e->reason);
 			[e release];
 		}
+#if CFG_too_long_threshold
 		stop = ev_now();
 		if (stop - start > cfg.too_long_threshold)
 			say_warn("too long IPROTO:%i %.3f sec", a.r->msg_code, stop - start);
-
+#endif
 		if (a.io->fd >= 0 && a.io->prepare_link.le_prev == NULL)
 			LIST_INSERT_HEAD(&service->prepare, a.io, prepare_link);
 
@@ -649,17 +651,16 @@ code
 }
 @end
 
+#if CFG_primary_addr
 static int
 iproto_fixup_addr(struct octopus_cfg *cfg)
 {
 	extern void out_warning(int v, char *format, ...);
-
 	if (cfg->primary_addr == NULL) {
 		out_warning(0, "Option 'primary_addr' can't be NULL");
 		return -1;
 	}
-
-#if CFG_primary_addr && CFG_primary_port && CFG_secondary_port
+#if CFG_primary_port && CFG_secondary_port
 	if (strchr(cfg->primary_addr, ':') == NULL && !cfg->primary_port) {
 		out_warning(0, "Option 'primary_port' is not set");
 		return -1;
@@ -679,6 +680,7 @@ static struct tnt_module iproto_mod = {
 };
 
 register_module(iproto_mod);
+#endif
 
 void __attribute__((constructor))
 iproto_init(void)
