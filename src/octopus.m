@@ -381,7 +381,7 @@ tnt_uptime(void)
 	return (unsigned)(ev_now() - boot);
 }
 
-#if CFG_snap_dir
+#if OCT_RECOVERY
 static void
 save_snapshot(void *ev __attribute__((unused)), int events __attribute__((unused)))
 {
@@ -653,7 +653,7 @@ octopus(int argc, char **argv)
 	}
 #endif
 
-#if CFG_snap_dir
+#if OCT_RECOVERY
 	const char *opt_text;
 	if (gopt_arg(opt, 'F', &opt_text))
 		fold_scn = atol(opt_text);
@@ -759,7 +759,7 @@ octopus(int argc, char **argv)
 #endif
 	}
 
-#if CFG_snap_dir
+#if OCT_RECOVERY
 	if (fold_scn) {
 		cfg.custom_proc_title = "fold";
 		goto init_storage;
@@ -789,7 +789,9 @@ octopus(int argc, char **argv)
 		say_warn("config warnings: %s", cfg_err);
 
 #if CFG_snap_dir
+#if OCT_RECOVERY
 init_storage:
+#endif
 	snap_dir = [[SnapDir alloc] init_dirname:strdup(cfg.snap_dir)];
 	wal_dir = [[WALDir alloc] init_dirname:strdup(cfg.wal_dir)];
 
@@ -839,7 +841,7 @@ init_storage:
 	luaO_require_or_panic("pre_init", false, NULL);
 #endif
 
-#if CFG_snap_dir
+#if OCT_RECOVERY
 	if (module("feeder") && fold_scn == 0) {
 		/* this either gets overriden it feeder don't fork
 		   or stays forever in the child */
@@ -891,7 +893,7 @@ init_storage:
 	/* run Lua init _after_ module init */
 	luaO_require_or_panic("init", false, NULL);
 #endif
-#if CFG_snap_dir && CFG_wal_feeder_standalone
+#if CFG_snap_dir && CFG_wal_feeder_standalone && OCT_RECOVERY
 run_loop:
 #endif
 	prelease(fiber->pool);

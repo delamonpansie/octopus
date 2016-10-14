@@ -56,6 +56,7 @@ endif
 
 ifneq ($(findstring src/log_io_recovery.o,$(obj)),)
   obj += src/spawn_child.o
+  src/octopus.o: XCFLAGS += -DOCT_RECOVERY=1
 endif
 
 ifneq ($(findstring src/spawn_child.o,$(obj)),)
