@@ -10,7 +10,7 @@ ifeq ($(modules),"feeder")
  obj += src/iproto_client.o
  obj += src/spawn_child.o
  cfg_tmpl += cfg/replication.cfg_tmpl
-XCFLAGS += -DOCT_CHILDREN=1
+ XCFLAGS += -DOCT_CHILDREN=1
 endif
 
 cfg_tmpl += mod/feeder/feeder_cfg.cfg_tmpl
