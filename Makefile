@@ -5,7 +5,7 @@ obj += src/log_io_reader.o
 
 
 # standalone feeder
-ifeq ($(modules),"feeder")
+ifeq ($(modules),feeder)
  obj += src/iproto.o
  obj += src/iproto_client.o
  obj += src/spawn_child.o

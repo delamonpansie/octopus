@@ -31,6 +31,7 @@
 #import <iproto.h>
 #import <pickle.h>
 #import <say.h>
+#import <util.h>
 
 #include <third_party/crc32.h>
 
