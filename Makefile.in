@@ -99,6 +99,7 @@ $(obj): Makefile $(sub-Makefile)
 
 -include $(obj:.o=.d)
 -include $(cmx:.cmx=.d) $(cmx:.cmx=.i.d)
+dist-clean += $(obj:.o=.d) $(cmx:.cmx=.d) $(cmx:.cmx=.i.d)
 
 $(filter-out $(no-extra-warns),$(obj)): XCFLAGS += $(WCFLAGS)
 
