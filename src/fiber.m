@@ -70,6 +70,7 @@ int coro_switch_cnt;
 static uint32_t last_used_fid;
 
 static ev_prepare wake_prep;
+static ev_check wake_check;
 ev_async wake_async;
 
 static struct mh_i32_t *fibers_registry;
@@ -83,6 +84,23 @@ fiber_ev_cb(void *arg)
 	say_debug("%s: =<< arg:%p", __func__, arg);
 }
 #endif
+
+static int fiber_async_sent = 1;
+static void
+fiber_async_send()
+{
+	if (fiber_async_sent == 0) {
+		zero_io_collect_interval();
+		ev_async_send(&wake_async);
+		fiber_async_sent = 1;
+	}
+}
+
+static void
+fiber_async_check(ev_check* ev _unused_, int events _unused_)
+{
+	fiber_async_sent = 1;
+}
 
 void
 #ifdef FIBER_DEBUG
@@ -130,6 +148,7 @@ fiber_wake(struct Fiber *f, void *arg)
 #endif
 	f->wake = arg;
 	TAILQ_INSERT_TAIL(&wake_list, f, wake_link);
+	fiber_async_send();
 	return 1;
 }
 
@@ -376,9 +395,9 @@ fiber_wakeup_pending(void)
 		}
 	}
 
+	fiber_async_sent = 0;
 	if (!TAILQ_EMPTY(&wake_list)) {
-		zero_io_collect_interval();
-		ev_async_send(&wake_async);
+		fiber_async_send();
 	}
 }
 
@@ -498,6 +517,8 @@ fiber_init(const char *sched_name)
 	ev_prepare_start(&wake_prep);
 	ev_async_init(&wake_async, (void *)unzero_io_collect_interval);
 	ev_async_start(&wake_async);
+	ev_check_init(&wake_check, (void*)fiber_async_check);
+	ev_check_start(&wake_check);
 
 #if CFG_lua_path
 	extern void luaO_init();
