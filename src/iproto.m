@@ -521,7 +521,7 @@ service_prepare_io(struct iproto_ingress_svc *io)
 static void
 iproto_wakeup_workers(ev_prepare *ev)
 {
-	struct iproto_service *service = (void *)ev - offsetof(struct iproto_service, wakeup);
+	struct iproto_service *service = container_of(ev, struct iproto_service, wakeup);
 	struct iproto_ingress_svc *c, *tmp, *last;
 	palloc_register_cut_point(fiber->pool);
 	do {
@@ -546,7 +546,7 @@ iproto_wakeup_workers(ev_prepare *ev)
 
 static void
 iproto_write_data(ev_prepare *ev) {
-	struct iproto_service *service = (void *)ev - offsetof(struct iproto_service, writeall);
+	struct iproto_service *service = container_of(ev, struct iproto_service, writeall);
 	struct iproto_ingress_svc *c, *tmp;
 	size_t allocated = palloc_allocated(fiber->pool);
 	LIST_FOREACH_SAFE(c, &service->prepare, prepare_link, tmp) {
