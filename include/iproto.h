@@ -130,6 +130,7 @@ struct iproto_service {
 	SLIST_HEAD(, Fiber) workers; /* <- handlers */
 	int batch;
 	ev_prepare wakeup;
+	ev_prepare writeall;
 
 	enum { SERVICE_SHARDED = 1 } options;
 	struct iproto_handler default_handler;

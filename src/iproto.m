@@ -273,6 +273,7 @@ service_alloc_handlers(struct iproto_service *s, int capa)
 }
 
 static void iproto_wakeup_workers(ev_prepare *ev);
+static void iproto_write_data(ev_prepare *ev);
 void
 iproto_service(struct iproto_service *service, const char *addr)
 {
@@ -296,6 +297,9 @@ iproto_service(struct iproto_service *service, const char *addr)
 
 	ev_prepare_init(&service->wakeup, (void *)iproto_wakeup_workers);
 	ev_prepare_start(&service->wakeup);
+	ev_prepare_init(&service->writeall, (void *)iproto_write_data);
+	ev_set_priority(&service->writeall, -2);
+	ev_prepare_start(&service->writeall);
 
 	service_alloc_handlers(service, SERVICE_DEFAULT_CAPA);
 
@@ -537,13 +541,20 @@ iproto_wakeup_workers(ev_prepare *ev)
 			service->pool_allocated = palloc_allocated(service->pool);
 		}
 	} while (!SLIST_EMPTY(&service->workers) && !TAILQ_EMPTY(&service->processing));
+	palloc_cutoff(fiber->pool);
+}
 
+static void
+iproto_write_data(ev_prepare *ev) {
+	struct iproto_service *service = (void *)ev - offsetof(struct iproto_service, writeall);
+	struct iproto_ingress_svc *c, *tmp;
+	size_t allocated = palloc_allocated(fiber->pool);
 	LIST_FOREACH_SAFE(c, &service->prepare, prepare_link, tmp) {
 		LIST_REMOVE(c, prepare_link);
 		c->prepare_link.le_prev = NULL;
 		service_prepare_io(c);
 	}
-	palloc_cutoff(fiber->pool);
+	assert(palloc_allocated(fiber->pool) == allocated);
 }
 
 

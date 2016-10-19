@@ -514,6 +514,7 @@ fiber_init(const char *sched_name)
 	last_used_fid = 100;
 
 	ev_prepare_init(&wake_prep, (void *)fiber_wakeup_pending);
+	ev_set_priority(&wake_prep, -1);
 	ev_prepare_start(&wake_prep);
 	ev_async_init(&wake_async, (void *)unzero_io_collect_interval);
 	ev_async_start(&wake_async);
