@@ -76,12 +76,14 @@ struct box_phi {
 	struct tnt_object header;
 	struct tnt_object *obj; /* commited object */
 	struct phi_tailq tailq;
+	struct box_op *bop; /* for debug purposes */
 	Index<BasicIndex> *index;
 };
 
 struct box_phi_cell {
 	struct tnt_object *obj; /* to be commited */
 	struct box_phi *head;
+	struct box_op *bop; /* for debug purposes */
 	TAILQ_ENTRY(box_phi_cell) link, bop_link;
 };
 
@@ -122,6 +124,7 @@ struct box_op {
 	struct phi_tailq phi;
 	u32 obj_affected;
 	TAILQ_ENTRY(box_op) link;
+	struct box_txn *txn; /* for debug purposes */
 	int data_len;
 	char data[];
 };
@@ -134,6 +137,7 @@ struct box_txn {
 	enum txn_state state;
 	u32 obj_affected, submit;
 	int id;
+	struct Fiber *fiber; /* for debug purposes */
 
 	TAILQ_ENTRY(box_txn) link;
 	TAILQ_HEAD(box_op_tailq, box_op) ops;

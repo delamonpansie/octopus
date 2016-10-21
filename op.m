@@ -170,19 +170,20 @@ net_tuple_add(struct netmsg_head *h, struct tnt_object *obj)
 }
 
 static struct box_phi_cell *
-phi_cell_alloc(struct box_phi *phi, struct tnt_object *obj)
+phi_cell_alloc(struct box_phi *phi, struct tnt_object *obj, struct box_op *bop)
 {
 	struct box_phi_cell *cell = slab_cache_alloc(&phi_cache);
 	say_debug3("%s: %p phi:%p obj:%p", __func__, cell, phi, obj);
 	*cell = (struct box_phi_cell) {
 		.head = phi,
-		.obj = obj };
+		.obj = obj,
+		.bop = bop };
 	TAILQ_INSERT_TAIL(&phi->tailq, cell, link);
 	return cell;
 }
 
 static struct box_phi *
-phi_alloc(Index<BasicIndex> *index, struct tnt_object *obj)
+phi_alloc(Index<BasicIndex> *index, struct tnt_object *obj, struct box_op *bop)
 {
 	struct box_phi *head = slab_cache_alloc(&phi_cache);
 	say_debug3("%s: %p index:%i obj:%p", __func__, head, index->conf.n, obj);
@@ -190,7 +191,8 @@ phi_alloc(Index<BasicIndex> *index, struct tnt_object *obj)
 		.header = { .type = BOX_PHI },
 		.index = index,
 		.obj = obj,
-		.tailq = TAILQ_HEAD_INITIALIZER(head->tailq) };
+		.tailq = TAILQ_HEAD_INITIALIZER(head->tailq),
+		.bop = bop };
 	return head;
 }
 
@@ -225,9 +227,10 @@ phi_obj(const struct tnt_object *obj)
 }
 
 static void
-phi_insert(struct phi_tailq *bop_tailq, id<BasicIndex> index,
+phi_insert(struct box_op *bop, id<BasicIndex> index,
 	   struct tnt_object *old_obj, struct tnt_object *obj)
 {
+	struct phi_tailq *bop_tailq = &bop->phi;
 	struct box_phi *phi;
 	struct box_phi_cell *cell;
 	assert(old_obj != NULL || obj != NULL);
@@ -236,12 +239,12 @@ phi_insert(struct phi_tailq *bop_tailq, id<BasicIndex> index,
 	if (old_obj && old_obj->type == BOX_PHI) {
 		phi = box_phi(old_obj);
 		assert(phi->index == index);
-		cell = phi_cell_alloc(phi, obj);
+		cell = phi_cell_alloc(phi, obj, bop);
 	} else {
 		/* phi is not owned by box_op, but rather by index itself.
 		   phi_cell is owned by box_op */
-		phi = phi_alloc(index, old_obj);
-		cell = phi_cell_alloc(phi, obj);
+		phi = phi_alloc(index, old_obj, bop);
+		cell = phi_cell_alloc(phi, obj, bop);
 		@try {
 			[index replace: &phi->header];
 		}
@@ -317,17 +320,16 @@ static void
 object_space_delete(struct box_op *bop, struct tnt_object *index_obj, struct tnt_object *tuple)
 {
 	struct object_space *object_space = bop->object_space;
-	struct phi_tailq *phi_tailq = &bop->phi;
 	if (tuple == NULL)
 		return;
 
 	id<BasicIndex> pk = object_space->index[0];
-	phi_insert(phi_tailq, pk, index_obj , NULL);
+	phi_insert(bop, pk, index_obj , NULL);
 
 	foreach_indexi(1, index, object_space) {
 		struct tnt_object* old_obj = [index find_obj:tuple];
 		assert(phi_right(old_obj) == tuple);
-		phi_insert(phi_tailq, index, old_obj, NULL);
+		phi_insert(bop, index, old_obj, NULL);
 	}
 }
 
@@ -335,15 +337,14 @@ static void
 object_space_insert(struct box_op *bop, struct tnt_object *index_obj, struct tnt_object *tuple)
 {
 	struct object_space *object_space = bop->object_space;
-	struct phi_tailq *phi_tailq = &bop->phi;
 	id<BasicIndex> pk = object_space->index[0];
 	assert(phi_right(index_obj) == NULL);
-	phi_insert(phi_tailq, pk, index_obj, tuple);
+	phi_insert(bop, pk, index_obj, tuple);
 
 	foreach_indexi(1, index, object_space) {
 		index_obj = [index find_obj:tuple];
 		if (phi_right(index_obj) == NULL)
-			phi_insert(phi_tailq, index, index_obj, tuple);
+			phi_insert(bop, index, index_obj, tuple);
 		else
 			iproto_raise_fmt(ERR_CODE_INDEX_VIOLATION,
 					 "duplicate key value violates unique index %i:%s",
@@ -356,11 +357,10 @@ object_space_replace(struct box_op *bop, int pk_affected, struct tnt_object *ind
 		     struct tnt_object *old_tuple, struct tnt_object *tuple)
 {
 	struct object_space *object_space = bop->object_space;
-	struct phi_tailq *phi_tailq = &bop->phi;
 	id<BasicIndex> pk = object_space->index[0];
 	uintptr_t i = 0;
 	if (!pk_affected) {
-		phi_insert(phi_tailq, pk, index_obj, tuple);
+		phi_insert(bop, pk, index_obj, tuple);
 		i = 1;
 	}
 
@@ -370,10 +370,10 @@ object_space_replace(struct box_op *bop, int pk_affected, struct tnt_object *ind
 		if (phi_right(index_obj) == NULL) {
 			struct tnt_object *old_obj = [index find_obj:old_tuple];
 			assert(phi_right(old_obj) == old_tuple);
-			phi_insert(phi_tailq, index, old_obj, NULL);
-			phi_insert(phi_tailq, index, index_obj, tuple);
+			phi_insert(bop, index, old_obj, NULL);
+			phi_insert(bop, index, index_obj, tuple);
 		} else  if (phi_right(index_obj) == old_tuple) {
-			phi_insert(phi_tailq, index, index_obj, tuple);
+			phi_insert(bop, index, index_obj, tuple);
 		} else {
 			iproto_raise_fmt(ERR_CODE_INDEX_VIOLATION,
 					 "duplicate key value violates unique index %i:%s",
@@ -803,7 +803,8 @@ struct box_op *
 box_op_alloc(struct box_txn *txn, int msg_code, const void *data, int data_len)
 {
 	struct box_op *bop = palloc(fiber->pool, sizeof(*bop) + data_len);
-	*bop = (struct box_op) { .op = msg_code & 0xffff,
+	*bop = (struct box_op) { .txn = txn,
+				 .op = msg_code & 0xffff,
 				 .data_len = data_len,
 				 .phi = TAILQ_HEAD_INITIALIZER(bop->phi) };
 	memcpy(bop->data, data, data_len);
@@ -1090,6 +1091,7 @@ box_txn_alloc(int shard_id, enum txn_mode mode)
 	txn->box = (shard_rt + shard_id)->shard->executor;
 	txn->id = cnt++;
 	txn->mode = mode;
+	txn->fiber = fiber;
 	TAILQ_INIT(&txn->ops);
 	TAILQ_INSERT_TAIL(&txn_tailq, txn, link);
 	assert(fiber->txn == NULL);
