@@ -314,9 +314,10 @@ tuple_visible_right(struct tnt_object *obj)
 }
 
 static void
-object_space_delete(struct object_space *object_space, struct phi_tailq *phi_tailq,
-		   struct tnt_object *index_obj, struct tnt_object *tuple)
+object_space_delete(struct box_op *bop, struct tnt_object *index_obj, struct tnt_object *tuple)
 {
+	struct object_space *object_space = bop->object_space;
+	struct phi_tailq *phi_tailq = &bop->phi;
 	if (tuple == NULL)
 		return;
 
@@ -331,9 +332,10 @@ object_space_delete(struct object_space *object_space, struct phi_tailq *phi_tai
 }
 
 static void
-object_space_insert(struct object_space *object_space, struct phi_tailq *phi_tailq,
-		    struct tnt_object *index_obj, struct tnt_object *tuple)
+object_space_insert(struct box_op *bop, struct tnt_object *index_obj, struct tnt_object *tuple)
 {
+	struct object_space *object_space = bop->object_space;
+	struct phi_tailq *phi_tailq = &bop->phi;
 	id<BasicIndex> pk = object_space->index[0];
 	assert(phi_right(index_obj) == NULL);
 	phi_insert(phi_tailq, pk, index_obj, tuple);
@@ -350,10 +352,11 @@ object_space_insert(struct object_space *object_space, struct phi_tailq *phi_tai
 }
 
 static void
-object_space_replace(struct object_space *object_space, struct phi_tailq *phi_tailq,
-		     int pk_affected, struct tnt_object *index_obj,
+object_space_replace(struct box_op *bop, int pk_affected, struct tnt_object *index_obj,
 		     struct tnt_object *old_tuple, struct tnt_object *tuple)
 {
+	struct object_space *object_space = bop->object_space;
+	struct phi_tailq *phi_tailq = &bop->phi;
 	id<BasicIndex> pk = object_space->index[0];
 	uintptr_t i = 0;
 	if (!pk_affected) {
@@ -402,9 +405,9 @@ prepare_replace(struct box_op *bop, size_t cardinality, const void *data, u32 da
 
 	say_debug("%s: old_obj:%p obj:%p", __func__, bop->old_obj, bop->obj);
 	if (bop->old_obj == NULL)
-		object_space_insert(bop->object_space, &bop->phi, old_root, bop->obj);
+		object_space_insert(bop, old_root, bop->obj);
 	else
-		object_space_replace(bop->object_space, &bop->phi, 0, old_root, bop->old_obj, bop->obj);
+		object_space_replace(bop, 0, old_root, bop->old_obj, bop->obj);
 }
 
 void
@@ -717,7 +720,7 @@ prepare_update_fields(struct box_op *bop, struct tbuf *data)
 	if (![pk eq:bop->old_obj :bop->obj])
 		bop->obj_affected++;
 
-	object_space_replace(bop->object_space, &bop->phi, pk_affected, old_root, bop->old_obj, bop->obj);
+	object_space_replace(bop, pk_affected, old_root, bop->old_obj, bop->obj);
 }
 
 static void __attribute__((noinline))
@@ -793,7 +796,7 @@ prepare_delete(struct box_op *bop, struct tbuf *key_data)
 	struct tnt_object *old_root = [pk find_key:key_data cardinalty:c];
 	bop->old_obj = phi_right(old_root);
 	bop->obj_affected = bop->old_obj != NULL;
-	object_space_delete(bop->object_space, &bop->phi, old_root, bop->old_obj);
+	object_space_delete(bop, old_root, bop->old_obj);
 }
 
 struct box_op *
