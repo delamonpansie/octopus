@@ -827,13 +827,10 @@ convert_row_v11_to_v12(struct tbuf *m)
 write_header:(const i64 *)shard_scn_map
 {
 	assert(shard_scn_map == NULL);
-	if (fwrite(dir->filetype, strlen(dir->filetype), 1, fd) != 1)
-		return -1;
-	if (fwrite(v11, strlen(v11), 1, fd) != 1)
-		return -1;
-	if (fwrite("\n", 1, 1, fd) != 1)
-                return -1;
-	if ((offset = ftello(fd)) < 0)
+	fwrite(dir->filetype, strlen(dir->filetype), 1, fd);
+	fwrite(v11, strlen(v11), 1, fd);
+	fwrite("\n", 1, 1, fd);
+	if ((offset = ftello(fd)) < 0 || ferror(fd))
 		return -1;
 	return 0;
 }
@@ -989,29 +986,21 @@ read_header
 - (int)
 write_header:(const i64 *)shard_scn_map
 {
-	const char *comment = "Created-by: octopus\n";
-	char buf[64];
-	if (fwrite(dir->filetype, strlen(dir->filetype), 1, fd) != 1)
-		return -1;
-	if (fwrite(v12, strlen(v12), 1, fd) != 1)
-		return -1;
-	if (fwrite(comment, strlen(comment), 1, fd) != 1)
-                return -1;
+	fwrite(dir->filetype, strlen(dir->filetype), 1, fd);
+	fwrite(v12, strlen(v12), 1, fd);
+	fprintf(fd, "Created-by: octopus\n");
 	if (shard_scn_map) {
 		for (int i = 0; i < MAX_SHARD; i++) {
 			if (shard_scn_map[i] == 0)
 				continue;
 			if (i == 0)
-				snprintf(buf, sizeof(buf), "SCN: %"PRIi64"\n", shard_scn_map[i]);
+				fprintf(fd, "SCN: %"PRIi64"\n", shard_scn_map[i]);
 			else
-				snprintf(buf, sizeof(buf), "SCN-%i: %"PRIi64"\n", i, shard_scn_map[i]);
-			if (fwrite(buf, strlen(buf), 1, fd) != 1)
-				return -1;
+				fprintf(fd, "SCN-%i: %"PRIi64"\n", i, shard_scn_map[i]);
 		}
 	}
-	if (fwrite("\n", 1, 1, fd) != 1)
-                return -1;
-	if ((offset = ftello(fd)) < 0)
+	fprintf(fd, "\n");
+	if ((offset = ftello(fd)) < 0 || ferror(fd))
 		return -1;
 	return 0;
 }
