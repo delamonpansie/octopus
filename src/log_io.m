@@ -989,6 +989,7 @@ write_header:(const i64 *)shard_scn_map
 	fwrite(dir->filetype, strlen(dir->filetype), 1, fd);
 	fwrite(v12, strlen(v12), 1, fd);
 	fprintf(fd, "Created-by: octopus\n");
+	fprintf(fd, "Octopus-version: %s\n", octopus_version());
 	if (shard_scn_map) {
 		for (int i = 0; i < MAX_SHARD; i++) {
 			if (shard_scn_map[i] == 0)
