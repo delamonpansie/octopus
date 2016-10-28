@@ -59,6 +59,9 @@ enum row_tag {
 	shard_alter,
 	shard_final,
 	tlv,
+        og_wal_checkpoint,
+        og_snap_cachesnap,
+        og_snap_metadata,
 
 	user_tag = 32
 };
@@ -246,6 +249,9 @@ u16 fix_tag_v2(u16 tag);
 @end
 
 @interface XLog11: XLog
+@end
+
+@interface XLog11OG: XLog11 /* OpenGraph XLog format */
 @end
 
 @interface XLog12: XLog
