@@ -352,10 +352,7 @@ netmsg_writev(int fd, struct netmsg_head *head)
 		if (unlikely(r < 0)) {
 			if (errno == EINTR)
 				continue;
-			if (errno == EAGAIN || errno == EWOULDBLOCK)
-				break;
-
-			if (result == 0)
+			if (result == 0 && errno != EAGAIN && errno != EWOULDBLOCK)
 				result = r;
 			break;
 		};
