@@ -165,14 +165,15 @@ struct iproto_future {
 	TAILQ_ENTRY(iproto_future) link; /* shared by connection->future and mbox */
 	LIST_ENTRY(iproto_future) waiting_link; /* ingres, who waits for reply: either proxy or mbox */
 	struct iproto_egress *dst; /* always exists and connected */
+	u32 sync; /* new sync */
 	union {
 		struct {
 			struct iproto_ingress *ingress; /* always exists and connected */
-			struct iproto proxy_request;
+			struct iproto proxy_request; /* original requst */
 		};
 		struct {
 			struct iproto_mbox *mbox;
-			struct iproto *msg; // FTF
+			struct iproto *msg;
 		};
 	};
 	enum iproto_future_type { IPROTO_FUTURE_MBOX, IPROTO_FUTURE_PROXY, IPROTO_FUTURE_ORPHAN, IPROTO_FUTURE_BLACKHOLE } type;

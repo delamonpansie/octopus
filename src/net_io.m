@@ -866,6 +866,7 @@ tcp_server_stop(struct tcp_server_state *state)
 {
 	ev_io_stop(&state->io);
 	close(state->io.fd);
+	state->io.fd = -1;
 }
 
 void

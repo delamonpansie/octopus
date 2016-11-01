@@ -74,6 +74,7 @@ mbox_future(struct iproto_egress *dst, struct iproto_mbox *mbox, u32 sync)
 	mh_i32_put(sync2future, sync, future, NULL);
 	TAILQ_INSERT_HEAD(&dst->future, future, link);
 	future->dst = dst;
+	future->sync = sync;
 	if (mbox != blackhole_mbox) {
 		future->type = IPROTO_FUTURE_MBOX;
 		future->mbox = mbox;
@@ -92,6 +93,7 @@ proxy_future(struct iproto_egress *dst, struct iproto_ingress *src, const struct
 	mh_i32_put(sync2future, sync, future, NULL);
 	TAILQ_INSERT_HEAD(&dst->future, future, link);
 	future->dst = dst;
+	future->sync = sync;
 	future->proxy_request = (struct iproto){ .shard_id = msg->shard_id,
 						 .msg_code = msg->msg_code,
 						 .sync = msg->sync };
@@ -308,35 +310,42 @@ iproto_future_collect_orphans(struct iproto_future_list *waiting)
 	LIST_INIT(waiting);
 }
 
-void
-iproto_future_resolve_err(struct iproto_egress *c)
+static void
+iproto_future_err(struct iproto_future *future)
 {
 	struct iproto_mbox *mbox;
-	struct iproto_future *future, *tmp;
 	struct netmsg_io *io;
 
-	TAILQ_FOREACH_SAFE(future, &c->future, link, tmp) {
-		switch (future->type) {
-		case IPROTO_FUTURE_MBOX:
-			LIST_REMOVE(future, waiting_link);
-			mbox = future->mbox;
-			future->msg = NULL;
-			mbox_put(mbox, future, link);
-			break;
-		case IPROTO_FUTURE_PROXY:
-			LIST_REMOVE(future, waiting_link);
-			io = future->ingress;
-			iproto_error(&io->wbuf, &future->proxy_request,
-				     ERR_CODE_BAD_CONNECTION, "proxy connection failed");
-			ev_io_start(&io->out);
-			slab_cache_free(&future_cache, future);
-			break;
-		case IPROTO_FUTURE_BLACKHOLE:
-		case IPROTO_FUTURE_ORPHAN:
-			slab_cache_free(&future_cache, future);
-			break;
-		}
+	mh_i32_remove(sync2future, future->sync, NULL);
+	switch (future->type) {
+	case IPROTO_FUTURE_MBOX:
+		LIST_REMOVE(future, waiting_link);
+		mbox = future->mbox;
+		future->msg = NULL;
+		mbox_put(mbox, future, link);
+		break;
+	case IPROTO_FUTURE_PROXY:
+		LIST_REMOVE(future, waiting_link);
+		io = future->ingress;
+		iproto_error(&io->wbuf, &future->proxy_request,
+			     ERR_CODE_BAD_CONNECTION, "proxy connection failed");
+		ev_io_start(&io->out);
+		slab_cache_free(&future_cache, future);
+		break;
+	case IPROTO_FUTURE_BLACKHOLE:
+	case IPROTO_FUTURE_ORPHAN:
+		slab_cache_free(&future_cache, future);
+		break;
 	}
+}
+
+void
+iproto_egress_future_err(struct iproto_egress *c)
+{
+	struct iproto_future *future, *tmp;
+
+	TAILQ_FOREACH_SAFE(future, &c->future, link, tmp)
+		iproto_future_err(future);
 	TAILQ_INIT(&c->future);
 }
 
@@ -345,20 +354,23 @@ void
 iproto_future_resolve(struct iproto_egress *peer, struct iproto *msg)
 {
 	struct iproto_mbox *mbox;
-	struct iproto_future *future;
+	struct iproto_future *future = NULL;
 
 	say_debug2("%s: peer:%s op:0x%x sync:%u", __func__, net_fd_name(peer->fd), msg->msg_code, msg->sync);
 
 	u32 k = mh_i32_get(sync2future, msg->sync);
-	if (k == mh_end(sync2future)) {
-		say_warn("martian reply from peer:%s op:0x%x sync:%u", net_fd_name(peer->fd), msg->msg_code, msg->sync);
-		return;
+	if (k != mh_end(sync2future)) {
+		future = mh_i32_value(sync2future, k);
+		mh_i32_del(sync2future, k);
+		TAILQ_REMOVE(&peer->future, future, link);
 	}
 
-	future = mh_i32_value(sync2future, k);
-	mh_i32_del(sync2future, k);
-	assert(future->dst == peer);
-	TAILQ_REMOVE(&peer->future, future, link);
+	if (unlikely(future == NULL || future->dst != peer)) {
+		say_warn("martian reply from peer:%s op:0x%x sync:%u", net_fd_name(peer->fd), msg->msg_code, msg->sync);
+		if (future)
+			iproto_future_err(future);
+		return;
+	}
 
 	switch (future->type) {
 	case IPROTO_FUTURE_MBOX:
@@ -408,7 +420,14 @@ data_ready
 - (void)
 close
 {
-	iproto_future_resolve_err(self);
+	if (wbuf.bytes) {
+		/* мы не знаем, остановилась ли запись ровно на пакете или нет.
+		   поэтому для того, чтобы ибежать ошибок с частичной записью пакета
+		   удалим все исходящие пакеты */
+		netmsg_reset(&wbuf);
+		wbuf.bytes = 0;
+	}
+	iproto_egress_future_err(self);
 	[super close];
 }
 @end
@@ -453,6 +472,8 @@ iproto_remote_stop_reconnect(struct iproto_egress *peer)
 	if (ts->flags & TAC_RECONNECT) {
 		ev_timer_stop(&ts->timer);
 		ev_io_stop(&ts->ev);
+		if (ts->ev.fd)
+			close(ts->ev.fd);
 		ts->ev.fd = -1;
 		ts->flags &= ~TAC_RECONNECT;
 		SLIST_REMOVE(&iproto_tac_list, ts, tac_state, link);
