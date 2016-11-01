@@ -239,8 +239,7 @@ request_parse(struct request *request, int row_count, struct tbuf *rbuf)
 	request->reply = p0alloc(fiber->pool,
 				 sizeof(struct wal_reply) +
 				 row_count * sizeof(request->reply->row_crc[0]));
-	request->reply->sender = read_ptr(rbuf);
-	request->reply->fid = read_u32(rbuf);
+	request->reply->seq = read_u64(rbuf);
 	request->epoch = read_u64(rbuf);
 	request->reply->scn = -1;
 	request->reply->lsn = -1;
@@ -461,9 +460,11 @@ exit:
 static void
 wal_disk_writer_input_dispatch(ev_io *ev, int __attribute__((unused)) events)
 {
+	XLogWriter *self = ev->data;
 	struct netmsg_io *io = container_of(ev, struct netmsg_io, in);
 	struct tbuf *rbuf = &io->rbuf;
 
+	static struct wal_reply err_reply;
 	ssize_t r;
 	do {
 		tbuf_ensure(rbuf, 128 * 1024);
@@ -482,12 +483,26 @@ wal_disk_writer_input_dispatch(ev_io *ev, int __attribute__((unused)) events)
 	while (tbuf_len(rbuf) > sizeof(u32) &&
 	       tbuf_len(rbuf) >= *(u32 *)rbuf->ptr)
 	{
-		struct wal_reply *r = read_bytes(rbuf, *(u32 *)rbuf->ptr);
-		if (unlikely(r->sender->fid != r->fid)) {
-			say_warn("orphan WAL reply");
+		struct wal_pack *pack = TAILQ_FIRST(&self->wal_queue);
+		struct wal_reply *reply = read_bytes(rbuf, *(u32 *)rbuf->ptr);
+		assert(pack->seq == reply->seq);
+
+		if (reply->row_count > 0) /* success or partial success */
+			resume(pack->fiber, reply);
+
+		if (reply->epoch == self->epoch)
 			continue;
+		else if (reply->epoch > self->epoch) {
+			struct wal_pack *tmp;
+			TAILQ_FOREACH_REVERSE_SAFE(pack, &self->wal_queue, wal_pack_tailq, link, tmp) {
+				assert(pack->epoch == self->epoch);
+				resume(pack->fiber, &err_reply); /* row_count == 0 => error */
+			}
+			self->epoch = reply->epoch;
+		} else {
+			/* reply->epoch < self->epoch */
+			assert(reply->row_count == 0);
 		}
-		resume(r->sender, r);
 	}
 
 	if (palloc_allocated(rbuf->pool) > 4 * 1024 * 1024)
@@ -557,6 +572,7 @@ init_lsn:(i64)init_lsn
 #if CFG_object_space
 	assert(cfg.object_space == NULL || [[state_ shard:0] scn] > 0);
 #endif
+	TAILQ_INIT(&wal_queue);
 	lsn = init_lsn;
 	state = state_;
 
@@ -582,6 +598,7 @@ init_lsn:(i64)init_lsn
 	io = [netmsg_io alloc];
 	netmsg_io_init(io, palloc_create_pool((struct palloc_config){.name = "wal_writer"}), wal_writer.fd);
 	ev_init(&io->in, wal_disk_writer_input_dispatch);
+	io->in.data = self;
 	ev_set_priority(&io->in, 1);
 	ev_set_priority(&io->out, 1);
 	ev_io_start(&io->in);
@@ -608,12 +625,14 @@ submit:(const void *)data len:(u32)data_len tag:(u16)tag shard_id:(u16)shard_id
 void
 wal_pack_prepare(XLogWriter *w, struct wal_pack *pack)
 {
+	TAILQ_INSERT_TAIL(&w->wal_queue, pack, link);
 	pack->netmsg = &w->io->wbuf;
+	pack->fiber = fiber;
+	pack->seq = w->seq++;
 	pack->request = palloc(pack->netmsg->pool, sizeof(*pack->request));
 	pack->request->packet_len = sizeof(*pack->request);
 	pack->request->magic = 0xba0babed;
-	pack->request->fid = fiber->fid;
-	pack->request->sender = fiber;
+	pack->request->seq = pack->seq;
 	pack->request->epoch = w->epoch;
 	pack->request->row_count = 0;
 	net_add_iov(pack->netmsg, pack->request, pack->request->packet_len);
@@ -653,14 +672,15 @@ wal_pack_append_data(struct wal_pack *pack, const void *data, size_t len)
 - (struct wal_reply *)
 wal_pack_submit
 {
+	struct wal_pack *pack = TAILQ_LAST(&wal_queue, wal_pack_tailq);
 	struct wal_reply *reply = yield();
-	epoch = reply->epoch;
 	if (reply->row_count == 0)
-		say_warn("wal writer returned error status");
+		say_warn("WAL writer returned error status");
 	else
 		lsn = reply->lsn;
 
 	say_debug("%s: => rows:%i LSN:%"PRIi64, __func__, reply->row_count, lsn);
+	TAILQ_REMOVE(&wal_queue, pack, link);
 	return reply;
 }
 @end

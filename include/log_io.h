@@ -255,23 +255,23 @@ struct wal_pack {
 	struct netmsg_head *netmsg;
 	struct row_v12 *row;
 	struct wal_request *request;
+	TAILQ_ENTRY(wal_pack) link;
+	struct Fiber *fiber;
+	i64 epoch, seq;
 };
 
 struct wal_request {
 	u32 packet_len;
 	u32 row_count;
 	u32 magic;
-	struct Fiber *sender;
-	u32 fid;
+	i64 seq;
 	i64 epoch;
 } __attribute__((packed));
 
 struct wal_reply {
 	u32 packet_len;
 	u32 row_count, crc_count;
-	struct Fiber *sender;
-	u32 fid;
-	i64 epoch, lsn, scn;
+	i64 seq, epoch, lsn, scn;
 
 	struct run_crc_hist row_crc[];
 } __attribute__((packed));
@@ -349,12 +349,16 @@ bool our_shard(const struct shard_op *sop);
 - (struct wal_reply *) wal_pack_submit;
 @end
 
+
 @interface XLogWriter: Object <XLogWriter> {
-	i64 lsn, epoch;
+	i64 lsn;
 	id<RecoveryState> state;
 	struct child wal_writer;
 	struct netmsg_io *io;
 	ev_prepare prepare;
+@public
+	i64 epoch, seq;
+	TAILQ_HEAD(wal_pack_tailq, wal_pack) wal_queue;
 }
 - (id) init_lsn:(i64)lsn
 	  state:(id<RecoveryState>)state;
