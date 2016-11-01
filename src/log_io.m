@@ -990,13 +990,13 @@ convert_row_v11og_to_v12(struct tbuf *m)
 	if (tag == (u16)11) { /* INMEMORYSNAP tag */
 		row_v12(n)->tag = snap_data|TAG_SNAP;
 	} else if (tag == (u16)9) { /* METADATA tag */
-		row_v12(n)->tag = og_snap_metadata|TAG_SNAP;
+		row_v12(n)->tag = TAG_OG_SNAP_METADATA|TAG_SNAP;
 	} else if (tag == (u16)5) { /* CACHESNAP tag */
-		row_v12(n)->tag = og_snap_cachesnap|TAG_SNAP;
+		row_v12(n)->tag = TAG_OG_SNAP_CACHESNAP|TAG_SNAP;
 	} else if (tag == (u16)4) { /* WALACTION tag */
 		row_v12(n)->tag = wal_data|TAG_WAL;
 	} else if (tag == (u16)10) { /* WAL_CHECKPOINT tag */
-		row_v12(n)->tag = og_wal_checkpoint|TAG_WAL;
+		row_v12(n)->tag = TAG_OG_WAL_CHECKPOINT|TAG_WAL;
 	} else {
 		say_error("unknown tag %i", (int)tag);
 		return NULL;
@@ -1099,11 +1099,11 @@ append_row:(struct row_v12 *)row12 data:(const void *)data
 		tag = (u16)11; /* INMEMORYSNAP tag */
 	} else if (tag == wal_data) {
 		tag = (u16)4; /* WALACTION tag */
-	} else if (tag == og_snap_metadata) {
+	} else if (tag == TAG_OG_SNAP_METADATA) {
 		tag = (u16)9; /* METADATA tag */
-	} else if (tag == og_snap_cachesnap) {
+	} else if (tag == TAG_OG_SNAP_CACHESNAP) {
 		tag = (u16)5; /* CACHESNAP tag */
-	} else if (tag == og_wal_checkpoint) {
+	} else if (tag == TAG_OG_WAL_CHECKPOINT) {
 		tag = (u16)10; /* WAL_CHECKPOINT tag */
 	} else if (tag == snap_initial ||
 		   tag == snap_final ||

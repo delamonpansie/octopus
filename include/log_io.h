@@ -59,9 +59,6 @@ enum row_tag {
 	shard_alter,
 	shard_final,
 	tlv,
-        og_wal_checkpoint,
-        og_snap_cachesnap,
-        og_snap_metadata,
 
 	user_tag = 32
 };
@@ -78,6 +75,13 @@ enum row_tag {
 #define TAG_SNAP 0x4000
 #define TAG_WAL 0x8000
 #define TAG_SYS 0xc000
+
+
+/* Opengraph tags */
+
+#define TAG_OG_WAL_CHECKPOINT 101
+#define TAG_OG_SNAP_CACHESNAP 102
+#define TAG_OG_SNAP_METADATA  103
 
 static inline bool scn_changer(int tag)
 {
