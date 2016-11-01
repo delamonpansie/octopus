@@ -979,6 +979,7 @@ convert_row_v11og_to_v12(struct tbuf *m)
 {
 	struct tbuf *n = tbuf_alloc(m->pool);
 	tbuf_append(n, NULL, sizeof(struct row_v12));
+	memset(n->ptr, 0, sizeof(struct row_v12));
 	row_v12(n)->scn = row_v12(n)->lsn = _row_v11(m)->lsn;
 	row_v12(n)->tm = _row_v11(m)->tm;
 	row_v12(n)->len = _row_v11(m)->len - sizeof(u16) - sizeof(u64); /* tag & cookie */
