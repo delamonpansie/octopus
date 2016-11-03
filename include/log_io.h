@@ -79,9 +79,11 @@ enum row_tag {
 
 /* Opengraph tags */
 
-#define TAG_OG_WAL_CHECKPOINT 101
-#define TAG_OG_SNAP_CACHESNAP 102
-#define TAG_OG_SNAP_METADATA  103
+#define OG_SNAP_DATA      101
+#define OG_SNAP_CACHESNAP 102
+#define OG_SNAP_METADATA  103
+#define OG_WAL_DATA       104
+#define OG_WAL_CHECKPOINT 105
 
 static inline bool scn_changer(int tag)
 {
