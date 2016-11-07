@@ -1,8 +1,20 @@
+NRCPU := $(shell (getconf _NPROCESSORS_ONLN || lscpu -p | grep -c ^[0-9] || echo 1) 2>/dev/null)
+ifeq ($(NRCPU),0)
+  NRCPU := 1
+endif
+unexport MAKEFLAGS
+define make
+	@$(MAKE) --no-print-directory -j$(NRCPU) -f Makefile $(MAKECMDGOALS)
+endef
+
 ifeq ($(wildcard Makefile),Makefile)
-include Makefile
+all:
+	$(make)
+%:
+	$(make)
 else
 all $(filter-out configure Makefile distclean,$(MAKECMDGOALS)): Makefile
-	$(MAKE) -f Makefile $(MAKECMDGOALS)
+	$(make)
 Makefile: configure
 	./configure
 configure: configure.ac third_party/libev/libev.m4
