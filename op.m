@@ -49,8 +49,6 @@
 
 #include <stdint.h>
 
-static TAILQ_HEAD(box_txn_tailq, box_txn) txn_tailq = TAILQ_HEAD_INITIALIZER(txn_tailq);
-
 static int stat_base;
 char const * const box_ops[] = ENUM_STR_INITIALIZER(MESSAGES);
 
@@ -904,11 +902,6 @@ txn_cleanup(struct box_txn *txn)
 	say_debug3("%s: txn:%i/%p", __func__, txn->id, txn);
 	assert(fiber->txn == txn);
 	fiber->txn = NULL;
-	if (txn->link.tqe_prev) {
-		assert(TAILQ_FIRST(&txn_tailq) == txn ||
-		       (txn->submit == 0 && TAILQ_LAST(&txn_tailq, box_txn_tailq) == txn));
-		TAILQ_REMOVE(&txn_tailq, txn, link);
-	}
 
 	struct box_op *bop;
 	TAILQ_FOREACH(bop, &txn->ops, link)
@@ -989,27 +982,20 @@ box_op_rollback(struct box_op *bop)
 }
 
 void
-box_rollback(struct box_txn *current_txn)
+box_rollback(struct box_txn *txn)
 {
-	struct box_txn *txn;
 	say_debug2("%s: txn:%i/%p state:%i", __func__,
-		   current_txn->id, current_txn, current_txn->state);
-	if (current_txn->state == ROLLBACK)
+		   txn->id, txn, txn->state);
+	if (txn->state == ROLLBACK)
 		goto cleanup;
+	assert(txn->state == UNDECIDED);
+	txn->state = ROLLBACK;
 
-	TAILQ_FOREACH_REVERSE(txn, &txn_tailq, box_txn_tailq, link) {
-		assert(txn->state == UNDECIDED);
-		txn->state = ROLLBACK;
-
-		struct box_op *bop;
-		TAILQ_FOREACH_REVERSE(bop, &txn->ops, box_op_tailq, link)
-			box_op_rollback(bop);
-
-		if (txn == current_txn)
-			break;
-	}
+	struct box_op *bop;
+	TAILQ_FOREACH_REVERSE(bop, &txn->ops, box_op_tailq, link)
+		box_op_rollback(bop);
 cleanup:
-	txn_cleanup(current_txn);
+	txn_cleanup(txn);
 }
 
 
@@ -1093,7 +1079,6 @@ box_txn_alloc(int shard_id, enum txn_mode mode)
 	txn->mode = mode;
 	txn->fiber = fiber;
 	TAILQ_INIT(&txn->ops);
-	TAILQ_INSERT_TAIL(&txn_tailq, txn, link);
 	assert(fiber->txn == NULL);
 	fiber->txn = txn;
 	say_debug2("%s: txn:%i/%p", __func__, txn->id, txn);

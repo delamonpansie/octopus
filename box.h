@@ -139,7 +139,6 @@ struct box_txn {
 	int id;
 	struct Fiber *fiber; /* for debug purposes */
 
-	TAILQ_ENTRY(box_txn) link;
 	TAILQ_HEAD(box_op_tailq, box_op) ops;
 };
 
