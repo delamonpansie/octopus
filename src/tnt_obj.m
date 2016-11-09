@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2011, 2012, 2013, 2014 Mail.RU
- * Copyright (C) 2011, 2012, 2013, 2014 Yuriy Vostrikov
+ * Copyright (C) 2011, 2012, 2013, 2014, 2016 Mail.RU
+ * Copyright (C) 2011, 2012, 2013, 2014, 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -134,20 +134,20 @@ object_yield(struct tnt_object *obj)
 void
 object_lock(struct tnt_object *obj)
 {
-	if (obj->flags & WAL_WAIT)
+	if (obj->flags & LOCKED)
 		iproto_raise(ERR_CODE_NODE_IS_RO, "object is locked");
 
 	say_debug2("object_lock(%p)", obj);
-	obj->flags |= WAL_WAIT;
+	obj->flags |= LOCKED;
 }
 
 void
 object_unlock(struct tnt_object *obj)
 {
-	assert(obj->flags & WAL_WAIT);
+	assert(obj->flags & LOCKED);
 
 	say_debug2("object_unlock(%p)", obj);
-	obj->flags &= ~WAL_WAIT;
+	obj->flags &= ~LOCKED;
 
 	if (obj->flags & YIELD) {
 		int i, j = 0;

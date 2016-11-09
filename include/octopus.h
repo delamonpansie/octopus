@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -101,7 +101,7 @@ void object_yield(struct tnt_object *obj);
 void object_unlock(struct tnt_object *obj);
 
 enum tnt_object_flags {
-	WAL_WAIT = 0x1,
+	LOCKED = 0x1,
 	GHOST = 0x2,
 	YIELD = 0x4
 };
