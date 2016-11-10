@@ -457,6 +457,35 @@ exit:
 	return result;
 }
 
+@implementation DummyXLogWriter
+- (i64) lsn { return lsn; }
+- (void) incr_lsn:(int)diff { lsn += diff; }
+
+- (id)
+init_lsn:(i64)init_lsn
+{
+	[super init];
+	lsn = init_lsn;
+	return self;
+}
+
+- (struct wal_reply *)
+submit:(const void *)data len:(u32)data_len tag:(u16)tag shard_id:(u16)shard_id
+{
+	(void)data;
+	(void)data_len;
+	(void)tag;
+	(void)shard_id;
+	static struct wal_reply reply = { .row_count = 1 };
+	lsn++;
+	reply.scn = lsn;
+	return &reply;
+}
+
+@end
+
+@implementation XLogWriter
+
 static void
 wal_disk_writer_input_dispatch(ev_io *ev, int __attribute__((unused)) events)
 {
@@ -508,35 +537,6 @@ wal_disk_writer_input_dispatch(ev_io *ev, int __attribute__((unused)) events)
 	if (palloc_allocated(rbuf->pool) > 4 * 1024 * 1024)
 		palloc_gc(io->pool);
 }
-
-@implementation DummyXLogWriter
-- (i64) lsn { return lsn; }
-- (void) incr_lsn:(int)diff { lsn += diff; }
-
-- (id)
-init_lsn:(i64)init_lsn
-{
-	[super init];
-	lsn = init_lsn;
-	return self;
-}
-
-- (struct wal_reply *)
-submit:(const void *)data len:(u32)data_len tag:(u16)tag shard_id:(u16)shard_id
-{
-	(void)data;
-	(void)data_len;
-	(void)tag;
-	(void)shard_id;
-	static struct wal_reply reply = { .row_count = 1 };
-	lsn++;
-	reply.scn = lsn;
-	return &reply;
-}
-
-@end
-
-@implementation XLogWriter
 
 - (i64) lsn { return lsn; }
 - (const struct child *) wal_writer { return &wal_writer; };
