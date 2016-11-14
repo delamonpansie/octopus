@@ -401,55 +401,30 @@ apply:(struct tbuf *)data tag:(u16)tag
 			box_rollback_meta(&txn);
 			@throw;
 		}
-	} else {
+		return;
+	}
+
+	switch (tag_type) {
+	case TAG_WAL: ;
 		struct box_txn txn = { .box = self,
 				       .mode = RW,
 				       .ops = TAILQ_HEAD_INITIALIZER(txn.ops) };
-		struct box_op bop = { .op = 0 };
 		fiber->txn = &txn;
 		@try {
-			switch (tag_type) {
-			case TAG_WAL:
-				if (tag == wal_data) {
-					int op = read_u16(data);
-					box_prepare(&txn, op, data->ptr, tbuf_len(data));
-				} else if (tag == tlv) {
-					while (tbuf_len(data)) {
-						struct tlv *tlv = read_bytes(data, sizeof(*tlv));
-						tbuf_ltrim(data, tlv->len);
-						prepare_tlv(&txn, tlv);
-					}
-				} else if (tag >= user_tag) {
-					box_prepare(&txn, tag >> 5, data->ptr, tbuf_len(data));
-				} else {
-					return;
+			if (tag == wal_data) {
+				int op = read_u16(data);
+				box_prepare(&txn, op, data->ptr, tbuf_len(data));
+			} else if (tag == tlv) {
+				while (tbuf_len(data)) {
+					struct tlv *tlv = read_bytes(data, sizeof(*tlv));
+					tbuf_ltrim(data, tlv->len);
+					prepare_tlv(&txn, tlv);
 				}
-
-				break;
-			case TAG_SNAP:
-				if (tag != snap_data)
-					return;
-
-				const struct box_snap_row *snap = box_snap_row(data);
-				bop.object_space = object_space_registry[snap->object_space];
-				if (bop.object_space == NULL)
-					raise_fmt("object_space %i is not configured", snap->object_space);
-				if (bop.object_space->ignored) {
-					bop.object_space = NULL;
-					break;
-				}
-
-				bop.op = INSERT;
-				TAILQ_INIT(&bop.phi);
-				assert(bop.object_space->index[0] != nil);
-
-				prepare_replace(&bop, snap->tuple_size, snap->data, snap->data_size);
-				TAILQ_INSERT_TAIL(&txn.ops, &bop, link);
-				break;
-			case TAG_SYS:
-				abort();
+			} else if (tag >= user_tag) {
+				box_prepare(&txn, tag >> 5, data->ptr, tbuf_len(data));
+			} else {
+				return;
 			}
-
 			box_commit(&txn);
 		}
 		@catch (id e) {
@@ -458,6 +433,24 @@ apply:(struct tbuf *)data tag:(u16)tag
 			box_rollback(&txn);
 			@throw;
 		}
+		break;
+	case TAG_SNAP:
+		if (tag != snap_data)
+			return;
+
+		const struct box_snap_row *snap = box_snap_row(data);
+		struct object_space *object_space = object_space_registry[snap->object_space];
+		if (object_space == NULL)
+			raise_fmt("object_space %i is not configured", snap->object_space);
+		if (object_space->ignored) {
+			break;
+		}
+
+		assert(object_space->index[0] != nil);
+		snap_insert_row(object_space, snap->tuple_size, snap->data, snap->data_size);
+		break;
+	case TAG_SYS:
+		abort();
 	}
 }
 

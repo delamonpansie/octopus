@@ -167,6 +167,7 @@ int  box_submit(struct box_txn *txn) __attribute__ ((warn_unused_result));
 void box_commit(struct box_txn *txn);
 void box_rollback(struct box_txn *txn);
 void prepare_replace(struct box_op *bop, size_t cardinality, const void *data, u32 data_len);
+void snap_insert_row(struct object_space *object_space, size_t cardinality, const void *data, u32 data_len);
 
 void box_prepare_meta(struct box_meta_txn *txn, struct tbuf *data);
 void box_commit_meta(struct box_meta_txn *txn);

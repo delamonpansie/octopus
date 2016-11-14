@@ -133,8 +133,14 @@ fields_bsize(u32 cardinality, const void *data, u32 max_len)
 int
 tuple_valid(struct tnt_object *obj)
 {
-	return fields_bsize(tuple_cardinality(obj), tuple_data(obj), tuple_bsize(obj)) ==
+	@try {
+		return fields_bsize(tuple_cardinality(obj), tuple_data(obj), tuple_bsize(obj)) ==
 		tuple_bsize(obj);
+	} @catch(Error* e) {
+		say_error("%s", e->reason);
+		[e release];
+		return 0;
+	}
 }
 
 void
@@ -399,6 +405,28 @@ prepare_replace(struct box_op *bop, size_t cardinality, const void *data, u32 da
 		object_space_insert(bop->object_space, &bop->phi, old_root, bop->obj);
 	else
 		object_space_replace(bop->object_space, &bop->phi, 0, old_root, bop->old_obj, bop->obj);
+}
+
+void
+snap_insert_row(struct object_space* object_space, size_t cardinality, const void *data, u32 data_len)
+{
+	if (cardinality == 0)
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "cardinality can't be equal to 0");
+	if (data_len == 0 || fields_bsize(cardinality, data, data_len) != data_len)
+		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "tuple encoding error");
+
+	struct tnt_object *obj = tuple_alloc(cardinality, data_len);
+	memcpy(tuple_data(obj), data, data_len);
+	if (!tuple_valid(obj)) {
+		raise_fmt("tuple misformatted");
+	}
+	Index<BasicIndex> *pk = object_space->index[0];
+	@try {
+		[pk replace: obj];
+	} @catch (...) {
+		tuple_free(obj);
+		@throw;
+	}
 }
 
 static void
