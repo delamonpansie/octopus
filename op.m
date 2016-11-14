@@ -137,6 +137,7 @@ tuple_valid(struct tnt_object *obj)
 		return fields_bsize(tuple_cardinality(obj), tuple_data(obj), tuple_bsize(obj)) ==
 		tuple_bsize(obj);
 	} @catch(Error* e) {
+		say_error("%s", e->reason);
 		[e release];
 		return 0;
 	}
