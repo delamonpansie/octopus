@@ -133,8 +133,13 @@ fields_bsize(u32 cardinality, const void *data, u32 max_len)
 int
 tuple_valid(struct tnt_object *obj)
 {
-	return fields_bsize(tuple_cardinality(obj), tuple_data(obj), tuple_bsize(obj)) ==
+	@try {
+		return fields_bsize(tuple_cardinality(obj), tuple_data(obj), tuple_bsize(obj)) ==
 		tuple_bsize(obj);
+	} @catch(Error* e) {
+		[e release];
+		return 0;
+	}
 }
 
 void
