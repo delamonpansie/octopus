@@ -382,16 +382,19 @@ void
 fiber_wakeup_pending(void)
 {
 	assert(fiber == sched);
-	Fiber *f, *tvar;
+	Fiber *f;
 
 	for(int i=10; i && !TAILQ_EMPTY(&wake_list); i--) {
 		TAILQ_INSERT_TAIL(&wake_list, sched, wake_link);
-		TAILQ_FOREACH_SAFE(f, &wake_list, wake_link, tvar) {
-			void *arg = f->wake;
+		while (1) {
+			f = TAILQ_FIRST(&wake_list);
 			TAILQ_REMOVE(&wake_list, f, wake_link);
-			f->wake_link.tqe_prev = NULL;
 			if (f == sched) break;
-			resume(f, arg);
+			f->wake_link.tqe_prev = NULL;
+#ifdef FIBER_DEBUG
+			say_debug("%s: %i/%s arg:%p", __func__, f->fid, f->name, f->wake);
+#endif
+			resume(f, f->wake);
 		}
 	}
 
