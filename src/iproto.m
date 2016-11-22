@@ -142,7 +142,7 @@ iproto_worker(va_list ap)
 static void
 err(struct netmsg_head *h __attribute__((unused)), struct iproto *r)
 {
-	iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "unknown iproto command %i", r->msg_code);
+	iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "unknown iproto command 0x%x", r->msg_code);
 }
 
 void
