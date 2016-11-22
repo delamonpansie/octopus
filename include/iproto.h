@@ -98,7 +98,7 @@ LIST_HEAD(iproto_future_list, iproto_future);
 @interface iproto_egress: netmsg_io {
 @public
 	struct tac_state ts;
-
+	bool reply_with_retcode;
 	SLIST_ENTRY(iproto_egress) link;
 	TAILQ_HEAD(,iproto_future) future;
 }

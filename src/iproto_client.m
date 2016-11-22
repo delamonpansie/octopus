@@ -339,7 +339,7 @@ iproto_future_err(struct iproto_future *future)
 	}
 }
 
-void
+static void
 iproto_egress_future_err(struct iproto_egress *c)
 {
 	struct iproto_future *future, *tmp;
@@ -369,6 +369,21 @@ iproto_future_resolve(struct iproto_egress *peer, struct iproto *msg)
 		say_warn("martian reply from peer:%s op:0x%x sync:%u", net_fd_name(peer->fd), msg->msg_code, msg->sync);
 		if (future)
 			iproto_future_err(future);
+		return;
+	}
+
+	if (peer->reply_with_retcode) {
+		struct iproto_retcode *rmsg = (struct iproto_retcode *)msg;
+		if (rmsg->ret_code)
+			say_warn("error from peer:%s op:0x%x sync:%u 0x%x %.*s",
+				 net_fd_name(peer->fd), rmsg->msg_code, rmsg->sync,
+				 rmsg->ret_code, rmsg->data_len - 4, rmsg->data);
+	}
+
+	if (future->dst != peer) {
+		say_warn("unexpected reply from peer:%s, sync:%u is expected to come from peer:%s",
+			 net_fd_name(peer->fd), msg->sync, net_fd_name(future->dst->fd));
+		iproto_future_err(future);
 		return;
 	}
 
