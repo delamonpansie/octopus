@@ -32,7 +32,7 @@
 
 
 static void __attribute__((noinline))
-prepare_create_object_space(struct box_meta_txn *txn, char n, struct tbuf *data)
+prepare_create_object_space(struct box_meta_txn *txn, int n, struct tbuf *data)
 {
 	say_debug("%s n:%i", __func__, n);
 	char cardinalty = read_u8(data);
