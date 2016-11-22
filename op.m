@@ -424,7 +424,7 @@ snap_insert_row(struct object_space* object_space, size_t cardinality, const voi
 	Index<BasicIndex> *pk = object_space->index[0];
 	@try {
 		[pk replace: obj];
-	} @catch (...) {
+	} @catch (id e) {
 		tuple_free(obj);
 		@throw;
 	}
