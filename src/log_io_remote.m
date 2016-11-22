@@ -208,6 +208,7 @@ replicate_row_stream:(id<XLogPullerAsync>)puller
 		if ([shard prepare_remote_row:row offt:pack_rows] == 0)
 			continue;
 
+		assert(shard->id == row->shard_id);
 		rows[pack_rows++] = row;
 		if (pack_rows == WAL_PACK_MAX || tag == shard_alter)
 			break;
