@@ -44,7 +44,7 @@ where:
    OID: 0-255
    IID: 0-9
    MASTER, REPLICA1-4: peer.name from octopus.cfg
-   INDEX CONF: <INDEX TYPE> [unique] <FIELD0 CONF> [, FIELD1 CONF] ... [, FIELD7 CONF]
+   INDEX CONF: <INDEX TYPE> [unique] <FIELD0 CONF> [FIELD1 CONF] ... [FIELD7 CONF]
    INDEX TYPE: hash|numhash|tree|sptree|fasttree|compacttree
    FIELD CONF: <FIELD TYPE> <FID> [desc|asc]
    FID: 0-255
