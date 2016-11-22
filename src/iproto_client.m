@@ -119,6 +119,34 @@ iproto_mbox_release(struct iproto_mbox *mbox)
 	mbox_init(mbox);
 }
 
+static void iproto_egress_future_err(struct iproto_egress *c);
+
+static void
+prepare(struct iproto_egress *peer)
+{
+	if (peer->fd >= 0) {
+		ev_io_start(&peer->out);
+		return;
+	}
+
+	if (peer->unsent_limit) {
+		int count = 0;
+		struct iproto_future *f;
+		TAILQ_FOREACH(f, &peer->future, link)
+			count++;
+
+		if (count < peer->unsent_limit)
+			return;
+	}
+	iproto_egress_future_err(peer);
+	netmsg_reset(&peer->wbuf);
+	peer->wbuf.bytes = 0;
+}
+
+/* TODO: что делать, если на коннекте будет толпа подвисших future в состоянии orphan?
+   Если в них хранить таймстемп отправки, то можно переодиически ходить таймером и удалять их,
+   как только время их сиротства превысит нужно кол-во минут? */
+
 static int
 msg_send_wrap(struct iproto_egress *peer,
 	 u32 wrap_code,
@@ -126,6 +154,10 @@ msg_send_wrap(struct iproto_egress *peer,
 	 const struct iovec *iov, int iovcnt)
 {
 	struct netmsg_head *h = &peer->wbuf;
+	prepare(peer);
+	if (peer->wbuf.bytes > cfg.output_high_watermark)
+		return 0;
+
 	int msglen = sizeof(*orig_msg) + orig_msg->data_len;
 	struct iproto *wrap = palloc(h->pool, msglen + sizeof(*wrap));
 	struct iproto *msg = wrap + 1;
@@ -143,8 +175,6 @@ msg_send_wrap(struct iproto_egress *peer,
 
 	for (int i = 0; i < iovcnt; i++)
 		net_add_iov_dup(h, iov[i].iov_base, iov[i].iov_len);
-	if (peer->fd >= 0)
-		ev_io_start(&peer->out);
 
 	say_debug3("|    peer:%s\tPROXY op:0x%x sync:%u len:%zu data_len:%i", net_fd_name(peer->fd),
 		   msg->msg_code, msg->sync, sizeof(*msg) + msg->data_len,
@@ -158,6 +188,10 @@ msg_send(struct iproto_egress *peer,
 	 const struct iovec *iov, int iovcnt)
 {
 	struct netmsg_head *h = &peer->wbuf;
+	prepare(peer);
+	if (peer->wbuf.bytes > cfg.output_high_watermark)
+		return 0;
+
 	int msglen = sizeof(*orig_msg) + orig_msg->data_len;
 	struct iproto *msg = palloc(h->pool, msglen);
 	memcpy(msg, orig_msg, msglen);
@@ -168,8 +202,6 @@ msg_send(struct iproto_egress *peer,
 
 	for (int i = 0; i < iovcnt; i++)
 		net_add_iov_dup(h, iov[i].iov_base, iov[i].iov_len);
-	if (peer->fd >= 0)
-		ev_io_start(&peer->out);
 
 	say_debug3("|    peer:%s\top:0x%x sync:%u len:%zu data_len:%i", net_fd_name(peer->fd),
 		   msg->msg_code, msg->sync, sizeof(*msg) + msg->data_len,
