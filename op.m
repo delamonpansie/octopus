@@ -1281,7 +1281,7 @@ box_service_ro(struct iproto_service *s)
 void
 box_init_phi_cache(void)
 {
-	slab_cache_init(&phi_cache, sizeof(union box_phi_union), SLAB_FIXED, "phi_cache");
+	slab_cache_init(&phi_cache, sizeof(union box_phi_union), SLAB_GROW, "phi_cache");
 }
 
 void __attribute__((constructor))
