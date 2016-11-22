@@ -1176,11 +1176,12 @@ box_cb(struct netmsg_head *wbuf, struct iproto *request)
 {
 	struct box_txn *txn = box_txn_alloc(request->shard_id, RW);
 	say_debug2("%s: c:%p op:0x%02x sync:%u", __func__, NULL, request->msg_code, request->sync);
-	if ([txn->box->shard is_replica])
-		iproto_raise(ERR_CODE_NONMASTER, "replica is readonly");
 
 	struct box_op *bop = NULL;
 	@try {
+		if ([txn->box->shard is_replica])
+			iproto_raise(ERR_CODE_NONMASTER, "replica is readonly");
+
 		bop = box_prepare(txn, request->msg_code, request->data, request->data_len);
 		if (!bop->object_space)
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "ignored object space");
