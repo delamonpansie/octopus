@@ -278,9 +278,11 @@ setup_filter:(struct feeder_filter*)_filter
 
 	if (_filter->type == FILTER_TYPE_ID)
 		say_info("%s filter: type=ID", __func__);
-	else if (_filter->type == FILTER_TYPE_C && filter == shard_filter)
-		say_info("%s shard:%i filter: type=%s name='%s'", __func__,
-			 shard_id, filter_type_names[_filter->type], _filter->name);
+	else if (_filter->type == FILTER_TYPE_C && filter == shard_filter) {
+		say_info("%s shard:%i filter: type=%s name='%s' arg:'%.*s'", __func__,
+			 shard_id, filter_type_names[_filter->type], _filter->name,
+			 _filter->arglen, (char *)_filter->arg);
+	}
 	else
 		say_info("%s filter: type=%s name='%s'", __func__,
 			 filter_type_names[_filter->type], _filter->name);
