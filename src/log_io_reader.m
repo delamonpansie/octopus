@@ -362,10 +362,12 @@ read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, struct
 
 	palloc_register_cut_point(fiber->pool);
 	while ((row = [l fetch_row])) {
-		struct tbuf *out = tbuf_alloc(fiber->pool);
-		print_row(out, row, handler);
-		write_i8(out, '\n');
-		fwrite(out->ptr, 1, tbuf_len(out), stdout);
+		struct tbuf out = TBUF(NULL, 0, fiber->pool);
+		print_row(&out, row, handler);
+		if (tbuf_len(&out) > 0) {
+			write_i8(&out, '\n');
+			fwrite(out.ptr, 1, tbuf_len(&out), stdout);
+		}
 
 		if (row_count++ > 1024) {
 			palloc_cutoff(fiber->pool);
