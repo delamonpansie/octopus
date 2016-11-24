@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2016 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -237,6 +237,30 @@ tbuf_printf(struct tbuf *b, const char *format, ...)
 	va_start(args, format);
 	tbuf_vprintf(b, format, args);
 	va_end(args);
+}
+
+void
+tbuf_putc(struct tbuf *b, char c)
+{
+	tbuf_ensure(b, 2);
+	char *end = b->end;
+	*end = c;
+	*(end + 1) = '\0';
+	b->end += 1;
+	b->free -= 1;
+}
+
+static const char *hex = "0123456789ABCDEF";
+void
+tbuf_putx(struct tbuf *b, char c)
+{
+	tbuf_ensure(b, 3);
+	char *end = b->end;
+	*end = hex[(u8)c >> 4];
+	*(end + 1) = hex[(u8)c & 0x0f];
+	*(end + 2) = 0;
+	b->end += 2;
+	b->free -= 2;
 }
 
 ssize_t

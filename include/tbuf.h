@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2016 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -99,6 +99,9 @@ void tbuf_vprintf(struct tbuf *b, const char *format, va_list ap)
 	__attribute__ ((format(FORMAT_PRINTF, 2, 0)));
 void tbuf_printf(struct tbuf *b, const char *format, ...)
 	__attribute__ ((format(FORMAT_PRINTF, 2, 3)));
+
+void tbuf_putc(struct tbuf *b, char c);
+void tbuf_putx(struct tbuf *b, char c);
 
 ssize_t tbuf_recv(struct tbuf *b, int fd);
 char *tbuf_to_hex(const struct tbuf *x);
