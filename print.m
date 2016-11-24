@@ -34,64 +34,97 @@
 
 #include <sysexits.h>
 
+static int snap_space = -1;
 static int
-quote_all(int c __attribute__((unused)))
-{
-	return 1;
-}
-static int
-quote_non_printable(int c)
+quote(int c)
 {
 	return !(0x20 <= c && c < 0x7f && !(c == '"' || c == '\\'));
 }
 
-static int (*quote)(int c) = quote_non_printable;
+const char *fmt_ini ="@", *fmt;
+
 
 static void
-field_print(struct tbuf *buf, void *f)
+field_print(struct tbuf *buf, void *f, bool sep)
 {
 	uint32_t size;
 
 	size = LOAD_VARINT32(f);
 
-	if (quote != quote_all) {
-		if (size == 2)
-			tbuf_printf(buf, "%i:", *(u16 *)f);
+	char c = *fmt;
+	if (*(fmt + 1))
+		fmt++;
 
-		if (size == 4)
-			tbuf_printf(buf, "%i:", *(u32 *)f);
+	if (c == ' ')
+		return;
+	if (sep)
+		tbuf_append_lit(buf, ", ");
 
-		tbuf_printf(buf, "\"");
+	switch (c) {
+	case 'i':
+		switch(size) {
+		case 2: tbuf_printf(buf, "%"PRIi16, *(i16 *)f); break;
+		case 4: tbuf_printf(buf, "%"PRIi32, *(i32 *)f); break;
+		case 8: tbuf_printf(buf, "%"PRIi64, *(i64 *)f); break;
+		default: tbuf_printf(buf, "<invalid int size>");
+		};
+		break;
+	case 'u':
+		switch(size) {
+		case 2: tbuf_printf(buf, "%"PRIu16, *(u16 *)f); break;
+		case 4: tbuf_printf(buf, "%"PRIu32, *(u32 *)f); break;
+		case 8: tbuf_printf(buf, "%"PRIu64, *(u64 *)f); break;
+		default: tbuf_printf(buf, "<invalid int size>");
+		};
+		break;
+	case 's':
+		tbuf_putc(buf, '"');
 		while (size-- > 0) {
 			if (quote(*(u8 *)f))
-				tbuf_printf(buf, "\\x%02X", *(u8 *)f++);
+				tbuf_putx(buf, *(char *)f++);
 			else
-				tbuf_printf(buf, "%c", *(u8 *)f++);
+				tbuf_putc(buf, *(char *)f++);
 		}
-		tbuf_printf(buf, "\"");
-	} else {
-		tbuf_printf(buf, "\"");
+		tbuf_putc(buf, '"');
+		break;
+	case 'x':
 		while (size-- > 0)
-			tbuf_printf(buf, "\\x%02X", *(u8 *)f++);
-		tbuf_printf(buf, "\"");
+			tbuf_putx(buf, *(char *)f++);
+		break;
+	case '@':
+		if (size == 2)
+			tbuf_printf(buf, "%i:", *(u16 *)f);
+		if (size == 4)
+			tbuf_printf(buf, "%i:", *(u32 *)f);
+		tbuf_putc(buf, '"');
+		while (size-- > 0) {
+			if (quote(*(u8 *)f)) {
+				tbuf_append_lit(buf, "\\x");
+				tbuf_putx(buf, *(char *)f++);
+			} else
+				tbuf_putc(buf, *(char *)f++);
+		}
+		tbuf_putc(buf, '"');
+		break;
+	default:
+		tbuf_printf(buf, "<invalid fmt>");
 	}
+}
 
+void
+tuple_data_print(struct tbuf *buf, u32 cardinality, void *f)
+{
+	fmt = fmt_ini;
+	for (size_t i = 0; i < cardinality; i++, f = next_field(f))
+		field_print(buf, f, i > 0);
 }
 
 void
 tuple_print(struct tbuf *buf, u32 cardinality, void *f)
 {
-	tbuf_printf(buf, "<");
-
-	for (size_t i = 0; i < cardinality; i++, f = next_field(f)) {
-		field_print(buf, f);
-
-		if (likely(i + 1 < cardinality))
-			tbuf_printf(buf, ", ");
-
-	}
-
-	tbuf_printf(buf, ">");
+	tbuf_putc(buf, '<');
+	tuple_data_print(buf, cardinality, f);
+	tbuf_putc(buf, '>');
 }
 
 static void
@@ -238,8 +271,13 @@ static void
 snap_print(struct tbuf *out, struct tbuf *row)
 {
 	struct box_snap_row *snap = box_snap_row(row);
-	tbuf_printf(out, "n:%i ", snap->object_space);
-	tuple_print(out, snap->tuple_size, snap->data);
+
+	if (snap_space == -1) {
+		tbuf_printf(out, "n:%i ", snap->object_space);
+		tuple_print(out, snap->tuple_size, snap->data);
+	} else if (snap_space == snap->object_space) {
+		tuple_data_print(out, snap->tuple_size, snap->data);
+	}
 }
 
 static void
@@ -366,12 +404,13 @@ box_cat_scn(i64 stop_scn)
 int
 box_cat(const char *filename)
 {
-	const char *q = getenv("BOX_CAT_QUOTE");
-	if (q && !strcmp(q, "ALL")) {
-		quote = quote_all;
-	} else {
-		quote = quote_non_printable;
-	}
+	const char *q = getenv("BOX_CAT_FMT");
+	if (q)
+		fmt_ini = q;
+	q = getenv("BOX_CAT_SNAP_SPACE");
+	if (q)
+		snap_space = atoi(q);
+
 	read_log(filename, box_print_row);
 	return 0; /* ignore return status of read_log */
 }
