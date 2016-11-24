@@ -281,12 +281,15 @@ tbuf_to_hex(const struct tbuf *x)
 	const unsigned char *data = x->ptr;
 	size_t len = tbuf_len(x);
 	char *out = palloc(x->pool, len * 3 + 1);
-	out[len * 3] = 0;
+	char *p = out;
 
-	for (int i = 0; i < len; i++) {
-		int c = *(data + i);
-		sprintf(out + i * 3, "%02x ", c);
+	for (int i = 0; i < len; i++, p+=3) {
+		u8 c = *(data + i);
+		p[0] = hex[c>>4];
+		p[1] = hex[c];
+		p[2] = ' ';
 	}
+	p[0] = 0;
 
 	return out;
 }
