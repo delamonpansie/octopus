@@ -63,17 +63,17 @@ field_print(struct tbuf *buf, void *f, bool sep)
 	switch (c) {
 	case 'i':
 		switch(size) {
-		case 2: tbuf_printf(buf, "%"PRIi16, *(i16 *)f); break;
-		case 4: tbuf_printf(buf, "%"PRIi32, *(i32 *)f); break;
-		case 8: tbuf_printf(buf, "%"PRIi64, *(i64 *)f); break;
+		case 2: tbuf_puti(buf, *(i16 *)f); break;
+		case 4: tbuf_puti(buf, *(i32 *)f); break;
+		case 8: tbuf_putl(buf, *(i64 *)f); break;
 		default: tbuf_printf(buf, "<invalid int size>");
 		};
 		break;
 	case 'u':
 		switch(size) {
-		case 2: tbuf_printf(buf, "%"PRIu16, *(u16 *)f); break;
-		case 4: tbuf_printf(buf, "%"PRIu32, *(u32 *)f); break;
-		case 8: tbuf_printf(buf, "%"PRIu64, *(u64 *)f); break;
+		case 2: tbuf_putu(buf, *(u16 *)f); break;
+		case 4: tbuf_putu(buf, *(u32 *)f); break;
+		case 8: tbuf_putul(buf, *(u64 *)f); break;
 		default: tbuf_printf(buf, "<invalid int size>");
 		};
 		break;
@@ -92,10 +92,13 @@ field_print(struct tbuf *buf, void *f, bool sep)
 			tbuf_putx(buf, *(char *)f++);
 		break;
 	case '@':
-		if (size == 2)
-			tbuf_printf(buf, "%i:", *(u16 *)f);
-		if (size == 4)
-			tbuf_printf(buf, "%i:", *(u32 *)f);
+		if (size == 2) {
+			tbuf_putu(buf, *(u16*)f);
+			tbuf_putc(buf, ':');
+		} else if (size == 4) {
+			tbuf_putu(buf, *(u32*)f);
+			tbuf_putc(buf, ':');
+		}
 		tbuf_putc(buf, '"');
 		while (size-- > 0) {
 			if (quote(*(u8 *)f)) {
