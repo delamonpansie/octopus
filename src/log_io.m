@@ -1603,6 +1603,8 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 	if (tag_type != TAG_SYS) {
 		handler(buf, row->tag, &row_data);
 		return;
+	} else if (!print_header) {
+		return;
 	}
 
 	switch (tag) {
