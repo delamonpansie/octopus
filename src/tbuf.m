@@ -293,3 +293,58 @@ tbuf_to_hex(const struct tbuf *x)
 
 	return out;
 }
+
+void
+tbuf_putu(struct tbuf *b, uint32_t u)
+{
+	char d[10];
+	int p=9;
+	if (u == 0) {
+		tbuf_putc(b, '0');
+		return;
+	}
+	while (u > 0) {
+		uint32_t n = u/10;
+		d[p] = (u-n*10)+'0';
+		p--;
+		u = n;
+	}
+	tbuf_append(b, d+p, 9-p);
+}
+
+void
+tbuf_puti(struct tbuf *b, int32_t i)
+{
+	if (i < 0) {
+		tbuf_putc(b, '-');
+		i = -i;
+	}
+	tbuf_putu(b, (uint32_t)i);
+}
+
+void
+tbuf_putul(struct tbuf *b, uint64_t u)
+{
+	const uint64_t e9 = (uint64_t)1e9;
+	if(u > e9*e9) {
+		uint64_t v = u/(e9*e9);
+		u -= v*(e9*e9);
+		tbuf_putu(b, (uint32_t)v);
+	}
+	if(u > e9) {
+		uint64_t v = u/e9;
+		u -= v*e9;
+		tbuf_putu(b, (uint32_t)v);
+	}
+	tbuf_putu(b, (uint32_t)u);
+}
+
+void
+tbuf_putl(struct tbuf *b, int64_t i)
+{
+	if (i < 0) {
+		tbuf_putc(b, '-');
+		i = -i;
+	}
+	tbuf_putul(b, (uint64_t)i);
+}

@@ -102,6 +102,10 @@ void tbuf_printf(struct tbuf *b, const char *format, ...)
 
 void tbuf_putc(struct tbuf *b, char c);
 void tbuf_putx(struct tbuf *b, char c);
+void tbuf_putu(struct tbuf *b, uint32_t u);
+void tbuf_puti(struct tbuf *b, int32_t i);
+void tbuf_putul(struct tbuf *b, uint64_t u);
+void tbuf_putl(struct tbuf *b, int64_t i);
 
 ssize_t tbuf_recv(struct tbuf *b, int fd);
 char *tbuf_to_hex(const struct tbuf *x);
