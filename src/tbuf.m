@@ -294,22 +294,28 @@ tbuf_to_hex(const struct tbuf *x)
 	return out;
 }
 
+static inline void
+tbuf_putu_imp(struct tbuf *b, uint32_t u, bool zeropad)
+{
+	char d[] = "0000000000";
+	uint32_t n;
+	int p=9;
+	do {
+		n = u/10;
+		d[p] = (u - n*10) + '0';
+		u = n;
+		p--;
+	} while (u > 0);
+	if (!zeropad)
+		tbuf_append(b, d+p+1, 9-p);
+	else
+		tbuf_append(b, d+1, 9);
+}
+
 void
 tbuf_putu(struct tbuf *b, uint32_t u)
 {
-	char d[10];
-	int p=9;
-	if (u == 0) {
-		tbuf_putc(b, '0');
-		return;
-	}
-	while (u > 0) {
-		uint32_t n = u/10;
-		d[p] = (u-n*10)+'0';
-		p--;
-		u = n;
-	}
-	tbuf_append(b, d+p, 9-p);
+	tbuf_putu_imp(b, u, false);
 }
 
 void
@@ -319,24 +325,27 @@ tbuf_puti(struct tbuf *b, int32_t i)
 		tbuf_putc(b, '-');
 		i = -i;
 	}
-	tbuf_putu(b, (uint32_t)i);
+	tbuf_putu_imp(b, (uint32_t)i, false);
 }
 
 void
 tbuf_putul(struct tbuf *b, uint64_t u)
 {
 	const uint64_t e9 = (uint64_t)1e9;
-	if(u > e9*e9) {
+	bool zeropad = false;
+	if(u >= e9*e9) {
 		uint64_t v = u/(e9*e9);
 		u -= v*(e9*e9);
-		tbuf_putu(b, (uint32_t)v);
+		tbuf_putu_imp(b, (uint32_t)v, false);
+		zeropad = true;
 	}
-	if(u > e9) {
+	if(u >= e9) {
 		uint64_t v = u/e9;
 		u -= v*e9;
-		tbuf_putu(b, (uint32_t)v);
+		tbuf_putu_imp(b, (uint32_t)v, zeropad);
+		zeropad = true;
 	}
-	tbuf_putu(b, (uint32_t)u);
+	tbuf_putu_imp(b, (uint32_t)u, zeropad);
 }
 
 void
