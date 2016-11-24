@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -364,7 +364,8 @@ read_log(const char *filename, void (*handler)(struct tbuf *out, u16 tag, struct
 	while ((row = [l fetch_row])) {
 		struct tbuf *out = tbuf_alloc(fiber->pool);
 		print_row(out, row, handler);
-		printf("%.*s\n", tbuf_len(out), (char *)out->ptr);
+		write_i8(out, '\n');
+		fwrite(out->ptr, 1, tbuf_len(out), stdout);
 
 		if (row_count++ > 1024) {
 			palloc_cutoff(fiber->pool);

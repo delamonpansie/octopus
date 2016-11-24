@@ -1575,18 +1575,27 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 	u64 ballot;
 	u32 value_len;
 
-	tbuf_printf(buf, "lsn:%" PRIi64, row->lsn);
-	if (row->scn != -1) {
-		tbuf_printf(buf, " shard:%i", row->shard_id);
-		i64 rem_scn = 0;
-		memcpy(&rem_scn, row->remote_scn, 6);
-		if (rem_scn)
-			tbuf_printf(buf, " rem_scn:%"PRIi64, rem_scn);
+	static int print_header = -1;
+	if (print_header == -1) {
+		if (getenv("OCTOPUS_CAT_ROW_HEADER"))
+			print_header = atoi(getenv("OCTOPUS_CAT_ROW_HEADER"));
+		else
+			print_header = 1;
 	}
+	if (print_header == 1) {
+		tbuf_printf(buf, "lsn:%" PRIi64, row->lsn);
+		if (row->scn != -1) {
+			tbuf_printf(buf, " shard:%i", row->shard_id);
+			i64 rem_scn = 0;
+			memcpy(&rem_scn, row->remote_scn, 6);
+			if (rem_scn)
+				tbuf_printf(buf, " rem_scn:%"PRIi64, rem_scn);
+		}
 
-	tbuf_printf(buf, " scn:%" PRIi64 " tm:%.3f t:%s ",
-		    row->scn, row->tm,
-		    xlog_tag_to_a(row->tag));
+		tbuf_printf(buf, " scn:%" PRIi64 " tm:%.3f t:%s ",
+			    row->scn, row->tm,
+			    xlog_tag_to_a(row->tag));
+	}
 
 	if (!handler)
 		handler = hexdump;
