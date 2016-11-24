@@ -629,11 +629,12 @@ wal_pack_prepare(XLogWriter *w, struct wal_pack *pack)
 	pack->netmsg = &w->io->wbuf;
 	pack->fiber = fiber;
 	pack->seq = w->seq++;
+	pack->epoch = w->epoch;
 	pack->request = palloc(pack->netmsg->pool, sizeof(*pack->request));
 	pack->request->packet_len = sizeof(*pack->request);
 	pack->request->magic = 0xba0babed;
 	pack->request->seq = pack->seq;
-	pack->request->epoch = w->epoch;
+	pack->request->epoch = pack->epoch;
 	pack->request->row_count = 0;
 	net_add_iov(pack->netmsg, pack->request, pack->request->packet_len);
 }
