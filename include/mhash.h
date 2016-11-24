@@ -250,12 +250,12 @@ typedef typeof(mh_slot_val((mh_slot_t *)0)) _mh(val_t);
 # define mh_divider		1
 # define mh_map_t		uint32_t
 # define mh_get_hashik(k)	(1)
-# define mh_exist(h, i)		(h->map[(i) >> 4] & (1 << ((i) & 0xf)))
+# define mh_exist(h, i)		(h->map[(i) >> 4] & (1u << ((i) & 0xf)))
 # define mh_mayequal(h, i, hk)	({ (void)(hk); mh_exist(h, i); })
-# define mh_setfree(h, i)	h->map[(i) >> 4] &= ~(1 << ((i) & 0xf))
-# define mh_setexist(h, i, hk)	({ (void)(hk); h->map[(i) >> 4] |= (1 << ((i) & 0xf)); })
-# define mh_dirty(h, i)		(h->map[(i) >> 4] & (1 << (((i) & 0xf) + 0x10)))
-# define mh_setdirty(h, i)	h->map[(i) >> 4] |= (0x10000UL << ((i) & 0xf))
+# define mh_setfree(h, i)	h->map[(i) >> 4] &= ~(1u << ((i) & 0xf))
+# define mh_setexist(h, i, hk)	({ (void)(hk); h->map[(i) >> 4] |= (1u << ((i) & 0xf)); })
+# define mh_dirty(h, i)		(h->map[(i) >> 4] & (1u << (((i) & 0xf) + 0x10)))
+# define mh_setdirty(h, i)	h->map[(i) >> 4] |= (0x10000u << ((i) & 0xf))
 #endif
 #endif
 
@@ -953,16 +953,16 @@ _mh(start_resize)(struct mhash_t *h, uint32_t want_size)
 	uint32_t n_buckets;
 
 	if (h->size + 1 > want_size) want_size = h->size + 1;
-	if ((double)want_size < (uint32_t)(1 << 31) * (load_factor * 0.84)) {
+	if ((double)want_size < (1u << 31) * (load_factor * 0.84)) {
 		want_size = want_size / (load_factor * 0.85) + 1;
-	} else if (want_size < ((uint32_t)1 << 31)) {
-		want_size = ((uint32_t)1 << 31);
+	} else if (want_size < (1u << 31)) {
+		want_size = (1u << 31);
 	} else {
 		abort();
 	}
 	n_buckets = mh_neighbors * 4;
 	while (n_buckets < want_size) n_buckets *= 2;
-	if (n_buckets < ((uint32_t)1 << 31)) {
+	if (n_buckets < (1u << 31)) {
 		upper_bound = n_buckets * load_factor;
 	} else {
 		upper_bound = h->upper_bound + (want_size - h->upper_bound) / 2;
