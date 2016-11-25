@@ -95,8 +95,13 @@ struct name {								\
 	struct mbox_consumer consumer = { .fiber = fiber }; 		\
 	mbox_msgtype(mbox) msg = TAILQ_FIRST(&(mbox)->msg_list);	\
 	LIST_INSERT_HEAD(&(mbox)->consumer_list, &consumer, conslink);	\
-	while ((mbox)->msg_count == 0)					\
+	while ((mbox)->msg_count == 0) {				\
 		msg = yield();						\
+		if (msg == NULL) {					\
+			fiber_cancel_wake(fiber);			\
+			break;						\
+		}							\
+	}								\
 	LIST_REMOVE(&consumer, conslink);				\
 	msg;								\
 })
@@ -114,7 +119,7 @@ struct name {								\
 	LIST_INSERT_HEAD(&(mbox)->consumer_list, &consumer, conslink);	\
 	while ((mbox)->msg_count < count) {				\
 		msg = yield();						\
-		if (msg == (void *)&w) { /* timeout */			\
+		if (msg == (void *)&w || msg == NULL) { /* timeout */	\
 			fiber_cancel_wake(fiber);			\
 			msg = NULL;					\
 			break;						\
