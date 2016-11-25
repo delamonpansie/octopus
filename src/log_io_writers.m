@@ -515,10 +515,18 @@ wal_disk_writer_input_dispatch(ev_io *ev, int __attribute__((unused)) events)
 
 		struct wal_pack *pack = TAILQ_FIRST(&self->wal_queue);
 		struct wal_reply *reply = rbuf->ptr;
-		assert(pack->seq == reply->seq);
+		assert(pack->seq >= reply->seq);
 
-		if (reply->row_count > 0) /* success or partial success */
-			resume(pack->fiber, reply);
+		say_debug("%s: => rows:%i LSN:%"PRIi64" => %"PRIi64, __func__,
+			  reply->row_count, self->lsn, reply->lsn);
+
+		if (reply->row_count > 0) { /* success or partial success */
+			self->lsn = reply->lsn;
+			if (pack->seq == reply->seq)
+				resume(pack->fiber, reply);
+		} else {
+			say_warn("WAL writer returned error status");
+		}
 
 		if (reply->epoch > self->epoch) {
 			struct wal_pack *tmp;
@@ -672,13 +680,8 @@ wal_pack_append_data(struct wal_pack *pack, const void *data, size_t len)
 wal_pack_submit
 {
 	struct wal_pack *pack = TAILQ_LAST(&wal_queue, wal_pack_tailq);
+	say_debug("submit WAL request seq:%"PRIi64, pack->seq);
 	struct wal_reply *reply = yield();
-	if (reply->row_count == 0)
-		say_warn("WAL writer returned error status");
-	else
-		lsn = reply->lsn;
-
-	say_debug("%s: => rows:%i LSN:%"PRIi64, __func__, reply->row_count, lsn);
 	TAILQ_REMOVE(&wal_queue, pack, link);
 	return reply;
 }
