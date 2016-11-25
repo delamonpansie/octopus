@@ -79,11 +79,18 @@ enum row_tag {
 
 /* Opengraph tags */
 
-#define OG_SNAP_DATA      101
-#define OG_SNAP_CACHESNAP 102
-#define OG_SNAP_METADATA  103
-#define OG_WAL_DATA       104
-#define OG_WAL_CHECKPOINT 105
+#define OG_WALSPLITPAGE          1
+#define OG_WALADDITEM            2
+#define OG_WALWRITEPAGE          3
+#define OG_WALACTION             4
+#define OG_CACHESNAP             5
+#define OG_INMEMORYSNAP_GEN1     6
+#define OG_INMEMORYSNAP_REP_GEN1 7
+#define OG_WALACTION_REP         8
+#define OG_METADATA              9
+#define OG_WAL_CHECKPOINT        10
+#define OG_INMEMORYSNAP          11
+#define OG_INMEMORYSNAP_REP      12
 
 static inline bool scn_changer(int tag)
 {

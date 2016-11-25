@@ -987,17 +987,26 @@ convert_row_v11og_to_v12(struct tbuf *m)
 	tbuf_ltrim(m, sizeof(struct _row_v11));
 
 	u16 tag = read_u16(m);
-	if (tag == (u16)11) { /* INMEMORYSNAP tag */
-		row_v12(n)->tag = OG_SNAP_DATA|TAG_SNAP;
-	} else if (tag == (u16)9) { /* METADATA tag */
-		row_v12(n)->tag = OG_SNAP_METADATA|TAG_SNAP;
-	} else if (tag == (u16)5) { /* CACHESNAP tag */
-		row_v12(n)->tag = OG_SNAP_CACHESNAP|TAG_SNAP;
-	} else if (tag == (u16)4) { /* WALACTION tag */
-		row_v12(n)->tag = OG_WAL_DATA|TAG_WAL;
-	} else if (tag == (u16)10) { /* WAL_CHECKPOINT tag */
-		row_v12(n)->tag = OG_WAL_CHECKPOINT|TAG_WAL;
-	} else {
+	row_v12(n)->tag = tag<<5;
+
+	switch (tag) {
+	case OG_WALSPLITPAGE:
+	case OG_WALADDITEM:
+	case OG_WALWRITEPAGE:
+	case OG_WALACTION:
+	case OG_WALACTION_REP:
+	case OG_WAL_CHECKPOINT:
+		row_v12(n)->tag |= TAG_WAL;
+		break;
+	case OG_METADATA:
+	case OG_CACHESNAP:
+	case OG_INMEMORYSNAP_GEN1:
+	case OG_INMEMORYSNAP_REP_GEN1:
+	case OG_INMEMORYSNAP:
+	case OG_INMEMORYSNAP_REP:
+		row_v12(n)->tag |= TAG_SNAP;
+		break;
+	default:
 		say_error("unknown tag %i", (int)tag);
 		return NULL;
 	}
@@ -1095,28 +1104,34 @@ append_row:(struct row_v12 *)row12 data:(const void *)data
 	u32 data_len = row12->len;
 	u64 cookie = 0;
 
-	if (tag == OG_WAL_DATA) {
-		tag = (u16)11; /* INMEMORYSNAP tag */
-	} else if (tag == OG_WAL_DATA) {
-		tag = (u16)4; /* WALACTION tag */
-	} else if (tag == OG_SNAP_METADATA) {
-		tag = (u16)9; /* METADATA tag */
-	} else if (tag == OG_SNAP_CACHESNAP) {
-		tag = (u16)5; /* CACHESNAP tag */
-	} else if (tag == OG_WAL_CHECKPOINT) {
-		tag = (u16)10; /* WAL_CHECKPOINT tag */
-	} else if (tag == snap_initial ||
-		   tag == snap_final ||
-		   tag == wal_final)
+	if (tag == snap_initial ||
+	    tag == snap_final ||
+	    tag == wal_final)
 	{
 		/* SEGV value non equal to NULL */
 		return (const struct row_v12 *)(intptr_t)1;
-	} else {
+	}
+
+	switch (tag>>5) {
+	case OG_WALSPLITPAGE:
+	case OG_WALADDITEM:
+	case OG_WALWRITEPAGE:
+	case OG_WALACTION:
+	case OG_WALACTION_REP:
+	case OG_WAL_CHECKPOINT:
+	case OG_METADATA:
+	case OG_CACHESNAP:
+	case OG_INMEMORYSNAP_GEN1:
+	case OG_INMEMORYSNAP_REP_GEN1:
+	case OG_INMEMORYSNAP:
+	case OG_INMEMORYSNAP_REP:
+		tag >>= 5;
+		break;
+	default:
 		say_error("unknown tag %i", (int)tag);
 		errno = EINVAL;
 		return NULL;
 	}
-
 
 	row12->lsn = row.lsn = [self next_lsn];
 	if (row12->scn == 0)
