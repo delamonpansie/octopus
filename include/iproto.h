@@ -113,7 +113,7 @@ void iproto_ping(struct netmsg_head *h, struct iproto *r);
 @protocol Shard;
 
 enum { IPROTO_NONBLOCK = 1, IPROTO_LOCAL = 2, IPROTO_ON_MASTER = 4, IPROTO_DROP_ERROR = 8,
-       IPROTO_WLOCK = 16};
+       IPROTO_WLOCK = 16, IPROTO_SPAWN = 32 };
 typedef void (*iproto_cb)(struct netmsg_head *, struct iproto *);
 struct iproto_handler {
 	iproto_cb cb;

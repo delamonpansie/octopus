@@ -151,6 +151,9 @@ iproto_worker(va_list ap)
 		fiber->ushard = -1;
 
 		fiber_gc();
+
+		if (unlikely(fiber->worker_link.sle_next == (void *)(uintptr_t)0xead))
+			return;
 	}
 }
 
@@ -401,14 +404,20 @@ local(struct iproto_ingress_svc *io, struct iproto *msg, struct iproto_handler *
 	} else {
 		struct iproto_service *service = io->service;
 		struct Fiber *w = SLIST_FIRST(&service->workers);
-		if (!w) {
-			stat_collect(stat_base, IPROTO_WORKER_STARVATION, 1);
-			// FIXME: need state for this
-			return 0;
+		if (w) {
+			SLIST_REMOVE_HEAD(&service->workers, worker_link);
+		} else {
+			if (ih->flags & IPROTO_SPAWN) {
+				w = fiber_create("extra worker", iproto_worker, service);
+				SLIST_REMOVE_HEAD(&service->workers, worker_link);
+				w->worker_link.sle_next = (void *)(uintptr_t)0xead;
+			} else {
+				stat_collect(stat_base, IPROTO_WORKER_STARVATION, 1);
+				// FIXME: need state for this
+				return 0;
+			}
 		}
-
 		stat_collect(stat_base, IPROTO_BLOCK_OP, 1);
-		SLIST_REMOVE_HEAD(&service->workers, worker_link);
 		resume(w, (&(struct worker_arg){ih, msg, io}));
 		io->batch--;
 	}
