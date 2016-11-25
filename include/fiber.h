@@ -149,9 +149,9 @@ struct netmsg_head;
 ssize_t fiber_writev(int fd, struct netmsg_head *head);
 
 struct rwlock {
-	bool locked;
 	SLIST_HEAD(, Fiber) wait;
 	int readers;
+	bool locked;
 };
 void wlock(struct rwlock *lock);
 void wunlock(struct rwlock *lock);
