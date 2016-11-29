@@ -328,12 +328,6 @@ close
 {
 	if (fd == NULL)
 		return 0;
-
-#if HAVE_POSIX_FADVISE
-	if ([dir isMemberOf:[SnapDir class]])
-		posix_fadvise(fileno(fd), 0, ftello(fd), POSIX_FADV_DONTNEED);
-#endif
-
 	if (fclose(fd) < 0) {
 		say_syserror("can't close");
 		return -1;
@@ -1572,6 +1566,16 @@ append_row:(struct row_v12 *)row12 data:(const void *)data
 
 	return ret;
 }
+
+#if HAVE_POSIX_FADVISE
+- (int)
+close
+{
+	if (fd)
+		posix_fadvise(fileno(fd), 0, ftello(fd), POSIX_FADV_DONTNEED);
+	return [super close];
+}
+#endif
 @end
 
 
