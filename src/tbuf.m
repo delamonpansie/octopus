@@ -286,7 +286,7 @@ tbuf_to_hex(const struct tbuf *x)
 	for (int i = 0; i < len; i++, p+=3) {
 		u8 c = *(data + i);
 		p[0] = hex[c>>4];
-		p[1] = hex[c];
+		p[1] = hex[c&15];
 		p[2] = ' ';
 	}
 	p[0] = 0;
