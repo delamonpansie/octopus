@@ -202,7 +202,7 @@ submit:(const void *)data len:(u32)len tag:(u16)tag
 - (void)
 adjust_route
 {
-	if ([self master]) {
+	if ([self master] && recovery->writer) {
 		update_rt(self->id, self, NULL);
 		[self status_update:"primary"];
 		struct feeder_param empty = { .addr = { .sin_family = AF_UNSPEC } };
@@ -219,10 +219,15 @@ adjust_route
 - (void)
 enable_local_writes
 {
-	if ([self master])
-		[self wal_final_row];
-	else
+	if ([self master]) {
+		if (self->loading)
+			[self wal_final_row];
+		else
+			[self adjust_route]; /* в случае local/hot_standby [wal_final_row]
+						будет вызван до вызван [enable_local_writes] */
+	} else {
 		[self remote_hot_standby];
+	}
 }
 
 - (void)
