@@ -636,6 +636,17 @@ error:
 }
 
 void
+abort_tcp_async_connect(struct tac_state *s)
+{
+	ev_timer_stop(&s->timer);
+	ev_io_stop(&s->ev);
+	if (s->ev.fd >= 0) {
+		close(s->ev.fd);
+		s->ev.fd = -1;
+	}
+}
+
+void
 rendevouz(va_list ap)
 {
 	struct sockaddr_in 	*self_addr = va_arg(ap, struct sockaddr_in *);

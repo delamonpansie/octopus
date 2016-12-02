@@ -517,11 +517,7 @@ iproto_remote_stop_reconnect(struct iproto_egress *peer)
 {
 	struct tac_state *ts = &peer->ts;
 	if (ts->flags & TAC_RECONNECT) {
-		ev_timer_stop(&ts->timer);
-		ev_io_stop(&ts->ev);
-		if (ts->ev.fd)
-			close(ts->ev.fd);
-		ts->ev.fd = -1;
+		abort_tcp_async_connect(ts);
 		ts->flags &= ~TAC_RECONNECT;
 		SLIST_REMOVE(&iproto_tac_list, ts, tac_state, link);
 		netmsg_io_release(peer);

@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2011, 2012, 2013, 2014 Mail.RU
- * Copyright (C) 2011, 2012, 2013, 2014 Yuriy Vostrikov
+ * Copyright (C) 2011, 2012, 2013, 2014, 2016 Mail.RU
+ * Copyright (C) 2011, 2012, 2013, 2014, 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -146,6 +146,7 @@ SLIST_HEAD(tac_list, tac_state);
 enum tac_result tcp_async_connect(struct tac_state *s, ev_watcher *w /* result of yield() */,
 				  struct sockaddr_in      *src,
 				  ev_tstamp               timeout);
+void abort_tcp_async_connect(struct tac_state *s);
 int tcp_connect(struct sockaddr_in *dst, struct sockaddr_in *src, ev_tstamp timeout);
 void rendevouz(va_list ap);
 
