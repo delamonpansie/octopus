@@ -36,7 +36,7 @@ prepare_create_object_space(struct box_meta_txn *txn, int n, struct tbuf *data)
 {
 	say_debug("%s n:%i", __func__, n);
 	char cardinalty = read_u8(data);
-	struct index_conf ic = {.n = 0};
+	struct index_conf ic = { .n = 0 };
 	index_conf_read(data, &ic);
 	index_conf_validate(&ic);
 
@@ -66,8 +66,7 @@ static void __attribute__((noinline))
 prepare_create_index(struct box_meta_txn *txn, struct tbuf *data)
 {
 	say_debug("%s", __func__);
-	struct index_conf ic;
-	ic.n = read_i8(data);
+	struct index_conf ic = { .n = read_i8(data) };
 	index_conf_read(data, &ic);
 	index_conf_validate(&ic);
 
