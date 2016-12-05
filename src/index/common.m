@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2012, 2013, 2014 Mail.RU
- * Copyright (C) 2012, 2013, 2014 Yuriy Vostrikov
+ * Copyright (C) 2012, 2013, 2014, 2016 Mail.RU
+ * Copyright (C) 2012, 2013, 2014, 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -810,14 +810,58 @@ index_conf_read(struct tbuf *data, struct index_conf *c)
 	}
 }
 
+static const char *
+index_type(enum index_type t)
+{
+	switch (t) {
+	case HASH: return "HASH";
+	case NUMHASH: return "NUMHASH";
+	case SPTREE: return "SPTREE";
+	case FASTTREE: return "FASTTREE";
+	case COMPACTTREE: return "COMPACTTREE";
+	case POSTREE: return "POSTREE";
+	case PHASH: return "PHASH";
+	case MAX_INDEX_TYPE: break;
+	}
+	assert(false);
+}
+
+static const char *
+index_field_type(enum index_field_type t)
+{
+	switch (t) {
+	case UNUM16: return "UNUM16";
+	case SNUM16: return "SNUM16";
+	case UNUM32: return "UNUM32";
+	case SNUM32: return "SNUM32";
+	case UNUM64: return "UNUM64";
+	case SNUM64: return "SNUM64";
+	case STRING: return "STRING";
+	case UNUM8: return "UNUM8";
+	case SNUM8: return "SNUM8";
+	case UNDEF: break;
+	}
+	assert(false);
+}
+
+static const char *
+index_sort_order(enum index_sort_order t)
+{
+	switch (t) {
+	case ASC: return "ASC";
+	case DESC: return "DESC";
+	};
+	assert(false);
+}
 void
 index_conf_print(struct tbuf *out, const struct index_conf *c)
 {
-	tbuf_printf(out, "i:%i min_tuple_cardinality:%i cardinality:%i type:%i unique:%i",
-		    c->n, c->min_tuple_cardinality, c->cardinality, c->type, c->unique);
+	tbuf_printf(out, "i:%i min_tuple_cardinality:%i cardinality:%i type:%s unique:%i",
+		    c->n, c->min_tuple_cardinality, c->cardinality, index_type(c->type), c->unique);
 	for (int i = 0; i < c->cardinality; i++)
-		tbuf_printf(out, " field%i:{index:%i type:%i sort:%i}", i,
-			    c->field[i].index, c->field[i].type, c->field[i].sort_order);
+		tbuf_printf(out, " field%i:{index:%i type:%s sort:%s}", i,
+			    c->field[i].index, index_field_type(c->field[i].type),
+			    index_sort_order(c->field[i].sort_order));
 }
 
 void

@@ -181,6 +181,7 @@ typedef struct tnt_object* tnt_ptr;
 - (int)eq:(struct tnt_object *)a :(struct tnt_object*)b;
 - (struct tnt_object *)find:(const char *)key;
 - (u32)size;
+- (const char *)info;
 @end
 static inline bool index_is_hash(const Index* index) {
 	return index_type_is_hash(index->conf.type);

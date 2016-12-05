@@ -224,6 +224,15 @@ size
 	raise_fmt("Subclass responsibility");
 	return 0;
 }
+
+- (const char *)
+info
+{
+	struct tbuf *b = tbuf_alloc(fiber->pool);
+	tbuf_printf(b, "%s", [[self class] name]);
+	index_conf_print(b, &conf);
+	return b->ptr;
+}
 @end
 
 void __attribute__((noreturn)) oct_cold
