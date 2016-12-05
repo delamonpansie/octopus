@@ -184,12 +184,12 @@ box_commit_meta(struct box_meta_txn *txn)
 	switch (txn->op) {
 	case CREATE_OBJECT_SPACE:
 		say_info("CREATE object_space n:%i 0:%s",
-			 txn->object_space->n, [[txn->object_space->index[0] class] name]);
+			 txn->object_space->n, [txn->object_space->index[0] info]);
 		txn->box->object_space_registry[txn->object_space->n] = txn->object_space;
 		break;
 	case CREATE_INDEX:
 		say_info("CREATE index n:%i %i:%s",
-			 txn->object_space->n, txn->index->conf.n, [[txn->index class] name]);
+			 txn->object_space->n, txn->index->conf.n, [txn->index info]);
 		txn->object_space->index[(int)txn->index->conf.n] = txn->index;
 		link_index(txn->object_space);
 		break;

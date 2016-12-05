@@ -471,7 +471,7 @@ wal_final_row
 
 		say_info("Object space %i", n);
 		foreach_index(index, obj_spc)
-			say_info("\tindex[%i]: %s", index->conf.n, [[index class] name]);
+			say_info("\tindex[%i]: %s", index->conf.n, [index info]);
 	}
 }
 
