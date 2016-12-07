@@ -10,4 +10,4 @@ secondary_addr="", ro
 secondary_port=0, ro
 
 # warn about requests which take longer to process
-too_long_threshold=0.5
+warn_cb_time=0.05, rw

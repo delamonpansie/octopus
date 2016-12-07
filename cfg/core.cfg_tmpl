@@ -54,3 +54,6 @@ custom_proc_title=NULL, ro
 
 # explicit seed for testing purposes. Should be hex string for at most 16 bytes non-zero binary.
 seed = NULL, ro
+
+# issue warning if running all pending events took longer
+warn_loop_time = 0.1, rw

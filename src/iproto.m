@@ -103,8 +103,8 @@ iproto_worker(va_list ap)
 			rlock(lock);
 		else
 			wlock(lock);
-#if CFG_too_long_threshold
-		ev_tstamp start = ev_now(), stop;
+#if CFG_warn_cb_time
+		ev_tstamp start = ev_now();
 #endif
 		@try {
 			a.ih->cb(&a.io->wbuf, a.r);
@@ -116,10 +116,9 @@ iproto_worker(va_list ap)
 			iproto_error(&a.io->wbuf, a.r, exc_rc(e), e->reason);
 			[e release];
 		}
-#if CFG_too_long_threshold
-		stop = ev_now();
-		if (stop - start > cfg.too_long_threshold)
-			say_warn("too long IPROTO:%i %.3f sec", a.r->msg_code, stop - start);
+#if CFG_warn_cb_time
+		if (ev_now() - start > cfg.warn_cb_time)
+			say_warn("too long IPROTO:%i %.3f sec", a.r->msg_code, ev_now() - start);
 #endif
 
 		if (a.io->fd >= 0 && a.io->prepare_link.le_prev == NULL) {

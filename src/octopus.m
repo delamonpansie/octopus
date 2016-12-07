@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013, 2014 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -65,9 +65,8 @@
 #include <sysexits.h>
 #if HAVE_CLOCK_GETTIME
 #include <time.h>
-#else
-#include <sys/time.h>
 #endif
+#include <sys/time.h>
 #if HAVE_SYS_PRCTL_H
 # include <sys/prctl.h>
 #endif
@@ -529,6 +528,19 @@ octopus_ev_backgroud_tasks()
 #endif
 }
 
+static void
+octopus_ev_invoke_pending()
+{
+	struct timeval a, b;
+	gettimeofday(&a, NULL);
+	ev_invoke_pending();
+	gettimeofday(&b, NULL);
+	double d = b.tv_sec + b.tv_usec * 1e-6 -
+		   a.tv_sec - a.tv_usec * 1e-6;
+	if (d > cfg.warn_loop_time)
+		say_warn("too long loop %.3f sec", d);
+}
+
 char **octopus_argv;
 static int
 octopus(int argc, char **argv)
@@ -901,6 +913,7 @@ run_loop:
 	if (cfg.io_collect_interval > 0)
 		ev_set_io_collect_interval(cfg.io_collect_interval);
 
+	ev_set_invoke_pending_cb(octopus_ev_invoke_pending);
 	ev_run(0);
 	ev_loop_destroy();
 	say_debug("exiting loop");
