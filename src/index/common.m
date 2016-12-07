@@ -77,16 +77,13 @@ lstr_field_compare(const union index_field *fa, const union index_field *fb)
 	if (fa->str.prefix2 < fb->str.prefix2) return -1;
 	if (fa->str.prefix2 > fb->str.prefix2) return 1;
 	if (fa->str.len <= 6) {
-		return (int)fa->str.len - (int)fb->str.len;
+		return CMP(fa->str.len, fb->str.len);
 	}
 	if (fb->str.len <= 6) return 1;
 	const char *d1 = fa->str.len <= 14 ? fa->str.data.bytes : fa->str.data.ptr;
 	const char *d2 = fb->str.len <= 14 ? fb->str.data.bytes : fb->str.data.ptr;
 	int r = memcmp(d1, d2, MIN(fa->str.len, fb->str.len) - 6);
-	if (r != 0)
-		return r;
-
-	return (int)fa->str.len - (int)fb->str.len;
+	return CMP(r, 0) ?: CMP(fa->str.len, fb->str.len);
 }
 int
 i64_compare(const struct index_node *na, const struct index_node *nb, void *x __attribute__((unused)))
