@@ -45,7 +45,7 @@ src/octopus.o: XCFLAGS += -DPRIMARY_MOD='"$(primary_module)"'
 
 # no warns at all: it complains even with -Wall
 no-extra-warns += src/octopus_ev.o
-src/octopus_ev.o: XCFLAGS := -U_FORTIFY_SOURCE $(filter-out -W%,$(CFLAGS_EXTRA))
+src/octopus_ev.o: XCFLAGS := -U_FORTIFY_SOURCE -Wno-all
 
 # link with pthread if thread_pool used
 ifneq ($(findstring src/thread_pool.o,$(obj)),)

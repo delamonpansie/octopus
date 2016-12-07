@@ -1,7 +1,7 @@
 /*
  * libev kqueue backend
  *
- * Copyright (c) 2007,2008,2009,2010,2011,2012 Marc Alexander Lehmann <libev@schmorp.de>
+ * Copyright (c) 2007,2008,2009,2010,2011,2012,2013 Marc Alexander Lehmann <libev@schmorp.de>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without modifica-
@@ -43,7 +43,8 @@
 #include <string.h>
 #include <errno.h>
 
-void inline_speed
+inline_speed
+void
 kqueue_change (EV_P_ int fd, int filter, int flags, int fflags)
 {
   ++kqueue_changecnt;
@@ -152,10 +153,12 @@ kqueue_poll (EV_P_ ev_tstamp timeout)
     }
 }
 
-int inline_size
+inline_size
+int
 kqueue_init (EV_P_ int flags)
 {
-  /* Initialize the kernel queue */
+  /* initialize the kernel queue */
+  kqueue_fd_pid = getpid ();
   if ((backend_fd = kqueue ()) < 0)
     return 0;
 
@@ -175,18 +178,32 @@ kqueue_init (EV_P_ int flags)
   return EVBACKEND_KQUEUE;
 }
 
-void inline_size
+inline_size
+void
 kqueue_destroy (EV_P)
 {
   ev_free (kqueue_events);
   ev_free (kqueue_changes);
 }
 
-void inline_size
+inline_size
+void
 kqueue_fork (EV_P)
 {
-  close (backend_fd);
+  /* some BSD kernels don't just destroy the kqueue itself,
+   * but also close the fd, which isn't documented, and
+   * impossible to support properly.
+   * we remember the pid of the kqueue call and only close
+   * the fd if the pid is still the same.
+   * this leaks fds on sane kernels, but BSD interfaces are
+   * notoriously buggy and rarely get fixed.
+   */
+  pid_t newpid = getpid ();
 
+  if (newpid == kqueue_fd_pid)
+    close (backend_fd);
+
+  kqueue_fd_pid = newpid;
   while ((backend_fd = kqueue ()) < 0)
     ev_syserr ("(libev) kqueue");
 
