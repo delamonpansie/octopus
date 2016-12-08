@@ -749,10 +749,8 @@ info(struct tbuf *out, const char *what)
 			if ([shard is_replica]) {
 				tbuf_printf(out, "    recovery_lag: %.3f" CRLF, [shard lag]);
 				tbuf_printf(out, "    recovery_last_update: %.3f" CRLF, [shard last_update_tstamp]);
-				if (!cfg.ignore_run_crc) {
-					tbuf_printf(out, "    recovery_run_crc_lag: %.3f" CRLF, [shard run_crc_lag]);
+				if (!cfg.ignore_run_crc)
 					tbuf_printf(out, "    recovery_run_crc_status: %s" CRLF, [shard run_crc_status]);
-				}
 			}
 			Box *box = [shard executor];
 			tbuf_printf(out, "    namespaces:" CRLF);
