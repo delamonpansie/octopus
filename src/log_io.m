@@ -393,12 +393,10 @@ fadvise_dont_need
 #endif
 }
 
-- (int)
-write_header:(const i64 *)shard_scn_map
+- (void)
+write_header
 {
-	(void)shard_scn_map;
 	assert(false);
-	return 0;
 }
 
 - (int)
@@ -832,9 +830,8 @@ convert_row_v11_to_v12(struct tbuf *m)
 }
 
 - (int)
-write_header:(const i64 *)shard_scn_map
+write_header
 {
-	assert(shard_scn_map == NULL);
 	fwrite(dir->filetype, strlen(dir->filetype), 1, fd);
 	fwrite(v11, strlen(v11), 1, fd);
 	fwrite("\n", 1, 1, fd);
@@ -991,27 +988,23 @@ read_header
         return 0;
 }
 
-- (int)
-write_header:(const i64 *)shard_scn_map
+- (void)
+write_header
 {
 	fwrite(dir->filetype, strlen(dir->filetype), 1, fd);
 	fwrite(v12, strlen(v12), 1, fd);
 	fprintf(fd, "Created-by: octopus\n");
 	fprintf(fd, "Octopus-version: %s\n", octopus_version());
-	if (shard_scn_map) {
-		for (int i = 0; i < MAX_SHARD; i++) {
-			if (shard_scn_map[i] == 0)
-				continue;
-			if (i == 0)
-				fprintf(fd, "SCN: %"PRIi64"\n", shard_scn_map[i]);
-			else
-				fprintf(fd, "SCN-%i: %"PRIi64"\n", i, shard_scn_map[i]);
-		}
-	}
-	fprintf(fd, "\n");
-	if ((offset = ftello(fd)) < 0 || ferror(fd))
-		return -1;
-	return 0;
+}
+
+- (void)
+write_header_scn:(const i64 *)scn
+{
+	if (scn[0])
+		fprintf(fd, "SCN: %"PRIi64"\n", scn[0] + 1);
+	for (int i = 0; i < MAX_SHARD; i++)
+		if (scn[i])
+			fprintf(fd, "SCN-%i: %"PRIi64"\n", i, scn[i] + 1);
 }
 
 u16
@@ -1120,6 +1113,14 @@ read_row
 - (const struct row_v12 *)
 append_row:(struct row_v12 *)row data:(const void *)data
 {
+	if (!header_written) {
+		if (fputc('\n', fd) == EOF)
+			return NULL;
+		if ((offset = ftello(fd)) < 0 || ferror(fd))
+		return NULL;
+		header_written = true;
+	}
+
 	assert_row(row);
 
 	row->lsn = [self next_lsn];
@@ -1344,7 +1345,7 @@ open_for_read:(i64)lsn
 
 int allow_snap_overwrite = 0;
 - (XLog *)
-open_for_write:(i64)lsn scn:(i64 *)shard_scn_map
+open_for_write:(i64)lsn
 {
         XLog *l = nil;
         FILE *file = NULL;
@@ -1378,11 +1379,7 @@ open_for_write:(i64)lsn scn:(i64 *)shard_scn_map
 	l->mode = LOG_WRITE;
 	l->inprogress = 1;
 
-	if ([l write_header:shard_scn_map] < 0) {
-		say_syserror("failed to write header");
-		goto error;
-	}
-
+	[l write_header];
 	return l;
       error:
         if (file != NULL)

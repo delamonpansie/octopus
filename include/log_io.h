@@ -130,7 +130,7 @@ typedef void (follow_cb)(ev_stat *w, int events);
 };
 - (id) init_dirname:(const char *)dirname_;
 - (XLog *) open_for_read:(i64)lsn;
-- (XLog *) open_for_write:(i64)lsn scn:(const i64 *)shard_scn_map;
+- (XLog *) open_for_write:(i64)lsn;
 - (XLog *) find_with_lsn:(i64)lsn;
 - (XLog *) find_with_scn:(i64)scn shard:(int)shard_id;
 - (i64) greatest_lsn;
@@ -185,7 +185,7 @@ typedef struct marker_desc {
 
 @interface XLog: Object <XLogPuller> {
 	size_t rows, wet_rows;
-	bool eof;
+	bool eof, header_written;
 
 #if HAVE_SYNC_FILE_RANGE
 	size_t sync_bytes;
@@ -221,7 +221,7 @@ typedef struct marker_desc {
 - (void) follow:(follow_cb *)cb data:(void *)data;
 - (int) inprogress_rename;
 - (int) read_header;
-- (int) write_header:(i64 *)shard_scn_map;
+- (void) write_header;
 - (int) flush;
 - (void) fadvise_dont_need;
 - (size_t) rows;
@@ -251,6 +251,7 @@ u16 fix_tag_v2(u16 tag);
 @end
 
 @interface XLog12: XLog
+- (void) write_header_scn:(const i64 *)scn;
 @end
 
 struct wal_pack {

@@ -98,7 +98,8 @@ prepare_write:(const struct shard_state *)st
 		for (int i = 0; i < MAX_SHARD; i++)
 			scn[i] = st[i].scn ? st[i].scn + 1 : 0;
 
-		current_wal = [wal_dir open_for_write:lsn + 1 scn:scn];
+		current_wal = [wal_dir open_for_write:lsn + 1];
+		[(XLog12 *)current_wal write_header_scn:scn];
 	}
 
         if (current_wal == nil) {
@@ -723,11 +724,12 @@ snapshot_write
 		total_rows += [[shard executor] snapshot_estimate];
 	}
 
-	snap = [snap_dir open_for_write:[state lsn] scn:scn];
+	snap = [snap_dir open_for_write:[state lsn]];
 	if (snap == nil) {
 		say_syserror("can't open snap for writing");
 		return -1;
 	}
+	[(XLog12 *)snap write_header_scn:scn];
 	snap->no_wet = true; /* We don't handle write errors here because
 				snapshot can't be partially saved.
 				so, disable wet row tracking */;
