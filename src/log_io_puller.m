@@ -460,7 +460,6 @@ fetch_row
 		if (row_v12(buf)->data_crc32c != data_crc)
 			raise_fmt("data crc32c mismatch");
 
-		fixup_row_v12(row_v12(buf));
 		break;
 	case 11:
 		if (!contains_full_row_v11(&rbuf))
