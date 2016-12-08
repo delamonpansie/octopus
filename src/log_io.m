@@ -128,8 +128,6 @@ xlog_tag_to_a(u16 tag)
 	case shard_final:	strcat(p, "shard_final"); break;
 	case run_crc:		strcat(p, "run_crc"); break;
 	case nop:		strcat(p, "nop"); break;
-	case paxos_promise:	strcat(p, "paxos_promise"); break;
-	case paxos_accept:	strcat(p, "paxos_accept"); break;
 	case tlv:		strcat(p, "tlv"); break;
 	default:
 		if (tag < user_tag)
@@ -1568,9 +1566,6 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 	row_data = TBUF(row->data, row->len, fiber->pool);
 
 	int tag = row->tag & TAG_MASK;
-	int inner_tag;
-	u64 ballot;
-	u32 value_len;
 
 	static int print_header = -1;
 	if (print_header == -1) {
@@ -1666,7 +1661,6 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 		tbuf_printf(buf, " shard_id:%i", row->shard_id);
 
 		switch (type) {
-		case SHARD_TYPE_PAXOS: tbuf_printf(buf, " PAXOS"); break;
 		case SHARD_TYPE_POR: tbuf_printf(buf, " POR"); break;
 		case SHARD_TYPE_PART: tbuf_printf(buf, " PART"); break;
 		default: assert(false);
@@ -1685,35 +1679,6 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 	case shard_final:
 	case snap_final:
 	case nop:
-		break;
-
-	case paxos_promise:
-	case paxos_nop:
-		ballot = read_u64(&row_data);
-		tbuf_printf(buf, "ballot:%"PRIx64, ballot);
-		break;
-	case paxos_accept:
-		ballot = read_u64(&row_data);
-		inner_tag = read_u16(&row_data);
-		value_len = read_u32(&row_data);
-		(void)value_len;
-		assert(value_len == tbuf_len(&row_data));
-		tbuf_printf(buf, "ballot:%"PRIx64" it:%s ", ballot, xlog_tag_to_a(inner_tag));
-
-		switch(inner_tag & TAG_MASK) {
-		case run_crc: {
-			i64 scn = read_u64(&row_data);
-			u32 log = read_u32(&row_data);
-			(void)read_u32(&row_data); /* ignore run_crc_mod */
-			tbuf_printf(buf, "SCN:%"PRIi64 " log:0x%08x", scn, log);
-			break;
-		}
-		case nop:
-			break;
-		default:
-			handler(buf, inner_tag, &row_data);
-			break;
-		}
 		break;
 	default:
 		handler(buf, row->tag, &row_data);

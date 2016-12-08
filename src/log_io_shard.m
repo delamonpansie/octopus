@@ -29,9 +29,8 @@
 #import <shard.h>
 #import <say.h>
 #import <tbuf.h>
-#import <paxos.h>
 #import <cfg/defs.h>
-
+#import <iproto.h>
 
 @implementation Shard
 - (int) id { return self->id; }

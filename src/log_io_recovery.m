@@ -33,9 +33,9 @@
 #import <tbuf.h>
 #import <net_io.h>
 #import <assoc.h>
-#import <paxos.h>
 #import <shard.h>
 #import <cfg/defs.h>
+#import <iproto.h>
 
 #include <third_party/crc32.h>
 
@@ -272,8 +272,7 @@ validate_sop(struct netmsg_head *wbuf, const struct iproto *req, void *data, int
 			}
 	}
 
-	if (sop->type != SHARD_TYPE_PAXOS &&
-	    sop->type != SHARD_TYPE_POR &&
+	if (sop->type != SHARD_TYPE_POR &&
 	    sop->type != SHARD_TYPE_PART)
 	{
 		sop_err("sop: invalid shard type %i", sop->type);
@@ -321,8 +320,6 @@ init
 shard_alloc:(char)type
 {
 	switch (type) {
-	case SHARD_TYPE_PAXOS:
-		return [Paxos alloc];
 	case SHARD_TYPE_POR:
 	case SHARD_TYPE_PART:
 		return [POR alloc];
@@ -905,11 +902,6 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req)
 			for (i = 1; i < nelem(sop->peer); i++)
 				strcpy(sop->peer[i], read_bytes(&data, 16));
 			break;
-		case SHARD_TYPE_PAXOS:
-			strcpy(sop->peer[0], cfg.hostname);
-			for (i = 1; i < 3; i++)
-				strcpy(sop->peer[i], read_bytes(&data, 16));
-			break;
 		case SHARD_TYPE_PART:
 			strcpy(sop->peer[0], read_bytes(&data, 16));
 			strcpy(sop->peer[1], cfg.hostname);
@@ -949,10 +941,7 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req)
 	if (cmd == 6) { /* change type */
 		char type = read_u8(&data);
 
-		if (sop->type == SHARD_TYPE_POR && type == SHARD_TYPE_PAXOS) {
-			if (peer_idx(sop, (char[16]){0}) != 3)
-				iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "bad peer count");
-		} else if (sop->type == SHARD_TYPE_POR && type == SHARD_TYPE_PART) {
+		if (sop->type == SHARD_TYPE_POR && type == SHARD_TYPE_PART) {
 			if (peer_idx(sop, (char[16]){0}) != 2)
 				iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "bad peer count");
 		} else
@@ -1133,7 +1122,6 @@ recovery_iproto(void)
 		fiber_create("udpate_rt_notify", update_rt_notify);
 		service_register_iproto(recovery_service, MSG_SHARD, iproto_shard_cb, IPROTO_LOCAL|IPROTO_WLOCK);
 		service_register_iproto(recovery_service, MSG_SHARD_RT, iproto_shard_rt_cb, IPROTO_LOCAL);
-		paxos_service(recovery_service);
 	}
 }
 
@@ -1150,10 +1138,6 @@ recovery_iproto_ignore()
 		return;
 	if (cfg.peer && *cfg.peer && cfg.hostname && cfg_peer_by_name(cfg.hostname)) {
 		service_register_iproto(recovery_service, MSG_SHARD, iproto_ignore, IPROTO_LOCAL|IPROTO_NONBLOCK);
-		service_register_iproto(recovery_service, LEADER_PROPOSE, iproto_ignore, IPROTO_LOCAL|IPROTO_NONBLOCK);
-		service_register_iproto(recovery_service, PREPARE, iproto_ignore, IPROTO_LOCAL|IPROTO_NONBLOCK);
-		service_register_iproto(recovery_service, ACCEPT, iproto_ignore, IPROTO_LOCAL|IPROTO_NONBLOCK);
-		service_register_iproto(recovery_service, DECIDE, iproto_ignore, IPROTO_LOCAL|IPROTO_NONBLOCK);
 	} else {
 		say_info("usharding disabled (cfg.peer of cfg.hostname is bad or missing)");
 	}
