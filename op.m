@@ -408,6 +408,7 @@ prepare_replace(struct box_op *bop, size_t cardinality, const void *data, u32 da
 		object_space_replace(bop, 0, old_root, bop->old_obj, bop->obj);
 }
 
+static void bytes_usage(struct object_space *object_space, struct tnt_object *obj, int sign);
 void
 snap_insert_row(struct object_space* object_space, size_t cardinality, const void *data, u32 data_len)
 {
@@ -424,6 +425,7 @@ snap_insert_row(struct object_space* object_space, size_t cardinality, const voi
 	Index<BasicIndex> *pk = object_space->index[0];
 	@try {
 		[pk replace: obj];
+		bytes_usage(object_space, obj, +1);
 	} @catch (id e) {
 		tuple_free(obj);
 		@throw;
