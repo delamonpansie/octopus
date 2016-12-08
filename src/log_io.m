@@ -169,6 +169,7 @@ init_filename:(const char *)filename_
 	dir = dir_;
 	vbuf = vbuf_;
 
+	tag_mask = TAG_WAL;
 	offset = ftello(fd);
 
 	wet_rows_offset_size = 16;
@@ -1121,6 +1122,9 @@ append_row:(struct row_v12 *)row data:(const void *)data
 		header_written = true;
 	}
 
+	if ((row->tag & ~TAG_MASK) == 0)
+		row->tag |= tag_mask;
+
 	assert_row(row);
 
 	row->lsn = [self next_lsn];
@@ -1503,6 +1507,17 @@ init_dirname:(const char *)dirname_
 }@end
 
 @implementation Snap12
+- (XLog *)
+init_filename:(const char *)filename_
+           fd:(FILE *)fd_
+          dir:(XLogDir *)dir_
+	  vbuf:(char*)vbuf_
+{
+	[super init_filename:filename_ fd:fd_ dir:dir_ vbuf:vbuf_];
+	tag_mask = TAG_SNAP;
+	return self;
+}
+
 - (const struct row_v12 *)
 append_row:(struct row_v12 *)row12 data:(const void *)data
 {
@@ -1606,7 +1621,6 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 	row_data = TBUF(row->data, row->len, fiber->pool);
 
 	int tag = row->tag & TAG_MASK;
-	int tag_type = row->tag & ~TAG_MASK;
 	int inner_tag;
 	u64 ballot;
 	u32 value_len;
@@ -1652,10 +1666,8 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 	if (!handler)
 		handler = hexdump;
 
-	if (tag_type != TAG_SYS) {
+	if (!print_header && (tag == wal_data || tag == snap_data || tag >= user_tag)) {
 		handler(buf, row->tag, &row_data);
-		return;
-	} else if (!print_header) {
 		return;
 	}
 

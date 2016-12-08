@@ -69,9 +69,9 @@ snapshot_write_header:(XLog *)snap
 {
 	struct shard_op *sop = [self snapshot_header];
 	struct row_v12 row = { .scn = scn,
-				.tm = ev_now(),
-				.tag = shard_create|TAG_SYS,
-				.shard_id = self->id,
+			       .tm = ev_now(),
+			       .tag = shard_create,
+			       .shard_id = self->id,
 			       .len = sizeof(*sop) };
 	if (partial_replica) {
 		assert(sop->type == SHARD_TYPE_PART);

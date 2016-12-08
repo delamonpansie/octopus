@@ -133,13 +133,13 @@ recover_snap:(XLog *)snap
 		lsn = snap->lsn;
 
 		if (legacy_snap)
-			[recovery recover_row:dummy_row(snap->lsn, snap->lsn, snap_initial|TAG_SYS)];
+			[recovery recover_row:dummy_row(snap->lsn, snap->lsn, snap_initial|TAG_SNAP)];
 
 		[self recover_row_stream:snap];
 
 		/* old v11 snapshot, scn == lsn from filename */
 		if (legacy_snap)
-			[recovery recover_row:dummy_row(snap->lsn, snap->lsn, snap_final|TAG_SYS)];
+			[recovery recover_row:dummy_row(snap->lsn, snap->lsn, snap_final|TAG_SNAP)];
 
 		if (![snap eof])
 			raise_fmt("unable to fully read snapshot");

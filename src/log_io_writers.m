@@ -650,7 +650,6 @@ u32
 wal_pack_append_row(struct wal_pack *pack, struct row_v12 *row)
 {
 	assert(pack->request->row_count <= WAL_PACK_MAX);
-	assert(row->tag & ~TAG_MASK);
 
 	pack->request->packet_len += sizeof(*row) + row->len;
 	pack->request->row_count++;
@@ -765,7 +764,7 @@ snapshot_write
 		}
 
 		if ([snap append_row:snap_ini->ptr len:tbuf_len(snap_ini)
-				 scn:snap_scn tag:snap_initial|TAG_SYS] == NULL)
+				 scn:snap_scn tag:snap_initial] == NULL)
 		{
 			say_error("unable write initial row");
 			return -1;
@@ -781,7 +780,7 @@ snapshot_write
 		tbuf_append(snap_ini, &flags, sizeof(flags));
 
 		if ([snap append_row:snap_ini->ptr len:tbuf_len(snap_ini)
-				 scn:snap_scn tag:snap_initial|TAG_SYS] == NULL)
+				 scn:snap_scn tag:snap_initial] == NULL)
 		{
 			say_error("unable write initial row");
 			return -1;
@@ -803,13 +802,13 @@ snapshot_write
 
 			char dummy[2] = { 0 };
 			if ([snap append_row:dummy len:sizeof(dummy)
-				       shard:shard tag:shard_final|TAG_SYS] == NULL)
+				       shard:shard tag:shard_final] == NULL)
 				return -1;
 		}
 	}
 
 	const char end[] = "END";
-	if ([snap append_row:end len:strlen(end) scn:snap_scn tag:snap_final|TAG_SYS] == NULL) {
+	if ([snap append_row:end len:strlen(end) scn:snap_scn tag:snap_final] == NULL) {
 		say_error("unable write final row");
 		return -1;
 	}

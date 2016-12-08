@@ -401,7 +401,7 @@ shard_op_create:(int)shard_id sop:(struct shard_op *)sop
 	struct wal_reply *reply;
 	shard = [self shard_create:shard_id scn:1 sop:sop];
 	reply = [writer submit:sop len:sizeof(*sop)
-			   tag:shard_create|TAG_SYS shard_id:shard_id];
+			   tag:shard_create shard_id:shard_id];
 	if (reply->row_count != 1) {
 		[shard release];
 		iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
@@ -410,10 +410,11 @@ shard_op_create:(int)shard_id sop:(struct shard_op *)sop
 	assert(shard_rt[shard->id].shard == shard);
 }
 
+
 - (void)
 shard_op_alter_peer:(Shard<Shard> *)shard sop:(struct shard_op *)sop
 {
-	if ([shard submit:sop len:sizeof(*sop) tag:shard_alter|TAG_SYS] != 1)
+	if ([shard submit:sop len:sizeof(*sop) tag:shard_alter] != 1)
 		iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
 
 	[shard alter:sop];
@@ -424,7 +425,7 @@ shard_op_alter_type:(Shard<Shard> *)shard type:(char)type
 {
 	struct shard_op *sop = [shard snapshot_header];
 	sop->type = type;
-	if ([shard submit:sop len:sizeof(*sop) tag:shard_alter|TAG_SYS] != 1)
+	if ([shard submit:sop len:sizeof(*sop) tag:shard_alter] != 1)
 		iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
 
 	[self shard_alter_type:&shard sop:sop];
@@ -733,7 +734,7 @@ nop_hb_writer(va_list ap)
 			if ([shard is_replica])
 				continue;
 
-			[shard submit:body len:nelem(body) tag:nop|TAG_SYS];
+			[shard submit:body len:nelem(body) tag:nop];
 		}
 	}
 }

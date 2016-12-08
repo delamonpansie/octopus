@@ -196,6 +196,7 @@ typedef struct marker_desc {
 
 	FILE *fd;
 	i64 last_read_lsn;
+	u16 tag_mask;
 @public
 	char *filename;
 

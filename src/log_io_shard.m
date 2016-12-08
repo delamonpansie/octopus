@@ -182,7 +182,7 @@ snapshot_write_header:(XLog *)snap
 {
 	struct shard_op *sop = [self snapshot_header];
 	return [snap append_row:sop len:sizeof(*sop)
-			  shard:self tag:shard_create|TAG_SYS];
+			  shard:self tag:shard_create];
 }
 
 - (int)
