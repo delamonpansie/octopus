@@ -13,12 +13,12 @@ module Fiber : sig
       [cb arg] *)
 
   external sleep : float -> unit = "stub_fiber_sleep"
-  (** [sleep delay]приостанаваливает выполнение на [delay]
-      секунд. Другие фиберы продолжат испольнятся *)
+  (** [sleep delay] приостанаваливает выполнение на [delay]
+      секунд. Другие фиберы продолжат испольняться *)
 
   val loop : string -> (unit -> unit) -> unit
   (** [loop name cb] создает фибер и вызывает в бесконечном цикле
-      cb (), при повторном вызове с тем же [name] заменяет [cb] в
+      [cb ()], при повторном вызове с тем же [name] заменяет [cb] в
       существующем фибере. Замена произходит после того, как [cb]
       вернет управление. Поэтому не стоит застревать в нем очень
       надолго. *)
@@ -157,8 +157,8 @@ module Tuple : sig
              | Bytes of bytes | Field of tuple * int | FieldRange of tuple * int * int
 
   val of_list : field list -> tuple
-  (** [of_list ;] преобразует список значений типа [field] в
-      кортеж *)
+  (** [of_list field_list] преобразует список значений типа
+      [field] в кортеж *)
 
   val cardinal : tuple -> int
   (** [cardinal возвращает количество полей в кортеже. *)
@@ -255,8 +255,8 @@ module Index : sig
     (** [find_by_tuple key_part_list] находит кортеж в [index] по
         полному или частичному ключу [key_part_list]. Функция чуть
         менее эффективна чем [find] т.к. требуется промежуточная
-        структура, описывающая ключ. В сулчае если тип ключа не
-        совпадет с типом индекса кинет исключение Invalid_argument.
+        структура, описывающая ключ. В случае, если тип ключа не
+        совпадет с типом индекса, кинет исключение Invalid_argument.
         Кидает исключение Not_found если не находит *)
 
     val get : int -> tuple
@@ -345,7 +345,7 @@ val get_affected_tuple : unit -> tuple option
     операции *)
 
 val register_cb0 : string -> (unit -> tuple list) -> unit
-(** [register_cb1 name cb] регистрирует коллбек без аргументов [cb] под именем [name].
+(** [register_cb0 name cb] регистрирует коллбек без аргументов [cb] под именем [name].
     Если фактическое количество аргументов не совпадает, то вернет клиенту ошибку. *)
 
 val register_cb1 : string -> (string -> tuple list) -> unit
