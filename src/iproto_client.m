@@ -139,8 +139,6 @@ prepare(struct iproto_egress *peer)
 			return;
 	}
 	iproto_egress_future_err(peer);
-	netmsg_reset(&peer->wbuf);
-	peer->wbuf.bytes = 0;
 }
 
 /* TODO: что делать, если на коннекте будет толпа подвисших future в состоянии orphan?
@@ -376,6 +374,14 @@ iproto_egress_future_err(struct iproto_egress *c)
 {
 	struct iproto_future *future, *tmp;
 
+	if (c->wbuf.bytes) {
+		/* мы не знаем, остановилась ли запись ровно на пакете или нет.
+		   поэтому для того, чтобы ибежать ошибок с частичной записью пакета
+		   удалим все исходящие пакеты */
+		netmsg_reset(&c->wbuf);
+		c->wbuf.bytes = 0;
+	}
+
 	TAILQ_FOREACH_SAFE(future, &c->future, link, tmp)
 		iproto_future_err(future);
 	TAILQ_INIT(&c->future);
@@ -467,15 +473,15 @@ data_ready
 - (void)
 close
 {
-	if (wbuf.bytes) {
-		/* мы не знаем, остановилась ли запись ровно на пакете или нет.
-		   поэтому для того, чтобы ибежать ошибок с частичной записью пакета
-		   удалим все исходящие пакеты */
-		netmsg_reset(&wbuf);
-		wbuf.bytes = 0;
-	}
 	iproto_egress_future_err(self);
 	[super close];
+}
+
+- (id)
+free
+{
+	iproto_egress_future_err(self); /* [free] may be called before fd gets connected (no [close] it this case) */
+	return [super free];
 }
 @end
 
