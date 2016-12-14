@@ -8,9 +8,9 @@
 []
 
 # wal_writer cont
-1
-
 2
+
+1
 
 # box.select(1)
 [["\x01\x00\x00\x00", "foobar"]]

@@ -7,7 +7,7 @@
 # one.meta(shard 1 create por)
 ok
 
-# one.meta(shard 1 type paxos)
+# one.meta(shard 1 type raft)
 error: 0x202 bad peer count
 
 # one.meta(shard 1 add_replica two)
@@ -16,7 +16,7 @@ ok
 # one.meta(shard 1 add_replica three)
 ok
 
-# one.meta(shard 1 type paxos)
+# one.meta(shard 1 type raft)
 ok
 
 # one.meta(shard 1 obj_space 0 create tree unique string 0)

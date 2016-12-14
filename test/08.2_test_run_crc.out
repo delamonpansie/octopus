@@ -1,0 +1,66 @@
+# box.insert([1])
+1
+
+# box.insert([1])
+2
+
+# box.insert([1])
+2
+
+# box.insert([1])
+2
+
+# box.insert([1])
+2
+
+# box.insert([1])
+2
+
+# box.insert([1])
+2
+
+# box.insert([1])
+2
+
+# box.insert([1])
+2
+
+# box.insert([1])
+2
+
+# box.insert([1])
+2
+
+# box.insert([1])
+2
+
+# box.insert([1])
+2
+
+lsn:10 shard:0 run_crc:0x01904545 scn:10 t:wal/usr13 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
+lsn:11 shard:0 run_crc:0x24c23baf scn:11 t:wal/usr13 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
+lsn:12 shard:0 run_crc:0x2066566c scn:12 t:wal/usr13 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
+lsn:13 shard:0 run_crc:0xe329b616 scn:13 t:wal/usr13 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
+lsn:14 shard:0 run_crc:0x5f7b1390 scn:14 t:wal/usr13 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
+
+# box.insert([1])
+2
+
+# box.insert([1])
+2
+
+# box.insert([1])
+2
+
+# box.insert([1])
+2
+
+# box.insert([1])
+2
+
+lsn:10 shard:0 run_crc:0x01904545 scn:10 t:wal/usr13 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
+lsn:11 shard:0 run_crc:0x24c23baf scn:11 t:wal/usr13 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
+lsn:12 shard:0 run_crc:0x2066566c scn:12 t:wal/usr13 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
+lsn:13 shard:0 run_crc:0xe329b616 scn:13 t:wal/usr13 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
+lsn:14 shard:0 run_crc:0x5f7b1390 scn:14 t:wal/usr13 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00">
+

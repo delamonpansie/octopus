@@ -13,7 +13,6 @@ class ShardEnv < RunEnv
 
   def config
     super(:hostname => @hostname, :object_space => false) + <<EOD
-run_crc_delay=-1
 nop_hb_delay=-1
 EOD
   end

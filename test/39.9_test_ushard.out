@@ -25,15 +25,15 @@ ok
 # two.meta(shard 1 del_replica one)
 ok
 
-lsn:2 scn:-1 t:sys/snap_initial ver:0 count:1 flags:0x00000000
-lsn:2 shard:1 scn:5 t:sys/shard_create SHARD_CREATE shard_id:1 POR Box count:1 run_crc:0x88549ae3 master:two repl:one
+lsn:2 scn:-1 t:snap/snap_initial ver:0 count:1 flags:0x00000000
+lsn:2 shard:1 scn:5 t:snap/shard_create SHARD_CREATE shard_id:1 POR Box count:1 run_crc:0xc19a0fa0 master:two repl:one
 lsn:2 shard:1 scn:5 t:snap/usr240 CREATE_OBJECT_SPACE n:0 flags:00000003 cardinalty:0 PK: i:0 min_tuple_cardinality:0 cardinality:1 type:POSTREE unique:1 field0:{index:0 type:STRING sort:ASC}
 lsn:2 shard:1 scn:5 t:snap/snap_data n:0 <1:"\x01\x00\x00\x00", "one">
-lsn:2 shard:1 scn:5 t:sys/shard_final 
-lsn:2 scn:-1 t:sys/snap_final 
-lsn:2 shard:1 scn:5 t:sys/shard_alter SHARD_ALTER shard_id:1 POR Box count:1 run_crc:0xb4c41ab4 master:two repl:one
-lsn:3 shard:1 scn:6 t:sys/shard_alter SHARD_ALTER shard_id:1 POR Box count:1 run_crc:0x88549ae3 master:two repl:one repl:three
-lsn:4 shard:1 scn:7 t:sys/shard_alter SHARD_ALTER shard_id:1 POR Box count:1 run_crc:0xdc605ad4 master:two repl:three
+lsn:2 shard:1 scn:5 t:snap/shard_final 
+lsn:2 scn:-1 t:snap/snap_final 
+lsn:2 shard:1 scn:5 t:wal/shard_alter SHARD_ALTER shard_id:1 POR Box count:1 run_crc:0xc19a0fa0 master:two repl:one
+lsn:3 shard:1 scn:6 t:wal/shard_alter SHARD_ALTER shard_id:1 POR Box count:1 run_crc:0x90dfeb36 master:two repl:one repl:three
+lsn:4 shard:1 scn:7 t:wal/shard_alter SHARD_ALTER shard_id:1 POR Box count:1 run_crc:0x2f5700ed master:two repl:three
 239/load shard {1} I> META mode: LOADING => shard_create
 239/load shard {1} I> META mode: PARTIAL_PROXY, SCN: 4, type: POR, peer: [one, two], proxy_addr: 'one/127.0.0.1:33013' => hot_standby/one/127.0.0.1:33013/init
 240/remote_hot_standby {1} I> META mode: PARTIAL_PROXY, SCN: 4, type: POR, peer: [one, two], proxy_addr: 'one/127.0.0.1:33013' => hot_standby/127.0.0.1:33013/connect

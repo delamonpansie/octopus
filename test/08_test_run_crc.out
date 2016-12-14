@@ -100,5 +100,37 @@
 # box.insert([32, 33, 34])
 1
 
-lsn:34 shard:0 scn:34 t:sys/run_crc SCN:32 log:0xc0240090
+lsn:2 shard:0 run_crc:0xdd071fd3 scn:2 t:wal/usr13 INSERT n:0 flags:00000000 <0:"\x00\x00\x00\x00", 1:"\x01\x00\x00\x00", 2:"\x02\x00\x00\x00">
+lsn:3 shard:0 run_crc:0x8b08ab74 scn:3 t:wal/usr13 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00", 2:"\x02\x00\x00\x00", 3:"\x03\x00\x00\x00">
+lsn:4 shard:0 run_crc:0x97aacb8c scn:4 t:wal/usr13 INSERT n:0 flags:00000000 <2:"\x02\x00\x00\x00", 3:"\x03\x00\x00\x00", 4:"\x04\x00\x00\x00">
+lsn:5 shard:0 run_crc:0xf7cc721e scn:5 t:wal/usr13 INSERT n:0 flags:00000000 <3:"\x03\x00\x00\x00", 4:"\x04\x00\x00\x00", 5:"\x05\x00\x00\x00">
+lsn:6 shard:0 run_crc:0x387209b8 scn:6 t:wal/usr13 INSERT n:0 flags:00000000 <4:"\x04\x00\x00\x00", 5:"\x05\x00\x00\x00", 6:"\x06\x00\x00\x00">
+lsn:7 shard:0 run_crc:0x069205e7 scn:7 t:wal/usr13 INSERT n:0 flags:00000000 <5:"\x05\x00\x00\x00", 6:"\x06\x00\x00\x00", 7:"\x07\x00\x00\x00">
+lsn:8 shard:0 run_crc:0x9ec8617a scn:8 t:wal/usr13 INSERT n:0 flags:00000000 <6:"\x06\x00\x00\x00", 7:"\x07\x00\x00\x00", 8:"\x08\x00\x00\x00">
+lsn:9 shard:0 run_crc:0x9c7afe2a scn:9 t:wal/usr13 INSERT n:0 flags:00000000 <7:"\x07\x00\x00\x00", 8:"\x08\x00\x00\x00", 9:"\x09\x00\x00\x00">
+lsn:10 shard:0 run_crc:0x914e0c6f scn:10 t:wal/usr13 INSERT n:0 flags:00000000 <8:"\x08\x00\x00\x00", 9:"\x09\x00\x00\x00", 10:"\x0A\x00\x00\x00">
+lsn:11 shard:0 run_crc:0x049f1658 scn:11 t:wal/usr13 INSERT n:0 flags:00000000 <9:"\x09\x00\x00\x00", 10:"\x0A\x00\x00\x00", 11:"\x0B\x00\x00\x00">
+lsn:12 shard:0 run_crc:0xaf316caa scn:12 t:wal/usr13 INSERT n:0 flags:00000000 <10:"\x0A\x00\x00\x00", 11:"\x0B\x00\x00\x00", 12:"\x0C\x00\x00\x00">
+lsn:13 shard:0 run_crc:0x3f492bab scn:13 t:wal/usr13 INSERT n:0 flags:00000000 <11:"\x0B\x00\x00\x00", 12:"\x0C\x00\x00\x00", 13:"\x0D\x00\x00\x00">
+lsn:14 shard:0 run_crc:0x8f111e2d scn:14 t:wal/usr13 INSERT n:0 flags:00000000 <12:"\x0C\x00\x00\x00", 13:"\x0D\x00\x00\x00", 14:"\x0E\x00\x00\x00">
+lsn:15 shard:0 run_crc:0x265cafd0 scn:15 t:wal/usr13 INSERT n:0 flags:00000000 <13:"\x0D\x00\x00\x00", 14:"\x0E\x00\x00\x00", 15:"\x0F\x00\x00\x00">
+lsn:16 shard:0 run_crc:0x74b199e3 scn:16 t:wal/usr13 INSERT n:0 flags:00000000 <14:"\x0E\x00\x00\x00", 15:"\x0F\x00\x00\x00", 16:"\x10\x00\x00\x00">
+lsn:17 shard:0 run_crc:0xb7442885 scn:17 t:wal/usr13 INSERT n:0 flags:00000000 <15:"\x0F\x00\x00\x00", 16:"\x10\x00\x00\x00", 17:"\x11\x00\x00\x00">
+lsn:18 shard:0 run_crc:0xe7c9d8e0 scn:18 t:wal/usr13 INSERT n:0 flags:00000000 <16:"\x10\x00\x00\x00", 17:"\x11\x00\x00\x00", 18:"\x12\x00\x00\x00">
+lsn:19 shard:0 run_crc:0xf49d5c52 scn:19 t:wal/usr13 INSERT n:0 flags:00000000 <17:"\x11\x00\x00\x00", 18:"\x12\x00\x00\x00", 19:"\x13\x00\x00\x00">
+lsn:20 shard:0 run_crc:0x4b24a484 scn:20 t:wal/usr13 INSERT n:0 flags:00000000 <18:"\x12\x00\x00\x00", 19:"\x13\x00\x00\x00", 20:"\x14\x00\x00\x00">
+lsn:21 shard:0 run_crc:0xcb283487 scn:21 t:wal/usr13 INSERT n:0 flags:00000000 <19:"\x13\x00\x00\x00", 20:"\x14\x00\x00\x00", 21:"\x15\x00\x00\x00">
+lsn:22 shard:0 run_crc:0xa4230fe0 scn:22 t:wal/usr13 INSERT n:0 flags:00000000 <20:"\x14\x00\x00\x00", 21:"\x15\x00\x00\x00", 22:"\x16\x00\x00\x00">
+lsn:23 shard:0 run_crc:0x110f48ee scn:23 t:wal/usr13 INSERT n:0 flags:00000000 <21:"\x15\x00\x00\x00", 22:"\x16\x00\x00\x00", 23:"\x17\x00\x00\x00">
+lsn:24 shard:0 run_crc:0xb6891529 scn:24 t:wal/usr13 INSERT n:0 flags:00000000 <22:"\x16\x00\x00\x00", 23:"\x17\x00\x00\x00", 24:"\x18\x00\x00\x00">
+lsn:25 shard:0 run_crc:0x4f15eb2b scn:25 t:wal/usr13 INSERT n:0 flags:00000000 <23:"\x17\x00\x00\x00", 24:"\x18\x00\x00\x00", 25:"\x19\x00\x00\x00">
+lsn:26 shard:0 run_crc:0xe47c00d7 scn:26 t:wal/usr13 INSERT n:0 flags:00000000 <24:"\x18\x00\x00\x00", 25:"\x19\x00\x00\x00", 26:"\x1A\x00\x00\x00">
+lsn:27 shard:0 run_crc:0xc332cbd2 scn:27 t:wal/usr13 INSERT n:0 flags:00000000 <25:"\x19\x00\x00\x00", 26:"\x1A\x00\x00\x00", 27:"\x1B\x00\x00\x00">
+lsn:28 shard:0 run_crc:0x2ba8af0c scn:28 t:wal/usr13 INSERT n:0 flags:00000000 <26:"\x1A\x00\x00\x00", 27:"\x1B\x00\x00\x00", 28:"\x1C\x00\x00\x00">
+lsn:29 shard:0 run_crc:0xdceb5e02 scn:29 t:wal/usr13 INSERT n:0 flags:00000000 <27:"\x1B\x00\x00\x00", 28:"\x1C\x00\x00\x00", 29:"\x1D\x00\x00\x00">
+lsn:30 shard:0 run_crc:0x072ef70d scn:30 t:wal/usr13 INSERT n:0 flags:00000000 <28:"\x1C\x00\x00\x00", 29:"\x1D\x00\x00\x00", 30:"\x1E\x00\x00\x00">
+lsn:31 shard:0 run_crc:0x4b611076 scn:31 t:wal/usr13 INSERT n:0 flags:00000000 <29:"\x1D\x00\x00\x00", 30:"\x1E\x00\x00\x00", 31:"\x1F\x00\x00\x00">
+lsn:32 shard:0 run_crc:0xc0240090 scn:32 t:wal/usr13 INSERT n:0 flags:00000000 <30:"\x1E\x00\x00\x00", 31:"\x1F\x00\x00\x00", 32:" \x00\x00\x00">
+lsn:33 shard:0 run_crc:0x08041b8a scn:33 t:wal/usr13 INSERT n:0 flags:00000000 <31:"\x1F\x00\x00\x00", 32:" \x00\x00\x00", 33:"!\x00\x00\x00">
+lsn:34 shard:0 run_crc:0x21bf1a2a scn:34 t:wal/usr13 INSERT n:0 flags:00000000 <32:" \x00\x00\x00", 33:"!\x00\x00\x00", 34:"\x22\x00\x00\x00">
 

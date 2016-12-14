@@ -5,7 +5,7 @@ use warnings;
 use IO::Socket::INET;
 use vars qw/$s/;
 
-my $version = 0.99;
+my $version = 0.991;
 
 $| = 1; # autoflush
 my $iproto_sync = 1;
@@ -19,7 +19,7 @@ sub usage {
     print <<EOD;
 Shard create/alter:
 $name -s=<HOST> shard <SID> create por [REPLICA1] [REPLICA2] [REPLICA3] [REPLICA4]
-$name -s=<HOST> shard <SID> create paxos <MASTER2> <MASTER2>
+$name -s=<HOST> shard <SID> create raft <MASTER2> <MASTER2>
 $name -s=<HOST> shard <SID> create part <MASTER>
 
 $name -s=<HOST> shard <SID> add_replica <NAME>
@@ -27,7 +27,7 @@ $name -s=<HOST> shard <SID> del_replica <NAME>
 $name -s=<HOST> shard <SID> master <NAME>
 $name -s=<HOST> shard <SID> delete
 $name -s=<HOST> shard <SID> undummy
-$name -s=<HOST> shard <SID> type <por|paxos|part>
+$name -s=<HOST> shard <SID> type <por|raft|part>
 
 Object space create/drop/truncate:
 $name -s=<HOST> shard <SID> obj_space <OID> create [no_snap] [no_wal] <INDEX CONF>
@@ -96,7 +96,7 @@ sub msg_shard {
 		    $version, $msg_subcode);
 
     if ($msg_subcode == 0) {
-	my $type = shift_cast(por => 0, paxos => 1, part => 2);
+	my $type = shift_cast(por => 0, raft => 1, part => 2);
 	my ($peer1, $peer2, $peer3, $peer4) = @ARGV;
 	$peer1 ||= "";
 	$peer2 ||= "";
@@ -118,7 +118,7 @@ sub msg_shard {
     } elsif ($msg_subcode == 3 || $msg_subcode == 4 || $msg_subcode == 5) {
 	return $head . pack("a16", ($ARGV[0] or ""));
     } elsif ($msg_subcode == 6) {
-	my $type = shift_cast(por => 0, paxos => 1, part => 2);
+	my $type = shift_cast(por => 0, raft => 1, part => 2);
 	return $head . pack("C", $type);
     }
 }

@@ -6,7 +6,6 @@ require 'run_env'
 class Env < RunEnv
   def config
     super + <<EOD
-run_crc_delay = 0.1
 rows_per_wal = 1000000
 EOD
   end

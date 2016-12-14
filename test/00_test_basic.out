@@ -3035,12 +3035,14 @@
 SNAP
 0.12
 Created-by: octopus
-SCN: 1001
+Octopus-version: REDACTED
+SCN: 1002
+SCN-0: 1002
 
 XLOG
 0.12
 Created-by: octopus
-SCN: 1002
+Octopus-version: REDACTED
 
 lsn:500 shard:0 scn:500 t:wal/usr13 INSERT n:0 flags:00000000 <498:"\xF2\x01\x00\x00", 499:"\xF3\x01\x00\x00", 500:"\xF4\x01\x00\x00">
 lsn:501 shard:0 scn:501 t:wal/usr13 INSERT n:0 flags:00000000 <499:"\xF3\x01\x00\x00", 500:"\xF4\x01\x00\x00", 501:"\xF5\x01\x00\x00">

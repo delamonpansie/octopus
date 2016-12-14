@@ -15,7 +15,6 @@ class MasterEnv < RunEnv
   def config
     super + <<-EOD
     nop_hb_delay=0.01
-    run_crc_delay=0.01
     wal_feeder_bind_addr = "0:33034"
     EOD
   end

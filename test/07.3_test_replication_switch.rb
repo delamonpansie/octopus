@@ -5,7 +5,6 @@ require 'run_env'
 
 OBJ_SPACE_CFG = <<EOD
 nop_hb_delay = 3600
-run_crc_delay = 3600
 EOD
 
 class MasterEnv1 < RunEnv

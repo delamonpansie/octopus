@@ -1102,7 +1102,7 @@ box_submit(struct box_txn *txn)
 	if (count == 1) {
 		txn->submit = [txn->box->shard submit:single->data
 						  len:single->data_len
-						  tag:single->op<<5|TAG_WAL];
+						  tag:single->op<<5];
 	} else {
 		struct tbuf *buf = tbuf_alloc(fiber->pool);
 		int multi = tlv_add(buf, BOX_MULTI_OP);
@@ -1116,7 +1116,7 @@ box_submit(struct box_txn *txn)
 
 		txn->submit = [txn->box->shard submit:buf->ptr
 						  len:tbuf_len(buf)
-						  tag:tlv|TAG_WAL];
+						  tag:tlv];
 	}
 
 	if (cfg.box_extended_stat && submit_start != 0) {
@@ -1232,7 +1232,7 @@ box_meta_cb(struct netmsg_head *wbuf, struct iproto *request)
 		box_prepare_meta(&txn, &TBUF(request->data, request->data_len, NULL));
 		if ([box->shard submit:request->data
 				   len:request->data_len
-				   tag:request->msg_code<<5|TAG_WAL] != 1) {
+				   tag:request->msg_code<<5] != 1) {
 			stat_collect(stat_base, SUBMIT_ERROR, 1);
 			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
 		}

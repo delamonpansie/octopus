@@ -20,8 +20,8 @@ ok
 # one.insert([42, "One"], {:shard=>1})
 1
 
-lsn:2 scn:-1 t:sys/snap_initial ver:0 count:11 flags:0x00000000
-lsn:2 shard:1 scn:14 t:sys/shard_create SHARD_CREATE shard_id:1 POR Box count:11 run_crc:0xacd18a2f master:one repl:two
+lsn:2 scn:-1 t:snap/snap_initial ver:0 count:11 flags:0x00000000
+lsn:2 shard:1 scn:14 t:snap/shard_create SHARD_CREATE shard_id:1 POR Box count:11 run_crc:0x1ffac280 master:one repl:two
 lsn:2 shard:1 scn:14 t:snap/usr240 CREATE_OBJECT_SPACE n:0 flags:00000003 cardinalty:0 PK: i:0 min_tuple_cardinality:0 cardinality:1 type:POSTREE unique:1 field0:{index:0 type:STRING sort:ASC}
 lsn:2 shard:1 scn:14 t:snap/snap_data n:0 <0:"\x00\x00\x00\x00", 811953775:"one0">
 lsn:2 shard:1 scn:14 t:snap/snap_data n:0 <1:"\x01\x00\x00\x00", 828730991:"one1">
@@ -34,6 +34,6 @@ lsn:2 shard:1 scn:14 t:snap/snap_data n:0 <7:"\x07\x00\x00\x00", 929394287:"one7
 lsn:2 shard:1 scn:14 t:snap/snap_data n:0 <8:"\x08\x00\x00\x00", 946171503:"one8">
 lsn:2 shard:1 scn:14 t:snap/snap_data n:0 <9:"\x09\x00\x00\x00", 962948719:"one9">
 lsn:2 shard:1 scn:14 t:snap/snap_data n:0 <42:"*\x00\x00\x00", "One">
-lsn:2 shard:1 scn:14 t:sys/shard_final 
-lsn:2 scn:-1 t:sys/snap_final 
+lsn:2 shard:1 scn:14 t:snap/shard_final 
+lsn:2 scn:-1 t:snap/snap_final 
 lsn:2 shard:1 scn:14 t:wal/usr13 INSERT n:0 flags:00000000 <42:"*\x00\x00\x00", "One">

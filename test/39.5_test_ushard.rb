@@ -8,13 +8,13 @@ require '39_test_ushard'
 $one_env.meta 'shard 1 create por'
 
 # change shard type
-log_try { $one_env.meta 'shard 1 type paxos' }
+log_try { $one_env.meta 'shard 1 type raft' }
 
 
 $one_env.meta 'shard 1 add_replica two'
 $one_env.meta 'shard 1 add_replica three'
 
-$one_env.meta 'shard 1 type paxos'
+$one_env.meta 'shard 1 type raft'
 
 sleep 5
 

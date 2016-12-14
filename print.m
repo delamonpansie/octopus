@@ -319,30 +319,28 @@ box_print_row(struct tbuf *out, u16 tag, struct tbuf *r)
 {
 	int tag_type = tag & ~TAG_MASK;
 	tag &= TAG_MASK;
-	if (tag == wal_data) {
-		u16 op = read_u16(r);
-		xlog_print(out, op, r);
-		return;
-	}
-	if (tag == tlv) {
-		while (tbuf_len(r)) {
-			struct tlv *tlv = read_bytes(r, sizeof(*tlv));
-			tbuf_ltrim(r, tlv->len);
 
-			assert(tbuf_len(r) >= 0);
-			tlv_print(out, tlv);
-		}
-		return;
-	}
 	if (tag_type == TAG_WAL) {
-		u16 op = tag >> 5;
-		xlog_print(out, op, r);
+		if (tag == wal_data) {
+			u16 op = read_u16(r);
+			xlog_print(out, op, r);
+		} else if (tag == tlv) {
+			while (tbuf_len(r)) {
+				struct tlv *tlv = read_bytes(r, sizeof(*tlv));
+				tbuf_ltrim(r, tlv->len);
+				assert(tbuf_len(r) >= 0);
+				tlv_print(out, tlv);
+			}
+		} else if (tag >= user_tag) {
+			u16 op = tag >> 5;
+			xlog_print(out, op, r);
+		}
 		return;
 	}
 	if (tag_type == TAG_SNAP) {
 		if (tag == snap_data) {
 			snap_print(out, r);
-		} else {
+		} else if (tag >= user_tag)  {
 			u16 op = tag >> 5;
 			xlog_print(out, op, r);
 		}
