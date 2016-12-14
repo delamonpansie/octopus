@@ -41,9 +41,7 @@
 
 - (const char *) name { return [[self class] name]; }
 - (const char *) status { return status_buf; }
-- (ev_tstamp) run_crc_lag { return run_crc_lag(&run_crc_state); }
-- (const char *) run_crc_status { return run_crc_status(&run_crc_state); }
-- (u32) run_crc_log { return run_crc_log; }
+- (const char *) run_crc_status { return run_crc_status ?: "ok"; }
 
 - (id) retain { rc++; return self; }
 - (void) release { if (--rc == 0) [self free]; }
@@ -122,14 +120,14 @@ set_executor:(id)executor_
 }
 
 - (id)
-init_id:(int)shard_id scn:(i64)scn_ sop:(const struct shard_op *)sop
+init_id:(int)shard_id scn:(i64)scn_ run_crc:(u32)run_crc_ sop:(const struct shard_op *)sop
 {
 	[super init];
 	rc = 1;
 	loading = true;
 	self->id = shard_id;
 	scn = scn_;
-	run_crc_log = sop->run_crc_log;
+	run_crc = run_crc_;
 	type = sop->type;
 
 	for (int i = 0; i < nelem(sop->peer); i++) {
@@ -153,6 +151,12 @@ adjust_route
 	abort();
 }
 
+- (bool)
+is_replica
+{
+	return shard_rt[self->id].proxy || recovery->writer == nil;
+}
+
 - (void)
 alter:(struct shard_op *)sop
 {
@@ -163,25 +167,32 @@ alter:(struct shard_op *)sop
 }
 
 - (struct shard_op *)
-snapshot_header
+shard_op
 {
 	static struct shard_op op;
-	op = (struct shard_op){ .ver = 0,
+	memset(&op, 0, sizeof(op));
+	op = (struct shard_op){ .ver = 1,
 				.type = type,
-				.row_count = [executor snapshot_estimate],
-				.run_crc_log = run_crc_log };
+				.row_count = [executor snapshot_estimate] };
 	strncpy(op.mod_name, [[(id)executor class] name], 15);
 	for (int i = 0; i < nelem(peer) && peer[i]; i++)
 		strncpy(op.peer[i], peer[i], 15);
 	return &op;
 }
 
-- (const struct row_v12 *)
-snapshot_write_header:(XLog *)snap
+- (struct row_v12 *)
+creator_row
 {
-	struct shard_op *sop = [self snapshot_header];
-	return [snap append_row:sop len:sizeof(*sop)
-			  shard:self tag:shard_create];
+	static char buf[sizeof(struct row_v12) + sizeof(struct shard_op)];
+	struct row_v12 *row = (void *)buf;
+	*row = (struct row_v12){ .scn = scn,
+				 .run_crc = run_crc,
+				 .tm = ev_now(),
+				 .tag = shard_create,
+				 .shard_id = self->id,
+				 .len = sizeof(struct shard_op) };
+	memcpy(&row->data, [self shard_op], sizeof(struct shard_op));
+	return row;
 }
 
 - (int)
@@ -189,27 +200,6 @@ submit:(const void *)data len:(u32)len tag:(u16)tag
 {
 	(void)data; (void)len; (void)tag;
 	abort();
-}
-
-- (int)
-submit_run_crc
-{
-	struct tbuf *b = tbuf_alloc(fiber->pool);
-	tbuf_append(b, &scn, sizeof(scn));
-	tbuf_append(b, &run_crc_log, sizeof(run_crc_log));
-	typeof(run_crc_log) run_crc_mod = 0;
-	tbuf_append(b, &run_crc_mod, sizeof(run_crc_mod));
-
-	return [self submit:b->ptr len:tbuf_len(b) tag:run_crc|TAG_SYS];
-}
-
-- (void)
-update_run_crc:(const struct wal_reply *)reply
-{
-	for (int i = 0; i < reply->crc_count; i++) {
-		run_crc_log = reply->row_crc[i].value;
-		run_crc_record(&run_crc_state, reply->row_crc[i]);
-	}
 }
 
 - (void)

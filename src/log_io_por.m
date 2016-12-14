@@ -39,9 +39,12 @@
 - (id)
 init_id:(int)shard_id
     scn:(i64)scn_
+run_crc:(u32)run_crc_
     sop:(const struct shard_op *)sop
 {
-	[super init_id:shard_id scn:scn_ sop:sop];
+	[super init_id:shard_id scn:scn_ run_crc:run_crc_ sop:sop];
+	wet_scn = scn;
+	wet_run_crc = run_crc;
 	feeder.filter.arg = feeder_param_arg;
 	if (type == SHARD_TYPE_PART)
 		partial_replica = true;
@@ -64,20 +67,13 @@ name
 	return [super free];
 }
 
-- (const struct row_v12 *)
-snapshot_write_header:(XLog *)snap
+- (struct row_v12 *)
+creator_row
 {
-	struct shard_op *sop = [self snapshot_header];
-	struct row_v12 row = { .scn = scn,
-			       .tm = ev_now(),
-			       .tag = shard_create,
-			       .shard_id = self->id,
-			       .len = sizeof(*sop) };
-	if (partial_replica) {
-		assert(sop->type == SHARD_TYPE_PART);
-		memcpy(row.remote_scn, &remote_scn, 6);
-	}
-	return [snap append_row:&row data:sop];
+	struct row_v12 *row = [super creator_row];
+	if (partial_replica)
+		memcpy(row->remote_scn, &remote_scn, 6);
+	return row;
 }
 
 - (i64)
@@ -89,7 +85,6 @@ handshake_scn
 	}
 	return [super handshake_scn];
 }
-
 
 - (void)
 set_feeder:(struct feeder_param*)new
@@ -174,9 +169,6 @@ partial_replica_load(va_list ap)
 - (int)
 submit:(const void *)data len:(u32)len tag:(u16)tag
 {
-	static unsigned count;
-	static struct msg_void_ptr msg;
-
 	if (shard_rt[self->id].proxy) {
 		say_warn("not master");
 		return 0;
@@ -187,13 +179,28 @@ submit:(const void *)data len:(u32)len tag:(u16)tag
 		return 0;
 	}
 
-	if (++count % 32 == 0 && msg.link.tqe_prev == NULL)
-	 	mbox_put(&recovery->run_crc_mbox, &msg, link);
-
-	struct wal_reply *reply = [recovery->writer submit:data len:len tag:tag shard_id:self->id];
-	if (reply->row_count) {
-		scn = reply->scn;
-		[self update_run_crc:reply];
+	u32 saved_crc = wet_run_crc;
+	i64 saved_scn = wet_scn;
+	wet_scn++;
+	wet_run_crc = crc32c(wet_run_crc, data, len);
+	say_debug("%s: SCN: %"PRIi64" -> %"PRIi64" CRC: 0x%08x -> 0x%08x",
+		  __func__, saved_scn, wet_scn, saved_crc, wet_run_crc);
+	struct row_v12 row = { .scn = wet_scn,
+			       .tag = tag,
+			       .shard_id = self->id,
+			       .run_crc = wet_run_crc };
+	struct wal_pack pack;
+	wal_pack_prepare(recovery->writer, &pack);
+	wal_pack_append_row(&pack, &row);
+	wal_pack_append_data(&pack, data, len);
+	struct wal_reply *reply = [recovery->writer wal_pack_submit];
+	if (reply->row_count == 1) {
+		scn = row.scn;
+		run_crc = row.run_crc;
+	} else  {
+		assert(wet_scn - 1 == saved_scn);
+		wet_scn = saved_scn;
+		wet_run_crc = saved_crc;
 	}
 	return reply->row_count;
 }
@@ -240,74 +247,81 @@ recover_row:(struct row_v12 *)row
 	int old_ushard = fiber->ushard;
 	fiber->ushard = self->id;
 
-	if (!partial_replica_loading) {
-		if (unlikely(cfg.sync_scn_with_lsn && dummy && row->lsn != row->scn))
-			panic("LSN != SCN : %"PRIi64 " != %"PRIi64, row->lsn, row->scn);
-
-		if (unlikely(row->scn - scn != 1 && (row->tag & ~TAG_MASK) == TAG_WAL &&
-			     cfg.panic_on_scn_gap))
-			panic("SCN sequence has gap after %"PRIi64 " -> %"PRIi64, scn, row->scn);
-
-
-		// calculate run_crc _before_ calling executor: it may change row
-		if (scn_changer(row->tag))
-			run_crc_calc(&run_crc_log, row->tag, row->data, row->len);
-	}
-
 	switch (row->tag & TAG_MASK) {
 	case snap_initial:
 		break;
 	case snap_final:
-		if (dummy || partial_replica)
-			snap_loaded = true;
+		snap_loaded = true;
+		if (!dummy)
+			goto exit;
+
 		if (dummy && [(id)executor respondsTo:@selector(snap_final_row)])
 			[(id)executor snap_final_row];
-		break;
-	case run_crc:
-		if (cfg.ignore_run_crc || partial_replica)
-			break;
 
-		if (row->len != sizeof(i64) + sizeof(u32) * 2)
-			break;
-
-		run_crc_verify(&run_crc_state, &TBUF(row->data, row->len, NULL));
-		break;
+		if (scn != -1) /* уже был shard_final и выставил правильный scn */
+			goto exit;
+                // fallthrough
+	case shard_final:
+		assert(scn == -1 || scn == row->scn);
+		scn = wet_scn = row->scn;
+		run_crc = wet_run_crc = row->run_crc;
+		goto exit;
 	case nop:
 		break;
 	case wal_final:
 		assert(false);
 	case shard_create:
-		break;
+		assert(scn == -1 || scn == row->scn);
+		scn = wet_scn = row->scn;
+		run_crc = wet_run_crc = row->run_crc;
+		goto exit;
 	case shard_alter:
 		[self alter:(struct shard_op *)row->data];
 		if (!loading && ![self our_shard]) {
 			[self free];
-			fiber->ushard = old_ushard;
-			return;
+			goto exit;
 		}
-		break;
-	case shard_final:
-		snap_loaded = true;
 		break;
 	default:
 		[executor apply:&TBUF(row->data, row->len, fiber->pool) tag:row->tag];
 		break;
 	}
 
-	if (!partial_replica_loading) {
-		last_update_tstamp = ev_now();
-		lag = last_update_tstamp - row->tm;
+	int tag_type = row->tag & ~TAG_MASK;
+	if (tag_type == TAG_SNAP) /* no run_crc & scn in snap rows */
+		goto exit;
 
-		if (scn_changer(row->tag)) {
-			run_crc_record(&run_crc_state, (struct run_crc_hist){ .scn = row->scn, .value = run_crc_log });
-			scn = row->scn;
-			if (partial_replica)
-				memcpy(&remote_scn, row->remote_scn, 6);
-		}
-	} else {
-		if (scn_changer(row->tag))
+	if (partial_replica_loading) {
+		if (row->scn > 0)
 			memcpy(&remote_scn, row->remote_scn, 6);
+		goto exit;
 	}
+
+	last_update_tstamp = ev_now();
+	lag = last_update_tstamp - row->tm;
+
+	if (unlikely(cfg.sync_scn_with_lsn && dummy && row->lsn != row->scn && row->scn >= 0))
+		panic("LSN != SCN : %"PRIi64 " != %"PRIi64, row->lsn, row->scn);
+
+	if (unlikely(row->scn - scn != 1 && tag_type == TAG_WAL && cfg.panic_on_scn_gap))
+		panic("SCN sequence has gap after %"PRIi64 " -> %"PRIi64, scn, row->scn);
+
+	u32 crc = crc32c(run_crc, row->data, row->len);
+	say_debug("%s: LSN:%"PRIi64" SCN: %"PRIi64" -> %"PRIi64" CRC: 0x%08x -> 0x%08x(0x%08x)",
+		  __func__, row->lsn, scn, row->scn, run_crc, row->run_crc, crc);
+
+	if (crc != row->run_crc) {
+		say_warn("LSN:%"PRIi64" crc mismatch 0x%08x <> 0x%08x",
+			 row->lsn, crc, row->run_crc);
+		run_crc_status = "error";
+	}
+	scn = wet_scn = row->scn;
+	run_crc = wet_run_crc = crc;
+
+	if (partial_replica)
+		memcpy(&remote_scn, row->remote_scn, 6);
+
+exit:
 	fiber->ushard = old_ushard;
 }
 
@@ -322,16 +336,6 @@ prepare_remote_row:(struct row_v12 *)row offt:(int)offt
 	}
 
 	return !(snap_loaded && row->scn <= scn);
-}
-
-- (bool)
-is_replica
-{
-	if (shard_rt[self->id].proxy)
-		return 1;
-	if (recovery->writer == nil)
-		return 1;
-	return 0;
 }
 
 @end

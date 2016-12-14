@@ -180,7 +180,7 @@ update_rt_notify(va_list ap __attribute__((unused)))
 			char hostname[16];
 			strncpy(hostname, cfg.hostname, 15);
 			i64 scn = [shard scn];
-			struct shard_op *sop = [shard snapshot_header];
+			struct shard_op *sop = [shard shard_op];
 			struct iproto header = { .msg_code = MSG_SHARD,
 						 .shard_id = [shard id],
 						 .data_len = sizeof(hostname) +
@@ -218,7 +218,7 @@ validate_sop(struct netmsg_head *wbuf, const struct iproto *req, void *data, int
 		return NULL;
 	}
 	struct shard_op *sop = data;
-	if (sop->ver != 0) {
+	if (sop->ver != 1) {
 		sop_err("sop: bad version");
 		return NULL;
 	}
@@ -291,7 +291,6 @@ static void pending_snapshot(ev_timer *w, int events __attribute__((unused)));
 init
 {
 	[super init];
-	mbox_init(&run_crc_mbox);
 	mbox_init(&rt_notify_mbox);
 
 	reader = [[XLogReader alloc] init_recovery:self];
@@ -329,12 +328,12 @@ shard_alloc:(char)type
 }
 
 - (Shard<Shard> *)
-shard_create:(int)shard_id scn:(i64)scn sop:(const struct shard_op *)sop
+shard_create:(int)shard_id scn:(i64)scn run_crc:(u32)run_crc sop:(const struct shard_op *)sop
 {
-	assert(sop->ver == 0);
+	assert(sop->ver == 1);
 	assert(shard_rt[shard_id].shard == nil);
 	Shard<Shard> *shard = [self shard_alloc:sop->type];
-	[shard init_id:shard_id scn:scn sop:sop];
+	[shard init_id:shard_id scn:scn run_crc:run_crc sop:sop];
 	[shard set_executor:[[objc_lookUpClass(sop->mod_name) alloc] init]];
 	update_rt(shard->id, shard, NULL);
 	shard_log("shard_create", shard->id);
@@ -358,10 +357,9 @@ shard_create_dummy:(const struct row_v12 *)row
 		}
 	}
 
-	struct shard_op op = { .ver = 0,
+	struct shard_op op = { .ver = 1,
 			       .type = SHARD_TYPE_POR,
-			       .row_count = row_count,
-			       .run_crc_log = run_crc };
+			       .row_count = row_count };
 	strncpy(op.mod_name, [default_exec_class name], 15);
 
 	struct feeder_param feeder;
@@ -369,7 +367,7 @@ shard_create_dummy:(const struct row_v12 *)row
 	bool is_master = !fid_err && feeder.addr.sin_family == AF_UNSPEC;
 	Shard<Shard> *shard = [self shard_alloc:op.type];
 	shard->dummy = true;
-	[shard init_id:0 scn:scn sop:&op];
+	[shard init_id:0 scn:scn run_crc:run_crc sop:&op];
 	[shard set_executor:[[default_exec_class alloc] init]];
 	update_rt(shard->id, shard, is_master ? NULL : "<dummy_addr>");
 	shard_log("shard_create_dummy", shard->id);
@@ -382,7 +380,7 @@ shard_alter_type:(Shard<Shard> **)shard sop:(struct shard_op *)sop
 	Shard *old_shard = *shard,
 	      *new_shard = [self shard_alloc:sop->type];
 	id executor = old_shard->executor;
-	[new_shard init_id:old_shard->id scn:old_shard->scn sop:sop];
+	[new_shard init_id:old_shard->id scn:old_shard->scn run_crc:old_shard->run_crc sop:sop];
 	new_shard->loading = old_shard->loading;
 	[new_shard set_executor:executor];
 	*shard = new_shard;
@@ -395,10 +393,12 @@ shard_alter_type:(Shard<Shard> **)shard sop:(struct shard_op *)sop
 shard_op_create:(int)shard_id sop:(struct shard_op *)sop
 {
 	Shard<Shard> *shard;
-	struct wal_reply *reply;
-	shard = [self shard_create:shard_id scn:1 sop:sop];
-	reply = [writer submit:sop len:sizeof(*sop)
-			   tag:shard_create shard_id:shard_id];
+	shard = [self shard_create:shard_id scn:1 run_crc:0 sop:sop];
+
+	struct wal_pack pack;
+	wal_pack_prepare(writer, &pack);
+	wal_pack_append_row(&pack, [shard creator_row]); // FIXME: тут static переменная
+	struct wal_reply *reply = [writer wal_pack_submit];
 	if (reply->row_count != 1) {
 		[shard release];
 		iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
@@ -420,7 +420,8 @@ shard_op_alter_peer:(Shard<Shard> *)shard sop:(struct shard_op *)sop
 - (void)
 shard_op_alter_type:(Shard<Shard> *)shard type:(char)type
 {
-	struct shard_op *sop = [shard snapshot_header];
+	assert(type == 0 || type == 2);
+	struct shard_op *sop = [shard shard_op];
 	sop->type = type;
 	if ([shard submit:sop len:sizeof(*sop) tag:shard_alter] != 1)
 		iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
@@ -477,7 +478,7 @@ recover_row:(struct row_v12 *)r
 			assert(shard == nil);
 			struct shard_op *sop = (struct shard_op *)r->data;
 			if (our_shard(sop) || remote_loading) {
-				shard = [self shard_create:r->shard_id scn:r->scn sop:sop];
+				shard = [self shard_create:r->shard_id scn:r->scn run_crc:r->run_crc sop:sop];
 				if (sop->type == SHARD_TYPE_PART)
 					[(POR *)shard set_remote_scn:r];
 				if (state == snap_final)
@@ -491,7 +492,7 @@ recover_row:(struct row_v12 *)r
 				panic("cfg.hostname is missing");
 			struct shard_op *sop = (struct shard_op *)r->data;
 			if (our_shard(sop) && shard) {
-				struct shard_op *old = [shard snapshot_header];
+				struct shard_op *old = [shard shard_op];
 
 				if (sop->type != old->type)
 					[self shard_alter_type:&shard sop:sop];
@@ -682,40 +683,6 @@ enable_local_writes
 }
 
 static void
-run_crc_writer(va_list ap)
-{
-	ev_tstamp submit_tstamp = ev_now(),
-			  delay = va_arg(ap, ev_tstamp);
-	for (;;) {
-		mbox_wait(&recovery->run_crc_mbox);
-		mbox_clear(&recovery->run_crc_mbox);
-
-		if (ev_now() - submit_tstamp < delay)
-			continue;
-
-		@try {
-			for (int i = 0; i < MAX_SHARD; i++) {
-				id<Shard> shard = [recovery shard:i];
-				if (shard == nil)
-					continue;
-				if ([shard is_replica])
-					continue;
-				while ([shard submit_run_crc] < 0)
-					fiber_sleep(0.1);
-			}
-		}
-		@catch (Error *e) {
-			say_warn("run_crc submit failed, [%s reason:\"%s\"] at %s:%d",
-				 [[e class] name], e->reason, e->file, e->line);
-			[e release];
-		}
-
-		submit_tstamp = ev_now();
-		fiber_gc();
-	}
-}
-
-static void
 nop_hb_writer(va_list ap)
 {
 	ev_tstamp delay = va_arg(ap, ev_tstamp);
@@ -743,18 +710,13 @@ configure_wal_writer:(i64)lsn
 	if (fold_scn)
 		return;
 
-	if (cfg.wal_writer_inbox_size == 0) {
-		writer = [[DummyXLogWriter alloc] init_lsn:lsn];
-		return;
-	}
+	if (cfg.wal_writer_inbox_size == 0)
+		writer = [DummyXLogWriter alloc];
+	else
+		writer = [XLogWriter alloc];
+	[(id)writer init_lsn:lsn state:self];
 
-	writer = [[XLogWriter alloc] init_lsn:lsn
-					state:self];
-
-	if (cfg.run_crc_delay > 0)
-		fiber_create("run_crc", run_crc_writer, cfg.run_crc_delay);
-
-	if (cfg.nop_hb_delay > 0)
+	if (cfg.nop_hb_delay > 0 && cfg.wal_writer_inbox_size)
 		fiber_create("nop_hb", nop_hb_writer, cfg.nop_hb_delay);
 }
 
@@ -893,7 +855,7 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req)
 		if (shard_rt[0].shard && shard_rt[0].shard->dummy)
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't create shards while dummy shard exists");
 
-		sop = &(struct shard_op){ .type = read_u8(&data) };
+		sop = &(struct shard_op){ .ver = 1, .type = read_u8(&data) };
 		strncpy(sop->mod_name, [recovery->default_exec_class name], 16);
 
 		switch (sop->type) {
@@ -936,10 +898,17 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "shard is loading");
 	if (cmd !=2 && strcmp(shard->peer[0], cfg.hostname) != 0)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "not master");
-	sop = [shard snapshot_header];
+	sop = [shard shard_op];
 
 	if (cmd == 6) { /* change type */
 		char type = read_u8(&data);
+		switch (type) {
+		case SHARD_TYPE_POR:
+		case SHARD_TYPE_PART:
+			break;
+		default:
+			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "unsuported type");
+		}
 
 		if (sop->type == SHARD_TYPE_POR && type == SHARD_TYPE_PART) {
 			if (peer_idx(sop, (char[16]){0}) != 2)
@@ -1044,7 +1013,7 @@ iproto_shard_load_aux(va_list ap)
 	@try {
 		wlock(&route->lock);
 		assert(route->shard == nil);
-		shard = [recovery shard_create:shard_id scn:-1 sop:&sop];
+		shard = [recovery shard_create:shard_id scn:-1 run_crc:-1 sop:&sop];
 		[shard load_from_remote];
 		if (shard->executor)
 			[recovery request_snapshot];

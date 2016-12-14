@@ -52,22 +52,16 @@
 #endif
 
 
-struct shard_state {
-	i64 scn, wet_scn;
-	u32 run_crc;
-};
-
 struct wal_disk_writer_conf {
 	i64 lsn;
-	struct shard_state st[MAX_SHARD];
 };
-
 
 @interface WALDiskWriter: Object {
 @public
-	i64 lsn;
+	i64 lsn, batch_lsn;
 	XLog *current_wal;	/* the WAL we'r currently reading/writing from/to */
 	XLog *wal_to_close;
+	i64 scn[MAX_SHARD];
 }
 - (id) init_conf:(const struct wal_disk_writer_conf *)conf_;
 @end
@@ -87,19 +81,18 @@ init_conf:(const struct wal_disk_writer_conf *)conf
 append_row:(struct row_v12 *)row data:(const void *)data
 {
 	row->tm = ev_now();
+	if (row->scn > 0)
+		scn[row->shard_id] = MAX(scn[row->shard_id], row->scn);
 	return [current_wal append_row:row data:data];
 }
 
 - (int)
-prepare_write:(const struct shard_state *)st
+prepare_write
 {
 	if (current_wal == nil) {
-		static i64 scn[MAX_SHARD];
-		for (int i = 0; i < MAX_SHARD; i++)
-			scn[i] = st[i].scn ? st[i].scn + 1 : 0;
-
 		current_wal = [wal_dir open_for_write:lsn + 1];
 		[(XLog12 *)current_wal write_header_scn:scn];
+		memset(scn, 0, sizeof(scn));
 	}
 
         if (current_wal == nil) {
@@ -118,17 +111,19 @@ prepare_write:(const struct shard_state *)st
 			say_syserror("fallocate");
 	}
 #endif
-
+	batch_lsn = lsn;
 	return 0;
 }
 
-- (i64)
+- (int)
 confirm_write
 {
 	static ev_tstamp last_flush;
+	int count = 0;
 
 	if (current_wal != nil) {
 		i64 confirmed_lsn = [current_wal confirm_write];
+		count = confirmed_lsn - batch_lsn;
 
 		if (current_wal->inprogress && [current_wal rows] > 0) {
 			/* invariant: .xlog must have at least one valid row
@@ -140,7 +135,7 @@ confirm_write
 				unlink(current_wal->filename);
 				[current_wal free];
 				current_wal = nil;
-				return lsn;
+				return 0;
 			}
 
 			say_info("created `%s'", current_wal->filename);
@@ -168,8 +163,7 @@ confirm_write
 			current_wal = nil;
 		}
 	}
-
-	return lsn;
+	return count;
 }
 
 @end
@@ -237,12 +231,9 @@ request_parse(struct request *request, int row_count, struct tbuf *rbuf)
 
 	request->row_count = row_count;
 	request->rows = p0alloc(fiber->pool, sizeof(void *) * row_count);
-	request->reply = p0alloc(fiber->pool,
-				 sizeof(struct wal_reply) +
-				 row_count * sizeof(request->reply->row_crc[0]));
+	request->reply = p0alloc(fiber->pool, sizeof(struct wal_reply));
 	request->reply->seq = read_u64(rbuf);
 	request->epoch = read_u64(rbuf);
-	request->reply->scn = -1;
 	request->reply->lsn = -1;
 	request->shard_id = -1;
 
@@ -255,75 +246,14 @@ request_parse(struct request *request, int row_count, struct tbuf *rbuf)
 	}
 }
 
-static void
-assign_scn(struct shard_state *st, struct row_v12 *h)
-{
-	st += h->shard_id;
-	const struct shard_op *sop = NULL;
-
-	int tag = h->tag & TAG_MASK;
-	if (unlikely(tag == shard_create || tag == shard_alter)) {
-		sop = (void *)h->data;
-		assert(sop->ver == 0);
-
-		/* shard seen first time */
-		if (st->scn == 0 && our_shard(sop)) {
-			st->run_crc = sop->run_crc_log;
-			if (h->scn) {
-				st->scn = h->scn - 1;
-			} else {
-				h->scn = 1;
-				assert(tag == shard_create);
-			}
-			say_info("\tshard:%i SCN:%"PRIi64, h->shard_id, h->scn);
-			return;
-		}
-	}
-
-	if (h->scn)
-		st->wet_scn = h->scn;
-	else
-		h->scn = ++st->wet_scn;
-}
-
-static void
-commit_scn(struct shard_state *st, struct wal_reply *reply, const struct row_v12 *row)
-{
-	if (!scn_changer(row->tag))
-		return;
-
-	/* next_scn is used for writing XLog header, which is turn used to
-	   find correct file for replication replay.
-	   so, next_scn should be updated only when data modification occurs */
-	if (cfg.panic_on_scn_gap &&
-	    row->scn - st->scn != 1 &&
-	    st->scn != 0)
-	{
-		struct tbuf *buf = tbuf_alloc(fiber->pool);
-		print_row(buf, row, NULL);
-		panic("SCN GAP:%"PRIi64" rows:%i row:%s", row->scn - st->scn,
-		      reply->row_count, (const char *)buf->ptr);
-	}
-
-	run_crc_calc(&st->run_crc, row->tag, row->data, row->len);
-	struct run_crc_hist *row_crc = reply->row_crc + reply->crc_count++;
-	row_crc->scn = row->scn;
-	row_crc->value = st->run_crc;
-
-	reply->scn = row->scn;
-	st->scn = row->scn;
-}
-
 int
 wal_disk_writer(int fd, int cfd __attribute__((unused)), void *state, int len)
 {
 	struct wal_disk_writer_conf *conf = state;
 	WALDiskWriter *writer = [[WALDiskWriter alloc] init_conf:conf];
-	struct shard_state *st = conf->st;
 	struct request requests[BATCH_SIZE];
 	struct tbuf rbuf = TBUF(NULL, 0, fiber->pool);
 	int result = EXIT_FAILURE;
-	i64 start_lsn;
 	ssize_t r;
 	int request_count;
 	i64 epoch = 0;
@@ -334,10 +264,6 @@ wal_disk_writer(int fd, int cfd __attribute__((unused)), void *state, int len)
 	palloc_register_gc_root(fiber->pool, &rbuf, tbuf_gc);
 
 	say_debug("%s: configured LSN:%"PRIi64, __func__, conf->lsn);
-	for (int i = 0; i < MAX_SHARD; i++)
-		if (st[i].scn)
-			say_debug("\tShard:%i SCN:%"PRIi64" run_crc:0x%x",
-				  i, st[i].scn, st[i].run_crc);
 	/* since wal_writer have bidirectional communiction to master
 	   and checks for errors on send/recv,
 	   there is no need in util.m:keepalive() */
@@ -366,17 +292,14 @@ wal_disk_writer(int fd, int cfd __attribute__((unused)), void *state, int len)
 		}
 
 		request_count = 0;
-		start_lsn = writer->lsn;
-		if ([writer prepare_write:st] == -1)
+		if ([writer prepare_write] == -1)
 			epoch++;
-		for (int i = 0; i < MAX_SHARD; i++)
-			st[i].wet_scn = st[i].scn;
 
 		/* we're not running inside ev_loop, so update ev_now manually just before write */
 		ev_now_update();
 
 
-		u32 rows_appended = 0;
+		int rows_appended = 0;
 		for (int i = 0; i < nelem(requests); i++) {
 			struct request *request = &requests[i];
 			int row_count = request_row_count(&rbuf);
@@ -390,7 +313,6 @@ wal_disk_writer(int fd, int cfd __attribute__((unused)), void *state, int len)
 			int j = 0;
 			for (; j < row_count && request->epoch == epoch; j++) {
 				struct row_v12 *row = request->rows[j];
-				assign_scn(st, row);
 
 				if ([writer append_row:row data:row->data] == NULL) {
 					say_error("append_row failed");
@@ -410,8 +332,7 @@ wal_disk_writer(int fd, int cfd __attribute__((unused)), void *state, int len)
 		if (request_count == 0)
 			continue;
 
-		assert(start_lsn > 0);
-		u32 rows_confirmed = [writer confirm_write] - start_lsn;
+		int rows_confirmed = [writer confirm_write];
 		assert(rows_appended >= rows_confirmed);
 
 		if (rows_appended != rows_confirmed) /* some rows failed to flush */
@@ -422,26 +343,15 @@ wal_disk_writer(int fd, int cfd __attribute__((unused)), void *state, int len)
 			struct wal_reply *reply = request->reply;
 
 			reply->row_count = MIN(rows_confirmed, request->row_count); /* real number rows written to disk */
-			reply->packet_len = sizeof(struct wal_reply) +
-					    reply->row_count * sizeof(reply->row_crc[0]);
+			reply->packet_len = sizeof(struct wal_reply);
 			reply->epoch = epoch;
 			if (reply->row_count > 0)
 				reply->lsn = request->rows[reply->row_count - 1]->lsn;
 
-			for (int k = 0; k < reply->row_count; k++) {
-				const struct row_v12 *row = request->rows[k];
-				commit_scn(st + row->shard_id, reply, row);
-				if (unlikely((row->tag & TAG_MASK) == shard_alter)) {
-					const struct shard_op *sop = (void *)row->data;
-					if (!our_shard(sop))
-						memset(&st[row->shard_id], 0, sizeof(st[row->shard_id]));
-				}
-			}
-
 			rows_confirmed -= reply->row_count;
 
-			say_debug("reply[%i] rows:%i LSN:%"PRIi64" SCN:%"PRIi64,
-				  i, reply->row_count, reply->lsn, reply->scn);
+			say_debug("reply[%i] rows:%i LSN:%"PRIi64,
+				  i, reply->row_count, reply->lsn);
 		}
 
 		if (flush(fd, requests, request_count) < 0) {
@@ -457,33 +367,6 @@ exit:
 	writer->current_wal = nil;
 	return result;
 }
-
-@implementation DummyXLogWriter
-- (i64) lsn { return lsn; }
-- (void) incr_lsn:(int)diff { lsn += diff; }
-
-- (id)
-init_lsn:(i64)init_lsn
-{
-	[super init];
-	lsn = init_lsn;
-	return self;
-}
-
-- (struct wal_reply *)
-submit:(const void *)data len:(u32)data_len tag:(u16)tag shard_id:(u16)shard_id
-{
-	(void)data;
-	(void)data_len;
-	(void)tag;
-	(void)shard_id;
-	static struct wal_reply reply = { .row_count = 1 };
-	lsn++;
-	reply.scn = lsn;
-	return &reply;
-}
-
-@end
 
 @implementation XLogWriter
 
@@ -590,15 +473,6 @@ init_lsn:(i64)init_lsn
 
 	struct wal_disk_writer_conf *conf = xcalloc(1, sizeof(*conf));
 	conf->lsn = lsn;
-	for (int i = 0; i < MAX_SHARD; i++) {
-		id<Shard> shard = [state shard:i];
-		if (shard == nil)
-			continue;
-		conf->st[i].scn = [shard scn];
-		conf->st[i].run_crc = [shard run_crc_log];
-		if (conf->st[i].scn)
-			say_info("\tShard:%i SCN:%"PRIi64, i, conf->st[i].scn);
-	}
 	wal_writer = spawn_child("wal_writer", wal_disk_writer, -1, conf, sizeof(*conf));
 	if (wal_writer.pid < 0)
 		panic("unable to start WAL writer");
@@ -617,27 +491,21 @@ init_lsn:(i64)init_lsn
 }
 
 
-- (struct wal_reply *)
-submit:(const void *)data len:(u32)data_len tag:(u16)tag shard_id:(u16)shard_id
-{
-	struct row_v12 row = { .scn = 0,
-			       .tag = tag,
-			       .shard_id = shard_id };
-	struct wal_pack pack;
-	wal_pack_prepare(self, &pack);
-	wal_pack_append_row(&pack, &row);
-	wal_pack_append_data(&pack, data, data_len);
-	return [self wal_pack_submit];
-}
-
 void
 wal_pack_prepare(XLogWriter *w, struct wal_pack *pack)
 {
 	TAILQ_INSERT_TAIL(&w->wal_queue, pack, link);
-	pack->netmsg = &w->io->wbuf;
 	pack->fiber = fiber;
 	pack->seq = w->seq++;
 	pack->epoch = w->epoch;
+	pack->shard_id = -1;
+	pack->row_count = 0;
+
+	if (unlikely(w->io == NULL)) {
+		pack->netmsg = NULL;
+		return;
+	}
+	pack->netmsg = &w->io->wbuf;
 	pack->request = net_add_alloc(pack->netmsg, sizeof(*pack->request));
 	pack->request->packet_len = sizeof(*pack->request);
 	pack->request->magic = 0xba0babed;
@@ -649,12 +517,16 @@ wal_pack_prepare(XLogWriter *w, struct wal_pack *pack)
 u32
 wal_pack_append_row(struct wal_pack *pack, struct row_v12 *row)
 {
-	assert(pack->request->row_count <= WAL_PACK_MAX);
+	assert(pack->row_count <= WAL_PACK_MAX);
+	assert(pack->shard_id == -1 || pack->shard_id == row->shard_id);
+	pack->shard_id = row->shard_id;
 
-	pack->request->packet_len += sizeof(*row) + row->len;
-	pack->request->row_count++;
+	pack->row_count++;
+	if (unlikely(pack->netmsg == NULL))
+		goto exit;
 
 	int row_len = sizeof(*row) + row->len;
+	pack->request->packet_len += row_len;
 	if (row_len < 512) {
 		pack->row = net_add_alloc(pack->netmsg, row_len);
 		memcpy(pack->row, row, row_len);
@@ -662,12 +534,15 @@ wal_pack_append_row(struct wal_pack *pack, struct row_v12 *row)
 		pack->row = row;
 		net_add_iov(pack->netmsg, row, row_len);
 	}
-	return WAL_PACK_MAX - pack->request->row_count;
+exit:
+	return WAL_PACK_MAX - pack->row_count;
 }
 
 void
 wal_pack_append_data(struct wal_pack *pack, const void *data, size_t len)
 {
+	if (unlikely(pack->netmsg == NULL))
+		return;
 	pack->request->packet_len += len;
 	pack->row->len += len;
 	if (len < 512)
@@ -680,11 +555,36 @@ wal_pack_append_data(struct wal_pack *pack, const void *data, size_t len)
 wal_pack_submit
 {
 	struct wal_pack *pack = TAILQ_LAST(&wal_queue, wal_pack_tailq);
+	pack->request->row_count = pack->row_count;
 	say_debug("submit WAL request seq:%"PRIi64, pack->seq);
 	struct wal_reply *reply = yield();
 	TAILQ_REMOVE(&wal_queue, pack, link);
 	return reply;
 }
+@end
+
+@implementation DummyXLogWriter
+- (id)
+init_lsn:(i64)init_lsn
+   state:(id<RecoveryState>)state_
+{
+	(void)state_;
+	TAILQ_INIT(&wal_queue);
+	lsn = init_lsn;
+	return self;
+}
+
+- (struct wal_reply *)
+wal_pack_submit
+{
+	struct wal_pack *pack = TAILQ_LAST(&wal_queue, wal_pack_tailq);
+	TAILQ_REMOVE(&wal_queue, pack, link);
+	static struct wal_reply reply;
+	reply.row_count = pack->row_count;
+	lsn += pack->row_count;
+	return &reply;
+}
+
 @end
 
 @implementation SnapWriter
@@ -751,7 +651,7 @@ snapshot_write
 		struct tbuf *snap_ini = tbuf_alloc(fiber->pool);
 		tbuf_append(snap_ini, &total_rows, sizeof(total_rows));
 
-		u32 run_crc_log = [[state shard:0] run_crc_log];
+		u32 run_crc_log = [state shard:0]->run_crc;
 		tbuf_append(snap_ini, &run_crc_log, sizeof(run_crc_log));
 		u32 run_crc_mod = 0;
 		tbuf_append(snap_ini, &run_crc_mod, sizeof(run_crc_mod));
@@ -791,7 +691,8 @@ snapshot_write
 			if (shard == nil)
 				continue;
 
-			if ([shard snapshot_write_header:snap] == NULL)
+			struct row_v12 *header = [shard creator_row];
+			if ([snap append_row:header data:header->data] == NULL)
 			{
 				say_error("unable write initial row");
 				return -1;

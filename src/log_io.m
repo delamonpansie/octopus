@@ -1342,26 +1342,23 @@ open_for_write:(i64)lsn
 static i64
 find(int count, const char *type, i64 needle, i64 *haystack, i64 *lsn)
 {
-	haystack += count - 1;
-	lsn += count - 1;
-
-	while (count) {
+	i64 ret = -1;
+	for (haystack += count - 1, lsn += count - 1; count; haystack--, lsn--, count--) {
 		if (*haystack < 0) /* error */
 			return -1;
-		/* if *haystack == 0 то вернуть последний файл, потому что мы не знаем заранее ,
-		 есть ли в этом файле нужная запись или нет */
+		if (*haystack == 0 && 0) {
+			ret = *lsn;
+			continue;
+		}
 		if (*haystack <= needle) {
 			say_debug2("%s: %s:%"PRIi64 " file_lsn:%"PRIi64, __func__, type, needle, *lsn);
 			return *lsn;
 		}
-
-		haystack--;
-		lsn--;
-		count --;
 	}
 
-	say_warn("%s: requested %s:%"PRIi64" is missing", __func__, type, needle);
-	return -1;
+	if (ret == -1)
+		say_warn("%s: requested %s:%"PRIi64" is missing", __func__, type, needle);
+	return ret;
 }
 
 - (i64 *)
@@ -1566,6 +1563,7 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 	row_data = TBUF(row->data, row->len, fiber->pool);
 
 	int tag = row->tag & TAG_MASK;
+	int tag_type = row->tag & ~TAG_MASK;
 
 	static int print_header = -1;
 	if (print_header == -1) {
@@ -1575,20 +1573,25 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 			print_header = 1;
 	}
 	if (print_header == 1) {
-		//tbuf_printf(buf, "lsn:%" PRIi64, row->lsn);
-		tbuf_append_lit(buf, "lsn:");
-		tbuf_putl(buf, row->lsn);
-		if (row->scn != -1) {
-			//tbuf_printf(buf, " shard:%i", row->shard_id);
-			tbuf_append_lit(buf, " shard:");
-			tbuf_putu(buf, row->shard_id);
+		tbuf_printf(buf, "lsn:%" PRIi64, row->lsn);
+		if (row->scn != -1 || (tag_type == TAG_SNAP && tag != snap_initial && tag != snap_final)) {
+			tbuf_printf(buf, " shard:%i", row->shard_id);
+#if 0
 			i64 rem_scn = 0;
 			memcpy(&rem_scn, row->remote_scn, 6);
-			if (rem_scn) {
+			if (rem_scn)
 				tbuf_printf(buf, " rem_scn:%"PRIi64, rem_scn);
-				tbuf_append_lit(buf, " rem_scn:");
-				tbuf_putl(buf, rem_scn);
+#else
+			static int print_run_crc = -1;
+			if (print_run_crc == -1) {
+				if (getenv("OCTOPUS_CAT_RUN_CRC"))
+					print_run_crc = atoi(getenv("OCTOPUS_CAT_RUN_CRC"));
+				else
+					print_run_crc = 0;
 			}
+			if (print_run_crc == 1)
+				tbuf_printf(buf, " run_crc:0x%08x", row->run_crc);
+#endif
 		}
 
 		//tbuf_printf(buf, " scn:%" PRIi64 " tm:%.3f t:%s ",
@@ -1643,14 +1646,13 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 	case shard_alter:
 	case shard_create: {
 		int ver = read_u8(&row_data);
-		if (ver != 0) {
+		if (ver != 1) {
 			tbuf_printf(buf, "unknow version: %i", ver);
 			break;
 		}
 
 		int type = read_u8(&row_data);
 		u32 estimated_row_count = read_u32(&row_data);
-		u32 run_crc = read_u32(&row_data);
 		const char *mod_name = read_bytes(&row_data, 16);
 
 		switch (tag & TAG_MASK) {
@@ -1663,15 +1665,21 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 		switch (type) {
 		case SHARD_TYPE_POR: tbuf_printf(buf, " POR"); break;
 		case SHARD_TYPE_PART: tbuf_printf(buf, " PART"); break;
-		default: assert(false);
+		default: tbuf_printf(buf, " shard_type:%i", type);
 		}
 		tbuf_printf(buf, " %s", mod_name);
-		tbuf_printf(buf, " count:%i run_crc:0x%08x", estimated_row_count, run_crc);
+		tbuf_printf(buf, " count:%i run_crc:0x%08x", estimated_row_count, row->run_crc);
 		tbuf_printf(buf, " master:%s", (const char *)read_bytes(&row_data, 16));
-		while (tbuf_len(&row_data) > 0) {
+		for (int i = 1; i < 5; i++) {
 			const char *str = read_bytes(&row_data, 16);
 			if (strlen(str))
-			    tbuf_printf(buf, " repl:%s", str);
+				tbuf_printf(buf, " repl:%s", str);
+		}
+		u16 aux_len = read_u16(&row_data);
+		if (aux_len) {
+			struct tbuf aux = TBUF(read_bytes(&row_data, aux_len), aux_len,
+					       fiber->pool);
+			tbuf_printf(buf, " aux:%s", tbuf_to_hex(&aux));
 		}
 
 		break;

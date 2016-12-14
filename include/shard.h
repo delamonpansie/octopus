@@ -28,7 +28,6 @@
 #define SHARD_H
 
 #include <util.h>
-#import <run_crc.h>
 
 #define MAX_SHARD 4096
 
@@ -38,34 +37,32 @@
 
 @interface Shard: Object {
 	ev_tstamp last_update_tstamp, lag;
-	u32 run_crc_log;
-	struct run_crc run_crc_state;
-	char status_buf[64];
+	char status_buf[64], *run_crc_status;
 	char type;
 @public
 	int id, rc;
 	id<Executor> executor;
 	i64 scn;
+	u32 run_crc;
 	bool dummy, loading, snap_loaded;
 	char peer[5][16];
 }
-- (id) init_id:(int)shard_id scn:(i64)scn_ sop:(const struct shard_op *)sop;
+- (id) init_id:(int)shard_id scn:(i64)scn_ run_crc:(u32) run_crc_ sop:(const struct shard_op *)sop;
 
 - (int) id;
 - (i64) scn;
 - (id<Executor>)executor;
-- (ev_tstamp) run_crc_lag;
 - (const char *) run_crc_status;
-- (u32) run_crc_log;
-- (int) submit_run_crc;
+
 - (void) status_update:(const char *)fmt, ...;
 - (const char *)status;
+- (bool) is_replica;
 
 - (ev_tstamp) lag;
 - (ev_tstamp) last_update_tstamp;
 
-- (struct shard_op *)snapshot_header;
-- (const struct row_v12 *)snapshot_write_header:(XLog *)snap;
+- (struct shard_op *)shard_op;
+- (struct row_v12 *)creator_row;
 
 - (void) alter:(struct shard_op *)sop;
 - (void) wal_final_row;
@@ -78,7 +75,6 @@
 - (i64) handshake_scn;
 - (void) load_from_remote;
 - (int) prepare_remote_row:(struct row_v12 *)row offt:(int)offt;
-- (void) update_run_crc:(const struct wal_reply *)reply;
 
 @end
 

@@ -188,7 +188,6 @@ replicate_row_stream:(id<XLogPullerAsync>)puller
 	assert(recovery->writer != nil);
 	assert([recovery->writer lsn] > 0);
 
-	bool dummy_writer = [DummyXLogWriter class] == [(id)recovery->writer class];
 	int pack_rows = 0;
 
 	/* old version doesn's send wal_final_tag for us. */
@@ -238,26 +237,22 @@ replicate_row_stream:(id<XLogPullerAsync>)puller
 			[e release];
 		}
 
-		if (dummy_writer) {
-			[(id)recovery->writer incr_lsn:pack_rows];
-		} else {
-			int confirmed = 0;
-			while (confirmed != pack_rows) {
-				struct wal_pack pack;
+		int confirmed = 0;
+		while (confirmed != pack_rows) {
+			struct wal_pack pack;
 
-				wal_pack_prepare(recovery->writer, &pack);
-				for (int i = confirmed; i < pack_rows; i++) {
-					rows[i]->lsn = 0;
-					wal_pack_append_row(&pack, rows[i]);
-				}
+			wal_pack_prepare(recovery->writer, &pack);
+			for (int i = confirmed; i < pack_rows; i++) {
+				rows[i]->lsn = 0;
+				wal_pack_append_row(&pack, rows[i]);
+			}
 
-				struct wal_reply *reply = [recovery->writer wal_pack_submit];
-				confirmed += reply->row_count;
-				if (confirmed != pack_rows) {
-					say_warn("WAL write failed confirmed:%i != sent:%i",
-						 confirmed, pack_rows);
-					fiber_sleep(0.05);
-				}
+			struct wal_reply *reply = [recovery->writer wal_pack_submit];
+			confirmed += reply->row_count;
+			if (confirmed != pack_rows) {
+				say_warn("WAL write failed confirmed:%i != sent:%i",
+					 confirmed, pack_rows);
+				fiber_sleep(0.05);
 			}
 		}
 

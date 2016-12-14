@@ -33,7 +33,6 @@
 #import <spawn_child.h>
 #import <mbox.h>
 #import <shard.h>
-#import <run_crc.h>
 
 #include <stdio.h>
 #include <limits.h>
@@ -72,15 +71,6 @@ enum row_tag {
 #define TAG_SNAP 0x4000
 #define TAG_WAL 0x8000
 #define TAG_SYS 0xc000
-
-static inline bool scn_changer(int tag)
-{
-	int tag_type = tag & ~TAG_MASK;
-	tag &= TAG_MASK;
-	return tag_type == TAG_WAL || tag == nop || tag == run_crc ||
-		tag == shard_create || tag == shard_alter ||
-		tag == snap_final;
-}
 
 static inline bool dummy_tag(int tag) /* dummy row tag */
 {
@@ -166,7 +156,13 @@ struct row_v12 {
 	u16 tag;
 
 	u16 shard_id;
-	u8 remote_scn[6];
+
+	union {
+		u8 remote_scn[6];
+		struct {
+			u32 run_crc;
+		} __attribute__((packed));
+	} __attribute__((packed));
 
 	double tm;
 	u32 len;
@@ -259,6 +255,8 @@ struct wal_pack {
 	TAILQ_ENTRY(wal_pack) link;
 	struct Fiber *fiber;
 	i64 epoch, seq;
+	int shard_id;
+	int row_count;
 };
 
 struct wal_request {
@@ -271,10 +269,8 @@ struct wal_request {
 
 struct wal_reply {
 	u32 packet_len;
-	u32 row_count, crc_count;
-	i64 seq, epoch, lsn, scn;
-
-	struct run_crc_hist row_crc[];
+	u32 row_count;
+	i64 seq, epoch, lsn;
 } __attribute__((packed));
 
 
@@ -282,18 +278,15 @@ void wal_pack_prepare(XLogWriter *r, struct wal_pack *);
 u32 wal_pack_append_row(struct wal_pack *pack, struct row_v12 *row);
 void wal_pack_append_data(struct wal_pack *pack, const void *data, size_t len);
 
-struct shard_op_aux {
-	i64 current_scn;
-};
 
 struct shard_op {
 	u8 ver;
 	u8 type;
 	u32 row_count;
-	u32 run_crc_log;
 	char mod_name[16];
 	char peer[5][16];
-	struct shard_op_aux aux[0];
+	u16 aux_len;
+	char aux[0];
 } __attribute__((packed));
 
 bool our_shard(const struct shard_op *sop);
@@ -346,7 +339,6 @@ bool our_shard(const struct shard_op *sop);
 
 @protocol XLogWriter
 - (i64) lsn;
-- (struct wal_reply *) submit:(const void *)data len:(u32)len tag:(u16)tag shard_id:(u16)shard_id;
 - (struct wal_reply *) wal_pack_submit;
 @end
 
@@ -368,11 +360,7 @@ bool our_shard(const struct shard_op *sop);
 - (const struct child *) wal_writer;
 @end
 
-@interface DummyXLogWriter: Object {
-	i64 lsn;
-}
-- (id) init_lsn:(i64)init_lsn;
-- (void) incr_lsn:(int)diff;
+@interface DummyXLogWriter: XLogWriter
 @end
 
 @interface XLogPuller: Object <XLogPuller, XLogPullerAsync> {
@@ -478,9 +466,6 @@ enum feeder_filter_type {
 - (ev_tstamp) lag;
 
 - (const char *) run_crc_status;
-- (int) submit_run_crc;
-- (ev_tstamp) run_crc_lag;
-- (u32) run_crc_log;
 
 - (void) load_from_remote;
 
@@ -491,14 +476,15 @@ enum feeder_filter_type {
 - (bool) is_replica;
 
 - (void) adjust_route;
-- (struct shard_op *)snapshot_header;
-- (struct row_v12 *)snapshot_write_header:(XLog *)snap;
+- (struct shard_op *)shard_op;
+- (struct row_v12 *)creator_row;
 @end
 
 @interface POR: Shard <Shard,RecoverRow> {
 	XLogReplica *remote;
 	bool partial_replica, partial_replica_loading;
-	i64 remote_scn;
+	i64 wet_scn, remote_scn;
+	u32 wet_run_crc;
 	struct feeder_param feeder;
 	char feeder_param_arg[32];
 }
@@ -516,7 +502,7 @@ enum feeder_filter_type {
 @public
 	id<XLogWriter> writer;
 	struct rwlock snapshot_lock;
-	struct mbox_void_ptr run_crc_mbox, rt_notify_mbox;
+	struct mbox_void_ptr rt_notify_mbox;
 	Class default_exec_class;
 }
 - (i64) lsn;
