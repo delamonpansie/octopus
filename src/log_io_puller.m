@@ -347,7 +347,8 @@ handshake:(i64)scn
 	}
 
 	say_info("succefully connected to feeder/%s, version:%i", sintoa(&feeder->addr), version);
-	say_info("starting remote recovery from scn:%" PRIi64, scn);
+	say_info("starting remote recovery from scn:%"PRIi64" filter:%s arg:%.*s",
+		 scn, feeder->filter.name, feeder->filter.arglen, (char *)feeder->filter.arg);
 	return 1;
 err:
 	tbuf_reset(&rbuf);
