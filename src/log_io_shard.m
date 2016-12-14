@@ -106,7 +106,7 @@ free
 		const char *master = peer[0];
 		if (strcmp(master, cfg.hostname) == 0)
 			master = NULL;
-		update_rt(self->id, nil, master);
+		update_rt(self->id, nil, master, self->scn);
 		shard_log("removed", self->id);
 	}
 	return [super free];

@@ -6,8 +6,8 @@
 #include <objc.h>
 #include <iproto.h>
 
-static value *exn_failure;
-static value *exn_iproto_failure;
+static const value *exn_failure;
+static const value *exn_iproto_failure;
 static Class iproto_error_class;
 
 void __attribute__((__noreturn__))
@@ -18,7 +18,7 @@ release_and_failwith(Error *e)
 		exn_iproto_failure = caml_named_value("exn_iproto_failure");
 		iproto_error_class = [IProtoError class];
 	}
-	value *exn = exn_failure;
+	const value *exn = exn_failure;
 	value reason = caml_copy_string(e->reason);
 	value args[2];
 	if ([e class] == iproto_error_class) {

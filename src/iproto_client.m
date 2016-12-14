@@ -328,12 +328,22 @@ iproto_pinger(va_list ap)
 	}
 }
 
+void
+iproto_mbox_transfer(struct iproto_mbox *src, struct iproto_mbox *dst)
+{
+	struct iproto_future *future, *tmp;
+	LIST_FOREACH_SAFE(future, &src->waiting, waiting_link, tmp)
+		LIST_INSERT_HEAD(&dst->waiting, future, waiting_link);
+	LIST_INIT(&src->waiting);
+	while ((future = mbox_get(src, link)))
+		mbox_put(dst, future, link);
+}
 
 void
 iproto_future_collect_orphans(struct iproto_future_list *waiting)
 {
-	struct iproto_future *future, *tmp;
-	LIST_FOREACH_SAFE(future, waiting, waiting_link, tmp)
+	struct iproto_future *future;
+	LIST_FOREACH(future, waiting, waiting_link)
 		future->type = IPROTO_FUTURE_ORPHAN;
 	LIST_INIT(waiting);
 }

@@ -128,6 +128,9 @@ xlog_tag_to_a(u16 tag)
 	case shard_final:	strcat(p, "shard_final"); break;
 	case run_crc:		strcat(p, "run_crc"); break;
 	case nop:		strcat(p, "nop"); break;
+	case raft_append:	strcat(p, "raft_append"); break;
+	case raft_commit:	strcat(p, "raft_commit"); break;
+	case raft_vote:		strcat(p, "raft_vote"); break;
 	case tlv:		strcat(p, "tlv"); break;
 	default:
 		if (tag < user_tag)
@@ -1346,7 +1349,7 @@ find(int count, const char *type, i64 needle, i64 *haystack, i64 *lsn)
 	for (haystack += count - 1, lsn += count - 1; count; haystack--, lsn--, count--) {
 		if (*haystack < 0) /* error */
 			return -1;
-		if (*haystack == 0 && 0) {
+		if (*haystack == 0) {
 			ret = *lsn;
 			continue;
 		}
@@ -1392,6 +1395,11 @@ scan_scn_shard:(int)target_shard_id lsn:(i64 *)lsn count:(int)count
 
 			if (strcmp(buf, "\n") == 0 || strcmp(buf, "\r\n") == 0)
 				break;
+
+			if (target_shard_id == 0 && sscanf(buf, "SCN: %"PRIi64, &tmp) == 1) {
+				scn[i] = tmp;
+				break;
+			}
 
 			if (sscanf(buf, "SCN-%i: %"PRIi64, &shard_id, &tmp) == 2) {
 				if (target_shard_id == shard_id) {
@@ -1565,6 +1573,10 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 	int tag = row->tag & TAG_MASK;
 	int tag_type = row->tag & ~TAG_MASK;
 
+	int inner_tag;
+	u64 term;
+	u16 flags;
+
 	static int print_header = -1;
 	if (print_header == -1) {
 		if (getenv("OCTOPUS_CAT_ROW_HEADER"))
@@ -1574,7 +1586,7 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 	}
 	if (print_header == 1) {
 		tbuf_printf(buf, "lsn:%" PRIi64, row->lsn);
-		if (row->scn != -1 || (tag_type == TAG_SNAP && tag != snap_initial && tag != snap_final)) {
+		if (row->scn != -1  || tag == raft_vote || (tag_type == TAG_SNAP && tag != snap_initial && tag != snap_final)) {
 			tbuf_printf(buf, " shard:%i", row->shard_id);
 #if 0
 			i64 rem_scn = 0;
@@ -1663,6 +1675,7 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 		tbuf_printf(buf, " shard_id:%i", row->shard_id);
 
 		switch (type) {
+		case SHARD_TYPE_RAFT: tbuf_printf(buf, " RAFT"); break;
 		case SHARD_TYPE_POR: tbuf_printf(buf, " POR"); break;
 		case SHARD_TYPE_PART: tbuf_printf(buf, " PART"); break;
 		default: tbuf_printf(buf, " shard_type:%i", type);
@@ -1688,11 +1701,39 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 	case snap_final:
 	case nop:
 		break;
+
+	case raft_append:
+	case raft_commit:
+		flags = read_u16(&row_data);
+		term = read_u64(&row_data);
+		inner_tag = read_u16(&row_data);
+		tbuf_printf(buf, "term:%"PRIi64" flags:0x%02x it:%s ", term, flags, xlog_tag_to_a(inner_tag));
+
+		switch(inner_tag & TAG_MASK) {
+		case run_crc: {
+			i64 scn = read_u64(&row_data);
+			u32 log = read_u32(&row_data);
+			(void)read_u32(&row_data); /* ignore run_crc_mod */
+			tbuf_printf(buf, "SCN:%"PRIi64 " log:0x%08x", scn, log);
+			break;
+		}
+		case nop:
+			break;
+		default:
+			handler(buf, inner_tag, &row_data);
+			break;
+		}
+		break;
+	case raft_vote:
+		flags = read_u16(&row_data);
+		term = read_u64(&row_data);
+		u8 peer_id = read_u8(&row_data);
+		tbuf_printf(buf, "term:%"PRIi64" flags:0x%02x peer:%i", term, flags, peer_id);
+		break;
+
 	default:
 		handler(buf, row->tag, &row_data);
 	}
 }
-
-
 
 register_source();

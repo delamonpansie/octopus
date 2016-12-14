@@ -213,6 +213,7 @@ u32 iproto_mbox_send(struct iproto_mbox *mbox, struct iproto_egress *peer,
 int iproto_mbox_broadcast(struct iproto_mbox *mbox, struct iproto_egress_list *group,
 			  const struct iproto *msg, const struct iovec *iov, int iovcnt);
 void iproto_mbox_wait_all(struct iproto_mbox *mbox, ev_tstamp timeout);
+void iproto_mbox_transfer(struct iproto_mbox *src, struct iproto_mbox *dst);
 
 struct iproto *iproto_sync_send(struct iproto_egress *peer,
 				const struct iproto *msg, const struct iovec *iov, int iovcnt);

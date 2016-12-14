@@ -6,7 +6,7 @@ XCFLAGS += -I$(OCAMLLIB)/ocaml -DCAML_NAME_SPACE
 XLDFLAGS += -L$(OCAMLLIB)/ocaml
 XLIBS += -lunix -lasmrun -lcamlstr -lnums -lbigarray
 
-OCAMLINC += -I src-ml -I +../batteries 
+OCAMLINC += -I src-ml -I +../batteries
 OCAMLLIBS += dynlink.cmxa str.cmxa unix.cmxa bigarray.cmxa nums.cmxa batteries.cmxa
 
 OCAMLFLAGS += -annot

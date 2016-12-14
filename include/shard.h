@@ -78,12 +78,13 @@
 
 @end
 
-enum shard_type { SHARD_TYPE_POR = 0, SHARD_TYPE_PART = 2 } ;
+enum shard_type { SHARD_TYPE_POR, SHARD_TYPE_RAFT, SHARD_TYPE_PART } ;
 
 struct shard_route {
 	Shard<Shard> *shard;
 	struct iproto_egress *proxy;
 	struct rwlock lock;
+	i64 last_known_scn;
 };
 
 struct shard_conf {
@@ -93,9 +94,9 @@ struct shard_conf {
 	const struct feeder_param *feeder_param;
 };
 
-struct shard_route shard_rt[MAX_SHARD];
+extern struct shard_route shard_rt[MAX_SHARD];
 
-void update_rt(int shard_id, Shard<Shard> *shard, const char *peer_name);
+void update_rt(int shard_id, Shard<Shard> *shard, const char *peer_name, i64 scn);
 
 enum port_type { PORT_PRIMARY, PORT_REPLICATION };
 const struct sockaddr_in *peer_addr(const char *name, enum port_type port_type);

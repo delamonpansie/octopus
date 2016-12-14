@@ -33,6 +33,8 @@
 #import <tbuf.h>
 #import <net_io.h>
 #import <assoc.h>
+#import <iproto.h>
+#import <raft.h>
 #import <shard.h>
 #import <cfg/defs.h>
 #import <iproto.h>
@@ -55,6 +57,7 @@ i64 fold_scn = 0;
 static void recovery_iproto_ignore(void);
 static void recovery_iproto(void);
 
+struct shard_route shard_rt[MAX_SHARD];
 
 bool
 our_shard(const struct shard_op *sop)
@@ -96,13 +99,13 @@ peer_addr(const char *name, enum port_type port_type)
 }
 
 void
-update_rt(int shard_id, Shard<Shard> *shard, const char *master_name)
+update_rt(int shard_id, Shard<Shard> *shard, const char *master_name, i64 scn)
 {
 	static struct msg_void_ptr msg;
 	// FIXME: do a broadcast after change local destinations
 	struct shard_route *route = &shard_rt[shard_id];
-	static struct netmsg_pool_ctx ctx = { .cfg = {.name = "proxy_pool"},
-					      .limit = 64 * 1024 };
+	static struct netmsg_pool_ctx ctx;
+	netmsg_pool_ctx_init(&ctx, "proxy_pool", 64 * 1024);
 
 	const struct sockaddr_in *addr = NULL;
 	if (master_name && strcmp(master_name, "<dummy_addr>") != 0) {
@@ -115,6 +118,9 @@ update_rt(int shard_id, Shard<Shard> *shard, const char *master_name)
 
 	route->shard = shard;
 	route->proxy = NULL;
+
+	if (scn > route->last_known_scn)
+		route->last_known_scn = scn;
 
 	if (master_name) {
 		if (!addr) {
@@ -272,7 +278,8 @@ validate_sop(struct netmsg_head *wbuf, const struct iproto *req, void *data, int
 			}
 	}
 
-	if (sop->type != SHARD_TYPE_POR &&
+	if (sop->type != SHARD_TYPE_RAFT &&
+	    sop->type != SHARD_TYPE_POR &&
 	    sop->type != SHARD_TYPE_PART)
 	{
 		sop_err("sop: invalid shard type %i", sop->type);
@@ -297,6 +304,7 @@ init
 	snap_writer = [[SnapWriter alloc] init_state:self];
 
 	ev_init(&snapshot_timer, pending_snapshot);
+	memset(shard_rt, 0, sizeof(shard_rt));
 	return self;
 }
 
@@ -315,10 +323,23 @@ init
 
 - (id<XLogWriter>) writer { return writer; }
 
+- (void)
+request_snapshot
+{
+	static ev_tstamp delay;
+	if (delay == 0)
+		delay = getenv("OCTOPUS_TEST") ? 0.1 : 60;
+	ev_timer_stop(&snapshot_timer);
+	ev_timer_set(&snapshot_timer, delay, 0.);
+	ev_timer_start(&snapshot_timer);
+}
+
 - (Shard<Shard> *)
 shard_alloc:(char)type
 {
 	switch (type) {
+	case SHARD_TYPE_RAFT:
+		return [Raft alloc];
 	case SHARD_TYPE_POR:
 	case SHARD_TYPE_PART:
 		return [POR alloc];
@@ -335,7 +356,7 @@ shard_create:(int)shard_id scn:(i64)scn run_crc:(u32)run_crc sop:(const struct s
 	Shard<Shard> *shard = [self shard_alloc:sop->type];
 	[shard init_id:shard_id scn:scn run_crc:run_crc sop:sop];
 	[shard set_executor:[[objc_lookUpClass(sop->mod_name) alloc] init]];
-	update_rt(shard->id, shard, NULL);
+	update_rt(shard->id, shard, NULL, 0);
 	shard_log("shard_create", shard->id);
 
 	return shard;
@@ -369,13 +390,13 @@ shard_create_dummy:(const struct row_v12 *)row
 	shard->dummy = true;
 	[shard init_id:0 scn:scn run_crc:run_crc sop:&op];
 	[shard set_executor:[[default_exec_class alloc] init]];
-	update_rt(shard->id, shard, is_master ? NULL : "<dummy_addr>");
+	update_rt(shard->id, shard, is_master ? NULL : "<dummy_addr>", 0);
 	shard_log("shard_create_dummy", shard->id);
 	return shard;
 }
 
 - (void)
-shard_alter_type:(Shard<Shard> **)shard sop:(struct shard_op *)sop
+shard_alter_type:(Shard<Shard> **)shard scn:(i64)scn sop:(struct shard_op *)sop
 {
 	Shard *old_shard = *shard,
 	      *new_shard = [self shard_alloc:sop->type];
@@ -386,14 +407,26 @@ shard_alter_type:(Shard<Shard> **)shard sop:(struct shard_op *)sop
 	*shard = new_shard;
 	[*shard alter:sop];
 	old_shard->executor = nil;
+
+	/* FIXME: в [shard free] есть проверка на то, что shard_rt[self->id].shard == self
+	   если она не совпадает, [free] не обновляет роутинг */
+	const char *master = sop->peer[0];
+	if (strcmp(master, cfg.hostname) == 0)
+		master = NULL;
+	update_rt(new_shard->id, new_shard, master, scn);
+	shard_log("alter_type", new_shard->id);
+
 	[old_shard release];
+
+        [*shard wal_final_row];
 }
 
 - (void)
 shard_op_create:(int)shard_id sop:(struct shard_op *)sop
 {
 	Shard<Shard> *shard;
-	shard = [self shard_create:shard_id scn:1 run_crc:0 sop:sop];
+	i64 scn = shard_rt[shard_id].last_known_scn + 1;
+	shard = [self shard_create:shard_id scn:scn run_crc:0 sop:sop];
 
 	struct wal_pack pack;
 	wal_pack_prepare(writer, &pack);
@@ -407,6 +440,23 @@ shard_op_create:(int)shard_id sop:(struct shard_op *)sop
 	assert(shard_rt[shard->id].shard == shard);
 }
 
+- (void)
+shard_op_delete:(Shard<Shard> *)shard
+{
+	update_rt(shard->id, nil, NULL, [shard scn]);
+         /* FIXME: [shard free] тоже очистит роут, нужно ли это тут?
+	    нет ли тут грабли с рейсом?
+	    может быть надо держать лок на все время мета-операции?
+
+	    предположим, что к нам пришел делит а следом крейт.
+	    мы очистили роут, сделали release. но шард кто-то держит и он не
+	    удалятся.
+	    после этого мы создаем новый шард.
+	    кто-то отпускает старый, отрабатывает [free] и зачищает роут
+	 */
+	[shard release];
+	[self request_snapshot]; // FIXME: do a proper WAL write
+}
 
 - (void)
 shard_op_alter_peer:(Shard<Shard> *)shard sop:(struct shard_op *)sop
@@ -420,13 +470,13 @@ shard_op_alter_peer:(Shard<Shard> *)shard sop:(struct shard_op *)sop
 - (void)
 shard_op_alter_type:(Shard<Shard> *)shard type:(char)type
 {
-	assert(type == 0 || type == 2);
+	assert(type == 0 || type == 1 || type == 2);
 	struct shard_op *sop = [shard shard_op];
 	sop->type = type;
 	if ([shard submit:sop len:sizeof(*sop) tag:shard_alter] != 1)
 		iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
 
-	[self shard_alter_type:&shard sop:sop];
+	[self shard_alter_type:&shard scn:shard->scn sop:sop];
 	shard_log("shard_alter_type", shard->id);
 }
 
@@ -443,7 +493,7 @@ recover_row:(struct row_v12 *)r
 	int old_ushard = fiber->ushard;
 	static int state = -1;
 	if (shard) {
-		if (r->scn <= shard->scn && shard->snap_loaded && !shard->dummy) {
+		if ((r->scn > 0 && r->scn <= shard->scn) && shard->snap_loaded && !shard->dummy) {
 			say_debug("%s: skip LSN:%"PRIi64" SCN:%"PRIi64" tag:%s",
 				  __func__, r->lsn, r->scn, xlog_tag_to_a(r->tag));
 
@@ -490,13 +540,22 @@ recover_row:(struct row_v12 *)r
 		case shard_alter: {
 			if (cfg.hostname == NULL)
 				panic("cfg.hostname is missing");
+
 			struct shard_op *sop = (struct shard_op *)r->data;
 			if (our_shard(sop) && shard) {
 				struct shard_op *old = [shard shard_op];
 
-				if (sop->type != old->type)
-					[self shard_alter_type:&shard sop:sop];
+				[shard recover_row:r]; /* обновим SCN и run_crc
+							  т.к. на мастере shard_alter_op делает изменения после
+							  записи, то он видит уже новые SCN и run_crc */
+				if (sop->type != old->type) {
+                                        [self shard_alter_type:&shard scn:r->scn sop:sop];
+                                }
+			} else {
+				[shard recover_row:r];
+				shard = nil;
 			}
+			return;
 		}
 		default:
 			break;
@@ -576,8 +635,13 @@ load_from_remote
 void
 wal_lock(va_list ap __attribute__((unused)))
 {
-	while ([wal_dir lock] != 0)
-		fiber_sleep(1);
+	if ([wal_dir lock] != 0) {
+		for (int i = 0; i < MAX_SHARD; i++)
+			[[recovery shard:i] wal_final_row];
+
+		do fiber_sleep(1);
+		while ([wal_dir lock] != 0);
+	}
 
 	[recovery enable_local_writes];
 }
@@ -607,8 +671,6 @@ simple:(struct iproto_service *)service
 
 	if (cfg.local_hot_standby) {
 		[reader hot_standby];
-		for (int i = 0; i < MAX_SHARD; i++)
-			[[self shard:i] wal_final_row];
 		fiber_create("wal_lock", wal_lock, self);
 	} else {
 		[self enable_local_writes];
@@ -673,6 +735,7 @@ enable_local_writes
 
 	for (int i = 0; i < MAX_SHARD; i++) {
 		Shard *shard = [self shard:i];
+
 		if (shard && [shard our_shard])
 			[shard enable_local_writes];
 		else
@@ -725,17 +788,6 @@ write_initial_state
 {
 	initial_snap = true;
 	return [snap_writer snapshot_write];
-}
-
-- (void)
-request_snapshot
-{
-	static ev_tstamp delay;
-	if (delay == 0)
-		delay = getenv("OCTOPUS_TEST") ? 0.1 : 60;
-	ev_timer_stop(&snapshot_timer);
-	ev_timer_set(&snapshot_timer, delay, 0.);
-	ev_timer_start(&snapshot_timer);
 }
 
 - (int)
@@ -864,6 +916,11 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req)
 			for (i = 1; i < nelem(sop->peer); i++)
 				strcpy(sop->peer[i], read_bytes(&data, 16));
 			break;
+		case SHARD_TYPE_RAFT:
+			strcpy(sop->peer[0], cfg.hostname);
+			for (i = 1; i < 3; i++)
+				strcpy(sop->peer[i], read_bytes(&data, 16));
+			break;
 		case SHARD_TYPE_PART:
 			strcpy(sop->peer[0], read_bytes(&data, 16));
 			strcpy(sop->peer[1], cfg.hostname);
@@ -904,17 +961,21 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req)
 		char type = read_u8(&data);
 		switch (type) {
 		case SHARD_TYPE_POR:
+		case SHARD_TYPE_RAFT:
 		case SHARD_TYPE_PART:
 			break;
 		default:
-			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "unsuported type");
+			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "unsupported shard type");
 		}
 
-		if (sop->type == SHARD_TYPE_POR && type == SHARD_TYPE_PART) {
+		if (sop->type == SHARD_TYPE_POR && type == SHARD_TYPE_RAFT) {
+			if (peer_idx(sop, (char[16]){0}) != 3)
+				iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "bad peer count");
+		} else if (sop->type == SHARD_TYPE_POR && type == SHARD_TYPE_PART) {
 			if (peer_idx(sop, (char[16]){0}) != 2)
 				iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "bad peer count");
 		} else
-			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "unsuported type change");
+			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "unsupported shard type change");
 		[recovery shard_op_alter_type:shard type:type];
 		iproto_reply_small(wbuf, req, ERR_CODE_OK);
 		return;
@@ -927,9 +988,7 @@ iproto_shard_cb(struct netmsg_head *wbuf, struct iproto *req)
 	case 1: /* delete */
 		if (peer_idx(sop, (char[16]){0}) != 1)
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't delete shard with replicas");
-		update_rt(shard->id, nil, NULL);
-		[shard release];
-		[recovery request_snapshot]; // FIXME: do a proper WAL write
+		[recovery shard_op_delete:shard];
 		break;
 	case 2: /* upgrade dummy */
 		if (!shard->dummy)
@@ -1052,7 +1111,7 @@ iproto_shard_udpcb(const char *buf, ssize_t len, void *data __attribute__((unuse
 
 	if (shard == nil) {
 		if (!our_shard(sop))
-			update_rt(shard_id, nil, sop->peer[0]);
+			update_rt(shard_id, nil, sop->peer[0], scn);
 		else
 			fiber_create("load shard", iproto_shard_load_aux, shard_id, sop);
 		return;
@@ -1091,6 +1150,7 @@ recovery_iproto(void)
 		fiber_create("udpate_rt_notify", update_rt_notify);
 		service_register_iproto(recovery_service, MSG_SHARD, iproto_shard_cb, IPROTO_LOCAL|IPROTO_WLOCK);
 		service_register_iproto(recovery_service, MSG_SHARD_RT, iproto_shard_rt_cb, IPROTO_LOCAL);
+		raft_service(recovery_service);
 	}
 }
 
@@ -1107,6 +1167,8 @@ recovery_iproto_ignore()
 		return;
 	if (cfg.peer && *cfg.peer && cfg.hostname && cfg_peer_by_name(cfg.hostname)) {
 		service_register_iproto(recovery_service, MSG_SHARD, iproto_ignore, IPROTO_LOCAL|IPROTO_NONBLOCK);
+		service_register_iproto(recovery_service, RAFT_REQUEST_VOTE, iproto_ignore, IPROTO_LOCAL|IPROTO_NONBLOCK);
+		service_register_iproto(recovery_service, RAFT_APPEND_ENTRIES, iproto_ignore, IPROTO_LOCAL|IPROTO_NONBLOCK);
 	} else {
 		say_info("usharding disabled (cfg.peer of cfg.hostname is bad or missing)");
 	}

@@ -204,6 +204,9 @@ replicate_row_stream:(id<XLogPullerAsync>)puller
 			break;
 		}
 
+		if (row->scn <= 0) // FIXME: а почему вообще такие строчки в сеть попадают?
+			continue;
+
 		if ([shard prepare_remote_row:row offt:pack_rows] == 0)
 			continue;
 
@@ -223,10 +226,14 @@ replicate_row_stream:(id<XLogPullerAsync>)puller
 		@try {
 			for (int j = 0; j < pack_rows; j++) {
 				row = rows[j]; /* this pointer required for catch below */
-				if ((row->tag & TAG_MASK) == shard_alter)
+				if ((row->tag & TAG_MASK) == shard_alter) {
 					[recovery recover_row:row];
-				else
+					// после этого shard может быть равен nil,
+					// (если у него менялся тип)
+
+				} else {
 					[shard recover_row:row];
+				}
 			}
 		}
 		@catch (Error *e) {

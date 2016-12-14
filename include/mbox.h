@@ -110,7 +110,7 @@ struct name {								\
 	struct mbox_consumer consumer = { .fiber = fiber,		\
 					  .msg_count = count };		\
 	ev_timer w;							\
-	if (delay) {							\
+	if (delay > 0) {							\
 		w = (ev_timer){ .coro = 1 };				\
 		ev_timer_init(&w, (void *)fiber, delay, 0);		\
 		ev_timer_start(&w);					\
@@ -126,7 +126,7 @@ struct name {								\
 		}							\
 	}								\
 	LIST_REMOVE(&consumer, conslink);				\
-	if (delay)							\
+	if (delay > 0)							\
 		ev_timer_stop(&w);					\
 	msg;								\
 })

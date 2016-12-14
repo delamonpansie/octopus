@@ -210,12 +210,12 @@ submit:(const void *)data len:(u32)len tag:(u16)tag
 adjust_route
 {
 	if ([self master] && recovery->writer) {
-		update_rt(self->id, self, NULL);
+		update_rt(self->id, self, NULL, 0);
 		[self status_update:"primary"];
 		struct feeder_param empty = { .addr = { .sin_family = AF_UNSPEC } };
 		[remote set_feeder:&empty];
 	} else {
-		update_rt(self->id, self, dummy ? "<dummy_addr>" : peer[0]);
+		update_rt(self->id, self, dummy ? "<dummy_addr>" : peer[0], 0);
 		if (recovery->writer)
 			[self remote_hot_standby];
 		else
