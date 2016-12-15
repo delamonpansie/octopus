@@ -11,9 +11,7 @@ obj += src/salloc.o
 obj += src/say.o
 obj += src/stat.o
 
-ifeq ($(CFG_graphite_addr),1)
- obj += src/graphite.o
-endif
+obj += src/graphite.o
 
 obj += src/octopus_ev.o
 obj += src/tbuf.o
