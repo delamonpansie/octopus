@@ -390,16 +390,12 @@ local(struct iproto_ingress_svc *io, struct iproto *msg, struct iproto_handler *
 		struct netmsg_mark header_mark;
 		netmsg_getmark(&io->wbuf, &header_mark);
 		@try {
-			fiber->ushard = msg->shard_id;
 			ih->cb(&io->wbuf, msg);
 		}
 		@catch (Error *e) {
 			netmsg_rewind(&io->wbuf, &header_mark);
 			iproto_error(&io->wbuf, msg, exc_rc(e), e->reason);
 			[e release];
-		}
-		@finally {
-			fiber->ushard = -1;
 		}
 	} else {
 		struct iproto_service *service = io->service;
@@ -435,9 +431,10 @@ classify(struct iproto_ingress_svc *io, struct iproto *msg)
 	@try {
 		if (msg->msg_code == MSG_IPROXY)
 			msg++; // unwrap
-		fiber->ushard = msg->shard_id;
-		say_debug2("%s: %s peer:%s op:0x%x sync:%u  ", __func__, msg == orig_msg ? "" : "PROXY",
-			   net_fd_name(io->fd), msg->msg_code, msg->sync);
+		if (likely(msg->msg_code < MSG_PING))
+			fiber->ushard = msg->shard_id;
+		say_debug2("%s: %s peer:%s op:0x%x sync:%u shard:%i ", __func__, msg == orig_msg ? "" : "PROXY",
+			   net_fd_name(io->fd), msg->msg_code, msg->sync, msg->shard_id);
 		if (unlikely(msg->shard_id > nelem(shard_rt)))
 			return error(io, msg, ERR_CODE_NONMASTER, "no such shard");
 		route = shard_rt + msg->shard_id;
