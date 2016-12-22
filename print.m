@@ -88,8 +88,7 @@ field_print(struct tbuf *buf, void *f, bool sep)
 		tbuf_putc(buf, '"');
 		break;
 	case 'x':
-		while (size-- > 0)
-			tbuf_putx(buf, *(char *)f++);
+		tbuf_putxs(buf, f, size);
 		break;
 	case '@':
 		if (size == 2) {
