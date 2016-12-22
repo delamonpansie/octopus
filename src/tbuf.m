@@ -263,6 +263,20 @@ tbuf_putx(struct tbuf *b, char c)
 	b->free -= 2;
 }
 
+void
+tbuf_putxs(struct tbuf *b, const char *s, size_t len)
+{
+	tbuf_ensure(b, len*2+1);
+	char *pos = b->end, *end = b->end + len*2;
+	for (;pos != end; s++, pos+=2) {
+		pos[0] = hex[(u8)(*s) >> 4];
+		pos[1] = hex[(u8)(*s) & 0x0f];
+	}
+	*end = 0;
+	b->end = end;
+	b->free -= len*2;
+}
+
 ssize_t
 tbuf_recv(struct tbuf *buf, int fd)
 {
