@@ -157,7 +157,7 @@ memcached_dispatch(Memcached *memc, int fd,
 		action add {
 			const char *key = next_key(&kstart);
 			struct tnt_object *obj = [mc_index find:key];
-			if (obj != NULL && !ghost(obj) && !expired(obj))
+			if (!missing(obj))
 				ADD_IOV_LITERAL("NOT_STORED\r\n");
 			else
 				STORE();
@@ -166,7 +166,7 @@ memcached_dispatch(Memcached *memc, int fd,
 		action replace {
 			char *key = next_key(&kstart);
 			struct tnt_object *obj = [mc_index find:key];
-			if (obj == NULL || ghost(obj) || expired(obj))
+			if (missing(obj))
 				ADD_IOV_LITERAL("NOT_STORED\r\n");
 			else
 				STORE();
@@ -175,7 +175,7 @@ memcached_dispatch(Memcached *memc, int fd,
 		action cas {
 			char *key = next_key(&kstart);
 			struct tnt_object *obj = [mc_index find:key];
-			if (obj == NULL || ghost(obj) || expired(obj))
+			if (missing(obj))
 				ADD_IOV_LITERAL("NOT_FOUND\r\n");
 			else if (mc_obj(obj)->cas != cas)
 				ADD_IOV_LITERAL("EXISTS\r\n");
@@ -186,7 +186,7 @@ memcached_dispatch(Memcached *memc, int fd,
 		action append_prepend {
 			char *key = next_key(&kstart);
 			struct tnt_object *obj = [mc_index find:key];
-			if (obj == NULL || ghost(obj)) {
+			if (missing(obj)) {
 				ADD_IOV_LITERAL("NOT_STORED\r\n");
 			} else {
 				struct mc_obj *m = mc_obj(obj);
@@ -208,7 +208,7 @@ memcached_dispatch(Memcached *memc, int fd,
 		action incr_decr {
 			char *key = next_key(&kstart);
 			struct tnt_object *obj = [mc_index find:key];
-			if (obj == NULL || ghost(obj) || expired(obj)) {
+			if (missing(obj)) {
 				ADD_IOV_LITERAL("NOT_FOUND\r\n");
 			} else {
 				struct mc_obj *m = mc_obj(obj);
@@ -254,7 +254,7 @@ memcached_dispatch(Memcached *memc, int fd,
 		action delete {
 			char *key = next_key(&kstart);
 			struct tnt_object *obj = [mc_index find:key];
-			if (obj == NULL || ghost(obj) || expired(obj)) {
+			if (missing(obj)) {
 				ADD_IOV_LITERAL("NOT_FOUND\r\n");
 			} else {
 				if (delete(memc, &key, 1)) {
@@ -271,7 +271,7 @@ memcached_dispatch(Memcached *memc, int fd,
 			while ((key = next_key(&kstart))) {
 				struct tnt_object *obj = [mc_index find:key];
 
-				if (obj == NULL || ghost(obj) || expired(obj)) {
+				if (missing(obj)) {
 					mc_stats.get_misses++;
 					continue;
 				}

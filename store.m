@@ -52,7 +52,7 @@ mc_alloc(const char *key, u32 exptime, u32 flags, u32 value_len, const char *val
 
 	struct tnt_object *obj = NULL;
 
-	obj = object_alloc(MC_OBJ, sizeof(struct mc_obj) +
+	obj = object_alloc(MC_OBJ, 1, sizeof(struct mc_obj) +
 			   key_len + suffix_len + value_len);
 
 	struct mc_obj *m = mc_obj(obj);
@@ -82,10 +82,9 @@ dtor(struct tnt_object *obj, struct index_node *node, void *arg __attribute__((u
 
 @implementation Memcached
 - (id)
-init_shard:(Shard<Shard> *)shard_
+init
 {
 	[super init];
-	shard = shard_;
 	mc_index = [[CStringHash alloc] init:NULL];
 	mc_index->dtor = dtor;
 
@@ -141,7 +140,7 @@ apply:(struct tbuf *)op tag:(u16)tag
 	switch(tag & TAG_MASK) {
 	case STORE:
 		m = op->ptr;
-		obj = object_alloc(MC_OBJ, mc_len(m));
+		obj = object_alloc(MC_OBJ, 1, mc_len(m));
 		object_incr_ref(obj);
 		memcpy(obj->data, m, mc_len(m));
 		[mc_index replace:obj];
@@ -218,11 +217,12 @@ status_changed
 	if (cfg.memcached_no_expire)
 		return;
 
-	if (shard->status == PRIMARY) {
-		fiber_create("memecached_expire", memcached_expire);
+	if ([shard is_replica] == false) {
+		if (expire_fiber == NULL)
+			expire_fiber = fiber_create("memecached_expire", memcached_expire);
 		return;
 	}
-	if (shard->prev_status ==  PRIMARY)
+	if ([shard is_replica] && expire_fiber != NULL)
 		panic("can't downgrade from primary");
 }
 
@@ -404,7 +404,7 @@ memcached_expire(va_list ap)
 		int k = 0;
 		for (int j = 0; j < cfg.memcached_expire_per_loop; j++, i++) {
 			struct tnt_object *obj = [mc_index get:i];
-			if (obj == NULL || ghost(obj))
+			if (obj == NULL || object_ghost(obj))
 				continue;
 
 			if (!expired(obj))
@@ -549,8 +549,11 @@ static void
 init_second_stage(va_list ap)
 {
 	Recovery *recovery = va_arg(ap, Recovery *);
-	[recovery simple];
+	[recovery simple:NULL];
+	[recovery shard_create_dummy:NULL];
 	Memcached *memc = [[recovery shard:0] executor];
+
+	assert(memc);
 
 	if (fiber_create("memcached/acceptor", tcp_server, cfg.primary_addr,
 			 memcached_accept, NULL, memc) == NULL)
@@ -575,7 +578,6 @@ memcached_init()
 	if (init_storage)
 		return;
 
-	fiber_create("memecached_expire", memcached_expire, recovery);
 	/* fiber is required to successfully pull from remote */
 	fiber_create("memcached_init", init_second_stage, recovery);
 }

@@ -5,6 +5,7 @@ obj += $(obj-log-io)
 obj += src/tnt_obj.o
 obj += src/iproto.o
 obj += src/iproto_client.o
+obj += $(obj-index)
 
 src/octopus.o src/net_io.o: XCFLAGS += -DOCT_OBJECT
 

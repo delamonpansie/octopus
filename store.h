@@ -32,6 +32,7 @@
 #import <log_io.h>
 
 @interface Memcached : Object <Executor> {
+	Fiber *expire_fiber;
 @public
 	Shard<Shard> *shard;
 	CStringHash *mc_index;
@@ -74,6 +75,12 @@ expired(struct tnt_object *obj)
 		return 0;
 	struct mc_obj *m = mc_obj(obj);
  	return m->exptime == 0 ? 0 : m->exptime < ev_now();
+}
+
+static inline bool
+missing(struct tnt_object *obj)
+{
+	return obj == NULL || object_ghost(obj) || expired(obj);
 }
 
 int store(Memcached *memc, const char *key, u32 exptime, u32 flags, u32 value_len, char *value);
