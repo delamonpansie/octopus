@@ -1583,18 +1583,34 @@ print_row(struct tbuf *buf, const struct row_v12 *row,
 			print_header = 1;
 	}
 	if (print_header == 1) {
-		tbuf_printf(buf, "lsn:%" PRIi64, row->lsn);
+		//tbuf_printf(buf, "lsn:%" PRIi64, row->lsn);
+		tbuf_append_lit(buf, "lsn:");
+		tbuf_putl(buf, row->lsn);
 		if (row->scn != -1) {
-			tbuf_printf(buf, " shard:%i", row->shard_id);
+			//tbuf_printf(buf, " shard:%i", row->shard_id);
+			tbuf_append_lit(buf, " shard:");
+			tbuf_putu(buf, row->shard_id);
 			i64 rem_scn = 0;
 			memcpy(&rem_scn, row->remote_scn, 6);
-			if (rem_scn)
+			if (rem_scn) {
 				tbuf_printf(buf, " rem_scn:%"PRIi64, rem_scn);
+				tbuf_append_lit(buf, " rem_scn:");
+				tbuf_putl(buf, rem_scn);
+			}
 		}
 
-		tbuf_printf(buf, " scn:%" PRIi64 " tm:%.3f t:%s ",
-			    row->scn, row->tm,
-			    xlog_tag_to_a(row->tag));
+		//tbuf_printf(buf, " scn:%" PRIi64 " tm:%.3f t:%s ",
+			    //row->scn, row->tm,
+			    //xlog_tag_to_a(row->tag));
+		tbuf_append_lit(buf, " scn:");
+		tbuf_putl(buf, row->scn);
+		tbuf_append_lit(buf, " tm:");
+		tbuf_putl(buf, row->tm);
+		tbuf_putc(buf, '.');
+		tbuf_putl(buf, (long)((row->tm-(long)row->tm)*1000));
+		tbuf_append_lit(buf, " t:");
+		tbuf_append_lit(buf, xlog_tag_to_a(row->tag));
+		tbuf_putc(buf, ' ');
 	}
 
 	if (!handler)
