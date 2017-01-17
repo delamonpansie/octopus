@@ -239,7 +239,7 @@ tbuf_printf(struct tbuf *b, const char *format, ...)
 	va_end(args);
 }
 
-void
+/*void
 tbuf_putc(struct tbuf *b, char c)
 {
 	tbuf_ensure(b, 2);
@@ -248,7 +248,7 @@ tbuf_putc(struct tbuf *b, char c)
 	*(end + 1) = '\0';
 	b->end += 1;
 	b->free -= 1;
-}
+}*/
 
 static const char *hex = "0123456789ABCDEF";
 void

@@ -88,18 +88,35 @@ void tbuf_ltrim(struct tbuf *b, size_t diff);
 void tbuf_rtrim(struct tbuf *b, size_t diff);
 
 void tbuf_append(struct tbuf *b, const void *data, size_t len);
-static inline void tbuf_append_lit(struct tbuf *b, const char *s) { tbuf_append(b, s, strlen(s)); }
-
 void* tbuf_expand(struct tbuf *b, size_t len);
 #define tbuf_add_dup(b, data) do { \
 	memcpy(tbuf_expand((b), sizeof(*(data))), (data), sizeof(*(data))); \
 } while(0)
+static inline void
+tbuf_append_lit(struct tbuf *b, const char *s) {
+	size_t len = strlen(s);
+	tbuf_ensure(b, len+1);
+	memcpy(b->end, s, len+1);
+	b->end += len;
+	b->free -= len;
+}
+
 void tbuf_append_field(struct tbuf *b, void *f);
 void tbuf_vprintf(struct tbuf *b, const char *format, va_list ap)
 	__attribute__ ((format(FORMAT_PRINTF, 2, 0)));
 void tbuf_printf(struct tbuf *b, const char *format, ...)
 	__attribute__ ((format(FORMAT_PRINTF, 2, 3)));
 
+static inline void
+tbuf_putc(struct tbuf *b, char c)
+{
+	tbuf_ensure(b, 2);
+	char *end = b->end;
+	*end = c;
+	*(end + 1) = '\0';
+	b->end += 1;
+	b->free -= 1;
+}
 void tbuf_putc(struct tbuf *b, char c);
 void tbuf_putx(struct tbuf *b, char c);
 void tbuf_putxs(struct tbuf *b, const char *s, size_t len);
