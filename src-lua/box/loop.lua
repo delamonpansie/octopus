@@ -5,6 +5,7 @@ local say_error = say_error
 local pairs, type = pairs, type
 local ev_now = os.ev_now
 local tostring = tostring
+local loops_stat = stat.new_with_graphite('loops')
 
 -- exmaple
 --
@@ -48,10 +49,12 @@ local function loop(state, conf)
         local sleep_till = state.sleeps[ushardn] or 0
         local ustate = state.states[ushardn]
         if sleep_till <= now then
+            loops_stat:add1(conf.name .. "_box_cnt")
             local ok, state_or_err, sleep = box.with_txn(ushardn, conf.exec, ustate, conf.user)
             fiber.gc()
             if not ok then
                 say_error('box.loop "%s"@%d: %s', conf.name, ushardn, state_or_err)
+                loops_stat:add1(conf.name .. "_box_error")
                 state_or_err = nil
                 sleep = end_sleep
             elseif state_or_err == nil and (sleep or 0) < end_sleep then
