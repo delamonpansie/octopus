@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2011, 2012, 2013, 2014, 2016 Mail.RU
- * Copyright (C) 2011, 2012, 2013, 2014, 2016 Yuriy Vostrikov
+ * Copyright (C) 2011, 2012, 2013, 2014, 2016, 2017 Mail.RU
+ * Copyright (C) 2011, 2012, 2013, 2014, 2016, 2017 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -38,6 +38,7 @@
 #include <stdbool.h>
 #include <sys/uio.h>
 #include <netinet/in.h>
+#include <sys/un.h>
 
 struct service;
 
@@ -155,17 +156,20 @@ struct tcp_server_state {
 	void (*handler)(int fd, void *data, struct tcp_server_state *state);
 	void (*on_bind)(int fd);
 	void *data;
-	struct sockaddr_in saddr;
+	struct sockaddr_storage saddr;
 	ev_io io;
 };
 void tcp_server(va_list ap);
 void tcp_server_stop(struct tcp_server_state *state);
 void udp_server(va_list ap);
-int server_socket(int type, struct sockaddr_in *src, int nonblock,
+int server_socket(int type, struct sockaddr *saddr, int nonblock,
 		  void (*on_bind)(int fd), void (*sleep)(ev_tstamp tm));
 
 int atosin(const char *orig, struct sockaddr_in *addr);
+int atosun(const char *orig, struct sockaddr_un *addr);
+int atosaddr(const char *orig, struct sockaddr *addr);
 const char *sintoa(const struct sockaddr_in *addr);
+const char *saddrtoa(const struct sockaddr *addr);
 const char *net_fd_name(int fd);
 const char *net_sin_name(const struct sockaddr_in *addr);
 int net_fixup_addr(char **addr, int port);

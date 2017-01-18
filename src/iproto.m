@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016, 2017 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016, 2017 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -277,7 +277,8 @@ void
 iproto_service(struct iproto_service *service, const char *addr)
 {
 	char *name = xmalloc(strlen("iproto:") + strlen(addr) + 1);
-	sprintf(name, "tcp:%s", addr);
+	sprintf(name, "iproto:%s", addr);
+	say_warn("addr %s", name);
 
 	TAILQ_INIT(&service->processing);
 	service->pool = palloc_create_pool((struct palloc_config){.name = name});
@@ -289,10 +290,10 @@ iproto_service(struct iproto_service *service, const char *addr)
 
 	if (service->ingress_class == Nil)
 		service->ingress_class = [iproto_ingress_svc class];
-	service->acceptor = fiber_create("tcp/acceptor", tcp_server, addr,
+	service->acceptor = fiber_create("iproto/acceptor", tcp_server, addr,
 					 iproto_accept_client, service->on_bind, service);
 	if (service->acceptor == NULL)
-		panic("unable to start tcp_service `%s'", addr);
+		panic("unable to start iproto_service `%s'", addr);
 
 	ev_prepare_init(&service->wakeup, (void *)iproto_wakeup_workers);
 	ev_prepare_start(&service->wakeup);
@@ -674,7 +675,10 @@ iproto_fixup_addr(struct octopus_cfg *cfg)
 		return -1;
 	}
 #if CFG_primary_port && CFG_secondary_port
-	if (strchr(cfg->primary_addr, ':') == NULL && !cfg->primary_port) {
+	if (strchr(cfg->primary_addr, ':') == NULL &&
+	    strchr(cfg->primary_addr, '/') == NULL &&
+	    !cfg->primary_port)
+	{
 		out_warning(0, "Option 'primary_port' is not set");
 		return -1;
 	}

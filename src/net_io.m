@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2011, 2012, 2013, 2014, 2016 Mail.RU
- * Copyright (C) 2011, 2012, 2013, 2014, 2016 Yuriy Vostrikov
+ * Copyright (C) 2011, 2012, 2013, 2014, 2016, 2017 Mail.RU
+ * Copyright (C) 2011, 2012, 2013, 2014, 2016, 2017 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -39,6 +39,7 @@
 #include <sys/uio.h>
 #include <sysexits.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <netinet/in.h>
@@ -723,7 +724,7 @@ sinany(struct sockaddr_in *sin, int port)
 }
 
 int
-server_socket(int type, struct sockaddr_in *sin, int nonblock,
+server_socket(int type, struct sockaddr *saddr, int nonblock,
 	      void (*on_bind)(int fd), void (*sleep)(ev_tstamp tm))
 {
 	int fd;
@@ -732,7 +733,7 @@ server_socket(int type, struct sockaddr_in *sin, int nonblock,
 	struct linger ling = { 0, 0 };
 	nonblock = !!nonblock;
 
-	if ((fd = socket(AF_INET, type, 0)) == -1) {
+	if ((fd = socket(saddr->sa_family, type, 0)) == -1) {
 		say_syserror("socket");
 		return -1;
 	}
@@ -742,31 +743,35 @@ server_socket(int type, struct sockaddr_in *sin, int nonblock,
 	    setsockopt(fd, SOL_SOCKET, SO_LINGER, &ling, sizeof(ling)) == -1)
 	{
 		say_syserror("setsockopt");
-		return -1;
+		goto error;
 	}
 
-	if (type == SOCK_STREAM)
+	if (type == SOCK_STREAM && saddr->sa_family == AF_INET)
 		if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one)) == -1) {
 			say_syserror("setsockopt");
-			return -1;
+			goto error;
 		}
 
 	if (ioctl(fd, FIONBIO, &nonblock) < 0) {
 		say_syserror("ioctl");
-		return -1;
+		goto error;
 	}
 
 #if OCT_CHILDREN
 	int keepalive_count = 0;
 #endif
+	const char *saddr_str = saddrtoa(saddr);
+	int saddr_size = saddr->sa_family == AF_INET ?
+			 sizeof(struct sockaddr_in) :
+			 sizeof(struct sockaddr_un);
 retry_bind:
-	if (bind(fd, (struct sockaddr *)sin, sizeof(*sin)) == -1) {
+	if (bind(fd, saddr, saddr_size) == -1) {
 		if (on_bind != NULL)
 			on_bind(-1);
 
 		if (errno == EADDRINUSE && sleep != NULL) {
 			if (!warning_said) {
-				say_syserror("bind(%s)", sintoa(sin));
+				say_syserror("bind(%s)", saddr_str);
 				say_info("will retry binding after 0.1 seconds.");
 				warning_said = true;
 			}
@@ -782,7 +787,7 @@ retry_bind:
 #endif
 			goto retry_bind;
 		}
-		say_syserror("bind(%s)", sintoa(sin));
+		say_syserror("bind(%s)", saddr_str);
 		return -1;
 	}
 
@@ -792,14 +797,31 @@ retry_bind:
 	if (type == SOCK_STREAM)
 		if (listen(fd, cfg.backlog) == -1) {
 			say_syserror("listen");
-			close(fd);
-			return -1;
+			goto error;
 		}
 
-	say_info("bound to %s/%s", type == SOCK_STREAM ? "TCP" : "UDP", sintoa(sin));
+	if (saddr->sa_family == AF_UNIX)
+		say_info("bound to UNIX/%s", saddr_str);
+	else
+		say_info("bound to %s/%s", type == SOCK_STREAM ? "TCP" : "UDP", saddr_str);
+
 	return fd;
+error:
+	if (fd) {
+		if (saddr->sa_family == AF_UNIX)
+			unlink(((struct sockaddr_un *)saddr)->sun_path);
+		close(fd);
+	}
+	return -1;
 }
 
+
+static void
+unlink_socket(int __attribute__((unused)) status, void *arg)
+{
+	struct sockaddr_un *addr = arg;
+	unlink(addr->sun_path);
+}
 
 void
 tcp_server(va_list ap)
@@ -815,11 +837,15 @@ tcp_server(va_list ap)
 	if (!state.addr)
 		return; /* exit before yield() will prevent fiber creation */
 
-	if (atosin(state.addr, &state.saddr) < 0)
+	if (atosaddr(state.addr, (struct sockaddr *)&state.saddr) < 0)
 		return;
 
-	if ((fd = server_socket(SOCK_STREAM, &state.saddr, 1, state.on_bind, fiber_sleep)) < 0)
+	if ((fd = server_socket(SOCK_STREAM, (struct sockaddr *)&state.saddr, 1,
+				state.on_bind, fiber_sleep)) < 0)
 		return;
+
+	if (((struct sockaddr *)&state.saddr)->sa_family == AF_UNIX)
+		on_exit(unlink_socket, &state.saddr);
 
 	state.io = (ev_io){ .coro = 1 };
 	ev_io_init(&state.io, (void *)fiber, fd, EV_READ);
@@ -894,7 +920,8 @@ udp_server(va_list ap)
 	if (atosin(addr, &saddr) < 0)
 		return;
 
-	if ((fd = server_socket(SOCK_DGRAM, &saddr, 1, on_bind, NULL)) < 0)
+	if ((fd = server_socket(SOCK_DGRAM, (struct sockaddr *)&saddr, 1,
+				on_bind, NULL)) < 0)
 		return;
 
 	ssize_t sz;
@@ -953,7 +980,13 @@ atosin(const char *orig, struct sockaddr_in *addr)
 	addr->sin_family = AF_UNSPEC;
 
 	if (orig == NULL || *orig == 0) {
+		say_warn("empty addr, using INADDR_ANY");
 		addr->sin_addr.s_addr = INADDR_ANY;
+		return -1;
+	}
+
+	if (strlen(orig) > 24) {
+		say_error("too long addr: %s", orig);
 		return -1;
 	}
 
@@ -991,6 +1024,27 @@ atosin(const char *orig, struct sockaddr_in *addr)
 	return 0;
 }
 
+int
+atosun(const char *str, struct sockaddr_un *addr)
+{
+	if (strlen(str) + 1 > sizeof(addr->sun_path)) {
+		say_error("too long addr: %s", str);
+		return -1;
+	}
+	addr->sun_family = AF_UNIX;
+	strcpy(addr->sun_path, str);
+	return 0;
+}
+
+int
+atosaddr(const char *str, struct sockaddr *addr)
+{
+	if ((*str == '.' && *(str + 1) == '/') || *str == '/')
+		return atosun(str, (struct sockaddr_un *)addr);
+	else
+		return atosin(str, (struct sockaddr_in *)addr);
+}
+
 const char *
 sintoa(const struct sockaddr_in *addr)
 {
@@ -998,6 +1052,16 @@ sintoa(const struct sockaddr_in *addr)
 	snprintf(buf, sizeof(buf), "%s:%i",
 		 inet_ntoa(addr->sin_addr), ntohs(addr->sin_port));
 	return buf;
+}
+
+const char *
+saddrtoa(const struct sockaddr *addr)
+{
+	switch (addr->sa_family) {
+	case AF_INET: return sintoa((const struct sockaddr_in *)addr);
+	case AF_UNIX: return ((struct sockaddr_un *)addr)->sun_path;
+	default: assert(false);
+	}
 }
 
 #if CFG_peer
