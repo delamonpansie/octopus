@@ -816,11 +816,24 @@ error:
 }
 
 
-static void
-unlink_socket(int __attribute__((unused)) status, void *arg)
+void
+tcp_server_stop(struct tcp_server_state *state)
 {
-	struct sockaddr_un *addr = arg;
-	unlink(addr->sun_path);
+	if (state->io.fd == -1)
+		return;
+
+	if (((struct sockaddr *)&state->saddr)->sa_family == AF_UNIX)
+		unlink(((struct sockaddr_un *)&state->saddr)->sun_path);
+
+	ev_io_stop(&state->io);
+	close(state->io.fd);
+	state->io.fd = -1;
+}
+
+static void
+tcp_server_on_exit(int status __attribute__((unused)), void *arg)
+{
+	tcp_server_stop(arg);
 }
 
 void
@@ -832,7 +845,7 @@ tcp_server(va_list ap)
 	state.on_bind = va_arg(ap, void (*)(int fd));
 	state.data = va_arg(ap, void *);
 
-	int cfd, fd, one = 1;
+	int cfd, fd, one = 1, af_inet = 1;
 
 	if (!state.addr)
 		return; /* exit before yield() will prevent fiber creation */
@@ -844,13 +857,13 @@ tcp_server(va_list ap)
 				state.on_bind, fiber_sleep)) < 0)
 		return;
 
-	if (((struct sockaddr *)&state.saddr)->sa_family == AF_UNIX)
-		on_exit(unlink_socket, &state.saddr);
-
 	state.io = (ev_io){ .coro = 1 };
 	ev_io_init(&state.io, (void *)fiber, fd, EV_READ);
-
 	ev_io_start(&state.io);
+
+	on_exit(tcp_server_on_exit, &state); /* close and delete socket on exit */
+	af_inet = ((struct sockaddr *)&state.saddr)->sa_family == AF_INET;
+
 	while (ev_is_active(&state.io)) {
 		yield();
 
@@ -861,9 +874,12 @@ tcp_server(va_list ap)
 				continue;
 			}
 
-			if (setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one)) == -1) {
-				say_syserror("setsockopt failed");
-				/* Do nothing, not a fatal error.  */
+			if (af_inet) {
+				int rc = setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY,
+						    &one, sizeof(one));
+				if (rc == -1)
+					say_syserror("setsockopt failed");
+					/* Do nothing, not a fatal error.  */
 			}
 
 			state.handler(cfd, state.data, &state);
@@ -893,14 +909,6 @@ tcp_server(va_list ap)
 		fiber_sleep(1);
 		ev_io_start(&state.io);
 	}
-}
-
-void
-tcp_server_stop(struct tcp_server_state *state)
-{
-	ev_io_stop(&state->io);
-	close(state->io.fd);
-	state->io.fd = -1;
 }
 
 void
