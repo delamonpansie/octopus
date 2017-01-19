@@ -278,7 +278,6 @@ iproto_service(struct iproto_service *service, const char *addr)
 {
 	char *name = xmalloc(strlen("iproto:") + strlen(addr) + 1);
 	sprintf(name, "iproto:%s", addr);
-	say_warn("addr %s", name);
 
 	TAILQ_INIT(&service->processing);
 	service->pool = palloc_create_pool((struct palloc_config){.name = name});
