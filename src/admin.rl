@@ -126,8 +126,9 @@ tbuf_reader(lua_State *L __attribute__((unused)), void *data, size_t *size)
 }
 
 static void
-exec_lua(lua_State *L, const char *str, size_t len, struct tbuf *out)
+exec_lua(const char *str, size_t len, struct tbuf *out)
 {
+	lua_State* L = fiber->L;
 	if (!cfg.admin_exec_lua) {
 		tbuf_printf(out, "error: command is disabled" CRLF);
 		return;
@@ -277,7 +278,7 @@ admin_dispatch(int fd, struct tbuf *rbuf)
 		action lua_exec {
 #if CFG_lua_path
 			start(out);
-			exec_lua(fiber->L, strstart, strend - strstart, out);
+			exec_lua(strstart, strend - strstart, out);
 			end(out);
 #endif
 		}
@@ -291,7 +292,8 @@ admin_dispatch(int fd, struct tbuf *rbuf)
 
 			struct tbuf *code = tbuf_alloc(fiber->pool);
 
-			lua_State *L = luaT_make_repl_env(fd);
+			lua_State *oldL = fiber->L;
+			fiber->L = luaT_make_repl_env(fd);
 
 			while ((pe = rbuf_getline(fd, rbuf)) != NULL) {
 				*pe++ = 0;
@@ -304,13 +306,14 @@ admin_dispatch(int fd, struct tbuf *rbuf)
 					break;
 				}
 
-				exec_lua(L, line, len - 1, out); /* without trailing \0 */
+				exec_lua(line, len - 1, out); /* without trailing \0 */
 				fiber_write(fd, out->ptr, tbuf_len(out));
 				fiber_write(fd, "> ", 2);
 				tbuf_reset(out);
 				tbuf_reset(code);
 			}
 
+			fiber->L = oldL;
 			lua_pop(fiber->L, 1);
 			if (pe == NULL)
 				return 0;
