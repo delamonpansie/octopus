@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Mail.RU
+ * Copyright (C) 2016, 2017 Mail.RU
  * Copyright (C) 2016 Yura Sokolov
  *
  * Redistribution and use in source and binary forms, with or without
@@ -64,9 +64,13 @@ graphite_init()
 	int i;
 	gethostname(buf, sizeof(buf));
 	buf[64] = 0;
+	char *addr = NULL;
+#if CFG_primary_addr
+	addr = cfg.primary_addr;
+#endif
 	graphite_head_len = snprintf(graphite_head, sizeof(graphite_head)-1,
 			"my.octopus.%s%s%s%s",
-			buf, cfg.primary_addr?":":"", cfg.primary_addr?:"",
+			buf, addr?":":"", addr?:"",
 			cfg.custom_proc_title?:"");
 	if (graphite_head_len > sizeof(graphite_head)-1)
 		graphite_head_len = sizeof(graphite_head)-1;
