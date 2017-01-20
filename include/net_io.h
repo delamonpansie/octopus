@@ -66,7 +66,8 @@ struct netmsg {
 	uintptr_t ref[NETMSG_IOV_SIZE];
 };
 
-#define NETMSG_IO_SHARED_POOL 1
+#define NETMSG_IO_SHARED_POOL	1
+#define NETMSG_IO_LINGER_CLOSE	2
 @interface netmsg_io : Object {
 @public
 	struct palloc_pool *pool;
@@ -79,6 +80,7 @@ struct netmsg {
 - (void)release; /* do not override : IMP caching in process_requests()  */
 - (id)retain; /* do not override : IMP caching in process_requests()  */
 - (void)close;
+- (void)linger_close;
 - (void)data_ready;
 - (void)tac_event:(int)fd; /* called on tcp_async_connect() result */
 @end

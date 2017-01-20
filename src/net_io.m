@@ -400,6 +400,31 @@ netmsg_writev(int fd, struct netmsg_head *head)
 }
 
 void
+netmsg_io_shutdown(struct netmsg_io *io, int how)
+{
+	if ((how == SHUT_WR || how == SHUT_RDWR) && io->out.fd != -1) {
+		ev_io_stop(&io->out);
+		io->out.fd = -1;
+	}
+	if ((how == SHUT_RD || how == SHUT_RDWR) && io->in.fd != -1) {
+		ev_io_stop(&io->in);
+		io->in.fd = -1;
+	}
+}
+
+void
+netmsg_io_close(struct netmsg_io *io)
+{
+	if (io->fd < 0)
+		return;
+	say_debug("closing connection to %s", net_fd_name(io->fd));
+	netmsg_io_shutdown(io, SHUT_RDWR);
+	if (close(io->fd) < 0)
+		say_syswarn("close");
+	io->fd = -1;
+}
+
+void
 netmsg_io_write_cb(ev_io *ev, int __attribute__((unused)) events)
 {
 	struct netmsg_io *io = container_of(ev, struct netmsg_io, out);
@@ -411,8 +436,13 @@ netmsg_io_write_cb(ev_io *ev, int __attribute__((unused)) events)
 		return;
 	}
 
-	if (io->wbuf.bytes == 0)
+	if (io->wbuf.bytes == 0) {
 		ev_io_stop(ev);
+		if (io->flags & NETMSG_IO_LINGER_CLOSE) {
+			netmsg_io_close(io);
+			netmsg_io_release(io);
+		}
+	}
 }
 
 void
@@ -539,16 +569,28 @@ tac_event:(int)event
 }
 
 - (void)
+shutdown:(int)how
+{
+	netmsg_io_shutdown(self, how);
+}
+
+- (void)
 close
+{
+	netmsg_io_close(self);
+}
+
+- (void)
+linger_close
 {
 	if (fd < 0)
 		return;
-	say_debug("closing connection to %s", net_fd_name(fd));
-	if (close(fd) < 0)
-		say_syswarn("close");
-	ev_io_stop(&out);
-	ev_io_stop(&in);
-	fd = in.fd = out.fd = -1;
+	if (wbuf.bytes == 0)
+		return netmsg_io_close(self);
+
+	netmsg_io_retain(self);
+	netmsg_io_shutdown(self, SHUT_RD);
+	flags |= NETMSG_IO_LINGER_CLOSE;
 }
 
 @end
