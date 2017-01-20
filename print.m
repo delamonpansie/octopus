@@ -80,9 +80,10 @@ field_print(struct tbuf *buf, void *f, bool sep)
 	case 's':
 		tbuf_putc(buf, '"');
 		while (size-- > 0) {
-			if (quote(*(u8 *)f))
+			if (quote(*(u8 *)f)) {
+				tbuf_append_lit(buf, "\\x");
 				tbuf_putx(buf, *(char *)f++);
-			else
+			} else
 				tbuf_putc(buf, *(char *)f++);
 		}
 		tbuf_putc(buf, '"');
