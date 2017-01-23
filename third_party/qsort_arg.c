@@ -75,14 +75,14 @@ do {		\
 		} while (--i > 0);				\
 } while (0)
 
-#define SWAPINIT(a, es) swaptype = ((char *)(a) - (char *)0) % sizeof(long) || \
-	(es) % sizeof(long) ? 2 : (es) == sizeof(long)? 0 : 1;
+#define SWAPINIT(a, es) swaptype = ((char *)(a) - (char *)0) % sizeof(unsigned) || \
+	(es) % sizeof(unsigned) ? 2 : (es) == sizeof(long)? 0 : 1;
 
 static void
 swapfunc(char *a, char *b, size_t n, int swaptype)
 {
 	if (swaptype <= 1)
-		swapcode(long, a, b, n);
+		swapcode(unsigned, a, b, n);
 	else
 		swapcode(char, a, b, n);
 }
@@ -188,14 +188,24 @@ loop:SWAPINIT(a, es);
 	vecswap(a, pb - r, r);
 	r = min(pd - pc, pn - pd - es);
 	vecswap(pb, pn - r, r);
-	if ((r = pb - pa) > es)
-		qsort_arg(a, r / es, es, cmp, arg);
-	if ((r = pd - pc) > es)
-	{
-		/* Iterate rather than recurse to save stack space */
-		a = pn - r;
-		n = r / es;
-		goto loop;
+	if (pb - pa < pd - pc) {
+		if ((r = pb - pa) > es)
+			qsort_arg(a, r / es, es, cmp, arg);
+		if ((r = pd - pc) > es)
+		{
+			/* Iterate rather than recurse to save stack space */
+			a = pn - r;
+			n = r / es;
+			goto loop;
+		}
+	} else {
+		if ((r = pd - pc) > es)
+			qsort_arg(pn - r, r / es, es, cmp, arg);
+		if ((r = pb - pa) > es)
+		{
+			/* Iterate rather than recurse to save stack space */
+			n = r / es;
+			goto loop;
+		}
 	}
-/*		qsort_arg(pn - r, r / es, es, cmp, arg);*/
 }
