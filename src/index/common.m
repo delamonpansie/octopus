@@ -414,7 +414,7 @@ lstr_init_pattern(struct tbuf *key, int cardinality,
 
 
 
-static int
+static inline int
 field_compare(union index_field *f1, union index_field *f2, enum index_field_type type)
 {
 	switch (type) {
