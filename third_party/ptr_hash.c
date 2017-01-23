@@ -196,11 +196,7 @@ struct ptr {
 #define TO_PTR(p) ((void*)(intptr_t)(p).ptr)
 #define FROM_PTR(p) ((ptr_t){.ptr = (intptr_t)(p)})
 
-#if USE_SSE
-#define BUCKET_SIZE 16
-#else
 #define BUCKET_SIZE 8
-#endif
 typedef uint16_t hshk;
 typedef struct ptr_bucket bucket_t;
 struct ptr_bucket {
@@ -449,21 +445,17 @@ static void ph_shrink_bucket(hash_t *h, void *arg) {
 }
 
 #if USE_SSE
-#define PH_ALL_EQ (0xffffffff)
+#define PH_ALL_EQ (0xffff)
 static inline uint32_t
 ph_check_bucket(hash_t *h, size_t pos, hshk hashik)
 {
 	uint32_t res = 0;
-	__m128i cmp, hsh, hsh1, eq, eq1;
+	__m128i cmp, hsh, eq;
 	bucket_t *b = &h->buckets[pos];
 	cmp = _mm_set1_epi16(hashik);
-	__builtin_prefetch((void*)b+64, 1, 0);
 	hsh = _mm_load_si128((__m128i*)b->hsh);
-	hsh1 = _mm_load_si128((__m128i*)(b->hsh + 8));
 	eq = _mm_cmpeq_epi16(hsh, cmp);
-	eq1 = _mm_cmpeq_epi16(hsh1, cmp);
 	res = _mm_movemask_epi8(eq);
-	res |= _mm_movemask_epi8(eq1) << 16;
 	return res;
 }
 
@@ -597,7 +589,6 @@ restart: {}
 #endif
 	pos1 = ph_getpos1(h, hash);
 	pos2 = ph_getpos2(h, hash, hashik);
-	__builtin_prefetch(h->buckets + pos2, 1, 0);
 	if ((res = ph_check_bucket(h, pos1, 0))) {
 		i = ph_next_i(&res);
 		h->buckets[pos1].hsh[i] = hashik;
@@ -648,7 +639,6 @@ ph_find_key(hash_t *h, uint64_t key, void *arg, size_t *bucket, int *pos)
 	void *ptr;
 	int i;
 	uint32_t res;
-	__builtin_prefetch(h->buckets + pos2, 0, 0);
 	res = ph_check_bucket(h, pos1, hashik);
 	while (res) {
 		i = ph_next_i(&res);
@@ -766,7 +756,6 @@ ph_insert(hash_t *h, void *obj, uint64_t key, void *arg)
 	void *ptr;
 	int i;
 	uint32_t res;
-	__builtin_prefetch(h->buckets + pos2, 1, 0);
 	res = ph_check_bucket(h, pos1, hashik);
 	while (res) {
 		i = ph_next_i(&res);
