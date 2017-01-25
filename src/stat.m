@@ -79,14 +79,6 @@ struct accum {
 #define mh_eq(h, a, b) ( (a) == (b) )
 #include <mhash.h>
 
-#define mh_name _strdbl
-#define mh_byte_map 1
-#define mh_neighbors 1
-#define MH_QUADRATIC_PROBING 1
-#define mh_key_t char *
-#define mh_val_t double
-#include <mhash.h>
-
 struct palloc_config stat_pool_cfg = {.name = "stat_names_pool"};
 struct stat_accum {
 	struct mh_accum_t values;
