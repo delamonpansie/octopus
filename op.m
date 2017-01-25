@@ -811,6 +811,7 @@ box_op_alloc(struct box_txn *txn, int msg_code, const void *data, int data_len)
 	TAILQ_INSERT_TAIL(&txn->ops, bop, link);
 	return bop;
 }
+static void box_op_rollback(struct box_op *bop);
 
 struct box_op *
 box_prepare(struct box_txn *txn, int op, const void *data, u32 data_len)
@@ -822,58 +823,64 @@ box_prepare(struct box_txn *txn, int op, const void *data, u32 data_len)
 	struct box_op *bop = box_op_alloc(txn, op, data, data_len);
 	struct tbuf buf = TBUF(data, data_len, NULL);
 
-	i32 n = read_u32(&buf);
-	bop->object_space = object_space(txn->box, n);
-	if (bop->object_space->ignored) {
-		/* bop->object_space == NULL means this txn will be ignored */
-		bop->object_space = NULL;
-		return bop;
-	}
-
-	switch (op) {
-	case INSERT:
-		bop->flags = read_u32(&buf);
-		u32 cardinality = read_u32(&buf);
-		u32 tuple_blen = tbuf_len(&buf);
-		void *tuple_bytes = read_bytes(&buf, tuple_blen);
-		prepare_replace(bop, cardinality, tuple_bytes, tuple_blen);
-		bop->ret_obj = bop->obj;
-		break;
-
-	case DELETE:
-		bop->flags = read_u32(&buf); /* RETURN_TUPLE */
-	case DELETE_1_3:
-		prepare_delete(bop, &buf);
-		bop->ret_obj = bop->old_obj;
-		break;
-
-	case UPDATE_FIELDS:
-		bop->flags = read_u32(&buf);
-		prepare_update_fields(bop, &buf);
-		bop->ret_obj = bop->obj;
-		break;
-
-	case NOP:
-		break;
-
-	default:
-		iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "unknown opcode:%"PRIi32, op);
-	}
-
-
-	if (bop->obj) {
-		if (bop->object_space->cardinality > 0 &&
-		    bop->object_space->cardinality != tuple_cardinality(bop->obj))
-		{
-			iproto_raise(ERR_CODE_ILLEGAL_PARAMS,
-				     "tuple cardinality must match object_space cardinality");
+	@try {
+		i32 n = read_u32(&buf);
+		bop->object_space = object_space(txn->box, n);
+		if (bop->object_space->ignored) {
+			/* bop->object_space == NULL means this txn will be ignored */
+			bop->object_space = NULL;
+			return bop;
 		}
 
-		if (!tuple_valid(bop->obj))
-			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "internal error");
+		switch (op) {
+		case INSERT:
+			bop->flags = read_u32(&buf);
+			u32 cardinality = read_u32(&buf);
+			u32 tuple_blen = tbuf_len(&buf);
+			void *tuple_bytes = read_bytes(&buf, tuple_blen);
+			prepare_replace(bop, cardinality, tuple_bytes, tuple_blen);
+			bop->ret_obj = bop->obj;
+			break;
+
+		case DELETE:
+			bop->flags = read_u32(&buf); /* RETURN_TUPLE */
+		case DELETE_1_3:
+			prepare_delete(bop, &buf);
+			bop->ret_obj = bop->old_obj;
+			break;
+
+		case UPDATE_FIELDS:
+			bop->flags = read_u32(&buf);
+			prepare_update_fields(bop, &buf);
+			bop->ret_obj = bop->obj;
+			break;
+
+		case NOP:
+			break;
+
+		default:
+			iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "unknown opcode:%"PRIi32, op);
+		}
+
+
+		if (bop->obj) {
+			if (bop->object_space->cardinality > 0 &&
+			    bop->object_space->cardinality != tuple_cardinality(bop->obj))
+			{
+				iproto_raise(ERR_CODE_ILLEGAL_PARAMS,
+					     "tuple cardinality must match object_space cardinality");
+			}
+
+			if (!tuple_valid(bop->obj))
+				iproto_raise(ERR_CODE_UNKNOWN_ERROR, "internal error");
+		}
+		if (tbuf_len(&buf) != 0)
+			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
+	} @catch(...) {
+		TAILQ_REMOVE(&txn->ops, bop, link);
+		box_op_rollback(bop);
+		@throw;
 	}
-	if (tbuf_len(&buf) != 0)
-		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
 
 	return bop;
 }
