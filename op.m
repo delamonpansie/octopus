@@ -995,15 +995,12 @@ box_rollback(struct box_txn *txn)
 {
 	say_debug2("%s: txn:%i/%p state:%i", __func__,
 		   txn->id, txn, txn->state);
-	if (txn->state == ROLLBACK)
-		goto cleanup;
 	assert(txn->state == UNDECIDED);
 	txn->state = ROLLBACK;
 
 	struct box_op *bop;
 	TAILQ_FOREACH_REVERSE(bop, &txn->ops, box_op_tailq, link)
 		box_op_rollback(bop);
-cleanup:
 	txn_cleanup(txn);
 }
 
