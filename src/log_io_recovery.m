@@ -519,7 +519,7 @@ recover_row:(struct row_v12 *)r
 				e->backtrace);
 		struct tbuf *out = tbuf_alloc(fiber->pool);
 		[[shard executor] print:r into:out];
-		printf("Failed row: %.*s\n", tbuf_len(out), (char *)out->ptr);
+		say_error("Failed row: %.*s\n", tbuf_len(out), (char *)out->ptr);
 
 		@throw;
 	}
