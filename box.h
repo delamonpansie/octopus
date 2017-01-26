@@ -215,6 +215,8 @@ void box_service_ro(struct iproto_service *s);
 	_(EXEC_LUA, 22)				\
 	_(PAXOS_LEADER, 90)			\
 	_(SELECT_KEYS, 99)			\
+	_(SELECT_TUPLES, 100)			\
+	_(SUBMIT_ERROR, 101)			\
 	_(CREATE_OBJECT_SPACE, 240)		\
 	_(CREATE_INDEX, 241)			\
 	_(DROP_OBJECT_SPACE, 242)		\

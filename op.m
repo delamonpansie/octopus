@@ -785,6 +785,7 @@ process_select(struct netmsg_head *h, Index<BasicIndex> *index,
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
 
 	stat_collect(stat_base, SELECT_KEYS, count);
+	stat_collect(stat_base, SELECT_TUPLES, *found);
 }
 
 static void __attribute__((noinline))
@@ -1072,6 +1073,9 @@ box_submit(struct box_txn *txn)
 						  tag:tlv|TAG_WAL];
 	}
 
+	if (txn->submit == 0) {
+		stat_collect(stat_base, SUBMIT_ERROR, 1);
+	}
 	return txn->submit ?: -1;
 }
 
@@ -1158,8 +1162,10 @@ box_meta_cb(struct netmsg_head *wbuf, struct iproto *request)
 		box_prepare_meta(&txn, &TBUF(request->data, request->data_len, NULL));
 		if ([box->shard submit:request->data
 				   len:request->data_len
-				   tag:request->msg_code<<5|TAG_WAL] != 1)
+				   tag:request->msg_code<<5|TAG_WAL] != 1) {
+			stat_collect(stat_base, SUBMIT_ERROR, 1);
 			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
+		}
 	}
 	@catch (id e) {
 		box_rollback_meta(&txn);
