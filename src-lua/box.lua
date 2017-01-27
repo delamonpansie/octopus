@@ -75,7 +75,7 @@ struct object_space *object_space_l(struct Box *box, int n);
 bool   box_is_primary(struct Box *box);
 int    shard_box_next_primary_n(int n);
 
-struct box_txn *box_txn_alloc(int, int);
+struct box_txn *box_txn_alloc(int, int, const char*);
 int    box_submit(struct box_txn *);
 void   box_commit(struct box_txn *);
 void   box_rollback(struct box_txn *);
@@ -213,8 +213,8 @@ function _M.next_primary_ushard_n(n)
     return ffi.C.shard_box_next_primary_n(n)
 end
 
-function with_txn(shard_id, cb, ...)
-    local txn = ffi.C.box_txn_alloc(shard_id, 1)
+function with_named_txn(shard_id, name, cb, ...)
+    local txn = ffi.C.box_txn_alloc(shard_id, 1, name)
     if txn == nil then
         return nil, "no such shard"
     end
@@ -231,6 +231,10 @@ function with_txn(shard_id, cb, ...)
         ffi.C.box_rollback(txn)
     end
     return unpack(ret)
+end
+
+function with_txn(shard_id, cb, ...)
+    return with_named_txn(shard_id, "lua.unnamed", cb, ...)
 end
 
 do

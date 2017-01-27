@@ -45,12 +45,14 @@ local function loop(state, conf)
     local now = ev_now()
     local min_sleep_till = now + end_sleep
     local states, sleeps = {}, {}
+    local txn_name = "loop:"..conf.name
+    local stat_name = conf.name .. "_box_cnt"
     repeat
         local sleep_till = state.sleeps[ushardn] or 0
         local ustate = state.states[ushardn]
         if sleep_till <= now then
-            loops_stat:add1(conf.name .. "_box_cnt")
-            local ok, state_or_err, sleep = box.with_txn(ushardn, conf.exec, ustate, conf.user)
+            loops_stat:add1(stat_name)
+            local ok, state_or_err, sleep = box.with_named_txn(ushardn, txn_name, conf.exec, ustate, conf.user)
             fiber.gc()
             if not ok then
                 say_error('box.loop "%s"@%d: %s', conf.name, ushardn, state_or_err)

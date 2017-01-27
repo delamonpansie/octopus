@@ -50,6 +50,7 @@
 #include <stdint.h>
 
 static int stat_base;
+static int stat_named_base;
 char const * const box_ops[] = ENUM_STR_INITIALIZER(MESSAGES);
 
 static struct slab_cache phi_cache;
@@ -723,12 +724,60 @@ prepare_update_fields(struct box_op *bop, struct tbuf *data)
 	object_space_replace(bop, pk_affected, old_root, bop->old_obj, bop->obj);
 }
 
+static inline
+enum BOX_SPACE_STAT message_to_boxstat(enum messages msg) {
+	switch (msg) {
+	case INSERT: return BSS_INSERT;
+	case UPDATE_FIELDS: return BSS_UPDATE;
+	case DELETE: return BSS_DELETE;
+	case DELETE_1_3: return BSS_DELETE;
+	default:
+		assert(false);
+	}
+}
+
+void
+object_space_fill_stat_names(struct object_space* space) {
+	char buf[128];
+	char const * * names;
+	names = xcalloc(BSS_MAX, sizeof(char const*));
+
+	sprintf(buf, "OP_INSERT:%d", space->n);
+	names[BSS_INSERT] = xstrdup(buf);
+	sprintf(buf, "OP_UPDATE:%d", space->n);
+	names[BSS_UPDATE] = xstrdup(buf);
+	sprintf(buf, "OP_DELETE:%d", space->n);
+	names[BSS_DELETE] = xstrdup(buf);
+	
+	for (int i=0; i<MAX_IDX; i++) {
+		sprintf(buf, "SELECT_%d_%d", space->n, i);
+		names[BSS_SELECT_IDX0+i] = xstrdup(buf);
+		sprintf(buf, "SELECT_TIME_%d_%d", space->n, i);
+		names[BSS_SELECT_TIME_IDX0+i] = xstrdup(buf);
+		sprintf(buf, "SELECT_KEYS_%d_%d", space->n, i);
+		names[BSS_SELECT_KEYS_IDX0+i] = xstrdup(buf);
+		sprintf(buf, "SELECT_TUPLES_%d_%d", space->n, i);
+		names[BSS_SELECT_TUPLES_IDX0+i] = xstrdup(buf);
+	}
+	space->statbase = stat_register_static("box", names, BSS_MAX);
+	for (int i=0; i<BSS_MAX; i++) {
+		free((void*)names[i]);
+	}
+	free(names);
+}
+
+void
+object_space_clear_stat_names(struct object_space* space) {
+	space->statbase = -1;
+}
+
 static void __attribute__((noinline))
-process_select(struct netmsg_head *h, Index<BasicIndex> *index,
+process_select(struct netmsg_head *h, struct object_space *space, int indexn,
 	       u32 limit, u32 offset, struct tbuf *data)
 {
 	struct tnt_object *obj;
 	uint32_t *found;
+	Index<BasicIndex> *index = space->index[indexn];
 	u32 count = read_u32(data);
 	index_cmp cmp = NULL;
 
@@ -786,6 +835,10 @@ process_select(struct netmsg_head *h, Index<BasicIndex> *index,
 
 	stat_collect(stat_base, SELECT_KEYS, count);
 	stat_collect(stat_base, SELECT_TUPLES, *found);
+	if (cfg.box_extended_stat) {
+		stat_sum_static(space->statbase, BSS_SELECT_KEYS_IDX0+indexn, count);
+		stat_sum_static(space->statbase, BSS_SELECT_TUPLES_IDX0+indexn, *found);
+	}
 }
 
 static void __attribute__((noinline))
@@ -916,6 +969,11 @@ txn_cleanup(struct box_txn *txn)
 	struct box_op *bop;
 	TAILQ_FOREACH(bop, &txn->ops, link)
 		box_op_cleanup(txn->state, bop);
+	if (cfg.box_extended_stat && txn->name != NULL) {
+		ev_tstamp diff = (ev_time() - txn->start) * 1000;
+		stat_aggregate_named(stat_named_base, txn->name, txn->namelen, diff);
+		stat_aggregate_named(stat_named_base, "TXN", 3, diff);
+	}
 }
 
 static void
@@ -954,6 +1012,10 @@ box_op_commit(struct box_op *bop)
 	TAILQ_FOREACH_SAFE(cell, &bop->phi, bop_link, tmp) {
 		phi_commit(cell);
 		sfree(cell);
+	}
+	if (cfg.box_extended_stat) {
+		stat_sum_static(bop->object_space->statbase,
+				message_to_boxstat(bop->op), 1);
 	}
 	stat_collect(stat_base, bop->op, 1);
 }
@@ -1003,6 +1065,12 @@ box_rollback(struct box_txn *txn)
 	TAILQ_FOREACH_REVERSE(bop, &txn->ops, box_op_tailq, link)
 		box_op_rollback(bop);
 	txn_cleanup(txn);
+	if (cfg.box_extended_stat && txn->name != NULL) {
+		struct tbuf buf = TBUF(NULL, 0, fiber->pool);
+		tbuf_append(&buf, txn->name, txn->namelen);
+		tbuf_append_lit(&buf, ":rollback");
+		stat_sum_named(stat_named_base, buf.ptr, tbuf_len(&buf), 1);
+	}
 }
 
 
@@ -1053,6 +1121,16 @@ box_submit(struct box_txn *txn)
 		return 0;
 	}
 
+	ev_tstamp submit_start = 0, diff;
+	if (cfg.box_extended_stat && txn->name != NULL) {
+		struct tbuf name = TBUF(NULL, 0, fiber->pool);
+		submit_start = ev_time();
+		diff = (submit_start - txn->start) * 1000;
+		tbuf_append(&name, txn->name, txn->namelen);
+		tbuf_append_lit(&name, ":cpu");
+		stat_aggregate_named(stat_named_base, name.ptr, tbuf_len(&name), diff);
+		stat_aggregate_named(stat_named_base, "TXN:cpu", 7, diff);
+	}
 	if (count == 1) {
 		txn->submit = [txn->box->shard submit:single->data
 						  len:single->data_len
@@ -1073,6 +1151,10 @@ box_submit(struct box_txn *txn)
 						  tag:tlv|TAG_WAL];
 	}
 
+	if (cfg.box_extended_stat && submit_start != 0) {
+		diff = (ev_time() - submit_start) * 1000;
+		stat_aggregate_named(stat_named_base, "TXN:submit", 7, diff);
+	}
 	if (txn->submit == 0) {
 		stat_collect(stat_base, SUBMIT_ERROR, 1);
 	}
@@ -1080,7 +1162,7 @@ box_submit(struct box_txn *txn)
 }
 
 struct box_txn *
-box_txn_alloc(int shard_id, enum txn_mode mode)
+box_txn_alloc(int shard_id, enum txn_mode mode, const char* name)
 {
 	static int cnt;
 	struct box_txn *txn = p0alloc(fiber->pool, sizeof(*txn));
@@ -1091,7 +1173,17 @@ box_txn_alloc(int shard_id, enum txn_mode mode)
 	TAILQ_INIT(&txn->ops);
 	assert(fiber->txn == NULL);
 	fiber->txn = txn;
-	say_debug2("%s: txn:%i/%p", __func__, txn->id, txn);
+	if (cfg.box_extended_stat && name != NULL && name[0] != 0) {
+		size_t namelen = strlen(name);
+		char* cpy = palloc(fiber->pool, namelen);
+		memmove(cpy, name, namelen);
+		txn->name = cpy;
+		txn->namelen = namelen;
+		txn->start = ev_time();
+		say_debug2("%s: txn:%i/%p name:%s", __func__, txn->id, txn, cpy);
+	} else {
+		say_debug2("%s: txn:%i/%p", __func__, txn->id, txn);
+	}
 	return txn;
 }
 
@@ -1100,7 +1192,21 @@ static void
 box_proc_cb(struct netmsg_head *wbuf, struct iproto *request)
 {
 	say_debug("%s: op:0x%02x sync:%u", __func__, request->msg_code, request->sync);
-	struct box_txn *txn = box_txn_alloc(request->shard_id, RO);
+	struct tbuf req = TBUF(request->data, request->data_len, NULL);
+	tbuf_ltrim(&req, sizeof(u32)); /* ignore flags */
+	int len = read_varint32(&req);
+	char *proc = req.ptr;
+	struct tbuf txnname = TBUF(NULL, 0, fiber->pool);
+	if (cfg.box_extended_stat) {
+		tbuf_append_lit(&txnname, "exec_lua.");
+		tbuf_append(&txnname, proc, len);
+		char *p = txnname.ptr + sizeof("exec_lua");
+		while ((p = strchr(p+1,'.')) != NULL) {
+			*p = '-';
+		}
+	}
+
+	struct box_txn *txn = box_txn_alloc(request->shard_id, RO, txnname.ptr);
 	if (![txn->box->shard is_replica])
 		txn->mode = RW;
 
@@ -1112,10 +1218,6 @@ box_proc_cb(struct netmsg_head *wbuf, struct iproto *request)
 			return;
 		}
   #if !CFG_lua_path
-		struct tbuf req = TBUF(request->data, request->data_len, NULL);
-		tbuf_ltrim(&req, sizeof(u32)); /* ignore flags */
-		int len = read_varint32(&req);
-		char *proc = req.ptr;
 		iproto_raise_fmt(ERR_CODE_ILLEGAL_PARAMS, "no such proc '%.*s'", len, proc);
   #endif
 #endif
@@ -1186,7 +1288,7 @@ box_meta_cb(struct netmsg_head *wbuf, struct iproto *request)
 static void
 box_cb(struct netmsg_head *wbuf, struct iproto *request)
 {
-	struct box_txn *txn = box_txn_alloc(request->shard_id, RW);
+	struct box_txn *txn = box_txn_alloc(request->shard_id, RW, box_ops[request->msg_code]);
 	say_debug2("%s: c:%p op:0x%02x sync:%u", __func__, NULL, request->msg_code, request->sync);
 
 	struct box_op *bop = NULL;
@@ -1198,8 +1300,9 @@ box_cb(struct netmsg_head *wbuf, struct iproto *request)
 		if (!bop->object_space)
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "ignored object space");
 
-		if (box_submit(txn) == -1)
+		if (box_submit(txn) == -1) {
 			iproto_raise(ERR_CODE_UNKNOWN_ERROR, "unable write wal row");
+		}
 
 		struct iproto_retcode *reply = iproto_reply(wbuf, request, ERR_CODE_OK);
 		net_add_iov_dup(wbuf, &txn->obj_affected, sizeof(u32));
@@ -1234,18 +1337,33 @@ box_select_cb(struct netmsg_head *wbuf, struct iproto *request)
 	u32 i = read_u32(&data);
 	u32 offset = read_u32(&data);
 	u32 limit = read_u32(&data);
-
+	ev_tstamp start = cfg.box_extended_stat ? ev_time() : 0;
 	obj_spc = object_space(box, n);
 
-	if (i > MAX_IDX)
-		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index too big");
+	@try {
 
-	if ((obj_spc->index[i]) == NULL)
-		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index is invalid");
+		if (i > MAX_IDX)
+			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index too big");
 
-	process_select(wbuf, obj_spc->index[i], limit, offset, &data);
-	iproto_reply_fixup(wbuf, reply);
-	stat_collect(stat_base, request->msg_code & 0xffff, 1);
+		if ((obj_spc->index[i]) == NULL)
+			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index is invalid");
+
+		process_select(wbuf, obj_spc, i, limit, offset, &data);
+		iproto_reply_fixup(wbuf, reply);
+	} @catch (...) {
+		char statname[] = "SELECT:00000000:err\0";
+		int len = sprintf(statname, "SELECT:%d:err", n);
+		stat_sum_named(stat_named_base, statname, len, 1);
+		@throw;
+	} @finally {
+		if (cfg.box_extended_stat) {
+			double diff = (ev_time() - start) * 1000;
+			stat_aggregate_static(obj_spc->statbase,
+					BSS_SELECT_TIME_IDX0 + i, diff);
+			stat_collect_double(stat_base, SELECT_TIME, diff);
+		}
+		stat_collect(stat_base, request->msg_code & 0xffff, 1);
+	}
 }
 
 #define foreach_op(...) for(int *op = (int[]){__VA_ARGS__, 0}; *op; op++)
@@ -1301,6 +1419,7 @@ void __attribute__((constructor))
 box_op_init(void)
 {
 	stat_base = stat_register(box_ops, nelem(box_ops));
+	stat_named_base = stat_register_named("box");
 }
 
 register_source();

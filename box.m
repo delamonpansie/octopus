@@ -125,6 +125,7 @@ configure_pk(Box *box)
 		obj_spc->snap = !!cfg.object_space[i]->snap;
 		obj_spc->wal = obj_spc->snap && !!cfg.object_space[i]->wal;
 		obj_spc->cardinality = cfg.object_space[i]->cardinality;
+		object_space_fill_stat_names(obj_spc);
 
 		if (cfg.object_space[i]->index == NULL)
 			panic("(object_space = %" PRIu32 ") at least one index must be defined", i);
