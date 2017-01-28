@@ -43,10 +43,20 @@ int stat_register_named(char const * base_name);
 /* registers static-offset based stat, returns position for fast access */
 int stat_register_static(char const * base_name, char const * const * opnames, size_t count);
 
+/* unregister stat */
+void stat_unregister(int base);
+
 /* api for named stat */
 void stat_sum_named(int base, char const * name, int len, double value);
 void stat_gauge_named(int base, char const * name, int len, double value);
 void stat_aggregate_named(int base, char const * name, int len, double value);
+
+/* api for fast named stat */
+struct stat_name;
+struct stat_name const * stat_malloc_name(const char* str, int len);
+void stat_sum_fastnamed(int base, struct stat_name const * name, double value);
+void stat_gauge_fastnamed(int base, struct stat_name const * name, double value);
+void stat_aggregate_fastnamed(int base, struct stat_name const * name, double value);
 
 /* api for static-offset based stat */
 void stat_sum_static(int base, int name, double value);

@@ -43,27 +43,102 @@
 
 #define SECS 5
 
+typedef u64 au64 __attribute__((__aligned__(1)));
+typedef u32 au32 __attribute__((__aligned__(1)));
+
 enum stat_base_type { SBASE_STATIC = 1, SBASE_DYNAMIC = 2, SBASE_CALLBACK = 3 };
 enum stat_accum_type { SACC_ACCUM = 1, SACC_DOUBLE = 2, SACC_GAUGE = 3 };
 int stat_current_base = -1;
 
-struct name {
+struct stat_name {
+	u64 hsh;
 	int len;
 	char str[];
 };
 
 static u64 hash_name(const char* str, int len);
-static struct name* malloc_name(const char* str, int len);
 
 struct accum {
 	u64 hsh;
-	struct name const * name;
+	struct stat_name const * name;
 	enum stat_accum_type type;
 	i64 cnt;
 	double sum;
 	double min;
 	double max;
+	au32 *hist;
 };
+#define HIST_MIN (-10)
+#define HIST_MAX (20)
+#define HIST_STEP (0.5)
+#define HIST_CNT (1+(int)((HIST_MAX - HIST_MIN)*2))
+
+const u64 half_log2 = ((u64)0x15f61<<32)|(u64)0x9980c433ul; /* exact */
+const u64 quot_log2 = (u64)0x518 << 40; /* approximate */
+static inline int
+hist_pos(double val) {
+	int p = 0;
+	if (val > 0) {
+#if defined(__amd64__) || defined(__i386__)
+		union {
+			double fl;
+			u64 i;
+		} v = {.fl = val};
+		/* approximate round(log2(v)*2) */
+		p = (int)((v.i + quot_log2)>>51) - 2046;
+#else
+		p = (int)round(log(val)/M_LN2*2);
+#endif
+		p -= HIST_MIN * 2 - 1;
+		if (p < 0) {
+			p = 0;
+		} else if (p >= HIST_CNT) {
+			p = HIST_CNT-1;
+		}
+	}
+	return p;
+}
+
+static inline double
+hist_val(int p) {
+	if (p == 0) return 0;
+	p += HIST_MIN * 2 - 1;
+#if defined(__amd64__) || defined(__i386__)
+	union {
+		double fl;
+		u64 i;
+	} v;
+	v.i = ((u64)(p + 2046) << 51) - (u64)(p&1)*half_log2;
+	return v.fl;
+#else
+	return pow((double)p/2, 2);
+#endif
+}
+
+struct stat_percent {
+	double p50, p90, p99;
+};
+static struct stat_percent
+hist_percent(uint32_t *hist, uint32_t cnt)
+{
+	int i;
+	uint32_t sum = 0, c1 = cnt/100, c10 = cnt/10, c50 = cnt/2;
+	struct stat_percent p = {-1,-1,-1};
+	for (i=HIST_CNT-1; i>=0; i--) {
+		sum += hist[i];
+		if (p.p99 < 0 && sum >= c1) {
+			p.p99 = hist_val(i);
+		}
+		if (p.p90 < 0 && sum >= c10) {
+			p.p90 = hist_val(i);
+		}
+		if (sum >= c50) {
+			p.p50 = hist_val(i);
+			break;
+		}
+	}
+	return p;
+}
 
 #define MH_STATIC 1
 #undef load_factor
@@ -73,6 +148,7 @@ struct accum {
 #define mh_neighbors 1
 #define mh_byte_map 0
 #define MH_QUADRATIC_PROBING 1
+#define MH_INCREMENTAL_RESIZE 0
 #define mh_slot_t struct accum
 #define mh_slot_key(h, s) ((s)->hsh)
 #define mh_hash(h, hsh) ( (hsh) )
@@ -108,10 +184,11 @@ stat_accum_destruct(struct stat_accum* sa)
 	memset(&sa->values, 0, sizeof(sa->values));
 }
 
-static struct name*
-stat_accum_alloc_name(struct stat_accum* sa, char const * name, int len)
+static struct stat_name*
+stat_accum_alloc_name(struct stat_accum* sa, u64 hsh, char const * name, int len)
 {
-	struct name* nm = palloc(sa->name_pool, sizeof(struct name) + len + 1);
+	struct stat_name* nm = palloc(sa->name_pool, sizeof(struct stat_name) + len + 1);
+	nm->hsh = hsh;
 	nm->len = len;
 	memcpy(nm->str, name, len);
 	nm->str[len] = 0;
@@ -124,7 +201,7 @@ stat_accum_get_accum(struct stat_accum* sa, u64 hsh, char const * name, int len)
 	u32 k = mh_accum_get(&sa->values, hsh);
 	if (k == mh_end(&sa->values)) {
 		struct accum tmp = {.hsh = hsh};
-		tmp.name = stat_accum_alloc_name(sa, name, len);
+		tmp.name = stat_accum_alloc_name(sa, tmp.hsh, name, len);
 		tmp.type = 0;
 		tmp.cnt = 0;
 		tmp.sum = 0;
@@ -142,7 +219,12 @@ static void
 stat_accum_dup_accum(struct stat_accum* sa, struct accum const *old)
 {
 	struct accum cpy = *old;
-	cpy.name = stat_accum_alloc_name(sa, cpy.name->str, cpy.name->len);
+	cpy.name = stat_accum_alloc_name(sa, cpy.name->hsh, cpy.name->str, cpy.name->len);
+	if (cpy.hist != NULL) {
+		u32 *hist = palloc(sa->name_pool, HIST_CNT * sizeof(u32));
+		memmove(hist, cpy.hist, HIST_CNT * sizeof(u32));
+		cpy.hist = hist;
+	}
 	mh_accum_sput(&sa->values, &cpy, NULL);
 }
 
@@ -164,11 +246,12 @@ struct stat_base {
 #endif
 	ev_tstamp period_start;
 	ev_tstamp period_stop;
+	int next_free;
 };
 
 static struct stat_base *stat_bases = NULL;
 static int stat_basen = 0;
-static int stat_base = 0;
+static int stat_free = -1;
 
 static int
 stat_register_any(char const *base_name, enum stat_base_type type, 
@@ -176,16 +259,22 @@ stat_register_any(char const *base_name, enum stat_base_type type,
 {
 	int i, bn;
 	struct stat_base *bs;
-	if (stat_basen == stat_base) {
+	if (stat_free == -1) {
 		int oldbasen = stat_basen;
 		stat_basen = stat_basen*2 ?: 8;
 		stat_bases = xrealloc(stat_bases, sizeof(*stat_bases)*stat_basen);
 		memset(stat_bases + sizeof(*stat_bases)*oldbasen, 0,
 				sizeof(*stat_bases) * (stat_basen - oldbasen));
+		for (i = oldbasen; i < stat_basen-1; i++) {
+			stat_bases[i].next_free = i+1;
+		}
+		stat_bases[stat_basen-1].next_free = -1;
+		stat_free = oldbasen;
 	}
-	bn = stat_base;
-	stat_base++;
+	bn = stat_free;
 	bs = stat_bases + bn;
+	stat_free = bs->next_free;
+	bs->next_free = -2;
 	bs->type = type;
 	bs->cb = cb;
 	bs->name = xstrdup(base_name);
@@ -197,8 +286,8 @@ stat_register_any(char const *base_name, enum stat_base_type type,
 		for (i = 0; i < count; i++) {
 			if (opnames[i] == NULL)
 				continue;
-			v[i].name = malloc_name(opnames[i], strlen(opnames[i]));
-			v[i].hsh = hash_name(opnames[i], strlen(opnames[i]));
+			v[i].name = stat_malloc_name(opnames[i], strlen(opnames[i]));
+			v[i].hsh = v[i].name->hsh;
 			v[i].type = 0;
 			v[i].cnt = 0;
 			v[i].sum = 0;
@@ -218,6 +307,32 @@ stat_register_any(char const *base_name, enum stat_base_type type,
 	bs->period_start = ev_now();
 	bs->period_stop = ev_now();
 	return bn;
+}
+
+void
+stat_unregister(int base)
+{
+	int i;
+	struct stat_base *bs;
+	assert(base < stat_basen);
+	bs = stat_bases + base;
+	assert(bs->name != NULL && bs->next_free == -2);
+	bs->next_free = stat_free;
+	stat_free = base;
+	if (bs->type == SBASE_STATIC) {
+		struct accum *v = bs->current.static_names.v;
+		for (i = 0; i < bs->current.static_names.n; i++) {
+			if (v[i].hist != NULL) {
+				free(v[i].hist);
+			}
+			free((void*)v[i].name);
+		}
+		free(v);
+	}
+	stat_accum_destruct(&bs->current.dynamic_names);
+	for (i = 0; i < nelem(bs->records); i++) {
+		stat_accum_destruct(&bs->records[i]);
+	}
 }
 
 static void
@@ -245,6 +360,9 @@ merge_stat(const char *basename, struct stat_accum *small, struct stat_accum *bi
 					bc->max = ac->max;
 				if (bc->min > ac->min)
 					bc->min = ac->min;
+				for (int i = 0; i < HIST_CNT; i++) {
+					bc->hist[i] += ac->hist[i];
+				}
 			} else if (ac->type == SACC_GAUGE) {
 				bc->sum = ac->sum;
 			} else {
@@ -260,9 +378,12 @@ merge_stat(const char *basename, struct stat_accum *small, struct stat_accum *bi
 static void
 stat_shift_all(ev_periodic *w _unused_, int revents _unused_) {
 	int i;
-	for (stat_current_base=0; stat_current_base<stat_base; stat_current_base++) {
+	for (stat_current_base=0; stat_current_base<stat_basen; stat_current_base++) {
 		struct stat_base *bs = stat_bases + stat_current_base;
 		struct stat_accum cur;
+		if (bs->name == NULL) {
+			continue;
+		}
 		if (bs->type == SBASE_CALLBACK) {
 			bs->cb(stat_current_base);
 		}
@@ -283,6 +404,10 @@ stat_shift_all(ev_periodic *w _unused_, int revents _unused_) {
 				v[i].sum = 0;
 				v[i].max = -1e300;
 				v[i].min = 1e300;
+				if (v[i].hist != NULL) {
+					for (int j = 0; j < HIST_CNT; j++)
+						v[i].hist[j] = 0;
+				}
 			}
 		} else {
 			panic("unknown stat type");
@@ -339,15 +464,19 @@ stat_admin_out(struct stat_accum *cur, struct tbuf *b)
 				avg = p->sum / p->cnt;
 				tbuf_printf(b, "%savg: %-8.3f", COMMA, avg);
 			}
-			if (p->min != 1e300)
+			if (p->min != 1e300) {
 				tbuf_printf(b, "%smin: %-8.3f", COMMA, p->min);
-			if (p->max != -1e300)
 				tbuf_printf(b, "%smax: %-8.3f", COMMA, p->max);
+				struct stat_percent pcnt = hist_percent(p->hist, p->cnt);
+				tbuf_printf(b, "%sp50: %-8.3f", COMMA, pcnt.p50);
+				tbuf_printf(b, "%sp90: %-8.3f", COMMA, pcnt.p90);
+				tbuf_printf(b, "%sp99: %-8.3f", COMMA, pcnt.p99);
+			}
 			sum_rps = p->sum / nelem(stat_bases[0].records);
 			if (p->cnt != 0)
 				tbuf_printf(b, "%scnt: %-8"PRIi64, COMMA, p->cnt);
 			if (p->cnt != 0 || p->sum != 0)
-				tbuf_printf(b, "%ssum: %-8.3f, ", COMMA, p->sum);
+				tbuf_printf(b, "%ssum: %-8.3f", COMMA, p->sum);
 			if (p->cnt != 0) {
 				cnt_rps = p->cnt / nelem(stat_bases[0].records);
 				tbuf_printf(b, "%scnt_rps: %-8"PRIi64, COMMA, cnt_rps);
@@ -390,7 +519,7 @@ stat_print(struct tbuf *out)
 	for (i=0; i<stat_basen; i++) {
 		struct stat_base *bs = stat_bases + i;
 		struct stat_accum *cur;
-		if (bs->recordsn == 0) continue;
+		if (bs->name == NULL || bs->recordsn == 0) continue;
 		u32 k = mh_cstr_get(&stats, bs->name);
 		if (k == mh_end(&stats)) {
 			cur = p0alloc(fiber->pool, sizeof(struct stat_accum));
@@ -466,13 +595,15 @@ acc_aggregate(struct accum *acc, double value)
 		acc->max = value;
 	if ( acc->min > value )
 		acc->min = value;
+	acc->hist[hist_pos(value)]++;
 }
 
 void
 stat_sum_named(int base, char const * name, int len, double value)
 {
-	assert(base < stat_base);
+	assert(base < stat_basen);
 	struct stat_base *bs = &stat_bases[base];
+	assert(bs->name != NULL);
 	u64 hsh = hash_name(name, len);
 	struct accum *acc = stat_accum_get_accum(&bs->current.dynamic_names, hsh, name, len);
 	acc_sum(acc, value);
@@ -481,8 +612,9 @@ stat_sum_named(int base, char const * name, int len, double value)
 void
 stat_gauge_named(int base, char const * name, int len, double value)
 {
-	assert(base < stat_base);
+	assert(base < stat_basen);
 	struct stat_base *bs = &stat_bases[base];
+	assert(bs->name != NULL);
 	u64 hsh = hash_name(name, len);
 	struct accum *acc = stat_accum_get_accum(&bs->current.dynamic_names, hsh, name, len);
 	acc_gauge(acc, value);
@@ -491,10 +623,50 @@ stat_gauge_named(int base, char const * name, int len, double value)
 void
 stat_aggregate_named(int base, char const * name, int len, double value)
 {
-	assert(base < stat_base);
+	assert(base < stat_basen);
 	struct stat_base *bs = &stat_bases[base];
+	assert(bs->name != NULL);
 	u64 hsh = hash_name(name, len);
 	struct accum *acc = stat_accum_get_accum(&bs->current.dynamic_names, hsh, name, len);
+	if (acc->hist == NULL) {
+		acc->hist = p0alloc(bs->current.dynamic_names.name_pool, HIST_CNT * sizeof(uint32_t));
+	}
+	acc_aggregate(acc, value);
+}
+
+void
+stat_sum_fastnamed(int base, struct stat_name const * name, double value)
+{
+	assert(base < stat_basen);
+	struct stat_base *bs = &stat_bases[base];
+	assert(bs->name != NULL);
+	struct accum *acc = stat_accum_get_accum(&bs->current.dynamic_names,
+			name->hsh, name->str, name->len);
+	acc_sum(acc, value);
+}
+
+void
+stat_gauge_fastnamed(int base, struct stat_name const * name, double value)
+{
+	assert(base < stat_basen);
+	struct stat_base *bs = &stat_bases[base];
+	assert(bs->name != NULL);
+	struct accum *acc = stat_accum_get_accum(&bs->current.dynamic_names,
+			name->hsh, name->str, name->len);
+	acc_gauge(acc, value);
+}
+
+void
+stat_aggregate_fastnamed(int base, struct stat_name const * name, double value)
+{
+	assert(base < stat_basen);
+	struct stat_base *bs = &stat_bases[base];
+	assert(bs->name != NULL);
+	struct accum *acc = stat_accum_get_accum(&bs->current.dynamic_names,
+			name->hsh, name->str, name->len);
+	if (acc->hist == NULL) {
+		acc->hist = p0alloc(bs->current.dynamic_names.name_pool, HIST_CNT * sizeof(uint32_t));
+	}
 	acc_aggregate(acc, value);
 }
 
@@ -513,19 +685,23 @@ stat_gauge_static(int base, int name, double value)
 void
 stat_aggregate_static(int base, int name, double value)
 {
-	acc_aggregate(&stat_bases[base].current.static_names.v[name], value);
+	struct accum *acc = &stat_bases[base].current.static_names.v[name];
+	if (acc->hist == NULL) {
+		acc->hist = xcalloc(HIST_CNT, sizeof(uint32_t));
+	}
+	acc_aggregate(acc, value);
 }
 
 void
 stat_collect(int base, int name, i64 value)
 {
-	acc_sum(&stat_bases[base].current.static_names.v[name], value);
+	stat_sum_static(base, name, value);
 }
 
 void
 stat_collect_double(int base, int name, double value)
 {
-	acc_aggregate(&stat_bases[base].current.static_names.v[name], value);
+	stat_aggregate_static(base, name, value);
 }
 
 void
@@ -533,6 +709,7 @@ stat_report_sum(char const * name, int len, double value)
 {
 	assert(stat_current_base != -1);
 	struct stat_base *bs = &stat_bases[stat_current_base];
+	assert(bs->name != NULL);
 	u64 hsh = hash_name(name, len);
 	struct accum *acc = stat_accum_get_accum(&bs->current.dynamic_names, hsh, name, len);
 	acc->type = SACC_ACCUM;
@@ -544,6 +721,7 @@ stat_report_gauge(char const * name, int len, double value)
 {
 	assert(stat_current_base != -1);
 	struct stat_base *bs = &stat_bases[stat_current_base];
+	assert(bs->name != NULL);
 	u64 hsh = hash_name(name, len);
 	struct accum *acc = stat_accum_get_accum(&bs->current.dynamic_names, hsh, name, len);
 	acc->type = SACC_GAUGE;
@@ -555,6 +733,7 @@ stat_report_double(char const * name, int len, double sum, i64 cnt, double min, 
 {
 	assert(stat_current_base != -1);
 	struct stat_base *bs = &stat_bases[stat_current_base];
+	assert(bs->name != NULL);
 	u64 hsh = hash_name(name, len);
 	struct accum *acc = stat_accum_get_accum(&bs->current.dynamic_names, hsh, name, len);
 	acc->type = SACC_DOUBLE;
@@ -651,23 +830,21 @@ stat_init()
 }
 
 static u64 hash_name(const char* str, int len) {
-typedef u64 au64 __attribute__((__aligned__(1)));
-typedef u32 au32 __attribute__((__aligned__(1)));
 #define MULT1 0x6956abd6ed268a3bULL
 #define MULT2 0xacd5ad43274593b1ULL
-	u64 a = len * MULT1;
-	u64 b = (0xdeadbeef - len) * MULT2;
+	u64 a = 0;
+	u64 b = 0;
 	if (len == 0) {
 	} else if (len < 4) {
 		u8 const * bs = (u8 const*)str;
 		u64 v = bs[0] | (bs[len/2]<<8) | (bs[len-1]<<24);
-		a ^= v;
-		b ^= v;
+		a = v;
+		b = v;
 	} else if (len <= 8) {
 		u64 v1 = *(au32*)str;
 		u64 v2 = *(au32*)(str+len-4);
-		a ^= (v1<<32)|v2;
-		b ^= (v2<<32)|v1;
+		a = (v1<<32)|v2;
+		b = (v2<<32)|v1;
 	} else {
 		u64 v;
 		while (len > 8) {
@@ -681,7 +858,7 @@ typedef u32 au32 __attribute__((__aligned__(1)));
 		a ^= v; a=(a<<32)|(a>>32);
 		b = (b<<32)|(b>>32); b ^= v;
 	}
-	a ^= a >> 33;
+	a ^= (a >> 33) | ((u64)len << 32);
 	b ^= b >> 33;
 	a *= MULT1;
 	b *= MULT2;
@@ -692,8 +869,9 @@ typedef u32 au32 __attribute__((__aligned__(1)));
 	return a ^ b ^ (a >> 32) ^ (b >> 33);
 }
 
-struct name* malloc_name(const char* str, int len) {
-	struct name* nm = malloc(sizeof(struct name)+len+1);
+struct stat_name const * stat_malloc_name(const char* str, int len) {
+	struct stat_name* nm = malloc(sizeof(struct stat_name)+len+1);
+	nm->hsh = hash_name(str, len);
 	nm->len = len;
 	memcpy(nm->str, str, len);
 	nm->str[len] = 0;
