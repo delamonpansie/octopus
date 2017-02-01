@@ -887,35 +887,11 @@ box_prepare(struct box_txn *txn, int op, const void *data, u32 data_len)
 }
 
 static void
-box_op_cleanup(enum txn_state state, struct box_op *bop)
-{
-	say_debug3("%s: old_obj:%p obj:%p", __func__, bop->old_obj, bop->obj);
-	switch (state) {
-	case COMMIT:
-		if (bop->old_obj)
-			tuple_free(bop->old_obj);
-		break;
-	case ROLLBACK:
-		if (bop->obj)
-			tuple_free(bop->obj);
-		break;
-	default:
-		if (!bop->object_space)
-			return;
-		assert(false);
-	}
-}
-
-static void
 txn_cleanup(struct box_txn *txn)
 {
 	say_debug3("%s: txn:%i/%p", __func__, txn->id, txn);
 	assert(fiber->txn == txn);
 	fiber->txn = NULL;
-
-	struct box_op *bop;
-	TAILQ_FOREACH(bop, &txn->ops, link)
-		box_op_cleanup(txn->state, bop);
 }
 
 static void
@@ -955,6 +931,8 @@ box_op_commit(struct box_op *bop)
 		phi_commit(cell);
 		sfree(cell);
 	}
+	if (bop->old_obj)
+		tuple_free(bop->old_obj);
 	stat_collect(stat_base, bop->op, 1);
 }
 
@@ -989,6 +967,8 @@ box_op_rollback(struct box_op *bop)
 		phi_rollback(cell);
 		sfree(cell);
 	}
+	if (bop->obj)
+		tuple_free(bop->obj);
 }
 
 void
