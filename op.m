@@ -768,6 +768,7 @@ object_space_fill_stat_names(struct object_space* space) {
 
 void
 object_space_clear_stat_names(struct object_space* space) {
+	stat_unregister(space->statbase);
 	space->statbase = -1;
 }
 
@@ -1351,8 +1352,8 @@ box_select_cb(struct netmsg_head *wbuf, struct iproto *request)
 		process_select(wbuf, obj_spc, i, limit, offset, &data);
 		iproto_reply_fixup(wbuf, reply);
 	} @catch (...) {
-		char statname[] = "SELECT:00000000:err\0";
-		int len = sprintf(statname, "SELECT:%d:err", n);
+		char statname[] = "SELECT_ERR_000\0";
+		int len = sprintf(statname, "SELECT_ERR_%d", n);
 		stat_sum_named(stat_named_base, statname, len, 1);
 		@throw;
 	} @finally {
