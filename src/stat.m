@@ -263,8 +263,7 @@ stat_register_any(char const *base_name, enum stat_base_type type,
 		int oldbasen = stat_basen;
 		stat_basen = stat_basen*2 ?: 8;
 		stat_bases = xrealloc(stat_bases, sizeof(*stat_bases)*stat_basen);
-		memset(stat_bases + sizeof(*stat_bases)*oldbasen, 0,
-				sizeof(*stat_bases) * (stat_basen - oldbasen));
+		memset(stat_bases + oldbasen, 0, sizeof(*stat_bases) * (stat_basen - oldbasen));
 		for (i = oldbasen; i < stat_basen-1; i++) {
 			stat_bases[i].next_free = i+1;
 		}
