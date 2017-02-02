@@ -764,10 +764,14 @@ stat_base_print_to_graphite(struct stat_base *bs)
 				graphite_send3(bs->name, acc->name->str, "cnt_rps", cnt_rps);
 				graphite_send3(bs->name, acc->name->str, "cnt", acc->cnt);
 			}
-			if (acc->min != 1e300)
+			if (acc->min != 1e300) {
 				graphite_send3(bs->name, acc->name->str, "min", acc->min);
-			if (acc->max != -1e300)
 				graphite_send3(bs->name, acc->name->str, "max", acc->max);
+				struct stat_percent pcnt = hist_percent(acc->hist, acc->cnt);
+				graphite_send3(bs->name, acc->name->str, "p50", pcnt.p50);
+				graphite_send3(bs->name, acc->name->str, "p90", pcnt.p90);
+				graphite_send3(bs->name, acc->name->str, "p99", pcnt.p99);
+			}
 			if (acc->sum != 0 || acc->cnt != 0) {
 				double sum_rps = (double)acc->sum / diff_time;
 				graphite_send3(bs->name, acc->name->str, "sum_rps", sum_rps);
