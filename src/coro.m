@@ -72,11 +72,11 @@ octopus_coro_create(struct octopus_coro *coro, void (*f) (void *), void *data)
 	if (mprotect(coro->mmap, page * 16, PROT_NONE) < 0)
 		goto fail;
 
-	(void)VALGRIND_MAKE_MEM_NOACCESS(coro->mmap, page);
+	(void)VALGRIND_MAKE_MEM_NOACCESS(coro->mmap, page * 16);
 
 	const int red_zone_size = sizeof(void *) * 4;
-	coro->stack = coro->mmap + page;
-	coro->stack_size = coro->mmap_size - page - red_zone_size;
+	coro->stack = coro->mmap + 16 * page;
+	coro->stack_size = coro->mmap_size - 16 * page - red_zone_size;
 	void **red_zone = coro->stack + coro->stack_size;
 	red_zone[0] = red_zone[1] = NULL;
 	red_zone[2] = red_zone[3] = (void *)(uintptr_t)0xDEADDEADDEADDEADULL;
