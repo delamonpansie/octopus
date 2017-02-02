@@ -83,6 +83,7 @@ void tbuf_gc(struct palloc_pool *pool, void *ptr);
 
 struct tbuf *tbuf_split(struct tbuf *e, size_t at);
 void tbuf_reset(struct tbuf *b);
+void tbuf_reset_to(struct tbuf *b, size_t len);
 void *tbuf_peek(struct tbuf *b, size_t count);
 void tbuf_ltrim(struct tbuf *b, size_t diff);
 void tbuf_rtrim(struct tbuf *b, size_t diff);
