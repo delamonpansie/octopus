@@ -151,6 +151,17 @@ tbuf_reset(struct tbuf *b)
 }
 
 void
+tbuf_reset_to(struct tbuf *b, size_t len)
+{
+	tbuf_assert(b);
+	size_t oldlen = tbuf_len(b);
+	assert(oldlen >= len);
+	poison(b->ptr + len, oldlen - len);
+	b->free += oldlen - len;
+	b->end = b->ptr + len;
+}
+
+void
 tbuf_append(struct tbuf *b, const void *data, size_t len)
 {
 	tbuf_assert(b);
