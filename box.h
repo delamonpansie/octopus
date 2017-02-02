@@ -42,6 +42,7 @@ struct object_space {
 	int n;
 	bool ignored, snap, wal;
 	int cardinality;
+	int statbase;
 	size_t obj_bytes;
 	size_t slab_bytes;
 	Index<BasicIndex> *index[MAX_IDX];
@@ -138,11 +139,14 @@ struct box_txn {
 	u32 obj_affected, submit;
 	int id;
 	struct Fiber *fiber; /* for debug purposes */
+	const char* name;
+	size_t namelen;
+	ev_tstamp start;
 
 	TAILQ_HEAD(box_op_tailq, box_op) ops;
 };
 
-struct box_txn *box_txn_alloc(int shard_id, enum txn_mode mode);
+struct box_txn *box_txn_alloc(int shard_id, enum txn_mode mode, const char* name);
 
 struct box_meta_txn {
 	u16 op;
@@ -217,6 +221,7 @@ void box_service_ro(struct iproto_service *s);
 	_(SELECT_KEYS, 99)			\
 	_(SELECT_TUPLES, 100)			\
 	_(SUBMIT_ERROR, 101)			\
+	_(SELECT_TIME, 102)			\
 	_(CREATE_OBJECT_SPACE, 240)		\
 	_(CREATE_INDEX, 241)			\
 	_(DROP_OBJECT_SPACE, 242)		\
@@ -225,6 +230,19 @@ void box_service_ro(struct iproto_service *s);
 
 enum messages ENUM_INITIALIZER(MESSAGES);
 extern char const * const box_ops[];
+
+enum BOX_SPACE_STAT {
+	BSS_INSERT,
+	BSS_UPDATE,
+	BSS_DELETE,
+	BSS_SELECT_IDX0,
+	BSS_SELECT_TIME_IDX0 = BSS_SELECT_IDX0 + MAX_IDX,
+	BSS_SELECT_KEYS_IDX0 = BSS_SELECT_TIME_IDX0 + MAX_IDX,
+	BSS_SELECT_TUPLES_IDX0 = BSS_SELECT_KEYS_IDX0 + MAX_IDX,
+	BSS_MAX = BSS_SELECT_TUPLES_IDX0 + MAX_IDX
+};
+void object_space_fill_stat_names(struct object_space* space);
+void object_space_clear_stat_names(struct object_space* space);
 
 #define OBJECT_SPACE_MAX (256)
 @interface Box : DefaultExecutor <Executor> {
@@ -296,4 +314,7 @@ struct print_dups_arg {
 void box_idx_print_dups(void *arg, struct index_node* a, struct index_node* b, uint32_t position);
 
 void box_init_phi_cache(void);
+
+#define TBUF_BUF(buf) (struct tbuf){.ptr=(buf), .end=(buf), .free=sizeof(buf), .pool=NULL}
+#define TBUF_BUFL(buf,L) (struct tbuf){.ptr=(buf), .end=(buf)+(L), .free=sizeof(buf)-(L), .pool=NULL}
 #endif

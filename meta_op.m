@@ -58,6 +58,7 @@ prepare_create_object_space(struct box_meta_txn *txn, int n, struct tbuf *data)
 	txn->object_space->snap = txn->flags & 1;
 	txn->object_space->wal = txn->flags & 2;
 	txn->object_space->index[0] = txn->index;
+	object_space_fill_stat_names(txn->object_space);
 	assert(txn->object_space->snap);
 	assert(txn->object_space->wal);
 }
@@ -208,6 +209,7 @@ box_commit_meta(struct box_meta_txn *txn)
 		foreach_index(index, txn->object_space)
 			[txn->index free];
 		txn->box->object_space_registry[txn->object_space->n] = NULL;
+		object_space_clear_stat_names(txn->object_space);
 		free(txn->object_space);
 		break;
 	case TRUNCATE:
