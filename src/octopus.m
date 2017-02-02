@@ -886,6 +886,7 @@ init_storage:
 #ifdef CFG_graphite_addr
 	graphite_init();
 #endif
+	stat_register_callback("slab", slab_stat_report_cb);
 
 	@try {
 		current_module = module(NULL); /* primary */

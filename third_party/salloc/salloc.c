@@ -148,6 +148,8 @@ struct arena {
 	void *base;
 	size_t size;
 	size_t used;
+	size_t item_used;
+	int    free_slabs_cnt;
 	struct slab_slist_head slabs, free_slabs;
 };
 
@@ -415,12 +417,14 @@ slab_of(struct slab_cache *cache)
 		slab = SLIST_FIRST(&cache->arena->free_slabs);
 		assert(slab->magic == SLAB_MAGIC);
 		SLIST_REMOVE_HEAD(&cache->arena->free_slabs, free_link);
+		cache->arena->free_slabs_cnt--;
 		format_slab(cache, slab);
 		return slab;
 	}
 
 	if ((slab = arena_alloc(cache->arena)) != NULL) {
 		SLIST_INSERT_HEAD(&cache->arena->slabs, slab, link);
+		cache->arena->item_used += sizeof(struct slab);
 		format_slab(cache, slab);
 		return slab;
 	}
@@ -482,6 +486,7 @@ slab_cache_alloc(struct slab_cache *cache)
 	}
 
 	slab->used += cache->item_size + sizeof(red_zone);
+	cache->arena->item_used += cache->item_size + sizeof(red_zone);
 	slab->items += 1;
 
 	return (void *)item;
@@ -515,12 +520,14 @@ sfree(void *ptr)
 	item->next = slab->free;
 	slab->free = item;
 	slab->used -= cache->item_size + sizeof(red_zone);
+	cache->arena->item_used -= cache->item_size + sizeof(red_zone);
 	slab->items -= 1;
 
 	if (slab->items == 0) {
 		TAILQ_REMOVE(&cache->partial_populated_slabs, slab, cache_partial_link);
 		TAILQ_REMOVE(&cache->slabs, slab, cache_link);
 		SLIST_INSERT_HEAD(&cache->arena->free_slabs, slab, free_link);
+		cache->arena->free_slabs_cnt++;
 
 #if HAVE_MADVISE
 		if (slab->need_madvise) {
@@ -546,7 +553,7 @@ slab_cache_free(struct slab_cache *cache, void *ptr)
 }
 
 #ifdef OCTOPUS
-static int64_t
+static void
 cache_stat(struct slab_cache *cache, struct tbuf *out)
 {
 	struct slab *slab;
@@ -561,23 +568,20 @@ cache_stat(struct slab_cache *cache, struct tbuf *out)
 	}
 
 	if (slabs == 0 && cache->name == NULL)
-		return 0;
+		return;
 
 	tbuf_printf(out,
 		    "     - { name: %-16s, item_size: %- 5i, slabs: %- 3i, items: %-11zu"
 		    ", bytes_used: %-12zu, bytes_free: %-12zu }" CRLF,
 		    cache->name, (int)cache->item_size, slabs, items, used, free);
 
-	return used;
 }
 
 void
 slab_stat(struct tbuf *t)
 {
-	struct slab *slab;
 	struct slab_cache *cache;
 
-	int64_t total_used = 0;
 	tbuf_printf(t, "slab statistics:" CRLF);
 
 	tbuf_printf(t, "  arenas:" CRLF);
@@ -585,37 +589,62 @@ slab_stat(struct tbuf *t)
 		if (arena[i].size == 0)
 			break;
 
-		int free_slabs = 0;
-		SLIST_FOREACH(slab, &arena[i].free_slabs, free_link)
-			free_slabs++;
-
-
 		tbuf_printf(t, "    - { type: %s, used: %.2f, size: %zu, free_slabs: %i }" CRLF,
 			    &arena[i] == fixed_arena ? "fixed" :
 			    &arena[i] == grow_arena ? "grow" : "unknown",
 			    (double)arena[i].used / arena[i].size * 100,
-			    arena[i].size, free_slabs);
+			    arena[i].size, arena[i].free_slabs_cnt);
 	}
 
 	tbuf_printf(t, "  caches:" CRLF);
 	for (uint32_t i = 0; i < slab_active_caches; i++)
-		total_used += cache_stat(&slab_caches[i], t);
+		cache_stat(&slab_caches[i], t);
 
 	SLIST_FOREACH(cache, &slab_cache, link)
 		cache_stat(cache, t);
 
-
-	int fixed_free_slabs = 0;
-	SLIST_FOREACH(slab, &fixed_arena->free_slabs, free_link)
-			fixed_free_slabs++;
-
+	int fixed_free_slabs = fixed_arena->free_slabs_cnt;
 	int64_t fixed_used_adj = fixed_arena->used - fixed_free_slabs * SLAB_SIZE;
+	int64_t total_used = fixed_arena->item_used;
 	if (fixed_arena->size != 0) {
 		tbuf_printf(t, "  items_used: %.2f" CRLF, (double)total_used / fixed_arena->size * 100);
 		tbuf_printf(t, "  arena_used: %.2f" CRLF, (double)fixed_used_adj / fixed_arena->size * 100);
 	} else {
 		tbuf_printf(t, "  items_used: 0" CRLF);
 		tbuf_printf(t, "  arena_used: 0" CRLF);
+	}
+}
+static int
+stradd(char* d, char const *s) {
+	strcpy(d, s);
+	return strlen(s);
+}
+void slab_stat_report(void (*report)(char const * name, int len, double value))
+{
+	char buf[64];
+	int len, slen;
+	for (int i = 0; i < nelem(arena); i++) {
+		if (arena[i].size == 0)
+			continue;
+		double used;
+
+		if (&arena[i] == fixed_arena) {
+			len = stradd(buf, "fixed.");
+		} else if (&arena[i] == grow_arena) {
+			len = stradd(buf, "grow.");
+		} else {
+			len = sprintf(buf, "unknown%i.", i);
+		}
+		slen = stradd(buf+len, "size");
+		report(buf, len+slen, (double)arena[i].size);
+		slen = stradd(buf+len, "sys_used");
+		report(buf, len+slen, (double)arena[i].used/arena[i].size * 100);
+		slen = stradd(buf+len, "arena_used");
+		used = arena[i].used - arena[i].free_slabs_cnt * SLAB_SIZE;
+		report(buf, len+slen, (double)used/arena[i].size * 100);
+		slen = stradd(buf+len, "item_used");
+		used = arena[i].item_used;
+		report(buf, len+slen, (double)used/arena[i].size * 100);
 	}
 }
 

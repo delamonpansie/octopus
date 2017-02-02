@@ -75,6 +75,7 @@ void sfree(void *ptr);
 void slab_validate();
 #ifdef OCTOPUS
 void slab_stat(struct tbuf *buf);
+void slab_stat_report(void (*report)(char const * name, int len, double value));
 #endif
 void slab_total_stat(uint64_t *bytes_used, uint64_t *items);
 void slab_cache_stat(struct slab_cache *cache, uint64_t *bytes_used, uint64_t *items);
