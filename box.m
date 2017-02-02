@@ -703,6 +703,8 @@ init_second_stage(va_list ap __attribute__((unused)))
 }
 
 
+static void stat_mem_callback(int base _unused_);
+
 static void
 init(void)
 {
@@ -718,11 +720,57 @@ init(void)
 	}
 
 	box_init_phi_cache();
+	stat_register_callback("box_mem", stat_mem_callback);
 
 	initialize_service();
 
 	/* fiber is required to successfully pull from remote */
 	fiber_create("box_init", init_second_stage);
+}
+
+static void
+stat_mem_callback(int base _unused_)
+{
+	char cbuf[64];
+	struct tbuf buf = TBUF_BUF(cbuf);
+	for (int i = 0; i < MAX_SHARD; i++) {
+		id<Shard> shard = [recovery shard: i];
+		if (shard == nil)
+			continue;
+		id<Executor> exe = [shard executor];
+		if (![(id)exe isKindOf: [Box class]]) {
+			continue;
+		}
+		Box* box = exe;
+		for (uint32_t n = 0; n < nelem(box->object_space_registry); n++) {
+			if (box->object_space_registry[n] == NULL)
+				continue;
+			struct object_space *sp = box->object_space_registry[n];
+			tbuf_append_lit(&buf, "space_");
+			tbuf_putu(&buf, n);
+			tbuf_putc(&buf, '@');
+			tbuf_putu(&buf, i);
+			size_t len = tbuf_len(&buf);
+			tbuf_append_lit(&buf, "_objects");
+			stat_report_gauge(buf.ptr, tbuf_len(&buf), [sp->index[0] size]);
+			tbuf_reset_to(&buf, len);
+			tbuf_append_lit(&buf, "_obj_bytes");
+			stat_report_gauge(buf.ptr, tbuf_len(&buf), sp->obj_bytes);
+			tbuf_reset_to(&buf, len);
+			tbuf_append_lit(&buf, "_slab_bytes");
+			stat_report_gauge(buf.ptr, tbuf_len(&buf), sp->slab_bytes);
+			tbuf_reset_to(&buf, len);
+			tbuf_append_lit(&buf, "_ix_");
+			len = tbuf_len(&buf);
+			foreach_index(index, sp) {
+				tbuf_putu(&buf, index->conf.n);
+				tbuf_append_lit(&buf, "_bytes");
+				stat_report_gauge(buf.ptr, tbuf_len(&buf), [index bytes]);
+				tbuf_reset_to(&buf, len);
+			}
+			tbuf_reset(&buf);
+		}
+	}
 }
 
 static void
