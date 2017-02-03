@@ -732,6 +732,7 @@ enum BOX_SPACE_STAT message_to_boxstat(enum messages msg) {
 	case DELETE: return BSS_DELETE;
 	case DELETE_1_3: return BSS_DELETE;
 	default:
+		panic("MSG == %d", msg);
 		assert(false);
 	}
 }
@@ -993,7 +994,7 @@ box_op_commit(struct box_op *bop)
 	}
 	if (bop->old_obj)
 		tuple_free(bop->old_obj);
-	if (cfg.box_extended_stat) {
+	if (cfg.box_extended_stat && bop->op != NOP) {
 		stat_sum_static(bop->object_space->statbase,
 				message_to_boxstat(bop->op), 1);
 	}
