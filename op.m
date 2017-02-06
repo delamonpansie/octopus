@@ -1079,6 +1079,17 @@ box_submit(struct box_txn *txn)
 	say_debug2("%s: txn:%i/%p state:%i", __func__, txn->id, txn, txn->state);
 	int len = 0, count = 0;
 	struct box_op *bop, *single;
+	ev_tstamp submit_start = 0, diff;
+
+	if (cfg.box_extended_stat && txn->name != NULL) {
+		struct tbuf name = TBUF(NULL, 0, fiber->pool);
+		submit_start = ev_time();
+		diff = (submit_start - txn->start) * 1000;
+		tbuf_append(&name, txn->name, txn->namelen);
+		tbuf_append_lit(&name, ":cpu");
+		stat_aggregate_named(stat_named_base, name.ptr, tbuf_len(&name), diff);
+		stat_aggregate_named(stat_named_base, "TXN:cpu", 7, diff);
+	}
 
 	if (txn->mode == RO) {
 		assert(TAILQ_FIRST(&txn->ops) == NULL);
@@ -1104,16 +1115,6 @@ box_submit(struct box_txn *txn)
 		return 0;
 	}
 
-	ev_tstamp submit_start = 0, diff;
-	if (cfg.box_extended_stat && txn->name != NULL) {
-		struct tbuf name = TBUF(NULL, 0, fiber->pool);
-		submit_start = ev_time();
-		diff = (submit_start - txn->start) * 1000;
-		tbuf_append(&name, txn->name, txn->namelen);
-		tbuf_append_lit(&name, ":cpu");
-		stat_aggregate_named(stat_named_base, name.ptr, tbuf_len(&name), diff);
-		stat_aggregate_named(stat_named_base, "TXN:cpu", 7, diff);
-	}
 	if (count == 1) {
 		txn->submit = [txn->box->shard submit:single->data
 						  len:single->data_len
