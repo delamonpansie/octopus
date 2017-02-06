@@ -50,11 +50,17 @@
 #define STAT(_) \
         _(IPROTO_WORKER_STARVATION, 1)			\
 	_(IPROTO_STREAM_OP, 2)				\
-	_(IPROTO_BLOCK_OP, 3)
+	_(IPROTO_BLOCK_OP, 3)                           \
+	_(IPROTO_CONNECTED, 4)                          \
+	_(IPROTO_DISCONNECTED, 5)                       \
+	_(IPROTO_WRITTEN, 6)                            \
+	_(IPROTO_READ, 7)
+
 
 enum iproto_stat ENUM_INITIALIZER(STAT);
 static char const * const stat_ops[] = ENUM_STR_INITIALIZER(STAT);
 static int stat_base;
+static int stat_cb_base;
 
 struct worker_arg {
 	struct iproto_handler *ih;
@@ -188,6 +194,13 @@ close
 }
 @end
 
+static int ingress_cnt = 0;
+static void
+report_ingress_cnt(int base _unused_)
+{
+	stat_report_gauge("IPROTO_CLIENTS", sizeof("IPROTO_CLIENTS"), ingress_cnt);
+}
+
 @implementation iproto_ingress_svc
 - (void)
 data_ready
@@ -200,6 +213,8 @@ data_ready
 - (void)
 close
 {
+	ingress_cnt--;
+	stat_sum_static(stat_base, IPROTO_DISCONNECTED, 1);
 	if (processing_link.tqe_prev != NULL) {
 		TAILQ_REMOVE(&service->processing, self, processing_link);
 		processing_link.tqe_prev = NULL;
@@ -214,12 +229,22 @@ close
 }
 
 static void
+iproto_service_svc_read_cb(ev_io *ev, int events)
+{
+	ssize_t r = netmsg_io_read_for_cb(ev, events);
+	if (r > 0)
+		stat_sum_static(stat_base, IPROTO_READ, r);
+}
+
+static void
 iproto_service_svc_write_cb(ev_io *ev, int events)
 {
 	struct netmsg_io *io = container_of(ev, struct netmsg_io, out);
 
 	netmsg_io_retain(io);
-	netmsg_io_write_cb(ev, events);
+	ssize_t r = netmsg_io_write_for_cb(ev, events);
+	if (r > 0)
+		stat_sum_static(stat_base, IPROTO_WRITTEN, r);
 
 	if (io->fd >= 0 &&
 	    tbuf_len(&io->rbuf) < cfg.input_low_watermark &&
@@ -228,12 +253,23 @@ iproto_service_svc_write_cb(ev_io *ev, int events)
 	netmsg_io_release(io);
 }
 
+- (id)
+init:(int)fd_ pool:(struct palloc_pool *)pool_
+{
+	(void)fd_;
+	(void)pool_;
+	assert(false);
+}
+
 - (void)
 init:(int)fd_ service:(struct iproto_service *)service_
 {
 	say_debug2("%s: service:%s peer:%s", __func__, service_->name, net_fd_name(fd_));
+	ingress_cnt++;
+	stat_sum_static(stat_base, IPROTO_CONNECTED, 1);
 	service = service_;
 	netmsg_io_init(self, service->pool, fd_);
+	ev_init(&self->in, iproto_service_svc_read_cb);
 	ev_init(&self->out, iproto_service_svc_write_cb);
 	self->flags |= NETMSG_IO_SHARED_POOL;
 	LIST_INSERT_HEAD(&service->clients, self, link);
@@ -496,6 +532,8 @@ service_prepare_io(struct iproto_ingress_svc *io)
 				    net_fd_name(io->fd));
 			[io close];
 			return;
+		} else {
+			stat_sum_static(stat_base, IPROTO_WRITTEN, r);
 		}
 	}
 #endif
@@ -691,17 +729,20 @@ iproto_fixup_addr(struct octopus_cfg *cfg)
 	return 0;
 }
 
+void iproto_init(void);
 static struct tnt_module iproto_mod = {
+	.init = iproto_init,
 	.check_config = iproto_fixup_addr
 };
 
 register_module(iproto_mod);
 #endif
 
-void __attribute__((constructor))
+void
 iproto_init(void)
 {
 	stat_base = stat_register(stat_ops, nelem(stat_ops));
+	stat_cb_base = stat_register_callback("stat", report_ingress_cnt);
 }
 
 register_source();

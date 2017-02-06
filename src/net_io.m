@@ -424,8 +424,8 @@ netmsg_io_close(struct netmsg_io *io)
 	io->fd = -1;
 }
 
-void
-netmsg_io_write_cb(ev_io *ev, int __attribute__((unused)) events)
+ssize_t
+netmsg_io_write_for_cb(ev_io *ev, int __attribute__((unused)) events)
 {
 	struct netmsg_io *io = container_of(ev, struct netmsg_io, out);
 
@@ -433,7 +433,7 @@ netmsg_io_write_cb(ev_io *ev, int __attribute__((unused)) events)
 	if (r < 0 && (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)) {
 		say_syswarn("writev(%i) to %s failed", ev->fd, net_fd_name(ev->fd));
 		[io close];
-		return;
+		return r;
 	}
 
 	if (io->wbuf.bytes == 0) {
@@ -443,10 +443,17 @@ netmsg_io_write_cb(ev_io *ev, int __attribute__((unused)) events)
 			netmsg_io_release(io);
 		}
 	}
+	return r;
 }
 
 void
-netmsg_io_read_cb(ev_io *ev, int __attribute__((unused)) events)
+netmsg_io_write_cb(ev_io *ev, int events)
+{
+	netmsg_io_write_for_cb(ev, events);
+}
+
+ssize_t
+netmsg_io_read_for_cb(ev_io *ev, int __attribute__((unused)) events)
 {
 	struct netmsg_io *io = container_of(ev, struct netmsg_io, in);
 
@@ -466,7 +473,7 @@ netmsg_io_read_cb(ev_io *ev, int __attribute__((unused)) events)
 	if (r == 0) {
 		say_debug("peer %s closed connection", net_fd_name(ev->fd));
 		[io close];
-		return;
+		return r;
 	}
 
 	if (r < 0) {
@@ -474,8 +481,15 @@ netmsg_io_read_cb(ev_io *ev, int __attribute__((unused)) events)
 			say_syswarn("recv(%i) from %s failed", ev->fd, net_fd_name(ev->fd));
 			[io close];
 		}
-		return;
+		return r;
 	}
+	return r;
+}
+
+void
+netmsg_io_read_cb(ev_io *ev, int events)
+{
+	netmsg_io_read_for_cb(ev, events);
 }
 
 void
