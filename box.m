@@ -719,7 +719,7 @@ init(void)
 		return;
 	}
 
-	box_init_phi_cache();
+	box_op_init();
 	stat_register_callback("box_mem", stat_mem_callback);
 
 	initialize_service();

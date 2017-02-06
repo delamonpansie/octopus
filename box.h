@@ -313,7 +313,7 @@ struct print_dups_arg {
 };
 void box_idx_print_dups(void *arg, struct index_node* a, struct index_node* b, uint32_t position);
 
-void box_init_phi_cache(void);
+void box_op_init(void);
 
 #define TBUF_BUF(buf) (struct tbuf){.ptr=(buf), .end=(buf), .free=sizeof(buf), .pool=NULL}
 #define TBUF_BUFL(buf,L) (struct tbuf){.ptr=(buf), .end=(buf)+(L), .free=sizeof(buf)-(L), .pool=NULL}
