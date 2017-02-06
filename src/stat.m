@@ -529,7 +529,7 @@ stat_print(struct tbuf *out)
 		} else {
 			cur = (struct stat_accum*)mh_cstr_value(&stats, k);
 		}
-		for (j = 0; j<bs->recordsn; j++) {
+		for (j = bs->recordsn-1; j >= 0; j--) {
 			merge_stat(bs->name, &bs->records[j], cur);
 		}
 	}
@@ -774,6 +774,7 @@ stat_base_print_to_graphite(struct stat_base *bs)
 			}
 			if (acc->sum != 0 || acc->cnt != 0) {
 				double sum_rps = (double)acc->sum / diff_time;
+				graphite_send3(bs->name, acc->name->str, "sum", acc->sum);
 				graphite_send3(bs->name, acc->name->str, "sum_rps", sum_rps);
 			}
 		} else if (acc->type == SACC_GAUGE) {
