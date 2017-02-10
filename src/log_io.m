@@ -205,7 +205,14 @@ open_for_read_filename:(const char *)filename dir:(XLogDir *)dir
 	}
 
 	if (strcmp(version_, v11) == 0) {
+#ifdef CFG_wal_format_opengraph	
+		if (cfg.wal_format_opengraph == 1)
+			l = [XLog11OG alloc];
+		else
+			l = [XLog11 alloc];
+#else
 		l = [XLog11 alloc];
+#endif
 	} else if (strcmp(version_, v12) == 0) {
 		l = [XLog12 alloc];
 	} else if (strcmp(version_, v04) == 0) {
@@ -964,6 +971,211 @@ append_row:(struct row_v12 *)row12 data:(const void *)data
 
 @end
 
+@implementation XLog11OG
+- (u32) version { return 11; }
+
+struct tbuf *
+convert_row_v11og_to_v12(struct tbuf *m)
+{
+	struct tbuf *n = tbuf_alloc(m->pool);
+	tbuf_append(n, NULL, sizeof(struct row_v12));
+	memset(n->ptr, 0, sizeof(struct row_v12));
+	row_v12(n)->scn = row_v12(n)->lsn = _row_v11(m)->lsn;
+	row_v12(n)->tm = _row_v11(m)->tm;
+	row_v12(n)->len = _row_v11(m)->len - sizeof(u16) - sizeof(u64); /* tag & cookie */
+
+	tbuf_ltrim(m, sizeof(struct _row_v11));
+
+	u16 tag = read_u16(m);
+	row_v12(n)->tag = tag<<5;
+
+	switch (tag) {
+	case OG_WALSPLITPAGE:
+	case OG_WALADDITEM:
+	case OG_WALWRITEPAGE:
+	case OG_WALACTION:
+	case OG_WALACTION_REP:
+	case OG_WAL_CHECKPOINT:
+		row_v12(n)->tag |= TAG_WAL;
+		break;
+	case OG_METADATA:
+	case OG_CACHESNAP:
+	case OG_INMEMORYSNAP_GEN1:
+	case OG_INMEMORYSNAP_REP_GEN1:
+	case OG_INMEMORYSNAP:
+	case OG_INMEMORYSNAP_REP:
+		row_v12(n)->tag |= TAG_SNAP;
+		break;
+	default:
+		say_error("unknown tag %i", (int)tag);
+		return NULL;
+	}
+
+	(void)read_u64(m); /* ignore cookie */
+	tbuf_append(n, m->ptr, row_v12(n)->len);
+
+	row_v12(n)->data_crc32c = crc32c(0, m->ptr, row_v12(n)->len);
+	row_v12(n)->header_crc32c = crc32c(0, n->ptr + field_sizeof(struct row_v12, header_crc32c),
+					   sizeof(struct row_v12) - field_sizeof(struct row_v12, header_crc32c));
+
+	return n;
+}
+
+- (int)
+write_header:(const i64 *)shard_scn_map
+{
+	assert(shard_scn_map == NULL);
+	if (fwrite(dir->filetype, strlen(dir->filetype), 1, fd) != 1)
+		return -1;
+	if (fwrite(v11, strlen(v11), 1, fd) != 1)
+		return -1;
+	if (fwrite("\n", 1, 1, fd) != 1)
+		return -1;
+	if ((offset = ftello(fd)) < 0)
+		return -1;
+	return 0;
+}
+
+- (struct row_v12 *)
+read_row
+{
+	struct tbuf *m = tbuf_alloc(fiber->pool);
+
+	u32 header_crc, data_crc;
+
+	tbuf_ensure(m, sizeof(struct _row_v11));
+	if (fread(m->ptr, sizeof(struct _row_v11), 1, fd) != 1) {
+		if (ferror(fd))
+			say_error("fread error");
+		return NULL;
+	}
+
+	tbuf_append(m, NULL, offsetof(struct _row_v11, data));
+
+	/* header crc32c calculated on <lsn, tm, len, data_crc32c> */
+	header_crc = crc32c(0, m->ptr + offsetof(struct _row_v11, lsn),
+			    sizeof(struct _row_v11) - offsetof(struct _row_v11, lsn));
+
+	if (_row_v11(m)->header_crc32c != header_crc) {
+		say_error("header crc32c mismatch");
+		return NULL;
+	}
+
+	tbuf_ensure(m, tbuf_len(m) + _row_v11(m)->len);
+	if (fread(_row_v11(m)->data, _row_v11(m)->len, 1, fd) != 1) {
+		if (ferror(fd))
+			say_error("fread error");
+		return NULL;
+	}
+
+	tbuf_append(m, NULL, _row_v11(m)->len);
+
+	data_crc = crc32c(0, _row_v11(m)->data, _row_v11(m)->len);
+	if (_row_v11(m)->data_crc32c != data_crc) {
+		say_error("data crc32c mismatch");
+		return NULL;
+	}
+
+	if (tbuf_len(m) < sizeof(struct _row_v11) + sizeof(u16)) {
+		say_error("row is too short");
+		return NULL;
+	}
+
+	say_debug2("%s: LSN:%" PRIi64, __func__, _row_v11(m)->lsn);
+
+	struct row_v12 *r = convert_row_v11og_to_v12(m)->ptr;
+
+	/* some of old tarantool snapshots has all rows with lsn == 0,
+	   so using lsn from record will reset recovery lsn set by snap_initial_tag to 0,
+	   also v11 snapshots imply that SCN === LSN */
+	if (r->lsn == 0 && (r->tag & TAG_SNAP) == TAG_SNAP)
+		r->scn = r->lsn = self->lsn;
+
+	return r;
+}
+
+
+- (const struct row_v12 *)
+append_row:(struct row_v12 *)row12 data:(const void *)data
+{
+	assert_row(row12);
+	struct _row_v11 row;
+	u16 tag = row12->tag & TAG_MASK;
+	u32 data_len = row12->len;
+	u64 cookie = 0;
+
+	if (tag == snap_initial ||
+	    tag == snap_final ||
+	    tag == wal_final)
+	{
+		/* SEGV value non equal to NULL */
+		return (const struct row_v12 *)(intptr_t)1;
+	}
+
+	switch (tag>>5) {
+	case OG_WALSPLITPAGE:
+	case OG_WALADDITEM:
+	case OG_WALWRITEPAGE:
+	case OG_WALACTION:
+	case OG_WALACTION_REP:
+	case OG_WAL_CHECKPOINT:
+	case OG_METADATA:
+	case OG_CACHESNAP:
+	case OG_INMEMORYSNAP_GEN1:
+	case OG_INMEMORYSNAP_REP_GEN1:
+	case OG_INMEMORYSNAP:
+	case OG_INMEMORYSNAP_REP:
+		tag >>= 5;
+		break;
+	default:
+		say_error("unknown tag %i", (int)tag);
+		errno = EINVAL;
+		return NULL;
+	}
+
+	row12->lsn = row.lsn = [self next_lsn];
+	if (row12->scn == 0)
+		row12->scn = row.lsn;
+
+	/* When running remote recovery of octopus (read: we'r replica) remote rows
+	   come in v12 format with SCN != 0.
+	   If cfg.io_compat enabled, ensure invariant LSN == SCN, since in this mode
+	   rows doesn't have distinct SCN field. */
+
+	if (row12->scn != row12->lsn) {
+		say_error("io_compat mode doesn't support SCN tagged rows");
+		errno = EINVAL;
+		return NULL;
+	}
+
+
+	row.tm = ev_now();
+	row.len = sizeof(tag) + sizeof(cookie) + data_len;
+
+	row.data_crc32c = crc32c(0, (void *)&tag, sizeof(tag));
+	row.data_crc32c = crc32c(row.data_crc32c, (void *)&cookie, sizeof(cookie));
+	row.data_crc32c = crc32c(row.data_crc32c, data, data_len);
+
+	row.header_crc32c = crc32c(0, (unsigned char *)&row + sizeof(row.header_crc32c),
+				   sizeof(row) - sizeof(row.header_crc32c));
+
+	if (fwrite(&marker, sizeof(marker), 1, fd) != 1 ||
+	    fwrite(&row, sizeof(row), 1, fd) != 1 ||
+	    fwrite(&tag, sizeof(tag), 1, fd) != 1 ||
+	    fwrite(&cookie, sizeof(cookie), 1, fd) != 1 ||
+	    fwrite(data, data_len, 1, fd) != 1)
+	{
+		say_syserror("fwrite");
+		return NULL;
+	}
+
+	[self append_successful:sizeof(marker) + sizeof(row) +
+				sizeof(tag) + sizeof(cookie) +
+				data_len];
+	return row12;
+}
+
+@end
 
 @implementation XLog12
 - (u32) version { return 12; }

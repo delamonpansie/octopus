@@ -1,0 +1,4 @@
+# Opengraph snapshot and wal support
+#
+# set to 1 if support needed
+wal_format_opengraph=0, ro
