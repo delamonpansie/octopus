@@ -15,5 +15,6 @@ endif
 
 cfg_tmpl += mod/feeder/feeder_cfg.cfg_tmpl
 cfg_tmpl += cfg/log_io.cfg_tmpl
+cfg_tmpl += cfg/opengraph_xlogs.cfg_tmpl
 
 mod/feeder/feeder.o: mod/feeder/feeder_version.h
