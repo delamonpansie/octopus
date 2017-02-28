@@ -773,15 +773,14 @@ object_space_clear_stat_names(struct object_space* space) {
 	space->statbase = -1;
 }
 
-static void __attribute__((noinline))
-process_select(struct netmsg_head *h, struct object_space *space, int indexn,
-	       u32 limit, u32 offset, struct tbuf *data)
+static u32 __attribute__((noinline))
+process_select(struct netmsg_head *h, Index<BasicIndex> *index,
+	       u32 limit, u32 offset, u32 count, struct tbuf *data)
 {
 	struct tnt_object *obj;
 	uint32_t *found;
-	Index<BasicIndex> *index = space->index[indexn];
-	u32 count = read_u32(data);
 	index_cmp cmp = NULL;
+	bool is_hash = index_type_is_hash(index->conf.type);
 
 	say_debug("SELECT");
 	found = palloc(h->pool, sizeof(*found));
@@ -805,7 +804,7 @@ process_select(struct netmsg_head *h, struct object_space *space, int indexn,
 			(*found)++;
 			net_tuple_add(h, obj);
 			limit--;
-		} else if (index->conf.type == HASH || index->conf.type == NUMHASH || index->conf.type == PHASH) {
+		} else if (is_hash) {
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "cardinality mismatch");
 		} else {
 			Tree *tree = (Tree *)index;
@@ -835,12 +834,7 @@ process_select(struct netmsg_head *h, struct object_space *space, int indexn,
 	if (tbuf_len(data) != 0)
 		iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
 
-	stat_collect(stat_base, SELECT_KEYS, count);
-	stat_collect(stat_base, SELECT_TUPLES, *found);
-	if (cfg.box_extended_stat) {
-		stat_sum_static(space->statbase, BSS_SELECT_KEYS_IDX0+indexn, count);
-		stat_sum_static(space->statbase, BSS_SELECT_TUPLES_IDX0+indexn, *found);
-	}
+	return *found;
 }
 
 static void __attribute__((noinline))
@@ -1315,35 +1309,50 @@ box_select_cb(struct netmsg_head *wbuf, struct iproto *request)
 	Box *box = (shard_rt + request->shard_id)->shard->executor;
 	struct tbuf data = TBUF(request->data, request->data_len, fiber->pool);
 	struct iproto_retcode *reply = iproto_reply(wbuf, request, ERR_CODE_OK);
-	struct object_space *obj_spc;
+	struct object_space *space;
+	ev_tstamp start = 0;
 
 	i32 n = read_u32(&data);
-	u32 i = read_u32(&data);
+	u32 indexn = read_u32(&data);
 	u32 offset = read_u32(&data);
 	u32 limit = read_u32(&data);
-	ev_tstamp start = cfg.box_extended_stat ? ev_time() : 0;
-	obj_spc = object_space(box, n);
+	u32 count = read_u32(&data);
+
+	space = object_space(box, n);
 
 	@try {
 
-		if (i > MAX_IDX)
+		if (indexn > MAX_IDX)
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index too big");
 
-		if ((obj_spc->index[i]) == NULL)
+		Index<BasicIndex> *index = space->index[indexn];
+		if (index == NULL)
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index is invalid");
 
-		process_select(wbuf, obj_spc, i, limit, offset, &data);
+		stat_collect(stat_base, SELECT_KEYS, count);
+		if (cfg.box_extended_stat) {
+			stat_sum_static(space->statbase, BSS_SELECT_KEYS_IDX0+indexn, count);
+			bool is_hash = index_type_is_hash(index->conf.type);
+			if (!(count == 1 && is_hash))
+				start = ev_time();
+		}
+
+		u32 found = process_select(wbuf, index, limit, offset, count, &data);
 		iproto_reply_fixup(wbuf, reply);
+
+		stat_collect(stat_base, SELECT_TUPLES, found);
+		if (cfg.box_extended_stat)
+			stat_sum_static(space->statbase, BSS_SELECT_TUPLES_IDX0+indexn, found);
 	} @catch (...) {
 		char statname[] = "SELECT_ERR_000\0";
 		int len = sprintf(statname, "SELECT_ERR_%d", n);
 		stat_sum_named(stat_named_base, statname, len, 1);
 		@throw;
 	} @finally {
-		if (cfg.box_extended_stat) {
+		if (start != 0) {
 			double diff = (ev_time() - start) * 1000;
-			stat_aggregate_static(obj_spc->statbase,
-					BSS_SELECT_TIME_IDX0 + i, diff);
+			stat_aggregate_static(space->statbase,
+					BSS_SELECT_TIME_IDX0 + indexn, diff);
 			stat_collect_double(stat_base, SELECT_TIME, diff);
 		}
 		stat_collect(stat_base, request->msg_code & 0xffff, 1);
