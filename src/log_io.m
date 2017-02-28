@@ -387,7 +387,10 @@ fadvise_dont_need
 {
 #if HAVE_POSIX_FADVISE
 	off_t end = ftello(fd);
-	end -= end % 4096;
+	// minus 128k cause of XFS
+	if (end < 128*1024 + 4096)
+		return;
+	end -= 128*1024 + end % 4096;
 	posix_fadvise(fileno(fd), 0, end, POSIX_FADV_DONTNEED);
 #endif
 }
@@ -1705,9 +1708,8 @@ init_dirname:(const char *)dirname_
 @end
 
 @interface Snap12 : XLog12 {
-	int bytes;
-	ev_tstamp elapsed;
-	ev_tstamp last;
+	size_t bytes;
+	ev_tstamp step_ts, last_ts;
 }@end
 
 @implementation Snap12
@@ -1718,33 +1720,51 @@ append_row:(struct row_v12 *)row12 data:(const void *)data
 	if (ret == NULL)
 		return NULL;
 
-	if ((rows & 0xffff) == 0)
-		if ([self flush] < 0)
-			return NULL;
-
 	const int io_rate_limit = cfg.snap_io_rate_limit * 1024 * 1024;
-	if (io_rate_limit <= 0)
+	if (io_rate_limit <= 0) {
+		if ((rows & 0xffff) == 0)
+			if ([self flush] < 0)
+				return NULL;
 		return ret;
-
-	if (last == 0) {
-		ev_now_update();
-		last = ev_now();
 	}
 
 	bytes += sizeof(*row12) + row12->len;
 
-	while (bytes >= io_rate_limit) {
-		if ([self flush] < 0)
-			return NULL;
+	if (rows & 16)
+		return ret;
 
-		ev_now_update();
-		elapsed = ev_now() - last;
-		if (elapsed < 1)
-			usleep(((1 - elapsed) * 1000000));
+	ev_now_update();
+	if (last_ts == 0) {
+		last_ts = ev_now();
+		step_ts = ev_now();
+	}
 
-		ev_now_update();
-		last = ev_now();
-		bytes -= io_rate_limit;
+
+	if (ev_now() - step_ts > 0.01) {
+		double delta = ev_now() - last_ts;
+		size_t bps = bytes / delta;
+
+		if (bps > io_rate_limit) {
+			if ([self flush] < 0)
+				return NULL;
+			if (cfg.snap_fadvise_dont_need)
+				[self fadvise_dont_need];
+			ev_now_update();
+			delta = ev_now() - last_ts;
+			bps = bytes / delta;
+		}
+
+		if (bps > io_rate_limit) {
+			double sec = delta * (bps - io_rate_limit) / io_rate_limit;
+			usleep(sec * 1e6);
+			ev_now_update();
+		}
+		step_ts = ev_now();
+	}
+
+	if (ev_now() > last_ts + 1) {
+		bytes = 0;
+		last_ts = step_ts = ev_now();
 	}
 
 	return ret;

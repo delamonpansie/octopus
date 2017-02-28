@@ -65,3 +65,5 @@ panic_on_scn_gap = 1, ro
 # require than scn === lsn
 sync_scn_with_lsn = 1, ro
 
+# call fadvise_dont_need on snapshot writes
+snap_fadvise_dont_need = 1, rw
