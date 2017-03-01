@@ -387,7 +387,7 @@ fadvise_dont_need
 {
 #if HAVE_POSIX_FADVISE
 	off_t end = ftello(fd);
-	// minus 128k cause of XFS
+	/* на всякий случай :-) */
 	if (end < 128*1024 + 4096)
 		return;
 	end -= 128*1024 + end % 4096;
@@ -1720,17 +1720,9 @@ append_row:(struct row_v12 *)row12 data:(const void *)data
 	if (ret == NULL)
 		return NULL;
 
-	const int io_rate_limit = cfg.snap_io_rate_limit * 1024 * 1024;
-	if (io_rate_limit <= 0) {
-		if ((rows & 0xffff) == 0)
-			if ([self flush] < 0)
-				return NULL;
-		return ret;
-	}
-
 	bytes += sizeof(*row12) + row12->len;
 
-	if (rows & 16)
+	if (rows & 31)
 		return ret;
 
 	ev_now_update();
@@ -1739,8 +1731,20 @@ append_row:(struct row_v12 *)row12 data:(const void *)data
 		step_ts = ev_now();
 	}
 
+	const int io_rate_limit = cfg.snap_io_rate_limit * 1024 * 1024;
+	if (io_rate_limit <= 0) {
+		if (ev_now() - step_ts > 0.1) {
+			if ([self flush] < 0)
+				return NULL;
+			if (cfg.snap_fadvise_dont_need)
+				[self fadvise_dont_need];
+			ev_now_update();
+			step_ts = ev_now();
+		}
+		return ret;
+	}
 
-	if (ev_now() - step_ts > 0.01) {
+	if (ev_now() - step_ts > 0.02) {
 		double delta = ev_now() - last_ts;
 		size_t bps = bytes / delta;
 
