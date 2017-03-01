@@ -36,9 +36,13 @@ struct tnt_object *box_small_tuple_palloc_clone(struct tnt_object *obj);
 
 local box_tuple = ffi.typeof('const struct box_tuple *')
 local box_small_tuple = ffi.typeof('const struct box_small_tuple *')
-local u16_ptr = ffi.typeof("uint16_t *")
-local u32_ptr = ffi.typeof("uint32_t *")
-local u64_ptr = ffi.typeof("uint64_t *")
+local u16_ptr = ffi.typeof("uint16_t const *")
+local u32_ptr = ffi.typeof("uint32_t const *")
+local u64_ptr = ffi.typeof("uint64_t const *")
+local i8_ptr = ffi.typeof("int16_t const *")
+local i16_ptr = ffi.typeof("int16_t const *")
+local i32_ptr = ffi.typeof("int32_t const *")
+local i64_ptr = ffi.typeof("int64_t const *")
 
 
 local ptrof = setmetatable({}, {__index = function (t, k)
@@ -105,6 +109,26 @@ local __tuple_index = {
        local len, offt = self:field(i, 1)
        if len ~= 8 then error('field level not equal to 8', 2) end
        return ffi.cast(u64_ptr, self.data + offt)[0]
+   end,
+   i8field = function(self, i)
+       local len, offt = self:field(i, 1)
+       if len ~= 1 then error('field level not equal to 1', 2) end
+       return ffi.cast(i8_ptr, self.data + offt)[0]
+   end,
+   i16field = function(self, i)
+       local len, offt = self:field(i, 1)
+       if len ~= 2 then error('field level not equal to 2', 2) end
+       return ffi.cast(i16_ptr, self.data + offt)[0]
+   end,
+   i32field = function(self, i)
+       local len, offt = self:field(i, 1)
+       if len ~= 4 then error('field level not equal to 4', 2) end
+       return ffi.cast(i32_ptr, self.data + offt)[0]
+   end,
+   i64field = function(self, i)
+       local len, offt = self:field(i, 1)
+       if len ~= 8 then error('field level not equal to 8', 2) end
+       return ffi.cast(i64_ptr, self.data + offt)[0]
    end,
    numfield = function(self, i)
       local len, offt = self:field(i, 1)
