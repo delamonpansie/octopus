@@ -926,7 +926,7 @@ box_prepare(struct box_txn *txn, int op, const void *data, u32 data_len)
 		}
 		if (tbuf_len(&buf) != 0)
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "can't unpack request");
-	} @catch(...) {
+	} @catch(id e) {
 		TAILQ_REMOVE(&txn->ops, bop, link);
 		box_op_rollback(bop);
 		@throw;
@@ -1343,7 +1343,7 @@ box_select_cb(struct netmsg_head *wbuf, struct iproto *request)
 		stat_collect(stat_base, SELECT_TUPLES, found);
 		if (cfg.box_extended_stat)
 			stat_sum_static(space->statbase, BSS_SELECT_TUPLES_IDX0+indexn, found);
-	} @catch (...) {
+	} @catch (id e) {
 		char statname[] = "SELECT_ERR_000\0";
 		int len = sprintf(statname, "SELECT_ERR_%d", n);
 		stat_sum_named(stat_named_base, statname, len, 1);
