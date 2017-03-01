@@ -8,17 +8,27 @@
 #import <util.h>
 
 struct tuple_cache {
-	struct tnt_object *obj;
+	union {
+		struct tnt_object *obj;
+		uintptr_t offset;
+	} as;
 	int cache[0];
 };
 
 #define Tuple_val(v) ((struct tuple_cache *)Data_custom_val(v))
+static struct tnt_object*
+tuple_obj(struct tuple_cache* tup)
+{
+	return tup->as.offset <= 256*2*sizeof(int) ?
+		(struct tnt_object*)((char*)tup->cache + tup->as.offset) :
+		tup->as.obj;
+}
 
 static void
 box_tuple_finalize(value v)
 {
 	struct tuple_cache *tup = Tuple_val(v);
-	object_decr_ref(tup->obj);
+	object_decr_ref(tup->as.obj);
 }
 
 static const struct custom_operations box_tuple_ops = {
@@ -44,7 +54,7 @@ static const struct custom_operations box_small_tuple_ops = {
 static void
 fill_cache(struct tuple_cache *tuple)
 {
-	struct tnt_object *obj = tuple->obj;
+	struct tnt_object *obj = tuple_obj(tuple);
 	int *cache = tuple->cache;
 	int cardinality = tuple_cardinality(obj);
 	const unsigned char *field = tuple_data(obj),
@@ -79,15 +89,15 @@ box_tuple_custom_alloc(struct tnt_object *obj)
 		val = caml_alloc_custom((struct custom_operations *)&box_small_tuple_ops,
 					small_tup_size, 0, 1);
 		tup = Tuple_val(val);
-		tup->obj = (void *)tup + tup_size;
-		memcpy(tup->obj, obj, small_obj_size);
+		tup->as.offset = cache_size;
+		memcpy(tuple_obj(tup), obj, small_obj_size);
 		break;
 	}
 	case BOX_TUPLE: {
 		val = caml_alloc_custom((struct custom_operations *)&box_tuple_ops,
 					tup_size, 0, 1);
 		tup = Tuple_val(val);
-		tup->obj = obj;
+		tup->as.obj = obj;
 		object_incr_ref(obj);
 		break;
 	}
@@ -106,7 +116,7 @@ stub_box_tuple_field(value val, value ftype, value valn)
 	CAMLlocal1(ret);
 
 	struct tuple_cache *tup = Tuple_val(val);
-	struct tnt_object *obj = tup->obj;
+	struct tnt_object *obj = tuple_obj(tup);
 	int *cache = tup->cache;
 	int n = Int_val(valn);
 
@@ -180,26 +190,26 @@ stub_box_tuple_field(value val, value ftype, value valn)
 	CAMLreturn(ret);
 }
 
-value
-stub_box_tuple_obj(value val)
+/* this function is used in box_index_stubs.m stub_index_iterator_init_with_object_direction */
+struct tnt_object*
+value_to_tnt_object(value val)
 {
 	struct tuple_cache *tup = Tuple_val(val);
-	struct tnt_object *obj = tup->obj;
-	return (value)obj;
+	return tuple_obj(tup);
 }
 
 value
 stub_box_tuple_cardinality(value val)
 {
 	struct tuple_cache *tup = Tuple_val(val);
-	return Val_int(tuple_cardinality(tup->obj));
+	return Val_int(tuple_cardinality(tuple_obj(tup)));
 }
 
 value
 stub_box_tuple_bsize(value val)
 {
 	struct tuple_cache *tup = Tuple_val(val);
-	return Val_int(tuple_bsize(tup->obj));
+	return Val_int(tuple_bsize(tuple_obj(tup)));
 }
 
 value
@@ -232,7 +242,7 @@ stub_box_tuple_blit_field(value str, value pos, value valtuple, value valn, valu
 	int *cache = tup->cache;
 	int len = cache[n * 2];
 	int offt = cache[n * 2 + 1];
-	void *field = tuple_data(tup->obj) + offt;
+	void *field = tuple_data(tuple_obj(tup)) + offt;
 	if (n != 0) {
 		int prev_len = cache[(n - 1) * 2],
 		   prev_offt = cache[(n - 1) * 2 + 1],
@@ -259,6 +269,6 @@ value
 stub_net_tuple_add(struct netmsg_head *wbuf, value val)
 {
 	struct tuple_cache *tup = Tuple_val(val);
-	net_tuple_add(wbuf, tup->obj);
+	net_tuple_add(wbuf, tuple_obj(tup));
 	return Val_unit;
 }

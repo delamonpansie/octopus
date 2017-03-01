@@ -28,7 +28,7 @@ module MakeInternal (Descr : Descr) = struct
   external stub_find_node : index -> Octopus.oct_obj = "stub_index_find_node"
   external stub_iterator_init_with_direction : index -> int -> unit = "stub_index_iterator_init_with_direction"
   external stub_iterator_init_with_node_direction : index -> int -> unit = "stub_index_iterator_init_with_node_direction"
-  external stub_iterator_init_with_object_direction : index -> Octopus.oct_obj -> int -> unit = "stub_index_iterator_init_with_object_direction"
+  external stub_iterator_init_with_object_direction : index -> Box_tuple.heap_tuple -> int -> unit = "stub_index_iterator_init_with_object_direction"
   external stub_iterator_init_with_position : index -> int -> unit = "stub_index_iterator_init_with_position"
   external stub_iterator_next : index -> Octopus.oct_obj = "stub_index_iterator_next"
 
@@ -54,7 +54,7 @@ module MakeInternal (Descr : Descr) = struct
         stub_iterator_init_with_node_direction ptr dir
       end
     | Iter_tuple t ->
-      stub_iterator_init_with_object_direction ptr (Box_tuple.to_oct_obj t) dir
+      stub_iterator_init_with_object_direction ptr (Box_tuple.heap t) dir
     | Iter_position pos ->
       stub_iterator_init_with_position ptr pos
 

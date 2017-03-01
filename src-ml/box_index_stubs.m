@@ -122,14 +122,16 @@ value stub_index_iterator_init_with_node_direction(Tree *index, value direction)
 	return Val_unit;
 }
 
+struct tnt_object* value_to_tnt_object(value val); /* this function declared in box_tuple_stubs.m */
 value stub_index_iterator_init_with_object_direction(Tree *index, value oct_object, value direction)
 {
 	if (!index_is_tree(index))
 		caml_invalid_argument("iterator_init");
 
 	CAMLparam1(oct_object);
+	struct tnt_object* obj = value_to_tnt_object(oct_object);
 	@try {
-		[index iterator_init_with_object:(void *)oct_object direction:Int_val(direction)];
+		[index iterator_init_with_object:obj direction:Int_val(direction)];
 	}
 	@catch (Error *e) {
 		release_and_failwith(e);

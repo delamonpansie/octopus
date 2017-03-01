@@ -13,7 +13,6 @@ type _ ftype = FI8 : int ftype
 let heap = function Heap o -> o | Gc _ -> failwith "accesing constructed tuple not implemented"
 
 external heap_tuple_alloc : Octopus.oct_obj -> heap_tuple = "box_tuple_custom_alloc"
-external oct_obj_of_heap_tuple : heap_tuple -> Octopus.oct_obj = "stub_box_tuple_obj" [@@noalloc]
 external heap_tuple_raw_field_size : heap_tuple -> int -> int = "stub_box_tuple_raw_field_size" [@@noalloc]
 external heap_tuple_bsize : heap_tuple -> int = "stub_box_tuple_bsize" [@@noalloc]
 external heap_tuple_cardinal : heap_tuple -> int = "stub_box_tuple_cardinality" [@@noalloc]
@@ -21,7 +20,6 @@ external heap_tuple_field : heap_tuple -> 'a ftype -> int -> 'a = "stub_box_tupl
 external heap_tuple_net_add : Net_io.wbuf -> heap_tuple -> unit = "stub_net_tuple_add" [@@noalloc]
 
 let of_oct_obj o = Heap (heap_tuple_alloc o)  (* will raise Not_found if obj == NULL *)
-let to_oct_obj o = oct_obj_of_heap_tuple (heap o)
 let of_list a = Gc a
 
 let i8field n tup = heap_tuple_field (heap tup) FI8 n
