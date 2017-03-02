@@ -494,7 +494,9 @@ feeder_worker(int parent_fd, int fd, void *state, int len)
 static void
 feeder_spawn_worker(int fd, void *req, int len)
 {
-	struct timeval tm = { .tv_sec = 120, .tv_usec = 0};
+	struct timeval tm = {
+		.tv_sec = cfg.wal_feeder_write_timeout,
+		.tv_usec = 0};
 	setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tm,sizeof(tm));
 	setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tm,sizeof(tm));
 	int zero = 0;
