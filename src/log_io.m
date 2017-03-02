@@ -80,6 +80,7 @@ const u32 marker = 0xba0babed;
 const u32 eof_marker = 0x10adab1e;
 Class version3 = nil;
 Class version4 = nil;
+Class version11 = nil;
 
 
 struct row_v12 *
@@ -205,7 +206,11 @@ open_for_read_filename:(const char *)filename dir:(XLogDir *)dir
 	}
 
 	if (strcmp(version_, v11) == 0) {
-		l = [XLog11 alloc];
+		if (version11 != nil) {
+			l = [version11 alloc];
+		} else {
+			l = [XLog11 alloc];
+		}
 	} else if (strcmp(version_, v12) == 0) {
 		l = [XLog12 alloc];
 	} else if (strcmp(version_, v04) == 0) {
@@ -252,6 +257,12 @@ register_version3: (Class)xlog
 register_version4: (Class)xlog
 {
 	version4 = xlog;
+}
+
++ (void)
+register_version11: (Class)xlog
+{
+	version11 = xlog;
 }
 
 - (id)
