@@ -381,6 +381,7 @@ recv_with_timeout: (ev_tstamp)timeout
 	ev_io_init(&io, (void *)fiber, fd, EV_READ);
 	ev_io_start(&io);
 
+	ev_now_update();
 	ev_timer timer = { .coro = 1 };
 	ev_timer_init(&timer, (void *)fiber, timeout, 0);
 	if (timeout > 0)
