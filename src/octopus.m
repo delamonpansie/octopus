@@ -840,9 +840,7 @@ init_storage:
 #endif
 
 #if OCT_SPAWNER
-	extern int fork_spawner();
-	if (fork_spawner() < 0)
-		panic("unable to fork spawner");
+	module_init(module("spawner"));
 #endif
 	octopus_ev_init();
 	octopus_ev_backgroud_tasks();

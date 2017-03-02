@@ -152,7 +152,7 @@ flush_and_exit(void)
 	_exit(0);
 }
 
-int
+static int
 fork_spawner()
 {
 	int fsock;
@@ -297,3 +297,17 @@ spawn_child(const char *name, int (*handler)(int parent_fd, int fd, void *state,
 	assert(child_fd >= 0);
 	return (struct child){ .pid = reply.pid, .fd = child_fd};
 }
+
+static void
+spawner_mod_init()
+{
+	if (fork_spawner() < 0)
+		panic("unable to fork spawner");
+}
+
+static struct tnt_module spawner_mod = {
+	.name = "spawner",
+	.init = spawner_mod_init,
+};
+
+register_module(spawner_mod);
