@@ -76,22 +76,6 @@ enum row_tag {
 #define TAG_WAL 0x8000
 #define TAG_SYS 0xc000
 
-
-/* Opengraph tags */
-
-#define OG_WALSPLITPAGE          1
-#define OG_WALADDITEM            2
-#define OG_WALWRITEPAGE          3
-#define OG_WALACTION             4
-#define OG_CACHESNAP             5
-#define OG_INMEMORYSNAP_GEN1     6
-#define OG_INMEMORYSNAP_REP_GEN1 7
-#define OG_WALACTION_REP         8
-#define OG_METADATA              9
-#define OG_WAL_CHECKPOINT        10
-#define OG_INMEMORYSNAP          11
-#define OG_INMEMORYSNAP_REP      12
-
 static inline bool scn_changer(int tag)
 {
 	int tag_type = tag & ~TAG_MASK;
@@ -262,9 +246,6 @@ u16 fix_tag_v2(u16 tag);
 @end
 
 @interface XLog11: XLog
-@end
-
-@interface XLog11OG: XLog11 /* OpenGraph XLog format */
 @end
 
 @interface XLog12: XLog
