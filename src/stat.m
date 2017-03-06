@@ -125,6 +125,8 @@ hist_percent(uint32_t *hist, uint32_t cnt)
 	uint32_t sum = 0, c1 = cnt/100, c10 = cnt/10, c50 = cnt/2;
 	struct stat_percent p = {-1,-1,-1};
 	for (i=HIST_CNT-1; i>=0; i--) {
+		if (hist[i] == 0)
+			continue;
 		sum += hist[i];
 		if (p.p99 < 0 && sum >= c1) {
 			p.p99 = hist_val(i);
