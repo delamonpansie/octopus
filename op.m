@@ -935,6 +935,22 @@ box_prepare(struct box_txn *txn, int op, const void *data, u32 data_len)
 	return bop;
 }
 
+static ev_tstamp
+txn_stat_cpu(struct box_txn *txn)
+{
+	if (cfg.box_extended_stat && txn->name != NULL) {
+		struct tbuf name = TBUF(NULL, 0, fiber->pool);
+		ev_tstamp now = ev_time();
+		ev_tstamp diff = (now - txn->start) * 1000;
+		tbuf_append(&name, txn->name, txn->namelen);
+		tbuf_append_lit(&name, ":cpu");
+		stat_aggregate_named(stat_named_base, name.ptr, tbuf_len(&name), diff);
+		stat_aggregate_named(stat_named_base, "TXN:cpu", 7, diff);
+		return now;
+	}
+	return 0;
+}
+
 static void
 txn_cleanup(struct box_txn *txn)
 {
@@ -943,9 +959,8 @@ txn_cleanup(struct box_txn *txn)
 	fiber->txn = NULL;
 
 	if (cfg.box_extended_stat && txn->name != NULL) {
-		ev_tstamp diff = (ev_time() - txn->start) * 1000;
-		stat_aggregate_named(stat_named_base, txn->name, txn->namelen, diff);
-		stat_aggregate_named(stat_named_base, "TXN", 3, diff);
+		stat_sum_named(stat_named_base, txn->name, txn->namelen, 1);
+		stat_sum_named(stat_named_base, "TXN", 3, 1);
 	}
 }
 
@@ -1041,12 +1056,14 @@ box_rollback(struct box_txn *txn)
 	struct box_op *bop;
 	TAILQ_FOREACH_REVERSE(bop, &txn->ops, box_op_tailq, link)
 		box_op_rollback(bop);
+	txn_stat_cpu(txn);
 	txn_cleanup(txn);
 	if (cfg.box_extended_stat && txn->name != NULL) {
 		struct tbuf buf = TBUF(NULL, 0, fiber->pool);
 		tbuf_append(&buf, txn->name, txn->namelen);
 		tbuf_append_lit(&buf, ":rollback");
 		stat_sum_named(stat_named_base, buf.ptr, tbuf_len(&buf), 1);
+		stat_sum_named(stat_named_base, "TXN:rollback", 12, 1);
 	}
 }
 
@@ -1075,15 +1092,7 @@ box_submit(struct box_txn *txn)
 	struct box_op *bop, *single;
 	ev_tstamp submit_start = 0, diff;
 
-	if (cfg.box_extended_stat && txn->name != NULL) {
-		struct tbuf name = TBUF(NULL, 0, fiber->pool);
-		submit_start = ev_time();
-		diff = (submit_start - txn->start) * 1000;
-		tbuf_append(&name, txn->name, txn->namelen);
-		tbuf_append_lit(&name, ":cpu");
-		stat_aggregate_named(stat_named_base, name.ptr, tbuf_len(&name), diff);
-		stat_aggregate_named(stat_named_base, "TXN:cpu", 7, diff);
-	}
+	submit_start = txn_stat_cpu(txn);
 
 	if (txn->mode == RO) {
 		assert(TAILQ_FIRST(&txn->ops) == NULL);
@@ -1131,7 +1140,7 @@ box_submit(struct box_txn *txn)
 
 	if (cfg.box_extended_stat && submit_start != 0) {
 		diff = (ev_time() - submit_start) * 1000;
-		stat_aggregate_named(stat_named_base, "TXN:submit", 7, diff);
+		stat_aggregate_named(stat_named_base, "TXN:submit", 10, diff);
 	}
 	if (txn->submit == 0) {
 		stat_collect(stat_base, SUBMIT_ERROR, 1);
