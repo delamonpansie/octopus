@@ -49,7 +49,7 @@
 #include <unistd.h>
 #include <sysexits.h>
 
-static struct iproto_service *recovery_service;
+static struct iproto_service *recovery_service = NULL;
 i64 fold_scn = 0;
 
 static void recovery_iproto_ignore(void);
@@ -673,8 +673,6 @@ enable_local_writes
 		fiber_create("snapshot", fork_and_snapshot);
 	}
 
-	recovery_iproto();
-
 	for (int i = 0; i < MAX_SHARD; i++) {
 		Shard *shard = [self shard:i];
 		if (shard && [shard our_shard])
@@ -682,6 +680,8 @@ enable_local_writes
 		else
 			[shard release];
 	}
+
+	recovery_iproto();
 }
 
 static void
@@ -1112,6 +1112,13 @@ iproto_shard_udpcb(const char *buf, ssize_t len, void *data __attribute__((unuse
 			 peer_name, shard_id, sop->peer[0]);
 		return;
 	}
+}
+
+void
+set_recovery_service(struct iproto_service *service)
+{
+	assert(recovery_service == NULL);
+	recovery_service = service;
 }
 
 static void

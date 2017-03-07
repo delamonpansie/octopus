@@ -228,6 +228,7 @@ status_update:(const char *)fmt, ...
 	shard_log(buf, self->id);
 
 	strncpy(status_buf, buf, sizeof(status_buf));
+	status_buf[sizeof(status_buf)-1] = '\0';
 	title(NULL);
 
 	[executor status_changed];

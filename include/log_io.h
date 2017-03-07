@@ -536,6 +536,12 @@ void fork_and_snapshot(va_list ap);
 
 - (Shard<Shard> *) shard_create_dummy:(const struct row_v12 *)row;
 @end
+/* this method were exported for non-sharded configuration
+ * (ie when only dummy shard #0)
+ * It should be called in [executor wal_final_row] to setup
+ * iproto_service for primary port, so some management
+ * service commands will be registered */
+void set_recovery_service(struct iproto_service *service);
 
 @interface Recovery (Deprecated)
 - (void) apply:(struct tbuf *)op tag:(u16)tag;
