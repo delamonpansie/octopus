@@ -818,6 +818,19 @@ stat_send_to_graphite()
 }
 #endif
 
+static double
+timeval2double(struct timeval *tv)
+{
+	return (double)tv->tv_sec + (double)tv->tv_usec * 1e-6;
+}
+
+static double
+timespec2double(struct timespec *tv)
+{
+	return (double)tv->tv_sec + (double)tv->tv_nsec * 1e-9;
+}
+
+#if HAVE_CLOCK_GETTIME
 #if defined(CLOCK_MONOTONIC_RAW)
 #define USE_CLOCK CLOCK_MONOTONIC_RAW
 #elif defined(CLOCK_MONOTONIC)
@@ -834,18 +847,17 @@ init_use_clock()
 	if (clock_gettime(use_clock, &ts))
 		use_clock = CLOCK_REALTIME;
 }
-
 static double
-timeval2double(struct timeval *tv)
+get_current_time()
 {
-	return (double)tv->tv_sec + (double)tv->tv_usec * 1e-6;
+	struct timespec ts;
+	if (clock_gettime(use_clock, &ts))
+		return 0;
+	return timespec2double(&ts);
 }
-
-static double
-timespec2double(struct timespec *tv)
-{
-	return (double)tv->tv_sec + (double)tv->tv_nsec * 1e-9;
-}
+#else
+#define get_current_time() ev_time()
+#endif
 
 #define CPUSTAT(_) \
         _(CPU_USER, 1)		\
@@ -870,15 +882,15 @@ static ssize_t vm_size = 0, vm_rss = 0, vm_swap = 0;
 static void
 stat_cpu_usage_init()
 {
-	struct timespec curtimespec;
 	sys_stat_base = stat_register_static("sys", cpu_stat_names, nelem(cpu_stat_names));
-	if (clock_gettime(use_clock, &curtimespec) != 0) {
+	double curtime = get_current_time();
+	if (curtime == 0) {
 		return;
 	}
 	if (getrusage(RUSAGE_SELF, &prevusage) != 0) {
 		return;
 	}
-	prevtime = timespec2double(&curtimespec);
+	prevtime = curtime;
 	prevuser = timeval2double(&prevusage.ru_utime);
 	prevsys = timeval2double(&prevusage.ru_stime);
 }
@@ -929,20 +941,19 @@ static void
 stat_cpu_usage()
 {
 	double curtime = 0, curuser = 0, cursys = 0;
-	struct timespec curtimespec;
 	struct rusage curusage;
 	if (stat_read_rss()) {
 		stat_gauge_static(sysbase, VM_SIZE, vm_size);
 		stat_gauge_static(sysbase, VM_RSS, vm_rss);
 		stat_gauge_static(sysbase, VM_SWAP, vm_swap);
 	}
-	if (clock_gettime(use_clock, &curtimespec) != 0) {
+	curtime = get_current_time();
+	if (curtime == 0) {
 		return;
 	}
 	if (getrusage(RUSAGE_SELF, &curusage) != 0) {
 		return;
 	}
-	curtime = timespec2double(&curtimespec);
 	curuser = timeval2double(&curusage.ru_utime);
 	cursys = timeval2double(&curusage.ru_stime);
 	if (prevtime != 0) {
