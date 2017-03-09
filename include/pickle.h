@@ -133,4 +133,26 @@ static inline u32 load_varint32(void **data)
 	v;						\
 })
 
+struct tlv {
+	u16 tag;
+	u32 len;
+	u8 val[0];
+} __attribute((packed));
+
+static inline int
+tlv_add(struct tbuf *buf, u16 tag)
+{
+	struct tlv tlv = { .tag = tag };
+	int offt = buf->end - buf->ptr;
+	tbuf_append(buf, &tlv, sizeof(tlv));
+	return offt;
+}
+
+static inline void
+tlv_end(struct tbuf *buf, int offt)
+{
+	struct tlv *tlv = buf->ptr + offt;
+	tlv->len = buf->end - buf->ptr - offt - sizeof(struct tlv);
+}
+
 #endif
