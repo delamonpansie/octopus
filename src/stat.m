@@ -824,12 +824,6 @@ timeval2double(struct timeval *tv)
 	return (double)tv->tv_sec + (double)tv->tv_usec * 1e-6;
 }
 
-static double
-timespec2double(struct timespec *tv)
-{
-	return (double)tv->tv_sec + (double)tv->tv_nsec * 1e-9;
-}
-
 #if HAVE_CLOCK_GETTIME
 #if defined(CLOCK_MONOTONIC_RAW)
 #define USE_CLOCK CLOCK_MONOTONIC_RAW
@@ -847,13 +841,14 @@ init_use_clock()
 	if (clock_gettime(use_clock, &ts))
 		use_clock = CLOCK_REALTIME;
 }
+
 static double
 get_current_time()
 {
 	struct timespec ts;
 	if (clock_gettime(use_clock, &ts))
 		return 0;
-	return timespec2double(&ts);
+	return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
 }
 #else
 #define get_current_time() ev_time()
