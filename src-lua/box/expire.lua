@@ -44,7 +44,7 @@ local setmetatable = setmetatable
 --    return tuple:u32field(1) < math.floor(os.ev_time() - 3600)
 -- end
 --
--- local function precondition(ctx, first_iteration)
+-- local function precondition(ctx)
 --    if ctx.space:slab_bytes() < 100*1024*1024 then
 --      ctx.key = nil -- restart iteration
 --      return false
@@ -53,10 +53,12 @@ local setmetatable = setmetatable
 
 -- exp.start{
 --    space = 1,
+--
 --      -- index to iterate, default is 0 - primary key
 --    index = 1,
 --
 --    filter = filter_tuples,
+--
 --      -- alternative way is to specify field (it should be 32bit timestamp) and period
 --    -- field = 1,
 --      -- period could be nil, number
@@ -65,11 +67,13 @@ local setmetatable = setmetatable
 --
 --      -- action to perform on tuple
 --    action = action_on_tuple,
+--
 --      -- `action_batch` is action on whole batch of filtered records
 --      -- `action` and `action_batch` are mutually exclusive
 --      -- if neither `action` nor `action_batch` were specified,
 --      --    then default `action_batch` deletes all filtered tuples
 --    -- action_batch  = action_on_batch,
+--
 --      -- direction is a way to iterate index
 --      -- `nil`      - 'whole' on primary or hash index, 'head' on secondary tree
 --      -- 'whole'    - whole space
@@ -77,19 +81,24 @@ local setmetatable = setmetatable
 --      -- 'tail'     - tree index backward, always restarting, pause when filter returns false
 --      -- 'backward' - whole tree index backward
 --    direction = 'head',
+--
 --      -- how many tuples perform per iteration, default is 25
 --    batch_size = 10,
+--
 --      -- how many tuples encount per second, default is 1000,
 --      -- could be function taking ctx,
 --      -- ctx will contain amount of filtered tuples in this iteration
 --    expires_per_second = 100,
+--
 --      -- what to encount in `batch_size`:
 --      --   'filter' - encount calls to filter (default)
 --      --   'batch'  - encount batch sizes
 --    encount = 'filter',
+--
 --      -- name of fiber loop
 --      -- default is format('box_expire_%d', space)
 --    name = 'expire_space_1',
+--
 --      -- `precondition` is called in start of each iteration,
 --      -- may analize and add values to ctx
 --      -- may analize and change ctx.key (if it sets key to nil, iteration restarts)
