@@ -58,6 +58,8 @@
 #include <sysexits.h>
 
 static struct iproto_service box_primary, box_secondary;
+static void initialize_primary_service();
+static void initialize_secondary_service();
 extern void tuple_print(struct tbuf *buf, u32 cardinality, void *f);
 
 struct object_space *
@@ -477,6 +479,26 @@ wal_final_row
 - (void)
 status_changed
 {
+	if (cfg.object_space != NULL) {
+		enum box_status {NOTHING = 0, PRIMARY, LOCAL_STANDBY, REMOTE_STANDBY};
+		enum box_status cur_status = NOTHING;
+		const char* status = [shard status];
+		if (strcmp(status, "primary") == 0) {
+			cur_status = PRIMARY;
+		} else if (strncmp(status, "hot_standby/local", 17) == 0) {
+			cur_status = LOCAL_STANDBY;
+		} else if (strncmp(status, "hot_standby/", 12) == 0 && strstr(status, "/ok") != NULL) {
+			cur_status = REMOTE_STANDBY;
+		}
+
+		if ((cur_status == PRIMARY || cur_status == REMOTE_STANDBY) && box_primary.name == NULL) {
+			initialize_primary_service();
+			set_recovery_service(&box_primary);
+		}
+		if (cur_status != NOTHING && box_secondary.name == NULL) {
+			initialize_secondary_service();
+		}
+	}
 }
 
 - (void)
@@ -669,7 +691,7 @@ out:
 @end
 
 static void
-initialize_service()
+initialize_primary_service()
 {
 	iproto_service(&box_primary, cfg.primary_addr);
 	box_primary.options = SERVICE_SHARDED;
@@ -678,14 +700,19 @@ initialize_service()
 
 	for (int i = 0; i < MAX(1, cfg.wal_writer_inbox_size); i++)
 		fiber_create("box_worker", iproto_worker, &box_primary);
+	say_info("(silver)box initialized (%i workers)", cfg.wal_writer_inbox_size);
+}
 
+static void
+initialize_secondary_service()
+{
 	if (cfg.secondary_addr != NULL && strcmp(cfg.secondary_addr, cfg.primary_addr) != 0) {
 		iproto_service(&box_secondary, cfg.secondary_addr);
 		box_secondary.options = SERVICE_SHARDED;
 		box_service_ro(&box_secondary);
 		fiber_create("box_secondary_worker", iproto_worker, &box_secondary);
+		say_info("(silver)box secondary initialized");
 	}
-	say_info("(silver)box initialized (%i workers)", cfg.wal_writer_inbox_size);
 }
 
 static void
@@ -699,7 +726,10 @@ init_second_stage(va_list ap __attribute__((unused)))
 	extern void oct_caml_plugins();
 	oct_caml_plugins();
 #endif
-	[recovery simple:&box_primary];
+	if (box_primary.name != NULL)
+		[recovery simple:&box_primary];
+	else
+		[recovery simple:NULL];
 }
 
 
@@ -722,7 +752,10 @@ init(void)
 	box_op_init();
 	stat_register_callback("box_mem", stat_mem_callback);
 
-	initialize_service();
+	if (cfg.object_space == NULL) {
+		initialize_primary_service();
+		initialize_secondary_service();
+	}
 
 	/* fiber is required to successfully pull from remote */
 	fiber_create("box_init", init_second_stage);
