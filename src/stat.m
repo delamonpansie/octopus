@@ -915,20 +915,22 @@ stat_read_rss() {
 			char *l = line + 7;
 			while (*l > 0 && (*l < '0' || *l > '9')) l++;
 			if (*l > 0)
-				stat_gauge_static(sysbase, VM_SIZE, atol(l)*1024);
+				vm_size = (size_t)atol(l) * 1024;
 			cnt--;
 		} else if (strncmp(line, "VmRSS:", 6) == 0) {
 			char *l = line + 6;
 			while (*l > 0 && (*l < '0' || *l > '9')) l++;
 			if (*l > 0)
-				stat_gauge_static(sysbase, VM_RSS, atol(l)*1024);
+				vm_rss = (size_t)atol(l) * 1024;
 			cnt--;
 		} else if (strncmp(line, "VmSwap:", 7) == 0) {
 			char *l = line + 7;
 			while (*l > 0 && (*l < '0' || *l > '9')) l++;
 			if (*l > 0)
-				stat_gauge_static(sysbase, VM_SWAP, atol(l)*1024);
+				vm_swap = (size_t)atol(l) * 1024;
 			cnt--;
+		} else if (strncmp(line, "volunt", 6) == 0) {
+			break;
 		}
 	}
 	fclose(f);
