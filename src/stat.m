@@ -39,6 +39,7 @@
 
 #if CFG_graphite_addr
 #import <graphite.h>
+static void stat_send_to_graphite();
 #endif
 
 #define SECS 5
@@ -169,14 +170,6 @@ stat_accum_init(struct stat_accum* sa) {
 	sa->name_pool = palloc_create_pool(stat_pool_cfg);
 }
 
-#ifdef CFG_graphite_addr
-static void
-stat_accum_reset(struct stat_accum* sa) {
-	mh_accum_clear(&sa->values);
-	prelease(sa->name_pool);
-}
-#endif
-
 static void
 stat_accum_destruct(struct stat_accum* sa)
 {
@@ -243,12 +236,12 @@ struct stat_base {
 	} current;
 	struct stat_accum records[5];
 	int recordsn;
+	int next_free;
 #ifdef CFG_graphite_addr
 	struct stat_accum periodic;
-#endif
 	ev_tstamp period_start;
 	ev_tstamp period_stop;
-	int next_free;
+#endif
 };
 
 static struct stat_base *stat_bases = NULL;
@@ -300,13 +293,13 @@ stat_register_any(char const *base_name, enum stat_base_type type,
 	}
 #ifdef CFG_graphite_addr
 	stat_accum_init(&bs->periodic);
+	bs->period_start = ev_now();
+	bs->period_stop = ev_now();
 #endif
 	for (i = 0; i < nelem(bs->records); i++) {
 		stat_accum_init(&bs->records[i]);
 	}
 	bs->recordsn = 0;
-	bs->period_start = ev_now();
-	bs->period_stop = ev_now();
 	return bn;
 }
 
@@ -379,6 +372,10 @@ merge_stat(const char *basename, struct stat_accum *small, struct stat_accum *bi
 static void
 stat_shift_all(ev_periodic *w _unused_, int revents _unused_) {
 	int i;
+#ifdef CFG_graphite_addr
+	/* send at the beginning, cause we should send for previous minute */
+	stat_send_to_graphite();
+#endif
 	for (stat_current_base=0; stat_current_base<stat_basen; stat_current_base++) {
 		struct stat_base *bs = stat_bases + stat_current_base;
 		struct stat_accum cur;
@@ -422,8 +419,8 @@ stat_shift_all(ev_periodic *w _unused_, int revents _unused_) {
 		bs->recordsn = MIN(bs->recordsn+1, nelem(bs->records));
 #ifdef CFG_graphite_addr
 		merge_stat(bs->name, &cur, &bs->periodic);
-#endif
 		bs->period_stop = ev_now();
+#endif
 	}
 	stat_current_base = -1;
 }
@@ -746,6 +743,12 @@ stat_report_double(char const * name, int len, double sum, i64 cnt, double min, 
 
 #ifdef CFG_graphite_addr
 static void
+stat_accum_reset(struct stat_accum* sa) {
+	mh_accum_clear(&sa->values);
+	prelease(sa->name_pool);
+}
+
+static void
 stat_base_print_to_graphite(struct stat_base *bs)
 {
 	double diff_time = bs->period_stop - bs->period_start;
@@ -789,15 +792,23 @@ end:
 }
 
 static void
-stat_send_to_graphite(ev_periodic* w _unused_, int revents _unused_)
+stat_send_to_graphite()
 {
+	static ev_tstamp last = 0;
+	ev_tstamp now = floor(ev_now()/60);
 	int i;
+	if (now == last)
+		return;
+	if (last == 0) {
+		last = now;
+		return;
+	}
+	last = now;
 	for (i = 0; i < stat_basen; i++) {
 		stat_base_print_to_graphite(&stat_bases[i]);
 	}
 	graphite_flush_now();
 }
-static ev_periodic stat_send_to_graphite_periodic;
 #endif
 
 #if CFG_lua_path
@@ -826,10 +837,6 @@ stat_init()
 {
 	ev_periodic_init(&stat_shift_all_periodic, stat_shift_all, 0.999, 1, 0);
 	ev_periodic_start(&stat_shift_all_periodic);
-#ifdef CFG_graphite_addr
-	ev_periodic_init(&stat_send_to_graphite_periodic, stat_send_to_graphite, 59.999, 60, 0);
-	ev_periodic_start(&stat_send_to_graphite_periodic);
-#endif
 #if CFG_lua_path
 	luaO_require_or_panic("stat", true, NULL);
 #endif
