@@ -1330,7 +1330,8 @@ box_select_cb(struct netmsg_head *wbuf, struct iproto *request)
 	space = object_space(box, n);
 
 	@try {
-
+		if (cfg.box_extended_stat)
+			stat_sum_static(space->statbase, BSS_SELECT_IDX0+indexn, 1);
 		if (indexn > MAX_IDX)
 			iproto_raise(ERR_CODE_ILLEGAL_PARAMS, "index too big");
 
