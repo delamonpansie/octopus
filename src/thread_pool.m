@@ -53,7 +53,7 @@ static void __attribute__((constructor))
 init_cond_clock()
 {
 	struct timespec ts;
-	if (!clock_gettime(cond_clock, &ts))
+	if (clock_gettime(cond_clock, &ts))
 		cond_clock = CLOCK_REALTIME;
 }
 

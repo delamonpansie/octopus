@@ -24,6 +24,9 @@
  * SUCH DAMAGE.
  */
 
+#include <sys/time.h>
+#include <sys/resource.h>
+#include <time.h>
 #import <util.h>
 #import <fiber.h>
 #import <octopus_ev.h>
@@ -368,6 +371,8 @@ merge_stat(const char *basename, struct stat_accum *small, struct stat_accum *bi
 	}
 }
 
+static void stat_cpu_usage();
+
 /* fiber for shifting seconds */
 static void
 stat_shift_all(ev_periodic *w _unused_, int revents _unused_) {
@@ -376,6 +381,8 @@ stat_shift_all(ev_periodic *w _unused_, int revents _unused_) {
 	/* send at the beginning, cause we should send for previous minute */
 	stat_send_to_graphite();
 #endif
+	stat_cpu_usage();
+
 	for (stat_current_base=0; stat_current_base<stat_basen; stat_current_base++) {
 		struct stat_base *bs = stat_bases + stat_current_base;
 		struct stat_accum cur;
@@ -811,6 +818,156 @@ stat_send_to_graphite()
 }
 #endif
 
+#if defined(CLOCK_MONOTONIC_RAW)
+#define USE_CLOCK CLOCK_MONOTONIC_RAW
+#elif defined(CLOCK_MONOTONIC)
+#define USE_CLOCK CLOCK_MONOTONIC
+#else
+#define USE_CLOCK CLOCK_REALTIME
+#endif
+static int use_clock = USE_CLOCK;
+
+static void __attribute__((constructor))
+init_use_clock()
+{
+	struct timespec ts;
+	if (clock_gettime(use_clock, &ts))
+		use_clock = CLOCK_REALTIME;
+}
+
+static double
+timeval2double(struct timeval *tv)
+{
+	return (double)tv->tv_sec + (double)tv->tv_usec * 1e-6;
+}
+
+static double
+timespec2double(struct timespec *tv)
+{
+	return (double)tv->tv_sec + (double)tv->tv_nsec * 1e-9;
+}
+
+#define CPUSTAT(_) \
+        _(CPU_USER, 1)		\
+	_(CPU_SYS, 2)		\
+	_(CPU, 3)		\
+	_(MINOR_FAULT, 4)	\
+	_(MAJOR_FAULT, 5)	\
+	_(CTXSW_VOLUNT, 6)	\
+	_(CTXSW_INVOLUNT, 7)    \
+	_(VM_SIZE, 8)		\
+	_(VM_RSS, 9)		\
+	_(VM_SWAP, 10)
+
+enum cpu_stat ENUM_INITIALIZER(CPUSTAT);
+static char const * const cpu_stat_names[] = ENUM_STR_INITIALIZER(CPUSTAT);
+static int sys_stat_base;
+static double prevtime = 0, prevuser = 0, prevsys = 0;
+static struct rusage prevusage;
+static int sysbase;
+static ssize_t vm_size = 0, vm_rss = 0, vm_swap = 0;
+
+static void
+stat_cpu_usage_init()
+{
+	struct timespec curtimespec;
+	sys_stat_base = stat_register_static("sys", cpu_stat_names, nelem(cpu_stat_names));
+	if (clock_gettime(use_clock, &curtimespec) != 0) {
+		return;
+	}
+	if (getrusage(RUSAGE_SELF, &prevusage) != 0) {
+		return;
+	}
+	prevtime = timespec2double(&curtimespec);
+	prevuser = timeval2double(&prevusage.ru_utime);
+	prevsys = timeval2double(&prevusage.ru_stime);
+}
+
+static int
+stat_read_rss() {
+	static ev_tstamp last = 0;
+	ev_tstamp cur = floor(ev_now() / 60);
+	if (cur == last) {
+		return vm_size != 0;
+	}
+	cur = last;
+	FILE* f = fopen("/proc/self/status", "r");
+	if (f == NULL) {
+		return vm_size != 0;
+	}
+	char *line = NULL;
+	size_t cap = 0, sz = 0;
+	int cnt = 3;
+	while (cnt > 0 && (sz = getline(&line, &cap, f)) > 0) {
+		if (strncmp(line, "VmSize:", 7) == 0) {
+			char *l = line + 7;
+			while (*l > 0 && (*l < '0' || *l > '9')) l++;
+			if (*l > 0)
+				stat_gauge_static(sysbase, VM_SIZE, atol(l)*1024);
+			cnt--;
+		} else if (strncmp(line, "VmRSS:", 6) == 0) {
+			char *l = line + 6;
+			while (*l > 0 && (*l < '0' || *l > '9')) l++;
+			if (*l > 0)
+				stat_gauge_static(sysbase, VM_RSS, atol(l)*1024);
+			cnt--;
+		} else if (strncmp(line, "VmSwap:", 7) == 0) {
+			char *l = line + 7;
+			while (*l > 0 && (*l < '0' || *l > '9')) l++;
+			if (*l > 0)
+				stat_gauge_static(sysbase, VM_SWAP, atol(l)*1024);
+			cnt--;
+		}
+	}
+	fclose(f);
+	if (line != NULL)
+		free(line);
+	return vm_size != 0;
+}
+
+static void
+stat_cpu_usage()
+{
+	double curtime = 0, curuser = 0, cursys = 0;
+	struct timespec curtimespec;
+	struct rusage curusage;
+	if (stat_read_rss()) {
+		stat_gauge_static(sysbase, VM_SIZE, vm_size);
+		stat_gauge_static(sysbase, VM_RSS, vm_rss);
+		stat_gauge_static(sysbase, VM_SWAP, vm_swap);
+	}
+	if (clock_gettime(use_clock, &curtimespec) != 0) {
+		return;
+	}
+	if (getrusage(RUSAGE_SELF, &curusage) != 0) {
+		return;
+	}
+	curtime = timespec2double(&curtimespec);
+	curuser = timeval2double(&curusage.ru_utime);
+	cursys = timeval2double(&curusage.ru_stime);
+	if (prevtime != 0) {
+		double dlttime = curtime - prevtime;
+		double userusage = 100 * (curuser - prevuser) / dlttime;
+		double sysusage = 100 * (cursys - prevsys) / dlttime;
+		double cpuusage = userusage + sysusage;
+		stat_aggregate_static(sysbase, CPU_USER, userusage);
+		stat_aggregate_static(sysbase, CPU_SYS, sysusage);
+		stat_aggregate_static(sysbase, CPU, cpuusage);
+		stat_aggregate_static(sysbase, MINOR_FAULT,
+				curusage.ru_minflt - prevusage.ru_minflt);
+		stat_aggregate_static(sysbase, MAJOR_FAULT,
+				curusage.ru_majflt - prevusage.ru_majflt);
+		stat_aggregate_static(sysbase, CTXSW_VOLUNT,
+				curusage.ru_nvcsw - prevusage.ru_nvcsw);
+		stat_aggregate_static(sysbase, CTXSW_INVOLUNT,
+				curusage.ru_nivcsw - prevusage.ru_nivcsw);
+	}
+	prevtime = curtime;
+	prevuser = curuser;
+	prevsys = cursys;
+	prevusage = curusage;
+}
+
 #if CFG_lua_path
 void
 stat_lua_callback(int base)
@@ -837,6 +994,7 @@ stat_init()
 {
 	ev_periodic_init(&stat_shift_all_periodic, stat_shift_all, 0.999, 1, 0);
 	ev_periodic_start(&stat_shift_all_periodic);
+	stat_cpu_usage_init();
 #if CFG_lua_path
 	luaO_require_or_panic("stat", true, NULL);
 #endif
