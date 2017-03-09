@@ -1089,7 +1089,7 @@ box_submit(struct box_txn *txn)
 {
 	say_debug2("%s: txn:%i/%p state:%i", __func__, txn->id, txn, txn->state);
 	int len = 0, count = 0;
-	struct box_op *bop, *single;
+	struct box_op *bop, *single = NULL;
 	ev_tstamp submit_start = 0, diff;
 
 	submit_start = txn_stat_cpu(txn);
