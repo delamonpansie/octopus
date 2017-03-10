@@ -157,12 +157,6 @@ struct box_meta_txn {
 	Index<BasicIndex> *index;
 };
 
-struct tlv {
-	u16 tag;
-	u32 len;
-	char val[];
-} __attribute((packed));
-
 enum tlv_tag {
 	BOX_OP = 127,
 	BOX_MULTI_OP
