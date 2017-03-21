@@ -308,7 +308,7 @@ next_chunk_for(struct palloc_pool *pool, size_t size)
 	else
 		class = &classes[0];
 
-	if (class->size == almost_unlimited) /* move to prev to almost_unlimited class */
+	if (class != &classes[0] && class->size > size*4) /* move to prev to almost_unlimited class */
 		class--;
 
 	while (class->size < size)
