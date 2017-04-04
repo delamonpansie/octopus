@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016, 2017 Mail.RU
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016, 2017 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -154,11 +154,10 @@ net_tuple_add(struct netmsg_head *h, struct tnt_object *obj)
 	}
 	case BOX_SMALL_TUPLE: {
 		struct box_small_tuple *tuple = box_small_tuple(obj);
-		struct box_tuple *reply = palloc(h->pool, sizeof(*reply) + tuple->bsize);
+		struct box_tuple *reply = net_add_alloc(h, sizeof(*reply) + tuple->bsize);
 		reply->bsize = tuple->bsize;
 		reply->cardinality = tuple->cardinality;
 		memcpy(reply->data, tuple->data, tuple->bsize);
-		net_add_iov(h, (void *)reply, sizeof(*reply) + tuple->bsize);
 		break;
 	}
 	case BOX_PHI:
@@ -783,8 +782,7 @@ process_select(struct netmsg_head *h, Index<BasicIndex> *index,
 	bool is_hash = index_type_is_hash(index->conf.type);
 
 	say_debug("SELECT");
-	found = palloc(h->pool, sizeof(*found));
-	net_add_iov(h, found, sizeof(*found));
+	found = net_add_alloc(h, sizeof(*found));
 	*found = 0;
 
 	for (u32 i = 0; i < count; i++) {
