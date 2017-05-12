@@ -89,6 +89,17 @@ error(struct iproto_ingress_svc *io, struct iproto *msg, int rc, const char *err
 	return 1;
 }
 
+struct iproto *iproto_rbuf_req(struct netmsg_io *io)
+{
+	int len = rbuf_len(io);
+	if (len < sizeof(struct iproto))
+		return NULL;
+	struct iproto *msg = io->rbuf.ptr;
+	if (len < sizeof(*msg) + msg->data_len)
+		return NULL;
+	return msg;
+}
+
 void
 iproto_worker(va_list ap)
 {
@@ -158,10 +169,10 @@ iproto_ping(struct netmsg_head *h, struct iproto *r)
 
 @implementation iproto_ingress
 - (id)
-init:(int)fd_ pool:(struct palloc_pool *)pool_
+init:(int)fd_ pool:(struct netmsg_pool_ctx *)ctx_
 {
 	say_debug2("%s: peer %s", __func__, net_fd_name(fd_));
-	netmsg_io_init(self, pool_, fd_);
+	netmsg_io_init(self, ctx_, fd_);
 	ev_io_start(&in);
 	return self;
 }
@@ -175,14 +186,10 @@ packet_ready:(struct iproto *)msg
 - (void)
 data_ready
 {
-	while (1) {
-		struct iproto *msg = rbuf.ptr;
-		int len = tbuf_len(&rbuf);
-		if (len < sizeof(struct iproto) || len < sizeof(struct iproto) + msg->data_len)
-			return;
-
-		tbuf_ltrim(&rbuf, sizeof(struct iproto) + msg->data_len);
+	struct iproto *msg;
+	while ((msg = iproto_rbuf_req(self))) {
 		[self packet_ready:msg];
+		rbuf_ltrim(self, sizeof(*msg) + msg->data_len);
 	}
 }
 
@@ -268,7 +275,7 @@ init:(int)fd_ service:(struct iproto_service *)service_
 	ingress_cnt++;
 	stat_sum_static(stat_base, IPROTO_CONNECTED, 1);
 	service = service_;
-	netmsg_io_init(self, service->pool, fd_);
+	netmsg_io_init(self, &service->ctx, fd_);
 	ev_init(&self->in, iproto_service_svc_read_cb);
 	ev_init(&self->out, iproto_service_svc_write_cb);
 	self->flags |= NETMSG_IO_SHARED_POOL;
@@ -276,17 +283,6 @@ init:(int)fd_ service:(struct iproto_service *)service_
 	ev_io_start(&in);
 }
 @end
-
-static void
-service_gc(struct palloc_pool *pool, void *ptr)
-{
-	struct iproto_service *s = ptr;
-	struct iproto_ingress_svc *c;
-
-	s->pool = pool;
-	LIST_FOREACH(c, &s->clients, link)
-		netmsg_io_gc(pool, c);
-}
 
 static void
 iproto_accept_client(int fd, void *data)
@@ -316,12 +312,10 @@ iproto_service(struct iproto_service *service, const char *addr)
 	sprintf(name, "iproto:%s", addr);
 
 	TAILQ_INIT(&service->processing);
-	service->pool = palloc_create_pool((struct palloc_config){.name = name});
+	netmsg_pool_ctx_init(&service->ctx, name, 2 * 1024 * 1024);
 	service->name = name;
 	service->batch = 32;
 	service->addr = strdup(addr);
-
-	palloc_register_gc_root(service->pool, service, service_gc);
 
 	if (service->ingress_class == Nil)
 		service->ingress_class = [iproto_ingress_svc class];
@@ -380,14 +374,6 @@ service_register_iproto(struct iproto_service *s, u32 cmd, iproto_cb cb, int fla
 			.flags = flags
 		});
 }
-
-static int
-has_full_req(const struct tbuf *buf)
-{
-	return tbuf_len(buf) >= sizeof(struct iproto) &&
-	       tbuf_len(buf) >= sizeof(struct iproto) + iproto(buf)->data_len;
-}
-
 
 static int
 local(struct iproto_ingress_svc *io, struct iproto *msg, struct iproto_handler *ih)
@@ -482,18 +468,18 @@ process_requests(struct iproto_service *service, struct iproto_ingress_svc *io)
 {
 	netmsg_io_retain(io);
 	io->batch = service->batch;
-	while (has_full_req(&io->rbuf) && io->batch > 0) {
-		struct iproto *msg = iproto(&io->rbuf);
-		size_t msg_size = sizeof(struct iproto) + msg->data_len;
+	struct iproto *msg;
+	while ((msg = iproto_rbuf_req(io)) && io->batch > 0) {
+		size_t msg_size = sizeof(*msg) + msg->data_len;
 		if (classify(io, msg) == 0)
 			break;
-		tbuf_ltrim(&io->rbuf, msg_size);
+		rbuf_ltrim(io, msg_size);
 	}
 
 	if (unlikely(io->fd == -1)) /* handler may close connection */
 		goto out;
 
-	if (!has_full_req(&io->rbuf)) {
+	if (!iproto_rbuf_req(io)) {
 		TAILQ_REMOVE(&service->processing, io, processing_link);
 		io->processing_link.tqe_prev = NULL;
 
@@ -512,16 +498,16 @@ out:
 static void
 service_prepare_io(struct iproto_ingress_svc *io)
 {
-	if (tbuf_len(&io->rbuf) >= cfg.input_low_watermark && has_full_req(&io->rbuf)) {
+	if (rbuf_len(io) >= cfg.input_low_watermark && iproto_rbuf_req(io)) {
 		if (ev_now() - io->input_overflow_warn > 10) {
 			say_warn("peer %s input buffer low watermark overflow (size %i)",
-				 net_fd_name(io->fd), tbuf_len(&io->rbuf));
+				 net_fd_name(io->fd), rbuf_len(io));
 			io->input_overflow_warn = ev_now();
 		}
 		ev_io_stop(&io->in);
 	}
 
-	if (tbuf_len(&io->rbuf) < cfg.input_low_watermark && io->wbuf.bytes < cfg.output_low_watermark)
+	if (rbuf_len(io) < cfg.input_low_watermark && io->wbuf.bytes < cfg.output_low_watermark)
 		ev_io_start(&io->in);
 
 #ifndef IPROTO_PESSIMISTIC_WRITES
@@ -571,13 +557,8 @@ iproto_wakeup_workers(ev_prepare *ev)
 			/* process_requests() may move *c to the end of tailq */
 			if (c == last) break;
 		}
-
-		size_t diff = palloc_allocated(service->pool) - service->pool_allocated;
-		if (diff > 4 * 1024 * 1024 && diff > service->pool_allocated * 3) {
-			palloc_gc(service->pool);
-			service->pool_allocated = palloc_allocated(service->pool);
-		}
 	} while (!SLIST_EMPTY(&service->workers) && !TAILQ_EMPTY(&service->processing));
+	netmsg_pool_ctx_gc(&service->ctx);
 	palloc_cutoff(fiber->pool);
 }
 
@@ -602,8 +583,7 @@ iproto_reply(struct netmsg_head *h, const struct iproto *request, u32 ret_code)
 		   net_fd_name(container_of(h, struct netmsg_io, wbuf)->fd),
 		   request->msg_code, request->sync, ret_code);
 
-	struct iproto_retcode *header = palloc(h->pool, sizeof(*header));
-	net_add_iov(h, header, sizeof(*header));
+	struct iproto_retcode *header = net_add_alloc(h, sizeof(*header));
 	*header = (struct iproto_retcode){ .shard_id = request->shard_id,
 					   .msg_code = request->msg_code,
 					   .data_len = h->bytes,
@@ -619,8 +599,7 @@ iproto_reply_small(struct netmsg_head *h, const struct iproto *request, u32 ret_
 		   net_fd_name(container_of(h, struct netmsg_io, wbuf)->fd),
 		   request->msg_code, request->sync, ret_code);
 
-	struct iproto_retcode *header = palloc(h->pool, sizeof(*header));
-	net_add_iov(h, header, sizeof(*header));
+	struct iproto_retcode *header = net_add_alloc(h, sizeof(*header));
 	*header = (struct iproto_retcode){ .shard_id = request->shard_id,
 					   .msg_code = request->msg_code,
 					   .data_len = sizeof(ret_code),
@@ -675,7 +654,7 @@ iproto_service_info(struct tbuf *out, struct iproto_service *service)
 		tbuf_printf(out, "      state: %s%s" CRLF,
 			    ev_is_active(&io->in) ? "in" : "",
 			    ev_is_active(&io->out) ? "out" : "");
-		tbuf_printf(out, "      rbuf: %i" CRLF, tbuf_len(&io->rbuf));
+		tbuf_printf(out, "      rbuf: %i" CRLF, rbuf_len(io));
 		tbuf_printf(out, "      pending_bytes: %zi" CRLF, io->wbuf.bytes);
 		if (!TAILQ_EMPTY(&io->wbuf.q))
 			tbuf_printf(out, "      out_messages:" CRLF);

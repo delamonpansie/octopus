@@ -45,9 +45,15 @@ struct service;
 struct netmsg;
 TAILQ_HEAD(netmsg_tailq, netmsg);
 
+struct netmsg_pool_ctx {
+	struct palloc_pool *pool;
+	struct palloc_config cfg;
+	int limit;
+};
+
 struct netmsg_head {
 	struct netmsg_tailq q;
-	struct palloc_pool *pool;
+	struct netmsg_pool_ctx *ctx;
 	ssize_t bytes;
 	struct iovec *last_used_iov; /* cache for iovec joining */
 };
@@ -61,6 +67,7 @@ struct netmsg_head {
 struct netmsg {
 	TAILQ_ENTRY(netmsg) link; /* first sizeof(void *) bytes are trashed by salloc() */
 	int count;
+	struct palloc_pool *pool;
 
 	struct iovec iov[NETMSG_IOV_SIZE];
 	uintptr_t ref[NETMSG_IOV_SIZE];
@@ -70,12 +77,11 @@ struct netmsg {
 #define NETMSG_IO_LINGER_CLOSE	2
 @interface netmsg_io : Object {
 @public
-	struct palloc_pool *pool;
+	struct netmsg_pool_ctx *ctx;
 	struct tbuf rbuf;
 	struct netmsg_head wbuf;
 	ev_io in, out;
 	int fd, rc, flags;
-	size_t pool_allocated;
 }
 - (void)release; /* do not override : IMP caching in process_requests()  */
 - (id)retain; /* do not override : IMP caching in process_requests()  */
@@ -91,7 +97,10 @@ struct netmsg_mark {
 	int offset;
 };
 
-void netmsg_head_init(struct netmsg_head *h, struct palloc_pool *pool);
+void netmsg_pool_ctx_init(struct netmsg_pool_ctx *ctx, const char *name, int limit);
+void netmsg_pool_ctx_gc(struct netmsg_pool_ctx *ctx);
+
+void netmsg_head_init(struct netmsg_head *h, struct netmsg_pool_ctx *ctx);
 void netmsg_head_dealloc(struct netmsg_head *h);
 
 struct netmsg *netmsg_concat(struct netmsg_head *dst, struct netmsg_head *src);
@@ -100,6 +109,8 @@ void netmsg_getmark(struct netmsg_head *h, struct netmsg_mark *mark);
 void netmsg_reset(struct netmsg_head *h);
 
 void net_add_iov(struct netmsg_head *o, const void *buf, size_t len);
+void *net_add_alloc(struct netmsg_head *o, size_t len);
+
 void net_add_iov_dup(struct netmsg_head *o, const void *buf, size_t len);
 #define net_add_dup(o, buf) net_add_iov_dup(o, (buf), sizeof(*(buf)))
 void net_add_ref_iov(struct netmsg_head *o, uintptr_t ref, const void *buf, size_t len);
@@ -108,9 +119,7 @@ void netmsg_verify_ownership(struct netmsg_head *h); /* debug method */
 
 ssize_t netmsg_writev(int fd, struct netmsg_head *head);
 
-void netmsg_io_init(struct netmsg_io *io, struct palloc_pool *pool, int fd);
-void netmsg_io_gc(struct palloc_pool *pool, void *ptr);
-void netmsg_head_gc(struct palloc_pool *pool, void *ptr);
+void netmsg_io_init(struct netmsg_io *io, struct netmsg_pool_ctx *ctx, int fd);
 
 ssize_t netmsg_io_write_for_cb(ev_io *ev, int events);
 ssize_t netmsg_io_read_for_cb(ev_io *ev, int events);
@@ -129,6 +138,9 @@ static inline void netmsg_io_release(struct netmsg_io *io)
 		[io free];
 }
 
+int rbuf_len(const struct netmsg_io *io);
+void rbuf_ltrim(struct netmsg_io *io, int size);
+ssize_t rbuf_recv(struct netmsg_io *io, int size);
 
 enum tac_result {
 	tac_error = -1,

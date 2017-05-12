@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2011, 2012, 2013, 2014, 2016 Mail.RU
- * Copyright (C) 2011, 2012, 2013, 2014, 2016 Yuriy Vostrikov
+ * Copyright (C) 2011, 2012, 2013, 2014, 2016, 2017 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -50,7 +50,7 @@ const char *paxos_msg_code[] = ENUM_STR_INITIALIZER(PAXOS_CODE);
 const int proposal_history_size = 16 * 1024;
 const int quorum = 2; /* FIXME: hardcoded */
 
-static struct palloc_pool *paxos_pool;
+static struct netmsg_pool_ctx paxos_ctx;
 
 static u16 paxos_default_version;
 
@@ -170,8 +170,7 @@ paxos_respond(Paxos *paxos, struct paxos_request *req, enum paxos_msg_code code,
 
 	switch (req->type) {
 	case PAXOS_REQ_REMOTE:
-		msg = palloc(req->wbuf->pool, msg_len);
-		net_add_iov(req->wbuf, msg, msg_len);
+		msg = net_add_alloc(req->wbuf, msg_len);
 		break;
 	case PAXOS_REQ_INTERNAL:
 		msg = palloc(req->mbox->pool, msg_len);
@@ -1200,7 +1199,7 @@ init_id:(int)shard_id scn:(i64)scn_ sop:(const struct shard_op *)sop
 		}
 
 		const struct sockaddr_in *sin = peer_addr(peer[i], PORT_PRIMARY);
-		struct iproto_egress *egress = iproto_remote_add_peer(NULL, sin, paxos_pool);
+		struct iproto_egress *egress = iproto_remote_add_peer(NULL, sin, &paxos_ctx);
 
 		SLIST_INSERT_HEAD(&paxos_remotes, egress, link);
 	}
@@ -1463,6 +1462,6 @@ register_source();
 void __attribute__((constructor))
 paxos_ctor()
 {
-	paxos_pool = palloc_create_pool((struct palloc_config){.name = "paxos"});
+	netmsg_pool_ctx_init(&paxos_ctx, "paxos", 1 * 1024 * 1024);
 	slab_cache_init(&proposal_cache, sizeof(struct proposal), SLAB_GROW, "paxos/proposal");
 }

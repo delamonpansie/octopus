@@ -34,6 +34,7 @@ $CPP $srcdir/include/fiber.h | $SED -n '/^@interface Fiber/,/^}/p' | $SED '{s/@i
 echo " Fiber;"
 echo "struct Fiber *current_fiber();"
 echo "int fiber_switch_cnt();"
+$CPP $srcdir/include/palloc.h | $SED -n '/^typedef.*palloc/p; /^struct palloc_config {/,/^}/p; /palloc(/p'
 $CPP $srcdir/include/octopus_ev.h | $SED -n '/^typedef [a-z]\+ ev_tstamp/p; /typedef struct ev_\(io\|timer\)/,/^}/p;'
 $CPP $srcdir/include/iproto_def.h | $SED -n '/^struct iproto\(_retcode\)\? \+{/,/^}/{s/\[0\?\]/[?]/;p;}'
 $CPP $srcdir/include/iproto_def.h | $SED -n '/^struct iproto\(_retcode\)\? \+{/,/^}/{s/\(iproto\w*\)/\1_0/;/\[0\?\]/ d;p;}'
@@ -41,7 +42,6 @@ $CPP $srcdir/include/net_io.h | $SED -n '/^struct netmsg\(_io\|_mark\|_head\|_ta
 $CPP $srcdir/include/net_io.h | $SED -n '/^\(void \|struct netmsg \*\)netmsg_\(head_\(init\|dealloc\)\|rewind\|getmark\|concat\)/p; /^void net_add_/p;/^int atosin/p'
 $CPP $srcdir/include/pickle.h | $SED -n '/write.*(.*struct tbuf/p'
 $CPP $srcdir/include/say.h | $SED -n '/^extern int.*max_level/p; /^enum say_level {/,/^}/p; /^void _say(/{s/$/;/;p;}'
-$CPP $srcdir/include/palloc.h | $SED -n '/palloc(/p'
 $CPP $srcdir/include/log_io.h | $SED -n '/^struct row_v12 {/,/^}/p; /^enum row_tag {/,/^}/p;'
 $CPP cfg/octopus.h | $SED -n 's/u_int32_t/uint32_t/; /^typedef struct octopus_.* {/,/^}/p'
 $CPP -DCFG_lua_path=1 $srcdir/include/stat.h | $SED -n '/stat_init/,$ { /^[[:alpha:]_]/p }'

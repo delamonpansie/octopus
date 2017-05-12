@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2011, 2012, 2013, 2014, 2016 Mail.RU
- * Copyright (C) 2011, 2012, 2013, 2014, 2016 Yuriy Vostrikov
+ * Copyright (C) 2011, 2012, 2013, 2014, 2016, 2017 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -80,7 +80,7 @@ LIST_HEAD(iproto_future_list, iproto_future);
 @public
 	struct iproto_future_list waiting;
 }
-- (id)init:(int)fd_ pool:(struct palloc_pool *)pool;
+- (id)init:(int)fd_ pool:(struct netmsg_pool_ctx *)ctx;
 - (void)packet_ready:(struct iproto *)msg;
 @end
 
@@ -122,8 +122,7 @@ struct iproto_handler {
 };
 
 struct iproto_service {
-	struct palloc_pool *pool;
-	size_t pool_allocated; /* used for differential calls to palloc_gc */
+	struct netmsg_pool_ctx ctx;
 	const char *name;
 	TAILQ_HEAD(ingress_tailq, iproto_ingress_svc) processing;
 	LIST_HEAD(, iproto_ingress_svc) clients, prepare;
@@ -203,6 +202,7 @@ struct iproto *iproto_mbox_peek(struct iproto_mbox *mbox);
 void iproto_mbox_put(struct iproto_mbox *mbox, struct iproto *msg);
 
 void iproto_pinger(va_list ap);
+struct iproto *iproto_rbuf_req(struct netmsg_io *io);
 
 struct iproto_ingress *blackhole_ingress;
 struct iproto_mbox *blackhole_mbox;
@@ -220,7 +220,7 @@ struct iproto *iproto_sync_send(struct iproto_egress *peer,
 u32 iproto_proxy_send(struct iproto_egress *to, struct iproto_ingress *from,
 		      u32 wrap_code, const struct iproto *msg, const struct iovec *iov, int iovcnt);
 
-struct iproto_egress *iproto_remote_add_peer(struct iproto_egress *peer, const struct sockaddr_in *daddr, struct palloc_pool *pool);
+struct iproto_egress *iproto_remote_add_peer(struct iproto_egress *peer, const struct sockaddr_in *daddr, struct netmsg_pool_ctx *ctx);
 void iproto_remote_stop_reconnect(struct iproto_egress *peer);
 
 @interface IProtoError : Error {

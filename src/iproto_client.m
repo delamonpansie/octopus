@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2010, 2011, 2012 2014, 2016 Mail.RU
- * Copyright (C) 2010, 2011, 2012 2014, 2016 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012 2014, 2016, 2017 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -157,7 +157,7 @@ msg_send_wrap(struct iproto_egress *peer,
 		return 0;
 
 	int msglen = sizeof(*orig_msg) + orig_msg->data_len;
-	struct iproto *wrap = palloc(h->pool, msglen + sizeof(*wrap));
+	struct iproto *wrap = net_add_alloc(h, msglen + sizeof(*wrap));
 	struct iproto *msg = wrap + 1;
 
 	memcpy(msg, orig_msg, msglen);
@@ -169,7 +169,6 @@ msg_send_wrap(struct iproto_egress *peer,
 	wrap->shard_id = msg->shard_id; // not used at reciever
 	wrap->sync = msg->sync;
 	wrap->data_len = msg->data_len + sizeof(*msg);
-	net_add_iov(h, msg - 1, msglen + sizeof(*msg));
 
 	for (int i = 0; i < iovcnt; i++)
 		net_add_iov_dup(h, iov[i].iov_base, iov[i].iov_len);
@@ -191,12 +190,11 @@ msg_send(struct iproto_egress *peer,
 		return 0;
 
 	int msglen = sizeof(*orig_msg) + orig_msg->data_len;
-	struct iproto *msg = palloc(h->pool, msglen);
+	struct iproto *msg = net_add_alloc(h, msglen);
 	memcpy(msg, orig_msg, msglen);
 	msg->sync = iproto_next_sync();
 	for (int i = 0; i < iovcnt; i++)
 		msg->data_len += iov[i].iov_len;
-	net_add_iov(h, msg, msglen);
 
 	for (int i = 0; i < iovcnt; i++)
 		net_add_iov_dup(h, iov[i].iov_base, iov[i].iov_len);
@@ -451,22 +449,14 @@ iproto_future_resolve(struct iproto_egress *peer, struct iproto *msg)
 	}
 }
 
-static int
-has_full_req(const struct tbuf *buf)
-{
-	return tbuf_len(buf) >= sizeof(struct iproto) &&
-	       tbuf_len(buf) >= sizeof(struct iproto) + iproto(buf)->data_len;
-}
-
-
 @implementation iproto_egress
 - (void)
 data_ready
 {
-	while (has_full_req(&rbuf)) {
-		struct iproto *req = iproto(&rbuf);
-		int req_size = sizeof(struct iproto) + req->data_len;
-		tbuf_ltrim(&rbuf, req_size);
+	struct iproto *req;
+	while ((req = iproto_rbuf_req(self))) {
+		int req_size = sizeof(*req) + req->data_len;
+		rbuf_ltrim(self, req_size);
 		iproto_future_resolve(self, req);
 	}
 }
@@ -487,7 +477,7 @@ free
 
 static struct tac_list iproto_tac_list;
 struct iproto_egress *
-iproto_remote_add_peer(struct iproto_egress *peer, const struct sockaddr_in *daddr, struct palloc_pool *pool)
+iproto_remote_add_peer(struct iproto_egress *peer, const struct sockaddr_in *daddr, struct netmsg_pool_ctx *ctx)
 {
 	struct tac_state *ts;
 	static struct Fiber *rendevouz_fiber;
@@ -498,13 +488,13 @@ iproto_remote_add_peer(struct iproto_egress *peer, const struct sockaddr_in *dad
 		SLIST_FOREACH(ts, &iproto_tac_list, link) {
 			peer = container_of(ts, struct iproto_egress, ts);
 			if (memcmp(&ts->daddr, daddr, sizeof(*daddr)) == 0 &&
-			    peer->pool == pool)
+			    peer->ctx == ctx)
 				return peer;
 		}
 
 		peer = [iproto_egress alloc];
 	}
-	netmsg_io_init(peer, pool, -1);
+	netmsg_io_init(peer, ctx, -1);
 
 	ts = &peer->ts;
 	ts->io = peer;

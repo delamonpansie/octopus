@@ -64,12 +64,51 @@
 
 static struct slab_cache netmsg_cache;
 
+void
+netmsg_pool_ctx_init(struct netmsg_pool_ctx *ctx, const char *name, int limit)
+{
+	ctx->cfg = (struct palloc_config){ .name = name,
+					   .ctx = (void *)(uintptr_t)1 };
+	ctx->pool = palloc_create_pool(ctx->cfg);
+	ctx->limit = limit;
+}
+
+/* HACK WARNING: palloc_ctx() is used as integer counter */
+void
+palloc_ref(struct palloc_pool *pool)
+{
+	uintptr_t rc = (uintptr_t)palloc_ctx(pool, NULL);
+	palloc_ctx(pool, (void *)(rc + 1));
+}
+
+void
+palloc_unref(struct palloc_pool *pool)
+{
+	uintptr_t rc = (uintptr_t)palloc_ctx(pool, NULL);
+	if (rc == 1)
+		palloc_destroy_pool(pool);
+	else
+		palloc_ctx(pool, (void *)(rc - 1));
+}
+
+
+void
+netmsg_pool_ctx_gc(struct netmsg_pool_ctx *ctx)
+{
+	if (palloc_allocated(ctx->pool) > ctx->limit) {
+		palloc_unref(ctx->pool);
+		ctx->pool = palloc_create_pool(ctx->cfg);
+	}
+}
+
 static struct netmsg *
 netmsg_alloc(struct netmsg_head *h)
 {
 	struct netmsg *m = slab_cache_alloc(&netmsg_cache);
 	TAILQ_INSERT_HEAD(&h->q, m, link);
 	h->last_used_iov = m->iov;
+	m->pool = h->ctx->pool;
+	palloc_ref(m->pool);
 
 	VALGRIND_MAKE_MEM_DEFINED(&m->count, sizeof(m->count));
 	VALGRIND_MAKE_MEM_DEFINED(m->iov, sizeof(m->iov));
@@ -82,16 +121,19 @@ void
 netmsg_free(struct netmsg *m)
 {
 	netmsg_releaser(m, 0);
+	palloc_unref(m->pool);
 	slab_cache_free(&netmsg_cache, m);
 }
 
+static struct iovec dummy; /* dummy iovec not adjacent to anything else */
+
 void
-netmsg_head_init(struct netmsg_head *h, struct palloc_pool *pool)
+netmsg_head_init(struct netmsg_head *h, struct netmsg_pool_ctx *ctx)
 {
 	TAILQ_INIT(&h->q);
-	h->pool = pool;
+	h->ctx = ctx;
 	h->bytes = 0;
-	netmsg_alloc(h);
+	h->last_used_iov = &dummy;
 }
 
 void
@@ -156,6 +198,15 @@ netmsg_releasel(struct netmsg *m, int count)
 	m->count -= count;
 }
 
+static struct netmsg *
+netmsg_first(struct netmsg_head *h)
+{
+	struct netmsg *m = TAILQ_FIRST(&h->q);
+	if (unlikely(!m || m->count == nelem(m->iov)))
+		m = netmsg_alloc(h);
+	return m;
+}
+
 /* WARNING: call only if tailq length > 2  */
 static void
 netmsg_dealloc(struct netmsg_tailq *q, struct netmsg *m)
@@ -167,55 +218,21 @@ netmsg_dealloc(struct netmsg_tailq *q, struct netmsg *m)
 void
 netmsg_reset(struct netmsg_head *h)
 {
-	struct netmsg *m, *tmp;
-	m = TAILQ_FIRST(&h->q);
-	netmsg_releaser(m, 0);
-	h->last_used_iov = m->iov;
-	for (m = TAILQ_NEXT(m, link); m; m = tmp) {
-		tmp = TAILQ_NEXT(m, link);
+	h->last_used_iov = &dummy;
+	h->bytes = 0;
+	struct netmsg *m, *tvar;
+	TAILQ_FOREACH_SAFE(m, &h->q, link, tvar)
 		netmsg_dealloc(&h->q, m);
-	}
-}
-
-static void
-netmsg_gc(struct palloc_pool *pool, struct netmsg *m)
-{
-	for (unsigned i = 0; i < m->count; i++) {
-		if (m->ref[i] != 0 || m->iov[i].iov_len == 0)
-			continue;
-
-		void *ptr = palloc(pool, m->iov[i].iov_len);
-		memcpy(ptr, m->iov[i].iov_base, m->iov[i].iov_len);
-		m->iov[i].iov_base = ptr;
-	}
 }
 
 struct netmsg *
 netmsg_concat(struct netmsg_head *dst, struct netmsg_head *src)
 {
-	struct netmsg *m, *tmp;
-
-	if (src->bytes == 0)
-		return TAILQ_FIRST(&dst->q);
-
-	if (dst->bytes == 0) {
-		m = TAILQ_FIRST(&dst->q);
-		assert(m->count == 0);
-		TAILQ_REMOVE(&dst->q, m, link);
-		netmsg_free(m);
-	}
-
+	assert(dst->ctx == src->ctx);
+	TAILQ_CONCAT(&dst->q, &src->q, link);
 	dst->bytes += src->bytes;
 	src->bytes = 0;
-
-	if (src->pool != dst->pool)
-		TAILQ_FOREACH(m, &src->q, link)
-			netmsg_gc(dst->pool, m);
-
-	TAILQ_FOREACH_REVERSE_SAFE(m, &src->q, netmsg_tailq, link, tmp) {
-		TAILQ_REMOVE(&src->q, m, link); // FIXME: TAILQ_INIT ?
-		TAILQ_INSERT_HEAD(&dst->q, m, link);
-	}
+	TAILQ_INIT(&src->q);
 	return TAILQ_FIRST(&dst->q);
 }
 
@@ -243,7 +260,7 @@ netmsg_rewind(struct netmsg_head *h, const struct netmsg_mark *mark)
 void
 netmsg_getmark(struct netmsg_head *h, struct netmsg_mark *mark)
 {
-	struct netmsg *m = TAILQ_FIRST(&h->q);
+	struct netmsg *m = netmsg_first(h);
 	mark->m = m;
 	mark->offset = m->count;
 	mark->iov = *(m->iov + m->count);
@@ -259,33 +276,40 @@ net_add_iov(struct netmsg_head *h, const void *buf, size_t len)
 	if (v->iov_base + v->iov_len == buf) {
 		v->iov_len += len;
 	} else {
-		struct netmsg *m = TAILQ_FIRST(&h->q);
+		struct netmsg *m = netmsg_first(h);
 		v = m->iov + m->count;
 		v->iov_base = (char *)buf;
 		v->iov_len = len;
 		h->last_used_iov = v;
-
+		m->count++;
 		/* *((*m)->ref + (*m)->count) is NULL here. see netmsg_unref() */
-		if (unlikely(++(m->count) == nelem(m->iov)))
-			netmsg_alloc(h);
 	}
+}
+
+void *
+net_add_alloc(struct netmsg_head *h, size_t len)
+{
+	struct netmsg *m = netmsg_first(h);
+	void *ptr = palloc(m->pool, len);
+	net_add_iov(h, ptr, len);
+	return ptr;
 }
 
 void
 net_add_iov_dup(struct netmsg_head *h, const void *buf, size_t len)
 {
-	void *copy = palloc(h->pool, len);
-	memcpy(copy, buf, len);
-	net_add_iov(h, copy, len);
+	struct netmsg *m = netmsg_first(h);
+	void *ptr = palloc(m->pool, len);
+	net_add_iov(h, ptr, len);
+	memcpy(ptr, buf, len);
 }
 
 #ifdef OCT_OBJECT
-static struct iovec dummy; /* dummy iovec not adjacent to anything else */
 
 void
 net_add_ref_iov(struct netmsg_head *h, uintptr_t obj, const void *buf, size_t len)
 {
-	struct netmsg *m = TAILQ_FIRST(&h->q);
+	struct netmsg *m = netmsg_first(h);
 	struct iovec *v = m->iov + m->count;
 	v->iov_base = (char *)buf;
 	v->iov_len = len;
@@ -293,9 +317,7 @@ net_add_ref_iov(struct netmsg_head *h, uintptr_t obj, const void *buf, size_t le
 
 	h->bytes += len;
 	m->ref[m->count] = obj;
-
-	if (unlikely(++(m->count) == nelem(m->iov)))
-		netmsg_alloc(h);
+	m->count++;
 }
 
 void
@@ -315,11 +337,71 @@ netmsg_verify_ownership(struct netmsg_head *h)
 	TAILQ_FOREACH(m, &h->q, link)
 		for (int i = 0; i < m->count; i++)
 			if (m->ref[i] != 0)
-				assert(!palloc_owner(h->pool, m->iov[i].iov_base));
+				assert(!palloc_owner(m->pool, m->iov[i].iov_base));
 			else
-				assert(palloc_owner(h->pool, m->iov[i].iov_base));
+				assert(palloc_owner(m->pool, m->iov[i].iov_base));
 }
 
+int
+rbuf_len(const struct netmsg_io *io)
+{
+	return tbuf_len(&io->rbuf);
+}
+
+void
+rbuf_reset(struct netmsg_io *io)
+{
+	if (io->rbuf.pool) {
+		palloc_unref(io->rbuf.pool);
+		io->rbuf = TBUF(NULL, 0, NULL);
+	}
+}
+
+/* rbuf_ltrim() может зачистить io->rbuf, поэтому его надо вызывать
+   после того, как манипуляции с данными из io->rbuf закончены */
+void
+rbuf_ltrim(struct netmsg_io *io, int size)
+{
+	tbuf_ltrim(&io->rbuf, size);
+	if (tbuf_len(&io->rbuf) == 0) {
+		palloc_unref(io->rbuf.pool);
+		io->rbuf = TBUF(NULL, 0, NULL);
+	}
+}
+
+void
+rbuf_alloc(struct netmsg_io *io, int size)
+{
+	struct palloc_pool *pool = io->ctx->pool;
+	void *buf = palloc(pool, size * 2);
+	io->rbuf = (struct tbuf) {
+		.free = size * 2,
+		.ptr = buf,
+		.end = buf,
+		.pool = pool
+	};
+	palloc_ref(pool);
+}
+
+ssize_t
+rbuf_recv(struct netmsg_io *io, int size)
+{
+	if (io->rbuf.pool == NULL) {
+		rbuf_alloc(io, size * 2);
+	} else if (tbuf_free(&io->rbuf) < size) {
+		if (io->rbuf.pool == io->ctx->pool) {
+			tbuf_ensure(&io->rbuf, size);
+		} else {
+			int len = rbuf_len(io);
+			char *ptr = io->rbuf.ptr;
+			struct palloc_pool *pool = io->rbuf.pool;
+			rbuf_alloc(io, size * 2 + len);
+			tbuf_append(&io->rbuf, ptr, len);
+			palloc_unref(pool);
+		}
+	}
+	return tbuf_recv(&io->rbuf, io->fd);
+}
 
 static struct iovec *
 netmsg2iovec(struct iovec *buf, struct netmsg *m)
@@ -457,17 +539,10 @@ netmsg_io_read_for_cb(ev_io *ev, int __attribute__((unused)) events)
 {
 	struct netmsg_io *io = container_of(ev, struct netmsg_io, in);
 
-	if ((io->flags & NETMSG_IO_SHARED_POOL) == 0) {
-		size_t diff = palloc_allocated(io->pool) - io->pool_allocated;
-		if (diff > 256 * 1024  && diff > io->pool_allocated) {
-			palloc_gc(io->pool);
-			io->pool_allocated = palloc_allocated(io->pool);
-		}
-	}
+	if ((io->flags & NETMSG_IO_SHARED_POOL) == 0)
+		netmsg_pool_ctx_gc(io->ctx);
 
-
-	tbuf_ensure(&io->rbuf, 16 * 1024);
-	ssize_t r = tbuf_recv(&io->rbuf, ev->fd);
+	ssize_t r = rbuf_recv(io, 16 * 1024);
 	[io data_ready];
 
 	if (r == 0) {
@@ -493,38 +568,12 @@ netmsg_io_read_cb(ev_io *ev, int events)
 }
 
 void
-netmsg_head_gc(struct palloc_pool *pool, void *ptr)
+netmsg_io_init(struct netmsg_io *io, struct netmsg_pool_ctx *ctx, int fd)
 {
-	struct netmsg_head *head = ptr;
-	struct netmsg *m;
-	TAILQ_FOREACH(m, &head->q, link)
-		netmsg_gc(pool, m);
-
-	head->pool = pool;
-}
-
-void
-netmsg_io_gc(struct palloc_pool *pool, void *ptr)
-{
-	struct netmsg_io *io = ptr;
-	struct netmsg *m;
-
-	tbuf_gc(pool, &io->rbuf);
-	TAILQ_FOREACH(m, &io->wbuf.q, link)
-		netmsg_gc(pool, m);
-
-	io->pool = io->wbuf.pool = pool;
-}
-
-void
-netmsg_io_init(struct netmsg_io *io, struct palloc_pool *pool, int fd)
-{
-	assert(pool != NULL);
 	netmsg_io_retain(io);
-	netmsg_head_init(&io->wbuf, pool);
-	io->rbuf = TBUF(NULL, 0, pool);
-	io->pool = pool;
-	palloc_register_gc_root(pool, io, netmsg_io_gc);
+	netmsg_head_init(&io->wbuf, ctx);
+	io->rbuf = TBUF(NULL, 0, NULL);
+	io->ctx = ctx;
 	ev_init(&io->in, netmsg_io_read_cb);
 	ev_init(&io->out, netmsg_io_write_cb);
 
@@ -564,8 +613,7 @@ free
 {
 	if (fd != -1)
 		[self close];
-	tbuf_reset(&rbuf);
-	palloc_unregister_gc_root(pool, self);
+	rbuf_reset(self);
 	netmsg_head_dealloc(&wbuf);
 	[super free];
 	say_debug2("%s: %p", __func__, self);

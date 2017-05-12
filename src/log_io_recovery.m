@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016, 2017 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -101,9 +101,8 @@ update_rt(int shard_id, Shard<Shard> *shard, const char *master_name)
 	static struct msg_void_ptr msg;
 	// FIXME: do a broadcast after change local destinations
 	struct shard_route *route = &shard_rt[shard_id];
-	static struct palloc_pool *proxy_pool;
-	if (!proxy_pool)
-		proxy_pool = palloc_create_pool((struct palloc_config){.name = "proxy_pool"});
+	static struct netmsg_pool_ctx ctx = { .cfg = {.name = "proxy_pool"},
+					      .limit = 64 * 1024 };
 
 	const struct sockaddr_in *addr = NULL;
 	if (master_name && strcmp(master_name, "<dummy_addr>") != 0) {
@@ -123,7 +122,7 @@ update_rt(int shard_id, Shard<Shard> *shard, const char *master_name)
 			route->proxy = (void *)0x1; // FIXME: dummy struct;
 			goto exit;
 		}
-		route->proxy = iproto_remote_add_peer(NULL, addr, proxy_pool); // will check for existing connect
+		route->proxy = iproto_remote_add_peer(NULL, addr, &ctx); // will check for existing connect
 	}
 exit:
 	if (shard == nil || shard->loading)

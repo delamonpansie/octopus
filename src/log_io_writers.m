@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012, 2013, 2014, 2016 Mail.RU
- * Copyright (C) 2012, 2013, 2014, 2016 Yuriy Vostrikov
+ * Copyright (C) 2012, 2013, 2014, 2016, 2017 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -495,10 +495,9 @@ wal_disk_writer_input_dispatch(ev_io *ev, int __attribute__((unused)) events)
 
 	static struct wal_reply err_reply;
 	ssize_t r;
-	do {
-		tbuf_ensure(rbuf, 128 * 1024);
-		r = tbuf_recv(rbuf, io->in.fd);
-	} while (tbuf_free(rbuf) == 0);
+	do
+		r = rbuf_recv(io, 64 * 1024);
+	while (tbuf_free(&io->rbuf) == 0);
 
 	if (r == 0)
 		panic("WAL writer connection EOF");
@@ -509,33 +508,32 @@ wal_disk_writer_input_dispatch(ev_io *ev, int __attribute__((unused)) events)
 		}
 	}
 
-	while (tbuf_len(rbuf) > sizeof(u32) &&
-	       tbuf_len(rbuf) >= *(u32 *)rbuf->ptr)
-	{
+	while (rbuf_len(io) > sizeof(u32)) {
+		int len = *(u32 *)rbuf->ptr;
+		if (rbuf_len(io) < len)
+			break;
+
 		struct wal_pack *pack = TAILQ_FIRST(&self->wal_queue);
-		struct wal_reply *reply = read_bytes(rbuf, *(u32 *)rbuf->ptr);
+		struct wal_reply *reply = rbuf->ptr;
 		assert(pack->seq == reply->seq);
 
 		if (reply->row_count > 0) /* success or partial success */
 			resume(pack->fiber, reply);
 
-		if (reply->epoch == self->epoch)
-			continue;
-		else if (reply->epoch > self->epoch) {
+		if (reply->epoch > self->epoch) {
 			struct wal_pack *tmp;
 			TAILQ_FOREACH_REVERSE_SAFE(pack, &self->wal_queue, wal_pack_tailq, link, tmp) {
 				assert(pack->epoch == self->epoch);
 				resume(pack->fiber, &err_reply); /* row_count == 0 => error */
 			}
 			self->epoch = reply->epoch;
-		} else {
-			/* reply->epoch < self->epoch */
+		} else if (reply->epoch < self->epoch){
 			assert(reply->row_count == 0);
 		}
+		rbuf_ltrim(io, len);
 	}
 
-	if (palloc_allocated(rbuf->pool) > 4 * 1024 * 1024)
-		palloc_gc(io->pool);
+	netmsg_pool_ctx_gc(&self->ctx);
 }
 
 - (i64) lsn { return lsn; }
@@ -596,7 +594,8 @@ init_lsn:(i64)init_lsn
 	if (wal_writer.pid < 0)
 		panic("unable to start WAL writer");
 	io = [netmsg_io alloc];
-	netmsg_io_init(io, palloc_create_pool((struct palloc_config){.name = "wal_writer"}), wal_writer.fd);
+	netmsg_pool_ctx_init(&ctx, "wal_writer", 4 * 1024 * 1024);
+	netmsg_io_init(io, &ctx, wal_writer.fd);
 	ev_init(&io->in, wal_disk_writer_input_dispatch);
 	io->in.data = self;
 	ev_set_priority(&io->in, 1);
@@ -630,13 +629,12 @@ wal_pack_prepare(XLogWriter *w, struct wal_pack *pack)
 	pack->fiber = fiber;
 	pack->seq = w->seq++;
 	pack->epoch = w->epoch;
-	pack->request = palloc(pack->netmsg->pool, sizeof(*pack->request));
+	pack->request = net_add_alloc(pack->netmsg, sizeof(*pack->request));
 	pack->request->packet_len = sizeof(*pack->request);
 	pack->request->magic = 0xba0babed;
 	pack->request->seq = pack->seq;
 	pack->request->epoch = pack->epoch;
 	pack->request->row_count = 0;
-	net_add_iov(pack->netmsg, pack->request, pack->request->packet_len);
 }
 
 u32
@@ -650,12 +648,12 @@ wal_pack_append_row(struct wal_pack *pack, struct row_v12 *row)
 
 	int row_len = sizeof(*row) + row->len;
 	if (row_len < 512) {
-		pack->row = palloc(pack->netmsg->pool, row_len);
+		pack->row = net_add_alloc(pack->netmsg, row_len);
 		memcpy(pack->row, row, row_len);
 	} else {
 		pack->row = row;
+		net_add_iov(pack->netmsg, row, row_len);
 	}
-	net_add_iov(pack->netmsg, pack->row, row_len);
 	return WAL_PACK_MAX - pack->request->row_count;
 }
 

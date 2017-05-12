@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016, 2017 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -357,6 +357,7 @@ bool our_shard(const struct shard_op *sop);
 	struct child wal_writer;
 	struct netmsg_io *io;
 	ev_prepare prepare;
+	struct netmsg_pool_ctx ctx;
 @public
 	i64 epoch, seq;
 	TAILQ_HEAD(wal_pack_tailq, wal_pack) wal_queue;
