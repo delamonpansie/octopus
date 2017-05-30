@@ -254,7 +254,7 @@ iproto_service_svc_write_cb(ev_io *ev, int events)
 		stat_sum_static(stat_base, IPROTO_WRITTEN, r);
 
 	if (io->fd >= 0 &&
-	    tbuf_len(&io->rbuf) < cfg.input_low_watermark &&
+            ((rbuf_len(io) < cfg.input_low_watermark) || !iproto_rbuf_req(io) ) &&
 	    io->wbuf.bytes < cfg.output_low_watermark)
 		ev_io_start(&io->in);
 	netmsg_io_release(io);
