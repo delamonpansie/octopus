@@ -159,6 +159,8 @@ uint32_t nihtree_key_position(nihtree_t *tt, nihtree_conf_t* conf, void const *k
 
 static inline size_t
 nihtree_iter_need_size(int height) {
+        if (height == 0)
+                return sizeof(nihtree_iter_t);
 	return sizeof(nihtree_iter_t) + sizeof(void*)*2*(height-1);
 }
 
