@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014 Mail.RU
- * Copyright (C) 2014 Yuriy Vostrikov
+ * Copyright (C) 2014, 2017 Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -256,6 +256,8 @@ io_ready(int event)
 	}
 }
 
+static struct rwlock lock;
+
 struct child
 spawn_child(const char *name, int (*handler)(int parent_fd, int fd, void *state, int len),
 	    int fd, void *state, int len)
@@ -273,15 +275,19 @@ spawn_child(const char *name, int (*handler)(int parent_fd, int fd, void *state,
 				    { .iov_base = state,
 				      .iov_len = len } };
 
+	wlock(&lock);
 	io_ready(EV_WRITE);
-	if (sendfd(spawner_fd, fd, req_iov, nelem(req_iov)) < 0)
+	if (sendfd(spawner_fd, fd, req_iov, nelem(req_iov)) < 0) {
+		wunlock(&lock);
 		return err;
+	}
 
 	struct fork_reply reply;
 	struct iovec rep_iov[1] = { { .iov_base = &reply,
 				      .iov_len = sizeof(reply) } };
 	io_ready(EV_READ);
 	ssize_t r = recvfd(spawner_fd, &child_fd, rep_iov, nelem(rep_iov));
+	wunlock(&lock);
 	if (r <= 0) {
 		if (r == 0)
 			say_error("recvfd: EOF");
