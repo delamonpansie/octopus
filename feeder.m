@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016  Yuriy Vostrikov
+ * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2016, 2017  Yuriy Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -491,9 +491,18 @@ feeder_worker(int parent_fd, int fd, void *state, int len)
 	return 0;
 }
 
+/* feeder_spawn_worker должен работать из отдельного фибера,
+   т.к. spawn_child использует блокировки wlock/wunlock.
+   wlock/wunlock требуют отдельного фибера для поддержания списка побудок */
+
 static void
-feeder_spawn_worker(int fd, void *req, int len)
+feeder_spawn_worker(va_list ap)
 {
+	int fd = va_arg(ap, int);
+	struct netmsg_io *io = va_arg(ap, void *);
+	void *req = va_arg(ap, void *);
+	int len = va_arg(ap, int);
+
 	struct timeval tm = {
 		.tv_sec = cfg.wal_feeder_write_timeout,
 		.tv_usec = 0};
@@ -504,6 +513,10 @@ feeder_spawn_worker(int fd, void *req, int len)
 		say_syserror("ioctl");
 
 	struct child child = spawn_child("feeder/worker", feeder_worker, fd, req, len);
+	if (io)
+		[io close];
+	else
+		close(fd);
 	if (child.pid > 0) {
 		say_info("WAL feeder client");
 		close(child.fd);
@@ -518,16 +531,14 @@ feeder_accept(int fd, void *data __attribute__((unused)))
 		close(fd);
 		return;
 	}
-	feeder_spawn_worker(fd, "\0", 1);
-	close(fd);
+	fiber_create("feeder_spawn_worker", feeder_spawn_worker, fd, nil, "\0", 1);
 }
 
 static void
 iproto_feeder_cb(struct netmsg_head *wbuf, struct iproto *req)
 {
 	struct netmsg_io *io = container_of(wbuf, struct netmsg_io, wbuf);
-	feeder_spawn_worker(io->fd, req, sizeof(*req) + req->data_len);
-	[io close];
+	fiber_create("feeder_spawn_worker", feeder_spawn_worker, io->fd, io, req, sizeof(*req) + req->data_len);
 }
 
 void
