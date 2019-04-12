@@ -103,7 +103,7 @@ register_filter: (const char*)name call: (filter_callback)filter
 	}
 
 	strncpy(registered.callbacks[registered.count].name, name,
-		       	REPLICATION_FILTER_NAME_LEN);
+		REPLICATION_FILTER_NAME_LEN - 1);
 	registered.callbacks[registered.count].filter = filter;
 	registered.count++;
 }
