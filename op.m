@@ -891,7 +891,7 @@ box_prepare(struct box_txn *txn, int op, const void *data, u32 data_len)
 			break;
 
 		case DELETE:
-			bop->flags = read_u32(&buf); /* RETURN_TUPLE */
+			bop->flags = read_u32(&buf); /* fall through */ /* RETURN_TUPLE */
 		case DELETE_1_3:
 			prepare_delete(bop, &buf);
 			bop->ret_obj = bop->old_obj;

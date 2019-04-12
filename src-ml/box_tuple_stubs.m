@@ -180,6 +180,7 @@ stub_box_tuple_field(value val, value ftype, value valn)
 			len += offt;
 			field -= offt;
 		}
+		// fall through
 	case 5:
 		ret = caml_alloc_string(len);
 		memcpy(String_val(ret), field, len);

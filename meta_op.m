@@ -234,7 +234,7 @@ box_rollback_meta(struct box_meta_txn *txn)
 	switch (txn->op) {
 	case CREATE_OBJECT_SPACE:
 		free(txn->object_space);
-		txn->object_space = NULL;
+		txn->object_space = NULL; // fall through
 	case CREATE_INDEX:
 		[txn->index free];
 		txn->index = nil;
