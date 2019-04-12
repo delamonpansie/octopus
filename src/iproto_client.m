@@ -443,6 +443,7 @@ iproto_future_resolve(struct iproto_egress *peer, struct iproto *msg)
 		break;
 	case IPROTO_FUTURE_ORPHAN:
 		say_debug3("orphan reply from peer:%s op:0x%x sync:%u", net_fd_name(peer->fd), msg->msg_code, msg->sync);
+		// fall through
 	case IPROTO_FUTURE_BLACKHOLE:
 		slab_cache_free(&future_cache, future);
 		break;

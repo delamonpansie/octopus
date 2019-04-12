@@ -112,7 +112,7 @@ onlineconf_geti(const char* name, const char* key, int _default)
 		const char *e = r.str + r.len;
 		if (r.str == e) return _default;
 		switch(*r.str) {
-		case '-': neg = -1;
+		case '-': neg = -1; // fall through
 		case '+': r.str++;
 		default:  break;
 		}

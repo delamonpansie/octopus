@@ -362,11 +362,11 @@ lstr_load_prefix(union index_field *f, const u8* s, u32 len)
 	u32 p1 = 0;
 	u16 p2 = 0;
 	switch(len) {
-	case 6: p2 |= s[5];
-	case 5: p2 |= (u16)s[4]<<8;
-	case 4: p1 |= s[3];
-	case 3: p1 |= (u32)s[2]<<8;
-	case 2: p1 |= (u32)s[1]<<16;
+	case 6: p2 |= s[5];          // fall through
+	case 5: p2 |= (u16)s[4]<<8;  // fall through
+	case 4: p1 |= s[3];          // fall through
+	case 3: p1 |= (u32)s[2]<<8;  // fall through
+	case 2: p1 |= (u32)s[1]<<16; // fall through
 	case 1: p1 |= (u32)s[0]<<24;
 	}
 	f->str.prefix1 = p1;
