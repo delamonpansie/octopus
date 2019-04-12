@@ -320,7 +320,8 @@ handshake:(i64)scn
 	} else if (feeder->ver == 1) {
 		struct replication_handshake_v1 hshake = {1, scn, {0}};
 		if (feeder->filter.name)
-			strncpy(hshake.filter, feeder->filter.name, sizeof(hshake.filter));
+			strncpy(hshake.filter, feeder->filter.name,
+				sizeof(hshake.filter) - 1);
 
 		if ([self replication_handshake: &hshake len: sizeof(hshake)] < 0)
 			goto err;
@@ -331,7 +332,8 @@ handshake:(i64)scn
 			.filter_type = feeder->filter.type,
 		       	.filter_arglen = feeder->filter.arglen};
 		if (feeder->filter.name)
-			strncpy(hshake.filter, feeder->filter.name, sizeof(hshake.filter));
+			strncpy(hshake.filter, feeder->filter.name,
+				sizeof(hshake.filter) - 1);
 		tbuf_add_dup(hbuf, &hshake);
 		tbuf_append(hbuf, feeder->filter.arg, feeder->filter.arglen);
 

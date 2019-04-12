@@ -171,9 +171,9 @@ snapshot_header
 				.type = type,
 				.row_count = [executor snapshot_estimate],
 				.run_crc_log = run_crc_log };
-	strncpy(op.mod_name, [[(id)executor class] name], 16);
+	strncpy(op.mod_name, [[(id)executor class] name], 15);
 	for (int i = 0; i < nelem(peer) && peer[i]; i++)
-		strncpy(op.peer[i], peer[i], 16);
+		strncpy(op.peer[i], peer[i], 15);
 	return &op;
 }
 

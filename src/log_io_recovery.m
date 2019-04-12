@@ -178,7 +178,7 @@ update_rt_notify(va_list ap __attribute__((unused)))
 
 			id<Shard> shard = shard_rt[i].shard;
 			char hostname[16];
-			strncpy(hostname, cfg.hostname, 16);
+			strncpy(hostname, cfg.hostname, 15);
 			i64 scn = [shard scn];
 			struct shard_op *sop = [shard snapshot_header];
 			struct iproto header = { .msg_code = MSG_SHARD,
@@ -365,7 +365,7 @@ shard_create_dummy:(const struct row_v12 *)row
 			       .type = SHARD_TYPE_POR,
 			       .row_count = row_count,
 			       .run_crc_log = run_crc };
-	strncpy(op.mod_name, [default_exec_class name], 16);
+	strncpy(op.mod_name, [default_exec_class name], 15);
 
 	struct feeder_param feeder;
 	enum feeder_cfg_e fid_err = feeder_param_fill_from_cfg(&feeder, NULL);
