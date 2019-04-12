@@ -85,8 +85,8 @@ struct cdb_pair {
 
 static void
 read_cdb_pair(void const* p, struct cdb_pair *pair) {
-	pair->a = *(uint32_t __attribute__((packed))*)p;
-	pair->b = *(uint32_t __attribute__((packed))*)(p + 4);
+	pair->a = *(uint32_t *)p;
+	pair->b = *(uint32_t *)(p + 4);
 #if __BYTE_ORDER == __BIG_ENDIAN
 	pair->a = hton(pair->a);
 	pair->b = hton(pair->b);
