@@ -70,7 +70,7 @@ let clear pa = pa.used <- 0
 let contents pa =
   if Bytes.length pa.buf = pa.used then begin
     let v = pa.buf in
-    pa.buf <- "";
+    pa.buf <- Bytes.create 0;
     pa.used <- 0;
     v
   end else begin
@@ -109,6 +109,11 @@ let add_bytes pa s =
   let offt = need pa len in
   Bytes.unsafe_blit s 0 pa.buf offt len
 
+let add_string pa s =
+  let len = String.length s in
+  let offt = need pa len in
+  String.unsafe_blit s 0 pa.buf offt len
+
 let add_packer pa {buf; used} =
   let offt = need pa used in
   Bytes.blit buf 0 pa.buf offt used
@@ -141,7 +146,7 @@ let hexdump {buf;used} =
   else
     let str = Buffer.create 100 in
     for i = 0 to used - 2 do
-      Printf.bprintf str "%02x " (Char.code buf.[i])
+      Printf.bprintf str "%02x " (Char.code (Bytes.get buf i))
     done;
-    Printf.bprintf str "%02x" (Char.code buf.[used - 1]);
+    Printf.bprintf str "%02x" (Char.code (Bytes.get buf (used - 1)));
     Buffer.contents str

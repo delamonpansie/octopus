@@ -53,7 +53,7 @@ cmx += src-ml/load_plugins.cmx
 clean: mlclean
 mlclean:
 	$(E) "CLEAN	ml"
-	$(Q)rm -f $(cmx) $(cmx:.cmx=.cmi) $(cmx:.cmx=.o) $(cmx:.cmx=.annot)
+	$(Q)rm -f $(cmx) $(cmx:.cmx=.cm?) $(cmx:.cmx=.o) $(cmx:.cmx=.annot)
 
 
 .SECONDEXPANSION:
