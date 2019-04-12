@@ -35,6 +35,7 @@ ifeq (1,$(HAVE_RAGEL))
 	dist-clean += src/admin.m
 	dist += src/admin.m
 endif
+no-extra-warns += src/admin.o
 
 $(obj): XCFLAGS += -DOCTOPUS
 
