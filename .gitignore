@@ -65,3 +65,9 @@ cfg/prscfg.*
 # runtime
 *.snap
 *.xlog
+
+
+# ocaml
+*.cmt
+*.cmi
+*.cmti
