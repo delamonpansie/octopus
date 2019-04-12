@@ -5,6 +5,7 @@ type iter_dir = Iter_forward | Iter_backward
 external node_pack_int : index -> int -> unit = "stub_index_node_pack_int"
 external node_pack_u64 : index -> Int64.t -> unit = "stub_index_node_pack_u64"
 external node_pack_string : index -> string -> unit = "stub_index_node_pack_string"
+external node_pack_bytes : index -> bytes -> unit = "stub_index_node_pack_string"
 
 module type Descr = sig
   type key
@@ -84,11 +85,11 @@ module MakeInternal (Descr : Descr) = struct
       | Box_tuple.I16 v -> node_pack_int ptr v
       | Box_tuple.I32 v -> node_pack_int ptr v
       | Box_tuple.I64 v -> node_pack_u64 ptr v
-      | Box_tuple.Bytes v -> node_pack_string ptr v
-      | Box_tuple.Field (t, n) -> node_pack_string ptr (Box_tuple.strfield n t)
+      | Box_tuple.Bytes v -> node_pack_bytes ptr v
+      | Box_tuple.Field (t, n) -> node_pack_bytes ptr (Box_tuple.strfield n t)
       | Box_tuple.FieldRange (t, n, count) -> begin
           for i = n to n + count - 1 do
-            node_pack_string ptr (Box_tuple.strfield (n + i) t)
+            node_pack_bytes ptr (Box_tuple.strfield (n + i) t)
           done
         end in
     node_pack_begin ptr;

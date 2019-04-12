@@ -7,8 +7,8 @@ type _ ftype = FI8 : int ftype
              | FI32 : Int32.t ftype
              | FI64 : Int64.t ftype
              | FInt : int ftype
-             | FStr : string ftype
-             | FRaw : string ftype
+             | FStr : bytes ftype
+             | FRaw : bytes ftype
 
 let heap = function Heap o -> o | Gc _ -> failwith "accesing constructed tuple not implemented"
 
