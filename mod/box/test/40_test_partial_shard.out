@@ -1,0 +1,159 @@
+# legacy_master.insert(["0", "val"])
+1
+
+# legacy_master.insert(["1", "val"])
+1
+
+# legacy_master.insert(["2", "val"])
+1
+
+# legacy_master.insert(["3", "val"])
+1
+
+# legacy_master.insert(["4", "val"])
+1
+
+# legacy_master.insert(["5", "val"])
+1
+
+# legacy_master.insert(["6", "val"])
+1
+
+# legacy_master.insert(["7", "val"])
+1
+
+# legacy_master.insert(["8", "val"])
+1
+
+# legacy_master.insert(["9", "val"])
+1
+
+# legacy_master.select(0, 1, 2, 3, 4, 5)
+[]
+
+# two.meta(shard 0 create por)
+ok
+
+# two.meta(shard 0 obj_space 0 create hash unique string 0)
+ok
+
+# two.meta(shard 1 create por)
+ok
+
+# two.meta(shard 1 obj_space 0 create hash unique string 0)
+ok
+
+# two.meta(shard 2 create por)
+ok
+
+# two.meta(shard 2 obj_space 0 create hash unique string 0)
+ok
+
+# two.meta(shard 3 create por)
+ok
+
+# two.meta(shard 3 obj_space 0 create hash unique string 0)
+ok
+
+# two.meta(shard 0 add_replica one)
+ok
+
+# two.meta(shard 0 type part)
+ok
+
+# two.meta(shard 0 master one)
+ok
+
+# two.meta(shard 1 add_replica one)
+ok
+
+# two.meta(shard 1 type part)
+ok
+
+# two.meta(shard 1 master one)
+ok
+
+# two.meta(shard 2 add_replica one)
+ok
+
+# two.meta(shard 2 type part)
+ok
+
+# two.meta(shard 2 master one)
+ok
+
+# two.meta(shard 3 add_replica one)
+ok
+
+# two.meta(shard 3 type part)
+ok
+
+# two.meta(shard 3 master one)
+ok
+
+# box.select("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", {:shard=>0})
+[["0", "val"], ["4", "val"], ["8", "val"]]
+
+# box.select("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", {:shard=>1})
+[["1", "val"], ["5", "val"], ["9", "val"]]
+
+# box.select("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", {:shard=>2})
+[["2", "val"], ["6", "val"]]
+
+# box.select("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", {:shard=>3})
+[["3", "val"], ["7", "val"]]
+
+# legacy_master.insert(["100", "@"])
+1
+
+# legacy_master.insert(["101", "@"])
+1
+
+# legacy_master.insert(["102", "@"])
+1
+
+# legacy_master.insert(["103", "@"])
+1
+
+# box.ping()
+:pong
+
+# box.select("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", {:shard=>0})
+[["0", "val"], ["4", "val"], ["8", "val"]]
+
+# box.select("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", {:shard=>1})
+[["1", "val"], ["5", "val"], ["9", "val"]]
+
+# box.select("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", {:shard=>2})
+[["2", "val"], ["6", "val"]]
+
+# box.select("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", {:shard=>3})
+[["3", "val"], ["7", "val"]]
+
+# legacy_master.insert(["10", "!"])
+1
+
+# legacy_master.insert(["11", "!"])
+1
+
+# legacy_master.insert(["12", "!"])
+1
+
+# legacy_master.insert(["13", "!"])
+1
+
+# box.ping()
+:pong
+
+# box.select("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", {:shard=>0})
+[["0", "val"], ["4", "val"], ["8", "val"], ["12", "!"]]
+
+# box.select("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", {:shard=>1})
+[["1", "val"], ["5", "val"], ["9", "val"], ["13", "!"]]
+
+# box.select("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", {:shard=>2})
+[["2", "val"], ["6", "val"], ["10", "!"]]
+
+# box.select("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", {:shard=>3})
+[["3", "val"], ["7", "val"], ["11", "!"]]
+

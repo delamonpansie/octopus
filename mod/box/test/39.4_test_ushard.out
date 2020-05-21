@@ -1,0 +1,12 @@
+# one.ping()
+:pong
+
+# two.ping()
+:pong
+
+# one.meta(shard 1 create por)
+ok
+
+# two.meta(shard 1 create por)
+error: 0x202 shard already exists
+

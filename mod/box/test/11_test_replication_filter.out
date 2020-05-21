@@ -1,0 +1,66 @@
+# box.insert([0, 0])
+1
+
+# box.insert([1, 1])
+1
+
+# box.insert([2, 2])
+1
+
+# box.insert([3, 3])
+1
+
+# box.insert([4, 4])
+1
+
+# box.insert([5, 5])
+1
+
+# box.update_fields(4, [1, :add, 1])
+1
+
+# box.update_fields(5, [1, :add, 1])
+1
+
+# box.select(0, 1, 2, 3, 4, 5)
+[["\x00\x00\x00\x00", "\x00\x00\x00\x00"], ["\x01\x00\x00\x00", "\x01\x00\x00\x00"], ["\x02\x00\x00\x00", "\x02\x00\x00\x00"], ["\x03\x00\x00\x00", "\x03\x00\x00\x00"], ["\x04\x00\x00\x00", "\x05\x00\x00\x00"], ["\x05\x00\x00\x00", "\x06\x00\x00\x00"]]
+
+# box.select(0, 1, 2, 3, 4, 5)
+[["\x01\x00\x00\x00", "\x02\x00\x00\x00"], ["\x03\x00\x00\x00", "\x04\x00\x00\x00"], ["\x05\x00\x00\x00", "\b\x00\x00\x00"]]
+
+# box.delete(1)
+1
+
+# box.delete(2)
+1
+
+# box.select(1, 2)
+[]
+
+# box.select(1, 2)
+[]
+
+Slave
+lsn:2 shard:0 scn:2 t:wal/nop 
+lsn:3 shard:0 scn:3 t:wal/usr13 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00", 2:"\x02\x00\x00\x00">
+lsn:4 shard:0 scn:4 t:wal/nop 
+lsn:5 shard:0 scn:5 t:wal/usr13 INSERT n:0 flags:00000000 <3:"\x03\x00\x00\x00", 4:"\x04\x00\x00\x00">
+lsn:6 shard:0 scn:6 t:wal/nop 
+lsn:7 shard:0 scn:7 t:wal/usr13 INSERT n:0 flags:00000000 <5:"\x05\x00\x00\x00", 6:"\x06\x00\x00\x00">
+lsn:8 shard:0 scn:8 t:wal/nop 
+lsn:9 shard:0 scn:9 t:wal/usr19 UPDATE_FIELDS n:0 flags:00000000 <5:"\x05\x00\x00\x00"> [field_no:1 op:add <2:"\x02\x00\x00\x00">] 
+lsn:10 shard:0 scn:10 t:wal/usr20 DELETE_1_3 n:0 <1:"\x01\x00\x00\x00">
+lsn:11 shard:0 scn:11 t:wal/nop 
+
+Master
+lsn:2 shard:0 scn:2 t:wal/usr13 INSERT n:0 flags:00000000 <0:"\x00\x00\x00\x00", 0:"\x00\x00\x00\x00">
+lsn:3 shard:0 scn:3 t:wal/usr13 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00", 1:"\x01\x00\x00\x00">
+lsn:4 shard:0 scn:4 t:wal/usr13 INSERT n:0 flags:00000000 <2:"\x02\x00\x00\x00", 2:"\x02\x00\x00\x00">
+lsn:5 shard:0 scn:5 t:wal/usr13 INSERT n:0 flags:00000000 <3:"\x03\x00\x00\x00", 3:"\x03\x00\x00\x00">
+lsn:6 shard:0 scn:6 t:wal/usr13 INSERT n:0 flags:00000000 <4:"\x04\x00\x00\x00", 4:"\x04\x00\x00\x00">
+lsn:7 shard:0 scn:7 t:wal/usr13 INSERT n:0 flags:00000000 <5:"\x05\x00\x00\x00", 5:"\x05\x00\x00\x00">
+lsn:8 shard:0 scn:8 t:wal/usr19 UPDATE_FIELDS n:0 flags:00000000 <4:"\x04\x00\x00\x00"> [field_no:1 op:add <1:"\x01\x00\x00\x00">] 
+lsn:9 shard:0 scn:9 t:wal/usr19 UPDATE_FIELDS n:0 flags:00000000 <5:"\x05\x00\x00\x00"> [field_no:1 op:add <1:"\x01\x00\x00\x00">] 
+lsn:10 shard:0 scn:10 t:wal/usr20 DELETE_1_3 n:0 <1:"\x01\x00\x00\x00">
+lsn:11 shard:0 scn:11 t:wal/usr20 DELETE_1_3 n:0 <2:"\x02\x00\x00\x00">
+

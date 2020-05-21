@@ -1,0 +1,30 @@
+# box.insert(["foo"])
+1
+
+# box.insert(["foo"], {:object_space=>1})
+1
+
+# box.insert(["bar"])
+1
+
+# box.insert(["bar"], {:object_space=>1})
+1
+
+# box.select("foo", "bar")
+[["foo"], ["bar"]]
+
+# box.select("foo", "bar", {:object_space=>1})
+[["foo"], ["bar"]]
+
+# box.insert(["baz"])
+1
+
+# box.insert(["baz"], {:object_space=>1})
+Failed with: {code: 0x202, message: 'ignored object space'}
+
+# box.select("foo", "bar", "bar")
+[["foo"], ["bar"], ["bar"]]
+
+# box.select("foo", "bar", "baz", {:object_space=>1})
+[]
+

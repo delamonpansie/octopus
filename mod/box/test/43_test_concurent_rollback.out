@@ -1,0 +1,12 @@
+# box.insert(["2", "sleep"])
+1
+
+# box.lua("user_proc.test11")
+Failed with: {code: 0x202, message: 'mod/box/src-lua/box/example_proc.lua:384: oops
+stack traceback:
+	[C]: in function 'error'
+	mod/box/src-lua/box/example_proc.lua:384: in function 'proc'
+	mod/box/src-lua/box.lua:389: in function <mod/box/src-lua/box.lua:381>'}
+# box.select("\x00\x00\x00\x00", "2")
+[["2", "sleep"]]
+

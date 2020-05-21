@@ -1,0 +1,49 @@
+# box.insert(["foo"])
+1
+
+# box.insert(["bar"])
+1
+
+# box.select("foo", "bar")
+[["foo"], ["bar"]]
+
+exception: object_space 0 is not configured
+
+# box.select("foo", "bar")
+[["foo"], ["bar"]]
+
+# box.insert(["baz"])
+1
+
+# box.create_index(1, {:type=>:FASTTREE, :unique=>1, :field_0=>{:type=>:STRING, :index=>0, :sort_order=>:DESC}})
+Failed with: {code: 0x202, message: 'metadata updates are forbidden because cfg.object_space is configured'}
+# one.meta(shard 0 undummy)
+ok
+
+# one.meta(shard 0 obj_space 0 index 1 create fasttree unique  string 0 desc)
+ok
+
+# one.meta(shard 1 create por)
+ok
+
+# one.meta(shard 1 obj_space 1 create fasttree unique string 0 desc)
+ok
+
+# box.insert(["baf"])
+1
+
+# box.select("foo", "bar", "baz", "baf")
+[["foo"], ["bar"], ["baz"], ["baf"]]
+
+lsn:7 scn:-1 t:snap/snap_initial ver:0 count:3 flags:0x00000000
+lsn:7 shard:0 scn:5 t:snap/shard_create SHARD_CREATE shard_id:0 POR Box count:3 run_crc:0x41e3ceba master:one
+lsn:7 shard:0 scn:5 t:snap/usr240 CREATE_OBJECT_SPACE n:0 flags:00000003 cardinalty:-1 PK: i:0 min_tuple_cardinality:0 cardinality:1 type:HASH unique:1 field0:{index:0 type:STRING sort:ASC}
+lsn:7 shard:0 scn:5 t:snap/snap_data n:0 <"bar">
+lsn:7 shard:0 scn:5 t:snap/snap_data n:0 <"baz">
+lsn:7 shard:0 scn:5 t:snap/snap_data n:0 <"foo">
+lsn:7 shard:0 scn:5 t:snap/usr241 CREATE_INDEX n:0 flags:00000000 i:1 min_tuple_cardinality:0 cardinality:1 type:FASTTREE unique:1 field0:{index:0 type:STRING sort:DESC}
+lsn:7 shard:0 scn:5 t:snap/shard_final 
+lsn:7 shard:1 scn:2 t:snap/shard_create SHARD_CREATE shard_id:1 POR Box count:0 run_crc:0x30aaba35 master:one
+lsn:7 shard:1 scn:2 t:snap/usr240 CREATE_OBJECT_SPACE n:1 flags:00000003 cardinalty:0 PK: i:0 min_tuple_cardinality:0 cardinality:1 type:FASTTREE unique:1 field0:{index:0 type:STRING sort:DESC}
+lsn:7 shard:1 scn:2 t:snap/shard_final 
+lsn:7 scn:-1 t:snap/snap_final 

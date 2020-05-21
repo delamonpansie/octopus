@@ -1,0 +1,8 @@
+# box.ping()
+:pong
+
+raise at src/log_io_reader.m:218 not all WALs have been successfully read greatest_LSN:2 LSN:1 diff:1
+# box.insert([1, 2, 3])
+1
+
+no valid rows were read

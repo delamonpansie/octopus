@@ -1,0 +1,28 @@
+# box.insert([0, "0"])
+1
+
+# box.insert([1, "1"])
+1
+
+# box.insert([2, "2"])
+1
+
+# box.insert([3, "3"])
+1
+
+# box.insert([4, "4"])
+1
+
+# box.lua("user_proc.mop")
+[]
+
+lsn:2 shard:0 scn:2 t:wal/usr13 INSERT n:0 flags:00000000 <0:"\x00\x00\x00\x00", "0">
+lsn:3 shard:0 scn:3 t:wal/usr13 INSERT n:0 flags:00000000 <1:"\x01\x00\x00\x00", "1">
+lsn:4 shard:0 scn:4 t:wal/usr13 INSERT n:0 flags:00000000 <2:"\x02\x00\x00\x00", "2">
+lsn:5 shard:0 scn:5 t:wal/usr13 INSERT n:0 flags:00000000 <3:"\x03\x00\x00\x00", "3">
+lsn:6 shard:0 scn:6 t:wal/usr13 INSERT n:0 flags:00000000 <4:"\x04\x00\x00\x00", "4">
+lsn:7 shard:0 scn:7 t:wal/tlv BOX_MULTY { UPDATE_FIELDS n:0 flags:00000001 <1:"\x01\x00\x00\x00"> [field_no:1 op:set <"1">] ; UPDATE_FIELDS n:0 flags:00000001 <1:"\x01\x00\x00\x00"> [field_no:1 op:set <12850:"22">] ; UPDATE_FIELDS n:0 flags:00000001 <1:"\x01\x00\x00\x00"> [field_no:1 op:set <13107:"33">] ; UPDATE_FIELDS n:0 flags:00000001 <1:"\x01\x00\x00\x00"> [field_no:1 op:set <13364:"44">] ; DELETE n:0 flags:00000001 <2:"\x02\x00\x00\x00">; INSERT n:0 flags:00000003 <2:"\x02\x00\x00\x00", "42!">;  }
+
+# box.select(1, 2)
+[["\x01\x00\x00\x00", "44"], ["\x02\x00\x00\x00", "42!"]]
+

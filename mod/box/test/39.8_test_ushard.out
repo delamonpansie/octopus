@@ -1,0 +1,39 @@
+# one.ping()
+:pong
+
+# two.ping()
+:pong
+
+# one.meta(shard 1 create por)
+ok
+
+# one.meta(shard 1 obj_space 0 create tree unique string 0)
+ok
+
+restart
+# one.ping()
+:pong
+
+# two.meta(shard 1 add_replica two)
+ok
+
+# one.insert([42, "One"], {:shard=>1})
+1
+
+lsn:2 scn:-1 t:snap/snap_initial ver:0 count:11 flags:0x00000000
+lsn:2 shard:1 scn:14 t:snap/shard_create SHARD_CREATE shard_id:1 POR Box count:11 run_crc:0x1ffac280 master:one repl:two
+lsn:2 shard:1 scn:14 t:snap/usr240 CREATE_OBJECT_SPACE n:0 flags:00000003 cardinalty:0 PK: i:0 min_tuple_cardinality:0 cardinality:1 type:POSTREE unique:1 field0:{index:0 type:STRING sort:ASC}
+lsn:2 shard:1 scn:14 t:snap/snap_data n:0 <0:"\x00\x00\x00\x00", 811953775:"one0">
+lsn:2 shard:1 scn:14 t:snap/snap_data n:0 <1:"\x01\x00\x00\x00", 828730991:"one1">
+lsn:2 shard:1 scn:14 t:snap/snap_data n:0 <2:"\x02\x00\x00\x00", 845508207:"one2">
+lsn:2 shard:1 scn:14 t:snap/snap_data n:0 <3:"\x03\x00\x00\x00", 862285423:"one3">
+lsn:2 shard:1 scn:14 t:snap/snap_data n:0 <4:"\x04\x00\x00\x00", 879062639:"one4">
+lsn:2 shard:1 scn:14 t:snap/snap_data n:0 <5:"\x05\x00\x00\x00", 895839855:"one5">
+lsn:2 shard:1 scn:14 t:snap/snap_data n:0 <6:"\x06\x00\x00\x00", 912617071:"one6">
+lsn:2 shard:1 scn:14 t:snap/snap_data n:0 <7:"\x07\x00\x00\x00", 929394287:"one7">
+lsn:2 shard:1 scn:14 t:snap/snap_data n:0 <8:"\x08\x00\x00\x00", 946171503:"one8">
+lsn:2 shard:1 scn:14 t:snap/snap_data n:0 <9:"\x09\x00\x00\x00", 962948719:"one9">
+lsn:2 shard:1 scn:14 t:snap/snap_data n:0 <42:"*\x00\x00\x00", "One">
+lsn:2 shard:1 scn:14 t:snap/shard_final 
+lsn:2 scn:-1 t:snap/snap_final 
+lsn:2 shard:1 scn:14 t:wal/usr13 INSERT n:0 flags:00000000 <42:"*\x00\x00\x00", "One">

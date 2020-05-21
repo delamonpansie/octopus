@@ -1,0 +1,55 @@
+#######################################################################
+# BOX
+#
+
+# If you have duplicates in snapshot (perhaps, you've just created unique index,
+# or you've changed non-unique index to unique) you may:
+# - ignore duplicates errors and try to run. Note, you will probably fail later.
+# - delete every duplicate, except first
+#
+# To ignore all duplicates on all spaces and indexes:
+#   no_panic_on_snapshot_duplicates = 1
+# To ignore duplicates on specific space+index:
+#   on_snapshot_duplicates[spaceno].index[indexno].action = "IGNORE"
+# To delete all duplicate rows (except first)
+#   on_snapshot_duplicates[spaceno].index[indexno].action = "DELETE"
+no_panic_on_snapshot_duplicates = 0
+
+box_extended_stat = 1
+
+on_snapshot_duplicates = [
+  {
+    index = [
+      {
+	# `action` could be:
+	# "DELETE" or "IGNORE"
+        action = "", required
+      }, rw
+    ], rw
+  }, rw
+], rw
+
+object_space = [
+  {
+    enabled = -1, required
+    ignored = 0
+    wal = 1
+    snap = 1
+    cardinality = -1
+    estimated_rows = 0
+    index = [
+      {
+        type = "", required
+        unique = -1, required
+	on_duplicate = NULL
+        key_field = [
+          {
+            fieldno = -1, required
+            type = "", required
+	    sort_order = "ASC"
+          }, ro,  required
+        ], required
+      }, ro
+    ], required
+  }, ro
+], rw

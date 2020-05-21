@@ -1,0 +1,12 @@
+# master.ping()
+:pong
+
+# master.insert([1, 2, "abc", "def"])
+1
+
+# slave.select([1])
+[["\x01\x00\x00\x00", "\x02\x00\x00\x00", "abc", "def"]]
+
+# slave.select([1])
+[["\x01\x00\x00\x00", "\x02\x00\x00\x00", "abc", "def"]]
+

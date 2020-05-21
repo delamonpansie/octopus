@@ -1,0 +1,6 @@
+# box.lua("user_proc.iterator", "0", "", "6")
+[["00"], ["aa"], ["abc"], ["abcd"], ["abce"], ["def"]]
+
+# box.lua("user_proc.iterator", "0", "ab", "3")
+[["abc"], ["abcd"], ["abce"]]
+

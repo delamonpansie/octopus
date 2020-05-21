@@ -1,0 +1,51 @@
+# one.ping()
+:pong
+
+# two.ping()
+:pong
+
+# one.meta(shard 1 create por)
+ok
+
+# one.meta(shard 1 add_replica three)
+ok
+
+# one.meta(shard 2 create por)
+ok
+
+# one.meta(shard 2 add_replica two)
+ok
+
+# two.meta(shard 3 create por)
+ok
+
+# two.meta(shard 3 add_replica three)
+ok
+
+# one.create_object_space(0, {:shard=>1, :index=>{:type=>:FASTTREE, :unique=>1, :field_0=>{:type=>:STRING, :index=>0, :sort_order=>:DESC}}})
+:success
+
+# one.insert([1, "one"], {:shard=>1})
+1
+
+# one.create_object_space(0, {:shard=>2, :index=>{:type=>:FASTTREE, :unique=>1, :field_0=>{:type=>:STRING, :index=>0, :sort_order=>:DESC}}})
+:success
+
+# one.insert([1, "one"], {:shard=>2})
+1
+
+# one.create_object_space(0, {:shard=>3, :index=>{:type=>:FASTTREE, :unique=>1, :field_0=>{:type=>:STRING, :index=>0, :sort_order=>:DESC}}})
+:success
+
+# one.insert([1, "one"], {:shard=>3})
+1
+
+# three.ping()
+:pong
+
+# three.select(1, {:shard=>1})
+[["\x01\x00\x00\x00", "one"]]
+
+# three.select(1, {:shard=>3})
+[["\x01\x00\x00\x00", "one"]]
+

@@ -1,0 +1,40 @@
+# box.insert([3, "baz"])
+1
+
+# wal_writer stop
+# box.insert([1, "foo"])
+# box.insert([1, "foobar"])
+# box.select(1)
+[]
+
+# wal_writer cont
+2
+
+1
+
+# box.select(1)
+[["\x01\x00\x00\x00", "foobar"]]
+
+# box.delete(1)
+1
+
+# box.select(1)
+[]
+
+# box.insert([3, "bar"])
+2
+
+# wal_writer stop
+# box.update_fields(3, [0, :set, 1])
+# box.insert([1, "foo"])
+# box.select(1, 3)
+[["\x03\x00\x00\x00", "bar"]]
+
+# wal_writer cont
+2
+
+2
+
+# box.select(1)
+[["\x01\x00\x00\x00", "foo"]]
+

@@ -1,0 +1,20 @@
+# box.ping()
+:pong
+
+Option 'primary_port' is not set
+
+Option 'primary_port' is not set
+
+# box.ping()
+:pong
+
+# box.ping()
+:pong
+
+# box.ping()
+:pong
+
+# box.ping()
+:pong
+
+Option 'primary_addr' is overridden by 'primary_port'
