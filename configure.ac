@@ -282,7 +282,11 @@ AC_ARG_ENABLE([clients],
               [octopus_clients="libiproto"])
 AC_SUBST(clients, [$octopus_clients])
 
-m4_include(modules.m4)
+AC_ARG_ENABLE([modules],
+              [AS_HELP_STRING([--enable-modules[[="box feeder"]]],
+                              [select module to build, silver(box) and feeder by default])],
+              [octopus_modules=$enableval],
+              [octopus_modules="box feeder"])
 AC_SUBST(modules, [$octopus_modules])
 
 for module in $octopus_modules; do
