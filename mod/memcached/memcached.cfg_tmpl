@@ -1,0 +1,17 @@
+#######################################################################
+# MEMCACHED
+#
+# disable expiration
+memcached_no_expire = 0, ro
+# maximum rows to consider per expire loop iteration
+memcached_expire_per_loop=1024
+# octopus will try iterate all rows within this time
+memcached_expire_full_sweep=3600
+
+primary_addr = ""
+primary_port = 11211
+
+# these are required because of src/iproto.o
+# TODO: remove this dependency
+secondary_addr = ""
+secondary_port = 0
