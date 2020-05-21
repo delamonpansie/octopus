@@ -139,18 +139,46 @@ shard_filter(struct row_v12 *row, const char *arg, int arglen)
 			feeder->shard_id = atoi(arg);
 		return NULL;
 	}
-	if (row->scn == -1 || (row->lsn == 0 && row->scn == 0))
+	if (row->lsn == 0 && row->scn == 0)
 		return row;
+	if ((row->tag & TAG_MASK) == snap_initial ||
+	    (row->tag & TAG_MASK) == snap_final)
+		return row;
+
 	if (feeder->shard_id != -1 && row->shard_id != feeder->shard_id)
 		return NULL;
 	switch (row->tag & TAG_MASK) {
-	case paxos_promise:
-	case paxos_accept:
-	case paxos_nop:
+	case raft_append:
+	case raft_commit:
+	case raft_vote:
 		return NULL;
 	default:
 		return row;
 	}
+}
+
+struct row_v12 *
+raft_filter(struct row_v12 *row, const char *arg, int arglen)
+{
+	if (row == NULL) {
+		if (arglen)
+			feeder->shard_id = atoi(arg);
+		return NULL;
+	}
+	if ((row->tag & TAG_MASK) == raft_vote) // raft_vote has scn = -1
+		return NULL;
+	if ((row->tag & TAG_MASK) == raft_append)
+		return NULL;
+
+	if (row->scn == -1 || (row->lsn == 0 && row->scn == 0))
+		return row;
+	if (feeder->shard_id != -1 && row->shard_id != feeder->shard_id)
+		return NULL;
+	if ((row->tag & TAG_MASK) == raft_commit)
+		return row;
+	if ((row->tag & TAG_MASK) == shard_create) // для начальной загрузки новосозданного шарда
+		return row;
+	return row;
 }
 
 #if CFG_lua_path
@@ -204,7 +232,7 @@ send_row:(struct row_v12 *)row
 			buf = TBUF(NULL, 0, debug_pool);
 		}
 		print_row(&buf, row, NULL);
-		say_debug("send_row %*s", tbuf_len(&buf), (char *)buf.ptr);
+		say_debug2("send_row %*s", tbuf_len(&buf), (char *)buf.ptr);
 		tbuf_reset(&buf);
 	}
 	writef(fd, (const char *)row, sizeof(*row) + row->len);
@@ -213,12 +241,20 @@ send_row:(struct row_v12 *)row
 - (void)
 recover_row:(struct row_v12 *)row
 {
+	say_debug("%s: LSN:%"PRIi64" SCN:%"PRIi64" minSCN:%"PRIi64" minLSN:%"PRIi64,
+		  __func__, row->lsn, row->scn, min_scn, min_lsn);
 	if ((row->scn != 0 && min_scn && row->scn < min_scn) ||
-	    (row->lsn != 0 && min_lsn && row->lsn < min_lsn))
+	    (row->lsn != 0 && min_lsn && row->lsn < min_lsn)) {
+		say_debug("skip %i %i",
+			  (row->scn != 0 && min_scn && row->scn < min_scn),
+			  (row->lsn != 0 && min_lsn && row->lsn < min_lsn));
 		return;
+	}
 
 	if ((row = filter(row, NULL, 0)))
 		[self send_row:row];
+	else
+		say_debug("filter skip");
 }
 
 - (void)
@@ -291,7 +327,7 @@ setup_filter:(struct feeder_filter*)_filter
 - (void)
 load_from:(i64)xid
 {
-	say_info("%s initial_xid:%"PRIi64, __func__, xid);
+	say_info("%s shard:%i initial_xid:%"PRIi64, __func__, shard_id, xid);
 
 	if (xid == 0) {
 		/* full load from last valid snapshot */
@@ -306,6 +342,8 @@ load_from:(i64)xid
 			keepalive();
 		}
 	}
+
+	// min_lsn = min_scn = LLONG_MAX;
 
 	XLog *initial_wal;
 	if (shard_id != -1) {
@@ -440,6 +478,7 @@ recover_feed_slave(int sock, struct iproto *req)
 	luaO_require_or_panic("init", false, NULL);
 #endif
 	[Feeder register_filter:"shard" call:shard_filter];
+	[Feeder register_filter:"raft" call:raft_filter];
 	feeder = [[Feeder alloc] init_fd:sock];
 
 	i64 xid = handshake(sock, req, &filter);
@@ -547,7 +586,7 @@ feeder_service(struct iproto_service *s)
 	if (cfg.wal_writer_inbox_size == 0)
 		return;
 
-	service_register_iproto(s, MSG_REPLICA, iproto_feeder_cb, IPROTO_LOCAL);
+	service_register_iproto(s, MSG_REPLICA, iproto_feeder_cb, IPROTO_LOCAL|IPROTO_SPAWN);
 }
 
 static void
