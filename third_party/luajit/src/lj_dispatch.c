@@ -1,6 +1,6 @@
 /*
 ** Instruction dispatch handling.
-** Copyright (C) 2005-2015 Mike Pall. See Copyright Notice in luajit.h
+** Copyright (C) 2005-2020 Mike Pall. See Copyright Notice in luajit.h
 */
 
 #define lj_dispatch_c
@@ -75,7 +75,7 @@ void lj_dispatch_init(GG_State *GG)
   for (i = 0; i < GG_NUM_ASMFF; i++)
     GG->bcff[i] = BCINS_AD(BC__MAX+i, 0, 0);
 #if LJ_TARGET_MIPS
-  memcpy(GG->got, dispatch_got, LJ_GOT__MAX*4);
+  memcpy(GG->got, dispatch_got, LJ_GOT__MAX*sizeof(ASMFunction *));
 #endif
 }
 
@@ -252,22 +252,15 @@ int luaJIT_setmode(lua_State *L, int idx, int mode)
     } else {
       if (!(mode & LUAJIT_MODE_ON))
 	G2J(g)->flags &= ~(uint32_t)JIT_F_ON;
-#if LJ_TARGET_X86ORX64
-      else if ((G2J(g)->flags & JIT_F_SSE2))
-	G2J(g)->flags |= (uint32_t)JIT_F_ON;
-      else
-	return 0;  /* Don't turn on JIT compiler without SSE2 support. */
-#else
       else
 	G2J(g)->flags |= (uint32_t)JIT_F_ON;
-#endif
       lj_dispatch_update(g);
     }
     break;
   case LUAJIT_MODE_FUNC:
   case LUAJIT_MODE_ALLFUNC:
   case LUAJIT_MODE_ALLSUBFUNC: {
-    cTValue *tv = idx == 0 ? frame_prev(L->base-1) :
+    cTValue *tv = idx == 0 ? frame_prev(L->base-1)-LJ_FR2 :
 		  idx > 0 ? L->base + (idx-1) : L->top + idx;
     GCproto *pt;
     if ((idx == 0 || tvisfunc(tv)) && isluafunc(&gcval(tv)->fn))
