@@ -127,6 +127,11 @@ memcached_dispatch(Memcached *memc, int fd,
 	p = rbuf->ptr;
 	pe = rbuf->end;
 
+	/* Silence warning */
+	(void)memcached_en_main;
+	(void)memcached_error;
+	(void)memcached_first_final;
+
 	say_debug("memcached_dispatch '%s'", quote(p, (int)(pe - p)));
 
 #define ADD_IOV_LITERAL(s) ({						\

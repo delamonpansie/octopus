@@ -12,6 +12,8 @@ src/octopus.o src/net_io.o: XCFLAGS += -DOCT_OBJECT
 obj += mod/memcached/store.o
 obj += mod/memcached/proto.o
 
+no-extra-warns += mod/memcached/proto.o
+
 mod/memcached/store.o: mod/memcached/memcached_version.h
 
 ifeq (1,$(HAVE_RAGEL))

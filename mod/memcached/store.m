@@ -428,7 +428,7 @@ void
 print_stats(struct netmsg_head *wbuf)
 {
 	u64 bytes_used, items;
-	struct tbuf *out = tbuf_alloc(wbuf->pool);
+	struct tbuf *out = tbuf_alloc(wbuf->ctx->pool);
 	slab_total_stat(&bytes_used, &items);
 
 	tbuf_printf(out, "STAT pid %"PRIu32"\r\n", (u32)getpid());
@@ -484,10 +484,11 @@ memcached_handler(va_list ap)
 	mc_stats.curr_connections++;
 
 	struct tbuf rbuf = TBUF(NULL, 0, fiber->pool);
+	struct netmsg_pool_ctx ctx;
 	struct netmsg_head wbuf;
-	netmsg_head_init(&wbuf, fiber->pool);
+	netmsg_pool_ctx_init(&ctx, "memcached_handler", 16 * 1024);
+	netmsg_head_init(&wbuf, &ctx);
 	palloc_register_gc_root(fiber->pool, &rbuf, tbuf_gc);
-	palloc_register_gc_root(fiber->pool, &wbuf, netmsg_head_gc);
 
 	@try {
 		for (;;) {
@@ -520,6 +521,7 @@ memcached_handler(va_list ap)
 			}
 
 			fiber_gc();
+			netmsg_pool_ctx_gc(&ctx);
 
 			if (p == 1 && tbuf_len(&rbuf) > 0) {
 				batch_count = 0;
@@ -533,7 +535,6 @@ memcached_handler(va_list ap)
 	}
 	@finally {
 		palloc_unregister_gc_root(fiber->pool, &rbuf);
-		palloc_unregister_gc_root(fiber->pool, &wbuf);
 		close(fd);
 		mc_stats.curr_connections--;
 	}
