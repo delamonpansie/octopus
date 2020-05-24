@@ -2,14 +2,6 @@ obj += cfg/warning.o
 obj += cfg/prscfg.o
 obj += cfg/octopus.o
 
-ifneq ($(findstring src/onlineconf.o,$(obj)),)
-  cfg_tmpl += cfg/onlineconf.cfg_tmpl
-endif
-
-ifneq ($(findstring src/graphite.o,$(obj)),)
-  cfg_tmpl += cfg/graphite.cfg_tmpl
-endif
-
 no-extra-warns += cfg/octopus.o
 no-extra-warns += cfg/prscfg.o
 # no warns at all: it complains even with -Wall

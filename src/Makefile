@@ -11,7 +11,6 @@ obj += src/salloc.o
 obj += src/say.o
 obj += src/stat.o
 
-obj += src/graphite.o
 
 obj += src/octopus_ev.o
 obj += src/tbuf.o
@@ -61,10 +60,6 @@ ifneq ($(findstring src/spawn_child.o,$(obj)),)
   src/octopus.o: XCFLAGS += -DOCT_SPAWNER=1
 endif
 
-ifneq ($(findstring src/onlineconf.o,$(obj)),)
-  obj += third_party/ckv/ckv.o
-endif
-
 ifneq ($(findstring src/index/base.o,$(obj)),)
   src/iproto.o: XCFLAGS += -DOCT_INDEX=1
 endif
@@ -75,6 +70,3 @@ ifneq (,$(TRACE))
 	XLDFLAGS += -Wl,-Map=octopus.map
 endif
 
-ifneq (,$(GRAPHITE_ADDR))
-  src/graphite.o: XCFLAGS += -DGRAPHITE_ADDR=$(GRAPHITE_ADDR)
-endif

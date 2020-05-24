@@ -36,8 +36,8 @@ octopus
 client/octobench/octobench
 src/admin.m
 octopus_version.h
+mod/*/*_version.h
 src-lua/cdef.lua
-mod
 client/*
 !client/*/
 client/octobench/

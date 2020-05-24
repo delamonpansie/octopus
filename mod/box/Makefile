@@ -1,3 +1,7 @@
+ifeq ($(findstring onlineconf,$(modules)),)
+$(error onlineconf module is not configured)
+endif
+
 XCFLAGS += -DOCT_CHILDREN=1
 
 obj += src/admin.o
@@ -6,8 +10,6 @@ obj += $(obj-index)
 obj += src/tnt_obj.o
 obj += src/iproto.o
 obj += src/iproto_client.o
-obj += src/onlineconf.o
-obj += src-lua/onlineconf.o
 
 src/octopus.o src/net_io.o src/fiber.o: XCFLAGS += -DOCT_OBJECT
 
