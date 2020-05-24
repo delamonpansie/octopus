@@ -4,6 +4,7 @@ obj += $(obj-log-io)
 obj += src/iproto.o
 obj += src/iproto_client.o
 obj += src/admin.o
+obj += $(obj-index) # for twl_realloc
 
 obj += mod/example/main.o
 mod/example/main.o: CFLAGS += -Wno-unused-parameter

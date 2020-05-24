@@ -22,7 +22,7 @@ struct twltree_conf_t twl_conf = { .tuple_key_cmp = key_compare };
 
 static Example *mod;
 static void
-modify(struct netmsg_head *wbuf, struct iproto *req, void *arg)
+modify(struct netmsg_head *wbuf, struct iproto *req)
 {
 	if (req->data_len != 8)
 		return iproto_error(wbuf, req, 0x102, "bad request");
@@ -38,7 +38,7 @@ modify(struct netmsg_head *wbuf, struct iproto *req, void *arg)
 }
 
 static void
-query(struct netmsg_head *wbuf, struct iproto *req, void *arg)
+query(struct netmsg_head *wbuf, struct iproto *req)
 {
 	if (req->data_len != 8)
 		return iproto_error(wbuf, req, 0x102, "bad request");
@@ -60,10 +60,9 @@ query(struct netmsg_head *wbuf, struct iproto *req, void *arg)
 
 @implementation Example
 - (id)
-init_shard:(Shard<Shard> *)shard_
+set_shard:(Shard<Shard> *)shard_
 {
-	[super init_shard:shard_];
-
+        [super set_shard:shard_];
 	index.sizeof_index_key = 8;
 	index.sizeof_tuple_key = 8;
 	index.conf = &twl_conf;
@@ -120,7 +119,7 @@ init(void)
 	recovery = [[Recovery alloc] init];
 	recovery->default_exec_class = [Example class];
 	if (init_storage) {
-		[recovery shard_add_dummy:NULL]; /* no µsharding */
+		[recovery shard_create_dummy:NULL]; /* no µsharding */
 		return;
 	}
 	fiber_create("example_init", init_second_stage);
