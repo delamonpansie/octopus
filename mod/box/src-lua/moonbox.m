@@ -170,7 +170,7 @@ luaT_box_dispatch(struct lua_State *L)
 	return 0;
 }
 
-static const struct luaL_reg boxlib [] = {
+static const struct luaL_Reg boxlib [] = {
 	{"_dispatch", luaT_box_dispatch},
 	{NULL, NULL}
 };
@@ -238,7 +238,7 @@ box_dispach_lua(struct netmsg_head *wbuf, struct iproto *request)
 		lua_getglobal(L, "box");
 		lua_getfield(L, -1, "entry");
 		lua_remove(L, -2);
-		box_entry_i = lua_ref(L, LUA_REGISTRYINDEX);
+		box_entry_i = luaL_ref(L, LUA_REGISTRYINDEX);
 	}
 	lua_rawgeti(L, LUA_REGISTRYINDEX, box_entry_i);
 

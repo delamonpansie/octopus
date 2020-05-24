@@ -266,7 +266,7 @@ fill_feeder_param:(struct feeder_param *)feeder peer:(int)i
 		.filter = {.type = FILTER_TYPE_C,
 			   .name = "shard",
 			   .arg = filter_arg,
-			   .arglen = 1 + sprintf(filter_arg, "%i", self->id) }
+			   .arglen = sprintf(filter_arg, "%i", self->id) }
 	};
 }
 
