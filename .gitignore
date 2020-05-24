@@ -71,3 +71,7 @@ cfg/prscfg.*
 *.cmt
 *.cmi
 *.cmti
+
+# rust
+Cargo.lock
+src-rs/target

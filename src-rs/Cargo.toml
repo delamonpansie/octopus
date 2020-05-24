@@ -1,0 +1,10 @@
+[package]
+name = "octopus"
+version = "0.1.0"
+authors = ["Yury Vostrikov <mon@unformed.ru>"]
+edition = "2018"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]

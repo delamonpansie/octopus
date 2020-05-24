@@ -66,6 +66,8 @@ AC_CHECK_PROGS([OCAMLOPT], [ocamlopt.opt ocamlopt])
 AC_CHECK_PROGS([OCAMLC], [ocamlc.opt ocamlc])
 AC_CHECK_PROGS([OCAMLDEP], [ocamldep.opt ocamldep])
 
+AC_CHECK_PROGS([CARGO], [cargo])
+
 # Checks for libraries.
 AC_SEARCH_LIBS([dlopen], [dl dld], [], [AC_MSG_ERROR([unable to find the dlopen() function])])
 AC_SEARCH_LIBS(setproctitle, util)

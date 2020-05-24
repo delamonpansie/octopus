@@ -38,6 +38,7 @@ OBJCOPY = @OBJCOPY@
 OCAMLOPT = @OCAMLOPT@
 OCAMLC = @OCAMLC@
 OCAMLDEP = @OCAMLDEP@
+CARGO = @CARGO@
 HAVE_RAGEL = @HAVE_RAGEL@
 HAVE_CONFETTI = @HAVE_CONFETTI@
 HAVE_LCOV = @HAVE_LCOV@
@@ -80,6 +81,7 @@ all: $(binary) $(foreach client,$(clients),$(client)_all)
 
 subdirs += third_party
 subdirs += src-ml
+subdirs += src-rs
 subdirs += src-lua
 subdirs += $(foreach dir,$(modules),mod/$(dir))
 subdirs += $(foreach dir,$(clients),client/$(dir))
@@ -98,7 +100,7 @@ $(binary): $(obj)
 
 $(obj): Makefile $(sub-Makefile)
 
--include $(obj:.o=.d)
+-include $(patsubst %.o,%.d,$(patsubst %.a,%.d, $(obj)))
 -include $(cmx:.cmx=.d) $(cmx:.cmx=.i.d)
 dist-clean += $(obj:.o=.d) $(cmx:.cmx=.d) $(cmx:.cmx=.i.d)
 
