@@ -162,8 +162,8 @@ static void
 graphite_send_version(ev_periodic *w _unused_, int revents _unused_) {
 	static u64 vers = -1;
 	if (vers == -1) {
-		extern const char octopus_bundle_string[];
-		vers = atoll(octopus_bundle_string);
+		extern const char octopus_version_string[];
+		vers = atoll(octopus_version_string);
 	}
 	if (vers > 0)
 		graphite_send2("version", "version", vers);
