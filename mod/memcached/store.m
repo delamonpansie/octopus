@@ -483,10 +483,12 @@ memcached_handler(va_list ap)
 	mc_stats.total_connections++;
 	mc_stats.curr_connections++;
 
+	static struct netmsg_pool_ctx ctx;
+	if (ctx.pool == NULL)
+		netmsg_pool_ctx_init(&ctx, "memcached_handler", 512 * 1024);
+
 	struct tbuf rbuf = TBUF(NULL, 0, fiber->pool);
-	struct netmsg_pool_ctx ctx;
 	struct netmsg_head wbuf;
-	netmsg_pool_ctx_init(&ctx, "memcached_handler", 16 * 1024);
 	netmsg_head_init(&wbuf, &ctx);
 	palloc_register_gc_root(fiber->pool, &rbuf, tbuf_gc);
 
@@ -534,6 +536,7 @@ memcached_handler(va_list ap)
 		[e release];
 	}
 	@finally {
+		netmsg_head_dealloc(&wbuf);
 		palloc_unregister_gc_root(fiber->pool, &rbuf);
 		close(fd);
 		mc_stats.curr_connections--;
