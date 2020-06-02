@@ -1,0 +1,9 @@
+---
+Language: ObjC
+AlwaysBreakAfterReturnType: TopLevelDefinitions
+BreakBeforeBraces: Linux
+ColumnLimit:     100
+IndentWidth:     8
+UseTab:          Always
+...
+
