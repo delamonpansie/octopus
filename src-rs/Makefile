@@ -4,9 +4,14 @@ else
 	CARGO_PROFILE=release
 endif
 
-obj += src-rs/target/$(CARGO_PROFILE)/liboctopus.a
+LDFLAGS += -Lsrc-rs/target/$(CARGO_PROFILE)
+LIBS += -lrustyoctopus
+CFLAGS += -pthread
 
-src-rs/target/$(CARGO_PROFILE)/liboctopus.a:
+$(binary): src-rs/target/$(CARGO_PROFILE)/librustyoctopus.a
+-include src-rs/target/$(CARGO_PROFILE)/librustyoctopus.d
+
+src-rs/target/$(CARGO_PROFILE)/librustyoctopus.a:
 	$E "CARGO	$(notdir $@)"
 	$Q cd $(srcdir)/src-rs && \
 		CARGO_TARGET_DIR=$(CURDIR)/src-rs/target \

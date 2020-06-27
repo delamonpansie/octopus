@@ -95,7 +95,7 @@ $(binary): $(obj)
 
 $(obj): Makefile $(sub-Makefile)
 
--include $(patsubst %.o,%.d,$(patsubst %.a,%.d, $(obj)))
+-include $(obj:.o=.d)
 -include $(cmx:.cmx=.d) $(cmx:.cmx=.i.d)
 dist-clean += $(obj:.o=.d) $(cmx:.cmx=.d) $(cmx:.cmx=.i.d)
 
@@ -174,7 +174,7 @@ endif
 clean:
 	$(E) "CLEAN	$(binary)"
 	$(Q)rm -rf $(obj) $(patsubst %.o,%.gcno,$(obj))
-	$(Q)rm -rf $(dep) $(binary) lcov test/var
+	$(Q)rm -rf $(dep) $(binary) lcov test/var src-rs/target
 
 luaclean:
 	$(E) "CLEAN	luajit"

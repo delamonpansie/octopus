@@ -1,5 +1,5 @@
 [package]
-name = "octopus"
+name = "rustyoctopus"
 version = "0.1.0"
 authors = ["Yury Vostrikov <mon@unformed.ru>"]
 edition = "2018"
