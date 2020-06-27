@@ -91,7 +91,6 @@ static inline bool not_sched(struct Fiber* fib) { return fib != sched; }
 
 	const char *name;
 	void (*f)(va_list ap);
-	va_list ap;
 }
 - (void) setValue: (id)val;
 - (void) setError: (id)err;

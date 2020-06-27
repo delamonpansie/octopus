@@ -262,12 +262,12 @@ fiber_zombificate(struct Fiber *f)
 }
 
 static void
-fiber_loop(void *data __attribute__((unused)))
+fiber_loop(void *data)
 {
 	while (42) {
 		assert(fiber != NULL && fiber->f != NULL && fiber->fid != 0);
 		@try {
-			fiber->f(fiber->ap);
+			fiber->f(*(va_list *)data);
 		}
 		@catch (Error *e) {
 			panic_exc(e);
@@ -277,7 +277,7 @@ fiber_loop(void *data __attribute__((unused)))
 		}
 
 		fiber_zombificate(fiber);
-		yield();	/* give control back to scheduler */
+		data = yield();	/* give control back to scheduler */
 	}
 }
 
@@ -287,13 +287,14 @@ struct Fiber *
 fiber_create(const char *name, void (*f)(va_list va), ...)
 {
 	Fiber *new = NULL;
+	va_list ap;
 
 	if (!SLIST_EMPTY(&zombie_fibers)) {
 		new = SLIST_FIRST(&zombie_fibers);
 		SLIST_REMOVE_HEAD(&zombie_fibers, zombie_link);
 	} else {
 		new = [Fiber alloc];
-		if (octopus_coro_create(&new->coro, fiber_loop, NULL) == NULL)
+		if (octopus_coro_create(&new->coro, fiber_loop, &ap) == NULL)
 			panic_syserror("fiber_create");
 
 		fiber_alloc(new);
@@ -312,9 +313,9 @@ fiber_create(const char *name, void (*f)(va_list va), ...)
 	register_fid(new);
 
 	new->f = f;
-	va_start(new->ap, f);
-	resume(new, NULL);
-	va_end(new->ap);
+	va_start(ap, f);
+	resume(new, &ap);
+	va_end(ap);
 
 	if (new->fid == 0) /* f() exited without ever calling yield() */
 		return NULL;
