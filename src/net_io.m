@@ -318,19 +318,6 @@ net_add_obj_iov(struct netmsg_head *o, struct tnt_object *obj, const void *buf, 
 }
 #endif
 
-void
-netmsg_verify_ownership(struct netmsg_head *h)
-{
-	struct netmsg *m;
-
-	TAILQ_FOREACH(m, &h->q, link)
-		for (int i = 0; i < m->count; i++)
-			if (m->ref[i] != 0)
-				assert(!palloc_owner(m->pool, m->iov[i].iov_base));
-			else
-				assert(palloc_owner(m->pool, m->iov[i].iov_base));
-}
-
 int
 rbuf_len(const struct netmsg_io *io)
 {
