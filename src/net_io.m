@@ -225,17 +225,6 @@ netmsg_reset(struct netmsg_head *h)
 		netmsg_dealloc(&h->q, m);
 }
 
-struct netmsg *
-netmsg_concat(struct netmsg_head *dst, struct netmsg_head *src)
-{
-	assert(dst->ctx == src->ctx);
-	TAILQ_CONCAT(&dst->q, &src->q, link);
-	dst->bytes += src->bytes;
-	src->bytes = 0;
-	TAILQ_INIT(&src->q);
-	return TAILQ_FIRST(&dst->q);
-}
-
 void
 netmsg_rewind(struct netmsg_head *h, const struct netmsg_mark *mark)
 {

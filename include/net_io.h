@@ -103,7 +103,6 @@ void netmsg_pool_ctx_gc(struct netmsg_pool_ctx *ctx);
 void netmsg_head_init(struct netmsg_head *h, struct netmsg_pool_ctx *ctx);
 void netmsg_head_dealloc(struct netmsg_head *h);
 
-struct netmsg *netmsg_concat(struct netmsg_head *dst, struct netmsg_head *src);
 void netmsg_rewind(struct netmsg_head *h, const struct netmsg_mark *mark);
 void netmsg_getmark(struct netmsg_head *h, struct netmsg_mark *mark);
 void netmsg_reset(struct netmsg_head *h);
