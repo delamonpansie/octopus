@@ -214,8 +214,7 @@ raft_mbox_get(Raft *self, struct iproto_mbox *mbox)
 static void
 reply(Raft *self, struct netmsg_head *h, const struct iproto *msg, u8 result)
 {
-	struct msg_reply *reply = palloc(h->ctx->pool, sizeof(*reply));
-	net_add_iov(h, reply, sizeof(*reply));
+	struct msg_reply *reply = net_add_alloc(h, sizeof(*reply));
 	*reply = (struct msg_reply){
 		.iproto = { .shard_id = msg->shard_id,
 			    .msg_code = msg->msg_code,

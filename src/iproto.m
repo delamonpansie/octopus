@@ -650,8 +650,9 @@ void
 iproto_service_info(struct tbuf *out, struct iproto_service *service)
 {
 	struct iproto_ingress_svc *c;
+#if 0
 	struct netmsg *m;
-
+#endif
 	tbuf_printf(out, "%s:" CRLF, service->name);
 	LIST_FOREACH(c, &service->clients, link) {
 		struct netmsg_io *io = c;
@@ -662,10 +663,12 @@ iproto_service_info(struct tbuf *out, struct iproto_service *service)
 			    ev_is_active(&io->out) ? "out" : "");
 		tbuf_printf(out, "      rbuf: %i" CRLF, rbuf_len(io));
 		tbuf_printf(out, "      pending_bytes: %zi" CRLF, io->wbuf.bytes);
+#if 0
 		if (!TAILQ_EMPTY(&io->wbuf.q))
 			tbuf_printf(out, "      out_messages:" CRLF);
 		TAILQ_FOREACH(m, &io->wbuf.q, link)
 			tbuf_printf(out, "      - { count: %i }" CRLF, m->count);
+#endif
 	}
 }
 

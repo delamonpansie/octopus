@@ -13,7 +13,6 @@ module(...)
 
 local C = ffi.C
 
-local netmsg_t = ffi.typeof('struct netmsg *')
 iproto_ptr = ffi.typeof('struct iproto *')
 local iproto_ptr_t = ffi.typeof('struct iproto *')
 local iproto_t = ffi.typeof('struct iproto')
@@ -69,10 +68,11 @@ ref = function(obj)
 end
 
 G.ref = ref
-function G.__netmsg_unref(m, from)
-   local m = netmsg_t(m)
-   for i = from, m.count do
-      local ref = tonumber(m.ref[i])
+local ref_t = ffi.typeof('uint64_t *')
+function G.__netmsg_unref(refs, from, count)
+   local refs = ref_t(refs)
+   for i = from, count do
+      local ref = tonumber(refs[i])
       if bit.band(ref, 1) == 1 then
 	 ref = bit.rshift(ref, 1)
 	 ref_registry[ref] = ref_registry[0]

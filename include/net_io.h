@@ -47,30 +47,12 @@ TAILQ_HEAD(netmsg_tailq, netmsg);
 
 struct netmsg_pool_ctx {
 	struct palloc_pool *pool;
-	struct palloc_config cfg;
-	int limit;
+	char _dummy[24 - sizeof(struct palloc_pool *)];
 };
 
 struct netmsg_head {
-	struct netmsg_tailq q;
-	struct netmsg_pool_ctx *ctx;
-	ssize_t bytes;
-	struct iovec *last_used_iov; /* cache for iovec joining */
-};
-
-#ifndef IOV_MAX
-#  define IOV_MAX 1024
-#endif
-
-
-#define NETMSG_IOV_SIZE 64
-struct netmsg {
-	TAILQ_ENTRY(netmsg) link; /* first sizeof(void *) bytes are trashed by salloc() */
-	int count;
-	struct palloc_pool *pool;
-
-	struct iovec iov[NETMSG_IOV_SIZE];
-	uintptr_t ref[NETMSG_IOV_SIZE];
+	size_t bytes;
+	char _dummy[48 - sizeof(size_t)];
 };
 
 #define NETMSG_IO_SHARED_POOL	1
@@ -92,9 +74,7 @@ struct netmsg {
 @end
 
 struct netmsg_mark {
-	struct netmsg *m;
-	struct iovec iov;
-	int offset;
+	char _dummy[40];
 };
 
 void netmsg_pool_ctx_init(struct netmsg_pool_ctx *ctx, const char *name, int limit);
