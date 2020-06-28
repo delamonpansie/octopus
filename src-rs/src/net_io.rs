@@ -3,6 +3,7 @@ use staticvec::StaticVec;
 use std::cell::Cell;
 use std::ops::RangeFrom;
 use std::ptr;
+use std::collections::VecDeque;
 
 use crate::palloc;
 
@@ -132,14 +133,14 @@ pub struct Msg {
     bytes: usize,
     pool_ctx: &'static PoolCtx,
     last_used_iov: *mut IoSlice,
-    node: Vec<Box<Node>>, // TODO: Vec result in double inderection (msg->vec->box) and expensive grow in Msg::node()
+    node: VecDeque<Box<Node>>, // TODO: Vec result in double inderection (msg->vec->box) and expensive grow in Msg::node()
 }
 
 #[repr(C)]
 #[derive(Debug)]
 pub enum Mark {
     Node {
-        idx: usize,
+        idx: *const Node,
         iov_len: usize,
         refs_len: usize,
         last_iov_len: usize,
@@ -152,20 +153,20 @@ impl Msg {
         Self {
             pool_ctx,
             bytes: 0,
-            node: Vec::new(),
+            node: VecDeque::new(),
             last_used_iov: &raw const DUMMY as *mut IoSlice,
         }
     }
 
     fn node(&mut self) -> &mut Node {
-        let need_grow = match &self.node.last() {
+        let need_grow = match &self.node.back() {
             None => true,
             Some(node) => !node.iov.is_not_full(),
         };
         if std::intrinsics::unlikely(need_grow) {
-            self.node.push(box Node::new(self.pool_ctx.pool()));
+            self.node.push_back(box Node::new(self.pool_ctx.pool()));
         }
-        match self.node.last_mut() {
+        match self.node.back_mut() {
             Some(node) => node,
             _ => unreachable!(),
         }
@@ -201,9 +202,9 @@ impl Msg {
     }
 
     fn get_mark(&mut self) -> Mark {
-        match self.node.last() {
+        match self.node.back() {
             Some(node) => Mark::Node {
-                idx: self.node.len() - 1,
+                idx: &**node,
                 iov_len: node.iov.len(),
                 refs_len: node.refs.len(),
                 last_iov_len: match node.iov.last() {
@@ -221,14 +222,18 @@ impl Msg {
                 self.clear();
             }
             Mark::Node { idx, iov_len, refs_len, last_iov_len } => {
-                for n in self.node.drain(idx + 1..) {
-                    self.bytes -= IoSlice::sum_iov_len(&n.iov);
-                }
-                let n = &mut self.node[idx];
-                self.bytes -= IoSlice::sum_iov_len(&n.iov[iov_len..]);
-                n.trim(iov_len.., refs_len..);
-                if let Some(iov) = n.iov.last_mut() {
-                    iov.iov_len = last_iov_len
+                while let Some(n) = self.node.back_mut() {
+                    if &**n as *const _ == idx {
+                        self.bytes -= IoSlice::sum_iov_len(&n.iov[iov_len..]);
+                        n.trim(iov_len.., refs_len..);
+                        if let Some(iov) = n.iov.last_mut() {
+                            iov.iov_len = last_iov_len
+                        }
+                        break;
+                    } else {
+                        self.bytes -= IoSlice::sum_iov_len(&n.iov);
+                        self.node.pop_back();
+                    }
                 }
             }
         }
@@ -305,7 +310,9 @@ impl Msg {
             iov_sent -= n.iov.len();
         }
 
-        self.node.drain(0..node_sent);
+        for _ in 0..node_sent {
+            self.node.pop_front();
+        }
 
         result as isize
     }
@@ -442,7 +449,7 @@ mod tests {
         }
         assert!(!msg.node.is_empty());
 
-        let tail_node: *const Node = &**msg.node.last().unwrap();
+        let tail_node: *const Node = &**msg.node.back().unwrap();
 
         let mark = msg.get_mark();
 
@@ -451,10 +458,10 @@ mod tests {
             p = p.wrapping_offset(2);
         }
         assert!(!msg.node.is_empty());
-        assert_ne!(tail_node, &**msg.node.last().unwrap());
+        assert_ne!(tail_node, &**msg.node.back().unwrap());
 
         msg.rewind(&mark);
-        assert_eq!(tail_node, &**msg.node.last().unwrap());
+        assert_eq!(tail_node, &**msg.node.back().unwrap());
     }
 
     #[test]
