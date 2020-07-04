@@ -10,7 +10,7 @@ crate-type = ["staticlib"]
 [dependencies]
 take_mut = "0.2"
 libc = "0.2"
-staticvec = { git = "https://github.com/delamonpansie/staticvec",  rev = "735013cc4634e2cd05c096db08f0405b0432e286" }
+staticvec = "0.10"
 cfg-if = "0.1"
 
 [profile.dev]
