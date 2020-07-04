@@ -366,7 +366,7 @@ cfg_if::cfg_if! {
 
 #[no_mangle]
 unsafe extern "C" fn netmsg_head_init(msg: *mut Msg, pool_ctx: *const PoolCtx) {
-    *msg = Msg::new(&*pool_ctx)
+    std::ptr::write(msg, Msg::new(&*pool_ctx));
 }
 
 #[no_mangle]
@@ -438,7 +438,7 @@ mod tests {
 
     #[test]
     fn test_msg_size() {
-        assert_eq!(std::mem::size_of::<Msg>(), 48); // do not forget to update net_io.h
+        assert_eq!(std::mem::size_of::<Msg>(), 56); // do not forget to update net_io.h
     }
     #[test]
     fn test_msg_layout() {

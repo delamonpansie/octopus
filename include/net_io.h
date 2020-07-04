@@ -52,7 +52,7 @@ struct netmsg_pool_ctx {
 
 struct netmsg_head {
 	size_t bytes;
-	char _dummy[48 - sizeof(size_t)];
+	char _dummy[56 - sizeof(size_t)];
 };
 
 #define NETMSG_IO_SHARED_POOL	1
