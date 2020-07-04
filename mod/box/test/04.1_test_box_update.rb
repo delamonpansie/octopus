@@ -18,12 +18,24 @@ Env.env_eval do
   c2 = connect
   c4 = connect
 
+  c1.connect_name = "c1"
+  c2.connect_name = "c2"
+  c4.connect_name = "c4"
+
   wal_writer_pid = pid + 5 # hack!
   c1.insert [3, "baz"]
   puts "# wal_writer stop"
   Process.kill "STOP", wal_writer_pid
-  t1 = Thread.new { log_try { c1.insert [1, "foo"] } }
-  t2 = Thread.new { sleep 0.01; log_try { c2.insert [1, "foobar"] } }
+
+  t1 = Thread.new {
+    puts '# c1.insert([1, "foo"])'
+    Thread::current[:ret] = c1.insert_nolog [1, "foo"]
+  }
+  t2 = Thread.new {
+    sleep 0.02;
+    puts '# c2.insert([1, "foobar"])'
+    Thread::current[:ret]= c2.insert_nolog [1, "foobar"]
+  }
 
   sleep 0.05
   c4.select 1
@@ -32,6 +44,10 @@ Env.env_eval do
   Process.kill "CONT", wal_writer_pid
   t1.join
   t2.join
+
+  puts t1[:ret].to_s() + ' # c1'
+  puts t2[:ret].to_s() + ' # c2'
+
   c4.select 1
   c4.delete 1
   c4.select 1

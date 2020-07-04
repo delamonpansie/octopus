@@ -32,6 +32,6 @@ $two_env.env_eval do
   puts
   puts `./octopus --cat 00000000000000000002.xlog`.gsub(/ tm:\d+(\.\d+)? /, ' ')
   puts
-  puts `grep META octopus.log`.gsub(/^\d+\.\d+ \d+ /, '')
+  puts `grep META octopus.log`.gsub(/^\d+\.\d+ \d+ /, '').gsub(/^\d\d\d/, 'xxx')
 end
 

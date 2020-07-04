@@ -34,12 +34,12 @@ lsn:2 scn:-1 t:snap/snap_final
 lsn:2 shard:1 scn:5 t:wal/shard_alter SHARD_ALTER shard_id:1 POR Box count:1 run_crc:0xc19a0fa0 master:two repl:one
 lsn:3 shard:1 scn:6 t:wal/shard_alter SHARD_ALTER shard_id:1 POR Box count:1 run_crc:0x90dfeb36 master:two repl:one repl:three
 lsn:4 shard:1 scn:7 t:wal/shard_alter SHARD_ALTER shard_id:1 POR Box count:1 run_crc:0x2f5700ed master:two repl:three
-239/load shard {1} I> META mode: LOADING => shard_create
-239/load shard {1} I> META mode: PARTIAL_PROXY, SCN: 4, type: POR, peer: [one, two], proxy_addr: 'one/127.0.0.1:33013' => hot_standby/one/127.0.0.1:33013/init
-240/remote_hot_standby {1} I> META mode: PARTIAL_PROXY, SCN: 4, type: POR, peer: [one, two], proxy_addr: 'one/127.0.0.1:33013' => hot_standby/127.0.0.1:33013/connect
-239/load shard {1} I> META mode: PARTIAL_PROXY, SCN: 4, type: POR, peer: [one, two], proxy_addr: 'one/127.0.0.1:33013' => wal_final_row
-240/remote_hot_standby {1} I> META mode: PARTIAL_PROXY, SCN: 4, type: POR, peer: [one, two], proxy_addr: 'one/127.0.0.1:33013' => hot_standby/127.0.0.1:33013/ok
-240/remote_hot_standby {1} I> META mode: LOCAL, SCN: 4, type: POR, peer: [two, one] => route update, force notify
-240/remote_hot_standby {1} I> META mode: LOCAL, SCN: 4, type: POR, peer: [two, one] => primary
-230/box_worker {1} I> META mode: LOCAL, SCN: 6, type: POR, peer: [two, one, three] => route update, force notify
-230/box_worker {1} I> META mode: LOCAL, SCN: 7, type: POR, peer: [two, three] => route update, force notify
+xxx/load shard {1} I> META mode: LOADING => shard_create
+xxx/load shard {1} I> META mode: PARTIAL_PROXY, SCN: 4, type: POR, peer: [one, two], proxy_addr: 'one/127.0.0.1:33013' => hot_standby/one/127.0.0.1:33013/init
+xxx/remote_hot_standby {1} I> META mode: PARTIAL_PROXY, SCN: 4, type: POR, peer: [one, two], proxy_addr: 'one/127.0.0.1:33013' => hot_standby/127.0.0.1:33013/connect
+xxx/load shard {1} I> META mode: PARTIAL_PROXY, SCN: 4, type: POR, peer: [one, two], proxy_addr: 'one/127.0.0.1:33013' => wal_final_row
+xxx/remote_hot_standby {1} I> META mode: PARTIAL_PROXY, SCN: 4, type: POR, peer: [one, two], proxy_addr: 'one/127.0.0.1:33013' => hot_standby/127.0.0.1:33013/ok
+xxx/remote_hot_standby {1} I> META mode: LOCAL, SCN: 4, type: POR, peer: [two, one] => route update, force notify
+xxx/remote_hot_standby {1} I> META mode: LOCAL, SCN: 4, type: POR, peer: [two, one] => primary
+xxx/box_worker {1} I> META mode: LOCAL, SCN: 6, type: POR, peer: [two, one, three] => route update, force notify
+xxx/box_worker {1} I> META mode: LOCAL, SCN: 7, type: POR, peer: [two, three] => route update, force notify
