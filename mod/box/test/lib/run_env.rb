@@ -159,7 +159,7 @@ EOD
       STDERR.puts "\n\nCore found. starting gdb."
       # spawn gdb in separate process: cleanup callbacks will be called at script exit
       # e.g. kill master after slave coredump
-      system *%w[gdb --quiet octopus core]
+      system *%w[rust-gdb --quiet octopus core]
     end
   end
 
