@@ -100,40 +100,32 @@ feeder_param_fill_from_cfg(struct feeder_param *param, struct octopus_cfg *_cfg)
 		param->filter.name = _cfg->wal_feeder_filter;
 	}
 
-	if (_cfg->replication_compat) {
-		if (param->filter.name != NULL) {
-			say_error("replication_compat is incompatible with wal_feeder_filter");
-			e |= FEEDER_CFG_BAD_VERSION;
-		}
-		param->ver = 0;
-	} else {
-		if (_cfg->wal_feeder_filter_type != NULL) {
-			if (strncasecmp(_cfg->wal_feeder_filter_type, "id", 4) == 0)
-				param->filter.type = FILTER_TYPE_ID;
-			else if (strncasecmp(_cfg->wal_feeder_filter_type, "lua", 4) == 0)
-				param->filter.type = FILTER_TYPE_LUA;
-			else if (strncasecmp(_cfg->wal_feeder_filter_type, "c", 4) == 0)
-				param->filter.type = FILTER_TYPE_C;
-		} else if (param->filter.name == NULL)
+	if (_cfg->wal_feeder_filter_type != NULL) {
+		if (strncasecmp(_cfg->wal_feeder_filter_type, "id", 4) == 0)
 			param->filter.type = FILTER_TYPE_ID;
-		else
+		else if (strncasecmp(_cfg->wal_feeder_filter_type, "lua", 4) == 0)
 			param->filter.type = FILTER_TYPE_LUA;
+		else if (strncasecmp(_cfg->wal_feeder_filter_type, "c", 4) == 0)
+			param->filter.type = FILTER_TYPE_C;
+	} else if (param->filter.name == NULL)
+		param->filter.type = FILTER_TYPE_ID;
+	else
+		param->filter.type = FILTER_TYPE_LUA;
 
-		param->filter.arg = NULL;
-		param->filter.arglen = 0;
-		if (param->filter.type != FILTER_TYPE_ID) {
-			if (_cfg->wal_feeder_filter_arg != NULL) {
-				param->filter.arg = _cfg->wal_feeder_filter_arg;
-				param->filter.arglen = strlen(_cfg->wal_feeder_filter_arg);
-			}
+	param->filter.arg = NULL;
+	param->filter.arglen = 0;
+	if (param->filter.type != FILTER_TYPE_ID) {
+		if (_cfg->wal_feeder_filter_arg != NULL) {
+			param->filter.arg = _cfg->wal_feeder_filter_arg;
+			param->filter.arglen = strlen(_cfg->wal_feeder_filter_arg);
 		}
+	}
 
-		if (param->filter.type == FILTER_TYPE_ID ||
-		    (param->filter.type == FILTER_TYPE_LUA && param->filter.arg == NULL)) {
-			param->ver = 1;
-		} else {
-			param->ver = 2;
-		}
+	if (param->filter.type == FILTER_TYPE_ID ||
+	    (param->filter.type == FILTER_TYPE_LUA && param->filter.arg == NULL)) {
+		param->ver = 1;
+	} else {
+		param->ver = 2;
 	}
 	return e;
 }
@@ -341,7 +333,7 @@ handshake:(i64)scn
 			goto err;
 	}
 
-	if (version != default_version && version != version_11) {
+	if (version != default_version) {
 		snprintf(errbuf, sizeof(errbuf), "unknown remote version");
 		goto err;
 	}
@@ -364,13 +356,6 @@ contains_full_row_v12(const struct tbuf *b)
 {
 	return tbuf_len(b) >= sizeof(struct row_v12) &&
 		tbuf_len(b) >= sizeof(struct row_v12) + row_v12(b)->len;
-}
-
-static bool
-contains_full_row_v11(const struct tbuf *b)
-{
-	return tbuf_len(b) >= sizeof(struct _row_v11) &&
-		tbuf_len(b) >= sizeof(struct _row_v11) + _row_v11(b)->len;
 }
 
 - (ssize_t)
@@ -462,18 +447,6 @@ fetch_row
 			raise_fmt("data crc32c mismatch");
 
 		break;
-	case 11:
-		if (!contains_full_row_v11(&rbuf))
-				return NULL;
-
-		buf = tbuf_split(&rbuf, sizeof(struct _row_v11) + _row_v11(&rbuf)->len);
-
-		data_crc = crc32c(0, _row_v11(buf)->data, _row_v11(buf)->len);
-		if (_row_v11(buf)->data_crc32c != data_crc)
-			raise_fmt("data crc32c mismatch");
-
-		buf = convert_row_v11_to_v12(buf);
-		break;
 	default:
 		assert(false);
 	}
@@ -500,10 +473,6 @@ recv_row
 	switch (version) {
 	case 12:
 		while (!contains_full_row_v12(&rbuf))
-			[self recv];
-		break;
-	case 11:
-		while (!contains_full_row_v11(&rbuf))
 			[self recv];
 		break;
 	default:

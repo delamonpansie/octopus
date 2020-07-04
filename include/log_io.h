@@ -136,21 +136,6 @@ typedef void (follow_cb)(ev_stat *w, int events);
 @end
 
 extern XLogDir *wal_dir, *snap_dir;
-struct _row_v04 {
-	i64 lsn;
-	u16 type;
-	u32 len;
-	u8 data[];
-} __attribute__((packed));
-
-struct _row_v11 {
-	u32 header_crc32c;
-	i64 lsn;
-	double tm;
-	u32 len;
-	u32 data_crc32c;
-	u8 data[];
-} __attribute__((packed));
 
 struct row_v12 {
 	u32 header_crc32c;
@@ -232,19 +217,6 @@ typedef struct marker_desc {
 - (int) fileno;
 - (int) write_eof_marker;
 - (marker_desc_t) marker_desc;
-@end
-
-struct tbuf *convert_row_v11_to_v12(struct tbuf *orig);
-void fixup_row_v12(struct row_v12 *);
-u16 fix_tag_v2(u16 tag);
-
-@interface XLog04: XLog
-@end
-
-@interface XLog03Template: XLog
-@end
-
-@interface XLog11: XLog
 @end
 
 @interface XLog12: XLog
@@ -541,16 +513,6 @@ void set_recovery_service(struct iproto_service *service);
 - (int) snapshot_fold;
 @end
 extern i64 fold_scn;
-
-static inline struct _row_v04 *_row_v04(const struct tbuf *t)
-{
-	return (struct _row_v04 *)t->ptr;
-}
-
-static inline struct _row_v11 *_row_v11(const struct tbuf *t)
-{
-	return (struct _row_v11 *)t->ptr;
-}
 
 static inline struct row_v12 *row_v12(const struct tbuf *t)
 {
