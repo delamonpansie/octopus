@@ -601,7 +601,7 @@ octopus(int argc, char **argv)
 	}
 
 	if (gopt(opt, 'h')) {
-		puts("Tarantool -- an efficient in-memory data store.");
+		puts("Octopus -- an efficient in-memory data store.");
 		printf("Usage: %s [OPTIONS]\n", basename(argv[0]));
 		puts("");
 		gopt_help(opt_def);
