@@ -232,7 +232,7 @@ send_row:(struct row_v12 *)row
 			buf = TBUF(NULL, 0, debug_pool);
 		}
 		print_row(&buf, row, NULL);
-		say_debug2("send_row %*s", tbuf_len(&buf), (char *)buf.ptr);
+		say_trace("send_row %*s", tbuf_len(&buf), (char *)buf.ptr);
 		tbuf_reset(&buf);
 	}
 	writef(fd, (const char *)row, sizeof(*row) + row->len);

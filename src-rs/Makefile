@@ -9,7 +9,13 @@ LIBS += -lrustyoctopus
 CFLAGS += -pthread
 
 $(binary): src-rs/target/$(CARGO_PROFILE)/librustyoctopus.a
--include src-rs/target/$(CARGO_PROFILE)/librustyoctopus.d
+-include src-rs/target/$(CARGO_PROFILE)/librustyoctopus.pd
+
+# For whatever reason cargo lists 'build.rs' as a dependency. Surely,
+# there is no such source file and make complains that it can't build
+# it.
+src-rs/target/$(CARGO_PROFILE)/librustyoctopus.pd: src-rs/target/$(CARGO_PROFILE)/librustyoctopus.d
+	@sed -e 's/\<build\.rs\>//' <$< >$@
 
 src-rs/target/$(CARGO_PROFILE)/librustyoctopus.a:
 	$E "CARGO	$(notdir $@)"

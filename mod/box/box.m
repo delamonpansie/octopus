@@ -246,7 +246,7 @@ build_secondary(struct object_space *object_space)
 					dup_conf[k].action = DUP_DELETE;
 				else
 					abort();
-				say_debug2("dup_conf[%d]={.spaceno=%d, .indexno=%d, .action=%d}", k, i, j, dup_conf[k].action);
+				say_trace("dup_conf[%d]={.spaceno=%d, .indexno=%d, .action=%d}", k, i, j, dup_conf[k].action);
 				k++;
 			}
 		}
@@ -387,8 +387,7 @@ prepare_tlv(struct box_txn *txn, struct tlv *tlv)
 - (void)
 apply:(struct tbuf *)data tag:(u16)tag
 {
-	say_debug2("%s tag:%s", __func__, xlog_tag_to_a(tag));
-	say_debug3("%s row:%s", __func__, box_row_to_a(tag, data));
+	say_trace("%s row:%s", __func__, box_row_to_a(tag, data));
 
 	int tag_type = tag & ~TAG_MASK;
 	tag &= TAG_MASK;

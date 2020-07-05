@@ -174,7 +174,7 @@ iproto_ping(struct netmsg_head *h, struct iproto *r)
 - (id)
 init:(int)fd_ pool:(struct netmsg_pool_ctx *)ctx_
 {
-	say_debug2("%s: peer %s", __func__, net_fd_name(fd_));
+	say_trace("%s: peer %s", __func__, net_fd_name(fd_));
 	netmsg_io_init(self, ctx_, fd_);
 	ev_io_start(&in);
 	return self;
@@ -274,7 +274,7 @@ init:(int)fd_ pool:(struct palloc_pool *)pool_
 - (void)
 init:(int)fd_ service:(struct iproto_service *)service_
 {
-	say_debug2("%s: service:%s peer:%s", __func__, service_->name, net_fd_name(fd_));
+	say_trace("%s: service:%s peer:%s", __func__, service_->name, net_fd_name(fd_));
 	ingress_cnt++;
 	stat_sum_static(stat_base, IPROTO_CONNECTED, 1);
 	service = service_;
@@ -381,7 +381,7 @@ service_register_iproto(struct iproto_service *s, u32 cmd, iproto_cb cb, int fla
 static int
 local(struct iproto_ingress_svc *io, struct iproto *msg, struct iproto_handler *ih)
 {
-	say_debug3("%s: peer:%s op:0x%x sync:%u%s%s", __func__,
+	say_trace("%s: peer:%s op:0x%x sync:%u%s%s", __func__,
 		   net_fd_name(io->fd), msg->msg_code, msg->sync,
 		   ih->flags & IPROTO_NONBLOCK ? " NONBLOCK" : "",
 		   ih->flags & IPROTO_LOCAL ? " LOCAL" : "");
@@ -433,7 +433,7 @@ classify(struct iproto_ingress_svc *io, struct iproto *msg)
 			msg++; // unwrap
 		if (likely(msg->msg_code < MSG_PING))
 			fiber->ushard = msg->shard_id;
-		say_debug2("%s: %s peer:%s op:0x%x sync:%u shard:%i ", __func__, msg == orig_msg ? "" : "PROXY",
+		say_trace("%s: %s peer:%s op:0x%x sync:%u shard:%i ", __func__, msg == orig_msg ? "" : "PROXY",
 			   net_fd_name(io->fd), msg->msg_code, msg->sync, msg->shard_id);
 		if (unlikely(msg->shard_id > nelem(shard_rt)))
 			return error(io, msg, ERR_CODE_NONMASTER, "no such shard");
@@ -585,7 +585,7 @@ iproto_write_data(ev_prepare *ev) {
 struct iproto_retcode *
 iproto_reply(struct netmsg_head *h, const struct iproto *request, u32 ret_code)
 {
-	say_debug3("%s: peer:%s op:0x%x sync:%u ret_code:%i", __func__,
+	say_trace("%s: peer:%s op:0x%x sync:%u ret_code:%i", __func__,
 		   net_fd_name(container_of(h, struct netmsg_io, wbuf)->fd),
 		   request->msg_code, request->sync, ret_code);
 
@@ -601,7 +601,7 @@ iproto_reply(struct netmsg_head *h, const struct iproto *request, u32 ret_code)
 struct iproto_retcode *
 iproto_reply_small(struct netmsg_head *h, const struct iproto *request, u32 ret_code)
 {
-	say_debug3("%s: peer:%s op:0x%x sync:%u ret_code:%i", __func__,
+	say_trace("%s: peer:%s op:0x%x sync:%u ret_code:%i", __func__,
 		   net_fd_name(container_of(h, struct netmsg_io, wbuf)->fd),
 		   request->msg_code, request->sync, ret_code);
 
@@ -630,7 +630,7 @@ iproto_error(struct netmsg_head *h, const struct iproto *request, u32 ret_code, 
 	iproto_reply_fixup(h, header);
 	say_debug("%s: shard:%i op:0x%02x data_len:%i sync:%i ret:%i", __func__,
 		  header->shard_id, header->msg_code, header->data_len, header->sync, header->ret_code);
-	say_debug2("	%s", err);
+	say_trace("	%s", err);
 }
 
 void

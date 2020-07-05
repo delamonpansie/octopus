@@ -99,7 +99,7 @@ tuple_alloc(unsigned cardinality, unsigned size)
 		tuple->cardinality = cardinality;
 	}
 
-	say_debug3("tuple_alloc(%u, %u) = %p", cardinality, size, obj + 1);
+	say_trace("tuple_alloc(%u, %u) = %p", cardinality, size, obj + 1);
 	return obj;
 }
 
@@ -171,7 +171,7 @@ static struct box_phi_cell *
 phi_cell_alloc(struct box_phi *phi, struct tnt_object *obj, struct box_op *bop)
 {
 	struct box_phi_cell *cell = slab_cache_alloc(&phi_cache);
-	say_debug3("%s: %p phi:%p obj:%p", __func__, cell, phi, obj);
+	say_trace("%s: %p phi:%p obj:%p", __func__, cell, phi, obj);
 	*cell = (struct box_phi_cell) {
 		.head = phi,
 		.obj = obj,
@@ -184,7 +184,7 @@ static struct box_phi *
 phi_alloc(Index<BasicIndex> *index, struct tnt_object *obj, struct box_op *bop)
 {
 	struct box_phi *head = slab_cache_alloc(&phi_cache);
-	say_debug3("%s: %p index:%i obj:%p", __func__, head, index->conf.n, obj);
+	say_trace("%s: %p index:%i obj:%p", __func__, head, index->conf.n, obj);
 	*head = (struct box_phi) {
 		.header = { .type = BOX_PHI },
 		.index = index,
@@ -262,7 +262,7 @@ phi_commit(struct box_phi_cell *cell)
 	struct box_phi *phi = cell->head;
 	assert(TAILQ_FIRST(&phi->tailq) == cell);
 	assert(phi->obj != NULL || cell->obj != NULL);
-	say_debug3("%s: cell:%p phi:%p obj:%p", __func__, cell, phi, cell->obj);
+	say_trace("%s: cell:%p phi:%p obj:%p", __func__, cell, phi, cell->obj);
 
 	if (cell == TAILQ_LAST(&phi->tailq, phi_tailq)) {
 		/* we are last in a node,
@@ -285,7 +285,7 @@ phi_rollback(struct box_phi_cell *cell)
 {
 	struct box_phi *phi = cell->head;
 	assert(cell == TAILQ_LAST(&phi->tailq, phi_tailq));
-	say_debug3("%s: cell:%p phi:%p obj:%p", __func__, cell, phi, cell->obj);
+	say_trace("%s: cell:%p phi:%p obj:%p", __func__, cell, phi, cell->obj);
 
 	if (cell != TAILQ_FIRST(&phi->tailq)) {
 		assert(TAILQ_PREV(cell, phi_tailq, link)->obj != NULL || cell->obj != NULL);
@@ -952,7 +952,7 @@ txn_stat_cpu(struct box_txn *txn)
 static void
 txn_cleanup(struct box_txn *txn)
 {
-	say_debug3("%s: txn:%i/%p", __func__, txn->id, txn);
+	say_trace("%s: txn:%i/%p", __func__, txn->id, txn);
 	assert(fiber->txn == txn);
 	fiber->txn = NULL;
 
@@ -987,7 +987,7 @@ box_op_commit(struct box_op *bop)
 	if (!bop->object_space)
 		return;
 
-	say_debug2("%s: old_obj:%p obj:%p", __func__, bop->old_obj, bop->obj);
+	say_trace("%s: old_obj:%p obj:%p", __func__, bop->old_obj, bop->obj);
 	if (bop->obj) {
 		bytes_usage(bop->object_space, bop->obj, +1);
 	}
@@ -1030,7 +1030,7 @@ box_commit(struct box_txn *txn)
 static void
 box_op_rollback(struct box_op *bop)
 {
-	say_debug3("%s:", __func__);
+	say_trace("%s:", __func__);
 	if (!bop->object_space)
 		return;
 
@@ -1046,7 +1046,7 @@ box_op_rollback(struct box_op *bop)
 void
 box_rollback(struct box_txn *txn)
 {
-	say_debug2("%s: txn:%i/%p state:%i", __func__,
+	say_trace("%s: txn:%i/%p state:%i", __func__,
 		   txn->id, txn, txn->state);
 	assert(txn->state == UNDECIDED);
 	txn->state = ROLLBACK;
@@ -1068,7 +1068,7 @@ box_rollback(struct box_txn *txn)
 int
 box_submit(struct box_txn *txn)
 {
-	say_debug2("%s: txn:%i/%p state:%i", __func__, txn->id, txn, txn->state);
+	say_trace("%s: txn:%i/%p state:%i", __func__, txn->id, txn, txn->state);
 	int len = 0, count = 0;
 	struct box_op *bop, *single = NULL;
 	ev_tstamp submit_start = 0, diff;
@@ -1148,9 +1148,9 @@ box_txn_alloc(int shard_id, enum txn_mode mode, const char* name)
 		txn->name = cpy;
 		txn->namelen = namelen;
 		txn->start = ev_time();
-		say_debug2("%s: txn:%i/%p name:%s", __func__, txn->id, txn, cpy);
+		say_trace("%s: txn:%i/%p name:%s", __func__, txn->id, txn, cpy);
 	} else {
-		say_debug2("%s: txn:%i/%p", __func__, txn->id, txn);
+		say_trace("%s: txn:%i/%p", __func__, txn->id, txn);
 	}
 	return txn;
 }
@@ -1215,7 +1215,7 @@ box_meta_cb(struct netmsg_head *wbuf, struct iproto *request)
 {
 	Box *box = (shard_rt + request->shard_id)->shard->executor;
 
-	say_debug2("%s: op:0x%02x sync:%u", __func__, request->msg_code, request->sync);
+	say_trace("%s: op:0x%02x sync:%u", __func__, request->msg_code, request->sync);
 	if ([box->shard is_replica])
 		iproto_raise(ERR_CODE_NONMASTER, "replica is readonly");
 
@@ -1257,7 +1257,7 @@ static void
 box_cb(struct netmsg_head *wbuf, struct iproto *request)
 {
 	struct box_txn *txn = box_txn_alloc(request->shard_id, RW, box_ops[request->msg_code]);
-	say_debug2("%s: c:%p op:0x%02x sync:%u", __func__, NULL, request->msg_code, request->sync);
+	say_trace("%s: c:%p op:0x%02x sync:%u", __func__, NULL, request->msg_code, request->sync);
 
 	struct box_op *bop = NULL;
 	@try {

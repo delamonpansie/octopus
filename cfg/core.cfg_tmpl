@@ -10,8 +10,8 @@ username=NULL, ro
 coredump=0.0, ro
 
 
-# Log verbosity, possible values: ERROR=1, CRIT=2, WARN=3, INFO=4(default), DEBUG=5
-log_level=4
+# Log verbosity, possible values: ERROR=1, WARN=2, INFO=3(default), DEBUG=4, TRACE=5
+log_level=3
 
 # Size of slab arena in GiBs
 slab_alloc_arena=1.0, ro

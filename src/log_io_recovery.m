@@ -506,7 +506,7 @@ recover_row:(struct row_v12 *)r
 		say_debug("%s: LSN:%"PRIi64" SCN:%"PRIi64" tag:%s",
 			  __func__, r->lsn, r->scn, xlog_tag_to_a(r->tag));
 		if (r->len)
-			say_debug3("	%s", tbuf_to_hex(&TBUF(r->data, r->len, fiber->pool)));
+			say_trace("	%s", tbuf_to_hex(&TBUF(r->data, r->len, fiber->pool)));
 
 		int tag = r->tag & TAG_MASK;
 		switch (tag) {
@@ -581,7 +581,7 @@ recover_row:(struct row_v12 *)r
 		@throw;
 	}
 	@finally {
-		say_debug2("%s: => recovery LSN:%"PRIi64, __func__, [self lsn]);
+		say_trace("%s: => recovery LSN:%"PRIi64, __func__, [self lsn]);
 		fiber->ushard = old_ushard;
 	}
 }

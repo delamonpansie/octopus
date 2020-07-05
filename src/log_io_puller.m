@@ -172,7 +172,7 @@ establish_connection
 	abort = 0; /* must be set before connect */
 	assert(feeder != NULL);
 
-	say_debug2("%s: connect", __func__);
+	say_trace("%s: connect", __func__);
 
 	struct tac_state s = { .daddr = feeder->addr, .ev = {.fd = -1} };
 	ev_watcher *w = NULL;

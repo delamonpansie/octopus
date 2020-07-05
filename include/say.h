@@ -36,14 +36,12 @@
 
 
 enum say_level {
-	TRACE = 0,		/* hardcore debugging */
-	FATAL = 1,		/* do not this value use directly */
-	ERROR,
+	FATAL = 0,	/* do not this value use directly */
+	ERROR = 1,	/* must match log::Level enum */
 	WARN,
 	INFO,
 	DEBUG,
-	DEBUG2,
-	DEBUG3
+	TRACE,		/* hardcore debugging */
 };
 
 extern int stderrfd, sayfd, max_level, default_level, dup_to_stderr;
@@ -58,8 +56,6 @@ void _say(int level, const char *filename, unsigned line, const char *format, ..
 void _say_err(int level, const char *filename, unsigned line, const char *format, ...)
     __attribute__ ((format(FORMAT_PRINTF, 4, 5)));
 
-void say_TRACE(const char *filename, unsigned line, const char *format, ...)
-	__attribute__ ((format(FORMAT_PRINTF, 3, 4)));
 void say_ERROR(const char *filename, unsigned line, const char *format, ...)
 	__attribute__ ((format(FORMAT_PRINTF, 3, 4)));
 void say_ERRORno(const char *filename, unsigned line, const char *format, ...) /* appends strerror(errno) */
@@ -68,14 +64,12 @@ void say_WARN(const char *filename, unsigned line, const char *format, ...)
     __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
 void say_WARNno(const char *filename, unsigned line, const char *format, ...)
     __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
-void say_DEBUG(const char *filename, unsigned line, const char *format, ...)
-    __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
-void say_DEBUG2(const char *filename, unsigned line, const char *format, ...)
-    __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
-void say_DEBUG3(const char *filename, unsigned line, const char *format, ...)
-    __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
 void say_INFO(const char *filename, unsigned line, const char *format, ...)
     __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
+void say_DEBUG(const char *filename, unsigned line, const char *format, ...)
+    __attribute__ ((format(FORMAT_PRINTF, 3, 4)));
+void say_TRACE(const char *filename, unsigned line, const char *format, ...)
+	__attribute__ ((format(FORMAT_PRINTF, 3, 4)));
 
 
 int say_level_source(const char *file, int diff);
@@ -97,9 +91,7 @@ void say_register_source(const char *file, int *level);
 #define say_warn(...)		say(, WARN, __VA_ARGS__)
 #define say_info(...)		say(, INFO, __VA_ARGS__)
 #define say_debug(...)		say(, DEBUG, __VA_ARGS__)
-#define say_debug2(...)		say(, DEBUG2, __VA_ARGS__)
-#define say_debug3(...)		say(, DEBUG3, __VA_ARGS__)
-#define say_trace(...)		say_TRACE(__FILE__, __LINE__, __VA_ARGS__)
+#define say_trace(...)		say(, TRACE, __VA_ARGS__)
 
 #define ftrace()		say_trace("%s", __func__)
 #define ftracef(format, ...)	say_trace("%s:"format, __func__, ##__VA_ARGS__)

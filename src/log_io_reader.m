@@ -284,7 +284,7 @@ follow_dir(ev_timer *w, int events __attribute__((unused)))
 	if (reader->current_wal && tick-- > 0)
 		return;
 	tick = 5;
-	say_debug2("%s: current_wal:%s", __func__, reader->current_wal ? reader->current_wal->filename : NULL);
+	say_trace("%s: current_wal:%s", __func__, reader->current_wal ? reader->current_wal->filename : NULL);
 	[reader recover_remaining_wals];
 	[reader->current_wal follow:follow_file data:reader];
 }
@@ -293,7 +293,7 @@ static void
 follow_file(ev_stat *w, int events __attribute__((unused)))
 {
 	XLogReader *reader = w->data;
-	say_debug2("%s: current_wal:%s", __func__, reader->current_wal ? reader->current_wal->filename : NULL);
+	say_trace("%s: current_wal:%s", __func__, reader->current_wal ? reader->current_wal->filename : NULL);
 	[reader recover_row_stream:reader->current_wal];
 	if ([reader->current_wal eof]) {
 		say_info("done `%s' LSN:%"PRIi64,

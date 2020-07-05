@@ -173,7 +173,7 @@ msg_send_wrap(struct iproto_egress *peer,
 	for (int i = 0; i < iovcnt; i++)
 		net_add_iov_dup(h, iov[i].iov_base, iov[i].iov_len);
 
-	say_debug3("|    peer:%s\tPROXY op:0x%x sync:%u len:%zu data_len:%i", net_fd_name(peer->fd),
+	say_trace("|    peer:%s\tPROXY op:0x%x sync:%u len:%zu data_len:%i", net_fd_name(peer->fd),
 		   msg->msg_code, msg->sync, sizeof(*msg) + msg->data_len,
 		   msg->data_len);
 	return msg->sync;
@@ -199,7 +199,7 @@ msg_send(struct iproto_egress *peer,
 	for (int i = 0; i < iovcnt; i++)
 		net_add_iov_dup(h, iov[i].iov_base, iov[i].iov_len);
 
-	say_debug3("|    peer:%s\top:0x%x sync:%u len:%zu data_len:%i", net_fd_name(peer->fd),
+	say_trace("|    peer:%s\top:0x%x sync:%u len:%zu data_len:%i", net_fd_name(peer->fd),
 		   msg->msg_code, msg->sync, sizeof(*msg) + msg->data_len,
 		   msg->data_len);
 	return msg->sync;
@@ -219,7 +219,7 @@ int
 iproto_mbox_broadcast(struct iproto_mbox *mbox, struct iproto_egress_list *list,
 		      const struct iproto *msg, const struct iovec *iov, int iovcnt)
 {
-	say_debug2("%s: op:0x%x", __func__, msg->msg_code);
+	say_trace("%s: op:0x%x", __func__, msg->msg_code);
 
 	struct iproto_egress *peer;
 	int ret = 0;
@@ -292,7 +292,7 @@ u32
 iproto_proxy_send(struct iproto_egress *to, struct iproto_ingress *from, u32 wrap_code,
 		  const struct iproto *msg, const struct iovec *iov, int iovcnt)
 {
-	say_debug2("%s: shard:%i op:0x%x %s", __func__, msg->shard_id, msg->msg_code, wrap_code ? "WRAP" : "");
+	say_trace("%s: shard:%i op:0x%x %s", __func__, msg->shard_id, msg->msg_code, wrap_code ? "WRAP" : "");
 
 	u32 sync = wrap_code ?
 		   msg_send_wrap(to, wrap_code, msg, iov, iovcnt) :
@@ -402,7 +402,7 @@ iproto_future_resolve(struct iproto_egress *peer, struct iproto *msg)
 	struct iproto_mbox *mbox;
 	struct iproto_future *future = NULL;
 
-	say_debug2("%s: peer:%s op:0x%x sync:%u", __func__, net_fd_name(peer->fd), msg->msg_code, msg->sync);
+	say_trace("%s: peer:%s op:0x%x sync:%u", __func__, net_fd_name(peer->fd), msg->msg_code, msg->sync);
 
 	u32 k = mh_i32_get(sync2future, msg->sync);
 	if (k != mh_end(sync2future)) {
@@ -452,7 +452,7 @@ iproto_future_resolve(struct iproto_egress *peer, struct iproto *msg)
 		slab_cache_free(&future_cache, future);
 		break;
 	case IPROTO_FUTURE_ORPHAN:
-		say_debug3("orphan reply from peer:%s op:0x%x sync:%u", net_fd_name(peer->fd), msg->msg_code, msg->sync);
+		say_trace("orphan reply from peer:%s op:0x%x sync:%u", net_fd_name(peer->fd), msg->msg_code, msg->sync);
 		// fall through
 	case IPROTO_FUTURE_BLACKHOLE:
 		slab_cache_free(&future_cache, future);

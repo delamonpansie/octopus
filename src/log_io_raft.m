@@ -364,7 +364,7 @@ wait_for_replies(Raft *self, struct iproto_mbox *mbox, ev_tstamp delay)
 
 	} while (TAILQ_FIRST(&mbox->msg_list) ||
 		 (vote_count < quorum && reply_count < self->remote_count));
-	say_debug2("|\t%i replies, %i votes", reply_count, vote_count);
+	say_trace("|\t%i replies, %i votes", reply_count, vote_count);
 
 	LIST_REMOVE(&consumer, conslink);
 	if (delay)
@@ -389,7 +389,7 @@ request_vote(Raft *self)
 		.last_log_index = last->scn,
 		.last_log_term = last->term
 	};
-	say_debug2("%s: >> term:%"PRIi64" last_scn:%"PRIi64" last_term:%"PRIi64,
+	say_trace("%s: >> term:%"PRIi64" last_scn:%"PRIi64" last_term:%"PRIi64,
 		   __func__, self->term, last->scn, last->term);
 	iproto_mbox_broadcast(&mbox, &self->remotes, &msg.iproto, NULL, 0);
 	mbox_timedwait(&mbox, quorum - 1, self->election_deadline - ev_now());
@@ -459,13 +459,13 @@ elect(va_list ap)
 		if (self->role != CANDIDATE) /* some other member won election */
 			continue;
 		if (votes >= quorum - 1) { // -1 because we don't message ourselfs
-			say_debug2("%s: quorum reached v/q:%i/%i", __func__, votes, quorum);
+			say_trace("%s: quorum reached v/q:%i/%i", __func__, votes, quorum);
 			self->leader_id = self->peer_id;
 			self->role = LEADER;
 			fiber_create("raft/commit_nop", commit_nop, self);
 			[self adjust_route];
 		} else {
-			say_debug2("%s: no quorum v/q:%i/%i", __func__, votes, quorum);
+			say_trace("%s: no quorum v/q:%i/%i", __func__, votes, quorum);
 			fiber_sleep(self->election_deadline - ev_now()); /* wait till end of deadline */
 		}
 		prelease(fiber->pool);
@@ -491,9 +491,9 @@ request_vote_cb(struct netmsg_head *wbuf, struct iproto *msg)
 	struct msg_request_vote *request = MSG_CHECK(self, wbuf, struct msg_request_vote, msg);
 	int result = 0;
 
-	say_debug2("%s: << term:%"PRIi64" last_log_scn:%"PRIi64" last_log_term:%"PRIi64,
+	say_trace("%s: << term:%"PRIi64" last_log_scn:%"PRIi64" last_log_term:%"PRIi64,
 		   __func__, request->term, request->last_log_index, request->last_log_term);
-	say_debug3("|\tpeer:%s op:0x%x sync:%u req_term:%"PRIi64,
+	say_trace("|\tpeer:%s op:0x%x sync:%u req_term:%"PRIi64,
 		   net_fd_name(container_of(wbuf, struct netmsg_io, wbuf)->fd),
 		   msg->msg_code, msg->sync, request->term);
 
@@ -508,7 +508,7 @@ request_vote_cb(struct netmsg_head *wbuf, struct iproto *msg)
 		      (request->last_log_term == last->term &&
 		       request->last_log_index >= last->scn);
 
-	say_debug2("|\tlast_scn:%"PRIi64" last_term:%"PRIi64" log_ok:%i, voted_for:%i, req_peer_id:%i", last->scn, last->term, log_ok, self->voted_for, request->peer_id);
+	say_trace("|\tlast_scn:%"PRIi64" last_term:%"PRIi64" log_ok:%i, voted_for:%i, req_peer_id:%i", last->scn, last->term, log_ok, self->voted_for, request->peer_id);
 
 	if (log_ok &&
 	    (self->voted_for < 0 || self->voted_for == request->peer_id) &&
@@ -517,8 +517,8 @@ request_vote_cb(struct netmsg_head *wbuf, struct iproto *msg)
 		self->voted_for = request->peer_id;
 	}
 reply:
-	say_debug2("|\treply with %s, reply_term:%"PRIi64, result ? "yes": "no", self->term);
-	say_debug3("|\tpeer:%s op:0x%x sync:%u",
+	say_trace("|\treply with %s, reply_term:%"PRIi64, result ? "yes": "no", self->term);
+	say_trace("|\tpeer:%s op:0x%x sync:%u",
 		   net_fd_name(container_of(wbuf, struct netmsg_io, wbuf)->fd),
 		   msg->msg_code, msg->sync);
 	reply(self, wbuf, msg, result);
@@ -542,7 +542,7 @@ log_entry_alloc(Raft *self, i64 scn, i64 term, const void *data, int len, u16 ta
 	};
 	if (len)
 		memcpy(le->data, data, len);
-	say_debug2("%s: SCN:%"PRIi64" term:%"PRIi64, __func__, scn, term);
+	say_trace("%s: SCN:%"PRIi64" term:%"PRIi64, __func__, scn, term);
 	TAILQ_INSERT_TAIL(&self->log, le, link);
 	return le;
 }
@@ -578,7 +578,7 @@ log_truncate(Raft *self, struct log_entry *needle)
 static struct log_entry *
 log_entry_append(Raft *self, i64 scn, i64 term, const void *data, int len, u16 tag)
 {
-	say_debug2("%s: SCN:%"PRIi64" term:%"PRIi64" tag:%s len:%i", __func__,
+	say_trace("%s: SCN:%"PRIi64" term:%"PRIi64" tag:%s len:%i", __func__,
 		   scn, term, xlog_tag_to_a(tag), len);
 	assert(TAILQ_FIRST(&self->log)->scn < scn);
 
@@ -713,12 +713,12 @@ append_entries_cb(struct netmsg_head *wbuf, struct iproto *msg)
 	int is_keepalive = append->tag == 0;
 
 	if (!is_keepalive) {
-		say_debug2("%s: << term:%"PRIi64" entry_term:%"PRIi64
+		say_trace("%s: << term:%"PRIi64" entry_term:%"PRIi64
 			   " prev_log_scn:%"PRIi64" prev_log_term:%"PRIi64"%s",
 			   __func__, append->term, append->entry_term,
 			   append->prev_log_index, append->prev_log_term,
 			   append->tag == 0 ? " keepalive" : "");
-		say_debug3("|\tpeer:%s op:0x%x sync:%u req_term:%"PRIi64,
+		say_trace("|\tpeer:%s op:0x%x sync:%u req_term:%"PRIi64,
 			   net_fd_name(container_of(wbuf, struct netmsg_io, wbuf)->fd),
 			   msg->msg_code, msg->sync, append->term);
 	}
@@ -754,14 +754,14 @@ append_entries_cb(struct netmsg_head *wbuf, struct iproto *msg)
 		if (result)
 			log_commit(self, MIN(le->scn, append->leader_commit));
 	} else {
-		say_debug2("|\tlog mismatch prev_log_scn:%"PRIi64 " prev_log_term:%"PRIi64 " tag:%s : %s",
+		say_trace("|\tlog mismatch prev_log_scn:%"PRIi64 " prev_log_term:%"PRIi64 " tag:%s : %s",
 			   append->prev_log_index, append->prev_log_term, xlog_tag_to_a(append->tag),
 			   match == 0 ? "prev log entry term not equal" : "log entry not found");
 	}
 
 reply:
-	say_debug2("|\treply with %s, reply_term:%"PRIi64, result ? "yes": "no", self->term);
-	say_debug3("|\tpeer:%s op:0x%x sync:%u",
+	say_trace("|\treply with %s, reply_term:%"PRIi64, result ? "yes": "no", self->term);
+	say_trace("|\tpeer:%s op:0x%x sync:%u",
 		   net_fd_name(container_of(wbuf, struct netmsg_io, wbuf)->fd),
 		   msg->msg_code, msg->sync);
 	reply(self, wbuf, msg, result);
@@ -775,7 +775,7 @@ learn_wal(Raft *self, id<XLogPullerAsync> puller)
 	struct row_v12 *row;
 	struct log_entry *le = NULL;
 	int result = 0;
-	say_debug2("%s: SCN:%i", __func__, (int)self->scn);
+	say_trace("%s: SCN:%i", __func__, (int)self->scn);
 
 	[puller recv_row];
 	while ((row = [puller fetch_row])) {
@@ -1159,7 +1159,7 @@ recover_row:(struct row_v12 *)r
 	i64 row_term;
 	u16 tag, flags;
 
-	say_debug2("%s: LSN:%"PRIi64" tag:%s", __func__, r->lsn, xlog_tag_to_a(r->tag));
+	say_trace("%s: LSN:%"PRIi64" tag:%s", __func__, r->lsn, xlog_tag_to_a(r->tag));
 	switch (r->tag & TAG_MASK) {
 	case shard_create:
 		assert(r->shard_id == self->id);

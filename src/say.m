@@ -64,7 +64,7 @@ static struct mh_cstr_t *filter;
 
 int stderrfd, sayfd = STDERR_FILENO;
 int dup_to_stderr = 0;
-int max_level, default_level = INFO;
+int max_level = 0;
 int nonblocking;
 
 #define HIST_SIZE (128 * 1024)
@@ -80,8 +80,6 @@ level_to_char(int level)
 	switch (level) {
 	case FATAL:
 		return 'F';
-	case TRACE:
-		return 'T';
 	case ERROR:
 		return 'E';
 	case WARN:
@@ -90,9 +88,19 @@ level_to_char(int level)
 		return 'I';
 	case DEBUG:
 		return 'D';
+	case TRACE:
+		return 'T';
 	default:
 		return '_';
 	}
+}
+
+static void
+set_max_level(int level)
+{
+	max_level = level;
+	extern void rs_say_set_max_level(int level);
+	rs_say_set_max_level(level);
 }
 
 void
@@ -100,7 +108,7 @@ say_register_source(const char *file, int *level)
 {
 	if (unlikely(filter == NULL)) {
 		filter = mh_cstr_init(xrealloc);
-		max_level = default_level;
+		set_max_level(0);
 	}
 
 	mh_cstr_put(filter, file, level, NULL);
@@ -122,7 +130,7 @@ say_level_source(const char *file, int diff)
 		if (*(n->value) > max)
 			max = *(n->value);
 	}
-	max_level = max;
+	set_max_level(max);
 	return found;
 }
 
@@ -188,6 +196,9 @@ say_logger_init(int nonblock)
 	}
 
 	setvbuf(stderr, NULL, _IONBF, 0);
+
+	extern void rs_say_init();
+	rs_say_init();
 }
 
 static void
@@ -295,8 +306,6 @@ say_##level##suffix(const char *filename, unsigned line, const char *format, ...
 }
 
 say_f(DEBUG, , NULL)
-say_f(DEBUG2, , NULL)
-say_f(DEBUG3, , NULL)
 say_f(WARN, , NULL)
 say_f(WARN, no, strerror_o(errno))
 say_f(INFO, , NULL)

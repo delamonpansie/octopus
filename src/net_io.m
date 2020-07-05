@@ -231,7 +231,7 @@ netmsg_io_init(struct netmsg_io *io, struct netmsg_pool_ctx *ctx, int fd)
 		netmsg_io_setfd(io, fd);
 	else
 		io->fd = -1;
-	say_debug2("%s: %p fd:%i", __func__, io, io->fd);
+	say_trace("%s: %p fd:%i", __func__, io, io->fd);
 }
 
 void
@@ -266,7 +266,7 @@ free
 	rbuf_reset(self);
 	netmsg_head_dealloc(&wbuf);
 	[super free];
-	say_debug2("%s: %p", __func__, self);
+	say_trace("%s: %p", __func__, self);
 }
 
 - (void)

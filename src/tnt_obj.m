@@ -58,7 +58,7 @@ object_alloc(u8 type, int gc, size_t size)
 	obj->type = type;
 	obj->flags = 0;
 
-	say_debug3("object_alloc(%zu) = %p", size, obj);
+	say_trace("object_alloc(%zu) = %p", size, obj);
 	return obj;
 err:
 	iproto_raise(ERR_CODE_MEMORY_ISSUE,
@@ -104,7 +104,7 @@ object_decr_ref(struct tnt_object *obj)
 	gcobj->refs--;
 
 	if (gcobj->refs == 0) {
-		say_debug3("object_decr_ref(%p) free", gcobj);
+		say_trace("object_decr_ref(%p) free", gcobj);
 		sfree(gcobj);
 	}
 }
@@ -137,7 +137,7 @@ object_lock(struct tnt_object *obj)
 	if (obj->flags & LOCKED)
 		iproto_raise(ERR_CODE_NODE_IS_RO, "object is locked");
 
-	say_debug2("object_lock(%p)", obj);
+	say_trace("object_lock(%p)", obj);
 	obj->flags |= LOCKED;
 }
 
@@ -146,7 +146,7 @@ object_unlock(struct tnt_object *obj)
 {
 	assert(obj->flags & LOCKED);
 
-	say_debug2("object_unlock(%p)", obj);
+	say_trace("object_unlock(%p)", obj);
 	obj->flags &= ~LOCKED;
 
 	if (obj->flags & YIELD) {

@@ -438,7 +438,7 @@ restart:
 	if (marker_offset > 0)
 		fseeko(fd, marker_offset + 1, SEEK_SET);
 
-	say_debug3("%s: start offt %08" PRIofft, __func__, ftello(fd));
+	say_trace("%s: start offt %08" PRIofft, __func__, ftello(fd));
 	if (fread(&magic, mdesc.size, 1, fd) != 1)
 		goto eof;
 
@@ -453,7 +453,7 @@ restart:
 	if (good_offset != marker_offset)
 		say_warn("skipped %" PRIofft " bytes after %08" PRIofft " offset",
 			 marker_offset - good_offset, good_offset);
-	say_debug3("	magic found at %08" PRIofft, marker_offset);
+	say_trace("	magic found at %08" PRIofft, marker_offset);
 
 	row = [self read_row];
 
@@ -608,7 +608,7 @@ confirm_write
 
 		tail = ftello(fd);
 
-		say_debug3("%s offset:%llu tail:%lli", __func__, (long long)offset, (long long)tail);
+		say_trace("%s offset:%llu tail:%lli", __func__, (long long)offset, (long long)tail);
 
 		off_t confirmed_offset = 0;
 		for (int i = 0; i < wet_rows; i++) {
@@ -623,7 +623,7 @@ confirm_write
 				break;
 			}
 			confirmed_offset = wet_rows_offset[i];
-			say_debug3("confirmed offset %lli", (long long)confirmed_offset);
+			say_trace("confirmed offset %lli", (long long)confirmed_offset);
 			next_lsn++;
 			rows++;
 		}
@@ -738,7 +738,7 @@ read_row
 		return NULL;
 	}
 
-	say_debug2("%s: LSN:%" PRIi64, __func__, row_v12(m)->lsn);
+	say_trace("%s: LSN:%" PRIi64, __func__, row_v12(m)->lsn);
 
 	return m->ptr;
 }
@@ -940,7 +940,7 @@ containg_lsn:(i64)target_lsn
 	 * is not known beforehand. so, we simply return the last one.
 	 */
 out:
-	say_debug2("%s: target_lsn:%"PRIi64 " file_lsn:%"PRIi64, __func__, target_lsn, *lsn);
+	say_trace("%s: target_lsn:%"PRIi64 " file_lsn:%"PRIi64, __func__, target_lsn, *lsn);
 	return [self open_for_read:*lsn];
 }
 
@@ -1037,7 +1037,7 @@ find(int count, const char *type, i64 needle, i64 *haystack, i64 *lsn)
 			continue;
 		}
 		if (*haystack <= needle) {
-			say_debug2("%s: %s:%"PRIi64 " file_lsn:%"PRIi64, __func__, type, needle, *lsn);
+			say_trace("%s: %s:%"PRIi64 " file_lsn:%"PRIi64, __func__, type, needle, *lsn);
 			return *lsn;
 		}
 	}
