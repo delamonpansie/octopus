@@ -700,21 +700,21 @@ octopus(int argc, char **argv)
 	if (gopt(opt, 'e'))
 		dup_to_stderr = gopt(opt, 'e') + INFO - 1;
 
-	const char *filename;
+	char *filename;
 	int i = 0;
 	say_level_source("ALL", cfg.log_level - INFO);
-	while ((filename = gopt_arg_i(opt, 'v', i++))) {
+	while ((filename = (char *)gopt_arg_i(opt, 'v', i++))) {
+		int diff = 1;
 		if (strlen(filename) == 1) {
-			say_level_source("ALL", atoi(filename));
+			diff = atoi(filename);
+			filename = "ALL";
 		} else if (strchr(filename, '=') != NULL) {
-			char *dup = strdup(filename);
-			char *eq = strchr(dup, '=');
+			char *eq = strchr(filename, '=');
 			*eq++ = 0;
-			say_level_source(dup, atoi(eq));
-			free(dup);
-		} else {
-			say_level_source(filename, 1);
+			diff = atoi(eq);
 		}
+		if (!say_level_source(filename, diff))
+			say_warn("unknown topic \"%s\"", filename);
 	}
 
 	if (gopt_arg(opt, 'g', &cfg_paramname)) {
