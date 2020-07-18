@@ -124,22 +124,8 @@ recover_snap:(XLog *)snap
 		}
 
 		say_info("recover from `%s'", snap->filename);
-
-		bool legacy_snap = ![snap isKindOf:[XLog12 class]];
-
-		if (legacy_snap && !cfg.sync_scn_with_lsn)
-			panic("sync_scn_with_lsn is required when loading from v11 snapshots");
-
 		lsn = snap->lsn;
-
-		if (legacy_snap)
-			[recovery recover_row:dummy_row(snap->lsn, snap->lsn, snap_initial|TAG_SNAP)];
-
 		[self recover_row_stream:snap];
-
-		/* old v11 snapshot, scn == lsn from filename */
-		if (legacy_snap)
-			[recovery recover_row:dummy_row(snap->lsn, snap->lsn, snap_final|TAG_SNAP)];
 
 		if (![snap eof])
 			raise_fmt("unable to fully read snapshot");

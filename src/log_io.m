@@ -233,10 +233,7 @@ free
 	ev_stat_stop(&stat);
 
 	if (mode == LOG_READ && rows == 0 && access(filename, F_OK) == 0) {
-		bool legacy_snap = ![self isMemberOf:[XLog12 class]] &&
-				   [dir isMemberOf:[SnapDir class]];
-		if (!legacy_snap)
-			panic("no valid rows were read");
+		panic("no valid rows were read");
 	}
 
 	if (fd) {
