@@ -324,18 +324,10 @@ flush
 		assert(wet_rows == 0);
 		return -1;
 	}
-
-#if HAVE_FDATASYNC
-	if (fdatasync(fileno(fd)) < 0) {
-		say_syserror("fdatasync");
-		return -1;
-	}
-#else
 	if (fsync(fileno(fd)) < 0) {
 		say_syserror("fsync");
 		return -1;
 	}
-#endif
 	return 0;
 }
 
