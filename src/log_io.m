@@ -226,23 +226,6 @@ error:
 	return nil;
 }
 
-+ (void)
-register_version3: (Class)xlog
-{
-	version3 = xlog;
-}
-
-+ (void)
-register_version4: (Class)xlog
-{
-	version4 = xlog;
-}
-
-+ (void)
-register_version11: (Class)xlog
-{
-	version11 = xlog;
-}
 
 - (id)
 free
