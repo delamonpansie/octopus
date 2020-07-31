@@ -38,7 +38,6 @@
 #define EV_STRINGIFY(x) EV_STRINGIFY2(x)
 #define EV_COMMON void *data; char coro; const char *cb_src;
 #define ev_set_cb(ev,cb_) (ev_cb_ (ev) = (cb_), memmove (&((ev_watcher *)(ev))->cb, &ev_cb_ (ev), sizeof (ev_cb_ (ev))), (ev)->cb_src = __FILE__ ":" EV_STRINGIFY(__LINE__))
-#define EV_CB_DECLARE(type) void (*cb)(struct type *w, int revents);
 
 #if defined(FIBER_DEBUG) || defined(FIBER_EV_DEBUG)
 extern void fiber_ev_cb(void *);
