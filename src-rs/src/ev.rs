@@ -23,15 +23,7 @@
  * SUCH DAMAGE.
  */
 
-
-#![allow(incomplete_features)]
-#![feature(
-    raw_ref_op,
-    box_syntax,
-    core_intrinsics
-)]
-
-pub mod net_io;
-pub mod palloc;
-pub mod say;
-mod ev;
+mod ffi {
+    #![allow(dead_code, non_camel_case_types)]
+    include!("octopus_ev.rs");
+}

@@ -39,6 +39,7 @@ client/octobench-pub/
 cfg/defs.h
 cfg/defs.mk
 mod/memcached/proto.m
+src-rs/src/octopus_ev.rs
 
 # luajit
 third_party/luajit/src/buildvm
