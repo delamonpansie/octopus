@@ -23,6 +23,7 @@ src-rs/src/octopus_ev.rs: include/octopus_ev.h Makefile
 		--whitelist-type "(__)?sig_atomic_t" \
 		--whitelist-type "ev_.*" \
 		--blacklist-type 'ev_any_watcher' \
+		--opaque-type ev_watcher_list \
 		--whitelist-var "EV_.*" \
 		--raw-line 'type stat = libc::stat;' \
 		$< -o $@ -- -Iinclude -I.
