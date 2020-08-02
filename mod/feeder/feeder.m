@@ -506,7 +506,7 @@ recv_req(int fd)
 	struct tbuf *input = tbuf_alloc(fiber->pool);
 
 	for (;;) {
-		tbuf_ensure(input, 4096);
+		tbuf_reserve(input, 4096);
 		ssize_t r = tbuf_recv(input, fd);
 		if (r < 0 && errno == EINTR)
 			continue;

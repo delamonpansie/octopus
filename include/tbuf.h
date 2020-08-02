@@ -65,15 +65,15 @@ static inline int __attribute__((pure)) tbuf_free(const struct tbuf *b)
 }
 
 struct tbuf *tbuf_alloc(struct palloc_pool *pool);
-void tbuf_ensure_resize(struct tbuf *e, size_t bytes_required);
 static __attribute__((always_inline)) inline void
-tbuf_ensure(struct tbuf *e, size_t required)
+tbuf_reserve(struct tbuf *e, size_t required)
 {
 #ifdef TBUF_PARANOIA
 	assert(tbuf_len(e) <= tbuf_size(e));
 #endif
+	void tbuf_reserve_aux(struct tbuf *e, size_t bytes_required);
 	if (unlikely(tbuf_free(e) < required))
-		tbuf_ensure_resize(e, required);
+		tbuf_reserve_aux(e, required);
 }
 
 void tbuf_willneed(struct tbuf *e, size_t required);
@@ -96,7 +96,7 @@ void* tbuf_expand(struct tbuf *b, size_t len);
 static inline void
 tbuf_append_lit(struct tbuf *b, const char *s) {
 	size_t len = strlen(s);
-	tbuf_ensure(b, len+1);
+	tbuf_reserve(b, len+1);
 	memcpy(b->end, s, len+1);
 	b->end += len;
 	b->free -= len;
@@ -111,7 +111,7 @@ void tbuf_printf(struct tbuf *b, const char *format, ...)
 static inline void
 tbuf_putc(struct tbuf *b, char c)
 {
-	tbuf_ensure(b, 2);
+	tbuf_reserve(b, 2);
 	char *end = b->end;
 	*end = c;
 	*(end + 1) = '\0';

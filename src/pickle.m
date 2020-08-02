@@ -86,7 +86,7 @@ append_byte(struct tbuf *b, u8 byte)
 void
 write_varint32(struct tbuf *b, u32 value)
 {
-	tbuf_ensure(b, 5);
+	tbuf_reserve(b, 5);
 	if (value >= (1 << 7)) {
 		if (value >= (1 << 14)) {
 			if (value >= (1 << 21)) {
@@ -246,7 +246,7 @@ _load_varint32(void **pp)
 #define write_i(bits)							\
 	void write_i##bits(struct tbuf *b, i##bits i)			\
 	{								\
-		tbuf_ensure(b, bits/8);					\
+		tbuf_reserve(b, bits/8);					\
 		*(i##bits *)b->end = i;					\
 		b->end += bits/8;					\
 		b->free -= bits/8;					\
@@ -255,7 +255,7 @@ _load_varint32(void **pp)
 #define write_field_i(bits)						\
 	void write_field_i##bits(struct tbuf *b, i##bits i)		\
 	{								\
-		tbuf_ensure(b, bits/8 + 1);				\
+		tbuf_reserve(b, bits/8 + 1);				\
 		*(u8*)b->end = bits/8;					\
 		*(i##bits *)(b->end+1) = i;				\
 		b->end += bits/8 + 1;					\

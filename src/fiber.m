@@ -413,7 +413,7 @@ fiber_recv(int fd, struct tbuf *rbuf)
 	ev_io_start(&io);
 	yield();
 	ev_io_stop(&io);
-	tbuf_ensure(rbuf, 16 * 1024);
+	tbuf_reserve(rbuf, 16 * 1024);
 	return tbuf_recv(rbuf, fd);
 }
 

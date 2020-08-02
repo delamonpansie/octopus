@@ -217,7 +217,7 @@ request_row_count(struct tbuf *rbuf)
 	if (len > sizeof(u32)) {
 		if (len >= ptr[0])
 			return ptr[1];
-		tbuf_ensure(rbuf, ptr[0]);
+		tbuf_reserve(rbuf, ptr[0]);
 	}
 	return -1;
 }
@@ -273,7 +273,7 @@ wal_disk_writer(int fd, int cfd __attribute__((unused)), void *state, int len)
 	signal(SIGUSR1, SIG_IGN);
 
 	for (;;) {
-		tbuf_ensure(&rbuf, 16 * 1024);
+		tbuf_reserve(&rbuf, 16 * 1024);
 		r = tbuf_recv(&rbuf, fd);
 		if (r < 0 && (errno == EINTR))
 			continue;

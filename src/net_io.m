@@ -117,7 +117,7 @@ rbuf_recv(struct netmsg_io *io, int size)
 		rbuf_alloc(io, size * 2);
 	} else if (tbuf_free(&io->rbuf) < size) {
 		if (io->rbuf.pool == io->ctx->pool) {
-			tbuf_ensure(&io->rbuf, size);
+			tbuf_reserve(&io->rbuf, size);
 		} else {
 			int len = rbuf_len(io);
 			char *ptr = io->rbuf.ptr;

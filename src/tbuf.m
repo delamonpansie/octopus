@@ -69,7 +69,7 @@ tbuf_alloc(struct palloc_pool *pool)
 }
 
 void
-tbuf_ensure_resize(struct tbuf *e, size_t required)
+tbuf_reserve_aux(struct tbuf *e, size_t required)
 {
 	tbuf_assert(e);
 	assert(e->pool != NULL); /* attemp to resize fixed size tbuf */
@@ -96,7 +96,7 @@ tbuf_willneed(struct tbuf *e, size_t required)
 {
 	assert(tbuf_len(e) <= tbuf_size(e));
 	if (unlikely(tbuf_free(e) < required))
-		tbuf_ensure_resize(e, required);
+		tbuf_reserve_aux(e, required);
 }
 
 struct tbuf *
@@ -165,7 +165,7 @@ void
 tbuf_append(struct tbuf *b, const void *data, size_t len)
 {
 	tbuf_assert(b);
-	tbuf_ensure(b, len + 1);
+	tbuf_reserve(b, len + 1);
 	if (likely(data != NULL)) {
 		memcpy(b->end, data, len);
 		*(((char *)b->end) + len) = '\0';
@@ -178,7 +178,7 @@ void*
 tbuf_expand(struct tbuf *b, size_t len)
 {
 	tbuf_assert(b);
-	tbuf_ensure(b, len);
+	tbuf_reserve(b, len);
 	void *res = b->end;
 	b->end += len;
 	b->free -= len;
@@ -230,7 +230,7 @@ tbuf_vprintf(struct tbuf *b, const char *format, va_list ap)
 	 * print it again
 	 */
 	if (free_len < printed_len + 1) {
-		tbuf_ensure(b, printed_len + 1);
+		tbuf_reserve(b, printed_len + 1);
 		free_len = tbuf_free(b);
 		printed_len = vsnprintf((char *)b->end, free_len, format, ap_copy);
 	}
@@ -250,22 +250,11 @@ tbuf_printf(struct tbuf *b, const char *format, ...)
 	va_end(args);
 }
 
-/*void
-tbuf_putc(struct tbuf *b, char c)
-{
-	tbuf_ensure(b, 2);
-	char *end = b->end;
-	*end = c;
-	*(end + 1) = '\0';
-	b->end += 1;
-	b->free -= 1;
-}*/
-
 static const char *hex = "0123456789ABCDEF";
 void
 tbuf_putx(struct tbuf *b, char c)
 {
-	tbuf_ensure(b, 3);
+	tbuf_reserve(b, 3);
 	char *end = b->end;
 	*end = hex[(u8)c >> 4];
 	*(end + 1) = hex[(u8)c & 0x0f];
@@ -277,7 +266,7 @@ tbuf_putx(struct tbuf *b, char c)
 void
 tbuf_putxs(struct tbuf *b, const char *s, size_t len)
 {
-	tbuf_ensure(b, len*2+1);
+	tbuf_reserve(b, len*2+1);
 	char *pos = b->end, *end = b->end + len*2;
 	for (;pos != end; s++, pos+=2) {
 		pos[0] = hex[(u8)(*s) >> 4];

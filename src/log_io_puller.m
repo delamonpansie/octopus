@@ -251,7 +251,7 @@ replication_handshake:(void*)hshake len:(size_t)hsize
 	}
 
 	do {
-		tbuf_ensure(&rbuf, 16 * 1024);
+		tbuf_reserve(&rbuf, 16 * 1024);
 		ssize_t r = [self recv_with_timeout: 5];
 
 		if (r < 0) {
@@ -404,7 +404,7 @@ recv
 	if (abort)
 		raise_fmt("recv aborted");
 
-	tbuf_ensure(&rbuf, 256 * 1024);
+	tbuf_reserve(&rbuf, 256 * 1024);
 	ssize_t r = [self recv_with_timeout: cfg.wal_feeder_keepalive_timeout];
 
 	if (r <= 0) {

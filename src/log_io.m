@@ -672,7 +672,7 @@ read_row
 
 	u32 header_crc, data_crc;
 
-	tbuf_ensure(m, sizeof(struct row_v12));
+	tbuf_reserve(m, sizeof(struct row_v12));
 	if (fread(m->ptr, sizeof(struct row_v12), 1, fd) != 1) {
 		if (ferror(fd))
 			say_error("fread error");
@@ -690,7 +690,7 @@ read_row
 		return NULL;
 	}
 
-	tbuf_ensure(m, tbuf_len(m) + row_v12(m)->len);
+	tbuf_reserve(m, tbuf_len(m) + row_v12(m)->len);
 	if (fread(row_v12(m)->data, row_v12(m)->len, 1, fd) != 1) {
 		if (ferror(fd))
 			say_error("fread error");
