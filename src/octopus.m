@@ -339,7 +339,7 @@ octopus_version(void)
 		return version;
 
 	size_t len = 1; /* terminating \0 */
-	len += strlen("core:") + strlen(octopus_version_string);
+	len += strlen(" core:") + strlen(octopus_version_string);
 
 	foreach_module (m) {
 		if (!m->name)
@@ -351,8 +351,7 @@ octopus_version(void)
 	version = xmalloc(len);
 	version[0] = 0;
 
-	strcat(version, " ");
-	strcat(version, "core:");
+	strcat(version, " core:");
 	strcat(version, octopus_version_string);
 	foreach_module (m) {
 		if (!m->name)
