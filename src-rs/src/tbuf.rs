@@ -23,17 +23,56 @@
  * SUCH DAMAGE.
  */
 
+use libc::{c_void, size_t};
+use std::io;
 
-#![allow(incomplete_features)]
-#![feature(raw_ref_op,
-           box_syntax,
-           core_intrinsics,
-           extern_types)]
+use crate::palloc::PallocPool;
 
-pub mod net_io;
-pub mod palloc;
-pub mod say;
-pub mod tbuf;
-mod ev;
-mod file_ext;
-mod pickle;
+#[repr(C)]
+pub struct TBuf {
+    ptr: *mut c_void,
+    end: *mut c_void,
+    free: u32,
+    pool: *mut PallocPool,
+}
+
+extern {
+    fn tbuf_reserve_aux(buf: *mut TBuf, additional: size_t);
+    fn tbuf_reset(buf: *mut TBuf);
+    fn tbuf_append(buf: *mut TBuf, data: *const c_void, len: size_t);
+}
+
+impl TBuf {
+    pub fn len(&self) -> usize {
+        self.end as usize - self.ptr as usize
+    }
+
+    pub fn cap(&self) -> usize {
+        self.len() + self.free as usize
+    }
+
+    pub fn reserve(&mut self, additional: usize) {
+        if self.cap() - self.len() < additional {
+            unsafe { tbuf_reserve_aux(self, additional) }
+        }
+    }
+
+    pub fn clear(&mut self) {
+        unsafe { tbuf_reset(self) }
+    }
+
+    pub fn extend_from_slice(&mut self, other: &[u8]) {
+        unsafe { tbuf_append(self, other.as_ptr() as *const c_void, other.len()) }
+    }
+}
+
+impl io::Write for TBuf {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
