@@ -12,6 +12,7 @@ libc = "0.2.72"
 staticvec = "0.10.2"
 cfg-if = "0.1.10"
 log = "0.4.11"
+paste = "1.0.0"
 bitflags = "1.2.1"
 
 [profile.dev]

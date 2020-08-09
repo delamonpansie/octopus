@@ -18,6 +18,7 @@ src-rs/src/octopus_ev.rs: include/octopus_ev.h Makefile
 		--no-layout-tests \
 		--rust-target=nightly \
 		--no-recursive-whitelist \
+		--with-derive-default \
 		--ctypes-prefix libc \
 		--whitelist-function "ev_.*" \
 		--whitelist-type "(__)?sig_atomic_t" \
