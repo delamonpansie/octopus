@@ -34,4 +34,5 @@ pub mod net_io;
 pub mod palloc;
 pub mod say;
 mod ev;
+mod file_ext;
 mod pickle;

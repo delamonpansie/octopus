@@ -12,6 +12,7 @@ libc = "0.2"
 staticvec = "0.10"
 cfg-if = "0.1"
 log = "0.4"
+bitflags = "1.2.1"
 
 [profile.dev]
 opt-level = 0
