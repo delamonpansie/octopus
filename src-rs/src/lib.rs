@@ -25,11 +25,10 @@
 
 
 #![allow(incomplete_features)]
-#![feature(
-    raw_ref_op,
-    box_syntax,
-    core_intrinsics
-)]
+#![feature(raw_ref_op,
+           box_syntax,
+           core_intrinsics,
+           extern_types)]
 
 pub mod net_io;
 pub mod palloc;

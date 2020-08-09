@@ -26,9 +26,8 @@
 
 use libc::{c_char, c_void, size_t};
 
-#[repr(C)]
-struct PallocPool {
-    _private: [u8; 0],
+extern {
+    pub type PallocPool;
 }
 
 #[repr(C)]
@@ -56,7 +55,7 @@ cfg_if::cfg_if! {
         }
     } else {
         unsafe fn palloc(_pool: *mut PallocPool, _size: size_t) -> *mut c_void { panic!("not implemented") }
-        unsafe fn palloc_create_pool(_config: PallocConfig) -> *mut PallocPool { std::ptr::null_mut() as *mut _ }
+        unsafe fn palloc_create_pool(_config: PallocConfig) -> *mut PallocPool { 0 as *mut PallocPool }
         unsafe fn palloc_destroy_pool(_pool: *mut PallocPool) { }
         unsafe fn palloc_ctx(_pool: *mut PallocPool, _ctx: PallocCtx) -> PallocCtx { PallocCtx { rc: 2 } }
         unsafe fn palloc_allocated(_pool: *mut PallocPool) -> size_t { 1 }
