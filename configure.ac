@@ -62,9 +62,15 @@ AC_CHECK_PROG([NM], [nm], [nm])
 AC_CHECK_PROG([OBJCOPY], [objcopy], [objcopy])
 AS_IF([test -n $DOT], [AC_SUBST(HAVE_DOT, 1)])
 
-AC_CHECK_PROGS([OCAMLOPT], [ocamlopt.opt ocamlopt])
-AC_CHECK_PROGS([OCAMLC], [ocamlc.opt ocamlc])
-AC_CHECK_PROGS([OCAMLDEP], [ocamldep.opt ocamldep])
+AC_ARG_ENABLE([ocaml],
+              [AS_HELP_STRING([--enable-ocaml],
+                              [Enable OCaml support])],
+            [ocaml=$enableval],
+            [ocaml=yes])
+AS_IF([test "x$ocaml" = xyes],
+      AC_CHECK_PROGS([OCAMLOPT], [ocamlopt.opt ocamlopt])
+      AC_CHECK_PROGS([OCAMLC], [ocamlc.opt ocamlc])
+      AC_CHECK_PROGS([OCAMLDEP], [ocamldep.opt ocamldep]))
 
 AC_CHECK_PROGS([CARGO], [cargo])
 
