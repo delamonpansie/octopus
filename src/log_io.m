@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016 Mail.RU
- * Copyright (C) 2010, 2011, 2012, 2013, 2014, 2015, 2016 Yuriy Vostrikov
+ * Copyright (C) 2010-2016 Mail.RU
+ * Copyright (C) 2010-2016,2021 Yury Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -884,38 +884,6 @@ greatest_lsn
 
 	return lsn[count - 1];
 }
-
-- (XLog *)
-containg_lsn:(i64)target_lsn
-{
-	i64 *lsn;
-	ssize_t count = [self scan_dir:&lsn];
-
-	if (count <= 0)
-		return nil;
-
-	if (target_lsn < *lsn) {
-		say_warn("%s: requested LSN:%"PRIi64" is missing", __func__, target_lsn);
-		return nil;
-	}
-
-	while (count > 1) {
-		if (*lsn <= target_lsn && target_lsn < *(lsn + 1))
-			goto out;
-		lsn++;
-		count--;
-	}
-
-	/*
-	 * we can't check here for sure will or will not last file
-	 * contain record with desired lsn since number of rows in file
-	 * is not known beforehand. so, we simply return the last one.
-	 */
-out:
-	say_trace("%s: target_lsn:%"PRIi64 " file_lsn:%"PRIi64, __func__, target_lsn, *lsn);
-	return [self open_for_read:*lsn];
-}
-
 
 - (const char *)
 format_filename:(i64)lsn prefix:(const char *)prefix suffix:(const char *)extra_suffix
