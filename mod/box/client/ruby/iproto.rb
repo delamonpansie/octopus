@@ -1,6 +1,6 @@
 #
-# Copyright (C) 2009, 2010, 2013 Mail.RU
-# Copyright (C) 2009, 2010, 2013 Yuriy Vostrikov
+# Copyright (C) 2009-2015 Mail.RU
+# Copyright (C) 2009-2015, 2020 Yury Vostrikov
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
