@@ -232,61 +232,64 @@ mod xlog_dir_ffi {
     }
 }
 
-#[test]
-fn test_lock_returns_error_on_lock_failure() {
-    let path = Path::new("testdata");
-    let a = XLogDir::new_waldir(&path).unwrap();
-    let b = XLogDir::new_waldir(&path).unwrap();
-    assert!(a.lock().is_ok());
-    assert!(b.lock().is_err());
-}
-
-#[test]
-fn test_sync() {
-    let path = Path::new("testdata");
-    let a = XLogDir::new_waldir(&path).unwrap();
-    assert!(a.sync().is_ok());
-}
-
-#[test]
-fn test_scan_dir() {
+#[cfg(test)]
+mod xlog_dir_tests {
+    use super::*;
     use std::io::Write;
-    let mut mint = goldenfile::Mint::new("testdata/golden");
-    let mut file = mint.new_goldenfile("scan_dir.txt").unwrap();
+    use goldenfile::Mint;
 
-    let path = Path::new("testdata");
-    let a = XLogDir::new_waldir(&path).unwrap();
-    write!(file, "{:?}", a.scan_dir().unwrap()).unwrap();
-}
+    #[test]
+    fn test_lock_returns_error_on_lock_failure() {
+        let path = Path::new("testdata");
+        let a = XLogDir::new_waldir(&path).unwrap();
+        let b = XLogDir::new_waldir(&path).unwrap();
+        assert!(a.lock().is_ok());
+        assert!(b.lock().is_err());
+    }
 
-#[test]
-fn test_scan_lsn() {
-    use std::io::Write;
-    let mut mint = goldenfile::Mint::new("testdata/golden");
-    let mut file = mint.new_goldenfile("scan_dir_lsn.txt").unwrap();
+    #[test]
+    fn test_sync() {
+        let path = Path::new("testdata");
+        let a = XLogDir::new_waldir(&path).unwrap();
+        assert!(a.sync().is_ok());
+    }
 
-    let path = Path::new("testdata");
-    let a = XLogDir::new_waldir(&path).unwrap();
-    write!(file, "{:?}", a.scan_dir_lsn().unwrap()).unwrap();
-}
+    #[test]
+    fn test_scan_dir() {
+        let mut mint = Mint::new("testdata/golden");
+        let mut file = mint.new_goldenfile("scan_dir.txt").unwrap();
 
-#[test]
-fn test_scan_dir_scn() {
-    use std::io::Write;
-    let mut mint = goldenfile::Mint::new("testdata/golden");
-    let mut file1 = mint.new_goldenfile("scan_dir_scn1.txt").unwrap();
-    let mut file2 = mint.new_goldenfile("scan_dir_scn2.txt").unwrap();
+        let path = Path::new("testdata");
+        let a = XLogDir::new_waldir(&path).unwrap();
+        write!(file, "{:?}", a.scan_dir().unwrap()).unwrap();
+    }
 
-    let path = Path::new("testdata");
-    let a = XLogDir::new_waldir(&path).unwrap();
-    write!(file1, "{:?}", a.scan_dir_scn(1).unwrap()).unwrap();
-    write!(file2, "{:?}", a.scan_dir_scn(2).unwrap()).unwrap();
-}
+    #[test]
+    fn test_scan_lsn() {
+        let mut mint = Mint::new("testdata/golden");
+        let mut file = mint.new_goldenfile("scan_dir_lsn.txt").unwrap();
 
+        let path = Path::new("testdata");
+        let a = XLogDir::new_waldir(&path).unwrap();
+        write!(file, "{:?}", a.scan_dir_lsn().unwrap()).unwrap();
+    }
 
-#[test]
-fn test_greatest_lsn() {
-    let path = Path::new("testdata");
-    let a = XLogDir::new_waldir(&path).unwrap();
-    assert_eq!(a.greatest_lsn().unwrap(), Some(150));
+    #[test]
+    fn test_scan_dir_scn() {
+        let mut mint = Mint::new("testdata/golden");
+        let mut file1 = mint.new_goldenfile("scan_dir_scn1.txt").unwrap();
+        let mut file2 = mint.new_goldenfile("scan_dir_scn2.txt").unwrap();
+
+        let path = Path::new("testdata");
+        let a = XLogDir::new_waldir(&path).unwrap();
+        write!(file1, "{:?}", a.scan_dir_scn(1).unwrap()).unwrap();
+        write!(file2, "{:?}", a.scan_dir_scn(2).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn test_greatest_lsn() {
+        let path = Path::new("testdata");
+        let a = XLogDir::new_waldir(&path).unwrap();
+        assert_eq!(a.greatest_lsn().unwrap(), Some(150));
+    }
 }
