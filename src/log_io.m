@@ -871,13 +871,8 @@ scan_dir:(i64 **)ret_lsn
 - (i64)
 greatest_lsn
 {
-	i64 *lsn;
-	ssize_t count = [self scan_dir:&lsn];
-
-	if (count <= 0)
-		return count;
-
-	return lsn[count - 1];
+	extern i64 xlog_dir_greatest_lsn(struct XLogDirRS *);
+	return xlog_dir_greatest_lsn(dir);
 }
 
 - (const char *)

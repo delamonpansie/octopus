@@ -23,17 +23,30 @@
  * SUCH DAMAGE.
  */
 
-use std::fs::{File, Metadata};
-use std::io;
+use std::fs::{self, File, Metadata};
+use std::io::{self, BufReader, BufRead};
 use std::path::{Path, PathBuf};
 
 use crate::file_ext::{FileExt, Flock};
+
+fn read_headers(reader: &mut BufReader<File>) -> io::Result<Vec<String>> {
+    let mut vec = Vec::new();
+    loop {
+        let mut buf = String::new();
+        if reader.read_line(&mut buf)? == 0 {
+            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "unexpected EOF while reading headers"))
+        }
+        if buf == "\n" || buf == "\r\n" {
+            return Ok(vec)
+        }
+        vec.push(buf);
+    }
+}
 
 struct XLogDir {
     fd: File,
     #[allow(dead_code)]
     filetype: &'static str,
-    #[allow(dead_code)]
     suffix: &'static str,
     dirname: PathBuf,
 }
@@ -68,6 +81,72 @@ impl XLogDir {
     fn stat(&self) -> io::Result<Metadata> {
         self.fd.metadata()
     }
+
+    fn scan_dir(&self) -> io::Result<Vec<(i64, PathBuf)>> {
+        let parse = |name: &PathBuf| -> Option<i64> {
+            let mut it = name.to_str()?.splitn(2, '.');
+            let lsn = it.next()?;
+            let suffix = it.next()?;
+
+            if suffix != self.suffix {
+                return None
+            }
+            lsn.parse().ok()
+        };
+
+        let mut ret = Vec::new();
+        for entry in fs::read_dir(&self.dirname)? {
+            let entry = entry?;
+            if !entry.file_type()?.is_file() {
+                continue
+            }
+
+            let file_name = entry.file_name().into();
+            if let Some(lsn) = parse(&file_name) {
+                ret.push((lsn, file_name))
+            }
+        }
+
+        ret.sort();
+        Ok(ret)
+    }
+
+    fn scan_dir_lsn(&self) -> io::Result<Vec<i64>> {
+        let files = self.scan_dir()?;
+        Ok(files.into_iter().map(|(lsn, _)| lsn).collect())
+    }
+
+    #[allow(dead_code)]
+    fn scan_dir_scn(&self, shard_id: i32) -> io::Result<Vec<i64>> {
+        let parse = |file_name: &PathBuf| -> io::Result<Option<i64>> {
+            let file_name = self.dirname.join(file_name);
+            let file = File::open(file_name)?;
+            let mut reader = BufReader::with_capacity(4<<10, file);
+            for line in read_headers(&mut reader)? {
+                if let Ok((id, scn)) = scan_fmt::scan_fmt!(&line, "SCN-{d}: {d}", i32, i64) {
+                    if id == shard_id {
+                        return Ok(Some(scn))
+                    }
+                }
+            }
+            Ok(None)
+        };
+
+        let mut ret = Vec::new();
+        let files = self.scan_dir()?;
+        for (_lsn, file_name) in files {
+            if let Some(scn) = parse(&file_name)? {
+                ret.push(scn);
+            }
+        }
+        Ok(ret)
+    }
+
+    fn greatest_lsn(&self) -> io::Result<Option<i64>> {
+        let lsn = self.scan_dir_lsn()?;
+        Ok(lsn.last().cloned())
+    }
+
 }
 
 fn same_dir(a: &XLogDir, b: &XLogDir) -> bool {
@@ -140,6 +219,17 @@ mod xlog_dir_ffi {
         (*dir).fd.as_raw_fd()
     }
 
+    #[no_mangle]
+    unsafe extern "C" fn xlog_dir_greatest_lsn(dir: *const XLogDir) -> i64 {
+        match (*dir).greatest_lsn() {
+            Ok(None) => 0,
+            Ok(Some(lsn)) => lsn,
+            Err(e) => {
+                warn!("greatest_lsn: {}", e);
+                -1
+            }
+        }
+    }
 }
 
 #[test]
@@ -156,4 +246,47 @@ fn test_sync() {
     let path = Path::new("testdata");
     let a = XLogDir::new_waldir(&path).unwrap();
     assert!(a.sync().is_ok());
+}
+
+#[test]
+fn test_scan_dir() {
+    use std::io::Write;
+    let mut mint = goldenfile::Mint::new("testdata/golden");
+    let mut file = mint.new_goldenfile("scan_dir.txt").unwrap();
+
+    let path = Path::new("testdata");
+    let a = XLogDir::new_waldir(&path).unwrap();
+    write!(file, "{:?}", a.scan_dir().unwrap()).unwrap();
+}
+
+#[test]
+fn test_scan_lsn() {
+    use std::io::Write;
+    let mut mint = goldenfile::Mint::new("testdata/golden");
+    let mut file = mint.new_goldenfile("scan_dir_lsn.txt").unwrap();
+
+    let path = Path::new("testdata");
+    let a = XLogDir::new_waldir(&path).unwrap();
+    write!(file, "{:?}", a.scan_dir_lsn().unwrap()).unwrap();
+}
+
+#[test]
+fn test_scan_dir_scn() {
+    use std::io::Write;
+    let mut mint = goldenfile::Mint::new("testdata/golden");
+    let mut file1 = mint.new_goldenfile("scan_dir_scn1.txt").unwrap();
+    let mut file2 = mint.new_goldenfile("scan_dir_scn2.txt").unwrap();
+
+    let path = Path::new("testdata");
+    let a = XLogDir::new_waldir(&path).unwrap();
+    write!(file1, "{:?}", a.scan_dir_scn(1).unwrap()).unwrap();
+    write!(file2, "{:?}", a.scan_dir_scn(2).unwrap()).unwrap();
+}
+
+
+#[test]
+fn test_greatest_lsn() {
+    let path = Path::new("testdata");
+    let a = XLogDir::new_waldir(&path).unwrap();
+    assert_eq!(a.greatest_lsn().unwrap(), Some(150));
 }

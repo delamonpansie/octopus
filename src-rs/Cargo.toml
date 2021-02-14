@@ -14,6 +14,7 @@ cfg-if = "0.1.10"
 log = "0.4.11"
 paste = "1.0.0"
 bitflags = "1.2.1"
+scan_fmt = "0.2.5"
 
 [profile.dev]
 opt-level = 0
@@ -27,3 +28,4 @@ debug = 2
 [dev-dependencies]
 memoffset = "*"
 test_runtime = { path = "test_runtime" }
+goldenfile = "1"
