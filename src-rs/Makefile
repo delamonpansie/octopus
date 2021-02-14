@@ -45,3 +45,8 @@ src-rs/target/$(CARGO_PROFILE)/librustyoctopus.a:
 		CARGO_BUILD_DEP_INFO_BASEDIR=$(realpath $(srcdir)) \
 		$(CARGO) -q build -Z unstable-options --profile $(CARGO_PROFILE)
 	$Q touch $@
+
+clean: rsclean
+rsclean:
+	$(E) "CLEAN	rs"
+	$(Q)rm -rf src-rs/target

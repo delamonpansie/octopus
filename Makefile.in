@@ -174,7 +174,7 @@ endif
 clean:
 	$(E) "CLEAN	$(binary)"
 	$(Q)rm -rf $(obj) $(patsubst %.o,%.gcno,$(obj))
-	$(Q)rm -rf $(dep) $(binary) lcov test/var src-rs/target
+	$(Q)rm -rf $(dep) $(binary) lcov test/var
 
 luaclean:
 	$(E) "CLEAN	luajit"
