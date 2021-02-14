@@ -80,3 +80,4 @@ cfg/prscfg.*
 # rust
 Cargo.lock
 src-rs/target
+src-rs/test_runtime/target

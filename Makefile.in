@@ -89,9 +89,16 @@ sub-Makefile = $(foreach dir,$(subdirs),$(srcdir)/$(dir)/Makefile)
 -include $(sub-Makefile)
 -include cfg/defs.mk
 
-$(binary): $(obj)
+$(binary): $(obj) src/octopus_main.o
 	$E "CC	$@"
 	$Q$(CC) $^ $(LIBS) $(XLIBS) $(XLDFLAGS) $(LDFLAGS) $(CFLAGS) -o $@
+
+# "runtime" for Rust unit tests
+liboctopus.a: $(obj)
+	$(E) "AR	$@"
+	$(Q)$(AR) $(ARFLAGS) $@ $^
+	$(E) "RANLIB	$@"
+	$(Q)$(RANLIB) $@
 
 $(obj): Makefile $(sub-Makefile)
 

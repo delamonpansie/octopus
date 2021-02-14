@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2010-2016 Mail.RU
- * Copyright (C) 2010-2016, 2020 Yury Vostrikov
+ * Copyright (C) 2010-2016, 2020, 2021 Yury Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -538,7 +538,7 @@ octopus_ev_invoke_pending()
 }
 
 char **octopus_argv;
-static int
+int
 octopus(int argc, char **argv)
 {
 	octopus_argv = argv;
@@ -912,20 +912,6 @@ run_loop:
 	say_debug("exiting loop");
 
 	return 0;
-}
-
-int
-main(int argc, char **argv)
-{
-	@try {
-		return octopus(argc, argv);
-	}
-	@catch (Error *e) {
-		panic_exc(e);
-	}
-	@catch (id e) {
-		panic("unknown exception %s", [[e class] name]);
-	}
 }
 
 register_source();

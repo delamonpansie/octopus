@@ -26,3 +26,4 @@ debug = 2
 
 [dev-dependencies]
 memoffset = "*"
+test_runtime = { path = "test_runtime" }

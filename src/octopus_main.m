@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021 Yury Vostrikov
+ * Copyright (C) 2021 Yury Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,24 +23,22 @@
  * SUCH DAMAGE.
  */
 
+#import <objc.h>
+#import <say.h>
 
-#![allow(incomplete_features)]
-#![feature(raw_ref_op,
-           box_syntax,
-           core_intrinsics,
-           extern_types)]
-
-pub mod net_io;
-pub mod palloc;
-pub mod say;
-pub mod tbuf;
-mod ev;
-mod file_ext;
-mod pickle;
-
-
-#[test]
-fn force_link() {
-    #[allow(unused_imports)]
-    use test_runtime;
+int
+main(int argc, char **argv)
+{
+	@try {
+		extern int octopus(int argc, char **argv);
+		return octopus(argc, argv);
+	}
+	@catch (Error *e) {
+		panic_exc(e);
+	}
+	@catch (id e) {
+		panic("unknown exception %s", [[e class] name]);
+	}
 }
+
+register_source();
