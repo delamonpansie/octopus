@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2010-2016 Mail.RU
- * Copyright (C) 2010-2017, 2020 Yury Vostrikov
+ * Copyright (C) 2010-2017, 2020, 2021 Yury Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -110,13 +110,16 @@ extern Recovery *recovery;
 
 typedef void (follow_cb)(ev_stat *w, int events);
 
+struct XLogDirRS;
+extern int xlog_dir_fd(struct XLogDirRS *);
+
 @interface XLogDir: Object {
 	Class xlog_class;
 @public
-	int fd;
 	const char *filetype;
 	const char *suffix;
 	const char *dirname;
+	struct XLogDirRS *dir;
 };
 - (id) init_dirname:(const char *)dirname_;
 - (XLog *) open_for_read:(i64)lsn;
@@ -125,7 +128,6 @@ typedef void (follow_cb)(ev_stat *w, int events);
 - (XLog *) find_with_scn:(i64)scn shard:(int)shard_id;
 - (i64) greatest_lsn;
 - (int) lock;
-- (int) stat:(struct stat *)buf;
 - (int) sync;
 @end
 

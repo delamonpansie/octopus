@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014-2017 Mail.RU
- * Copyright (C) 2014-2017 Yury Vostrikov
+ * Copyright (C) 2014-2017, 2021 Yury Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -175,7 +175,7 @@ fork_spawner()
 #endif
 	extern int keepalive_pipe[2];
 	close_all_xcpt(6, fsock, stderrfd, sayfd, keepalive_pipe[1],
-		       snap_dir->fd, wal_dir->fd);
+		       xlog_dir_fd(snap_dir->dir), xlog_dir_fd(wal_dir->dir));
 #elif OCT_CHILDREN
 	extern int keepalive_pipe[2];
 	close_all_xcpt(4, fsock, stderrfd, sayfd, keepalive_pipe[1]);

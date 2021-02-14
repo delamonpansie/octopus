@@ -23,14 +23,15 @@
  * SUCH DAMAGE.
  */
 
-
 #![allow(incomplete_features)]
 #![feature(raw_ref_op,
            box_syntax,
            core_intrinsics,
-           extern_types)]
+           extern_types,
+           try_blocks)]
 
 pub mod net_io;
+pub mod log_io;
 pub mod palloc;
 pub mod say;
 pub mod tbuf;

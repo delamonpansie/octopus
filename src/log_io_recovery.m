@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2010-2017 Mail.RU
- * Copyright (C) 2010-2017, 2019-2020 Yury Vostrikov
+ * Copyright (C) 2010-2017, 2019-2021 Yury Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -677,23 +677,14 @@ simple:(struct iproto_service *)service
 	}
 }
 
-static int
-same_dir(XLogDir *a, XLogDir *b)
-{
-	struct stat sta, stb;
-	if ([a stat:&sta] == 0 && [a stat:&stb] == 0)
-		return sta.st_ino == stb.st_ino;
-	else
-		return strcmp(a->dirname, b->dirname) == 0;
-}
-
 - (void)
 lock
 {
 	if ([wal_dir lock] < 0)
 		panic_syserror("Can't lock wal_dir:%s", wal_dir->dirname);
 
-	if (!same_dir(wal_dir, snap_dir)) {
+	extern int xlog_dir_same_dir(struct XLogDirRS *a, struct XLogDirRS *b);
+	if (!xlog_dir_same_dir(wal_dir->dir, snap_dir->dir)) {
 		if ([snap_dir lock] < 0)
 			panic_syserror("Can't lock snap_dir:%s", snap_dir->dirname);
 	}
@@ -819,8 +810,8 @@ fork_and_snapshot
 		title("(%" PRIu32 ")", getppid());
 		fiber_destroy_all();
 		palloc_unmap_unused();
-		close_all_xcpt(3, stderrfd, sayfd, snap_dir->fd);
 
+		close_all_xcpt(3, stderrfd, sayfd, xlog_dir_fd(snap_dir->dir));
 		int fd = open("/proc/self/oom_score_adj", O_WRONLY);
 		if (fd) {
 			int res _unused_ = write(fd, "900\n", 4);
