@@ -1,13 +1,16 @@
 .gitignore
-
-.ccls-cache
 .gdb_history
+
+# language server artifacts
+.ccls-cache
+.cache
 compile_commands.json
 
 # backups
 *~
 .#*
 *.swp
+*#
 
 # build byproducts
 TAGS
