@@ -775,15 +775,15 @@ init_dirname:(const char *)dirname_
 sync
 {
 	extern int xlog_dir_sync(struct XLogDirRS *);
-	return xlog_dir_sync(dir);
+	return xlog_dir_sync(rs_dir);
 }
 
 - (id)
 free
 {
 	extern int xlog_dir_free(struct XLogDirRS *);
-	xlog_dir_free(dir);
-	dir = NULL;
+	xlog_dir_free(rs_dir);
+	rs_dir = NULL;
 	return [super free];
 }
 
@@ -791,7 +791,7 @@ free
 lock
 {
 	extern int xlog_dir_lock(struct XLogDirRS *);
-	return xlog_dir_lock(dir);
+	return xlog_dir_lock(rs_dir);
 }
 
 static int
@@ -872,7 +872,7 @@ scan_dir:(i64 **)ret_lsn
 greatest_lsn
 {
 	extern i64 xlog_dir_greatest_lsn(struct XLogDirRS *);
-	return xlog_dir_greatest_lsn(dir);
+	return xlog_dir_greatest_lsn(rs_dir);
 }
 
 - (const char *)
@@ -1053,8 +1053,8 @@ init_dirname:(const char *)dirname_
         if ((self = [super init_dirname:dirname_])) {
 		filetype = xlog_mark;
 		suffix = ".xlog";
-		extern struct XLogDirRS *xlog_dir_new_waldir(const char *);
-		dir = xlog_dir_new_waldir(dirname_);
+		extern struct XLogDirRS *xlog_dir_new_waldir(const char *, XLogDir *);
+		rs_dir = xlog_dir_new_waldir(dirname_, self);
 	}
 	return self;
 }
@@ -1157,8 +1157,8 @@ init_dirname:(const char *)dirname_
         if ((self = [super init_dirname:dirname_])) {
 		filetype = snap_mark;
 		suffix = ".snap";
-		extern struct XLogDirRS *xlog_dir_new_snapdir(const char *);
-		dir = xlog_dir_new_snapdir(dirname_);
+		extern struct XLogDirRS *xlog_dir_new_snapdir(const char *, XLogDir *);
+		rs_dir = xlog_dir_new_snapdir(dirname_, self);
 	}
 	// rate limiting only v12 snapshots
 	if (xlog_class == [XLog12 class])

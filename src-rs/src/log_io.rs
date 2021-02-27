@@ -43,30 +43,36 @@ fn read_headers(reader: &mut BufReader<File>) -> io::Result<Vec<String>> {
     }
 }
 
+struct XLogDirObjc {}
+
 struct XLogDir {
     fd: File,
     #[allow(dead_code)]
     filetype: &'static str,
     suffix: &'static str,
     dirname: PathBuf,
+    #[allow(dead_code)]
+    objc_dir: *const XLogDirObjc,
 }
 
 impl XLogDir {
-    fn new_waldir(path: &Path) -> io::Result<Self> {
+    fn new_waldir(path: &Path, objc_dir: *const XLogDirObjc) -> io::Result<Self> {
         Ok(Self {
             fd: File::open(path)?,
             filetype: "XLOG\n",
             suffix: "xlog",
             dirname: path.into(),
+            objc_dir,
         })
     }
 
-    fn new_snapdir(path: &Path) -> io::Result<Self> {
+    fn new_snapdir(path: &Path, objc_dir: *const XLogDirObjc) -> io::Result<Self> {
         Ok(Self {
             fd: File::open(path)?,
             filetype: "SNAP\n",
             suffix: "snap",
             dirname: path.into(),
+            objc_dir,
         })
     }
 
@@ -157,23 +163,23 @@ mod xlog_dir_ffi {
     use std::ffi::CStr;
     use std::path::Path;
     use log::warn;
-    use super::{XLogDir,same_dir};
+    use super::{XLogDir, XLogDirObjc, same_dir};
 
     unsafe fn as_path<'a>(path: *const c_char) -> &'a Path {
         Path::new(CStr::from_ptr(path).to_str().unwrap())
     }
 
     #[no_mangle]
-    unsafe extern "C" fn  xlog_dir_new_waldir(dirname: *const c_char) -> *mut XLogDir {
+    unsafe extern "C" fn  xlog_dir_new_waldir(dirname: *const c_char, objc_dir: *const XLogDirObjc) -> *mut XLogDir {
         let dirname = as_path(dirname);
-        let dir = XLogDir::new_waldir(dirname).unwrap();
+        let dir = XLogDir::new_waldir(dirname, objc_dir).unwrap();
         Box::into_raw(box dir)
     }
 
     #[no_mangle]
-    unsafe extern "C" fn xlog_dir_new_snapdir(dirname: *const c_char) -> *mut XLogDir {
+    unsafe extern "C" fn xlog_dir_new_snapdir(dirname: *const c_char, objc_dir: *const XLogDirObjc) -> *mut XLogDir {
         let dirname = as_path(dirname);
-        let dir = XLogDir::new_snapdir(dirname).unwrap();
+        let dir = XLogDir::new_snapdir(dirname, objc_dir).unwrap();
         Box::into_raw(box dir)
     }
 
@@ -236,8 +242,8 @@ mod xlog_dir_tests {
     #[test]
     fn test_lock_returns_error_on_lock_failure() {
         let path = Path::new("testdata");
-        let a = XLogDir::new_waldir(&path).unwrap();
-        let b = XLogDir::new_waldir(&path).unwrap();
+        let a = XLogDir::new_waldir(&path, std::ptr::null()).unwrap();
+        let b = XLogDir::new_waldir(&path, std::ptr::null()).unwrap();
         assert!(a.lock().is_ok());
         assert!(b.lock().is_err());
     }
@@ -245,7 +251,7 @@ mod xlog_dir_tests {
     #[test]
     fn test_sync() {
         let path = Path::new("testdata");
-        let a = XLogDir::new_waldir(&path).unwrap();
+        let a = XLogDir::new_waldir(&path, std::ptr::null()).unwrap();
         assert!(a.sync().is_ok());
     }
 
@@ -255,7 +261,7 @@ mod xlog_dir_tests {
         let mut file = mint.new_goldenfile("scan_dir.txt").unwrap();
 
         let path = Path::new("testdata");
-        let a = XLogDir::new_waldir(&path).unwrap();
+        let a = XLogDir::new_waldir(&path, std::ptr::null()).unwrap();
         write!(file, "{:?}", a.scan_dir()).unwrap();
     }
 
@@ -266,7 +272,7 @@ mod xlog_dir_tests {
         let mut file2 = mint.new_goldenfile("scan_dir_scn2.txt").unwrap();
 
         let path = Path::new("testdata");
-        let a = XLogDir::new_waldir(&path).unwrap();
+        let a = XLogDir::new_waldir(&path, std::ptr::null()).unwrap();
         write!(file1, "{:?}", a.scan_dir_scn(1)).unwrap();
         write!(file2, "{:?}", a.scan_dir_scn(2)).unwrap();
     }
@@ -274,7 +280,7 @@ mod xlog_dir_tests {
     #[test]
     fn test_greatest_lsn() {
         let path = Path::new("testdata");
-        let a = XLogDir::new_waldir(&path).unwrap();
+        let a = XLogDir::new_waldir(&path, std::ptr::null()).unwrap();
         assert_eq!(a.greatest_lsn().unwrap(), Some(150));
     }
 }

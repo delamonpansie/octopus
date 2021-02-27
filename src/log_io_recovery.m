@@ -684,7 +684,7 @@ lock
 		panic_syserror("Can't lock wal_dir:%s", wal_dir->dirname);
 
 	extern int xlog_dir_same_dir(struct XLogDirRS *a, struct XLogDirRS *b);
-	if (!xlog_dir_same_dir(wal_dir->dir, snap_dir->dir)) {
+	if (!xlog_dir_same_dir(wal_dir->rs_dir, snap_dir->rs_dir)) {
 		if ([snap_dir lock] < 0)
 			panic_syserror("Can't lock snap_dir:%s", snap_dir->dirname);
 	}
@@ -811,7 +811,7 @@ fork_and_snapshot
 		fiber_destroy_all();
 		palloc_unmap_unused();
 
-		close_all_xcpt(3, stderrfd, sayfd, xlog_dir_fd(snap_dir->dir));
+		close_all_xcpt(3, stderrfd, sayfd, xlog_dir_fd(snap_dir->rs_dir));
 		int fd = open("/proc/self/oom_score_adj", O_WRONLY);
 		if (fd) {
 			int res _unused_ = write(fd, "900\n", 4);

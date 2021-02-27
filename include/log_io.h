@@ -119,7 +119,7 @@ extern int xlog_dir_fd(struct XLogDirRS *);
 	const char *filetype;
 	const char *suffix;
 	const char *dirname;
-	struct XLogDirRS *dir;
+	struct XLogDirRS *rs_dir;
 };
 - (id) init_dirname:(const char *)dirname_;
 - (XLog *) open_for_read:(i64)lsn;

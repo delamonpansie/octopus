@@ -175,7 +175,7 @@ fork_spawner()
 #endif
 	extern int keepalive_pipe[2];
 	close_all_xcpt(6, fsock, stderrfd, sayfd, keepalive_pipe[1],
-		       xlog_dir_fd(snap_dir->dir), xlog_dir_fd(wal_dir->dir));
+		       xlog_dir_fd(snap_dir->rs_dir), xlog_dir_fd(wal_dir->rs_dir));
 #elif OCT_CHILDREN
 	extern int keepalive_pipe[2];
 	close_all_xcpt(4, fsock, stderrfd, sayfd, keepalive_pipe[1]);
