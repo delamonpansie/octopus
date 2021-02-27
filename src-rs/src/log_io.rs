@@ -261,7 +261,7 @@ mod xlog_dir_tests {
 
         let path = Path::new("testdata");
         let a = XLogDir::new_waldir(&path).unwrap();
-        write!(file, "{:?}", a.scan_dir().unwrap()).unwrap();
+        write!(file, "{:?}", a.scan_dir()).unwrap();
     }
 
     #[test]
@@ -271,7 +271,7 @@ mod xlog_dir_tests {
 
         let path = Path::new("testdata");
         let a = XLogDir::new_waldir(&path).unwrap();
-        write!(file, "{:?}", a.scan_dir_lsn().unwrap()).unwrap();
+        write!(file, "{:?}", a.scan_dir_lsn()).unwrap();
     }
 
     #[test]
@@ -282,8 +282,8 @@ mod xlog_dir_tests {
 
         let path = Path::new("testdata");
         let a = XLogDir::new_waldir(&path).unwrap();
-        write!(file1, "{:?}", a.scan_dir_scn(1).unwrap()).unwrap();
-        write!(file2, "{:?}", a.scan_dir_scn(2).unwrap()).unwrap();
+        write!(file1, "{:?}", a.scan_dir_scn(1)).unwrap();
+        write!(file2, "{:?}", a.scan_dir_scn(2)).unwrap();
     }
 
     #[test]
