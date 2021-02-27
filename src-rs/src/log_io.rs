@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Yury Vostrikov
+ * Copyright (C) 2020, 2021 Yury Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -111,11 +111,6 @@ impl XLogDir {
         Ok(ret)
     }
 
-    fn scan_dir_lsn(&self) -> io::Result<Vec<i64>> {
-        let files = self.scan_dir()?;
-        Ok(files.into_iter().map(|(lsn, _)| lsn).collect())
-    }
-
     #[allow(dead_code)]
     fn scan_dir_scn(&self, shard_id: i32) -> io::Result<Vec<i64>> {
         let parse = |file_name: &PathBuf| -> io::Result<Option<i64>> {
@@ -143,8 +138,8 @@ impl XLogDir {
     }
 
     fn greatest_lsn(&self) -> io::Result<Option<i64>> {
-        let lsn = self.scan_dir_lsn()?;
-        Ok(lsn.last().cloned())
+        let files = self.scan_dir()?;
+        Ok(files.last().map(|(lsn, _)| *lsn))
     }
 
 }
@@ -262,16 +257,6 @@ mod xlog_dir_tests {
         let path = Path::new("testdata");
         let a = XLogDir::new_waldir(&path).unwrap();
         write!(file, "{:?}", a.scan_dir()).unwrap();
-    }
-
-    #[test]
-    fn test_scan_lsn() {
-        let mut mint = Mint::new("testdata/golden");
-        let mut file = mint.new_goldenfile("scan_dir_lsn.txt").unwrap();
-
-        let path = Path::new("testdata");
-        let a = XLogDir::new_waldir(&path).unwrap();
-        write!(file, "{:?}", a.scan_dir_lsn()).unwrap();
     }
 
     #[test]
