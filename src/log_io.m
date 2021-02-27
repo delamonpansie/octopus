@@ -876,19 +876,13 @@ greatest_lsn
 }
 
 - (const char *)
-format_filename:(i64)lsn prefix:(const char *)prefix suffix:(const char *)extra_suffix
+format_filename:(i64)lsn suffix:(const char *)extra_suffix
 {
 	static char filename[PATH_MAX + 1];
 	snprintf(filename, sizeof(filename),
-		 "%s%s/%020" PRIi64 "%s%s",
-		 prefix, dirname, lsn, suffix, extra_suffix);
+		 "%s/%020" PRIi64 "%s%s",
+		 dirname, lsn, suffix, extra_suffix);
 	return filename;
-}
-
-- (const char *)
-format_filename:(i64)lsn suffix:(const char *)extra_suffix
-{
-	return [self format_filename:lsn prefix:"" suffix:extra_suffix];
 }
 
 - (const char *)
