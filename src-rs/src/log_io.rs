@@ -118,7 +118,7 @@ impl XLogDir {
     }
 
     #[allow(dead_code)]
-    fn scan_dir_scn(&self, shard_id: i32) -> io::Result<Vec<i64>> {
+    fn scan_dir_scn(&self, shard_id: i32) -> io::Result<Vec<(i64, PathBuf)>> {
         let parse = |file_name: &PathBuf| -> io::Result<Option<i64>> {
             let file_name = self.dirname.join(file_name);
             let file = File::open(file_name)?;
@@ -135,9 +135,15 @@ impl XLogDir {
 
         let mut ret = Vec::new();
         let files = self.scan_dir()?;
-        for (_lsn, file_name) in files {
-            if let Some(scn) = parse(&file_name)? {
-                ret.push(scn);
+        let last = files.last().cloned();
+        for (lsn, file_name) in files {
+            if let Some(_) = parse(&file_name)? {
+                ret.push((lsn, file_name));
+            }
+        }
+        if ret.len() == 0 {
+            if let Some((lsn, file_name)) = last {
+                ret.push((lsn, file_name));
             }
         }
         Ok(ret)
