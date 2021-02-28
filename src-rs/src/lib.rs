@@ -28,7 +28,8 @@
            box_syntax,
            core_intrinsics,
            extern_types,
-           try_blocks)]
+           try_blocks,
+           seek_stream_len)]
 
 pub mod net_io;
 pub mod log_io;
