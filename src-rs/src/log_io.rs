@@ -110,7 +110,13 @@ impl XLogDir {
             if suffix != self.suffix {
                 return None
             }
-            lsn.parse().ok()
+            match lsn.parse() {
+                Ok(lsn) => Some(lsn),
+                Err(err) => {
+                    log::warn!("skip {:#?}, can't parse `{}': {}", name, lsn, err);
+                    None
+                }
+            }
         };
 
         let mut ret = Vec::new();
