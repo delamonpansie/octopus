@@ -794,80 +794,6 @@ lock
 	return xlog_dir_lock(rs_dir);
 }
 
-static int
-cmp_i64(const void *_a, const void *_b)
-{
-	const i64 *a = _a, *b = _b;
-	if (*a == *b)
-		return 0;
-	return (*a > *b) ? 1 : -1;
-}
-
-- (ssize_t)
-scan_dir:(i64 **)ret_lsn
-{
-	DIR *dh = NULL;
-	struct dirent *dent;
-	i64 *lsn;
-	size_t i = 0, size = 1024;
-	char *parse_suffix;
-	ssize_t result = -1;
-
-	dh = opendir(dirname);
-	if (dh == NULL)
-		goto out;
-
-	lsn = palloc(fiber->pool, sizeof(i64) * size);
-	if (lsn == NULL)
-		goto out;
-
-	errno = 0;
-	while ((dent = readdir(dh)) != NULL) {
-		char *file_suffix = strrchr(dent->d_name, '.');
-
-		if (file_suffix == NULL)
-			continue;
-
-		bool valid_suffix = strcmp(file_suffix, suffix) == 0;
-		if (!valid_suffix)
-			continue;
-
-		lsn[i] = strtoll(dent->d_name, &parse_suffix, 10);
-		if (strncmp(parse_suffix, suffix, strlen(suffix)) != 0) {
-			/* d_name doesn't parse entirely, ignore it */
-			say_warn("can't parse `%s', skipping", dent->d_name);
-			continue;
-		}
-
-		if (lsn[i] == LLONG_MAX || lsn[i] == LLONG_MIN) {
-			say_warn("can't parse `%s', skipping", dent->d_name);
-			continue;
-		}
-
-		i++;
-		if (i == size) {
-			i64 *n = palloc(fiber->pool, sizeof(i64) * size * 2);
-			if (n == NULL)
-				goto out;
-			memcpy(n, lsn, sizeof(i64) * size);
-			lsn = n;
-			size = size * 2;
-		}
-	}
-
-	qsort(lsn, i, sizeof(i64), cmp_i64);
-
-	*ret_lsn = lsn;
-	result = i;
-      out:
-	if (errno != 0)
-		say_syserror("error reading directory `%s'", dirname);
-
-	if (dh != NULL)
-		closedir(dh);
-	return result;
-}
-
 - (i64)
 greatest_lsn
 {
@@ -948,102 +874,28 @@ open_for_write:(i64)lsn
 	return NULL;
 }
 
-
-static i64
-find(int count, const char *type, i64 needle, i64 *haystack, i64 *lsn)
+XLog *
+xlog_dir_open_for_read(XLogDir *dir, i64 lsn, const char *filename)
 {
-	i64 ret = -1;
-	for (haystack += count - 1, lsn += count - 1; count; haystack--, lsn--, count--) {
-		if (*haystack < 0) /* error */
-			return -1;
-		if (*haystack == 0) {
-			ret = *lsn;
-			continue;
-		}
-		if (*haystack <= needle) {
-			say_trace("%s: %s:%"PRIi64 " file_lsn:%"PRIi64, __func__, type, needle, *lsn);
-			return *lsn;
-		}
-	}
-
-	if (ret == -1)
-		say_warn("%s: requested %s:%"PRIi64" is missing", __func__, type, needle);
-	return ret;
-}
-
-- (i64 *)
-scan_scn_shard:(int)target_shard_id lsn:(i64 *)lsn count:(int)count
-{
-	i64 *scn = p0alloc(fiber->pool, sizeof(i64) * count);
-
-	/* scn[i] == -1 if error,
-	              0 if not present
-		      b otherwise */
-
-	for (int i = 0; i < count; i++) {
-		const char *filename = [self format_filename:lsn[i]];
-		FILE *file = fopen(filename, "r");
-		if (file == NULL) {
-			say_syserror("fopen of %s for reading failed", filename);
-			scn[i] = -1;
-			continue;
-		}
-
-		for (;;) {
-			i64 tmp;
-			int shard_id;
-			char buf[256];
-
-			if (fgets(buf, sizeof(buf), file) == NULL) {
-				say_syserror("fgets");
-				scn[i] = -1;
-				break;
-			}
-
-			if (strcmp(buf, "\n") == 0 || strcmp(buf, "\r\n") == 0)
-				break;
-
-			if (target_shard_id == 0 && sscanf(buf, "SCN: %"PRIi64, &tmp) == 1) {
-				scn[i] = tmp;
-				break;
-			}
-
-			if (sscanf(buf, "SCN-%i: %"PRIi64, &shard_id, &tmp) == 2) {
-				if (target_shard_id == shard_id) {
-					scn[i] = tmp;
-					break;
-				}
-			}
-		}
-	}
-	return scn;
+	XLog *xlog = [XLog open_for_read_filename:filename dir:dir];
+	if (xlog)
+		xlog->lsn = lsn;
+	return xlog;
 }
 
 - (XLog *)
 find_with_lsn:(i64)lsn
 {
-	i64 *dir_lsn;
-	ssize_t count = [self scan_dir:&dir_lsn];
-
-	i64 file_lsn = find(count, "LSN", lsn, dir_lsn, dir_lsn);
-	if (file_lsn <= 0)
-		return nil;
-	return [self open_for_read:file_lsn];
+	extern struct XLog *xlog_dir_find_with_lsn(struct XLogDirRS *, i64);
+	return xlog_dir_find_with_lsn(rs_dir, lsn);
 }
 
 - (XLog *)
 find_with_scn:(i64)scn shard:(int)shard_id
 {
-	i64 *dir_lsn, *dir_scn;
-	ssize_t count = [self scan_dir:&dir_lsn];
-	dir_scn = [self scan_scn_shard:shard_id lsn:dir_lsn count:count];
-
-	i64 file_lsn = find(count, "SCN", scn, dir_scn, dir_lsn);
-	if (file_lsn <= 0)
-		return nil;
-	return [self open_for_read:file_lsn];
+	extern struct XLog *xlog_dir_find_with_scn(struct XLogDirRS *, i32, i64);
+	return xlog_dir_find_with_scn(rs_dir, shard_id, scn);
 }
-
 @end
 
 @implementation WALDir

@@ -43,7 +43,20 @@ fn read_headers(reader: &mut BufReader<File>) -> io::Result<Vec<String>> {
     }
 }
 
-struct XLogDirObjc {}
+fn find(list: &[(i64, PathBuf)], key: i64) -> Option<&(i64, PathBuf)> {
+    for w in list.windows(2) {
+        if w[0].0 <= key && key < w[1].0 {
+            return Some(&w[0])
+        }
+    }
+    return list.last()
+}
+
+#[repr(C)]
+enum XLog {_Dummy}
+
+#[repr(C)]
+enum XLogDirObjc {_Dummy}
 
 struct XLogDir {
     fd: File,
@@ -117,17 +130,19 @@ impl XLogDir {
         Ok(ret)
     }
 
-    #[allow(dead_code)]
     fn scan_dir_scn(&self, shard_id: i32) -> io::Result<Vec<(i64, PathBuf)>> {
         let parse = |file_name: &PathBuf| -> io::Result<Option<i64>> {
             let file_name = self.dirname.join(file_name);
             let file = File::open(file_name)?;
             let mut reader = BufReader::with_capacity(4<<10, file);
             for line in read_headers(&mut reader)? {
-                if let Ok((id, scn)) = scan_fmt::scan_fmt!(&line, "SCN-{d}: {d}", i32, i64) {
-                    if id == shard_id {
-                        return Ok(Some(scn))
-                    }
+                if ! line.starts_with("SCN-") {
+                    continue
+                }
+                match scan_fmt::scan_fmt!(&line, "SCN-{d}: {d}", i32, i64) {
+                    Ok((id, scn)) if id == shard_id => return Ok(Some(scn)),
+                    Ok(_) => (),
+                    Err(err) => log::warn!("failed to parse SCN header {}: {}", line, err)
                 }
             }
             Ok(None)
@@ -154,6 +169,15 @@ impl XLogDir {
         Ok(files.last().map(|(lsn, _)| *lsn))
     }
 
+    fn find_with_lsn(&self, lsn: i64) -> io::Result<Option<(i64, PathBuf)>> {
+        let files = self.scan_dir()?;
+        Ok(find(&files, lsn).cloned())
+    }
+
+    fn find_with_scn(&self, shard_id:i32, scn: i64) -> io::Result<Option<(i64, PathBuf)>> {
+        let files = self.scan_dir_scn(shard_id)?;
+        Ok(find(&files, scn).cloned())
+    }
 }
 
 fn same_dir(a: &XLogDir, b: &XLogDir) -> bool {
@@ -166,10 +190,11 @@ fn same_dir(a: &XLogDir, b: &XLogDir) -> bool {
 
 mod xlog_dir_ffi {
     use libc::{c_char, c_int};
-    use std::ffi::CStr;
-    use std::path::Path;
+    use std::io;
+    use std::ffi::{CStr, CString};
+    use std::path::{Path, PathBuf};
     use log::warn;
-    use super::{XLogDir, XLogDirObjc, same_dir};
+    use super::{XLog, XLogDir, XLogDirObjc, same_dir};
 
     unsafe fn as_path<'a>(path: *const c_char) -> &'a Path {
         Path::new(CStr::from_ptr(path).to_str().unwrap())
@@ -236,6 +261,35 @@ mod xlog_dir_ffi {
                 -1
             }
         }
+    }
+
+    fn open_for_read(caller: &str, dir: *const XLogDirObjc, find: &dyn Fn() -> io::Result<Option<(i64, PathBuf)>>) -> *mut XLog {
+        extern {
+            fn xlog_dir_open_for_read(dir: *const XLogDirObjc , lsn: i64, filename: *const c_char) -> *mut XLog;
+        }
+
+        match find() {
+            Ok(None) => std::ptr::null_mut(),
+            Ok(Some((file_lsn, file_name))) => {
+                use std::os::unix::ffi::OsStrExt;
+                let file_name = CString::new(file_name.as_os_str().as_bytes()).unwrap();
+                unsafe { xlog_dir_open_for_read(dir, file_lsn, file_name.as_ptr()) }
+            }
+            Err(e) => {
+                warn!("{}: {}", caller, e);
+                std::ptr::null_mut()
+            }
+        }
+    }
+
+    #[no_mangle]
+    unsafe extern "C" fn xlog_dir_find_with_lsn(dir: *const XLogDir, lsn: i64) -> *mut XLog {
+        open_for_read("find_with_lsn", (*dir).objc_dir, &|| (*dir).find_with_lsn(lsn))
+    }
+
+    #[no_mangle]
+    unsafe extern "C" fn xlog_dir_find_with_scn(dir: *const XLogDir, shard_id: i32, scn: i64) -> *mut XLog {
+        open_for_read("find_with_scn", (*dir).objc_dir, &|| (*dir).find_with_scn(shard_id, scn))
     }
 }
 
