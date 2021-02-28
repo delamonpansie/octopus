@@ -53,7 +53,7 @@ fn find(list: &[(i64, PathBuf)], key: i64) -> Option<&(i64, PathBuf)> {
 }
 
 extern {
-    type XLog;
+    type XLogObjc;
     type XLogDirObjc;
 }
 
@@ -199,7 +199,7 @@ mod xlog_dir_ffi {
     use std::ffi::{CStr, CString};
     use std::path::{Path, PathBuf};
     use log::warn;
-    use super::{XLog, XLogDir, XLogDirObjc, same_dir};
+    use super::{XLogObjc, XLogDir, XLogDirObjc, same_dir};
 
     unsafe fn as_path<'a>(path: *const c_char) -> &'a Path {
         Path::new(CStr::from_ptr(path).to_str().unwrap())
@@ -268,9 +268,9 @@ mod xlog_dir_ffi {
         }
     }
 
-    fn open_for_read(caller: &str, dir: *const XLogDirObjc, find: &dyn Fn() -> io::Result<Option<(i64, PathBuf)>>) -> *mut XLog {
+    fn open_for_read(caller: &str, dir: *const XLogDirObjc, find: &dyn Fn() -> io::Result<Option<(i64, PathBuf)>>) -> *mut XLogObjc {
         extern {
-            fn xlog_dir_open_for_read(dir: *const XLogDirObjc , lsn: i64, filename: *const c_char) -> *mut XLog;
+            fn xlog_dir_open_for_read(dir: *const XLogDirObjc , lsn: i64, filename: *const c_char) -> *mut XLogObjc;
         }
 
         match find() {
@@ -288,12 +288,12 @@ mod xlog_dir_ffi {
     }
 
     #[no_mangle]
-    unsafe extern "C" fn xlog_dir_find_with_lsn(dir: *const XLogDir, lsn: i64) -> *mut XLog {
+    unsafe extern "C" fn xlog_dir_find_with_lsn(dir: *const XLogDir, lsn: i64) -> *mut XLogObjc {
         open_for_read("find_with_lsn", (*dir).objc_dir, &|| (*dir).find_with_lsn(lsn))
     }
 
     #[no_mangle]
-    unsafe extern "C" fn xlog_dir_find_with_scn(dir: *const XLogDir, shard_id: i32, scn: i64) -> *mut XLog {
+    unsafe extern "C" fn xlog_dir_find_with_scn(dir: *const XLogDir, shard_id: i32, scn: i64) -> *mut XLogObjc {
         open_for_read("find_with_scn", (*dir).objc_dir, &|| (*dir).find_with_scn(shard_id, scn))
     }
 }
