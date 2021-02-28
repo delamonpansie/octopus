@@ -52,11 +52,10 @@ fn find(list: &[(i64, PathBuf)], key: i64) -> Option<&(i64, PathBuf)> {
     return list.last()
 }
 
-#[repr(C)]
-enum XLog {_Dummy}
-
-#[repr(C)]
-enum XLogDirObjc {_Dummy}
+extern {
+    type XLog;
+    type XLogDirObjc;
+}
 
 struct XLogDir {
     fd: File,
@@ -275,7 +274,7 @@ mod xlog_dir_ffi {
         }
 
         match find() {
-            Ok(None) => std::ptr::null_mut(),
+            Ok(None) => 0 as _,
             Ok(Some((file_lsn, file_name))) => {
                 use std::os::unix::ffi::OsStrExt;
                 let file_name = CString::new(file_name.as_os_str().as_bytes()).unwrap();
@@ -283,7 +282,7 @@ mod xlog_dir_ffi {
             }
             Err(e) => {
                 warn!("{}: {}", caller, e);
-                std::ptr::null_mut()
+                0 as _
             }
         }
     }
@@ -305,11 +304,14 @@ mod xlog_dir_tests {
     use std::io::Write;
     use goldenfile::Mint;
 
+    #[allow(non_upper_case_globals)]
+    const objc_dir : *const XLogDirObjc = 0usize as _;
+
     #[test]
     fn test_lock_returns_error_on_lock_failure() {
         let path = Path::new("testdata");
-        let a = XLogDir::new_waldir(&path, std::ptr::null()).unwrap();
-        let b = XLogDir::new_waldir(&path, std::ptr::null()).unwrap();
+        let a = XLogDir::new_waldir(&path, objc_dir).unwrap();
+        let b = XLogDir::new_waldir(&path, objc_dir).unwrap();
         assert!(a.lock().is_ok());
         assert!(b.lock().is_err());
     }
@@ -317,7 +319,7 @@ mod xlog_dir_tests {
     #[test]
     fn test_sync() {
         let path = Path::new("testdata");
-        let a = XLogDir::new_waldir(&path, std::ptr::null()).unwrap();
+        let a = XLogDir::new_waldir(&path, objc_dir).unwrap();
         assert!(a.sync().is_ok());
     }
 
@@ -327,7 +329,7 @@ mod xlog_dir_tests {
         let mut file = mint.new_goldenfile("scan_dir.txt").unwrap();
 
         let path = Path::new("testdata");
-        let a = XLogDir::new_waldir(&path, std::ptr::null()).unwrap();
+        let a = XLogDir::new_waldir(&path, objc_dir).unwrap();
         write!(file, "{:?}", a.scan_dir()).unwrap();
     }
 
@@ -338,7 +340,7 @@ mod xlog_dir_tests {
         let mut file2 = mint.new_goldenfile("scan_dir_scn2.txt").unwrap();
 
         let path = Path::new("testdata");
-        let a = XLogDir::new_waldir(&path, std::ptr::null()).unwrap();
+        let a = XLogDir::new_waldir(&path, objc_dir).unwrap();
         write!(file1, "{:?}", a.scan_dir_scn(1)).unwrap();
         write!(file2, "{:?}", a.scan_dir_scn(2)).unwrap();
     }
@@ -346,7 +348,7 @@ mod xlog_dir_tests {
     #[test]
     fn test_greatest_lsn() {
         let path = Path::new("testdata");
-        let a = XLogDir::new_waldir(&path, std::ptr::null()).unwrap();
+        let a = XLogDir::new_waldir(&path, objc_dir).unwrap();
         assert_eq!(a.greatest_lsn().unwrap(), Some(150));
     }
 }
