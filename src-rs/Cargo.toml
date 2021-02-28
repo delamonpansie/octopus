@@ -30,6 +30,6 @@ panic = "abort"
 debug = 2
 
 [dev-dependencies]
-memoffset = "*"
+memoffset = "0.6.1"
 test_runtime = { path = "test_runtime" }
-goldenfile = "1"
+goldenfile = "1.1.0"
