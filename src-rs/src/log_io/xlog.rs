@@ -26,7 +26,7 @@
 #![allow(dead_code)]
 
 use std::fs::{self, File};
-use std::io::{self, Seek, BufReader, BufWriter, Read, Write as BufWrite, BufRead};
+use std::io::{self, Seek, BufReader, BufWriter, Write as BufWrite, BufRead};
 use std::path::{Path, PathBuf};
 use std::mem;
 use std::rc::Rc;
@@ -198,9 +198,9 @@ impl XlogWriter {
         row.header_crc32c = row.crc32c();
 
         self.io.write_u32::<LittleEndian>(MARKER)?;
-        self.io.write_all(row.as_bytes())?; // FIXME: nasty and unportable
+        row.write(&mut self.io)?;
         self.io.write_all(data)?;
-        self.wet_rows.push((mem::size_of_val(&MARKER) + row.as_bytes().len() + data.len()) as u32);
+        self.wet_rows.push((mem::size_of_val(&MARKER) + mem::size_of_val(&row) + data.len()) as u32);
 
         Ok(())
     }
@@ -238,25 +238,7 @@ impl XlogReader {
             bail!("invalid row marker: expected 0x{:08x}, got 0x{:08x}", MARKER, marker)
         }
 
-        let mut row : Row = unsafe { std::mem::zeroed() }; // meh
-        self.io.read_exact(row.as_bytes_mut()).context("reading header")?;
-
-        if row.crc32c() != row.header_crc32c {
-            bail!("header crc32c mismatch: expected 0x{:08x}, got 0x{:08x}", {row.header_crc32c}, row.crc32c());
-        }
-
-        let mut data = Vec::new();
-        data.resize(row.len as usize, 0);
-        self.io.read_exact(&mut data).context("reading body")?;
-        let data = data.into_boxed_slice();
-
-        if crc32c(&data) != row.data_crc32c {
-            bail!("data crc32c mismatch");
-        }
-
-        log::debug!("read row LSN:{}", {row.lsn});
-
-        Ok((row, data))
+        Row::read(&mut self.io)
     }
 }
 

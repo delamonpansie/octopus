@@ -25,10 +25,11 @@
 
 #![allow(dead_code)]
 
-use std::{env, fmt, mem, slice};
+use std::{env, fmt, mem, slice, io, io::Read};
 
 use once_cell::sync::Lazy;
 use byteorder::{LittleEndian, ReadBytesExt};
+use anyhow::{bail, Context, Result};
 
 use super::*;
 
@@ -57,13 +58,40 @@ fn test_row_size() {
 }
 
 impl Row {
-    pub fn as_bytes(&self) -> &[u8] {
+    #[allow(deprecated)]
+    pub fn read(io: &mut dyn Read) -> Result<(Row, Box<[u8]>)> {
+        let mut row : Row = unsafe { std::mem::zeroed() }; // meh
+        io.read_exact(row.as_bytes_mut()).context("reading header")?;
+
+        if row.crc32c() != row.header_crc32c {
+            bail!("header crc32c mismatch: expected 0x{:08x}, got 0x{:08x}", {row.header_crc32c}, row.crc32c());
+        }
+
+        let mut data = Vec::new();
+        data.resize(row.len as usize, 0);
+        io.read_exact(&mut data).context("reading body")?;
+        let data = data.into_boxed_slice();
+
+        if crc32c(&data) != row.data_crc32c {
+            bail!("data crc32c mismatch");
+        }
+
+        log::debug!("read row LSN:{}", {row.lsn});
+
+        Ok((row, data))
+    }
+
+    pub fn write(&self, io: &mut dyn io::Write) -> io::Result<()> {
+        io.write_all(self.as_bytes()) // FIXME: nasty and unportable
+    }
+
+    fn as_bytes(&self) -> &[u8] {
         unsafe {
             slice::from_raw_parts(self as *const _ as *const u8, mem::size_of::<Row>())
         }
     }
 
-    pub fn as_bytes_mut(&mut self) -> &mut [u8] {
+    fn as_bytes_mut(&mut self) -> &mut [u8] {
         unsafe {
             slice::from_raw_parts_mut(self as *mut _ as *mut u8, mem::size_of::<Row>())
         }
