@@ -179,7 +179,7 @@ impl XlogWriter {
         write!(self.io, "\n")
     }
 
-    fn append_row(&mut self, row: &mut Row, data: &[u8]) -> io::Result<()> {
+    fn append_row(&mut self, row: &mut Row) -> io::Result<()> {
         // TODO
         // if self.truncate_before_write {
         //     self.io.seek(self.offset)?;
@@ -194,13 +194,11 @@ impl XlogWriter {
         if row.scn == 0 {
             row.scn = row.lsn;
         }
-        row.data_crc32c = crc32c(data);
-        row.header_crc32c = row.crc32c();
+        row.update_crc();
 
         self.io.write_u32::<LittleEndian>(MARKER)?;
-        row.write(&mut self.io)?;
-        self.io.write_all(data)?;
-        self.wet_rows.push((mem::size_of_val(&MARKER) + mem::size_of_val(&row) + data.len()) as u32);
+        let n = row.write(&mut self.io)?;
+        self.wet_rows.push((mem::size_of_val(&MARKER) + n) as u32);
 
         Ok(())
     }
@@ -231,7 +229,7 @@ impl XlogReader {
 
 
     #[allow(deprecated)]
-    pub fn read_row(&mut self) -> Result<(Row, Box<[u8]>)> {
+    pub fn read_row(&mut self) -> Result<BoxRow> {
         let marker = self.io.read_u32::<LittleEndian>().context("reading row_magic")?;
 
         if MARKER != marker {

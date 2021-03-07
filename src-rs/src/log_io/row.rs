@@ -25,7 +25,7 @@
 
 #![allow(dead_code)]
 
-use std::{env, fmt, mem, slice, io, io::Read};
+use std::{alloc::{alloc, dealloc, Layout}, env, fmt, mem, slice, io, io::Read, ops::{Deref, DerefMut}};
 
 use once_cell::sync::Lazy;
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -39,6 +39,10 @@ pub union RowAux {
     pub run_crc: u32,
 }
 
+extern {
+    type RowData;
+}
+
 #[repr(C, packed)]
 pub struct Row {
     pub header_crc32c: u32,
@@ -50,56 +54,119 @@ pub struct Row {
     tm: f64,
     pub len: u32,
     pub data_crc32c: u32,
+    _data: RowData,
 }
 
-#[test]
-fn test_row_size() {
-    assert_eq!(mem::size_of::<Row>(), 46);
+const ROW_LAYOUT : Layout = unsafe { Layout::from_size_align_unchecked(46, 16) };
+
+
+pub struct BoxRow {
+    ptr: *mut Row
+}
+
+impl Deref for BoxRow {
+    type Target = Row;
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.ptr }
+    }
+}
+
+impl DerefMut for BoxRow {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.ptr }
+    }
+}
+
+impl Drop for BoxRow {
+    fn drop(&mut self) {
+        unsafe {
+            dealloc(self.ptr as *mut _, Row::layout(self.len));
+        }
+    }
 }
 
 impl Row {
-    #[allow(deprecated)]
-    pub fn read(io: &mut dyn Read) -> Result<(Row, Box<[u8]>)> {
-        let mut row : Row = unsafe { std::mem::zeroed() }; // meh
-        io.read_exact(row.as_bytes_mut()).context("reading header")?;
+    fn layout(len: u32) -> Layout {
+        assert!(len < 2<<10);
+        let data = Layout::from_size_align(len as usize, 0).unwrap();
+        ROW_LAYOUT.extend_packed(data).unwrap()
+    }
 
-        if row.crc32c() != row.header_crc32c {
-            bail!("header crc32c mismatch: expected 0x{:08x}, got 0x{:08x}", {row.header_crc32c}, row.crc32c());
+    fn alloc(len: u32) -> *mut Row {
+        unsafe {
+            let ptr = alloc(Self::layout(len)) as *mut Row;
+            (*ptr).len = len;
+            ptr
+        }
+    }
+
+    fn data_ptr(&self) -> *const u8 {
+        let ptr = self as *const _ as *const u8;
+        unsafe { ptr.add(ROW_LAYOUT.size()) }
+    }
+
+    pub fn data(&self) -> &[u8] {
+        unsafe {
+            slice::from_raw_parts(self.data_ptr(), self.len as usize)
+        }
+    }
+
+    pub fn data_mut(&mut self) -> &mut [u8] {
+        unsafe {
+            slice::from_raw_parts_mut(self.data_ptr() as *mut _, self.len as usize)
+        }
+    }
+
+    pub fn read(io: &mut dyn Read) -> Result<BoxRow> {
+        let mut header =  [0; ROW_LAYOUT.size()];
+        io.read_exact(&mut header).context("reading header")?;
+
+        let header_crc32c = (&header[0..4]).read_u32::<LittleEndian>().unwrap();
+        let header_crc32c_calculated = crc32c(&header[4..]);
+        if header_crc32c_calculated != header_crc32c {
+            bail!("header crc32c mismatch: expected 0x{:08x}, calculated 0x{:08x}",
+                  header_crc32c, header_crc32c_calculated);
         }
 
-        let mut data = Vec::new();
-        data.resize(row.len as usize, 0);
-        io.read_exact(&mut data).context("reading body")?;
-        let data = data.into_boxed_slice();
+        let len = (&header[ROW_LAYOUT.size() - 8..]).read_u32::<LittleEndian>().unwrap();
+        let mut row = BoxRow { ptr: Self::alloc(len) };
 
-        if crc32c(&data) != row.data_crc32c {
-            bail!("data crc32c mismatch");
+        row.as_bytes_mut().copy_from_slice(&header);
+        debug_assert!(row.len == len);
+        io.read_exact(row.data_mut()).context("reading body")?;
+
+        if crc32c(row.data()) != row.data_crc32c {
+            bail!("data crc32c mismatch: expected 0x{:08x}, calculated 0x{:08x}",
+                  {row.data_crc32c}, crc32c(row.data()));
         }
 
         log::debug!("read row LSN:{}", {row.lsn});
-
-        Ok((row, data))
+        Ok(row)
     }
 
-    pub fn write(&self, io: &mut dyn io::Write) -> io::Result<()> {
-        io.write_all(self.as_bytes()) // FIXME: nasty and unportable
+    pub fn write(&self, io: &mut dyn io::Write) -> io::Result<usize> {
+        io.write_all(self.as_bytes())?; // FIXME: nasty and unportable
+        io.write_all(self.data())?;
+        Ok(ROW_LAYOUT.size() + self.data().len())
     }
 
     fn as_bytes(&self) -> &[u8] {
         unsafe {
-            slice::from_raw_parts(self as *const _ as *const u8, mem::size_of::<Row>())
+            slice::from_raw_parts(self as *const _ as *const u8, ROW_LAYOUT.size())
         }
     }
 
     fn as_bytes_mut(&mut self) -> &mut [u8] {
         unsafe {
-            slice::from_raw_parts_mut(self as *mut _ as *mut u8, mem::size_of::<Row>())
+            slice::from_raw_parts_mut(self as *mut _ as *mut u8, ROW_LAYOUT.size())
         }
     }
 
-    pub fn crc32c(&self) -> u32 {
-        crc32c(&self.as_bytes()[4..])
+    pub fn update_crc(&mut self) {
+        self.data_crc32c = crc32c(self.data());
+        self.header_crc32c = crc32c(&self.as_bytes()[4..])
     }
+
 
     fn tag(&self) -> Tag {
         match self.tag & TAG_MASK {
@@ -203,7 +270,7 @@ impl<'a> LittleEndianReader<'a> {
     fn read_u64(&mut self) -> u64 { self.0.read_u64::<LittleEndian>().unwrap() }
 }
 
-pub fn print_row(buf: &mut dyn std::fmt::Write, row: &Row, row_data: &[u8], handler: fn(buf: &mut dyn std::fmt::Write, data: &[u8])) {
+pub fn print_row(buf: &mut dyn std::fmt::Write, row: &Row, handler: fn(buf: &mut dyn std::fmt::Write, data: &[u8])) {
     // let row_data = unsafe { slice::from_raw_parts(data, row.len as usize) };
 
     fn int_flag(name: &str) -> Option<usize> {
@@ -229,10 +296,10 @@ pub fn print_row(buf: &mut dyn std::fmt::Write, row: &Row, row_data: &[u8], hand
     }
 
     use mem::size_of;
-    let mut reader = LittleEndianReader::new(row_data);
+    let mut reader = LittleEndianReader::new(row.data());
     match row.tag() {
         Tag::SnapInitial => {
-            if row_data.len() == size_of::<u32>() * 3 {
+            if row.data().len() == size_of::<u32>() * 3 {
                 let count = reader.read_u32();
                 let crc_log = reader.read_u32();
                 let crc_mod = reader.read_u32();
@@ -249,7 +316,7 @@ pub fn print_row(buf: &mut dyn std::fmt::Write, row: &Row, row_data: &[u8], hand
         },
         Tag::RunCrc => {
 	    let mut scn = -1;
-	    if row_data.len() == size_of::<i64>() + 2 * size_of::<u32>() {
+	    if row.data().len() == size_of::<i64>() + 2 * size_of::<u32>() {
 		scn = reader.read_i64();
             }
 	    let crc_log = reader.read_u32();
@@ -257,7 +324,7 @@ pub fn print_row(buf: &mut dyn std::fmt::Write, row: &Row, row_data: &[u8], hand
 	    write!(buf, "SCN:{} log:0x{:#08x}", scn, crc_log).unwrap();
         },
 
-        Tag::SnapData | Tag::WalData | Tag::UserTag(_) => handler(buf, row_data),
+        Tag::SnapData | Tag::WalData | Tag::UserTag(_) => handler(buf, row.data()),
         Tag::SnapFinal | Tag::WalFinal | Tag::Nop => (),
         Tag::SysTag(_) => (),
         Tag::RaftAppend | Tag::RaftCommit | Tag::RaftVote => todo!(),

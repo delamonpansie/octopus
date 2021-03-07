@@ -29,7 +29,8 @@
            core_intrinsics,
            extern_types,
            try_blocks,
-           seek_stream_len)]
+           seek_stream_len,
+           alloc_layout_extra)]
 
 pub mod net_io;
 pub mod log_io;
