@@ -229,14 +229,16 @@ impl XlogReader {
 
 
     #[allow(deprecated)]
-    pub fn read_row(&mut self) -> Result<BoxRow> {
+    pub fn read_row(&mut self) -> Result<Option<BoxRow>> {
         let marker = self.io.read_u32::<LittleEndian>().context("reading row_magic")?;
 
-        if MARKER != marker {
-            bail!("invalid row marker: expected 0x{:08x}, got 0x{:08x}", MARKER, marker)
+        match marker {
+            MARKER => (),
+            EOF_MARKER => return Ok(None),
+            _ => bail!("invalid row marker: expected 0x{:08x}, got 0x{:08x}", MARKER, marker)
         }
 
-        Row::read(&mut self.io)
+        Row::read(&mut self.io).map(|x| Some(x))
     }
 }
 

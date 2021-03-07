@@ -88,7 +88,7 @@ impl Drop for BoxRow {
 impl Row {
     fn layout(len: u32) -> Layout {
         assert!(len < 2<<10);
-        let data = Layout::from_size_align(len as usize, 0).unwrap();
+        let data = Layout::from_size_align(len as usize, 1).unwrap();
         ROW_LAYOUT.extend_packed(data).unwrap()
     }
 
@@ -169,24 +169,7 @@ impl Row {
 
 
     fn tag(&self) -> Tag {
-        match self.tag & TAG_MASK {
-            1 => Tag::SnapInitial,
-            2 => Tag::SnapData,
-            3 => Tag::WalData,
-            4 => Tag::SnapFinal,
-            5 => Tag::WalFinal,
-            6 => Tag::RunCrc,
-            7 => Tag::Nop,
-            8 => Tag::RaftAppend,
-            9 => Tag::RaftCommit,
-            10 => Tag::RaftVote,
-            11 => Tag::ShardCreate,
-            12 => Tag::ShardAlter,
-            13 => Tag::ShardFinal,
-            14 => Tag::Tlv,
-            t if t < 32 => Tag::SysTag(t as u8),
-            t => Tag::UserTag(t as u8),
-        }
+        Tag::new(self.tag)
     }
 }
 
@@ -208,6 +191,29 @@ pub enum Tag {
     Tlv,
     SysTag(u8),
     UserTag(u8),
+}
+
+impl Tag {
+    fn new(repr: u16) -> Self {
+        match repr & TAG_MASK {
+            1 => Tag::SnapInitial,
+            2 => Tag::SnapData,
+            3 => Tag::WalData,
+            4 => Tag::SnapFinal,
+            5 => Tag::WalFinal,
+            6 => Tag::RunCrc,
+            7 => Tag::Nop,
+            8 => Tag::RaftAppend,
+            9 => Tag::RaftCommit,
+            10 => Tag::RaftVote,
+            11 => Tag::ShardCreate,
+            12 => Tag::ShardAlter,
+            13 => Tag::ShardFinal,
+            14 => Tag::Tlv,
+            t if t < 32 => Tag::SysTag(t as u8),
+            t => Tag::UserTag(t as u8),
+        }
+    }
 }
 
 impl fmt::Display for Tag {
@@ -259,6 +265,24 @@ impl fmt::Display for TagType {
     }
 }
 
+#[derive(PartialEq, Eq)]
+enum ShardType {
+    POR,
+    RAFT,
+    PART
+}
+
+impl ShardType {
+    fn new(repr: u8) -> Result<Self> {
+        match repr {
+            0 => Ok(ShardType::POR),
+            1 => Ok(ShardType::RAFT),
+            2 => Ok(ShardType::PART),
+            _ => bail!("invalid shard type {}", repr)
+        }
+    }
+}
+
 // TODO: switch to byteordered?
 struct LittleEndianReader<'a> (std::io::Cursor<&'a[u8]>);
 impl<'a> LittleEndianReader<'a> {
@@ -268,10 +292,19 @@ impl<'a> LittleEndianReader<'a> {
     fn read_u32(&mut self) -> u32 { self.0.read_u32::<LittleEndian>().unwrap() }
     fn read_i64(&mut self) -> i64 { self.0.read_i64::<LittleEndian>().unwrap() }
     fn read_u64(&mut self) -> u64 { self.0.read_u64::<LittleEndian>().unwrap() }
+    fn read_str(&mut self, len: usize) -> &str {
+        let pos = self.0.position() as usize;
+        let raw = &self.0.get_ref()[pos..pos+len];
+        let (raw, _) = raw.split_at(raw.iter().position(|&x| x == 0).unwrap_or(len));
+        let str = std::str::from_utf8(raw).unwrap();
+        self.0.set_position((pos+len) as u64);
+        str
+    }
+    fn into_cursor(self) -> std::io::Cursor<&'a[u8]> { self.0 }
 }
 
-pub fn print_row(buf: &mut dyn std::fmt::Write, row: &Row, handler: fn(buf: &mut dyn std::fmt::Write, data: &[u8])) {
-    // let row_data = unsafe { slice::from_raw_parts(data, row.len as usize) };
+pub fn print_row(buf: &mut dyn std::fmt::Write, row: &Row,
+                 handler: fn(buf: &mut dyn std::fmt::Write, tag: Tag, data: &[u8])) -> Result<()> {
 
     fn int_flag(name: &str) -> Option<usize> {
         let val = env::var(name).ok()?;
@@ -283,16 +316,16 @@ pub fn print_row(buf: &mut dyn std::fmt::Write, row: &Row, handler: fn(buf: &mut
     let tag = row.tag();
 
     if *PRINT_HEADER {
-        write!(buf, "lsn:{}", {row.lsn}).unwrap();
+        write!(buf, "lsn:{}", {row.lsn})?;
         if row.scn != -1 || tag == Tag::RaftVote || tag == Tag::SnapData {
-            write!(buf, " shard:{}", {row.shard_id}).unwrap();
+            write!(buf, " shard:{}", {row.shard_id})?;
 
             if *PRINT_RUN_CRC {
-                write!(buf, " run_crc:{:#08x}", unsafe {row.aux.run_crc}).unwrap();
+                write!(buf, " run_crc:{:#08x}", unsafe {row.aux.run_crc})?;
             }
         }
 
-        write!(buf, " scn:{:#08x} tm:{:.3} t:{} ", {row.scn}, {row.tm}, row.tag()).unwrap();
+        write!(buf, " scn:{} tm:{:.3} t:{} ", {row.scn}, {row.tm}, row.tag())?;
     }
 
     use mem::size_of;
@@ -304,14 +337,14 @@ pub fn print_row(buf: &mut dyn std::fmt::Write, row: &Row, handler: fn(buf: &mut
                 let crc_log = reader.read_u32();
                 let crc_mod = reader.read_u32();
                 write!(buf, "count:{} run_crc_log:0x{:#08x} run_crc_mod:0x{:#08x}",
-		       count, crc_log, crc_mod).unwrap();
+		       count, crc_log, crc_mod)?;
             } else if row.scn == -1 {
                 let ver = reader.read_u8();
 		let count = reader.read_u32();
 		let flags = reader.read_u32();
-		write!(buf, "ver:{} count:{} flags:0x{:#08x}", ver, count, flags).unwrap();
+		write!(buf, "ver:{} count:{} flags:0x{:#08x}", ver, count, flags)?;
 	    } else {
-		write!(buf, "unknow format").unwrap();
+		write!(buf, "unknow format")?;
             }
         },
         Tag::RunCrc => {
@@ -321,45 +354,121 @@ pub fn print_row(buf: &mut dyn std::fmt::Write, row: &Row, handler: fn(buf: &mut
             }
 	    let crc_log = reader.read_u32();
 	    let _ = reader.read_u32(); /* ignore run_crc_mod */
-	    write!(buf, "SCN:{} log:0x{:#08x}", scn, crc_log).unwrap();
+	    write!(buf, "SCN:{} log:0x{:#08x}", scn, crc_log)?;
         },
 
-        Tag::SnapData | Tag::WalData | Tag::UserTag(_) => handler(buf, row.data()),
+        Tag::SnapData | Tag::WalData | Tag::UserTag(_) => handler(buf, tag, row.data()),
         Tag::SnapFinal | Tag::WalFinal | Tag::Nop => (),
         Tag::SysTag(_) => (),
-        Tag::RaftAppend | Tag::RaftCommit | Tag::RaftVote => todo!(),
-        Tag::ShardCreate | Tag::ShardAlter | Tag::ShardFinal => todo!(),
+        Tag::RaftAppend | Tag::RaftCommit => {
+            let flags = reader.read_u16();
+            let term = reader.read_u64();
+            let inner_tag = Tag::new(reader.read_u16());
+            write!(buf, "term:{} flags:0x{:#02x} it:{} ", flags, term, inner_tag)?;
+            match inner_tag {
+                Tag::RunCrc => {
+                    let scn = reader.read_u64();
+                    let log = reader.read_u32();
+                    let _ = reader.read_u32(); /* ignore run_crc_mod */
+                    write!(buf, "SCN:{} log:0x{:#08x}", scn, log)?;
+                },
+                Tag::Nop => (),
+                _ => {
+                    handler(buf, inner_tag, reader.into_cursor().into_inner());
+                    return Ok(())
+                }
+            }
+        },
+        Tag::RaftVote => {
+            let flags = reader.read_u16();
+            let term = reader.read_u64();
+            let peer_id = reader.read_u8();
+            write!(buf, "term:{} flags:0x{:#02x} peer:{}", term, flags, peer_id)?;
+        },
+        Tag::ShardCreate | Tag::ShardAlter => {
+            let ver = reader.read_u8();
+	    if ver != 1 {
+		bail!("unknow version: {}", ver);
+	    }
+
+	    let shard_type = ShardType::new(reader.read_u8())?;
+	    let estimated_row_count = reader.read_u32();
+
+            match row.tag() {
+                Tag::ShardCreate => write!(buf,"SHARD_CREATE")?,
+                Tag::ShardAlter => write!(buf, "SHARD_ALTER")?,
+                _ => unreachable!(),
+            }
+
+	    write!(buf, " shard_id:{}", {row.shard_id})?;
+
+	    match shard_type {
+	        ShardType::RAFT => write!(buf, " RAFT")?,
+	        ShardType::POR => write!(buf, " POR")?,
+	        ShardType::PART => write!(buf, " PART")?,
+	    }
+
+	    let mod_name = reader.read_str(16);
+            write!(buf, " {}", mod_name)?;
+
+	    write!(buf, " count:{} run_crc:0x{:#08x}", estimated_row_count, unsafe { row.aux.run_crc })?;
+
+	    write!(buf, " master:{}", reader.read_str(16))?;
+            for _ in 0..4 {
+                let peer_name = reader.read_str(16);
+                if peer_name.len() > 0 {
+                    write!(buf, " repl:{}", peer_name)?;
+                }
+            }
+	    let aux_len = reader.read_u16();
+            write!(buf, "aux:")?;
+            for _ in 0..aux_len {
+                let b = reader.read_u8();
+                write!(buf, "{:#02} ", b)?;
+            }
+        },
+        Tag::ShardFinal => (),
         Tag::Tlv => todo!(),
+
+        // tag => handler(buf, tag, row.data())
     }
+    // let cursor = reader.into_cursor();
+    // println!("pos: {}, data len: {}", cursor.position(), cursor.get_ref().len());
+    // assert!(.len() == 0);
+    Ok(())
 }
 
-// #[test]
-// fn test_print_row() {
-//     use std::path::Path;
-//     println!("current dir {:?}", env::current_dir().unwrap());
-//     let mut xlog = XLog::name(Path::new("testdata/00000000000000000002.xlog")).unwrap();
+#[test]
+fn test_print_row() {
+    use std::path::Path;
+    println!("current dir {:?}", env::current_dir().unwrap());
+    let mut xlog = XLog::name(Path::new("testdata/00000000000000000002.xlog")).unwrap();
 
-//     let mut buf = String::new();
+    let mut buf = String::new();
 
-//     fn hexdump(buf: &mut dyn std::fmt::Write, data: &[u8]) {
-//         for b in data {
-//             write!(buf, "{:02x} ", b).unwrap();
-//         }
-//     }
+    env::set_var("OCTOPUS_CAT_ROW_HEADER", "1");
 
-//     if let IO::Read(reader) = &mut xlog.io {
-//         loop {
-//             match reader.read_row() {
-//                 Ok((row, data)) => {
-//                     buf.clear();
-//                     print_row(&mut buf, &row, &data, hexdump);
-//                     println!("{}", buf);
-//                 },
-//                 Err(err) => {
-//                     println!("{:?}", err);
-//                     break;
-//                 }
-//             }
-//         }
-//     }
-// }
+    fn hexdump(buf: &mut dyn std::fmt::Write, tag: Tag, data: &[u8]) {
+        write!(buf, "tag:{}", tag).unwrap();
+        for b in data {
+            write!(buf, " {:02x}", b).unwrap();
+        }
+    }
+
+    if let IO::Read(reader) = &mut xlog.io {
+        loop {
+            match reader.read_row() {
+                Ok(Some(row)) => {
+                    buf.clear();
+                    print_row(&mut buf, &row, hexdump).unwrap();
+                    println!("row {}", buf);
+                },
+                Ok(None) => break,
+                Err(err) => {
+                    println!("fail {:?}", err);
+                    break;
+                }
+            }
+        }
+    }
+}
