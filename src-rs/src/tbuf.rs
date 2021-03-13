@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Yury Vostrikov
+ * Copyright (C) 2020, 2021 Yury Vostrikov
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -24,10 +24,11 @@
  */
 
 use libc::{c_void, size_t};
-use std::io;
+use std::{io, fmt};
 
 use crate::palloc::PallocPool;
 
+#[derive(Debug)]
 #[repr(C)]
 pub struct TBuf {
     ptr: *mut c_void,
@@ -64,6 +65,14 @@ impl TBuf {
     pub fn extend_from_slice(&mut self, other: &[u8]) {
         unsafe { tbuf_append(self, other.as_ptr() as *const c_void, other.len()) }
     }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        unsafe { std::slice::from_raw_parts(self.ptr as *const u8, self.len()) }
+    }
+
+    pub fn as_bytes_mut(&self) -> &[u8] {
+        unsafe { std::slice::from_raw_parts_mut(self.ptr as *mut u8, self.len()) }
+    }
 }
 
 impl io::Write for TBuf {
@@ -73,6 +82,13 @@ impl io::Write for TBuf {
     }
 
     fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+impl fmt::Write for TBuf {
+    fn write_str(&mut self, str: &str) -> fmt::Result {
+        self.extend_from_slice(str.as_bytes());
         Ok(())
     }
 }
