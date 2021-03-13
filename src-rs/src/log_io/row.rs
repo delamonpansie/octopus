@@ -169,10 +169,15 @@ impl Row {
 
 
     fn tag(&self) -> Tag {
-        Tag::new(self.tag)
+        Tag::new(self.tag & TAG_MASK)
+    }
+
+    fn tag_type(&self) -> TagType {
+        TagType::new(self.tag & !TAG_MASK)
     }
 }
 
+#[derive(Debug)]
 #[derive(PartialEq, Eq)]
 pub enum Tag {
     SnapInitial,
@@ -211,7 +216,28 @@ impl Tag {
             13 => Tag::ShardFinal,
             14 => Tag::Tlv,
             t if t < 32 => Tag::SysTag(t as u8),
-            t => Tag::UserTag(t as u8),
+            t => Tag::UserTag((t >> 5) as u8),
+        }
+    }
+
+    fn as_u16(&self) -> u16 {
+        match self {
+            Tag::SnapInitial => 1,
+            Tag::SnapData => 2,
+            Tag::WalData => 3,
+            Tag::SnapFinal => 4,
+            Tag::WalFinal => 5,
+            Tag::RunCrc => 6,
+            Tag::Nop => 7,
+            Tag::RaftAppend => 8,
+            Tag::RaftCommit => 9,
+            Tag::RaftVote => 10,
+            Tag::ShardCreate => 11,
+            Tag::ShardAlter => 12,
+            Tag::ShardFinal => 13,
+            Tag::Tlv => 14,
+            Tag::SysTag(t) => *t as u16,
+            Tag::UserTag(t) => *t as u16,
         }
     }
 }
@@ -253,6 +279,18 @@ enum TagType {
     SNAP = 0x4000,
     WAL = 0x8000,
     SYS = 0xc000,
+    INVALID = 0,
+}
+
+impl TagType {
+    fn new(repr: u16) -> TagType {
+        match repr & !TAG_MASK {
+            0x4000 => TagType::SNAP,
+            0x8000 => TagType::WAL,
+            0xc000 => TagType::SYS,
+            _ => TagType::INVALID,
+        }
+    }
 }
 
 impl fmt::Display for TagType {
@@ -261,6 +299,7 @@ impl fmt::Display for TagType {
             TagType::SNAP => write!(f, "snap"),
             TagType::WAL => write!(f, "wal"),
             TagType::SYS => write!(f, "sys"),
+            TagType::INVALID => write!(f, "invalid"),
         }
     }
 }
