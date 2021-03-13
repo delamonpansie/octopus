@@ -49,4 +49,4 @@ src-rs/target/$(CARGO_PROFILE)/librustyoctopus.a:
 clean: rsclean
 rsclean:
 	$(E) "CLEAN	rs"
-	$(Q)rm -rf src-rs/target
+	$(Q)rm -rf src-rs/target src-rs/test_runtime/target
