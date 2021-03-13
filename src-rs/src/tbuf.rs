@@ -44,6 +44,15 @@ extern {
 }
 
 impl TBuf {
+    pub unsafe fn from_slice(data: &[u8]) -> TBuf {
+        TBuf {
+            ptr: data.as_ptr() as *mut _,
+            end: data.as_ptr().wrapping_add(data.len()) as *mut _,
+            free: 0,
+            pool: 0usize as _,
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.end as usize - self.ptr as usize
     }

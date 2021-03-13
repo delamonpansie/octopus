@@ -340,31 +340,36 @@ impl<'a> LittleEndianReader<'a> {
         str
     }
     fn into_cursor(self) -> std::io::Cursor<&'a[u8]> { self.0 }
+    fn unparsed(&self) -> &[u8] {
+        &self.0.get_ref()[self.0.position() as usize..]
+    }
 }
 
-pub fn print_row(buf: &mut dyn std::fmt::Write, row: &Row,
-                 handler: fn(buf: &mut dyn std::fmt::Write, tag: Tag, data: &[u8])) -> Result<()> {
-
-    fn int_flag(name: &str) -> Option<usize> {
-        let val = env::var(name).ok()?;
-        val.parse().ok()
+pub fn print_row<W: fmt::Write + fmt::Debug>(buf: &mut W, row: &Row,
+                                             handler: &dyn Fn(&mut W, u16, &[u8])) -> Result<()> {
+    fn int_flag(name: &str, default: bool) -> bool {
+        let flag = try {
+            let val = env::var(name).ok()?;
+            val.parse::<usize>().ok()?
+        };
+        Some(1) == flag || default
     }
-    static PRINT_HEADER : Lazy<bool> = Lazy::new(|| { int_flag("OCTOPUS_CAT_ROW_HEADER") == Some(1) });
-    static PRINT_RUN_CRC : Lazy<bool> = Lazy::new(|| { int_flag("OCTOPUS_CAT_RUN_CRC") == Some(1) });
+    static PRINT_HEADER : Lazy<bool> = Lazy::new(|| { int_flag("OCTOPUS_CAT_ROW_HEADER", true) });
+    static PRINT_RUN_CRC : Lazy<bool> = Lazy::new(|| { int_flag("OCTOPUS_CAT_RUN_CRC", false) });
 
     let tag = row.tag();
 
-    if *PRINT_HEADER {
+    if *PRINT_HEADER || true {
         write!(buf, "lsn:{}", {row.lsn})?;
         if row.scn != -1 || tag == Tag::RaftVote || tag == Tag::SnapData {
             write!(buf, " shard:{}", {row.shard_id})?;
 
             if *PRINT_RUN_CRC {
-                write!(buf, " run_crc:{:#08x}", unsafe {row.aux.run_crc})?;
+                write!(buf, " run_crc:0x{:08x}", unsafe {row.aux.run_crc})?;
             }
         }
 
-        write!(buf, " scn:{} tm:{:.3} t:{} ", {row.scn}, {row.tm}, row.tag())?;
+        write!(buf, " scn:{} tm:{:.3} t:{}/{} ", {row.scn}, {row.tm}, row.tag_type(), row.tag())?;
     }
 
     use mem::size_of;
@@ -375,13 +380,13 @@ pub fn print_row(buf: &mut dyn std::fmt::Write, row: &Row,
                 let count = reader.read_u32();
                 let crc_log = reader.read_u32();
                 let crc_mod = reader.read_u32();
-                write!(buf, "count:{} run_crc_log:0x{:#08x} run_crc_mod:0x{:#08x}",
+                write!(buf, "count:{} run_crc_log:0x{:08x} run_crc_mod:0x{:08x}",
 		       count, crc_log, crc_mod)?;
             } else if row.scn == -1 {
                 let ver = reader.read_u8();
 		let count = reader.read_u32();
 		let flags = reader.read_u32();
-		write!(buf, "ver:{} count:{} flags:0x{:#08x}", ver, count, flags)?;
+		write!(buf, "ver:{} count:{} flags:0x{:08x}", ver, count, flags)?;
 	    } else {
 		write!(buf, "unknow format")?;
             }
@@ -393,27 +398,53 @@ pub fn print_row(buf: &mut dyn std::fmt::Write, row: &Row,
             }
 	    let crc_log = reader.read_u32();
 	    let _ = reader.read_u32(); /* ignore run_crc_mod */
-	    write!(buf, "SCN:{} log:0x{:#08x}", scn, crc_log)?;
+	    write!(buf, "SCN:{} log:0x{:08x}", scn, crc_log)?;
         },
 
-        Tag::SnapData | Tag::WalData | Tag::UserTag(_) => handler(buf, tag, row.data()),
-        Tag::SnapFinal | Tag::WalFinal | Tag::Nop => (),
+        Tag::SnapData | Tag::WalData | Tag::UserTag(_) | Tag::Tlv => {
+            handler(buf, row.tag, row.data());
+            return Ok(())
+        }
+        Tag::SnapFinal => {
+            let mut end = [0u8; 4];
+            for i in 0..3 {
+                end[i] = reader.read_u8()
+            }
+            if end != ['E' as u8, 'N' as u8, 'D' as u8, 0] {
+                write!(buf, " {:x?}", &end)?;
+            }
+        },
+        Tag::WalFinal  => (),
+        Tag::Nop => {
+            if reader.unparsed().len() > 0 {
+                let dummy = reader.read_u16();
+                if dummy != 0 {
+                    write!(buf, " {:02x}", dummy)?;
+                }
+            }
+        },
         Tag::SysTag(_) => (),
         Tag::RaftAppend | Tag::RaftCommit => {
             let flags = reader.read_u16();
             let term = reader.read_u64();
-            let inner_tag = Tag::new(reader.read_u16());
-            write!(buf, "term:{} flags:0x{:#02x} it:{} ", flags, term, inner_tag)?;
+            let inner_tag_raw = reader.read_u16();
+            let inner_tag = Tag::new(inner_tag_raw);
+            write!(buf, "term:{} flags:0x{:02x} it:{} ", flags, term, inner_tag)?;
             match inner_tag {
                 Tag::RunCrc => {
                     let scn = reader.read_u64();
                     let log = reader.read_u32();
                     let _ = reader.read_u32(); /* ignore run_crc_mod */
-                    write!(buf, "SCN:{} log:0x{:#08x}", scn, log)?;
+                    write!(buf, "SCN:{} log:0x{:08x}", scn, log)?;
                 },
-                Tag::Nop => (),
+                Tag::Nop => {
+                    let dummy = reader.read_u16();
+                    if dummy != 0 {
+                        write!(buf, " {:02x}", dummy)?;
+                    }
+                },
                 _ => {
-                    handler(buf, inner_tag, reader.into_cursor().into_inner());
+                    handler(buf, inner_tag_raw, reader.into_cursor().into_inner());
                     return Ok(())
                 }
             }
@@ -422,7 +453,7 @@ pub fn print_row(buf: &mut dyn std::fmt::Write, row: &Row,
             let flags = reader.read_u16();
             let term = reader.read_u64();
             let peer_id = reader.read_u8();
-            write!(buf, "term:{} flags:0x{:#02x} peer:{}", term, flags, peer_id)?;
+            write!(buf, "term:{} flags:0x{:02x} peer:{}", term, flags, peer_id)?;
         },
         Tag::ShardCreate | Tag::ShardAlter => {
             let ver = reader.read_u8();
@@ -449,9 +480,7 @@ pub fn print_row(buf: &mut dyn std::fmt::Write, row: &Row,
 
 	    let mod_name = reader.read_str(16);
             write!(buf, " {}", mod_name)?;
-
-	    write!(buf, " count:{} run_crc:0x{:#08x}", estimated_row_count, unsafe { row.aux.run_crc })?;
-
+	    write!(buf, " count:{} run_crc:0x{:08x}", estimated_row_count, unsafe { row.aux.run_crc })?;
 	    write!(buf, " master:{}", reader.read_str(16))?;
             for _ in 0..4 {
                 let peer_name = reader.read_str(16);
@@ -460,47 +489,47 @@ pub fn print_row(buf: &mut dyn std::fmt::Write, row: &Row,
                 }
             }
 	    let aux_len = reader.read_u16();
-            write!(buf, "aux:")?;
-            for _ in 0..aux_len {
-                let b = reader.read_u8();
-                write!(buf, "{:#02} ", b)?;
+            if aux_len > 0 {
+                write!(buf, " aux:")?;
+                for _ in 0..aux_len {
+                    let b = reader.read_u8();
+                    write!(buf, "{:02x} ", b)?;
+                }
             }
         },
-        Tag::ShardFinal => (),
-        Tag::Tlv => todo!(),
-
-        // tag => handler(buf, tag, row.data())
+        Tag::ShardFinal => {
+            let dummy = reader.read_u16();
+            if dummy != 0 {
+                write!(buf, " {:02x}", dummy)?;
+            }
+        },
     }
-    // let cursor = reader.into_cursor();
-    // println!("pos: {}, data len: {}", cursor.position(), cursor.get_ref().len());
-    // assert!(.len() == 0);
+    if reader.unparsed().len() > 0 {
+        write!(buf, " unparsed: {:x?} ", reader.unparsed())?;
+    }
     Ok(())
 }
 
 #[test]
 fn test_print_row() {
-    use std::path::Path;
+    use std::{path::Path, fmt::Write};
+
     println!("current dir {:?}", env::current_dir().unwrap());
     let mut xlog = XLog::name(Path::new("testdata/00000000000000000002.xlog")).unwrap();
-
     let mut buf = String::new();
-
     env::set_var("OCTOPUS_CAT_ROW_HEADER", "1");
 
-    fn hexdump(buf: &mut dyn std::fmt::Write, tag: Tag, data: &[u8]) {
-        write!(buf, "tag:{}", tag).unwrap();
-        for b in data {
-            write!(buf, " {:02x}", b).unwrap();
-        }
+    fn hexdump(buf: &mut String, _tag: u16, data: &[u8]) {
+        write!(buf, " {:?x}", data).unwrap();
     }
 
     if let IO::Read(reader) = &mut xlog.io {
         loop {
             match reader.read_row() {
                 Ok(Some(row)) => {
-                    buf.clear();
-                    print_row(&mut buf, &row, hexdump).unwrap();
+                    print_row(&mut buf, &row, &hexdump).unwrap();
                     println!("row {}", buf);
+                    buf.clear();
                 },
                 Ok(None) => break,
                 Err(err) => {
@@ -508,6 +537,29 @@ fn test_print_row() {
                     break;
                 }
             }
+        }
+    }
+}
+
+
+mod ffi {
+    use super::*;
+    use crate::tbuf::TBuf;
+
+    #[no_mangle]
+    unsafe extern "C" fn print_row(out: *mut TBuf, row: *const Row,
+	                           handler: Option<extern fn(out: *mut TBuf, tag: u16, data: *const TBuf) -> ()>) {
+        let ret = super::print_row(&mut *out, &*row, &|buf: &mut TBuf, tag: u16, data: &[u8]| {
+            let buf = &mut*buf;
+            if let Some(f) = handler {
+                f(buf, tag, &TBuf::from_slice(data))
+            } else {
+                use std::fmt::Write;
+                write!(buf, " {:x?}", data).unwrap();
+            }
+        });
+        if let Err(err) = ret {
+            log::error!("{:?}", err);
         }
     }
 }
